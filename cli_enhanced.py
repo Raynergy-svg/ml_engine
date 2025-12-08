@@ -11,6 +11,7 @@ import json
 import datetime
 import pandas as pd
 import numpy as np
+import torch
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union
 import asyncio
@@ -448,4 +449,105 @@ class StockPredictionCLI:
         if config_path:
             self.load_config(config_path)
         
-        # Initiali<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>
+        # Initialize engines if not already initialized
+        if self.ml_engine is None:
+            self.initialize_engines()
+        
+        # Fetch and prepare training data
+        logger.info("Fetching training data...")
+        
+        # Get tickers from configuration
+        tickers = self.config.get("data", {}).get("tickers", ["AAPL"])
+        start_date = self.config.get("data", {}).get("start_date", "2020-01-01")
+        end_date = self.config.get("data", {}).get("end_date", "2023-01-01")
+        
+        # Fetch data using async method
+        loop = asyncio.get_event_loop()
+        stock_data = loop.run_until_complete(
+            self.fetch_stock_data(tickers, start_date, end_date)
+        )
+        
+        if stock_data.empty:
+            logger.error("Failed to fetch training data")
+            return
+        
+        # Prepare sequences for training
+        features, targets, metadata = prepare_sequences(
+            df=stock_data,
+            sequence_length=self.config["data"]["sequence_length"],
+            target_column=self.config["data"]["target"],
+            feature_columns=self.config["data"]["features"],
+            scale_features=True,
+            scale_target=True
+        )
+        
+        # Train the model
+        logger.info("Starting model training...")
+        self.ml_engine.train(features, targets)
+        
+        # Save the trained model
+        model_path = self.model_dir / "stock_predictor.pth"
+        self.ml_engine.save_model(str(model_path))
+        
+        logger.info(f"Model training completed and saved to {model_path}")
+        
+    def predict(self, ticker: str, days_ahead: int = 1):
+        """
+        Make predictions for a specific ticker.
+        
+        Args:
+            ticker: Stock ticker symbol
+            days_ahead: Number of days ahead to predict
+        """
+        # Initialize engines if not already initialized
+        if self.ml_engine is None:
+            self.initialize_engines()
+        
+        # Prepare data for prediction
+        loop = asyncio.get_event_loop()
+        prepared_data = loop.run_until_complete(
+            self.prepare_data_for_prediction(ticker)
+        )
+        
+        if not prepared_data:
+            logger.error(f"Failed to prepare data for prediction: {ticker}")
+            return None
+        
+        # Make prediction
+        features = prepared_data["ml_features"]
+        prediction = self.ml_engine.predict(features)
+        
+        logger.info(f"Prediction for {ticker}: {prediction}")
+        return prediction
+
+
+def main():
+    """Main entry point for the CLI."""
+    parser = argparse.ArgumentParser(description="Stock Prediction CLI")
+    parser.add_argument("command", choices=["train", "predict", "evaluate"], help="Command to execute")
+    parser.add_argument("--config", default="config.json", help="Path to configuration file")
+    parser.add_argument("--ticker", help="Stock ticker symbol (for predict command)")
+    parser.add_argument("--days", type=int, default=1, help="Number of days ahead to predict")
+    
+    args = parser.parse_args()
+    
+    # Initialize CLI
+    cli = StockPredictionCLI()
+    cli.load_config(args.config)
+    
+    # Execute command
+    if args.command == "train":
+        cli.train_model()
+    elif args.command == "predict":
+        if not args.ticker:
+            logger.error("Ticker symbol required for predict command")
+            return
+        cli.predict(args.ticker, args.days)
+    elif args.command == "evaluate":
+        logger.info("Evaluate command not yet implemented")
+    
+    logger.info("CLI execution completed")
+
+
+if __name__ == "__main__":
+    main()

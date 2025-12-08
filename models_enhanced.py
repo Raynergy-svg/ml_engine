@@ -6,6 +6,7 @@ Includes improved attention mechanisms, memory efficiency, and numerical stabili
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 import math
 from typing import Tuple, Optional, Union, List
 
@@ -460,4 +461,65 @@ class TransformerPredictor(nn.Module):
         self.positional_encoding = positional_encoding
         if positional_encoding == "learned":
             self.pos_encoder = nn.Parameter(torch.zeros(1, 1000, hidden_size))  # Max sequence length of 1000
-            nn.init.normal_(self.pos_encoder, mean=0, std=<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>
+            nn.init.normal_(self.pos_encoder, mean=0, std=0.02)
+        elif positional_encoding == "sinusoidal":
+            self.register_buffer('pos_encoder', self._generate_sinusoidal_encoding(1000, hidden_size))
+        
+        # Transformer encoder layers
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_size,
+            nhead=num_heads,
+            dim_feedforward=hidden_size * 4,
+            dropout=dropout,
+            activation=activation,
+            batch_first=True,
+            norm_first=True
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        # Output projection
+        self.output_projection = nn.Linear(hidden_size, 1)
+        
+        # Dropout
+        self.dropout = nn.Dropout(dropout)
+        
+    def _generate_sinusoidal_encoding(self, max_len: int, d_model: int) -> torch.Tensor:
+        """Generate sinusoidal positional encodings."""
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-np.log(10000.0) / d_model))
+        pe = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        return pe
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass.
+        
+        Args:
+            x: Input tensor of shape (batch_size, seq_len, input_size)
+            
+        Returns:
+            Output tensor of shape (batch_size, 1)
+        """
+        # Input embedding
+        x = self.input_embedding(x)
+        x = self.dropout(x)
+        
+        # Add positional encoding
+        seq_len = x.size(1)
+        if self.positional_encoding == "learned":
+            x = x + self.pos_encoder[:, :seq_len, :]
+        elif self.positional_encoding == "sinusoidal":
+            x = x + self.pos_encoder[:, :seq_len, :]
+        
+        # Apply transformer
+        x = self.transformer(x)
+        
+        # Use the last timestep for prediction
+        x = x[:, -1, :]
+        
+        # Output projection
+        output = self.output_projection(x)
+        
+        return output

@@ -439,4 +439,60 @@ def prepare_sequences(
         scale_target: Whether to scale target
         
     Returns:
-        <response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>
+        Tuple of (features, targets, metadata)
+        - features: numpy array of shape (n_sequences, sequence_length, n_features)
+        - targets: numpy array of shape (n_sequences,)
+        - metadata: dictionary with scaling information
+    """
+    # Set default feature columns if not provided
+    if feature_columns is None:
+        feature_columns = [col for col in df.columns if col not in ['ticker', 'date', 'timestamp']]
+    
+    # Extract features and target
+    feature_data = df[feature_columns].values
+    target_data = df[target_column].values
+    
+    # Initialize scalers
+    feature_scaler = None
+    target_scaler = None
+    
+    # Scale features if requested
+    if scale_features:
+        from sklearn.preprocessing import StandardScaler
+        feature_scaler = StandardScaler()
+        feature_data = feature_scaler.fit_transform(feature_data)
+    
+    # Scale target if requested
+    if scale_target:
+        from sklearn.preprocessing import StandardScaler
+        target_scaler = StandardScaler()
+        target_data = target_scaler.fit_transform(target_data.reshape(-1, 1)).flatten()
+    
+    # Prepare sequences
+    sequences = []
+    targets = []
+    
+    for i in range(len(feature_data) - sequence_length - target_shift + 1):
+        # Extract sequence
+        seq = feature_data[i:i + sequence_length]
+        # Extract target (shifted by target_shift)
+        tgt = target_data[i + sequence_length + target_shift - 1]
+        
+        sequences.append(seq)
+        targets.append(tgt)
+    
+    # Convert to numpy arrays
+    sequences = np.array(sequences)
+    targets = np.array(targets)
+    
+    # Prepare metadata
+    metadata = {
+        'feature_scaler': feature_scaler,
+        'target_scaler': target_scaler,
+        'feature_columns': feature_columns,
+        'target_column': target_column,
+        'sequence_length': sequence_length,
+        'target_shift': target_shift
+    }
+    
+    return sequences, targets, metadata

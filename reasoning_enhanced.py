@@ -423,4 +423,48 @@ class ReasoningEngine:
         uncertainties = uncertainties if uncertainties is not None else self.uncertainties
         
         if predictions is None:
-            logger.warning("No predictions a<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>
+            logger.warning("No predictions available for visualization")
+            return None
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        # Generate x-axis (indices or timestamps)
+        if timestamps is not None:
+            x = timestamps
+            ax.set_xlabel("Time")
+        else:
+            x = np.arange(len(predictions))
+            ax.set_xlabel("Index")
+        
+        # Plot predictions
+        ax.plot(x, predictions, label="Predictions", color="blue", linewidth=2)
+        
+        # Plot uncertainties as confidence bands
+        if uncertainties is not None:
+            lower_bound = predictions - uncertainties
+            upper_bound = predictions + uncertainties
+            ax.fill_between(x, lower_bound, upper_bound, alpha=0.3, color="blue", label="Uncertainty")
+        
+        # Plot actual values if provided
+        if actual_values is not None:
+            ax.plot(x, actual_values, label="Actual", color="green", linewidth=2, linestyle="--")
+        
+        # Formatting
+        ax.set_ylabel("Value")
+        ax.set_title("Predictions with Uncertainties")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        
+        # Save if path provided
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            logger.info(f"Visualization saved to {save_path}")
+        
+        # Show if requested
+        if show_plot:
+            plt.show()
+        
+        return fig

@@ -398,4 +398,21 @@ class EnhancedMLEngine:
                 batch_size=self.batch_size * 2,  # Larger batch size for validation
                 shuffle=False,
                 num_workers=self.config.get("num_workers"),
-             <response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>
+                pin_memory=self.config.get("pin_memory"),
+                device=self.device
+            )
+            
+            return train_loader, val_loader
+        else:
+            # No validation split - return only training loader
+            train_dataset = TensorDataset(features, targets)
+            train_loader = create_optimized_dataloader(
+                train_dataset,
+                batch_size=self.batch_size,
+                shuffle=shuffle,
+                num_workers=self.config.get("num_workers"),
+                pin_memory=self.config.get("pin_memory"),
+                device=self.device
+            )
+            
+            return train_loader, None
