@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>ML Trading Engine - Pricing</title>
+    <script src="https://js.stripe.com/v3/"></script>
+  </head>
+  <body>
+    <div class="pricing-plans">
+      <div class="plan">
+        <h2>Basic</h2>
+        <p class="price">$49.99/month</p>
+        <ul>
+          <li>100 API calls per day</li>
+          <li>Basic price predictions</li>
+          <li>Basic analytics</li>
+        </ul>
+        <button onclick="subscribe('basic')">Subscribe</button>
+      </div>
+
+      <div class="plan">
+        <h2>Pro</h2>
+        <p class="price">$199.99/month</p>
+        <ul>
+          <li>1000 API calls per day</li>
+          <li>Advanced predictions</li>
+          <li>Custom models</li>
+        </ul>
+        <button onclick="subscribe('pro')">Subscribe</button>
+      </div>
+
+      <div class="plan">
+        <h2>Enterprise</h2>
+        <p class="price">$999.99/month</p>
+        <ul>
+          <li>Unlimited API calls</li>
+          <li>All features</li>
+          <li>Dedicated support</li>
+        </ul>
+        <button onclick="subscribe('enterprise')">Contact Sales</button>
+      </div>
+    </div>
+  </body>
+</html>

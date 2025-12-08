@@ -1,0 +1,442 @@
+"""Data processing and dataset utilities with optimized CPU/GPU performance"""
+
+import os
+import logging
+import asyncio
+import aiohttp
+from functools import lru_cache, partial
+from pathlib import Path
+from typing import List, Tuple, Optional, Union, Dict, Any
+
+import numpy as np
+import pandas as pd
+import torch
+from torch.utils.data import Dataset, DataLoader
+import yfinance as yf
+import dask.array as da
+import dask.dataframe as dd
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Define cache directory
+CACHE_DIR = Path(os.environ.get("CACHE_DIR", "./cache"))
+CACHE_DIR.mkdir(exist_ok=True, parents=True)
+
+
+class StockDataset(Dataset):
+    """PyTorch Dataset for generating sequences from stock market data with optimized memory usage."""
+
+    def __init__(
+        self, 
+        features: Union[List, np.ndarray, da.Array], 
+        targets: Union[List, np.ndarray, da.Array], 
+        sequence_length: int = 60,
+        device: Optional[torch.device] = None
+    ):
+        """
+        Initialize the StockDataset.
+        
+        Args:
+            features: Input features (can be list, numpy array, or dask array)
+            targets: Target values (can be list, numpy array, or dask array)
+            sequence_length: Length of input sequences
+            device: Optional device to pre-load data to (for small datasets)
+        """
+        # Validate inputs
+        if len(features) == 0:
+            raise ValueError("Features cannot be empty. Check your data loading pipeline.")
+        
+        if len(targets) == 0:
+            raise ValueError("Targets cannot be empty. Check your data loading pipeline.")
+            
+        if len(features) != len(targets):
+            raise ValueError(f"Features length ({len(features)}) must match targets length ({len(targets)})")
+        
+        # Store inputs
+        self.features = features
+        self.targets = targets
+        self.sequence_length = sequence_length
+        self.device = device
+        
+        # Pre-compute length for efficiency
+        if isinstance(self.features, da.Array):
+            self._length = self.features.shape[0]
+        else:
+            self._length = len(self.features)
+            
+        # For very small datasets, we can pre-load to device for faster access
+        self.preloaded = False
+        if device is not None and self._length < 10000:  # Only preload small datasets
+            try:
+                if isinstance(self.features, (list, np.ndarray)):
+                    self.features = torch.FloatTensor(self.features).to(device)
+                    self.targets = torch.FloatTensor(self.targets).to(device)
+                    self.preloaded = True
+                    logger.info(f"Pre-loaded dataset to {device}")
+            except Exception as e:
+                logger.warning(f"Failed to pre-load dataset to device: {e}")
+
+    def __len__(self) -> int:
+        """Return the number of samples in the dataset."""
+        return self._length
+
+    def __getitem__(self, idx: int) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+        """Get a sample from the dataset."""
+        # If data is preloaded to device, return directly
+        if self.preloaded:
+            return self.features[idx], self.targets[idx]
+            
+        # Otherwise, convert to tensor on demand
+        if isinstance(self.features, da.Array):
+            # For Dask arrays, compute the specific slice
+            seq = torch.FloatTensor(self.features[idx].compute())
+            target = torch.FloatTensor([self.targets[idx].compute()])
+        else:
+            # For regular arrays/lists
+            seq = torch.FloatTensor(self.features[idx])
+            target = torch.FloatTensor([self.targets[idx]])
+            
+        # Move to device if specified
+        if self.device is not None:
+            seq = seq.to(self.device, non_blocking=True)
+            target = target.to(self.device, non_blocking=True)
+            
+        return seq, target
+
+
+def create_optimized_dataloader(
+    dataset: Dataset, 
+    batch_size: int, 
+    shuffle: bool = True,
+    num_workers: int = None,
+    pin_memory: bool = None,
+    device: str = None,
+    prefetch_factor: int = 2,
+    persistent_workers: bool = None
+) -> DataLoader:
+    """
+    Create an optimized DataLoader based on available hardware.
+    
+    Args:
+        dataset: PyTorch Dataset
+        batch_size: Batch size for training
+        shuffle: Whether to shuffle the data
+        num_workers: Number of worker processes (None for auto-detection)
+        pin_memory: Whether to use pinned memory (None for auto-detection)
+        device: Target device ('cuda', 'cpu', or None for auto-detection)
+        prefetch_factor: Number of batches to prefetch per worker
+        persistent_workers: Whether to keep worker processes alive between epochs
+        
+    Returns:
+        Optimized DataLoader
+    """
+    # Auto-detect device if not specified
+    if device is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
+    # Auto-detect optimal number of workers if not specified
+    if num_workers is None:
+        if device == 'cuda':
+            # For GPU, use CPU count but cap at 4 for diminishing returns
+            num_workers = min(os.cpu_count() or 1, 4)
+        else:
+            # For CPU, use CPU count - 1 but at least 1
+            num_workers = max((os.cpu_count() or 1) - 1, 1)
+    
+    # Auto-detect pin_memory if not specified
+    if pin_memory is None:
+        # Only use pin_memory with CUDA
+        pin_memory = device == 'cuda'
+    
+    # Auto-detect persistent_workers if not specified
+    if persistent_workers is None:
+        # Only use persistent workers if we have workers
+        persistent_workers = num_workers > 0
+    
+    # Create optimized DataLoader
+    return DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        # Prefetch next batch while current batch is being processed
+        prefetch_factor=prefetch_factor if num_workers > 0 else None,
+        # Use persistent workers to avoid worker initialization overhead
+        persistent_workers=persistent_workers,
+        # Drop last incomplete batch for more efficient GPU utilization during training
+        drop_last=shuffle,  # Only drop last when shuffling (likely training)
+    )
+
+
+def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:
+    """
+    Stack ticker-specific DataFrames extracted from MultiIndex data.
+    
+    Args:
+        data: MultiIndex DataFrame with ticker as the first level
+        tickers: List of ticker symbols to extract
+        
+    Returns:
+        Concatenated DataFrame with ticker-specific data
+    """
+    all_data = []
+    for ticker in tickers:
+        try:
+            if (ticker,) in data.columns:
+                df_ticker = data[ticker].copy()
+                df_ticker.columns = df_ticker.columns.str.lower()
+                df_ticker["ticker"] = ticker
+                df_ticker.reset_index(inplace=True)
+                all_data.append(df_ticker)
+            else:
+                logger.warning(f"Ticker {ticker} not found in data.")
+        except Exception as e:
+            logger.error(f"Error processing ticker {ticker}: {e}")
+            
+    return pd.concat(all_data, ignore_index=True) if all_data else pd.DataFrame()
+
+
+@lru_cache(maxsize=32)
+async def async_cached_download(
+    ticker: str, start: str, end: str
+) -> Optional[pd.DataFrame]:
+    """
+    Asynchronously download and cache stock data to avoid repeated API calls.
+    
+    Args:
+        ticker: Stock ticker symbol
+        start: Start date in YYYY-MM-DD format
+        end: End date in YYYY-MM-DD format
+        
+    Returns:
+        DataFrame with stock data or None if download failed
+    """
+    cache_file = CACHE_DIR / f"{ticker}_{start}_{end}.parquet"
+    required_cols = {"open", "high", "low", "close", "volume"}
+
+    def fix_columns(columns):
+        """Normalize column names to lowercase and handle tuples."""
+        new_cols = []
+        for col in columns:
+            if isinstance(col, tuple):
+                new_cols.append("_".join(map(str, col)).lower())
+            else:
+                new_cols.append(str(col).lower())
+        return new_cols
+
+    # Try reading from cache
+    if cache_file.exists():
+        try:
+            df = pd.read_parquet(cache_file, engine="pyarrow")
+            df.columns = fix_columns(df.columns)
+            
+            # Handle 'adj close' vs 'close'
+            if "close" not in df.columns and "adj close" in df.columns:
+                df["close"] = df["adj close"]
+                
+            # Verify required columns exist
+            missing = required_cols - set(df.columns)
+            if missing:
+                logger.error(f"Cached data missing required columns: {missing}. Deleting cache file.")
+                cache_file.unlink()
+            else:
+                return df
+        except Exception as e:
+            logger.warning(f"Failed to read cache file: {e}. Will download fresh data.")
+            try:
+                cache_file.unlink()
+            except:
+                pass
+
+    # Download using yf.download
+    try:
+        async with aiohttp.ClientSession() as session:
+            loop = asyncio.get_event_loop()
+            data = await loop.run_in_executor(
+                None, partial(yf.download, ticker, start=start, end=end, progress=False)
+            )
+    except Exception as e:
+        logger.warning(f"yf.download failed: {e}")
+        data = None
+
+    # If download failed or the data is missing columns, try yf.Ticker().history
+    if data is None or data.empty or not required_cols.issubset(set(fix_columns(data.columns))):
+        logger.warning("yf.download did not return valid data; trying yf.Ticker().history")
+        try:
+            data = yf.Ticker(ticker).history(start=start, end=end)
+        except Exception as e:
+            logger.error(f"yf.Ticker().history failed: {e}")
+            return None
+            
+    if data is None or data.empty:
+        logger.error("Downloaded data is empty or None after fallback.")
+        return None
+
+    # Process and validate data
+    data.columns = fix_columns(data.columns)
+    if "close" not in data.columns and "adj close" in data.columns:
+        data["close"] = data["adj close"]
+        
+    # Verify required columns exist
+    missing = required_cols - set(data.columns)
+    if missing:
+        logger.error(f"Downloaded data missing required columns: {missing}")
+        return None
+
+    # Save to cache
+    try:
+        data.to_parquet(cache_file)
+    except Exception as e:
+        logger.warning(f"Failed to save cache file: {e}")
+        
+    return data
+
+
+def load_stock_data_efficient(
+    tickers: List[str],
+    start_date: str,
+    end_date: str,
+    use_cache: bool = True,
+    features: List[str] = None,
+) -> pd.DataFrame:
+    """
+    Load stock data efficiently with caching and parallel downloads.
+    
+    Args:
+        tickers: List of ticker symbols
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
+        use_cache: Whether to use cached data
+        features: List of features to include (default: all)
+        
+    Returns:
+        DataFrame with stock data
+    """
+    if features is None:
+        features = ["open", "high", "low", "close", "volume"]
+    
+    # Create cache directory if it doesn't exist
+    if use_cache:
+        CACHE_DIR.mkdir(exist_ok=True, parents=True)
+    
+    async def load_all_tickers():
+        """Load all tickers in parallel."""
+        tasks = []
+        for ticker in tickers:
+            if use_cache:
+                tasks.append(async_cached_download(ticker, start_date, end_date))
+            else:
+                # Use direct download without caching
+                tasks.append(download_ticker(ticker, start_date, end_date))
+        
+        # Wait for all downloads to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        ticker_data = {}
+        for ticker, result in zip(tickers, results):
+            if isinstance(result, Exception):
+                logger.error(f"Error downloading {ticker}: {result}")
+            elif result is not None and not result.empty:
+                ticker_data[ticker] = result
+            else:
+                logger.warning(f"No data for {ticker}")
+                
+        return ticker_data
+    
+    async def download_ticker(ticker, start, end):
+        """Download a single ticker without caching."""
+        try:
+            loop = asyncio.get_event_loop()
+            data = await loop.run_in_executor(
+                None, partial(yf.download, ticker, start=start, end=end, progress=False)
+            )
+            
+            if data is None or data.empty:
+                logger.warning(f"No data for {ticker}, trying alternative method")
+                data = yf.Ticker(ticker).history(start=start, end=end)
+                
+            if data is not None and not data.empty:
+                # Normalize column names
+                data.columns = [col.lower() if not isinstance(col, tuple) else 
+                               "_".join(map(str, col)).lower() for col in data.columns]
+                
+                # Handle 'adj close' vs 'close'
+                if "close" not in data.columns and "adj close" in data.columns:
+                    data["close"] = data["adj close"]
+                    
+                return data
+            return None
+        except Exception as e:
+            logger.error(f"Error downloading {ticker}: {e}")
+            return None
+    
+    # Run the async function to load all tickers
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    ticker_data = loop.run_until_complete(load_all_tickers())
+    
+    # Combine all ticker data into a single DataFrame
+    if not ticker_data:
+        logger.error("No data loaded for any ticker")
+        return pd.DataFrame()
+    
+    # Create a list to hold DataFrames for each ticker
+    dfs = []
+    for ticker, data in ticker_data.items():
+        if data is not None and not data.empty:
+            # Add ticker column
+            data = data.copy()
+            data["ticker"] = ticker
+            
+            # Select only requested features
+            available_features = [f for f in features if f in data.columns]
+            if len(available_features) < len(features):
+                missing = set(features) - set(available_features)
+                logger.warning(f"Missing features for {ticker}: {missing}")
+            
+            # Select columns including ticker and date index
+            data = data[available_features + ["ticker"]]
+            
+            # Reset index to make date a column
+            data = data.reset_index()
+            
+            dfs.append(data)
+    
+    # Combine all DataFrames
+    if not dfs:
+        logger.error("No valid data frames to combine")
+        return pd.DataFrame()
+        
+    return pd.concat(dfs, ignore_index=True)
+
+
+def prepare_sequences(
+    df: pd.DataFrame,
+    sequence_length: int = 60,
+    target_column: str = "close",
+    feature_columns: List[str] = None,
+    target_shift: int = 1,
+    scale_features: bool = True,
+    scale_target: bool = True,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
+    """
+    Prepare sequences for time series prediction with efficient processing.
+    
+    Args:
+        df: DataFrame with time series data
+        sequence_length: Length of input sequences
+        target_column: Column to predict
+        feature_columns: Columns to use as features
+        target_shift: Number of steps to shift target (1 for next day prediction)
+        scale_features: Whether to scale features
+        scale_target: Whether to scale target
+        
+    Returns:
+        <response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>

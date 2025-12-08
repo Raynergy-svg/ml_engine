@@ -1,0 +1,4146 @@
+[
+    {
+        "label": "time",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "time",
+        "description": "time",
+        "detail": "time",
+        "documentation": {}
+    },
+    {
+        "label": "numpy",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "numpy",
+        "description": "numpy",
+        "detail": "numpy",
+        "documentation": {}
+    },
+    {
+        "label": "pandas",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "pandas",
+        "description": "pandas",
+        "detail": "pandas",
+        "documentation": {}
+    },
+    {
+        "label": "torch",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "torch",
+        "description": "torch",
+        "detail": "torch",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "importPath": "train",
+        "description": "train",
+        "isExtraImport": true,
+        "detail": "train",
+        "documentation": {}
+    },
+    {
+        "label": "auto_configure",
+        "importPath": "train",
+        "description": "train",
+        "isExtraImport": true,
+        "detail": "train",
+        "documentation": {}
+    },
+    {
+        "label": "Console",
+        "importPath": "rich.console",
+        "description": "rich.console",
+        "isExtraImport": true,
+        "detail": "rich.console",
+        "documentation": {}
+    },
+    {
+        "label": "Console",
+        "importPath": "rich.console",
+        "description": "rich.console",
+        "isExtraImport": true,
+        "detail": "rich.console",
+        "documentation": {}
+    },
+    {
+        "label": "os",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "os",
+        "description": "os",
+        "detail": "os",
+        "documentation": {}
+    },
+    {
+        "label": "re",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "re",
+        "description": "re",
+        "detail": "re",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "yfinance",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "yfinance",
+        "description": "yfinance",
+        "detail": "yfinance",
+        "documentation": {}
+    },
+    {
+        "label": "logging",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "logging",
+        "description": "logging",
+        "detail": "logging",
+        "documentation": {}
+    },
+    {
+        "label": "functools",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "functools",
+        "description": "functools",
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "lru_cache",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "lru_cache",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "lru_cache",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "lru_cache",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "partial",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "wraps",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "partial",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "lru_cache",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "io",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "io",
+        "description": "io",
+        "detail": "io",
+        "documentation": {}
+    },
+    {
+        "label": "StringIO",
+        "importPath": "io",
+        "description": "io",
+        "isExtraImport": true,
+        "detail": "io",
+        "documentation": {}
+    },
+    {
+        "label": "multiprocessing",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "multiprocessing",
+        "description": "multiprocessing",
+        "detail": "multiprocessing",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "datetime",
+        "description": "datetime",
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Callable",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Iterator",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Callable",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Callable",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "torch.nn",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "torch.nn",
+        "description": "torch.nn",
+        "detail": "torch.nn",
+        "documentation": {}
+    },
+    {
+        "label": "torch.optim",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "torch.optim",
+        "description": "torch.optim",
+        "detail": "torch.optim",
+        "documentation": {}
+    },
+    {
+        "label": "autocast",
+        "importPath": "torch.cuda.amp",
+        "description": "torch.cuda.amp",
+        "isExtraImport": true,
+        "detail": "torch.cuda.amp",
+        "documentation": {}
+    },
+    {
+        "label": "GradScaler",
+        "importPath": "torch.cuda.amp",
+        "description": "torch.cuda.amp",
+        "isExtraImport": true,
+        "detail": "torch.cuda.amp",
+        "documentation": {}
+    },
+    {
+        "label": "autocast",
+        "importPath": "torch.cuda.amp",
+        "description": "torch.cuda.amp",
+        "isExtraImport": true,
+        "detail": "torch.cuda.amp",
+        "documentation": {}
+    },
+    {
+        "label": "GradScaler",
+        "importPath": "torch.cuda.amp",
+        "description": "torch.cuda.amp",
+        "isExtraImport": true,
+        "detail": "torch.cuda.amp",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "Dataset",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "Dataset",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "TensorDataset",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "SummaryWriter",
+        "importPath": "torch.utils.tensorboard",
+        "description": "torch.utils.tensorboard",
+        "isExtraImport": true,
+        "detail": "torch.utils.tensorboard",
+        "documentation": {}
+    },
+    {
+        "label": "profile",
+        "importPath": "torch.profiler",
+        "description": "torch.profiler",
+        "isExtraImport": true,
+        "detail": "torch.profiler",
+        "documentation": {}
+    },
+    {
+        "label": "record_function",
+        "importPath": "torch.profiler",
+        "description": "torch.profiler",
+        "isExtraImport": true,
+        "detail": "torch.profiler",
+        "documentation": {}
+    },
+    {
+        "label": "ProfilerActivity",
+        "importPath": "torch.profiler",
+        "description": "torch.profiler",
+        "isExtraImport": true,
+        "detail": "torch.profiler",
+        "documentation": {}
+    },
+    {
+        "label": "optuna",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "optuna",
+        "description": "optuna",
+        "detail": "optuna",
+        "documentation": {}
+    },
+    {
+        "label": "r2_score",
+        "importPath": "sklearn.metrics",
+        "description": "sklearn.metrics",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "mean_squared_error",
+        "importPath": "sklearn.metrics",
+        "description": "sklearn.metrics",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "r2_score",
+        "importPath": "sklearn.metrics",
+        "description": "sklearn.metrics",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "mean_squared_error",
+        "importPath": "sklearn.metrics",
+        "description": "sklearn.metrics",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "mean_squared_error",
+        "importPath": "sklearn.metrics",
+        "description": "sklearn.metrics",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "r2_score",
+        "importPath": "sklearn.metrics",
+        "description": "sklearn.metrics",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "mean_absolute_error",
+        "importPath": "sklearn.metrics",
+        "description": "sklearn.metrics",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "r2_score",
+        "importPath": "sklearn.metrics",
+        "description": "sklearn.metrics",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "mean_squared_error",
+        "importPath": "sklearn.metrics",
+        "description": "sklearn.metrics",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "cached_download",
+        "importPath": "preprocess",
+        "description": "preprocess",
+        "isExtraImport": true,
+        "detail": "preprocess",
+        "documentation": {}
+    },
+    {
+        "label": "_create_features",
+        "importPath": "preprocess",
+        "description": "preprocess",
+        "isExtraImport": true,
+        "detail": "preprocess",
+        "documentation": {}
+    },
+    {
+        "label": "preprocess_data",
+        "importPath": "preprocess",
+        "description": "preprocess",
+        "isExtraImport": true,
+        "detail": "preprocess",
+        "documentation": {}
+    },
+    {
+        "label": "process_multiindex_data",
+        "importPath": "preprocess",
+        "description": "preprocess",
+        "isExtraImport": true,
+        "detail": "preprocess",
+        "documentation": {}
+    },
+    {
+        "label": "setup_logging",
+        "importPath": "utils",
+        "description": "utils",
+        "isExtraImport": true,
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "load_config",
+        "importPath": "utils",
+        "description": "utils",
+        "isExtraImport": true,
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "setup_logging",
+        "importPath": "utils",
+        "description": "utils",
+        "isExtraImport": true,
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "load_config",
+        "importPath": "utils",
+        "description": "utils",
+        "isExtraImport": true,
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "csv",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "csv",
+        "description": "csv",
+        "detail": "csv",
+        "documentation": {}
+    },
+    {
+        "label": "requests",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "requests",
+        "description": "requests",
+        "detail": "requests",
+        "documentation": {}
+    },
+    {
+        "label": "BeautifulSoup",
+        "importPath": "bs4",
+        "description": "bs4",
+        "isExtraImport": true,
+        "detail": "bs4",
+        "documentation": {}
+    },
+    {
+        "label": "urlencode",
+        "importPath": "urllib.parse",
+        "description": "urllib.parse",
+        "isExtraImport": true,
+        "detail": "urllib.parse",
+        "documentation": {}
+    },
+    {
+        "label": "TextBlob",
+        "importPath": "textblob",
+        "description": "textblob",
+        "isExtraImport": true,
+        "detail": "textblob",
+        "documentation": {}
+    },
+    {
+        "label": "NewsApiClient",
+        "importPath": "newsapi",
+        "description": "newsapi",
+        "isExtraImport": true,
+        "detail": "newsapi",
+        "documentation": {}
+    },
+    {
+        "label": "praw",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "praw",
+        "description": "praw",
+        "detail": "praw",
+        "documentation": {}
+    },
+    {
+        "label": "finnhub",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "finnhub",
+        "description": "finnhub",
+        "detail": "finnhub",
+        "documentation": {}
+    },
+    {
+        "label": "sys",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "sys",
+        "description": "sys",
+        "detail": "sys",
+        "documentation": {}
+    },
+    {
+        "label": "json",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "json",
+        "description": "json",
+        "detail": "json",
+        "documentation": {}
+    },
+    {
+        "label": "asyncio",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "asyncio",
+        "description": "asyncio",
+        "detail": "asyncio",
+        "documentation": {}
+    },
+    {
+        "label": "matplotlib.pyplot",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "matplotlib.pyplot",
+        "description": "matplotlib.pyplot",
+        "detail": "matplotlib.pyplot",
+        "documentation": {}
+    },
+    {
+        "label": "APIRouter",
+        "importPath": "fastapi",
+        "description": "fastapi",
+        "isExtraImport": true,
+        "detail": "fastapi",
+        "documentation": {}
+    },
+    {
+        "label": "HTTPException",
+        "importPath": "fastapi",
+        "description": "fastapi",
+        "isExtraImport": true,
+        "detail": "fastapi",
+        "documentation": {}
+    },
+    {
+        "label": "UploadFile",
+        "importPath": "fastapi",
+        "description": "fastapi",
+        "isExtraImport": true,
+        "detail": "fastapi",
+        "documentation": {}
+    },
+    {
+        "label": "File",
+        "importPath": "fastapi",
+        "description": "fastapi",
+        "isExtraImport": true,
+        "detail": "fastapi",
+        "documentation": {}
+    },
+    {
+        "label": "BackgroundTasks",
+        "importPath": "fastapi",
+        "description": "fastapi",
+        "isExtraImport": true,
+        "detail": "fastapi",
+        "documentation": {}
+    },
+    {
+        "label": "BaseModel",
+        "importPath": "pydantic",
+        "description": "pydantic",
+        "isExtraImport": true,
+        "detail": "pydantic",
+        "documentation": {}
+    },
+    {
+        "label": "Field",
+        "importPath": "pydantic",
+        "description": "pydantic",
+        "isExtraImport": true,
+        "detail": "pydantic",
+        "documentation": {}
+    },
+    {
+        "label": "validator",
+        "importPath": "pydantic",
+        "description": "pydantic",
+        "isExtraImport": true,
+        "detail": "pydantic",
+        "documentation": {}
+    },
+    {
+        "label": "BaseSettings",
+        "importPath": "pydantic",
+        "description": "pydantic",
+        "isExtraImport": true,
+        "detail": "pydantic",
+        "documentation": {}
+    },
+    {
+        "label": "Field",
+        "importPath": "pydantic",
+        "description": "pydantic",
+        "isExtraImport": true,
+        "detail": "pydantic",
+        "documentation": {}
+    },
+    {
+        "label": "ThreadPoolExecutor",
+        "importPath": "concurrent.futures",
+        "description": "concurrent.futures",
+        "isExtraImport": true,
+        "detail": "concurrent.futures",
+        "documentation": {}
+    },
+    {
+        "label": "collections",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "collections",
+        "description": "collections",
+        "detail": "collections",
+        "documentation": {}
+    },
+    {
+        "label": "defaultdict",
+        "importPath": "collections",
+        "description": "collections",
+        "isExtraImport": true,
+        "detail": "collections",
+        "documentation": {}
+    },
+    {
+        "label": "deque",
+        "importPath": "collections",
+        "description": "collections",
+        "isExtraImport": true,
+        "detail": "collections",
+        "documentation": {}
+    },
+    {
+        "label": "threading",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "threading",
+        "description": "threading",
+        "detail": "threading",
+        "documentation": {}
+    },
+    {
+        "label": "pickle",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "pickle",
+        "description": "pickle",
+        "detail": "pickle",
+        "documentation": {}
+    },
+    {
+        "label": "shutil",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "shutil",
+        "description": "shutil",
+        "detail": "shutil",
+        "documentation": {}
+    },
+    {
+        "label": "hashlib",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "hashlib",
+        "description": "hashlib",
+        "detail": "hashlib",
+        "documentation": {}
+    },
+    {
+        "label": "unittest",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "unittest",
+        "description": "unittest",
+        "detail": "unittest",
+        "documentation": {}
+    },
+    {
+        "label": "matplotlib",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "matplotlib",
+        "description": "matplotlib",
+        "detail": "matplotlib",
+        "documentation": {}
+    },
+    {
+        "label": "load_stock_data_efficient",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "create_optimized_dataloader",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "load_stock_data_efficient",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "create_optimized_dataloader",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "load_stock_data_efficient",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "create_optimized_dataloader",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "create_optimized_dataloader",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "isExtraImport": true,
+        "detail": "ml_engine_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "isExtraImport": true,
+        "detail": "ml_engine_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "isExtraImport": true,
+        "detail": "ml_engine_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "MemoryManager",
+        "importPath": "memory_manager_enhanced",
+        "description": "memory_manager_enhanced",
+        "isExtraImport": true,
+        "detail": "memory_manager_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "MemoryManager",
+        "importPath": "memory_manager_enhanced",
+        "description": "memory_manager_enhanced",
+        "isExtraImport": true,
+        "detail": "memory_manager_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "MemoryManager",
+        "importPath": "memory_manager_enhanced",
+        "description": "memory_manager_enhanced",
+        "isExtraImport": true,
+        "detail": "memory_manager_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "memory_efficient",
+        "importPath": "memory_manager_enhanced",
+        "description": "memory_manager_enhanced",
+        "isExtraImport": true,
+        "detail": "memory_manager_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "MemoryManager",
+        "importPath": "memory_manager_enhanced",
+        "description": "memory_manager_enhanced",
+        "isExtraImport": true,
+        "detail": "memory_manager_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "memory_efficient",
+        "importPath": "memory_manager_enhanced",
+        "description": "memory_manager_enhanced",
+        "isExtraImport": true,
+        "detail": "memory_manager_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "mixed_precision_context",
+        "importPath": "memory_manager_enhanced",
+        "description": "memory_manager_enhanced",
+        "isExtraImport": true,
+        "detail": "memory_manager_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "EnsemblePredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "EnsemblePredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "EnsemblePredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TCNPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "EnsemblePredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "UncertaintyEstimator",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "UncertaintyEstimator",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "UncertaintyEstimator",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "NeuralNetworkIntegrator",
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "isExtraImport": true,
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "ModelSynchronizer",
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "isExtraImport": true,
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "NeuralNetworkIntegrator",
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "isExtraImport": true,
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "ModelSynchronizer",
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "isExtraImport": true,
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "NeuralNetworkIntegrator",
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "isExtraImport": true,
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "ModelSynchronizer",
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "isExtraImport": true,
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictionCLI",
+        "importPath": "cli_enhanced",
+        "description": "cli_enhanced",
+        "isExtraImport": true,
+        "detail": "cli_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ast",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "ast",
+        "description": "ast",
+        "detail": "ast",
+        "documentation": {}
+    },
+    {
+        "label": "subprocess",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "subprocess",
+        "description": "subprocess",
+        "detail": "subprocess",
+        "documentation": {}
+    },
+    {
+        "label": "tempfile",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "tempfile",
+        "description": "tempfile",
+        "detail": "tempfile",
+        "documentation": {}
+    },
+    {
+        "label": "process_multiindex_data",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "async_cached_download",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "ml_engine",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "ml_engine",
+        "description": "ml_engine",
+        "detail": "ml_engine",
+        "documentation": {}
+    },
+    {
+        "label": "ML_Engine",
+        "importPath": "ml_engine",
+        "description": "ml_engine",
+        "isExtraImport": true,
+        "detail": "ml_engine",
+        "documentation": {}
+    },
+    {
+        "label": "ai_assistant",
+        "importPath": "ml_engine",
+        "description": "ml_engine",
+        "isExtraImport": true,
+        "detail": "ml_engine",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "importPath": "ml_engine",
+        "description": "ml_engine",
+        "isExtraImport": true,
+        "detail": "ml_engine",
+        "documentation": {}
+    },
+    {
+        "label": "argparse",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "argparse",
+        "description": "argparse",
+        "detail": "argparse",
+        "documentation": {}
+    },
+    {
+        "label": "aiohttp",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "aiohttp",
+        "description": "aiohttp",
+        "detail": "aiohttp",
+        "documentation": {}
+    },
+    {
+        "label": "dask.array",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "dask.array",
+        "description": "dask.array",
+        "detail": "dask.array",
+        "documentation": {}
+    },
+    {
+        "label": "dask.dataframe",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "dask.dataframe",
+        "description": "dask.dataframe",
+        "detail": "dask.dataframe",
+        "documentation": {}
+    },
+    {
+        "label": "Live",
+        "importPath": "rich.live",
+        "description": "rich.live",
+        "isExtraImport": true,
+        "detail": "rich.live",
+        "documentation": {}
+    },
+    {
+        "label": "Layout",
+        "importPath": "rich.layout",
+        "description": "rich.layout",
+        "isExtraImport": true,
+        "detail": "rich.layout",
+        "documentation": {}
+    },
+    {
+        "label": "Table",
+        "importPath": "rich.table",
+        "description": "rich.table",
+        "isExtraImport": true,
+        "detail": "rich.table",
+        "documentation": {}
+    },
+    {
+        "label": "Panel",
+        "importPath": "rich.panel",
+        "description": "rich.panel",
+        "isExtraImport": true,
+        "detail": "rich.panel",
+        "documentation": {}
+    },
+    {
+        "label": "Observer",
+        "importPath": "watchdog.observers",
+        "description": "watchdog.observers",
+        "isExtraImport": true,
+        "detail": "watchdog.observers",
+        "documentation": {}
+    },
+    {
+        "label": "PatternMatchingEventHandler",
+        "importPath": "watchdog.events",
+        "description": "watchdog.events",
+        "isExtraImport": true,
+        "detail": "watchdog.events",
+        "documentation": {}
+    },
+    {
+        "label": "visualizer",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "visualizer",
+        "description": "visualizer",
+        "detail": "visualizer",
+        "documentation": {}
+    },
+    {
+        "label": "openai_integration",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "gc",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "gc",
+        "description": "gc",
+        "detail": "gc",
+        "documentation": {}
+    },
+    {
+        "label": "psutil",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "psutil",
+        "description": "psutil",
+        "detail": "psutil",
+        "documentation": {}
+    },
+    {
+        "label": "ReduceLROnPlateau",
+        "importPath": "torch.optim.lr_scheduler",
+        "description": "torch.optim.lr_scheduler",
+        "isExtraImport": true,
+        "detail": "torch.optim.lr_scheduler",
+        "documentation": {}
+    },
+    {
+        "label": "CosineAnnealingWarmRestarts",
+        "importPath": "torch.optim.lr_scheduler",
+        "description": "torch.optim.lr_scheduler",
+        "isExtraImport": true,
+        "detail": "torch.optim.lr_scheduler",
+        "documentation": {}
+    },
+    {
+        "label": "torch.nn.functional",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "torch.nn.functional",
+        "description": "torch.nn.functional",
+        "detail": "torch.nn.functional",
+        "documentation": {}
+    },
+    {
+        "label": "math",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "math",
+        "description": "math",
+        "detail": "math",
+        "documentation": {}
+    },
+    {
+        "label": "Enum",
+        "importPath": "enum",
+        "description": "enum",
+        "isExtraImport": true,
+        "detail": "enum",
+        "documentation": {}
+    },
+    {
+        "label": "Enum",
+        "importPath": "enum",
+        "description": "enum",
+        "isExtraImport": true,
+        "detail": "enum",
+        "documentation": {}
+    },
+    {
+        "label": "vaex",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "vaex",
+        "description": "vaex",
+        "detail": "vaex",
+        "documentation": {}
+    },
+    {
+        "label": "xarray",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "xarray",
+        "description": "xarray",
+        "detail": "xarray",
+        "documentation": {}
+    },
+    {
+        "label": "openai",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "openai",
+        "description": "openai",
+        "detail": "openai",
+        "documentation": {}
+    },
+    {
+        "label": "yaml",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "yaml",
+        "description": "yaml",
+        "detail": "yaml",
+        "documentation": {}
+    },
+    {
+        "label": "load_dotenv",
+        "importPath": "dotenv",
+        "description": "dotenv",
+        "isExtraImport": true,
+        "detail": "dotenv",
+        "documentation": {}
+    },
+    {
+        "label": "seaborn",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "seaborn",
+        "description": "seaborn",
+        "detail": "seaborn",
+        "documentation": {}
+    },
+    {
+        "label": "norm",
+        "importPath": "scipy.stats",
+        "description": "scipy.stats",
+        "isExtraImport": true,
+        "detail": "scipy.stats",
+        "documentation": {}
+    },
+    {
+        "label": "gymnasium",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "gymnasium",
+        "description": "gymnasium",
+        "detail": "gymnasium",
+        "documentation": {}
+    },
+    {
+        "label": "spaces",
+        "importPath": "gymnasium",
+        "description": "gymnasium",
+        "isExtraImport": true,
+        "detail": "gymnasium",
+        "documentation": {}
+    },
+    {
+        "label": "Memory",
+        "importPath": "joblib",
+        "description": "joblib",
+        "isExtraImport": true,
+        "detail": "joblib",
+        "documentation": {}
+    },
+    {
+        "label": "copy",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "copy",
+        "description": "copy",
+        "detail": "copy",
+        "documentation": {}
+    },
+    {
+        "label": "FuncAnimation",
+        "importPath": "matplotlib.animation",
+        "description": "matplotlib.animation",
+        "isExtraImport": true,
+        "detail": "matplotlib.animation",
+        "documentation": {}
+    },
+    {
+        "label": "savgol_filter",
+        "importPath": "scipy.signal",
+        "description": "scipy.signal",
+        "isExtraImport": true,
+        "detail": "scipy.signal",
+        "documentation": {}
+    },
+    {
+        "label": "load_trained_engine",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict",
+        "description": "(redacted) future_use.predict",
+        "peekOfCode": "def load_trained_engine(checkpoint_path: str, config: dict) -> EnhancedMLEngine:\n    engine = EnhancedMLEngine(config)\n    engine.load_checkpoint(checkpoint_path)\n    return engine\ndef real_time_prediction_loop(engine: EnhancedMLEngine):\n    console.print(\"[bold blue]Starting real-time prediction loop. Press Ctrl+C to exit.[/bold blue]\")\n    try:\n        while True:\n            # For demonstration, simulate new market data with random values.\n            simulated_data = pd.DataFrame({",
+        "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "real_time_prediction_loop",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict",
+        "description": "(redacted) future_use.predict",
+        "peekOfCode": "def real_time_prediction_loop(engine: EnhancedMLEngine):\n    console.print(\"[bold blue]Starting real-time prediction loop. Press Ctrl+C to exit.[/bold blue]\")\n    try:\n        while True:\n            # For demonstration, simulate new market data with random values.\n            simulated_data = pd.DataFrame({\n                'open': np.random.rand(100) * 100,\n                'high': np.random.rand(100) * 100,\n                'low': np.random.rand(100) * 100,\n                'close': np.random.rand(100) * 100,",
+        "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "console",
+        "kind": 5,
+        "importPath": "(redacted) future_use.predict",
+        "description": "(redacted) future_use.predict",
+        "peekOfCode": "console = Console()\ndef load_trained_engine(checkpoint_path: str, config: dict) -> EnhancedMLEngine:\n    engine = EnhancedMLEngine(config)\n    engine.load_checkpoint(checkpoint_path)\n    return engine\ndef real_time_prediction_loop(engine: EnhancedMLEngine):\n    console.print(\"[bold blue]Starting real-time prediction loop. Press Ctrl+C to exit.[/bold blue]\")\n    try:\n        while True:\n            # For demonstration, simulate new market data with random values.",
+        "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "process_multiindex_data",
+        "kind": 2,
+        "importPath": "(redacted) future_use.preprocess",
+        "description": "(redacted) future_use.preprocess",
+        "peekOfCode": "def process_multiindex_data(data: pd.DataFrame, tickers: list) -> pd.DataFrame:\n    \"\"\"\n    If data has a MultiIndex (from yfinance for multiple tickers),\n    process and stack each ticker's DataFrame vertically.\n    \"\"\"\n    all_data = []\n    for ticker in tickers:\n        if ticker in data.columns.levels[0]:\n            df_ticker = data[ticker].copy()\n            df_ticker.columns = df_ticker.columns.str.lower()",
+        "detail": "(redacted) future_use.preprocess",
+        "documentation": {}
+    },
+    {
+        "label": "cached_download",
+        "kind": 2,
+        "importPath": "(redacted) future_use.preprocess",
+        "description": "(redacted) future_use.preprocess",
+        "peekOfCode": "def cached_download(ticker: str, start: str, end: str) -> pd.DataFrame:\n    \"\"\"\n    Cache downloaded data to avoid redundant API calls.\n    Saves data as a Parquet file in the cache directory.\n    \"\"\"\n    cache_file = CACHE_DIR / f\"{ticker}_{start}_{end}.parquet\"\n    if cache_file.exists():\n        return pd.read_parquet(cache_file)\n    data = yf.download(ticker, start=start, end=end, progress=False)\n    data.to_parquet(cache_file)",
+        "detail": "(redacted) future_use.preprocess",
+        "documentation": {}
+    },
+    {
+        "label": "preprocess_data",
+        "kind": 2,
+        "importPath": "(redacted) future_use.preprocess",
+        "description": "(redacted) future_use.preprocess",
+        "peekOfCode": "def preprocess_data(data: pd.DataFrame) -> tuple:\n    \"\"\"\n    Scale and convert DataFrame data into sequences.\n    Returns (X, y) arrays or (None, None) on failure.\n    \"\"\"\n    logger.info(\"Initial DataFrame info:\")\n    logger.info(f\"Shape: {data.shape}\")\n    logger.info(f\"Columns: {data.columns.tolist()}\")\n    if isinstance(data.columns, pd.MultiIndex):\n        # Flatten the MultiIndex columns.",
+        "detail": "(redacted) future_use.preprocess",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "(redacted) future_use.preprocess",
+        "description": "(redacted) future_use.preprocess",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nCACHE_DIR = Path.home() / \".trading_bot_cache\"\nCACHE_DIR.mkdir(exist_ok=True)\ndef process_multiindex_data(data: pd.DataFrame, tickers: list) -> pd.DataFrame:\n    \"\"\"\n    If data has a MultiIndex (from yfinance for multiple tickers),\n    process and stack each ticker's DataFrame vertically.\n    \"\"\"\n    all_data = []\n    for ticker in tickers:",
+        "detail": "(redacted) future_use.preprocess",
+        "documentation": {}
+    },
+    {
+        "label": "CACHE_DIR",
+        "kind": 5,
+        "importPath": "(redacted) future_use.preprocess",
+        "description": "(redacted) future_use.preprocess",
+        "peekOfCode": "CACHE_DIR = Path.home() / \".trading_bot_cache\"\nCACHE_DIR.mkdir(exist_ok=True)\ndef process_multiindex_data(data: pd.DataFrame, tickers: list) -> pd.DataFrame:\n    \"\"\"\n    If data has a MultiIndex (from yfinance for multiple tickers),\n    process and stack each ticker's DataFrame vertically.\n    \"\"\"\n    all_data = []\n    for ticker in tickers:\n        if ticker in data.columns.levels[0]:",
+        "detail": "(redacted) future_use.preprocess",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "kind": 6,
+        "importPath": "(redacted) future_use.train",
+        "description": "(redacted) future_use.train",
+        "peekOfCode": "class StockDataset(torch.utils.data.Dataset):\n    \"\"\"PyTorch Dataset for stock market data sequences.\"\"\"\n    def __init__(self, features: np.ndarray, targets: np.ndarray, sequence_length: int = 60):\n        self.features = features\n        self.targets = targets\n    def __len__(self) -> int:\n        return len(self.features)\n    def __getitem__(self, idx: int) -> Tuple[torch.FloatTensor, torch.FloatTensor]:\n        seq = torch.FloatTensor(self.features[idx])\n        target = torch.FloatTensor([self.targets[idx]])",
+        "detail": "(redacted) future_use.train",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictor",
+        "kind": 6,
+        "importPath": "(redacted) future_use.train",
+        "description": "(redacted) future_use.train",
+        "peekOfCode": "class StockPredictor(nn.Module):\n    \"\"\"Enhanced LSTM-based predictor with residual connections.\"\"\"\n    def __init__(self, input_size: int = 10, hidden_size: int = 64, \n                 num_layers: int = 2, dropout: float = 0.2):\n        super().__init__()\n        self.lstm = nn.LSTM(\n            input_size=input_size,\n            hidden_size=hidden_size,\n            num_layers=num_layers,\n            batch_first=True,",
+        "detail": "(redacted) future_use.train",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "kind": 6,
+        "importPath": "(redacted) future_use.train",
+        "description": "(redacted) future_use.train",
+        "peekOfCode": "class EnhancedMLEngine:\n    \"\"\"Enhanced ML engine for trading bot training, prediction, and monitoring.\"\"\"\n    def __init__(self, config: Dict[str, Any]):\n        self.config = config\n        self.device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n        from sklearn.preprocessing import StandardScaler\n        self.scaler = StandardScaler()\n        self.sequence_length = config.get('sequence_length', 20)\n        self.architecture = config.get('architecture', 'lstm')\n        self.model = None",
+        "detail": "(redacted) future_use.train",
+        "documentation": {}
+    },
+    {
+        "label": "run_hyperparameter_tuning",
+        "kind": 2,
+        "importPath": "(redacted) future_use.train",
+        "description": "(redacted) future_use.train",
+        "peekOfCode": "def run_hyperparameter_tuning(data: pd.DataFrame, n_trials: int = 20) -> Dict[str, Any]:\n    \"\"\"Run Optuna hyperparameter optimization.\"\"\"\n    def objective(trial: optuna.trial.Trial) -> float:\n        from train import auto_configure  # if defined in this module\n        config = auto_configure()\n        config.update({\n            'hidden_size': trial.suggest_int(\"hidden_size\", 32, 256),\n            'num_layers': trial.suggest_int(\"num_layers\", 1, 4),\n            'dropout': trial.suggest_float(\"dropout\", 0.1, 0.5),\n            'learning_rate': trial.suggest_loguniform(\"learning_rate\", 1e-4, 1e-2),",
+        "detail": "(redacted) future_use.train",
+        "documentation": {}
+    },
+    {
+        "label": "auto_configure",
+        "kind": 2,
+        "importPath": "(redacted) future_use.train",
+        "description": "(redacted) future_use.train",
+        "peekOfCode": "def auto_configure() -> Dict[str, Any]:\n    \"\"\"\n    Automatically configure hyperparameters based on system resources.\n    \"\"\"\n    import psutil\n    config = {}\n    cpu_count = mp.cpu_count()\n    config['num_workers'] = max(1, cpu_count - 1)\n    total_mem = psutil.virtual_memory().total / (1024 ** 3)\n    logger.info(f\"Total system memory: {total_mem:.2f} GB\")",
+        "detail": "(redacted) future_use.train",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "(redacted) future_use.train",
+        "description": "(redacted) future_use.train",
+        "peekOfCode": "logger = setup_logging(log_file=\"my_app.log\")\nwriter = SummaryWriter(log_dir=str(Path.home() / \".trading_bot_logs\" / datetime.now().strftime(\"%Y%m%d_%H%M%S\")))\n# ---------------------------------------------------------------------------\n# Dataset definition (could also be placed in a separate file if desired)\n# ---------------------------------------------------------------------------\nclass StockDataset(torch.utils.data.Dataset):\n    \"\"\"PyTorch Dataset for stock market data sequences.\"\"\"\n    def __init__(self, features: np.ndarray, targets: np.ndarray, sequence_length: int = 60):\n        self.features = features\n        self.targets = targets",
+        "detail": "(redacted) future_use.train",
+        "documentation": {}
+    },
+    {
+        "label": "writer",
+        "kind": 5,
+        "importPath": "(redacted) future_use.train",
+        "description": "(redacted) future_use.train",
+        "peekOfCode": "writer = SummaryWriter(log_dir=str(Path.home() / \".trading_bot_logs\" / datetime.now().strftime(\"%Y%m%d_%H%M%S\")))\n# ---------------------------------------------------------------------------\n# Dataset definition (could also be placed in a separate file if desired)\n# ---------------------------------------------------------------------------\nclass StockDataset(torch.utils.data.Dataset):\n    \"\"\"PyTorch Dataset for stock market data sequences.\"\"\"\n    def __init__(self, features: np.ndarray, targets: np.ndarray, sequence_length: int = 60):\n        self.features = features\n        self.targets = targets\n    def __len__(self) -> int:",
+        "detail": "(redacted) future_use.train",
+        "documentation": {}
+    },
+    {
+        "label": "get_stock_data",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def get_stock_data(ticker, period=\"max\"):\n    \"\"\"Fetch maximum available historical data for a single ticker using yfinance.\"\"\"\n    try:\n        stock = yf.Ticker(ticker)\n        data = stock.history(period=period)\n        if data.empty:\n            return None, f\"No data found for ticker {ticker}.\"\n        try:\n            info = stock.info\n            print(f\"\\nCompany: {info.get('longName', ticker)}\")",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "calculate_sma",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def calculate_sma(data, window=20):\n    \"\"\"Calculates Simple Moving Average.\"\"\"\n    return data[\"Close\"].rolling(window=window).mean()\ndef calculate_ema(data, window=20):\n    \"\"\"Calculates Exponential Moving Average.\"\"\"\n    return data[\"Close\"].ewm(span=window, adjust=False).mean()\ndef calculate_rsi(data, window=14):\n    \"\"\"Calculates Relative Strength Index.\"\"\"\n    delta = data[\"Close\"].diff()\n    up = delta.clip(lower=0)",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "calculate_ema",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def calculate_ema(data, window=20):\n    \"\"\"Calculates Exponential Moving Average.\"\"\"\n    return data[\"Close\"].ewm(span=window, adjust=False).mean()\ndef calculate_rsi(data, window=14):\n    \"\"\"Calculates Relative Strength Index.\"\"\"\n    delta = data[\"Close\"].diff()\n    up = delta.clip(lower=0)\n    down = -1 * delta.clip(upper=0)\n    avg_gain = up.rolling(window).mean()\n    avg_loss = down.rolling(window).mean()",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "calculate_rsi",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def calculate_rsi(data, window=14):\n    \"\"\"Calculates Relative Strength Index.\"\"\"\n    delta = data[\"Close\"].diff()\n    up = delta.clip(lower=0)\n    down = -1 * delta.clip(upper=0)\n    avg_gain = up.rolling(window).mean()\n    avg_loss = down.rolling(window).mean()\n    rs = avg_gain / avg_loss\n    rsi = 100 - (100 / (1 + rs))\n    return rsi",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "calculate_macd",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def calculate_macd(data, short_window=12, long_window=26, signal_window=9):\n    \"\"\"Calculates Moving Average Convergence Divergence.\"\"\"\n    ema_short = data[\"Close\"].ewm(span=short_window, adjust=False).mean()\n    ema_long = data[\"Close\"].ewm(span=long_window, adjust=False).mean()\n    macd_line = ema_short - ema_long\n    signal_line = macd_line.ewm(span=signal_window, adjust=False).mean()\n    macd_histogram = macd_line - signal_line\n    return macd_line, signal_line, macd_histogram\ndef calculate_bollinger_bands(data, window=20, num_std_dev=2):\n    \"\"\"Calculates Bollinger Bands.\"\"\"",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "calculate_bollinger_bands",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def calculate_bollinger_bands(data, window=20, num_std_dev=2):\n    \"\"\"Calculates Bollinger Bands.\"\"\"\n    rolling_mean = data[\"Close\"].rolling(window=window).mean()\n    rolling_std = data[\"Close\"].rolling(window=window).std()\n    upper_band = rolling_mean + (rolling_std * num_std_dev)\n    lower_band = rolling_mean - (rolling_std * num_std_dev)\n    return upper_band, lower_band\ndef calculate_historical_volatility(data, window=30):\n    \"\"\"Calculates historical volatility.\"\"\"\n    if data is None or len(data) < window:",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "calculate_historical_volatility",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def calculate_historical_volatility(data, window=30):\n    \"\"\"Calculates historical volatility.\"\"\"\n    if data is None or len(data) < window:\n        return \"N/A\", \"Insufficient data for volatility calculation.\"\n    daily_returns = data[\"Close\"].pct_change().dropna()\n    if daily_returns.empty:\n        return \"N/A\", \"Could not calculate daily returns.\"\n    volatility = daily_returns.rolling(window=window).std() * np.sqrt(252)\n    return volatility.iloc[-1], None\ndef get_vix_index():",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "get_vix_index",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def get_vix_index():\n    \"\"\"Fetches VIX index data using yfinance (short period for near real-time).\"\"\"\n    vix_data, error = get_stock_data(\"^VIX\", period=\"5d\")\n    if vix_data is not None and not vix_data.empty:\n        latest_vix = vix_data[\"Close\"].iloc[-1]\n        return latest_vix, None\n    return \"N/A\", error\n# ------------------------ Sentiment Analysis ------------------------\ndef analyze_sentiment(text_list):\n    \"\"\"Analyzes sentiment of a list of texts using TextBlob.\"\"\"",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "analyze_sentiment",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def analyze_sentiment(text_list):\n    \"\"\"Analyzes sentiment of a list of texts using TextBlob.\"\"\"\n    if not text_list:\n        return {\n            \"positive\": 0,\n            \"negative\": 0,\n            \"neutral\": 0,\n            \"overall_sentiment\": \"Neutral\",\n        }\n    positive_count = 0",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "fetch_news_api",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def fetch_news_api(ticker: str) -> List[Dict]:\n    \"\"\"Fetch news using NewsAPI.\"\"\"\n    try:\n        newsapi = NewsApiClient(api_key=\"YOUR_NEWS_API_KEY\")  # Replace with your key\n        news = newsapi.get_everything(\n            q=f\"{ticker} stock\", language=\"en\", sort_by=\"relevancy\", page_size=10\n        )\n        return news[\"articles\"]\n    except Exception as e:\n        logger.error(f\"NewsAPI error: {e}\")",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "fetch_reddit_api",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def fetch_reddit_api(ticker: str) -> List[Dict]:\n    \"\"\"Fetch Reddit posts using PRAW.\"\"\"\n    try:\n        reddit = praw.Reddit(\n            client_id=\"YOUR_CLIENT_ID\",\n            client_secret=\"YOUR_CLIENT_SECRET\",\n            user_agent=\"YOUR_USER_AGENT\",\n        )\n        subreddits = [\"wallstreetbets\", \"stocks\", \"investing\"]\n        posts = []",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "fetch_finnhub_data",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def fetch_finnhub_data(ticker: str) -> List[Dict]:\n    \"\"\"Fetch social sentiment from Finnhub.\"\"\"\n    try:\n        finnhub_client = finnhub.Client(api_key=\"YOUR_FINNHUB_API_KEY\")\n        sentiment = finnhub_client.social_sentiment(ticker)\n        return sentiment\n    except Exception as e:\n        logger.error(f\"Finnhub API error: {e}\")\n        return []\ndef clean_tweet_text(text):",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "clean_tweet_text",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def clean_tweet_text(text):\n    \"\"\"Cleans tweet text by removing URLs, mentions, and hashtags.\"\"\"\n    text = re.sub(r\"http\\S+\", \"\", text)\n    text = re.sub(r\"@\\S+\", \"\", text)\n    text = re.sub(r\"#\\S+\", \"\", text)\n    return text.strip()\ndef fetch_webpage_content(url):\n    \"\"\"Fetches webpage content.\"\"\"\n    try:\n        headers = {",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "fetch_webpage_content",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def fetch_webpage_content(url):\n    \"\"\"Fetches webpage content.\"\"\"\n    try:\n        headers = {\n            \"User-Agent\": (\n                \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) \"\n                \"AppleWebKit/537.36 (KHTML, like Gecko) \"\n                \"Chrome/91.0.4472.124 Safari/537.36\"\n            )\n        }",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "get_tweet_sentiment",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def get_tweet_sentiment(ticker_symbol):\n    \"\"\"Fetches recent tweets about a stock using DuckDuckGo and analyzes sentiment.\"\"\"\n    search_query = f\"{ticker_symbol} stock\"\n    search_url = \"https://duckduckgo.com/html/?\" + urlencode(\n        {\"q\": search_query, \"t\": \"social\"}\n    )\n    html_content = fetch_webpage_content(search_url)\n    if not html_content:\n        return {\"error\": \"Could not fetch tweet search results.\"}, None\n    soup = BeautifulSoup(html_content, \"html.parser\")",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "get_market_sentiment",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def get_market_sentiment(ticker_symbol):\n    \"\"\"Aggregates market sentiment from news, tweets, and Reddit.\"\"\"\n    news_articles = fetch_news_api(ticker_symbol)\n    reddit_posts = fetch_reddit_api(ticker_symbol)\n    finnhub_data = fetch_finnhub_data(ticker_symbol)\n    news_texts = [\n        article[\"title\"] + \" \" + article.get(\"description\", \"\")\n        for article in news_articles\n    ]\n    reddit_texts = [post[\"title\"] + \" \" + post[\"body\"] for post in reddit_posts]",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "download_free_market_data",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def download_free_market_data(ticker: str) -> pd.DataFrame:\n    \"\"\"\n    Downloads free daily market data for the given ticker from Stooq,\n    using additional parameters to force the CSV to include a header and proper columns.\n    \"\"\"\n    base_url = \"https://stooq.com/q/d/l/\"\n    params = {\n        \"s\": ticker.lower(),\n        \"i\": \"d\",\n        \"f\": \"sd2ohlcv\",  # Format: Symbol, Date, Open, High, Low, Close, Volume",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "download_yahoo_market_data",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def download_yahoo_market_data(ticker: str) -> pd.DataFrame:\n    \"\"\"\n    Downloads historical market data for the given ticker using yfinance's API\n    (this avoids the direct CSV download and potential 429 errors).\n    \"\"\"\n    print(f\"Downloading market data for {ticker} from Yahoo Finance via yfinance...\")\n    try:\n        data, err = get_stock_data(ticker, period=\"max\")\n        if data is None or data.empty:\n            raise ValueError(err or \"No data from Yahoo Finance\")",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "download_market_data_from_sources",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def download_market_data_from_sources(ticker: str) -> pd.DataFrame:\n    \"\"\"\n    Attempts to download market data from multiple sources.\n    Tries Stooq first (with enhanced parameters) and then Yahoo Finance via yfinance.\n    \"\"\"\n    for source in [download_free_market_data, download_yahoo_market_data]:\n        df = source(ticker)\n        if not df.empty:\n            return df\n    return pd.DataFrame()",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "collect_comprehensive_data",
+        "kind": 2,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "def collect_comprehensive_data(ticker: str, save_dir: str = \"stock_data\") -> Path:\n    \"\"\"\n    Collects comprehensive stock data by attempting multiple sources,\n    calculating technical indicators, and saving the result as CSV.\n    \"\"\"\n    save_path = Path(save_dir)\n    save_path.mkdir(exist_ok=True)\n    print(f\"\\nCollecting comprehensive data for {ticker}...\")\n    market_data = download_market_data_from_sources(ticker)\n    if market_data.empty:",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "SLM.stock_slm",
+        "description": "SLM.stock_slm",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# ------------------------ Market Data & Technicals ------------------------\ndef get_stock_data(ticker, period=\"max\"):\n    \"\"\"Fetch maximum available historical data for a single ticker using yfinance.\"\"\"\n    try:\n        stock = yf.Ticker(ticker)\n        data = stock.history(period=period)\n        if data.empty:\n            return None, f\"No data found for ticker {ticker}.\"\n        try:",
+        "detail": "SLM.stock_slm",
+        "documentation": {}
+    },
+    {
+        "label": "MockDataProcessor",
+        "kind": 6,
+        "importPath": "demo.cli_demo",
+        "description": "demo.cli_demo",
+        "peekOfCode": "class MockDataProcessor:\n    \"\"\"Mock data processor for demonstration purposes.\"\"\"\n    @staticmethod\n    async def fetch_stock_data(ticker, start_date, end_date):\n        \"\"\"Fetch stock data for the given ticker.\"\"\"\n        print(f\"Fetching stock data for {ticker} from {start_date} to {end_date}...\")\n        # Create mock data\n        dates = pd.date_range(start=start_date, end=end_date)\n        # Generate realistic looking stock data\n        base_price = 100.0",
+        "detail": "demo.cli_demo",
+        "documentation": {}
+    },
+    {
+        "label": "MockMLEngine",
+        "kind": 6,
+        "importPath": "demo.cli_demo",
+        "description": "demo.cli_demo",
+        "peekOfCode": "class MockMLEngine:\n    \"\"\"Mock ML engine for demonstration purposes.\"\"\"\n    def __init__(self, model_type=\"ensemble\"):\n        \"\"\"Initialize the ML engine.\"\"\"\n        self.model_type = model_type\n        print(f\"Initializing ML Engine with model type: {model_type}\")\n    def predict(self, features):\n        \"\"\"Make predictions using the ML engine.\"\"\"\n        print(f\"ML Engine making predictions on {len(features)} sequences...\")\n        # Generate mock predictions",
+        "detail": "demo.cli_demo",
+        "documentation": {}
+    },
+    {
+        "label": "MockMTEngine",
+        "kind": 6,
+        "importPath": "demo.cli_demo",
+        "description": "demo.cli_demo",
+        "peekOfCode": "class MockMTEngine:\n    \"\"\"Mock MT engine for demonstration purposes.\"\"\"\n    def __init__(self, model_type=\"transformer\"):\n        \"\"\"Initialize the MT engine.\"\"\"\n        self.model_type = model_type\n        print(f\"Initializing MT Engine with model type: {model_type}\")\n    def predict(self, features):\n        \"\"\"Make predictions using the MT engine.\"\"\"\n        print(f\"MT Engine making predictions on {len(features)} sequences...\")\n        # Generate mock predictions",
+        "detail": "demo.cli_demo",
+        "documentation": {}
+    },
+    {
+        "label": "MockMREngine",
+        "kind": 6,
+        "importPath": "demo.cli_demo",
+        "description": "demo.cli_demo",
+        "peekOfCode": "class MockMREngine:\n    \"\"\"Mock MR engine for demonstration purposes.\"\"\"\n    def __init__(self, model_type=\"gru\"):\n        \"\"\"Initialize the MR engine.\"\"\"\n        self.model_type = model_type\n        print(f\"Initializing MR Engine with model type: {model_type}\")\n    def predict(self, features):\n        \"\"\"Make predictions using the MR engine.\"\"\"\n        print(f\"MR Engine making predictions on {len(features)} sequences...\")\n        # Generate mock predictions",
+        "detail": "demo.cli_demo",
+        "documentation": {}
+    },
+    {
+        "label": "MockNeuralNetworkIntegrator",
+        "kind": 6,
+        "importPath": "demo.cli_demo",
+        "description": "demo.cli_demo",
+        "peekOfCode": "class MockNeuralNetworkIntegrator:\n    \"\"\"Mock neural network integrator for demonstration purposes.\"\"\"\n    def __init__(self):\n        \"\"\"Initialize the neural network integrator.\"\"\"\n        print(\"Initializing Neural Network Integrator with attention-based integration\")\n        self.ml_engine = None\n        self.mt_engine = None\n        self.mr_engine = None\n    def set_engines(self, ml_engine, mt_engine, mr_engine):\n        \"\"\"Set the engines for integration.\"\"\"",
+        "detail": "demo.cli_demo",
+        "documentation": {}
+    },
+    {
+        "label": "MockReasoningEngine",
+        "kind": 6,
+        "importPath": "demo.cli_demo",
+        "description": "demo.cli_demo",
+        "peekOfCode": "class MockReasoningEngine:\n    \"\"\"Mock reasoning engine for demonstration purposes.\"\"\"\n    def __init__(self):\n        \"\"\"Initialize the reasoning engine.\"\"\"\n        print(\"Initializing Reasoning Engine\")\n    def analyze_prediction(self, ticker, current_price, predicted_price, uncertainty, df):\n        \"\"\"Analyze the prediction and generate insights.\"\"\"\n        print(f\"Reasoning Engine analyzing prediction for {ticker}...\")\n        # Calculate change\n        change = predicted_price - current_price",
+        "detail": "demo.cli_demo",
+        "documentation": {}
+    },
+    {
+        "label": "MockDataProcessor",
+        "kind": 6,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "class MockDataProcessor:\n    \"\"\"Mock data processor for demonstration purposes.\"\"\"\n    @staticmethod\n    async def fetch_stock_data(ticker, start_date, end_date):\n        \"\"\"Fetch stock data for the given ticker.\"\"\"\n        print_substep(f\"Fetching stock data for {ticker}\")\n        print_info(f\"Date range: {start_date} to {end_date}\")\n        # Create mock data\n        dates = pd.date_range(start=start_date, end=end_date)\n        # Generate realistic looking stock data",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "MockMLEngine",
+        "kind": 6,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "class MockMLEngine:\n    \"\"\"Mock ML engine for demonstration purposes.\"\"\"\n    def __init__(self, model_type=\"ensemble\"):\n        \"\"\"Initialize the ML engine.\"\"\"\n        self.model_type = model_type\n        print_substep(f\"Initializing ML Engine with model type: {model_type}\")\n        if model_type == \"ensemble\":\n            print_info(\"Creating ensemble model with LSTM, GRU, and Transformer base models\")\n        elif model_type == \"lstm\":\n            print_info(\"Creating LSTM model with attention mechanism\")",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "MockMTEngine",
+        "kind": 6,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "class MockMTEngine:\n    \"\"\"Mock MT engine for demonstration purposes.\"\"\"\n    def __init__(self, model_type=\"transformer\"):\n        \"\"\"Initialize the MT engine.\"\"\"\n        self.model_type = model_type\n        print_substep(f\"Initializing MT Engine with model type: {model_type}\")\n        if model_type == \"transformer\":\n            print_info(\"Creating Transformer model with multi-head attention\")\n            print_info(\"Model architecture: 4 encoder layers, 8 attention heads, 256 hidden dimensions\")\n        elif model_type == \"lstm\":",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "MockMREngine",
+        "kind": 6,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "class MockMREngine:\n    \"\"\"Mock MR engine for demonstration purposes.\"\"\"\n    def __init__(self, model_type=\"gru\"):\n        \"\"\"Initialize the MR engine.\"\"\"\n        self.model_type = model_type\n        print_substep(f\"Initializing MR Engine with model type: {model_type}\")\n        if model_type == \"gru\":\n            print_info(\"Creating GRU model with bidirectional layers\")\n            print_info(\"Model architecture: 3 bidirectional layers, 128 hidden dimensions\")\n        elif model_type == \"lstm\":",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "MockNeuralNetworkIntegrator",
+        "kind": 6,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "class MockNeuralNetworkIntegrator:\n    \"\"\"Mock neural network integrator for demonstration purposes.\"\"\"\n    def __init__(self):\n        \"\"\"Initialize the neural network integrator.\"\"\"\n        print_substep(\"Initializing Neural Network Integrator\")\n        print_info(\"Using attention-based integration mechanism\")\n        print_info(\"Architecture: 4 attention heads, 128 hidden dimensions\")\n        self.ml_engine = None\n        self.mt_engine = None\n        self.mr_engine = None",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "print_step",
+        "kind": 2,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "def print_step(step_number, step_description):\n    \"\"\"Print a step header with step number and description.\"\"\"\n    if VERBOSE:\n        print(f\"\\n{'='*80}\")\n        print(f\"STEP {step_number}: {step_description}\")\n        print(f\"{'='*80}\")\ndef print_substep(substep_description):\n    \"\"\"Print a substep header with description.\"\"\"\n    if VERBOSE:\n        print(f\"\\n{'-'*60}\")",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "print_substep",
+        "kind": 2,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "def print_substep(substep_description):\n    \"\"\"Print a substep header with description.\"\"\"\n    if VERBOSE:\n        print(f\"\\n{'-'*60}\")\n        print(f\"  {substep_description}\")\n        print(f\"{'-'*60}\")\ndef print_info(message):\n    \"\"\"Print an info message.\"\"\"\n    if VERBOSE:\n        print(f\"INFO: {message}\")",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "print_info",
+        "kind": 2,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "def print_info(message):\n    \"\"\"Print an info message.\"\"\"\n    if VERBOSE:\n        print(f\"INFO: {message}\")\ndef print_data(label, data, max_rows=5):\n    \"\"\"Print data with a label.\"\"\"\n    if VERBOSE:\n        print(f\"\\n{label}:\")\n        if isinstance(data, pd.DataFrame):\n            print(f\"DataFrame with shape: {data.shape}\")",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "print_data",
+        "kind": 2,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "def print_data(label, data, max_rows=5):\n    \"\"\"Print data with a label.\"\"\"\n    if VERBOSE:\n        print(f\"\\n{label}:\")\n        if isinstance(data, pd.DataFrame):\n            print(f\"DataFrame with shape: {data.shape}\")\n            print(data.head(max_rows))\n        elif isinstance(data, list):\n            print(f\"List with {len(data)} items:\")\n            for i, item in enumerate(data[:max_rows]):",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "VERBOSE",
+        "kind": 5,
+        "importPath": "demo.cli_verbose",
+        "description": "demo.cli_verbose",
+        "peekOfCode": "VERBOSE = True\ndef print_step(step_number, step_description):\n    \"\"\"Print a step header with step number and description.\"\"\"\n    if VERBOSE:\n        print(f\"\\n{'='*80}\")\n        print(f\"STEP {step_number}: {step_description}\")\n        print(f\"{'='*80}\")\ndef print_substep(substep_description):\n    \"\"\"Print a substep header with description.\"\"\"\n    if VERBOSE:",
+        "detail": "demo.cli_verbose",
+        "documentation": {}
+    },
+    {
+        "label": "RealDataProcessor",
+        "kind": 6,
+        "importPath": "demo.fixed_real_data",
+        "description": "demo.fixed_real_data",
+        "peekOfCode": "class RealDataProcessor:\n    \"\"\"Real data processor using direct Yahoo Finance API calls.\"\"\"\n    @staticmethod\n    async def fetch_stock_data(ticker, start_date, end_date):\n        \"\"\"Fetch real stock data for the given ticker using direct API calls.\"\"\"\n        print(f\"Fetching real stock data for {ticker} from {start_date} to {end_date}...\")\n        try:\n            # Convert dates to UNIX timestamps\n            start_timestamp = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp())\n            end_timestamp = int(datetime.strptime(end_date, '%Y-%m-%d').timestamp())",
+        "detail": "demo.fixed_real_data",
+        "documentation": {}
+    },
+    {
+        "label": "SimpleMLEngine",
+        "kind": 6,
+        "importPath": "demo.fixed_real_data",
+        "description": "demo.fixed_real_data",
+        "peekOfCode": "class SimpleMLEngine:\n    \"\"\"Simple ML engine for stock prediction.\"\"\"\n    def __init__(self, model_type=\"lstm\"):\n        \"\"\"Initialize the ML engine.\"\"\"\n        self.model_type = model_type\n        print(f\"Initializing ML Engine with model type: {model_type}\")\n        # In a real implementation, this would initialize PyTorch models\n        # Since we can't install PyTorch due to space constraints, we'll use a simple model\n    def predict(self, features):\n        \"\"\"Make predictions using the ML engine.\"\"\"",
+        "detail": "demo.fixed_real_data",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "kind": 6,
+        "importPath": "demo.fixed_real_data",
+        "description": "demo.fixed_real_data",
+        "peekOfCode": "class ReasoningEngine:\n    \"\"\"Reasoning engine for stock prediction analysis.\"\"\"\n    def __init__(self):\n        \"\"\"Initialize the reasoning engine.\"\"\"\n        print(\"Initializing Reasoning Engine\")\n    def analyze_prediction(self, ticker, current_price, predicted_price, uncertainty, df):\n        \"\"\"Analyze the prediction and generate insights.\"\"\"\n        print(f\"Analyzing prediction for {ticker}\")\n        # Calculate change\n        change = predicted_price - current_price",
+        "detail": "demo.fixed_real_data",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictionCLI",
+        "kind": 6,
+        "importPath": "demo.fixed_real_data",
+        "description": "demo.fixed_real_data",
+        "peekOfCode": "class StockPredictionCLI:\n    \"\"\"Command-line interface for stock prediction with real data.\"\"\"\n    def __init__(self):\n        \"\"\"Initialize the CLI.\"\"\"\n        print(\"Initializing Stock Prediction CLI with real data integration\")\n        self.data_processor = RealDataProcessor()\n        self.ml_engine = None\n        self.reasoning_engine = None\n        # Create output directories\n        os.makedirs(\"output\", exist_ok=True)",
+        "detail": "demo.fixed_real_data",
+        "documentation": {}
+    },
+    {
+        "label": "TrainingRequest",
+        "kind": 6,
+        "importPath": "src.api.routes",
+        "description": "src.api.routes",
+        "peekOfCode": "class TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)\n    batch_size: int = Field(32, ge=1, le=1024)\n    learning_rate: float = Field(0.01, gt=0, lt=1)\n    hidden_dims: Optional[List[int]] = Field(\n        None, description=\"Hidden layer dimensions for neural_net\"\n    )",
+        "detail": "src.api.routes",
+        "documentation": {}
+    },
+    {
+        "label": "PredictionRequest",
+        "kind": 6,
+        "importPath": "src.api.routes",
+        "description": "src.api.routes",
+        "peekOfCode": "class PredictionRequest(BaseModel):\n    model_id: str = Field(..., description=\"Model identifier\")\n    data: List[List[float]] = Field(..., description=\"Input data as 2D array\")\n    @validator(\"data\")\n    def validate_data(cls, v):\n        if not v or not v[0]:\n            raise ValueError(\"data cannot be empty\")\n        return v\nclass ModelResponse(BaseModel):\n    model_id: str",
+        "detail": "src.api.routes",
+        "documentation": {}
+    },
+    {
+        "label": "ModelResponse",
+        "kind": 6,
+        "importPath": "src.api.routes",
+        "description": "src.api.routes",
+        "peekOfCode": "class ModelResponse(BaseModel):\n    model_id: str\n    status: str\n    message: str\n    metadata: Optional[Dict[str, Any]] = None\nclass PredictionResponse(BaseModel):\n    model_id: str\n    predictions: List[float]\n    confidence: Optional[List[float]] = None\n    inference_time_ms: float",
+        "detail": "src.api.routes",
+        "documentation": {}
+    },
+    {
+        "label": "PredictionResponse",
+        "kind": 6,
+        "importPath": "src.api.routes",
+        "description": "src.api.routes",
+        "peekOfCode": "class PredictionResponse(BaseModel):\n    model_id: str\n    predictions: List[float]\n    confidence: Optional[List[float]] = None\n    inference_time_ms: float\n# Health check\n@router.get(\"/health\")\nasync def health_check():\n    \"\"\"Check API health status\"\"\"\n    return {",
+        "detail": "src.api.routes",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.api.routes",
+        "description": "src.api.routes",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nrouter = APIRouter()\nmodel_store = ModelStore()\nmetrics_collector = MetricsCollector()\n# Pydantic models for request validation\nclass TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)",
+        "detail": "src.api.routes",
+        "documentation": {}
+    },
+    {
+        "label": "router",
+        "kind": 5,
+        "importPath": "src.api.routes",
+        "description": "src.api.routes",
+        "peekOfCode": "router = APIRouter()\nmodel_store = ModelStore()\nmetrics_collector = MetricsCollector()\n# Pydantic models for request validation\nclass TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)\n    batch_size: int = Field(32, ge=1, le=1024)",
+        "detail": "src.api.routes",
+        "documentation": {}
+    },
+    {
+        "label": "model_store",
+        "kind": 5,
+        "importPath": "src.api.routes",
+        "description": "src.api.routes",
+        "peekOfCode": "model_store = ModelStore()\nmetrics_collector = MetricsCollector()\n# Pydantic models for request validation\nclass TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)\n    batch_size: int = Field(32, ge=1, le=1024)\n    learning_rate: float = Field(0.01, gt=0, lt=1)",
+        "detail": "src.api.routes",
+        "documentation": {}
+    },
+    {
+        "label": "metrics_collector",
+        "kind": 5,
+        "importPath": "src.api.routes",
+        "description": "src.api.routes",
+        "peekOfCode": "metrics_collector = MetricsCollector()\n# Pydantic models for request validation\nclass TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)\n    batch_size: int = Field(32, ge=1, le=1024)\n    learning_rate: float = Field(0.01, gt=0, lt=1)\n    hidden_dims: Optional[List[int]] = Field(",
+        "detail": "src.api.routes",
+        "documentation": {}
+    },
+    {
+        "label": "Settings",
+        "kind": 6,
+        "importPath": "src.config.settings",
+        "description": "src.config.settings",
+        "peekOfCode": "class Settings(BaseSettings):\n    # Application\n    app_name: str = \"ML Engine\"\n    app_version: str = \"1.0.0\"\n    environment: str = Field(default=\"development\", env=\"ENV\")\n    debug: bool = Field(default=True, env=\"DEBUG\")\n    # API\n    api_host: str = Field(default=\"0.0.0.0\", env=\"API_HOST\")\n    api_port: int = Field(default=8000, env=\"API_PORT\")\n    api_workers: int = Field(default=4, env=\"API_WORKERS\")",
+        "detail": "src.config.settings",
+        "documentation": {}
+    },
+    {
+        "label": "settings",
+        "kind": 5,
+        "importPath": "src.config.settings",
+        "description": "src.config.settings",
+        "peekOfCode": "settings = Settings()",
+        "detail": "src.config.settings",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "kind": 6,
+        "importPath": "src.data.loader",
+        "description": "src.data.loader",
+        "peekOfCode": "class DataLoader:\n    def __init__(self, config: Dict[str, Any] = None):\n        self.config = config or {}\n        self.scaler = None\n        self.feature_names = None\n    def load_from_csv(\n        self, filepath: str, target_column: str = None\n    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:\n        \"\"\"Load data from CSV file\"\"\"\n        try:",
+        "detail": "src.data.loader",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.data.loader",
+        "description": "src.data.loader",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass DataLoader:\n    def __init__(self, config: Dict[str, Any] = None):\n        self.config = config or {}\n        self.scaler = None\n        self.feature_names = None\n    def load_from_csv(\n        self, filepath: str, target_column: str = None\n    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:\n        \"\"\"Load data from CSV file\"\"\"",
+        "detail": "src.data.loader",
+        "documentation": {}
+    },
+    {
+        "label": "InferenceEngine",
+        "kind": 6,
+        "importPath": "src.ml.inference",
+        "description": "src.ml.inference",
+        "peekOfCode": "class InferenceEngine:\n    def __init__(self, model, config: Dict[str, Any] = None):\n        self.model = model\n        self.config = config or {}\n        self.batch_size = self.config.get(\"batch_size\", 32)\n        self.num_workers = self.config.get(\"num_workers\", 4)\n        self._warmup()\n    def _warmup(self):\n        \"\"\"Warm up the model with dummy data\"\"\"\n        try:",
+        "detail": "src.ml.inference",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.ml.inference",
+        "description": "src.ml.inference",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass InferenceEngine:\n    def __init__(self, model, config: Dict[str, Any] = None):\n        self.model = model\n        self.config = config or {}\n        self.batch_size = self.config.get(\"batch_size\", 32)\n        self.num_workers = self.config.get(\"num_workers\", 4)\n        self._warmup()\n    def _warmup(self):\n        \"\"\"Warm up the model with dummy data\"\"\"",
+        "detail": "src.ml.inference",
+        "documentation": {}
+    },
+    {
+        "label": "ModelTrainer",
+        "kind": 6,
+        "importPath": "src.ml.trainer",
+        "description": "src.ml.trainer",
+        "peekOfCode": "class ModelTrainer:\n    def __init__(self, config: Dict[str, Any]):\n        self.config = config\n        self.model = None\n        self.history = {}\n    def train(self, X_train, y_train, X_val=None, y_val=None) -> Dict[str, Any]:\n        \"\"\"Train the model with actual training logic\"\"\"\n        try:\n            logger.info(f\"Starting training with {len(X_train)} samples\")\n            # Initialize model based on config",
+        "detail": "src.ml.trainer",
+        "documentation": {}
+    },
+    {
+        "label": "LinearModel",
+        "kind": 6,
+        "importPath": "src.ml.trainer",
+        "description": "src.ml.trainer",
+        "peekOfCode": "class LinearModel:\n    def __init__(self, input_dim: int, output_dim: int):\n        self.weights = np.random.randn(input_dim, output_dim) * 0.01\n        self.bias = np.zeros(output_dim)\n    def forward(self, X):\n        return X @ self.weights + self.bias\n    def backward(self, X, y, predictions):\n        m = len(X)\n        dw = (1 / m) * X.T @ (predictions - y)\n        db = (1 / m) * np.sum(predictions - y, axis=0)",
+        "detail": "src.ml.trainer",
+        "documentation": {}
+    },
+    {
+        "label": "NeuralNetwork",
+        "kind": 6,
+        "importPath": "src.ml.trainer",
+        "description": "src.ml.trainer",
+        "peekOfCode": "class NeuralNetwork:\n    def __init__(self, input_dim: int, hidden_dims: list, output_dim: int):\n        self.layers = []\n        dims = [input_dim] + hidden_dims + [output_dim]\n        for i in range(len(dims) - 1):\n            self.layers.append(\n                {\n                    \"W\": np.random.randn(dims[i], dims[i + 1]) * np.sqrt(2.0 / dims[i]),\n                    \"b\": np.zeros(dims[i + 1]),\n                }",
+        "detail": "src.ml.trainer",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.ml.trainer",
+        "description": "src.ml.trainer",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ModelTrainer:\n    def __init__(self, config: Dict[str, Any]):\n        self.config = config\n        self.model = None\n        self.history = {}\n    def train(self, X_train, y_train, X_val=None, y_val=None) -> Dict[str, Any]:\n        \"\"\"Train the model with actual training logic\"\"\"\n        try:\n            logger.info(f\"Starting training with {len(X_train)} samples\")",
+        "detail": "src.ml.trainer",
+        "documentation": {}
+    },
+    {
+        "label": "MetricsCollector",
+        "kind": 6,
+        "importPath": "src.monitoring.metrics",
+        "description": "src.monitoring.metrics",
+        "peekOfCode": "class MetricsCollector:\n    def __init__(self, max_history: int = 1000):\n        self.max_history = max_history\n        self.metrics = defaultdict(lambda: deque(maxlen=max_history))\n        self.events = deque(maxlen=max_history)\n        self.counters = defaultdict(int)\n        self.lock = threading.Lock()\n    def record_metric(self, name: str, value: float, tags: Dict[str, Any] = None):\n        \"\"\"Record a numeric metric\"\"\"\n        with self.lock:",
+        "detail": "src.monitoring.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "PerformanceMonitor",
+        "kind": 6,
+        "importPath": "src.monitoring.metrics",
+        "description": "src.monitoring.metrics",
+        "peekOfCode": "class PerformanceMonitor:\n    \"\"\"Context manager for monitoring code performance\"\"\"\n    def __init__(self, metrics_collector: MetricsCollector, operation_name: str):\n        self.metrics_collector = metrics_collector\n        self.operation_name = operation_name\n        self.start_time = None\n    def __enter__(self):\n        self.start_time = time.time()\n        return self\n    def __exit__(self, exc_type, exc_val, exc_tb):",
+        "detail": "src.monitoring.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.monitoring.metrics",
+        "description": "src.monitoring.metrics",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass MetricsCollector:\n    def __init__(self, max_history: int = 1000):\n        self.max_history = max_history\n        self.metrics = defaultdict(lambda: deque(maxlen=max_history))\n        self.events = deque(maxlen=max_history)\n        self.counters = defaultdict(int)\n        self.lock = threading.Lock()\n    def record_metric(self, name: str, value: float, tags: Dict[str, Any] = None):\n        \"\"\"Record a numeric metric\"\"\"",
+        "detail": "src.monitoring.metrics",
+        "documentation": {}
+    },
+    {
+        "label": "ModelStore",
+        "kind": 6,
+        "importPath": "src.storage.model_store",
+        "description": "src.storage.model_store",
+        "peekOfCode": "class ModelStore:\n    def __init__(self, base_path: str = None):\n        self.base_path = Path(\n            base_path or \"/Users/davidcertan/Documents/ml_engine/models\"\n        )\n        self.base_path.mkdir(parents=True, exist_ok=True)\n        self.index_file = self.base_path / \"index.json\"\n        self._load_index()\n    def _load_index(self):\n        \"\"\"Load model index from disk\"\"\"",
+        "detail": "src.storage.model_store",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.storage.model_store",
+        "description": "src.storage.model_store",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ModelStore:\n    def __init__(self, base_path: str = None):\n        self.base_path = Path(\n            base_path or \"/Users/davidcertan/Documents/ml_engine/models\"\n        )\n        self.base_path.mkdir(parents=True, exist_ok=True)\n        self.index_file = self.base_path / \"index.json\"\n        self._load_index()\n    def _load_index(self):",
+        "detail": "src.storage.model_store",
+        "documentation": {}
+    },
+    {
+        "label": "TestDataIntegration",
+        "kind": 6,
+        "importPath": "tests.test_integration",
+        "description": "tests.test_integration",
+        "peekOfCode": "class TestDataIntegration(unittest.TestCase):\n    \"\"\"Test data integration functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.test_dir = Path(\"tests/test_data\")\n        self.test_dir.mkdir(exist_ok=True, parents=True)\n        # Create sample data\n        self.sample_data = pd.DataFrame({\n            'date': pd.date_range(start='2020-01-01', periods=100),\n            'ticker': ['AAPL'] * 100,",
+        "detail": "tests.test_integration",
+        "documentation": {}
+    },
+    {
+        "label": "TestModelIntegration",
+        "kind": 6,
+        "importPath": "tests.test_integration",
+        "description": "tests.test_integration",
+        "peekOfCode": "class TestModelIntegration(unittest.TestCase):\n    \"\"\"Test model integration functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n        # Create sample data\n        self.batch_size = 8\n        self.seq_length = 10\n        self.input_size = 5\n        self.hidden_size = 32",
+        "detail": "tests.test_integration",
+        "documentation": {}
+    },
+    {
+        "label": "TestEndToEndWorkflow",
+        "kind": 6,
+        "importPath": "tests.test_integration",
+        "description": "tests.test_integration",
+        "peekOfCode": "class TestEndToEndWorkflow(unittest.TestCase):\n    \"\"\"Test end-to-end workflow.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.test_dir = Path(\"tests/test_data\")\n        self.test_dir.mkdir(exist_ok=True, parents=True)\n        # Create output directories\n        self.model_dir = Path(\"tests/test_models\")\n        self.model_dir.mkdir(exist_ok=True, parents=True)\n        self.output_dir = Path(\"tests/test_output\")",
+        "detail": "tests.test_integration",
+        "documentation": {}
+    },
+    {
+        "label": "TestErrorHandling",
+        "kind": 6,
+        "importPath": "tests.test_integration",
+        "description": "tests.test_integration",
+        "peekOfCode": "class TestErrorHandling(unittest.TestCase):\n    \"\"\"Test error handling functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        pass\n    def test_data_loading_error_handling(self):\n        \"\"\"Test error handling in data loading.\"\"\"\n        try:\n           <response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>",
+        "detail": "tests.test_integration",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "tests.test_integration",
+        "description": "tests.test_integration",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# Add project directory to path\nsys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n# Import optimized modules\nfrom data_processing_optimized import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader\nfrom ml_engine_enhanced import EnhancedMLEngine\nfrom memory_manager_enhanced import MemoryManager\nfrom models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor\nfrom reasoning_enhanced import ReasoningEngine, UncertaintyEstimator\nfrom neural_network_integrator import NeuralNetworkIntegrator, ModelSynchronizer",
+        "detail": "tests.test_integration",
+        "documentation": {}
+    },
+    {
+        "label": "MockTensor",
+        "kind": 6,
+        "importPath": "tests.test_mock_integration",
+        "description": "tests.test_mock_integration",
+        "peekOfCode": "class MockTensor:\n    \"\"\"Mock tensor class for testing without PyTorch.\"\"\"\n    def __init__(self, shape):\n        self.shape = shape\n        self.data = [0] * (shape[0] if isinstance(shape, tuple) else shape)\n    def to(self, device):\n        \"\"\"Mock to method.\"\"\"\n        return self\n    def cpu(self):\n        \"\"\"Mock cpu method.\"\"\"",
+        "detail": "tests.test_mock_integration",
+        "documentation": {}
+    },
+    {
+        "label": "TestDataProcessingMock",
+        "kind": 6,
+        "importPath": "tests.test_mock_integration",
+        "description": "tests.test_mock_integration",
+        "peekOfCode": "class TestDataProcessingMock(unittest.TestCase):\n    \"\"\"Test data processing functionality with mocks.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.test_dir = Path(\"tests/test_data\")\n        self.test_dir.mkdir(exist_ok=True, parents=True)\n    def test_data_loading(self):\n        \"\"\"Test data loading with mocks.\"\"\"\n        logger.info(\"Testing data loading with mocks\")\n        # Mock data loading function",
+        "detail": "tests.test_mock_integration",
+        "documentation": {}
+    },
+    {
+        "label": "TestModelMock",
+        "kind": 6,
+        "importPath": "tests.test_mock_integration",
+        "description": "tests.test_mock_integration",
+        "peekOfCode": "class TestModelMock(unittest.TestCase):\n    \"\"\"Test model functionality with mocks.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        pass\n    def test_model_creation(self):\n        \"\"\"Test model creation with mocks.\"\"\"\n        logger.info(\"Testing model creation with mocks\")\n        # Mock model class\n        class MockModel:",
+        "detail": "tests.test_mock_integration",
+        "documentation": {}
+    },
+    {
+        "label": "TestMLEngineMock",
+        "kind": 6,
+        "importPath": "tests.test_mock_integration",
+        "description": "tests.test_mock_integration",
+        "peekOfCode": "class TestMLEngineMock(unittest.TestCase):\n    \"\"\"Test ML engine functionality with mocks.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        # Mock config\n        self.config = {\n            \"model\": {\n                \"type\": \"lstm\",\n                \"input_size\": 5,\n                \"hidden_size\": 32,",
+        "detail": "tests.test_mock_integration",
+        "documentation": {}
+    },
+    {
+        "label": "TestIntegratorMock",
+        "kind": 6,
+        "importPath": "tests.test_mock_integration",
+        "description": "tests.test_mock_integration",
+        "peekOfCode": "class TestIntegratorMock(unittest.TestCase):\n    \"\"\"Test neural network integrator functionality with mocks.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        # Mock config\n        self.config = {\n            \"use_attention\": True,\n            \"use_dynamic_weights\": True,\n            \"feature_dim\": 5,\n            \"hidden_dim\": 32,",
+        "detail": "tests.test_mock_integration",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "tests.test_mock_integration",
+        "description": "tests.test_mock_integration",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass MockTensor:\n    \"\"\"Mock tensor class for testing without PyTorch.\"\"\"\n    def __init__(self, shape):\n        self.shape = shape\n        self.data = [0] * (shape[0] if isinstance(shape, tuple) else shape)\n    def to(self, device):\n        \"\"\"Mock to method.\"\"\"\n        return self\n    def cpu(self):",
+        "detail": "tests.test_mock_integration",
+        "documentation": {}
+    },
+    {
+        "label": "TestDataProcessing",
+        "kind": 6,
+        "importPath": "tests.test_optimized_model",
+        "description": "tests.test_optimized_model",
+        "peekOfCode": "class TestDataProcessing(unittest.TestCase):\n    \"\"\"Test data processing functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.test_dir = Path(\"test_data\")\n        self.test_dir.mkdir(exist_ok=True)\n        # Create sample data\n        self.sample_data = pd.DataFrame({\n            'date': pd.date_range(start='2020-01-01', periods=100),\n            'ticker': ['AAPL'] * 100,",
+        "detail": "tests.test_optimized_model",
+        "documentation": {}
+    },
+    {
+        "label": "TestModels",
+        "kind": 6,
+        "importPath": "tests.test_optimized_model",
+        "description": "tests.test_optimized_model",
+        "peekOfCode": "class TestModels(unittest.TestCase):\n    \"\"\"Test model functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n        # Create sample data\n        self.batch_size = 8\n        self.seq_length = 10\n        self.input_size = 5\n        self.hidden_size = 32",
+        "detail": "tests.test_optimized_model",
+        "documentation": {}
+    },
+    {
+        "label": "TestMLEngine",
+        "kind": 6,
+        "importPath": "tests.test_optimized_model",
+        "description": "tests.test_optimized_model",
+        "peekOfCode": "class TestMLEngine(unittest.TestCase):\n    \"\"\"Test ML engine functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.test_dir = Path(\"test_models\")\n        self.test_dir.mkdir(exist_ok=True)\n        # Create sample data\n        self.sample_data = pd.DataFrame({\n            'date': pd.date_range(start='2020-01-01', periods=100),\n            'ticker': ['AAPL'] * 100,",
+        "detail": "tests.test_optimized_model",
+        "documentation": {}
+    },
+    {
+        "label": "TestNeuralNetworkIntegrator",
+        "kind": 6,
+        "importPath": "tests.test_optimized_model",
+        "description": "tests.test_optimized_model",
+        "peekOfCode": "class TestNeuralNetworkIntegrator(unittest.TestCase):\n    \"\"\"Test neural network integrator functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n        # Create sample data\n        self.batch_size = 4\n        self.input_dim = 64\n        # Create dummy engine outputs\n        self.ml_output = torch.randn(self.batch_size, self.input_dim)",
+        "detail": "tests.test_optimized_model",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "tests.test_optimized_model",
+        "description": "tests.test_optimized_model",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# Add project directory to path\nsys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n# Import optimized modules\nfrom data_processing_optimized import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader\nfrom ml_engine_enhanced import EnhancedMLEngine\nfrom memory_manager_enhanced import MemoryManager\nfrom models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor\nfrom reasoning_enhanced import ReasoningEngine, UncertaintyEstimator\nfrom neural_network_integrator import NeuralNetworkIntegrator, ModelSynchronizer",
+        "detail": "tests.test_optimized_model",
+        "documentation": {}
+    },
+    {
+        "label": "DataError",
+        "kind": 6,
+        "importPath": "ai_assistant",
+        "description": "ai_assistant",
+        "peekOfCode": "class DataError(Exception):\n    \"\"\"Raised when there are issues with data loading or processing.\"\"\"\n    pass\nclass ModelError(Exception):\n    \"\"\"Raised when there are issues with model operations.\"\"\"\n    pass\nclass ai_assistant:\n    \"\"\"Provides AI-based code explanations and improvement suggestions.\"\"\"\n    def __init__(self, config: Dict[str, Any]) -> None:\n        self.config = config",
+        "detail": "ai_assistant",
+        "documentation": {}
+    },
+    {
+        "label": "ModelError",
+        "kind": 6,
+        "importPath": "ai_assistant",
+        "description": "ai_assistant",
+        "peekOfCode": "class ModelError(Exception):\n    \"\"\"Raised when there are issues with model operations.\"\"\"\n    pass\nclass ai_assistant:\n    \"\"\"Provides AI-based code explanations and improvement suggestions.\"\"\"\n    def __init__(self, config: Dict[str, Any]) -> None:\n        self.config = config\n        self.openai_enabled = False\n        self.anthropic_client = None\n        self.memory: List[str] = []",
+        "detail": "ai_assistant",
+        "documentation": {}
+    },
+    {
+        "label": "ai_assistant",
+        "kind": 6,
+        "importPath": "ai_assistant",
+        "description": "ai_assistant",
+        "peekOfCode": "class ai_assistant:\n    \"\"\"Provides AI-based code explanations and improvement suggestions.\"\"\"\n    def __init__(self, config: Dict[str, Any]) -> None:\n        self.config = config\n        self.openai_enabled = False\n        self.anthropic_client = None\n        self.memory: List[str] = []\n        self.suggestion_cache: Dict[str, str] = {}\n        self.active_model = None\n        self.training_data = None",
+        "detail": "ai_assistant",
+        "documentation": {}
+    },
+    {
+        "label": "run_tests",
+        "kind": 2,
+        "importPath": "ai_assistant",
+        "description": "ai_assistant",
+        "peekOfCode": "def run_tests():\n    \"\"\"Test the AI assistant with proper data processing.\"\"\"\n    assistant = ai_assistant({})\n    # Test 1: Simulate scenario\n    sim_result = assistant.process_query(\"simulate\")\n    assert \"Simulation functionality is currently disabled.\" in sim_result\n    # Test 2: Load model file - tests DataError handling\n    try:\n        assistant.load_training_data(\"./trained_data/models/best_model.pth\")\n        assert False, \"Should have raised DataError\"",
+        "detail": "ai_assistant",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictionCLI",
+        "kind": 6,
+        "importPath": "cli",
+        "description": "cli",
+        "peekOfCode": "class StockPredictionCLI:\n    \"\"\"\n    Enhanced Command Line Interface for stock market prediction with online data fetching.\n    \"\"\"\n    def __init__(self):\n        \"\"\"Initialize the CLI.\"\"\"\n        self.config = {}\n        self.ml_engine = None\n        self.mt_engine = None\n        self.mr_engine = None",
+        "detail": "cli",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "cli",
+        "description": "cli",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass StockPredictionCLI:\n    \"\"\"\n    Enhanced Command Line Interface for stock market prediction with online data fetching.\n    \"\"\"\n    def __init__(self):\n        \"\"\"Initialize the CLI.\"\"\"\n        self.config = {}\n        self.ml_engine = None\n        self.mt_engine = None",
+        "detail": "cli",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "kind": 6,
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "class StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for generating sequences from stock market data.\"\"\"\n    def __init__(self, features: list, targets: list, sequence_length: int = 60):\n        self.features = features\n        self.targets = targets\n        self.sequence_length = sequence_length\n    def __len__(self) -> int:\n        if isinstance(self.features, da.Array):\n            return self.features.shape[0]\n        return len(self.features)",
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "process_multiindex_data",
+        "kind": 2,
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"Stack ticker-specific DataFrames extracted from MultiIndex data.\"\"\"\n    all_data = []\n    for ticker in tickers:\n        if (ticker,) in data.columns:\n            df_ticker = data[ticker].copy()\n            df_ticker.columns = df_ticker.columns.str.lower()\n            df_ticker[\"ticker\"] = ticker\n            df_ticker.reset_index(inplace=True)\n            all_data.append(df_ticker)",
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "kind": 6,
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "peekOfCode": "class StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for generating sequences from stock market data with optimized memory usage.\"\"\"\n    def __init__(\n        self, \n        features: Union[List, np.ndarray, da.Array], \n        targets: Union[List, np.ndarray, da.Array], \n        sequence_length: int = 60,\n        device: Optional[torch.device] = None\n    ):\n        \"\"\"",
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "create_optimized_dataloader",
+        "kind": 2,
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "peekOfCode": "def create_optimized_dataloader(\n    dataset: Dataset, \n    batch_size: int, \n    shuffle: bool = True,\n    num_workers: int = None,\n    pin_memory: bool = None,\n    device: str = None,\n    prefetch_factor: int = 2,\n    persistent_workers: bool = None\n) -> DataLoader:",
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "process_multiindex_data",
+        "kind": 2,
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "peekOfCode": "def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Stack ticker-specific DataFrames extracted from MultiIndex data.\n    Args:\n        data: MultiIndex DataFrame with ticker as the first level\n        tickers: List of ticker symbols to extract\n    Returns:\n        Concatenated DataFrame with ticker-specific data\n    \"\"\"\n    all_data = []",
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "load_stock_data_efficient",
+        "kind": 2,
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "peekOfCode": "def load_stock_data_efficient(\n    tickers: List[str],\n    start_date: str,\n    end_date: str,\n    use_cache: bool = True,\n    features: List[str] = None,\n) -> pd.DataFrame:\n    \"\"\"\n    Load stock data efficiently with caching and parallel downloads.\n    Args:",
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
+        "kind": 2,
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "peekOfCode": "def prepare_sequences(\n    df: pd.DataFrame,\n    sequence_length: int = 60,\n    target_column: str = \"close\",\n    feature_columns: List[str] = None,\n    target_shift: int = 1,\n    scale_features: bool = True,\n    scale_target: bool = True,\n) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:\n    \"\"\"",
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# Define cache directory\nCACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", \"./cache\"))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for generating sequences from stock market data with optimized memory usage.\"\"\"\n    def __init__(\n        self, \n        features: Union[List, np.ndarray, da.Array], \n        targets: Union[List, np.ndarray, da.Array], ",
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "CACHE_DIR",
+        "kind": 5,
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "peekOfCode": "CACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", \"./cache\"))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for generating sequences from stock market data with optimized memory usage.\"\"\"\n    def __init__(\n        self, \n        features: Union[List, np.ndarray, da.Array], \n        targets: Union[List, np.ndarray, da.Array], \n        sequence_length: int = 60,\n        device: Optional[torch.device] = None",
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "generate_dashboard",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def generate_dashboard(\n    epoch: int,\n    total_epochs: int,\n    latency: int,\n    train_loss: float,\n    val_loss: float,\n    lr_delta: float,\n    api_logs: list,\n    config: Dict[str, Any],\n) -> Layout:",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "train_model",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def train_model(config_path: str, choose_csv: bool = False) -> None:\n    \"\"\"Run model training with live progress dashboard.\"\"\"\n    config = load_config(Path(config_path))\n    engine = EnhancedMLEngine(config)\n    # changed: create dummy training data as non-empty tensors\n    import torch\n    X_train_data = [torch.tensor([0.0])]  # dummy training data with one sample\n    y_train_data = [torch.tensor([0.0])]  # dummy target data with one sample\n    api_logs = [f\"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting training\"]\n    with Live(",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "evaluate_model",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def evaluate_model(config_path: str) -> None:\n    \"\"\"Run model evaluation with results dashboard.\"\"\"\n    config = load_config(Path(config_path))\n    engine = EnhancedMLEngine(config)\n    api_logs = [f\"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting evaluation\"]\n    # Provide placeholder values for generate_dashboard arguments\n    with Live(generate_dashboard(0, 10, 200, 0.0, 0.0, 0.0, api_logs, config)) as live:\n        metrics = engine.evaluate_model()\n        # Update dashboard with evaluation results\n        # ... dashboard updates ...",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "visualize_dashboard",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def visualize_dashboard(config_path: str) -> None:\n    \"\"\"Display dashboard visualizations using the visualizer module.\"\"\"\n    config = load_config(Path(config_path))\n    console.print(\"[bold blue]Launching visualizations...[/bold blue]\")\n    visualizer.display_dashboard(\n        config\n    )  # Assumes implementation exists in visualizer.py\ndef openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"\n    current_config = load_config(Path(config_path))  # Convert config_path to Path",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "openai_tune",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"\n    current_config = load_config(Path(config_path))  # Convert config_path to Path\n    # Gather current metrics from the engine\n    engine = EnhancedMLEngine(current_config)\n    train_loss = (\n        engine.train_losses[-1]\n        if hasattr(engine, \"train_losses\") and engine.train_losses\n        else None\n    )",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "predict_price",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def predict_price(config_path: str) -> None:\n    \"\"\"\n    Use ML engine to predict prices given a dataset.\n    \"\"\"\n    config = load_config(Path(config_path))\n    engine = EnhancedMLEngine(config)\n    prediction = engine.predict_price()\n    console.print(f\"[bold yellow]Predicted Price: {prediction}[/bold yellow]\")\ndef realtime_loop(config_path: str) -> None:\n    \"\"\"",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "realtime_loop",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def realtime_loop(config_path: str) -> None:\n    \"\"\"\n    Run the ML engine in a real-time loop for continuous inference.\n    \"\"\"\n    config = load_config(Path(config_path))\n    engine = EnhancedMLEngine(config)\n    engine.run_realtime_loop()\n    console.print(\"[bold yellow]Realtime Loop command executed[/bold yellow]\")\ndef tune_model(config_path: str) -> None:\n    \"\"\"",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "tune_model",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def tune_model(config_path: str) -> None:\n    \"\"\"\n    Perform advanced hyperparameter tuning using ML engine methods.\n    \"\"\"\n    config = load_config(Path(config_path))\n    engine = EnhancedMLEngine(config)\n    engine.tune_hyperparameters()\n    console.print(\"[bold yellow]Tune Model command executed[/bold yellow]\")\ndef profile_pipeline(config_path: str) -> None:\n    \"\"\"",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "profile_pipeline",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def profile_pipeline(config_path: str) -> None:\n    \"\"\"\n    Profile the ML pipeline for bottlenecks.\n    \"\"\"\n    config = load_config(Path(config_path))\n    engine = EnhancedMLEngine(config)\n    engine.profile_pipeline()\n    console.print(\"[bold yellow]Profile Pipeline command executed[/bold yellow]\")\ndef run_ai_assistant(config_path: str) -> None:\n    config = load_config(config_path)  # removed Path() wrapper for proper string input",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "run_ai_assistant",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def run_ai_assistant(config_path: str) -> None:\n    config = load_config(config_path)  # removed Path() wrapper for proper string input\n    # Instantiate the AI assistant using the class from ml_engine\n    assistant_instance = ai_assistant(config)\n    console.print(\"[bold blue]Launching AI Assistant...[/bold blue]\")\n    query = input(\"Enter your query: \")\n    response = assistant_instance.process_query(query, use_claude=True)\n    console.print(f\"[bold green]Response:[/bold green] {response}\")\n    # Optionally use ML Engine's AI assistant for simulation tasks\n    engine_instance = EnhancedMLEngine(config)",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def main() -> None:\n    \"\"\"Main CLI entry point.\"\"\"\n    parser = argparse.ArgumentParser(description=\"ML Engine Trading Bot CLI\")\n    parser.add_argument(\n        \"command\",\n        choices=[\n            \"train-model\",\n            \"evaluate-model\",\n            \"predict-price\",\n            \"realtime-loop\",",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "console",
+        "kind": 5,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "console = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(\n    epoch: int,\n    total_epochs: int,\n    latency: int,",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "logger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(\n    epoch: int,\n    total_epochs: int,\n    latency: int,\n    train_loss: float,",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "config",
+        "kind": 5,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "config = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(\n    epoch: int,\n    total_epochs: int,\n    latency: int,\n    train_loss: float,\n    val_loss: float,\n    lr_delta: float,",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "MemoryManager",
+        "kind": 6,
+        "importPath": "memory_manager",
+        "description": "memory_manager",
+        "peekOfCode": "class MemoryManager:\n    \"\"\"\n    Enhanced memory manager for both CPU and GPU operations with intelligent caching,\n    proactive memory management, and tensor optimization.\n    \"\"\"\n    def __init__(\n        self, \n        device: str = None, \n        threshold_mb: int = 1000, \n        log_level: str = \"INFO\",",
+        "detail": "memory_manager",
+        "documentation": {}
+    },
+    {
+        "label": "memory_efficient",
+        "kind": 2,
+        "importPath": "memory_manager",
+        "description": "memory_manager",
+        "peekOfCode": "def memory_efficient(threshold_mb: int = 1000, device: Optional[str] = None, proactive: bool = True):\n    \"\"\"\n    Decorator for memory-efficient function execution.\n    Args:\n        threshold_mb: Memory threshold to trigger cleanup\n        device: Target device or None for auto-detection\n        proactive: Whether to use proactive memory management\n    Returns:\n        Decorated function\n    \"\"\"",
+        "detail": "memory_manager",
+        "documentation": {}
+    },
+    {
+        "label": "mixed_precision_context",
+        "kind": 2,
+        "importPath": "memory_manager",
+        "description": "memory_manager",
+        "peekOfCode": "def mixed_precision_context(enabled: bool = True):\n    \"\"\"\n    Context manager for mixed precision training.\n    Args:\n        enabled: Whether to enable mixed precision\n    Returns:\n        Context manager for mixed precision\n    \"\"\"\n    if enabled and torch.cuda.is_available():\n        return torch.cuda.amp.autocast()",
+        "detail": "memory_manager",
+        "documentation": {}
+    },
+    {
+        "label": "optimize_for_inference",
+        "kind": 2,
+        "importPath": "memory_manager",
+        "description": "memory_manager",
+        "peekOfCode": "def optimize_for_inference(model: torch.nn.Module) -> torch.nn.Module:\n    \"\"\"\n    Optimize a model for inference by fusing operations and setting eval mode.\n    Args:\n        model: PyTorch model\n    Returns:\n        Optimized model\n    \"\"\"\n    # Set model to evaluation mode\n    model.eval()",
+        "detail": "memory_manager",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "memory_manager",
+        "description": "memory_manager",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass MemoryManager:\n    \"\"\"\n    Enhanced memory manager for both CPU and GPU operations with intelligent caching,\n    proactive memory management, and tensor optimization.\n    \"\"\"\n    def __init__(\n        self, \n        device: str = None, \n        threshold_mb: int = 1000, ",
+        "detail": "memory_manager",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "kind": 6,
+        "importPath": "ml_engine",
+        "description": "ml_engine",
+        "peekOfCode": "class EnhancedMLEngine:\n    \"\"\"\n    Enhanced ML Engine for stock market prediction with optimized CPU/GPU performance.\n    Features:\n    - Automatic mixed precision training\n    - Dynamic batch sizing\n    - Memory-efficient operations\n    - Gradient accumulation\n    - Advanced learning rate scheduling\n    - Model architecture selection",
+        "detail": "ml_engine",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "ml_engine",
+        "description": "ml_engine",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass EnhancedMLEngine:\n    \"\"\"\n    Enhanced ML Engine for stock market prediction with optimized CPU/GPU performance.\n    Features:\n    - Automatic mixed precision training\n    - Dynamic batch sizing\n    - Memory-efficient operations\n    - Gradient accumulation\n    - Advanced learning rate scheduling",
+        "detail": "ml_engine",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictor",
+        "kind": 6,
+        "importPath": "models",
+        "description": "models",
+        "peekOfCode": "class StockPredictor(nn.Module):\n    \"\"\"LSTM-based predictor with residual connections and optimized performance.\n    Accepts an input sequence (e.g., technical indicators) and predicts\n    the next closing price.\n    \"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 3,",
+        "detail": "models",
+        "documentation": {}
+    },
+    {
+        "label": "AttentiveLSTM",
+        "kind": 6,
+        "importPath": "models",
+        "description": "models",
+        "peekOfCode": "class AttentiveLSTM(nn.Module):\n    \"\"\"LSTM with optimized multi-head self-attention for enhanced sequence modeling.\"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 3,\n        num_heads: int = 4,\n        dropout: float = 0.2,\n        bidirectional: bool = False,",
+        "detail": "models",
+        "documentation": {}
+    },
+    {
+        "label": "GRUPredictor",
+        "kind": 6,
+        "importPath": "models",
+        "description": "models",
+        "peekOfCode": "class GRUPredictor(nn.Module):\n    \"\"\"Optimized GRU-based predictor with enhanced performance.\n    Accepts an input sequence and predicts the next closing price using a\n    GRU network with improved architecture.\n    \"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 2,",
+        "detail": "models",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerPredictor",
+        "kind": 6,
+        "importPath": "models",
+        "description": "models",
+        "peekOfCode": "class TransformerPredictor(nn.Module):\n    \"\"\"Optimized Transformer-based predictor for sequential data.\"\"\"\n    def __init__(\n        self, \n        input_size: int, \n        hidden_size: int, \n        num_layers: int, \n        dropout: float,\n        num_heads: int = 8,\n        use_flash_attention: bool = True,",
+        "detail": "models",
+        "documentation": {}
+    },
+    {
+        "label": "ActivationType",
+        "kind": 6,
+        "importPath": "mr_engine",
+        "description": "mr_engine",
+        "peekOfCode": "class ActivationType(Enum):\n    RELU = \"relu\"\n    GELU = \"gelu\"\n    SELU = \"selu\"\n    TANH = \"tanh\"\nclass MREngine(nn.Module):\n    \"\"\"\n    MREngine: Multi-branch regression model for price prediction, explanation, and risk estimation.\n    This model uses a bidirectional LSTM to encode sequential market data, an attention mechanism\n    (optionally multi-head) to weigh timesteps, and separate fully-connected heads for predicting",
+        "detail": "mr_engine",
+        "documentation": {}
+    },
+    {
+        "label": "MREngine",
+        "kind": 6,
+        "importPath": "mr_engine",
+        "description": "mr_engine",
+        "peekOfCode": "class MREngine(nn.Module):\n    \"\"\"\n    MREngine: Multi-branch regression model for price prediction, explanation, and risk estimation.\n    This model uses a bidirectional LSTM to encode sequential market data, an attention mechanism\n    (optionally multi-head) to weigh timesteps, and separate fully-connected heads for predicting\n    price (regression), explanation factors, and risk/volatility.\n    \"\"\"\n    def __init__(\n        self,\n        input_size: int = 11,",
+        "detail": "mr_engine",
+        "documentation": {}
+    },
+    {
+        "label": "ActivationType",
+        "kind": 6,
+        "importPath": "mt_engine",
+        "description": "mt_engine",
+        "peekOfCode": "class ActivationType(Enum):\n    RELU = \"relu\"\n    GELU = \"gelu\"\n    SELU = \"selu\"\n    TANH = \"tanh\"\nclass MultiTaskModel(nn.Module):\n    def __init__(\n        self,\n        input_size: int = 11,\n        hidden_size: int = 128,",
+        "detail": "mt_engine",
+        "documentation": {}
+    },
+    {
+        "label": "MultiTaskModel",
+        "kind": 6,
+        "importPath": "mt_engine",
+        "description": "mt_engine",
+        "peekOfCode": "class MultiTaskModel(nn.Module):\n    def __init__(\n        self,\n        input_size: int = 11,\n        hidden_size: int = 128,\n        num_layers: int = 3,\n        dropout: float = 0.2,\n        explanation_dim: int = 3,\n        activation: Union[str, ActivationType] = ActivationType.RELU,\n    ):",
+        "detail": "mt_engine",
+        "documentation": {}
+    },
+    {
+        "label": "NeuralNetworkIntegrator",
+        "kind": 6,
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "peekOfCode": "class NeuralNetworkIntegrator:\n    \"\"\"\n    Neural Network Integrator for connecting ML (Machine Learning), MT (Market Trends),\n    and MR (Market Reasoning) engines with the reasoning head for synchronized predictions.\n    \"\"\"\n    def __init__(self, config: Dict[str, Any] = None):\n        \"\"\"\n        Initialize the Neural Network Integrator.\n        Args:\n            config: Configuration dictionary",
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "BasicIntegrationModel",
+        "kind": 6,
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "peekOfCode": "class BasicIntegrationModel(nn.Module):\n    \"\"\"Basic neural network for integrating predictions from multiple engines.\"\"\"\n    def __init__(self, input_dim: int, hidden_dim: int, dropout: float = 0.2):\n        \"\"\"\n        Initialize the basic integration model.\n        Args:\n            input_dim: Input dimension\n            hidden_dim: Hidden dimension\n            dropout: Dropout rate\n        \"\"\"",
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "AttentionIntegrationModel",
+        "kind": 6,
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "peekOfCode": "class AttentionIntegrationModel(nn.Module):\n    \"\"\"Attention-based neural network for integrating predictions from multiple engines.\"\"\"\n    def __init__(self, input_dim: int, hidden_dim: int, num_heads: int = 4, dropout: float = 0.2):\n        \"\"\"\n        Initialize the attention integration model.\n        Args:\n            input_dim: Input dimension\n            hidden_dim: Hidden dimension\n            num_heads: Number of attention heads\n            dropout: Dropout rate",
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "neural_network_integrator",
+        "description": "neural_network_integrator",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass NeuralNetworkIntegrator:\n    \"\"\"\n    Neural Network Integrator for connecting ML (Machine Learning), MT (Market Trends),\n    and MR (Market Reasoning) engines with the reasoning head for synchronized predictions.\n    \"\"\"\n    def __init__(self, config: Dict[str, Any] = None):\n        \"\"\"\n        Initialize the Neural Network Integrator.\n        Args:",
+        "detail": "neural_network_integrator",
+        "documentation": {}
+    },
+    {
+        "label": "set_openai_credentials",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def set_openai_credentials(config: dict) -> None:\n    \"\"\"Set OpenAI credentials from config or environment variables.\"\"\"\n    openai.api_key = config.get(\"OPENAI_API_KEY\") or os.getenv(\"OPENAI_API_KEY\")\n    if not openai.api_key:\n        logging.error(\"OpenAI API key not found in configuration or .env\")\n        raise ValueError(\"Missing OpenAI API key\")\nclient = openai\ndef query_openai(prompt, model=\"gpt-4\", temperature=0.2, max_attempts=3):\n    \"\"\"General-purpose function to query the OpenAI API.\"\"\"\n    if not openai.api_key:",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "query_openai",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def query_openai(prompt, model=\"gpt-4\", temperature=0.2, max_attempts=3):\n    \"\"\"General-purpose function to query the OpenAI API.\"\"\"\n    if not openai.api_key:\n        logging.error(\"OPENAI_API_KEY not set.\")\n        return None\n    attempts = 0\n    while attempts < max_attempts:\n        try:\n            response = client.chat.completions.create(\n                model=model,",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "query_for_learning_rate",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def query_for_learning_rate(metrics, model=\"gpt-4\", temperature=0.2):\n    \"\"\"Query OpenAI to suggest a new learning rate.\"\"\"\n    prompt = (\n        \"You are a production-level ML optimizer. \"\n        \"I am training a model on a CPU-only machine with 6 cores \"\n        \"and 16GB RAM.\\n\"\n        f\"Here are the current training metrics in JSON format:\\n\"\n        f\"{json.dumps(metrics, indent=2)}\\n\\n\"\n        \"Based on these metrics, please suggest a new learning rate \"\n        \"in valid JSON format, for example: \"",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "query_for_explanation",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def query_for_explanation(explanation_features, model=\"gpt-4\", temperature=0.2):\n    \"\"\"Query OpenAI to generate a concise textual explanation.\"\"\"\n    prompt = (\n        \"You are a financial analyst. Based on the following \"\n        \"explanation features extracted from a model's output, \"\n        \"generate a concise explanation of why the stock might be \"\n        \"moving up or down.\\n\"\n        f\"Explanation features: {json.dumps(explanation_features, indent=2)}\\n\"\n        \"Return only a plain text explanation.\"\n    )",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "query_for_loss_function_adjustment",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def query_for_loss_function_adjustment(\n    metrics, current_loss_functions, model=\"gpt-4\", temperature=0.2\n):\n    \"\"\"Query OpenAI for suggestions on adjusting loss functions.\"\"\"\n    prompt = (\n        \"You are a production-level ML optimizer. \"\n        \"I am training a multi-task model for financial forecasting \"\n        \"and risk management.\\n\"\n        f\"Metrics: {json.dumps(metrics, indent=2)}\\n\"\n        f\"Current Loss Functions: {json.dumps(current_loss_functions, indent=2)}\\n\\n\"",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "query_for_data_handling_adjustment",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def query_for_data_handling_adjustment(\n    metrics, data_characteristics, model=\"gpt-4\", temperature=0.2\n):\n    \"\"\"Query OpenAI for recommendations on improving data handling.\"\"\"\n    prompt = (\n        \"You are a production-level ML optimizer. \"\n        \"I am training a multi-task model for financial forecasting \"\n        \"and risk management.\\n\"\n        f\"Metrics: {json.dumps(metrics, indent=2)}\\n\"\n        f\"Data Characteristics: {json.dumps(data_characteristics, indent=2)}\\n\\n\"",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "query_for_model_architecture_adjustment",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def query_for_model_architecture_adjustment(\n    metrics, current_architecture, model=\"gpt-4\", temperature=0.2\n):\n    \"\"\"Query OpenAI for suggestions on adjusting the model architecture.\"\"\"\n    prompt = (\n        \"You are a production-level ML optimizer. \"\n        \"I am training a multi-task model for financial forecasting \"\n        \"and risk management.\\n\"\n        f\"Metrics: {json.dumps(metrics, indent=2)}\\n\"\n        f\"Current Architecture: {json.dumps(current_architecture, indent=2)}\\n\\n\"",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "query_for_auto_configuration",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def query_for_auto_configuration(metrics, current_config):\n    \"\"\"Query GPT for configuration updates.\"\"\"\n    prompt = (\n        \"Given the current training metrics:\\n\"\n        f\"{metrics}\\n\"\n        \"and the current configuration:\\n\"\n        f\"{current_config}\\n\"\n        \"Provide ONLY valid YAML configuration changes to improve \"\n        \"model performance. \"\n        \"Ensure the response is ONLY YAML and nothing else \"",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "report_config_changes",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def report_config_changes(current_config, config_updates):\n    \"\"\"Merge config with updates and write to config.yaml.\"\"\"\n    import yaml\n    updated_config = current_config.copy()\n    for key, value in config_updates.items():\n        if key not in updated_config:\n            logging.info(f\"[OpenAI Update] New config key '{key}' added: {value}\")\n        else:\n            old_val = updated_config[key]\n            if old_val != value:",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "autotune_configurations",
+        "kind": 2,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "def autotune_configurations(config: dict) -> dict:\n    \"\"\"Use optuna to autotune ML engine configurations.\"\"\"\n    def objective(trial: optuna.trial.Trial) -> float:\n        lr = trial.suggest_loguniform(\"learning_rate\", 1e-5, 1e-2)\n        score = (lr - 0.001) ** 2\n        return score\n    study = optuna.create_study(direction=\"minimize\")\n    study.optimize(objective, n_trials=10)\n    tuned_params = study.best_params\n    if \"model\" not in config:",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "openai.api_key",
+        "kind": 5,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "openai.api_key = os.getenv(\"OPENAI_API_KEY\")\nproject_id = os.getenv(\"OPENAI_PROJECT_ID\")\ndef set_openai_credentials(config: dict) -> None:\n    \"\"\"Set OpenAI credentials from config or environment variables.\"\"\"\n    openai.api_key = config.get(\"OPENAI_API_KEY\") or os.getenv(\"OPENAI_API_KEY\")\n    if not openai.api_key:\n        logging.error(\"OpenAI API key not found in configuration or .env\")\n        raise ValueError(\"Missing OpenAI API key\")\nclient = openai\ndef query_openai(prompt, model=\"gpt-4\", temperature=0.2, max_attempts=3):",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "project_id",
+        "kind": 5,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "project_id = os.getenv(\"OPENAI_PROJECT_ID\")\ndef set_openai_credentials(config: dict) -> None:\n    \"\"\"Set OpenAI credentials from config or environment variables.\"\"\"\n    openai.api_key = config.get(\"OPENAI_API_KEY\") or os.getenv(\"OPENAI_API_KEY\")\n    if not openai.api_key:\n        logging.error(\"OpenAI API key not found in configuration or .env\")\n        raise ValueError(\"Missing OpenAI API key\")\nclient = openai\ndef query_openai(prompt, model=\"gpt-4\", temperature=0.2, max_attempts=3):\n    \"\"\"General-purpose function to query the OpenAI API.\"\"\"",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "client",
+        "kind": 5,
+        "importPath": "openai_integration",
+        "description": "openai_integration",
+        "peekOfCode": "client = openai\ndef query_openai(prompt, model=\"gpt-4\", temperature=0.2, max_attempts=3):\n    \"\"\"General-purpose function to query the OpenAI API.\"\"\"\n    if not openai.api_key:\n        logging.error(\"OPENAI_API_KEY not set.\")\n        return None\n    attempts = 0\n    while attempts < max_attempts:\n        try:\n            response = client.chat.completions.create(",
+        "detail": "openai_integration",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "kind": 6,
+        "importPath": "reasoning",
+        "description": "reasoning",
+        "peekOfCode": "class ReasoningEngine:\n    \"\"\"\n    Enhanced reasoning engine for stock market prediction with improved explainability,\n    uncertainty quantification, and decision support.\n    \"\"\"\n    def __init__(self, config: Dict[str, Any] = None):\n        \"\"\"\n        Initialize the reasoning engine.\n        Args:\n            config: Configuration dictionary",
+        "detail": "reasoning",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "reasoning",
+        "description": "reasoning",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ReasoningEngine:\n    \"\"\"\n    Enhanced reasoning engine for stock market prediction with improved explainability,\n    uncertainty quantification, and decision support.\n    \"\"\"\n    def __init__(self, config: Dict[str, Any] = None):\n        \"\"\"\n        Initialize the reasoning engine.\n        Args:",
+        "detail": "reasoning",
+        "documentation": {}
+    },
+    {
+        "label": "TradingEnv",
+        "kind": 6,
+        "importPath": "trading_env",
+        "description": "trading_env",
+        "peekOfCode": "class TradingEnv(gym.Env):\n    \"\"\"\n    A trading environment for reinforcement learning.\n    Observation:\n      - A window of close prices (length = engine.sequence_length).\n    Action space:\n      - Discrete(3): 0 = hold, 1 = buy, 2 = sell.\n    Reward:\n      - Custom reward based on trade sequences.\n    \"\"\"",
+        "detail": "trading_env",
+        "documentation": {}
+    },
+    {
+        "label": "train_rl_agent",
+        "kind": 2,
+        "importPath": "trading_env",
+        "description": "trading_env",
+        "peekOfCode": "def train_rl_agent(engine, data: pd.DataFrame):\n    \"\"\"Train a reinforcement learning agent using PPO on the trading environment.\"\"\"\n    env = TradingEnv(engine, data)\n    model = PPO(\"MlpPolicy\", env, verbose=1)\n    model.learn(total_timesteps=10000)\n    return model",
+        "detail": "trading_env",
+        "documentation": {}
+    },
+    {
+        "label": "cache",
+        "kind": 2,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "def cache(func):\n    return memory.cache(func)\ndef timer(func):\n    \"\"\"Print the runtime of the decorated function\"\"\"\n    @functools.wraps(func)\n    def wrapper_timer(*args, **kwargs):\n        start_time = time.time()  # 1. Record start time\n        value = func(*args, **kwargs)\n        end_time = time.time()  # 2. Record end time\n        run_time = end_time - start_time  # 3. Calculate the execution time",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "timer",
+        "kind": 2,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "def timer(func):\n    \"\"\"Print the runtime of the decorated function\"\"\"\n    @functools.wraps(func)\n    def wrapper_timer(*args, **kwargs):\n        start_time = time.time()  # 1. Record start time\n        value = func(*args, **kwargs)\n        end_time = time.time()  # 2. Record end time\n        run_time = end_time - start_time  # 3. Calculate the execution time\n        logging.info(f\"Function {func.__name__!r} took {run_time:.4f} secs\")\n        return value",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "setup_logging",
+        "kind": 2,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "def setup_logging(\n    log_file=None,\n    level=logging.INFO,\n    enable_logging=True,\n    enable_wandb_logging=True,\n    enable_checkpointing_logging=True,\n    enable_tensorboard_logging=True,\n):\n    logger = logging.getLogger()\n    logger.setLevel(level)",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "load_config",
+        "kind": 2,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "def load_config(config_path: str) -> Dict[str, Any]:\n    \"\"\"Load configuration from a YAML file.\"\"\"\n    try:\n        with open(config_path, \"r\") as f:\n            config = yaml.safe_load(f)\n        return config\n    except FileNotFoundError:\n        logging.error(f\"Configuration file not found: {config_path}\")\n        raise\n    except yaml.YAMLError as e:",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "merge_config",
+        "kind": 2,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "def merge_config(user_config, default_config):\n    def recursive_merge(default, override):\n        for key, value in override.items():\n            if (\n                key in default\n                and isinstance(default[key], dict)\n                and isinstance(value, dict)\n            ):\n                default[key] = recursive_merge(default[key], value)\n            else:",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "get_config",
+        "kind": 2,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "def get_config(config_path=\"config.yaml\", default_config=None):\n    user_config = load_config(config_path)\n    if default_config is not None:\n        return merge_config(user_config, default_config)\n    return user_config\nif __name__ == \"__main__\":\n    logger = setup_logging(log_file=\"app.log\")\n    logger.info(\"Logging is configured.\")\n    default_cfg = {\n        \"device\": \"cpu\",",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "cache_dir",
+        "kind": 5,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "cache_dir = Path(\"./cache\")\ncache_dir.mkdir(exist_ok=True)\nmemory = Memory(location=str(cache_dir), verbose=0)\ncache = memory.cache\nCACHE_DIR = Path(__file__).parent / \"cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nmemory = Memory(location=str(CACHE_DIR), verbose=0)\ndef cache(func):\n    return memory.cache(func)\ndef timer(func):",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "memory",
+        "kind": 5,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "memory = Memory(location=str(cache_dir), verbose=0)\ncache = memory.cache\nCACHE_DIR = Path(__file__).parent / \"cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nmemory = Memory(location=str(CACHE_DIR), verbose=0)\ndef cache(func):\n    return memory.cache(func)\ndef timer(func):\n    \"\"\"Print the runtime of the decorated function\"\"\"\n    @functools.wraps(func)",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "cache",
+        "kind": 5,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "cache = memory.cache\nCACHE_DIR = Path(__file__).parent / \"cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nmemory = Memory(location=str(CACHE_DIR), verbose=0)\ndef cache(func):\n    return memory.cache(func)\ndef timer(func):\n    \"\"\"Print the runtime of the decorated function\"\"\"\n    @functools.wraps(func)\n    def wrapper_timer(*args, **kwargs):",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "CACHE_DIR",
+        "kind": 5,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "CACHE_DIR = Path(__file__).parent / \"cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nmemory = Memory(location=str(CACHE_DIR), verbose=0)\ndef cache(func):\n    return memory.cache(func)\ndef timer(func):\n    \"\"\"Print the runtime of the decorated function\"\"\"\n    @functools.wraps(func)\n    def wrapper_timer(*args, **kwargs):\n        start_time = time.time()  # 1. Record start time",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "memory",
+        "kind": 5,
+        "importPath": "utils",
+        "description": "utils",
+        "peekOfCode": "memory = Memory(location=str(CACHE_DIR), verbose=0)\ndef cache(func):\n    return memory.cache(func)\ndef timer(func):\n    \"\"\"Print the runtime of the decorated function\"\"\"\n    @functools.wraps(func)\n    def wrapper_timer(*args, **kwargs):\n        start_time = time.time()  # 1. Record start time\n        value = func(*args, **kwargs)\n        end_time = time.time()  # 2. Record end time",
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "MLVisualizer",
+        "kind": 6,
+        "importPath": "visualizer",
+        "description": "visualizer",
+        "peekOfCode": "class MLVisualizer:\n    def __init__(self, ml_engine, config_path=\"config.yaml\"):\n        self.ml_engine = ml_engine\n        self.paused = False  # For pausing/resuming animation\n        self.data_queue = collections.deque(\n            maxlen=100\n        )  # Store the last 100 data points\n        self.window_size = 20  # Rolling window size for statistics\n        self.config_path = config_path  # Store the path to the config file\n        self.config = self.load_config()  # Load the configuration",
+        "detail": "visualizer",
+        "documentation": {}
+    },
+    {
+        "label": "start_visualization",
+        "kind": 2,
+        "importPath": "visualizer",
+        "description": "visualizer",
+        "peekOfCode": "def start_visualization(ml_engine):\n    \"\"\"\n    Launch a real-time visualization window that displays ML engine metrics.\n    This window shows training loss, learning rate, predictions vs. actual values,\n    error distribution, and performance metrics. Interactive commands:\n      - Press 'p' to pause/resume.\n      - Press 'r' to trigger online retraining.\n    \"\"\"\n    visualizer = MLVisualizer(ml_engine)\n    # Create the animation without blitting for robust subplot updates.",
+        "detail": "visualizer",
+        "documentation": {}
+    }
+]

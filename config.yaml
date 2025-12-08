@@ -1,0 +1,195 @@
+CACHE_DIR: ./trained_data/cache
+DATA_DIR: ./trained_data/data
+LOG_DIR: ./trained_data/logs
+MODEL_DIR: ./trained_data/models
+SANDBOX_DIR: ./sandbox
+VIZ_DIR: ./trained_data/visualizations
+amsgrad: true
+apply_augmentation: true
+architecture: attention_lstm
+attention_dropout: 0.3
+augmentation_methods:
+  - 4
+auto_tune: true
+batch_size: 512
+beta_1: 0.9
+beta_2: 0.999
+clip_grad_norm_type: inf
+clip_grad_value: 1.0
+clip_norm_type: inf
+clip_value: 1.0
+data:
+  cache_dir: cache
+  data_dir: market_data/
+  required_features:
+    - open
+    - high
+    - low
+    - close
+    - volume
+  sequence_length: 60
+data_dir: trained_data/data
+device: cpu
+distributed_training: false
+dropout: 0.3
+early_stopping_patience: 50
+enable_ai_interaction: true
+enable_amp: true
+enable_autotune: true
+enable_autotune_logging: true
+enable_callbacks: true
+enable_checkpointing: true
+enable_checkpointing_logging: true
+enable_compile: false
+enable_data_scaling: true
+enable_distributed_training: false
+enable_early_stopping: true
+enable_logging: true
+enable_mixed_precision: true
+enable_profiler: false
+enable_profiler_logging: false
+enable_save_model: true
+enable_tensorboard: true
+enable_tensorboard_logging: false
+enable_visualizations: true
+enable_wandb: true
+enable_wandb_logging: false
+ensemble_size: 2
+epochs: 200
+epsilon: 1e-08
+grad_clip_norm: 1.0
+hardware:
+  num_workers: 16
+  pin_memory: true
+  torch_num_threads: 16
+hidden_size: 64
+huber_delta: 1.0
+input_features: 7
+learning_rate: 0.0005
+learning_rate_scheduler: cosine
+log_file: my_app.log
+logging:
+  level: INFO
+loss_alpha: 0.2
+loss_beta: 0.5
+loss_chi: 0.5
+loss_delta: 0.5
+loss_epsilon: 0.5
+loss_eta: 0.5
+loss_gamma: 0.5
+loss_iota: 0.5
+loss_kappa: 0.5
+loss_lambda: 0.5
+loss_mu: 0.5
+loss_nu: 0.5
+loss_omega: 0.5
+loss_omicron: 0.5
+loss_phi: 0.5
+loss_pi: 0.5
+loss_psi: 0.5
+loss_rho: 0.5
+loss_sigma: 0.5
+loss_tau: 0.5
+loss_theta: 0.5
+loss_type: mse
+loss_upsilon: 0.5
+loss_xi: 0.5
+loss_zeta: 0.5
+lstm_dropout: 0.3
+max_grad_norm: 1.0
+max_lr: 1e-3
+min_delta: 0.001
+min_lr: 1e-6
+model:
+  architecture: attention_lstm
+  hidden_size: 2048
+  num_layers: 8
+  optimizer:
+    weight_decay: 0.0001
+monitoring:
+  cpu_memory_threshold: 85
+  enable_memory_monitoring: true
+  log_memory_usage: true
+  memory_check_interval: 60
+multitask_loss_alpha: 0.2
+multitask_loss_type: mse
+multitask_loss_weights:
+  - 0.6
+  - 0.4
+normalize_features: true
+num_layers: 2
+num_workers: 16
+online_update_frequency: 1
+openai_api_model: gpt-4o
+openai_autotune_interval: 35
+optimizer: adam
+paths:
+  checkpoint_dir: trained_data/models/checkpoints
+  data_dir: trained_data/data
+  log_dir: trained_data/logs
+  model_dir: trained_data/models
+  viz_dir: trained_data/visualizations
+patience: 10
+performance:
+  max_mse: 0.05
+  min_accuracy: 0.7
+  min_r2_score: 0.7
+pin_memory: true
+probabilistic_forecasting: true
+retrain_ticker:
+  - ORCL
+  - MSFT
+  - NVDA
+  - RIOT
+  - AAPL
+  - TSLA
+  - GOOGL
+  - AMZN
+  - FB
+  - NFLX
+risk_management:
+  base_position_fraction: 0.02
+  max_confidence: 1.0
+  min_confidence: 0.5
+sequence_length: 120
+standardize_features: false
+tcn_dilations: 2
+tcn_kernel_size: 3
+torch_num_threads: 16
+training:
+  early_stopping_patience: 15
+  epochs: 200
+transformer_attention_type: scaled_dot
+transformer_feedforward_dim: 6-core
+transformer_num_heads: 6
+transformer_num_layers: 4
+use_amp: true
+use_attention: true
+use_autotune: true
+use_autotune_logging: true
+use_callbacks: true
+use_checkpointing: true
+use_checkpointing_logging: true
+use_compile: false
+use_data_scaling: true
+use_distributed_training: false
+use_early_stopping: true
+use_ensemble: true
+use_huber_loss: true
+use_logging: true
+use_mixed_precision: true
+use_multitask: true
+use_profiler: false
+use_profiler_logging: false
+use_residual: true
+use_save_model: true
+use_tensorboard: true
+use_tensorboard_logging: true
+use_visualizations: true
+use_wandb: true
+use_wandb_logging: true
+validation_split: 0.1
+visualization:
+  update_interval: 500
+warmup_steps: 1000
+weight_decay: 0.0
