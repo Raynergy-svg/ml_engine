@@ -1,13 +1,24 @@
 """
 Optimized model implementations with enhanced CPU and GPU performance.
 Includes improved attention mechanisms, memory efficiency, and numerical stability.
+
+Key improvements:
+- Enhanced weight initialization for faster convergence
+- Better numerical stability with layer normalization
+- Improved attention mechanisms with flash attention support
+- Residual connections for better gradient flow
+- Robust error handling and validation
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+import logging
 from typing import Tuple, Optional, Union, List
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 class StockPredictor(nn.Module):
@@ -27,6 +38,20 @@ class StockPredictor(nn.Module):
         use_layer_norm: bool = True,
     ):
         super(StockPredictor, self).__init__()
+        
+        # Validate inputs
+        if input_size <= 0:
+            raise ValueError(f"input_size must be positive, got {input_size}")
+        if hidden_size <= 0:
+            raise ValueError(f"hidden_size must be positive, got {hidden_size}")
+        if num_layers <= 0:
+            raise ValueError(f"num_layers must be positive, got {num_layers}")
+        if not 0 <= dropout < 1:
+            raise ValueError(f"dropout must be in [0, 1), got {dropout}")
+        
+        logger.info(f"Initializing StockPredictor: input_size={input_size}, "
+                   f"hidden_size={hidden_size}, num_layers={num_layers}, "
+                   f"dropout={dropout}, bidirectional={bidirectional}")
         
         # Calculate output size based on bidirectional setting
         lstm_output_size = hidden_size * 2 if bidirectional else hidden_size
