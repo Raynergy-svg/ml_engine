@@ -37,6 +37,10 @@ from utils import setup_logging, load_config
 import visualizer
 import openai_integration
 
+# Constants
+DEFAULT_MESSAGE_FORMAT = "Epoch {epoch} completed"
+TIMESTAMP_FORMAT = "%H:%M:%S"
+
 # Initialize console and logging
 console = Console()
 logger = setup_logging(log_file="cli.log")
@@ -180,9 +184,9 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
                     X_train_data, y_train_data
                 ):  # changed: using dummy data lists
                     # Update dashboard with training progress
-                    message = metrics.get('message', f'Epoch {epoch} completed')
+                    message = metrics.get('message', DEFAULT_MESSAGE_FORMAT.format(epoch=epoch))
                     api_logs.append(
-                        f"[grey]{time.strftime('%H:%M:%S')}[/grey] {message}"
+                        f"[grey]{time.strftime(TIMESTAMP_FORMAT)}[/grey] {message}"
                     )
                     if len(api_logs) > 10:
                         api_logs = api_logs[-10:]

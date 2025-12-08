@@ -10,12 +10,13 @@ Key improvements:
 - Robust error handling and validation
 """
 
+import logging
+import math
+from typing import Tuple, Optional, Union, List
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-import logging
-from typing import Tuple, Optional, Union, List
 
 # Configure logger
 logger = logging.getLogger(__name__)

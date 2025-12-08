@@ -1,13 +1,21 @@
 """Data processing and dataset utilities with improved error handling and validation"""
 
+import logging
 from functools import lru_cache
-import pandas as pd
+from pathlib import Path
+from typing import List, Tuple, Optional, Union
+
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import Dataset
-import logging
-from typing import List, Tuple, Optional, Union
-from pathlib import Path
+
+# Optional sklearn import for normalization features
+try:
+    from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -185,8 +193,14 @@ def normalize_features(data: pd.DataFrame, columns: List[str],
         
     Returns:
         Tuple of (normalized_data, normalization_params)
+        
+    Raises:
+        ImportError: If scikit-learn is not installed
+        ValueError: If method is not recognized
     """
-    from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+    if not SKLEARN_AVAILABLE:
+        raise ImportError("scikit-learn is required for normalization. "
+                         "Install with: pip install scikit-learn")
     
     if method == 'standard':
         scaler = StandardScaler()
