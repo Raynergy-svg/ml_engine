@@ -49,12 +49,31 @@ def setup_logging(
     enable_checkpointing_logging=True,
     enable_tensorboard_logging=True,
 ):
+    """
+    Setup comprehensive logging configuration for the ML engine.
+    
+    Args:
+        log_file: Path to main log file (optional)
+        level: Logging level (default: INFO)
+        enable_logging: Enable console logging
+        enable_wandb_logging: Enable Weights & Biases logging
+        enable_checkpointing_logging: Enable checkpoint logging
+        enable_tensorboard_logging: Enable TensorBoard logging
+        
+    Returns:
+        Configured logger instance
+    """
     logger = logging.getLogger()
     logger.setLevel(level)
+    
+    # Clear existing handlers to avoid duplicates
     if logger.handlers:
         logger.handlers.clear()
+    
+    # Enhanced formatter with more context
     formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
     )
     if enable_logging:
         ch = logging.StreamHandler()
@@ -90,19 +109,53 @@ def setup_logging(
 
 @lru_cache(maxsize=1)
 def load_config(config_path: str) -> Dict[str, Any]:
-    """Load configuration from a YAML file."""
+    """Load configuration from a YAML file with validation.
+    
+    Args:
+        config_path: Path to YAML configuration file
+        
+    Returns:
+        Dictionary containing configuration
+        
+    Raises:
+        FileNotFoundError: If config file doesn't exist
+        yaml.YAMLError: If YAML parsing fails
+        ValueError: If configuration is invalid
+    """
+    logger = logging.getLogger(__name__)
+    
     try:
+        config_path_obj = Path(config_path)
+        
+        # Check if file exists
+        if not config_path_obj.exists():
+            logger.error(f"Configuration file not found: {config_path}")
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        
+        # Load YAML
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
+        
+        # Validate config is not None
+        if config is None:
+            logger.error(f"Configuration file is empty: {config_path}")
+            raise ValueError(f"Configuration file is empty: {config_path}")
+        
+        # Validate config is a dictionary
+        if not isinstance(config, dict):
+            logger.error(f"Configuration must be a dictionary, got {type(config)}")
+            raise ValueError(f"Configuration must be a dictionary, got {type(config)}")
+        
+        logger.info(f"Successfully loaded configuration from {config_path}")
         return config
+        
     except FileNotFoundError:
-        logging.error(f"Configuration file not found: {config_path}")
         raise
     except yaml.YAMLError as e:
-        logging.error(f"Error parsing YAML file: {e}")
+        logger.error(f"Error parsing YAML file: {e}")
         raise
     except Exception as e:
-        logging.error(f"Unexpected error loading configuration: {e}")
+        logger.error(f"Unexpected error loading configuration: {e}")
         raise
 
 
@@ -123,10 +176,81 @@ def merge_config(user_config, default_config):
     return recursive_merge(merged, user_config)
 
 
-def get_config(config_path="config.yaml", default_config=None):
+def validate_config(config: Dict[str, Any]) -> bool:
+    """Validate configuration has required fields and sensible values.
+    
+    Args:
+        config: Configuration dictionary to validate
+        
+    Returns:
+        True if valid, False otherwise
+        
+    Logs warnings for missing or invalid fields.
+    """
+    logger = logging.getLogger(__name__)
+    is_valid = True
+    
+    # Check for common required fields
+    required_fields = {
+        'model': ['hidden_size', 'num_layers'],
+        'training': ['epochs'],
+        'data': ['sequence_length']
+    }
+    
+    for section, fields in required_fields.items():
+        if section not in config:
+            logger.warning(f"Missing configuration section: {section}")
+            is_valid = False
+            continue
+            
+        for field in fields:
+            if field not in config[section]:
+                logger.warning(f"Missing configuration field: {section}.{field}")
+                is_valid = False
+    
+    # Validate numeric ranges
+    if 'training' in config:
+        epochs = config['training'].get('epochs', 0)
+        if epochs <= 0:
+            logger.warning(f"Invalid epochs value: {epochs} (must be > 0)")
+            is_valid = False
+    
+    if 'model' in config:
+        hidden_size = config['model'].get('hidden_size', 0)
+        if hidden_size <= 0:
+            logger.warning(f"Invalid hidden_size: {hidden_size} (must be > 0)")
+            is_valid = False
+            
+        num_layers = config['model'].get('num_layers', 0)
+        if num_layers <= 0:
+            logger.warning(f"Invalid num_layers: {num_layers} (must be > 0)")
+            is_valid = False
+    
+    return is_valid
+
+
+def get_config(config_path="config.yaml", default_config=None, validate=True):
+    """Load and optionally validate configuration.
+    
+    Args:
+        config_path: Path to configuration file
+        default_config: Default configuration to merge with
+        validate: Whether to validate the configuration
+        
+    Returns:
+        Configuration dictionary
+    """
+    logger = logging.getLogger(__name__)
+    
     user_config = load_config(config_path)
+    
     if default_config is not None:
-        return merge_config(user_config, default_config)
+        user_config = merge_config(user_config, default_config)
+    
+    if validate:
+        if not validate_config(user_config):
+            logger.warning("Configuration validation found issues, but continuing...")
+    
     return user_config
 
 
