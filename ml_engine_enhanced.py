@@ -28,9 +28,7 @@ from models_enhanced import (
     StockPredictor,
     AttentiveLSTM,
     GRUPredictor,
-    TransformerPredictor,
-    TCNPredictor,
-    EnsemblePredictor
+    TransformerPredictor
 )
 
 # Configure logging
@@ -158,14 +156,15 @@ class EnhancedMLEngine:
                 use_flash_attention=model_config.get("use_flash_attention", True),
                 positional_encoding=model_config.get("positional_encoding", "learned")
             )
-        elif model_type == "tcn":
-            model = TCNPredictor(
-                input_size=input_size,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                dropout=dropout,
-                kernel_size=model_config.get("kernel_size", 3)
-            )
+        # elif model_type == "tcn":
+        #     # TCNPredictor not yet implemented
+        #     model = TCNPredictor(
+        #         input_size=input_size,
+        #         hidden_size=hidden_size,
+        #         num_layers=num_layers,
+        #         dropout=dropout,
+        #         kernel_size=model_config.get("kernel_size", 3)
+        #     )
         elif model_type == "ensemble":
             # Create base models
             base_models = []
@@ -204,13 +203,14 @@ class EnhancedMLEngine:
                         dropout=base_config.get("dropout", dropout),
                         num_heads=base_config.get("num_heads", 8)
                     )
-                elif base_type == "tcn":
-                    base_model = TCNPredictor(
-                        input_size=input_size,
-                        hidden_size=base_config.get("hidden_size", hidden_size),
-                        num_layers=base_config.get("num_layers", num_layers),
-                        dropout=base_config.get("dropout", dropout)
-                    )
+                # elif base_type == "tcn":
+                #     # TCNPredictor not yet implemented
+                #     base_model = TCNPredictor(
+                #         input_size=input_size,
+                #         hidden_size=base_config.get("hidden_size", hidden_size),
+                #         num_layers=base_config.get("num_layers", num_layers),
+                #         dropout=base_config.get("dropout", dropout)
+                #     )
                 base_models.append(base_model)
             
             # If no base models specified, create default set
@@ -221,14 +221,21 @@ class EnhancedMLEngine:
                     GRUPredictor(input_size=input_size, hidden_size=hidden_size)
                 ]
             
-            # Create ensemble model
-            model = EnsemblePredictor(
-                models=base_models,
-                input_size=input_size,
-                hidden_size=hidden_size,
-                dropout=dropout,
-                ensemble_method=model_config.get("ensemble_method", "attention")
-            )
+            # Create ensemble model - EnsemblePredictor not yet implemented
+            # For now, just use the first base model as a fallback
+            # model = EnsemblePredictor(
+            #     models=base_models,
+            #     input_size=input_size,
+            #     hidden_size=hidden_size,
+            #     dropout=dropout,
+            #     ensemble_method=model_config.get("ensemble_method", "attention")
+            # )
+            # Fallback to using first base model
+            if base_models:
+                model = base_models[0]
+                logger.warning("EnsemblePredictor not yet implemented, using first base model instead")
+            else:
+                model = StockPredictor(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout)
         else:
             raise ValueError(f"Unknown model type: {model_type}")
         

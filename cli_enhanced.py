@@ -22,9 +22,9 @@ import yfinance as yf
 from data_processing_optimized import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader
 from ml_engine_enhanced import EnhancedMLEngine
 from memory_manager_enhanced import MemoryManager, memory_efficient
-from models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor
-from reasoning_enhanced import ReasoningEngine, UncertaintyEstimator
-from neural_network_integrator import NeuralNetworkIntegrator, ModelSynchronizer
+from models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor
+from reasoning_enhanced import ReasoningEngine
+from neural_network_integrator_enhanced import NeuralNetworkIntegrator
 
 # Configure logging
 logging.basicConfig(
