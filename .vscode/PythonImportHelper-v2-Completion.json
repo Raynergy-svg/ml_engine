@@ -2342,6 +2342,14 @@
         "documentation": {}
     },
     {
+        "label": "augment_data",
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "isExtraImport": true,
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
         "label": "EnhancedMLEngine",
         "importPath": "ml_engine_enhanced",
         "description": "ml_engine_enhanced",
@@ -2543,6 +2551,62 @@
     },
     {
         "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TCNPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "Mish",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "Swish",
         "importPath": "models_enhanced",
         "description": "models_enhanced",
         "isExtraImport": true,
@@ -3243,6 +3307,22 @@
     },
     {
         "label": "generate_simple_strategy_signals",
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "isExtraImport": true,
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "smooth_predictions",
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "isExtraImport": true,
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "ensemble_predictions",
         "importPath": "evaluation",
         "description": "evaluation",
         "isExtraImport": true,
@@ -4776,7 +4856,7 @@
         "kind": 2,
         "importPath": "data_processing_optimized",
         "description": "data_processing_optimized",
-        "peekOfCode": "def augment_data(\n    sequences: np.ndarray,\n    targets: np.ndarray,\n    noise_level: float = 0.01,\n    augmentation_factor: int = 2\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"\n    Augment training data with noise injection (PyTorch best practice for robustness).\n    Args:\n        sequences: Input sequences",
+        "peekOfCode": "def augment_data(\n    sequences: np.ndarray,\n    targets: np.ndarray,\n    noise_level: float = 0.01,\n    augmentation_factor: int = 2,\n    use_mixup: bool = True,\n    mixup_alpha: float = 0.2\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"\n    Augment training data with multiple strategies (PyTorch best practice for robustness).",
         "detail": "data_processing_optimized",
         "documentation": {}
     },
@@ -4826,6 +4906,42 @@
         "documentation": {}
     },
     {
+        "label": "predict_with_uncertainty",
+        "kind": 2,
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "peekOfCode": "def predict_with_uncertainty(\n    model: torch.nn.Module,\n    X: torch.Tensor,\n    n_iterations: int = 30,\n    device: str = \"cpu\"\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"\n    Make predictions with uncertainty estimation using Monte Carlo Dropout.\n    Args:\n        model: PyTorch model with dropout layers",
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "calibrate_predictions",
+        "kind": 2,
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "peekOfCode": "def calibrate_predictions(\n    predictions: np.ndarray,\n    uncertainties: np.ndarray,\n    actual: np.ndarray,\n    confidence_level: float = 0.95\n) -> Dict[str, float]:\n    \"\"\"\n    Calibrate and evaluate prediction uncertainties.\n    Args:\n        predictions: Point predictions",
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "smooth_predictions",
+        "kind": 2,
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "peekOfCode": "def smooth_predictions(\n    predictions: np.ndarray,\n    method: str = \"ema\",\n    window: int = 5,\n    alpha: float = 0.3\n) -> np.ndarray:\n    \"\"\"\n    Smooth predictions to reduce noise and improve stability.\n    Args:\n        predictions: Raw predictions",
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "ensemble_predictions",
+        "kind": 2,
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "peekOfCode": "def ensemble_predictions(\n    predictions_list: List[np.ndarray],\n    method: str = \"mean\",\n    weights: Optional[List[float]] = None\n) -> np.ndarray:\n    \"\"\"\n    Ensemble multiple predictions for better accuracy.\n    Args:\n        predictions_list: List of prediction arrays\n        method: Ensemble method ('mean', 'median', 'weighted')",
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
         "label": "generate_simple_strategy_signals",
         "kind": 2,
         "importPath": "evaluation",
@@ -4839,7 +4955,7 @@
         "kind": 5,
         "importPath": "evaluation",
         "description": "evaluation",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ModelEvaluator:\n    \"\"\"Comprehensive model evaluation.\"\"\"\n    def __init__(self, config: Optional[Dict] = None):\n        \"\"\"Initialize evaluator.\"\"\"\n        self.config = config or {}\n        self.metrics_history = []\n    def evaluate(\n        self, y_true: np.ndarray, y_pred: np.ndarray, prefix: str = \"\"\n    ) -> Dict[str, float]:",
+        "peekOfCode": "logger = logging.getLogger(__name__)\ndef predict_with_uncertainty(\n    model: torch.nn.Module,\n    X: torch.Tensor,\n    n_iterations: int = 30,\n    device: str = \"cpu\"\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"\n    Make predictions with uncertainty estimation using Monte Carlo Dropout.\n    Args:",
         "detail": "evaluation",
         "documentation": {}
     },
@@ -5105,6 +5221,24 @@
         "documentation": {}
     },
     {
+        "label": "Mish",
+        "kind": 6,
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "peekOfCode": "class Mish(nn.Module):\n    \"\"\"Mish activation function: x * tanh(softplus(x))\n    Better than ReLU for deep networks with smoother gradients.\"\"\"\n    def forward(self, x):\n        return x * torch.tanh(F.softplus(x))\nclass Swish(nn.Module):\n    \"\"\"Swish activation function: x * sigmoid(x)\n    Also known as SiLU, performs better than ReLU in many cases.\"\"\"\n    def forward(self, x):\n        return x * torch.sigmoid(x)",
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "Swish",
+        "kind": 6,
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "peekOfCode": "class Swish(nn.Module):\n    \"\"\"Swish activation function: x * sigmoid(x)\n    Also known as SiLU, performs better than ReLU in many cases.\"\"\"\n    def forward(self, x):\n        return x * torch.sigmoid(x)\nclass StockPredictor(nn.Module):\n    \"\"\"Enhanced LSTM-based predictor with residual connections and layer normalization.\"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,",
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
         "label": "StockPredictor",
         "kind": 6,
         "importPath": "models_enhanced",
@@ -5127,7 +5261,7 @@
         "kind": 6,
         "importPath": "models_enhanced",
         "description": "models_enhanced",
-        "peekOfCode": "class GRUPredictor(nn.Module):\n    \"\"\"GRU-based predictor with improved architecture.\"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 3,\n        dropout: float = 0.2,\n        bidirectional: bool = False,\n    ):",
+        "peekOfCode": "class GRUPredictor(nn.Module):\n    \"\"\"GRU-based predictor with improved architecture and modern enhancements.\"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 3,\n        dropout: float = 0.2,\n        bidirectional: bool = False,\n        use_batch_norm: bool = False,",
         "detail": "models_enhanced",
         "documentation": {}
     },
@@ -5136,7 +5270,7 @@
         "kind": 6,
         "importPath": "models_enhanced",
         "description": "models_enhanced",
-        "peekOfCode": "class TransformerPredictor(nn.Module):\n    \"\"\"Transformer-based predictor for time series.\"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 3,\n        num_heads: int = 8,\n        dropout: float = 0.2,\n        use_flash_attention: bool = True,",
+        "peekOfCode": "class TransformerPredictor(nn.Module):\n    \"\"\"Transformer-based predictor for time series with enhanced features.\"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 3,\n        num_heads: int = 8,\n        dropout: float = 0.2,\n        use_flash_attention: bool = True,",
         "detail": "models_enhanced",
         "documentation": {}
     },
@@ -5145,7 +5279,7 @@
         "kind": 6,
         "importPath": "models_enhanced",
         "description": "models_enhanced",
-        "peekOfCode": "class TCNPredictor(nn.Module):\n    \"\"\"Temporal Convolutional Network for time series prediction.\"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 3,\n        kernel_size: int = 3,\n        dropout: float = 0.2,\n    ):",
+        "peekOfCode": "class TCNPredictor(nn.Module):\n    \"\"\"Temporal Convolutional Network for time series prediction with enhanced features.\"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 3,\n        kernel_size: int = 3,\n        dropout: float = 0.2,\n        activation: str = \"relu\",",
         "detail": "models_enhanced",
         "documentation": {}
     },
@@ -5384,6 +5518,114 @@
         "documentation": {}
     },
     {
+        "label": "test_activation_functions",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_activation_functions():\n    \"\"\"Test new activation functions.\"\"\"\n    print(\"Testing activation functions...\")\n    # Test Mish\n    mish = Mish()\n    x = torch.randn(10, 5)\n    out = mish(x)\n    assert out.shape == x.shape, \"Mish output shape mismatch\"\n    assert torch.all(torch.isfinite(out)), \"Mish produced non-finite values\"\n    print(\"✓ Mish activation works correctly\")",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_stock_predictor",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_improved_stock_predictor():\n    \"\"\"Test improved StockPredictor with new features.\"\"\"\n    print(\"\\nTesting improved StockPredictor...\")\n    # Test with different activation functions\n    for activation in [\"relu\", \"mish\", \"swish\", \"gelu\"]:\n        model = StockPredictor(\n            input_size=7,\n            hidden_size=64,\n            num_layers=2,\n            dropout=0.2,",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_gru_predictor",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_improved_gru_predictor():\n    \"\"\"Test improved GRUPredictor with new features.\"\"\"\n    print(\"\\nTesting improved GRUPredictor...\")\n    for activation in [\"relu\", \"mish\", \"swish\"]:\n        model = GRUPredictor(\n            input_size=7,\n            hidden_size=64,\n            num_layers=2,\n            dropout=0.2,\n            activation=activation,",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_transformer_predictor",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_improved_transformer_predictor():\n    \"\"\"Test improved TransformerPredictor with new features.\"\"\"\n    print(\"\\nTesting improved TransformerPredictor...\")\n    # Test with sinusoidal positional encoding\n    model = TransformerPredictor(\n        input_size=7,\n        hidden_size=64,\n        num_layers=2,\n        num_heads=4,\n        dropout=0.2,",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_tcn_predictor",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_improved_tcn_predictor():\n    \"\"\"Test improved TCNPredictor with new features.\"\"\"\n    print(\"\\nTesting improved TCNPredictor...\")\n    model = TCNPredictor(\n        input_size=7,\n        hidden_size=64,\n        num_layers=3,\n        kernel_size=3,\n        dropout=0.2,\n        activation=\"mish\",",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_attention",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_improved_attention():\n    \"\"\"Test improved AttentiveLSTM with optimized attention.\"\"\"\n    print(\"\\nTesting improved AttentiveLSTM...\")\n    model = AttentiveLSTM(\n        input_size=7,\n        hidden_size=64,\n        num_layers=2,\n        num_heads=4,\n        dropout=0.2,\n        use_flash_attention=True",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_prediction_smoothing",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_prediction_smoothing():\n    \"\"\"Test prediction smoothing utilities.\"\"\"\n    print(\"\\nTesting prediction smoothing...\")\n    predictions = np.random.randn(100)\n    # Test EMA smoothing\n    smoothed_ema = smooth_predictions(predictions, method=\"ema\", alpha=0.3)\n    assert smoothed_ema.shape == predictions.shape, \"EMA smoothing shape mismatch\"\n    assert np.all(np.isfinite(smoothed_ema)), \"EMA smoothing produced non-finite values\"\n    print(\"✓ EMA smoothing works correctly\")\n    # Test SMA smoothing",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_ensemble_predictions",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_ensemble_predictions():\n    \"\"\"Test ensemble prediction utilities.\"\"\"\n    print(\"\\nTesting ensemble predictions...\")\n    pred1 = np.random.randn(100)\n    pred2 = np.random.randn(100)\n    pred3 = np.random.randn(100)\n    predictions_list = [pred1, pred2, pred3]\n    # Test mean ensemble\n    ensemble_mean = ensemble_predictions(predictions_list, method=\"mean\")\n    assert ensemble_mean.shape == pred1.shape, \"Mean ensemble shape mismatch\"",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_augmentation",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_improved_augmentation():\n    \"\"\"Test improved data augmentation strategies.\"\"\"\n    print(\"\\nTesting improved data augmentation...\")\n    sequences = np.random.randn(50, 30, 7)\n    targets = np.random.randn(50)\n    # Test augmentation with mixup\n    aug_seq, aug_tgt = augment_data(\n        sequences, targets,\n        noise_level=0.01,\n        augmentation_factor=3,",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_gradient_flow",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_gradient_flow():\n    \"\"\"Test that gradients flow properly through improved models.\"\"\"\n    print(\"\\nTesting gradient flow...\")\n    model = StockPredictor(\n        input_size=7,\n        hidden_size=64,\n        num_layers=2,\n        activation=\"mish\",\n        use_batch_norm=True\n    )",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_huber_loss",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def test_huber_loss():\n    \"\"\"Test Huber loss functionality.\"\"\"\n    print(\"\\nTesting Huber loss...\")\n    predictions = torch.randn(32, 1)\n    targets = torch.randn(32, 1)\n    # Test Huber loss\n    huber_loss = nn.HuberLoss(delta=1.0)\n    loss = huber_loss(predictions, targets)\n    assert torch.isfinite(loss), \"Huber loss is not finite\"\n    assert loss >= 0, \"Huber loss is negative\"",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "test_improvements",
+        "description": "test_improvements",
+        "peekOfCode": "def main():\n    \"\"\"Run all tests.\"\"\"\n    print(\"=\" * 60)\n    print(\"Testing ML Model Improvements\")\n    print(\"=\" * 60)\n    try:\n        test_activation_functions()\n        test_improved_stock_predictor()\n        test_improved_gru_predictor()\n        test_improved_transformer_predictor()",
+        "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
         "label": "TradingEnv",
         "kind": 6,
         "importPath": "trading_env",
@@ -5399,6 +5641,15 @@
         "description": "trading_env",
         "peekOfCode": "def train_rl_agent(engine, data: pd.DataFrame):\n    \"\"\"\n    Train a reinforcement learning agent using PPO on the\n    trading environment.\n    \"\"\"\n    if PPO is None:\n        raise ImportError(\n            \"stable_baselines3 is required for RL training. \"\n            \"Install with: pip install stable-baselines3\"\n        )",
         "detail": "trading_env",
+        "documentation": {}
+    },
+    {
+        "label": "LabelSmoothingLoss",
+        "kind": 6,
+        "importPath": "train_enhanced",
+        "description": "train_enhanced",
+        "peekOfCode": "class LabelSmoothingLoss(nn.Module):\n    \"\"\"\n    Label smoothing loss for regression tasks.\n    Adds noise to targets to prevent overfitting and improve generalization.\n    \"\"\"\n    def __init__(self, base_loss=nn.MSELoss(), smoothing: float = 0.1):\n        \"\"\"\n        Args:\n            base_loss: Base loss function (MSELoss, HuberLoss, etc.)\n            smoothing: Amount of label smoothing (0 = no smoothing, higher = more smoothing)",
+        "detail": "train_enhanced",
         "documentation": {}
     },
     {
@@ -5424,7 +5675,7 @@
         "kind": 5,
         "importPath": "train_enhanced",
         "description": "train_enhanced",
-        "peekOfCode": "logger = setup_logging(log_file=\"training.log\")\nclass EnhancedTrainer:\n    \"\"\"Enhanced trainer with modern best practices.\"\"\"\n    def __init__(self, config: dict):\n        \"\"\"Initialize trainer.\"\"\"\n        self.config = config\n        self.device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n        logger.info(f\"Using device: {self.device}\")\n        # Initialize components\n        self.data_loader = MarketDataLoader(config)",
+        "peekOfCode": "logger = setup_logging(log_file=\"training.log\")\nclass LabelSmoothingLoss(nn.Module):\n    \"\"\"\n    Label smoothing loss for regression tasks.\n    Adds noise to targets to prevent overfitting and improve generalization.\n    \"\"\"\n    def __init__(self, base_loss=nn.MSELoss(), smoothing: float = 0.1):\n        \"\"\"\n        Args:\n            base_loss: Base loss function (MSELoss, HuberLoss, etc.)",
         "detail": "train_enhanced",
         "documentation": {}
     },
