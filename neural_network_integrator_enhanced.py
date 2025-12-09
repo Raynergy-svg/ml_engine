@@ -440,4 +440,11 @@ class AttentionIntegrationModel(nn.Module):
         # Extract attention weights for each engine
         engine_weights = attn_weights.mean(dim=1)  # Average attention across batch
         
-        # Apply output projec<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>
+        # Apply output projection to get final prediction
+        # Average across engines
+        x_avg = x.mean(dim=1)  # [batch_size, input_dim]
+        
+        # Project to scalar output
+        integrated_prediction = self.output_proj(x_avg)  # [batch_size, 1]
+        
+        return integrated_prediction, engine_weights
