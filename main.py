@@ -32,6 +32,7 @@ from watchdog.events import PatternMatchingEventHandler
 from ml_engine import ai_assistant, EnhancedMLEngine
 import ml_engine
 from utils import setup_logging, load_config
+from config_validator import validate_config
 
 # New orchestrating imports:
 import visualizer

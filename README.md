@@ -1,6 +1,10 @@
-# Enhanced ML Engine Trading Bot CLI
+# Enhanced ML Engine Trading Bot
 
-A robust and modular command-line interface for training, evaluating, and deploying machine learning models in trading systems. This tool provides real-time monitoring, advanced visualizations, auto-tuning, and an interactive AI Assistant.
+A comprehensive, production-ready machine learning engine for stock market prediction and algorithmic trading. This system includes state-of-the-art deep learning models, robust data processing, real-time monitoring, and extensive evaluation capabilities.
+
+## ⚠️ Important Note
+
+This is a research and educational tool. Always backtest thoroughly and use proper risk management before any live trading.
 
 ## Recent Improvements (v2.0)
 
