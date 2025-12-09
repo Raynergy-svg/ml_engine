@@ -456,17 +456,31 @@ def prepare_sequences(
     feature_scaler = None
     target_scaler = None
     
-    # Scale features if requested
+    # Scale features if requested - use RobustScaler by default for better outlier handling
     if scale_features:
-        from sklearn.preprocessing import StandardScaler
-        feature_scaler = StandardScaler()
-        feature_data = feature_scaler.fit_transform(feature_data)
+        from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
+        # RobustScaler is more robust to outliers than StandardScaler
+        # It uses median and IQR instead of mean and std
+        try:
+            feature_scaler = RobustScaler()
+            feature_data = feature_scaler.fit_transform(feature_data)
+            logger.info("Applied RobustScaler to features for better outlier handling")
+        except Exception as e:
+            logger.warning(f"RobustScaler failed, falling back to StandardScaler: {e}")
+            feature_scaler = StandardScaler()
+            feature_data = feature_scaler.fit_transform(feature_data)
     
     # Scale target if requested
     if scale_target:
-        from sklearn.preprocessing import StandardScaler
-        target_scaler = StandardScaler()
-        target_data = target_scaler.fit_transform(target_data.reshape(-1, 1)).flatten()
+        from sklearn.preprocessing import StandardScaler, RobustScaler
+        try:
+            target_scaler = RobustScaler()
+            target_data = target_scaler.fit_transform(target_data.reshape(-1, 1)).flatten()
+            logger.info("Applied RobustScaler to target for better outlier handling")
+        except Exception as e:
+            logger.warning(f"RobustScaler failed for target, falling back to StandardScaler: {e}")
+            target_scaler = StandardScaler()
+            target_data = target_scaler.fit_transform(target_data.reshape(-1, 1)).flatten()
     
     # Prepare sequences
     sequences = []
@@ -529,14 +543,28 @@ def add_technical_indicators(
         df[f'ma_{window}'] = df[price_column].rolling(window=window).mean()
         df[f'ema_{window}'] = df[price_column].ewm(span=window, adjust=False).mean()
     
-    # Volatility indicators
+    # Volatility indicators with improved calculations
     df['returns'] = df[price_column].pct_change()
     df['log_returns'] = np.log(df[price_column] / df[price_column].shift(1))
     df['volatility_20'] = df['returns'].rolling(window=20).std()
+    df['volatility_10'] = df['returns'].rolling(window=10).std()
     
-    # Momentum indicators
+    # Parkinson's volatility (more accurate using high-low range)
+    if 'high' in df.columns and 'low' in df.columns:
+        df['parkinson_vol'] = np.sqrt(
+            (1 / (4 * np.log(2))) * 
+            np.log(df['high'] / df['low']) ** 2
+        ).rolling(window=20).mean()
+    
+    # Momentum indicators with improvements
     df['rsi_14'] = compute_rsi(df[price_column], period=14)
+    df['rsi_7'] = compute_rsi(df[price_column], period=7)  # Shorter period for quick signals
     df['momentum_10'] = df[price_column] - df[price_column].shift(10)
+    df['momentum_5'] = df[price_column] - df[price_column].shift(5)
+    
+    # Rate of change
+    df['roc_10'] = ((df[price_column] - df[price_column].shift(10)) / 
+                    df[price_column].shift(10)) * 100
     
     # Volume indicators
     if volume_column in df.columns:
@@ -592,16 +620,20 @@ def augment_data(
     sequences: np.ndarray,
     targets: np.ndarray,
     noise_level: float = 0.01,
-    augmentation_factor: int = 2
+    augmentation_factor: int = 2,
+    use_mixup: bool = True,
+    mixup_alpha: float = 0.2
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Augment training data with noise injection (PyTorch best practice for robustness).
+    Augment training data with multiple strategies (PyTorch best practice for robustness).
     
     Args:
         sequences: Input sequences
         targets: Target values
         noise_level: Standard deviation of Gaussian noise
         augmentation_factor: Number of augmented copies per original sample
+        use_mixup: Whether to apply mixup augmentation
+        mixup_alpha: Alpha parameter for Beta distribution in mixup
         
     Returns:
         Augmented sequences and targets
@@ -609,18 +641,44 @@ def augment_data(
     augmented_sequences = [sequences]
     augmented_targets = [targets]
     
-    for _ in range(augmentation_factor - 1):
-        # Add Gaussian noise
-        noise = np.random.normal(0, noise_level, sequences.shape)
-        noisy_sequences = sequences + noise
+    for i in range(augmentation_factor - 1):
+        # Strategy 1: Add Gaussian noise
+        if i % 3 == 0:
+            noise = np.random.normal(0, noise_level, sequences.shape)
+            noisy_sequences = sequences + noise
+            augmented_sequences.append(noisy_sequences)
+            augmented_targets.append(targets)
         
-        augmented_sequences.append(noisy_sequences)
-        augmented_targets.append(targets)
+        # Strategy 2: Scale perturbation (random scaling of features)
+        elif i % 3 == 1:
+            scale = np.random.uniform(0.95, 1.05, (sequences.shape[0], 1, sequences.shape[2]))
+            scaled_sequences = sequences * scale
+            augmented_sequences.append(scaled_sequences)
+            augmented_targets.append(targets)
+        
+        # Strategy 3: Mixup augmentation for better generalization
+        elif i % 3 == 2 and use_mixup:
+            # Randomly shuffle indices
+            indices = np.random.permutation(len(sequences))
+            shuffled_sequences = sequences[indices]
+            shuffled_targets = targets[indices]
+            
+            # Sample lambda from Beta distribution
+            lam = np.random.beta(mixup_alpha, mixup_alpha, size=(len(sequences), 1, 1))
+            # Properly handle dimensions for mixing
+            lam_targets = np.random.beta(mixup_alpha, mixup_alpha, size=len(sequences))
+            
+            # Create mixed samples
+            mixed_sequences = lam * sequences + (1 - lam) * shuffled_sequences
+            mixed_targets = lam_targets * targets + (1 - lam_targets) * shuffled_targets
+            
+            augmented_sequences.append(mixed_sequences)
+            augmented_targets.append(mixed_targets)
     
     # Concatenate all augmented data
     final_sequences = np.concatenate(augmented_sequences, axis=0)
     final_targets = np.concatenate(augmented_targets, axis=0)
     
-    logger.info(f"Augmented data from {len(sequences)} to {len(final_sequences)} samples")
+    logger.info(f"Augmented data from {len(sequences)} to {len(final_sequences)} samples using multiple strategies")
     
     return final_sequences, final_targets

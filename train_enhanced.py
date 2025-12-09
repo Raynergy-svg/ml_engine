@@ -29,6 +29,37 @@ from utils import setup_logging, load_config
 logger = setup_logging(log_file="training.log")
 
 
+class LabelSmoothingLoss(nn.Module):
+    """
+    Label smoothing loss for regression tasks.
+    Adds noise to targets to prevent overfitting and improve generalization.
+    """
+    
+    def __init__(self, base_loss=nn.MSELoss(), smoothing: float = 0.1):
+        """
+        Args:
+            base_loss: Base loss function (MSELoss, HuberLoss, etc.)
+            smoothing: Amount of label smoothing (0 = no smoothing, higher = more smoothing)
+        """
+        super(LabelSmoothingLoss, self).__init__()
+        self.base_loss = base_loss
+        self.smoothing = smoothing
+    
+    def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """
+        Apply label smoothing by adding small random noise to targets.
+        """
+        if self.smoothing > 0 and self.training:
+            # Add small Gaussian noise to targets for label smoothing
+            # Use robust scaling factor to avoid issues with small std
+            target_scale = torch.std(targets, unbiased=False) + 1e-8
+            noise = torch.randn_like(targets) * self.smoothing * target_scale
+            smoothed_targets = targets + noise
+            return self.base_loss(predictions, smoothed_targets)
+        else:
+            return self.base_loss(predictions, targets)
+
+
 class EnhancedTrainer:
     """Enhanced trainer with modern best practices."""
 
@@ -161,42 +192,69 @@ class EnhancedTrainer:
 
         return model.to(self.device)
 
-    def train_epoch(self, train_loader: DataLoader, criterion: nn.Module) -> float:
-        """Train for one epoch."""
+    def train_epoch(self, train_loader: DataLoader, criterion: nn.Module, use_step_scheduler: bool = False) -> float:
+        """Train for one epoch with improved gradient handling and accumulation support."""
         self.model.train()
         total_loss = 0
+        
+        # Improved gradient clipping value
+        max_grad_norm = self.config.get("grad_clip_norm", 1.0)
+        
+        # Gradient accumulation for effective larger batch sizes
+        accumulation_steps = self.config.get("gradient_accumulation_steps", 1)
 
         for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
             X_batch = X_batch.to(self.device)
             y_batch = y_batch.to(self.device)
 
-            self.optimizer.zero_grad()
-
-            # Mixed precision training
+            # Mixed precision training for faster computation and lower memory
             if self.scaler is not None:
                 with torch.cuda.amp.autocast():
                     predictions = self.model(X_batch)
                     loss = criterion(predictions, y_batch.unsqueeze(1))
+                    # Normalize loss for gradient accumulation
+                    loss = loss / accumulation_steps
 
                 self.scaler.scale(loss).backward()
 
-                # Gradient clipping
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                # Only step optimizer every accumulation_steps batches
+                if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
+                    # Adaptive gradient clipping for better training stability
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_grad_norm)
 
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
+                    
+                    # Step scheduler if using OneCycleLR (per optimizer step)
+                    if use_step_scheduler and isinstance(
+                        self.scheduler, torch.optim.lr_scheduler.OneCycleLR
+                    ):
+                        self.scheduler.step()
             else:
                 predictions = self.model(X_batch)
                 loss = criterion(predictions, y_batch.unsqueeze(1))
+                # Normalize loss for gradient accumulation
+                loss = loss / accumulation_steps
                 loss.backward()
 
-                # Gradient clipping
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                # Only step optimizer every accumulation_steps batches
+                if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
+                    # Adaptive gradient clipping
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_grad_norm)
 
-                self.optimizer.step()
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                    
+                    # Step scheduler if using OneCycleLR (per optimizer step)
+                    if use_step_scheduler and isinstance(
+                        self.scheduler, torch.optim.lr_scheduler.OneCycleLR
+                    ):
+                        self.scheduler.step()
 
-            total_loss += loss.item()
+            # Store un-normalized loss for logging (loss was divided by accumulation_steps for backprop)
+            total_loss += loss.item() * accumulation_steps
 
         return total_loss / len(train_loader)
 
@@ -305,19 +363,80 @@ class EnhancedTrainer:
             model_type = self.config.get("architecture", "attention_lstm")
             self.model = self.build_model(model_type, input_size)
 
-            # Setup optimizer
+            # Setup optimizer with improved parameters
             learning_rate = self.config.get("learning_rate", 0.001)
-            self.optimizer = torch.optim.Adam(
-                self.model.parameters(), lr=learning_rate, weight_decay=1e-5
+            weight_decay = self.config.get("weight_decay", 1e-5)
+            self.optimizer = torch.optim.AdamW(
+                self.model.parameters(), 
+                lr=learning_rate, 
+                weight_decay=weight_decay,
+                betas=(0.9, 0.999),
+                eps=1e-8
             )
+            logger.info(f"Using AdamW optimizer with lr={learning_rate}, weight_decay={weight_decay}")
 
-            # Setup scheduler
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer, mode="min", factor=0.5, patience=10, verbose=True
-            )
+            # Setup scheduler with warmup support
+            scheduler_type = self.config.get("learning_rate_scheduler", "plateau")
+            if scheduler_type == "cosine":
+                # Cosine annealing with warmup
+                warmup_steps = self.config.get("warmup_steps", 1000)
+                self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+                    self.optimizer, T_0=warmup_steps, T_mult=2, eta_min=1e-6
+                )
+                logger.info(f"Using CosineAnnealingWarmRestarts scheduler with warmup_steps={warmup_steps}")
+            elif scheduler_type == "onecycle":
+                # One cycle learning rate policy
+                max_lr = self.config.get("max_lr", learning_rate * 10)
+                total_steps = num_epochs * len(train_loader)
+                self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                    self.optimizer, max_lr=max_lr, total_steps=total_steps
+                )
+                logger.info(f"Using OneCycleLR scheduler with max_lr={max_lr}")
+            elif scheduler_type == "exponential":
+                # Exponential decay
+                gamma = self.config.get("lr_decay_gamma", 0.95)
+                self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                    self.optimizer, gamma=gamma
+                )
+                logger.info(f"Using ExponentialLR scheduler with gamma={gamma}")
+            elif scheduler_type == "step":
+                # Step decay
+                step_size = self.config.get("lr_step_size", 30)
+                gamma = self.config.get("lr_decay_gamma", 0.1)
+                self.scheduler = torch.optim.lr_scheduler.StepLR(
+                    self.optimizer, step_size=step_size, gamma=gamma
+                )
+                logger.info(f"Using StepLR scheduler with step_size={step_size}, gamma={gamma}")
+            else:
+                # Default: ReduceLROnPlateau
+                self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                    self.optimizer, mode="min", factor=0.5, patience=10, verbose=True
+                )
+                logger.info("Using ReduceLROnPlateau scheduler")
 
-        # Loss function
-        criterion = nn.MSELoss()
+        # Loss function - Use Huber loss for better robustness to outliers
+        loss_type = self.config.get("loss_type", "mse")
+        label_smoothing = self.config.get("label_smoothing", 0.0)
+        
+        if loss_type == "huber" or self.config.get("use_huber_loss", False):
+            # Huber loss is more robust to outliers than MSE
+            delta = self.config.get("huber_delta", 1.0)
+            base_criterion = nn.HuberLoss(delta=delta)
+            logger.info(f"Using Huber loss with delta={delta}")
+        elif loss_type == "smooth_l1":
+            # Smooth L1 loss (similar to Huber but with different formulation)
+            base_criterion = nn.SmoothL1Loss()
+            logger.info("Using Smooth L1 loss")
+        else:
+            base_criterion = nn.MSELoss()
+            logger.info("Using MSE loss")
+        
+        # Apply label smoothing for better generalization
+        if label_smoothing > 0:
+            criterion = LabelSmoothingLoss(base_criterion, smoothing=label_smoothing)
+            logger.info(f"Applied label smoothing with smoothing={label_smoothing}")
+        else:
+            criterion = base_criterion
 
         # Training loop
         patience = self.config.get("early_stopping_patience", 20)
@@ -325,10 +444,14 @@ class EnhancedTrainer:
 
         train_losses = []
         val_losses = []
+        
+        # Check if using step-based scheduler (OneCycleLR)
+        scheduler_type = self.config.get("learning_rate_scheduler", "plateau")
+        use_step_scheduler = scheduler_type == "onecycle"
 
         for epoch in range(start_epoch, start_epoch + num_epochs):
-            # Train
-            train_loss = self.train_epoch(train_loader, criterion)
+            # Train with improved scheduling
+            train_loss = self.train_epoch(train_loader, criterion, use_step_scheduler)
             train_losses.append(train_loss)
 
             # Validate
@@ -337,8 +460,16 @@ class EnhancedTrainer:
             )
             val_losses.append(val_loss)
 
-            # Update scheduler
-            self.scheduler.step(val_loss)
+            # Update scheduler based on type
+            if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                self.scheduler.step(val_loss)
+            elif isinstance(self.scheduler, (
+                torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,
+                torch.optim.lr_scheduler.ExponentialLR,
+                torch.optim.lr_scheduler.StepLR
+            )):
+                self.scheduler.step()
+            # OneCycleLR is stepped in train_epoch per batch
 
             # Calculate metrics
             metrics = self.evaluator.evaluate(

@@ -19,6 +19,180 @@ import seaborn as sns
 logger = logging.getLogger(__name__)
 
 
+def predict_with_uncertainty(
+    model: torch.nn.Module,
+    X: torch.Tensor,
+    n_iterations: int = 30,
+    device: str = "cpu"
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Make predictions with uncertainty estimation using Monte Carlo Dropout.
+    
+    Args:
+        model: PyTorch model with dropout layers
+        X: Input tensor
+        n_iterations: Number of forward passes with dropout enabled
+        device: Device to run on
+        
+    Returns:
+        Tuple of (mean_predictions, std_predictions)
+    """
+    # Enable training mode to activate dropout for Monte Carlo sampling
+    # Note: This also affects batch norm and other training-specific layers
+    model.train()
+    predictions = []
+    
+    with torch.no_grad():
+        for _ in range(n_iterations):
+            X_batch = X.to(device)
+            pred = model(X_batch).cpu().numpy()
+            predictions.append(pred)
+    
+    predictions = np.array(predictions)
+    mean_pred = predictions.mean(axis=0).flatten()
+    std_pred = predictions.std(axis=0).flatten()
+    
+    logger.info(f"Uncertainty estimation: mean std={std_pred.mean():.4f}")
+    
+    return mean_pred, std_pred
+
+
+def calibrate_predictions(
+    predictions: np.ndarray,
+    uncertainties: np.ndarray,
+    actual: np.ndarray,
+    confidence_level: float = 0.95
+) -> Dict[str, float]:
+    """
+    Calibrate and evaluate prediction uncertainties.
+    
+    Args:
+        predictions: Point predictions
+        uncertainties: Prediction uncertainties (std)
+        actual: Actual values
+        confidence_level: Desired confidence level
+        
+    Returns:
+        Dictionary with calibration metrics
+    """
+    from scipy import stats
+    
+    # Calculate z-score for confidence level
+    z_score = stats.norm.ppf((1 + confidence_level) / 2)
+    
+    # Calculate prediction intervals
+    lower_bound = predictions - z_score * uncertainties
+    upper_bound = predictions + z_score * uncertainties
+    
+    # Check coverage (how many actual values fall within intervals)
+    coverage = np.mean((actual >= lower_bound) & (actual <= upper_bound))
+    
+    # Calculate interval width
+    avg_interval_width = np.mean(upper_bound - lower_bound)
+    
+    # Calculate sharpness (how tight are the intervals)
+    sharpness = uncertainties.mean()
+    
+    metrics = {
+        'coverage': coverage * 100,
+        'target_coverage': confidence_level * 100,
+        'avg_interval_width': avg_interval_width,
+        'sharpness': sharpness,
+        'calibration_error': abs(coverage - confidence_level) * 100
+    }
+    
+    logger.info(f"Calibration: {coverage*100:.1f}% coverage (target: {confidence_level*100:.1f}%)")
+    
+    return metrics
+
+
+def smooth_predictions(
+    predictions: np.ndarray,
+    method: str = "ema",
+    window: int = 5,
+    alpha: float = 0.3
+) -> np.ndarray:
+    """
+    Smooth predictions to reduce noise and improve stability.
+    
+    Args:
+        predictions: Raw predictions
+        method: Smoothing method ('ema', 'sma', 'median')
+        window: Window size for smoothing
+        alpha: Alpha parameter for EMA
+        
+    Returns:
+        Smoothed predictions
+    """
+    if len(predictions) < window:
+        logger.warning(f"Predictions length {len(predictions)} < window {window}, returning original")
+        return predictions
+    
+    if method == "ema":
+        # Exponential Moving Average - vectorized implementation for better performance
+        import pandas as pd
+        smoothed = pd.Series(predictions).ewm(alpha=alpha, adjust=False).mean().values
+        return smoothed
+    
+    elif method == "sma":
+        # Simple Moving Average
+        smoothed = np.copy(predictions)
+        for i in range(window, len(predictions)):
+            smoothed[i] = np.mean(predictions[i-window:i])
+        return smoothed
+    
+    elif method == "median":
+        # Median filter - more robust to outliers
+        smoothed = np.copy(predictions)
+        for i in range(window, len(predictions)):
+            smoothed[i] = np.median(predictions[i-window:i])
+        return smoothed
+    
+    else:
+        logger.warning(f"Unknown smoothing method: {method}, returning original")
+        return predictions
+
+
+def ensemble_predictions(
+    predictions_list: List[np.ndarray],
+    method: str = "mean",
+    weights: Optional[List[float]] = None
+) -> np.ndarray:
+    """
+    Ensemble multiple predictions for better accuracy.
+    
+    Args:
+        predictions_list: List of prediction arrays
+        method: Ensemble method ('mean', 'median', 'weighted')
+        weights: Weights for weighted averaging
+        
+    Returns:
+        Ensembled predictions
+    """
+    if not predictions_list:
+        raise ValueError("predictions_list cannot be empty")
+    
+    if len(predictions_list) == 1:
+        return predictions_list[0]
+    
+    predictions_array = np.array(predictions_list)
+    
+    if method == "mean":
+        return np.mean(predictions_array, axis=0)
+    elif method == "median":
+        return np.median(predictions_array, axis=0)
+    elif method == "weighted":
+        if weights is None:
+            logger.warning("No weights provided, using equal weights")
+            weights = [1.0 / len(predictions_list)] * len(predictions_list)
+        weights = np.array(weights)
+        weights = weights / weights.sum()  # Normalize
+        return np.average(predictions_array, axis=0, weights=weights)
+    else:
+        logger.warning(f"Unknown ensemble method: {method}, using mean")
+        return np.mean(predictions_array, axis=0)
+
+
 class ModelEvaluator:
     """Comprehensive model evaluation."""
 
