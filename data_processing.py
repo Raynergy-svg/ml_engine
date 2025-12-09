@@ -1,4 +1,4 @@
-"""Data processing and dataset utilities"""
+"""Data processing and dataset utilities with improved error handling and validation"""
 
 from functools import lru_cache, partial
 from pathlib import Path
@@ -21,18 +21,101 @@ class StockDataset(Dataset):
     PyTorch Dataset for generating sequences from stock market data.
     """
 
-    def __init__(self, features: list, targets: list, sequence_length: int = 60):
+    def __init__(self, features: Union[list, np.ndarray, torch.Tensor], 
+                 targets: Union[list, np.ndarray, torch.Tensor], 
+                 sequence_length: int = 60):
+        # Validate inputs
+        if features is None or targets is None:
+            raise DataValidationError("Features and targets cannot be None")
+            
+        # Convert to numpy arrays for consistent handling
+        if isinstance(features, list):
+            features = np.array(features)
+        elif isinstance(features, torch.Tensor):
+            features = features.cpu().numpy()
+            
+        if isinstance(targets, list):
+            targets = np.array(targets)
+        elif isinstance(targets, torch.Tensor):
+            targets = targets.cpu().numpy()
+        
+        # Validate shapes
+        if len(features) == 0 or len(targets) == 0:
+            raise DataValidationError("Features and targets cannot be empty")
+            
+        if len(features) != len(targets):
+            raise DataValidationError(
+                f"Features length ({len(features)}) must match targets length ({len(targets)})"
+            )
+        
+        # Check for NaN or infinite values
+        if np.any(np.isnan(features)) or np.any(np.isinf(features)):
+            logger.warning("Features contain NaN or infinite values, replacing with zeros")
+            features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
+            
+        if np.any(np.isnan(targets)) or np.any(np.isinf(targets)):
+            logger.warning("Targets contain NaN or infinite values, replacing with zeros")
+            targets = np.nan_to_num(targets, nan=0.0, posinf=0.0, neginf=0.0)
+        
         self.features = features
         self.targets = targets
         self.sequence_length = sequence_length
+        
+        logger.info(f"Initialized StockDataset with {len(self)} samples")
 
     def __len__(self) -> int:
         return len(self.features)
 
     def __getitem__(self, idx: int) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
-        seq = torch.FloatTensor(self.features[idx])
-        target = torch.FloatTensor([self.targets[idx]])
-        return seq, target
+        """Get a sample from the dataset
+        
+        Args:
+            idx: Index of the sample
+            
+        Returns:
+            Tuple of (features_tensor, target_tensor)
+            
+        Raises:
+            IndexError: If index is out of bounds
+        """
+        if idx < 0 or idx >= len(self):
+            raise IndexError(f"Index {idx} out of bounds for dataset of size {len(self)}")
+            
+        try:
+            seq = torch.FloatTensor(self.features[idx])
+            target = torch.FloatTensor([self.targets[idx]])
+            return seq, target
+        except Exception as e:
+            logger.error(f"Error retrieving sample at index {idx}: {e}")
+            raise
+
+
+def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> bool:
+    """Validate that a DataFrame contains required columns and has valid data
+    
+    Args:
+        df: DataFrame to validate
+        required_columns: List of required column names
+        
+    Returns:
+        True if valid, False otherwise
+    """
+    if df is None or df.empty:
+        logger.error("DataFrame is None or empty")
+        return False
+        
+    missing_cols = set(required_columns) - set(df.columns)
+    if missing_cols:
+        logger.error(f"DataFrame missing required columns: {missing_cols}")
+        return False
+        
+    # Check for excessive NaN values
+    for col in required_columns:
+        nan_ratio = df[col].isna().sum() / len(df)
+        if nan_ratio > 0.5:
+            logger.warning(f"Column '{col}' has {nan_ratio:.2%} NaN values")
+            
+    return True
 
 
 def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:
@@ -70,16 +153,18 @@ async def async_cached_download(
             if isinstance(col, tuple):
                 new_cols.append("_".join(map(str, col)).lower())
             else:
-                new_cols.append(str(col).lower())
-        return new_cols
-
-    # Try reading from cache
-    if cache_file.exists():
-        try:
-            df = pd.read_parquet(cache_file, engine="pyarrow")
+                logger.warning(f"Ticker {ticker} not found in data columns")
         except Exception as e:
-            logging.warning(f"Modin read_parquet failed: {e}. Falling back to pandas.")
-            import pandas as pd_normal
+            logger.error(f"Error processing ticker {ticker}: {e}")
+            continue
+            
+    if not all_data:
+        logger.warning("No valid ticker data was processed")
+        return pd.DataFrame()
+        
+    result = pd.concat(all_data, ignore_index=True)
+    logger.info(f"Processed {len(all_data)} tickers with {len(result)} total rows")
+    return result
 
             df = pd_normal.read_parquet(cache_file, engine="pyarrow")
         df.columns = fix_columns(df.columns)

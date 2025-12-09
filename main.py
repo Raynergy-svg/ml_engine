@@ -37,6 +37,10 @@ from utils import setup_logging, load_config
 import visualizer
 import openai_integration
 
+# Constants
+DEFAULT_MESSAGE_FORMAT = "Epoch {epoch} completed"
+TIMESTAMP_FORMAT = "%H:%M:%S"
+
 # Initialize console and logging
 console = Console()
 logger = setup_logging(log_file="cli.log")
@@ -136,74 +140,151 @@ def generate_dashboard(
 
 # CLI Command Implementations
 def train_model(config_path: str, choose_csv: bool = False) -> None:
-    """Run model training with live progress dashboard."""
-    config = load_config(Path(config_path))
-    engine = EnhancedMLEngine(config)
+    """Run model training with live progress dashboard.
+    
+    Args:
+        config_path: Path to configuration file
+        choose_csv: Whether to choose CSV file interactively
+        
+    Raises:
+        ValueError: If configuration is invalid
+        RuntimeError: If training fails
+    """
+    try:
+        # Load and validate configuration
+        config = load_config(Path(config_path))
+        
+        # Validate training configuration
+        if "training" not in config:
+            raise ValueError("Configuration missing 'training' section")
+        if "epochs" not in config["training"]:
+            raise ValueError("Configuration missing 'training.epochs'")
+        
+        console.print("[bold blue]Initializing ML Engine...[/bold blue]")
+        engine = EnhancedMLEngine(config)
 
-    # changed: create dummy training data as non-empty tensors
-    import torch
+        # changed: create dummy training data as non-empty tensors
+        import torch
 
-    X_train_data = [torch.tensor([0.0])]  # dummy training data with one sample
-    y_train_data = [torch.tensor([0.0])]  # dummy target data with one sample
+        X_train_data = [torch.tensor([0.0])]  # dummy training data with one sample
+        y_train_data = [torch.tensor([0.0])]  # dummy target data with one sample
 
-    api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting training"]
-    with Live(
-        generate_dashboard(
-            0, config["training"]["epochs"], 200, 0, 0, 0, api_logs, config
-        ),
-        refresh_per_second=10,
-    ) as live:
-        try:
-            for epoch, metrics in engine.train(
-                X_train_data, y_train_data
-            ):  # changed: using dummy data lists
-                # Update dashboard with training progress
-                api_logs.append(
-                    f"[grey]{time.strftime('%H:%M:%S')}[/grey] {metrics['message']}"
-                )
-                if len(api_logs) > 10:
-                    api_logs = api_logs[-10:]
+        api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting training"]
+        
+        # Initialize dashboard
+        epochs = config["training"]["epochs"]
+        console.print(f"[bold green]Training for {epochs} epochs[/bold green]")
+        
+        with Live(
+            generate_dashboard(0, epochs, 200, 0, 0, 0, api_logs, config),
+            refresh_per_second=10,
+        ) as live:
+            try:
+                for epoch, metrics in engine.train(
+                    X_train_data, y_train_data
+                ):  # changed: using dummy data lists
+                    # Update dashboard with training progress
+                    message = metrics.get('message', DEFAULT_MESSAGE_FORMAT.format(epoch=epoch))
+                    api_logs.append(
+                        f"[grey]{time.strftime(TIMESTAMP_FORMAT)}[/grey] {message}"
+                    )
+                    if len(api_logs) > 10:
+                        api_logs = api_logs[-10:]
+                    
+                    live.update(
+                        generate_dashboard(
+                            epoch,
+                            epochs,
+                            metrics.get('latency', 0),
+                            metrics.get('train_loss', 0),
+                            metrics.get('val_loss', 0),
+                            metrics.get('lr_delta', 0),
+                            api_logs,
+                            config,
+                        )
+                    )
+                    
+                console.print("[bold green]Training completed successfully![/bold green]")
+                
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Training interrupted by user[/yellow]")
+                api_logs.append("[red]Training interrupted by user[/red]")
                 live.update(
                     generate_dashboard(
                         epoch,
-                        config["training"]["epochs"],
-                        metrics["latency"],
-                        metrics["train_loss"],
-                        metrics["val_loss"],
-                        metrics["lr_delta"],
+                        epochs,
+                        metrics.get('latency', 0),
+                        metrics.get('train_loss', 0),
+                        metrics.get('val_loss', 0),
+                        metrics.get('lr_delta', 0),
                         api_logs,
                         config,
                     )
                 )
-        except KeyboardInterrupt:
-            api_logs.append("[red]Training interrupted by user[/red]")
-            live.update(
-                generate_dashboard(
-                    epoch,
-                    config["training"]["epochs"],
-                    metrics["latency"],
-                    metrics["train_loss"],
-                    metrics["val_loss"],
-                    metrics["lr_delta"],
-                    api_logs,
-                    config,
-                )
-            )
-            engine.save_model("interrupted_model.pth")
-            return
+                # Save interrupted model
+                try:
+                    engine.save_model("interrupted_model.pth")
+                    console.print("[cyan]Model saved as interrupted_model.pth[/cyan]")
+                except Exception as e:
+                    console.print(f"[red]Failed to save model: {e}[/red]")
+                return
+                
+            except Exception as e:
+                console.print(f"[red]Training error: {e}[/red]")
+                logging.error(f"Training failed: {e}", exc_info=True)
+                raise RuntimeError(f"Training failed: {e}")
+                
+    except FileNotFoundError as e:
+        console.print(f"[red]Configuration file not found: {e}[/red]")
+        raise
+    except ValueError as e:
+        console.print(f"[red]Configuration error: {e}[/red]")
+        raise
+    except Exception as e:
+        console.print(f"[red]Unexpected error: {e}[/red]")
+        logging.error(f"Unexpected error in train_model: {e}", exc_info=True)
+        raise
 
 
 def evaluate_model(config_path: str) -> None:
-    """Run model evaluation with results dashboard."""
-    config = load_config(Path(config_path))
-    engine = EnhancedMLEngine(config)
+    """Run model evaluation with results dashboard.
+    
+    Args:
+        config_path: Path to configuration file
+        
+    Raises:
+        RuntimeError: If evaluation fails
+    """
+    try:
+        console.print("[bold blue]Loading configuration and model...[/bold blue]")
+        config = load_config(Path(config_path))
+        engine = EnhancedMLEngine(config)
 
-    api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting evaluation"]
-    # Provide placeholder values for generate_dashboard arguments
-    with Live(generate_dashboard(0, 10, 200, 0.0, 0.0, 0.0, api_logs, config)) as live:
-        metrics = engine.evaluate_model()
-        # Update dashboard with evaluation results
-        # ... dashboard updates ...
+        api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting evaluation"]
+        
+        with Live(generate_dashboard(0, 10, 200, 0.0, 0.0, 0.0, api_logs, config)) as live:
+            try:
+                console.print("[bold green]Evaluating model...[/bold green]")
+                metrics = engine.evaluate_model()
+                
+                # Display evaluation results
+                api_logs.append(f"[green]Evaluation completed[/green]")
+                if metrics:
+                    for key, value in metrics.items():
+                        api_logs.append(f"[cyan]{key}: {value:.4f}[/cyan]")
+                
+                live.update(generate_dashboard(10, 10, 0, 0.0, 0.0, 0.0, api_logs, config))
+                console.print("[bold green]Evaluation completed successfully![/bold green]")
+                
+            except Exception as e:
+                console.print(f"[red]Evaluation error: {e}[/red]")
+                logging.error(f"Evaluation failed: {e}", exc_info=True)
+                raise RuntimeError(f"Evaluation failed: {e}")
+                
+    except Exception as e:
+        console.print(f"[red]Failed to evaluate model: {e}[/red]")
+        logging.error(f"Model evaluation error: {e}", exc_info=True)
+        raise
 
 
 # New CLI command implementations
@@ -261,13 +342,33 @@ def openai_tune(config_path: str) -> None:
 
 
 def predict_price(config_path: str) -> None:
+    """Use ML engine to predict prices given a dataset.
+    
+    Args:
+        config_path: Path to configuration file
+        
+    Raises:
+        RuntimeError: If prediction fails
     """
-    Use ML engine to predict prices given a dataset.
-    """
-    config = load_config(Path(config_path))
-    engine = EnhancedMLEngine(config)
-    prediction = engine.predict_price()
-    console.print(f"[bold yellow]Predicted Price: {prediction}[/bold yellow]")
+    try:
+        console.print("[bold blue]Loading model for prediction...[/bold blue]")
+        config = load_config(Path(config_path))
+        engine = EnhancedMLEngine(config)
+        
+        console.print("[bold green]Generating prediction...[/bold green]")
+        prediction = engine.predict_price()
+        
+        console.print(f"[bold yellow]Predicted Price: {prediction}[/bold yellow]")
+        logging.info(f"Price prediction completed: {prediction}")
+        
+    except AttributeError as e:
+        console.print(f"[red]Method not available: {e}[/red]")
+        logging.error(f"predict_price method error: {e}")
+        raise RuntimeError(f"Prediction method not available: {e}")
+    except Exception as e:
+        console.print(f"[red]Prediction failed: {e}[/red]")
+        logging.error(f"Price prediction error: {e}", exc_info=True)
+        raise
 
 
 def realtime_loop(config_path: str) -> None:
