@@ -65,7 +65,22 @@ class EnhancedTrainer:
             Path(dir_path).mkdir(parents=True, exist_ok=True)
 
     def load_checkpoint(self, checkpoint_path: str, input_size: int):
-        """Load checkpoint to resume training."""
+        """
+        Load checkpoint to resume training.
+        
+        Args:
+            checkpoint_path (str): Path to the checkpoint file (.pth)
+            input_size (int): Number of input features for rebuilding the model
+            
+        Returns:
+            tuple: (start_epoch, best_val_loss) where:
+                - start_epoch (int): The epoch number to resume from
+                - best_val_loss (float): The best validation loss from checkpoint
+                
+        Raises:
+            FileNotFoundError: If checkpoint file does not exist at the specified path
+            RuntimeError: If checkpoint is corrupted or incompatible with current config
+        """
         logger.info(f"Loading checkpoint from {checkpoint_path}")
         
         if not os.path.exists(checkpoint_path):
@@ -226,17 +241,31 @@ class EnhancedTrainer:
         Complete training pipeline.
         
         Args:
-            X_train: Training features
-            y_train: Training targets
-            X_val: Validation features
-            y_val: Validation targets
-            num_epochs: Number of additional epochs to train (not total epochs)
-            resume_from: Path to checkpoint file to resume from (optional)
+            X_train (np.ndarray): Training features of shape (n_samples, sequence_length, n_features)
+            y_train (np.ndarray): Training targets of shape (n_samples,)
+            X_val (np.ndarray): Validation features of shape (n_samples, sequence_length, n_features)
+            y_val (np.ndarray): Validation targets of shape (n_samples,)
+            num_epochs (int): Number of epochs to train. When starting from scratch, this is the
+                total number of epochs. When resuming from a checkpoint, this represents 
+                ADDITIONAL epochs beyond the checkpoint's epoch. Default: 100
+            resume_from (str, optional): Path to checkpoint file (.pth) to resume training from.
+                If None, training starts from scratch. Default: None
+            
+        Returns:
+            tuple: (train_losses, val_losses) - Lists of training and validation losses per epoch
             
         Note:
-            When resuming, num_epochs represents additional epochs to train.
-            For example, resuming from epoch 50 with num_epochs=100 will train
-            until epoch 150 (50 + 100).
+            When resume_from is specified, num_epochs represents ADDITIONAL epochs to train,
+            not total epochs. For example, resuming from epoch 50 with num_epochs=100 will
+            train until epoch 150 (50 + 100 additional epochs).
+            
+        Example:
+            # Train from scratch for 100 epochs
+            trainer.train(X_train, y_train, X_val, y_val, num_epochs=100)
+            
+            # Resume from checkpoint and train 50 more epochs
+            trainer.train(X_train, y_train, X_val, y_val, num_epochs=50, 
+                         resume_from='trained_data/models/best_model.pth')
         """
         logger.info("Starting training...")
 
