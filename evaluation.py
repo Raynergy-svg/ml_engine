@@ -42,11 +42,9 @@ def smooth_predictions(
         return predictions
     
     if method == "ema":
-        # Exponential Moving Average - gives more weight to recent predictions
-        smoothed = np.zeros_like(predictions)
-        smoothed[0] = predictions[0]
-        for i in range(1, len(predictions)):
-            smoothed[i] = alpha * predictions[i] + (1 - alpha) * smoothed[i-1]
+        # Exponential Moving Average - vectorized implementation for better performance
+        import pandas as pd
+        smoothed = pd.Series(predictions).ewm(alpha=alpha, adjust=False).mean().values
         return smoothed
     
     elif method == "sma":

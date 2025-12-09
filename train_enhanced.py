@@ -51,7 +51,9 @@ class LabelSmoothingLoss(nn.Module):
         """
         if self.smoothing > 0 and self.training:
             # Add small Gaussian noise to targets for label smoothing
-            noise = torch.randn_like(targets) * self.smoothing * targets.std()
+            # Use robust scaling factor to avoid issues with small std
+            target_scale = torch.std(targets, unbiased=False) + 1e-8
+            noise = torch.randn_like(targets) * self.smoothing * target_scale
             smoothed_targets = targets + noise
             return self.base_loss(predictions, smoothed_targets)
         else:
@@ -229,7 +231,7 @@ class EnhancedTrainer:
                 self.optimizer.step()
             
             # Step scheduler if using OneCycleLR
-            if use_step_scheduler and hasattr(self.scheduler, 'step') and isinstance(
+            if use_step_scheduler and isinstance(
                 self.scheduler, torch.optim.lr_scheduler.OneCycleLR
             ):
                 self.scheduler.step()

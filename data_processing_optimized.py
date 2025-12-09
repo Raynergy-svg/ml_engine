@@ -665,11 +665,12 @@ def augment_data(
             
             # Sample lambda from Beta distribution
             lam = np.random.beta(mixup_alpha, mixup_alpha, size=(len(sequences), 1, 1))
-            lam_targets = lam.squeeze()
+            # Properly handle dimensions for mixing
+            lam_targets = np.random.beta(mixup_alpha, mixup_alpha, size=len(sequences))
             
             # Create mixed samples
             mixed_sequences = lam * sequences + (1 - lam) * shuffled_sequences
-            mixed_targets = lam_targets.squeeze() * targets + (1 - lam_targets.squeeze()) * shuffled_targets
+            mixed_targets = lam_targets * targets + (1 - lam_targets) * shuffled_targets
             
             augmented_sequences.append(mixed_sequences)
             augmented_targets.append(mixed_targets)

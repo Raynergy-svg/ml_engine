@@ -95,8 +95,12 @@ class StockPredictor(nn.Module):
         for name, param in self.named_parameters():
             if "weight" in name:
                 if "lstm" in name:
-                    # Orthogonal initialization for LSTM for better gradient flow
-                    nn.init.orthogonal_(param)
+                    # Orthogonal initialization for LSTM recurrent weights (weight_hh)
+                    # Xavier for input weights (weight_ih)
+                    if "weight_hh" in name:
+                        nn.init.orthogonal_(param)
+                    else:
+                        nn.init.xavier_uniform_(param)
                 elif "bn" in name or "layer_norm" in name:
                     # Initialize batch norm and layer norm weights to 1
                     nn.init.ones_(param)
