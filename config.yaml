@@ -65,6 +65,7 @@ hardware:
 hidden_size: 64
 huber_delta: 1.0
 input_features: 7
+label_smoothing: 0.05
 learning_rate: 0.0005
 learning_rate_scheduler: cosine
 log_file: my_app.log
@@ -91,7 +92,7 @@ loss_rho: 0.5
 loss_sigma: 0.5
 loss_tau: 0.5
 loss_theta: 0.5
-loss_type: mse
+loss_type: huber
 loss_upsilon: 0.5
 loss_xi: 0.5
 loss_zeta: 0.5
@@ -120,9 +121,10 @@ normalize_features: true
 num_layers: 2
 num_workers: 16
 online_update_frequency: 1
+activation: mish
 openai_api_model: gpt-4o
 openai_autotune_interval: 35
-optimizer: adam
+optimizer: adamw
 paths:
   checkpoint_dir: trained_data/models/checkpoints
   data_dir: trained_data/data

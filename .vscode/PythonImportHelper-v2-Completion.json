@@ -259,22 +259,6 @@
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -340,134 +324,6 @@
     },
     {
         "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Union",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Callable",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Literal",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Union",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Callable",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Literal",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -876,6 +732,14 @@
     },
     {
         "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1371,75 +1235,11 @@
         "documentation": {}
     },
     {
-        "label": "dataclass",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "asdict",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "dataclass",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "asdict",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
         "label": "datetime",
         "kind": 6,
         "isExtraImport": true,
         "importPath": "datetime",
         "description": "datetime",
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
         "detail": "datetime",
         "documentation": {}
     },
@@ -1809,297 +1609,6 @@
         "documentation": {}
     },
     {
-        "label": "re",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "re",
-        "description": "re",
-        "detail": "re",
-        "documentation": {}
-    },
-    {
-        "label": "hashlib",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "hashlib",
-        "description": "hashlib",
-        "detail": "hashlib",
-        "documentation": {}
-    },
-    {
-        "label": "ThreadPoolExecutor",
-        "importPath": "concurrent.futures",
-        "description": "concurrent.futures",
-        "isExtraImport": true,
-        "detail": "concurrent.futures",
-        "documentation": {}
-    },
-    {
-        "label": "as_completed",
-        "importPath": "concurrent.futures",
-        "description": "concurrent.futures",
-        "isExtraImport": true,
-        "detail": "concurrent.futures",
-        "documentation": {}
-    },
-    {
-        "label": "ThreadPoolExecutor",
-        "importPath": "concurrent.futures",
-        "description": "concurrent.futures",
-        "isExtraImport": true,
-        "detail": "concurrent.futures",
-        "documentation": {}
-    },
-    {
-        "label": "as_completed",
-        "importPath": "concurrent.futures",
-        "description": "concurrent.futures",
-        "isExtraImport": true,
-        "detail": "concurrent.futures",
-        "documentation": {}
-    },
-    {
-        "label": "ThreadPoolExecutor",
-        "importPath": "concurrent.futures",
-        "description": "concurrent.futures",
-        "isExtraImport": true,
-        "detail": "concurrent.futures",
-        "documentation": {}
-    },
-    {
-        "label": "functools",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "functools",
-        "description": "functools",
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "lru_cache",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "wraps",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "lru_cache",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "wraps",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "lru_cache",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "partial",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "lru_cache",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "partial",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "wraps",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "partial",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "lru_cache",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "StandardScaler",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "MinMaxScaler",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "RobustScaler",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "QuantileTransformer",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "StandardScaler",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "MinMaxScaler",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "RobustScaler",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "QuantileTransformer",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "StandardScaler",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "MinMaxScaler",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "RobustScaler",
-        "importPath": "sklearn.preprocessing",
-        "description": "sklearn.preprocessing",
-        "isExtraImport": true,
-        "detail": "sklearn.preprocessing",
-        "documentation": {}
-    },
-    {
-        "label": "mutual_info_regression",
-        "importPath": "sklearn.feature_selection",
-        "description": "sklearn.feature_selection",
-        "isExtraImport": true,
-        "detail": "sklearn.feature_selection",
-        "documentation": {}
-    },
-    {
-        "label": "SelectKBest",
-        "importPath": "sklearn.feature_selection",
-        "description": "sklearn.feature_selection",
-        "isExtraImport": true,
-        "detail": "sklearn.feature_selection",
-        "documentation": {}
-    },
-    {
-        "label": "f_regression",
-        "importPath": "sklearn.feature_selection",
-        "description": "sklearn.feature_selection",
-        "isExtraImport": true,
-        "detail": "sklearn.feature_selection",
-        "documentation": {}
-    },
-    {
-        "label": "mutual_info_regression",
-        "importPath": "sklearn.feature_selection",
-        "description": "sklearn.feature_selection",
-        "isExtraImport": true,
-        "detail": "sklearn.feature_selection",
-        "documentation": {}
-    },
-    {
-        "label": "SelectKBest",
-        "importPath": "sklearn.feature_selection",
-        "description": "sklearn.feature_selection",
-        "isExtraImport": true,
-        "detail": "sklearn.feature_selection",
-        "documentation": {}
-    },
-    {
-        "label": "f_regression",
-        "importPath": "sklearn.feature_selection",
-        "description": "sklearn.feature_selection",
-        "isExtraImport": true,
-        "detail": "sklearn.feature_selection",
-        "documentation": {}
-    },
-    {
         "label": "sys",
         "kind": 6,
         "isExtraImport": true,
@@ -2388,6 +1897,15 @@
         "documentation": {}
     },
     {
+        "label": "re",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "re",
+        "description": "re",
+        "detail": "re",
+        "documentation": {}
+    },
+    {
         "label": "NewsApiClient",
         "importPath": "newsapi",
         "description": "newsapi",
@@ -2570,6 +2088,14 @@
         "documentation": {}
     },
     {
+        "label": "ThreadPoolExecutor",
+        "importPath": "concurrent.futures",
+        "description": "concurrent.futures",
+        "isExtraImport": true,
+        "detail": "concurrent.futures",
+        "documentation": {}
+    },
+    {
         "label": "threading",
         "kind": 6,
         "isExtraImport": true,
@@ -2594,6 +2120,15 @@
         "importPath": "shutil",
         "description": "shutil",
         "detail": "shutil",
+        "documentation": {}
+    },
+    {
+        "label": "hashlib",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "hashlib",
+        "description": "hashlib",
+        "detail": "hashlib",
         "documentation": {}
     },
     {
@@ -3179,6 +2714,30 @@
         "documentation": {}
     },
     {
+        "label": "StandardScaler",
+        "importPath": "sklearn.preprocessing",
+        "description": "sklearn.preprocessing",
+        "isExtraImport": true,
+        "detail": "sklearn.preprocessing",
+        "documentation": {}
+    },
+    {
+        "label": "MinMaxScaler",
+        "importPath": "sklearn.preprocessing",
+        "description": "sklearn.preprocessing",
+        "isExtraImport": true,
+        "detail": "sklearn.preprocessing",
+        "documentation": {}
+    },
+    {
+        "label": "RobustScaler",
+        "importPath": "sklearn.preprocessing",
+        "description": "sklearn.preprocessing",
+        "isExtraImport": true,
+        "detail": "sklearn.preprocessing",
+        "documentation": {}
+    },
+    {
         "label": "train_test_split",
         "importPath": "sklearn.model_selection",
         "description": "sklearn.model_selection",
@@ -3209,6 +2768,71 @@
         "description": "feature_engineering",
         "isExtraImport": true,
         "detail": "feature_engineering",
+        "documentation": {}
+    },
+    {
+        "label": "functools",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "functools",
+        "description": "functools",
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "lru_cache",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "partial",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "lru_cache",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "partial",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "wraps",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "partial",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
+        "documentation": {}
+    },
+    {
+        "label": "lru_cache",
+        "importPath": "functools",
+        "description": "functools",
+        "isExtraImport": true,
+        "detail": "functools",
         "documentation": {}
     },
     {
@@ -3939,321 +3563,6 @@
         "description": "(redacted) future_use.predict_backup",
         "peekOfCode": "logger = logging.getLogger(__name__)\ndef load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary\n    Returns:",
         "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "PreprocessConfig",
-        "kind": 6,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "class PreprocessConfig:\n    \"\"\"Configuration for preprocessing operations.\"\"\"\n    sequence_length: int = DEFAULT_SEQUENCE_LENGTH\n    scaler_type: str = \"standard\"\n    add_technical: bool = True\n    add_advanced: bool = True\n    normalize_volume: bool = True\n    fill_method: str = \"forward\"\n    outlier_std: float = 3.0\n    min_data_points: int = MIN_DATA_POINTS",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "DataQualityMetrics",
-        "kind": 6,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "class DataQualityMetrics:\n    \"\"\"Metrics for data quality assessment.\"\"\"\n    total_rows: int\n    valid_rows: int\n    missing_values: Dict[str, int]\n    outliers_detected: int\n    date_range: Tuple[str, str]\n    price_stats: Dict[str, float]\n    volume_stats: Dict[str, float]\n    quality_score: float",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "DataLoader",
-        "kind": 6,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "class DataLoader:\n    \"\"\"Advanced data loader with caching and validation.\"\"\"\n    def __init__(self, cache_dir: Path = DATA_CACHE_DIR):\n        self.cache_dir = cache_dir\n        self.cache_dir.mkdir(parents=True, exist_ok=True)\n    def _get_cache_key(\n        self,\n        ticker: str,\n        start: str,\n        end: str",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "FeatureEngineer",
-        "kind": 6,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "class FeatureEngineer:\n    \"\"\"Advanced feature engineering for stock data.\"\"\"\n    def __init__(self, config: Optional[PreprocessConfig] = None):\n        self.config = config or PreprocessConfig()\n    @staticmethod\n    def add_basic_features(df: pd.DataFrame) -> pd.DataFrame:\n        \"\"\"Add basic price and volume features.\"\"\"\n        df = df.copy()\n        # Price features\n        df['returns'] = df['close'].pct_change()",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "DataValidator",
-        "kind": 6,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "class DataValidator:\n    \"\"\"Comprehensive data validation and quality assessment.\"\"\"\n    @staticmethod\n    def detect_outliers(\n        data: pd.DataFrame,\n        columns: List[str],\n        std_threshold: float = 3.0\n    ) -> Tuple[pd.DataFrame, int]:\n        \"\"\"\n        Detect and optionally remove outliers using z-score method.",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "AdvancedScaler",
-        "kind": 6,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "class AdvancedScaler:\n    \"\"\"Advanced scaling with multiple strategies.\"\"\"\n    def __init__(self, scaler_type: str = \"standard\"):\n        self.scaler_type = scaler_type\n        self.scaler = self._create_scaler()\n        self.feature_names_ = None\n    def _create_scaler(self):\n        \"\"\"Create scaler based on type.\"\"\"\n        scalers = {\n            \"standard\": StandardScaler(),",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "SequenceGenerator",
-        "kind": 6,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "class SequenceGenerator:\n    \"\"\"Generate sequences for time series models.\"\"\"\n    def __init__(self, sequence_length: int = DEFAULT_SEQUENCE_LENGTH):\n        self.sequence_length = sequence_length\n    def create_sequences(\n        self,\n        data: np.ndarray,\n        target_col_idx: int = 3,\n        stride: int = 1\n    ) -> Tuple[np.ndarray, np.ndarray]:",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "DataPreprocessor",
-        "kind": 6,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "class DataPreprocessor:\n    \"\"\"\n    Main preprocessing pipeline orchestrator.\n    Combines all preprocessing components into a unified pipeline.\n    \"\"\"\n    def __init__(self, config: Optional[PreprocessConfig] = None):\n        self.config = config or PreprocessConfig()\n        self.loader = DataLoader()\n        self.engineer = FeatureEngineer(self.config)\n        self.validator = DataValidator()",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "timeit",
-        "kind": 2,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "def timeit(func: Callable) -> Callable:\n    \"\"\"Decorator to measure function execution time.\"\"\"\n    @wraps(func)\n    def wrapper(*args, **kwargs):\n        start = time.time()\n        result = func(*args, **kwargs)\n        elapsed = time.time() - start\n        logger.info(f\"{func.__name__} completed in {elapsed:.2f}s\")\n        return result\n    return wrapper",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "preprocess_data",
-        "kind": 2,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "def preprocess_data(\n    data: pd.DataFrame,\n    sequence_length: int = DEFAULT_SEQUENCE_LENGTH,\n    scaler_type: str = \"standard\",\n    add_technical: bool = True,\n    return_scaler: bool = False,\n) -> Union[\n    Tuple[Optional[np.ndarray], Optional[np.ndarray]],\n    Tuple[Optional[np.ndarray], Optional[np.ndarray], AdvancedScaler]\n]:",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "validate_data_quality",
-        "kind": 2,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "def validate_data_quality(\n    data: pd.DataFrame,\n    min_rows: int = MIN_DATA_POINTS\n) -> Dict[str, Any]:\n    \"\"\"\n    Validate data quality and return diagnostics.\n    Args:\n        data: DataFrame to validate\n        min_rows: Minimum required rows\n    Returns:",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "logger = logging.getLogger(__name__)\n# Suppress yfinance warnings\nwarnings.filterwarnings('ignore', category=FutureWarning)\n# Global configuration\nCACHE_VERSION = \"v2.0\"\nCACHE_DIR = Path.home() / \".trading_bot_cache\" / CACHE_VERSION\nCACHE_DIR.mkdir(parents=True, exist_ok=True)\nDATA_CACHE_DIR = CACHE_DIR / \"data\"\nDATA_CACHE_DIR.mkdir(exist_ok=True)\nMETADATA_CACHE_DIR = CACHE_DIR / \"metadata\"",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "CACHE_VERSION",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "CACHE_VERSION = \"v2.0\"\nCACHE_DIR = Path.home() / \".trading_bot_cache\" / CACHE_VERSION\nCACHE_DIR.mkdir(parents=True, exist_ok=True)\nDATA_CACHE_DIR = CACHE_DIR / \"data\"\nDATA_CACHE_DIR.mkdir(exist_ok=True)\nMETADATA_CACHE_DIR = CACHE_DIR / \"metadata\"\nMETADATA_CACHE_DIR.mkdir(exist_ok=True)\n# Constants\nDEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "CACHE_DIR",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "CACHE_DIR = Path.home() / \".trading_bot_cache\" / CACHE_VERSION\nCACHE_DIR.mkdir(parents=True, exist_ok=True)\nDATA_CACHE_DIR = CACHE_DIR / \"data\"\nDATA_CACHE_DIR.mkdir(exist_ok=True)\nMETADATA_CACHE_DIR = CACHE_DIR / \"metadata\"\nMETADATA_CACHE_DIR.mkdir(exist_ok=True)\n# Constants\nDEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "DATA_CACHE_DIR",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "DATA_CACHE_DIR = CACHE_DIR / \"data\"\nDATA_CACHE_DIR.mkdir(exist_ok=True)\nMETADATA_CACHE_DIR = CACHE_DIR / \"metadata\"\nMETADATA_CACHE_DIR.mkdir(exist_ok=True)\n# Constants\nDEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "METADATA_CACHE_DIR",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "METADATA_CACHE_DIR = CACHE_DIR / \"metadata\"\nMETADATA_CACHE_DIR.mkdir(exist_ok=True)\n# Constants\nDEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\n# ========================================================================\n# Data Classes",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "DEFAULT_SEQUENCE_LENGTH",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "DEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PreprocessConfig:",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "MIN_DATA_POINTS",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "MIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PreprocessConfig:\n    \"\"\"Configuration for preprocessing operations.\"\"\"",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "REQUIRED_COLUMNS",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "REQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PreprocessConfig:\n    \"\"\"Configuration for preprocessing operations.\"\"\"\n    sequence_length: int = DEFAULT_SEQUENCE_LENGTH",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "SCALER_TYPES",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "SCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PreprocessConfig:\n    \"\"\"Configuration for preprocessing operations.\"\"\"\n    sequence_length: int = DEFAULT_SEQUENCE_LENGTH\n    scaler_type: str = \"standard\"",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "DEFAULT_WORKERS",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess",
-        "description": "(redacted) future_use.preprocess",
-        "peekOfCode": "DEFAULT_WORKERS = 4\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PreprocessConfig:\n    \"\"\"Configuration for preprocessing operations.\"\"\"\n    sequence_length: int = DEFAULT_SEQUENCE_LENGTH\n    scaler_type: str = \"standard\"\n    add_technical: bool = True",
-        "detail": "(redacted) future_use.preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "process_multiindex_data",
-        "kind": 2,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Process MultiIndex data from yfinance for multiple tickers.\n    Args:\n        data: DataFrame with MultiIndex columns\n        tickers: List of ticker symbols to process\n    Returns:\n        Stacked DataFrame with all tickers\n    \"\"\"\n    if data is None or data.empty:",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "cached_download",
-        "kind": 2,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "def cached_download(ticker: str, start: str, end: str) -> Optional[pd.DataFrame]:\n    \"\"\"\n    Download and cache stock data with validation.\n    Args:\n        ticker: Stock ticker symbol\n        start: Start date (YYYY-MM-DD)\n        end: End date (YYYY-MM-DD)\n    Returns:\n        DataFrame with stock data or None on failure\n    \"\"\"",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "preprocess_data",
-        "kind": 2,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "def preprocess_data(\n    data: pd.DataFrame,\n    sequence_length: int = DEFAULT_SEQUENCE_LENGTH,\n    scaler_type: str = \"standard\",\n    add_technical: bool = True,\n    return_scaler: bool = False,\n) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:\n    \"\"\"\n    Preprocess data and create sequences for training.\n    Args:",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "validate_data_quality",
-        "kind": 2,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "def validate_data_quality(\n    data: pd.DataFrame, min_rows: int = MIN_DATA_POINTS\n) -> Dict[str, Any]:\n    \"\"\"\n    Validate data quality and return diagnostics.\n    Args:\n        data: DataFrame to validate\n        min_rows: Minimum required rows\n    Returns:\n        Dictionary with validation results",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "logger = logging.getLogger(__name__)\n# Suppress yfinance warnings\nwarnings.filterwarnings(\"ignore\", category=FutureWarning)\n# Global configuration\nCACHE_VERSION = \"v2.0\"\nCACHE_DIR = Path.home() / \".trading_bot_cache\" / CACHE_VERSION\nCACHE_DIR.mkdir(parents=True, exist_ok=True)\nDATA_CACHE_DIR = CACHE_DIR / \"data\"\nDATA_CACHE_DIR.mkdir(exist_ok=True)\nMETADATA_CACHE_DIR = CACHE_DIR / \"metadata\"",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "CACHE_VERSION",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "CACHE_VERSION = \"v2.0\"\nCACHE_DIR = Path.home() / \".trading_bot_cache\" / CACHE_VERSION\nCACHE_DIR.mkdir(parents=True, exist_ok=True)\nDATA_CACHE_DIR = CACHE_DIR / \"data\"\nDATA_CACHE_DIR.mkdir(exist_ok=True)\nMETADATA_CACHE_DIR = CACHE_DIR / \"metadata\"\nMETADATA_CACHE_DIR.mkdir(exist_ok=True)\n# Constants\nDEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "CACHE_DIR",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "CACHE_DIR = Path.home() / \".trading_bot_cache\" / CACHE_VERSION\nCACHE_DIR.mkdir(parents=True, exist_ok=True)\nDATA_CACHE_DIR = CACHE_DIR / \"data\"\nDATA_CACHE_DIR.mkdir(exist_ok=True)\nMETADATA_CACHE_DIR = CACHE_DIR / \"metadata\"\nMETADATA_CACHE_DIR.mkdir(exist_ok=True)\n# Constants\nDEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "DATA_CACHE_DIR",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "DATA_CACHE_DIR = CACHE_DIR / \"data\"\nDATA_CACHE_DIR.mkdir(exist_ok=True)\nMETADATA_CACHE_DIR = CACHE_DIR / \"metadata\"\nMETADATA_CACHE_DIR.mkdir(exist_ok=True)\n# Constants\nDEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "METADATA_CACHE_DIR",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "METADATA_CACHE_DIR = CACHE_DIR / \"metadata\"\nMETADATA_CACHE_DIR.mkdir(exist_ok=True)\n# Constants\nDEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\ndef process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "DEFAULT_SEQUENCE_LENGTH",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "DEFAULT_SEQUENCE_LENGTH = 60\nMIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\ndef process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Process MultiIndex data from yfinance for multiple tickers.\n    Args:\n        data: DataFrame with MultiIndex columns",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "MIN_DATA_POINTS",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "MIN_DATA_POINTS = 100\nREQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\ndef process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Process MultiIndex data from yfinance for multiple tickers.\n    Args:\n        data: DataFrame with MultiIndex columns\n        tickers: List of ticker symbols to process",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "REQUIRED_COLUMNS",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "REQUIRED_COLUMNS = [\"open\", \"high\", \"low\", \"close\", \"volume\"]\nSCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\ndef process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Process MultiIndex data from yfinance for multiple tickers.\n    Args:\n        data: DataFrame with MultiIndex columns\n        tickers: List of ticker symbols to process\n    Returns:",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "SCALER_TYPES",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "SCALER_TYPES = Literal[\"standard\", \"minmax\", \"robust\", \"quantile\"]\nDEFAULT_WORKERS = 4\ndef process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Process MultiIndex data from yfinance for multiple tickers.\n    Args:\n        data: DataFrame with MultiIndex columns\n        tickers: List of ticker symbols to process\n    Returns:\n        Stacked DataFrame with all tickers",
-        "detail": "(redacted) future_use.preprocess_backup",
-        "documentation": {}
-    },
-    {
-        "label": "DEFAULT_WORKERS",
-        "kind": 5,
-        "importPath": "(redacted) future_use.preprocess_backup",
-        "description": "(redacted) future_use.preprocess_backup",
-        "peekOfCode": "DEFAULT_WORKERS = 4\ndef process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Process MultiIndex data from yfinance for multiple tickers.\n    Args:\n        data: DataFrame with MultiIndex columns\n        tickers: List of ticker symbols to process\n    Returns:\n        Stacked DataFrame with all tickers\n    \"\"\"",
-        "detail": "(redacted) future_use.preprocess_backup",
         "documentation": {}
     },
     {
@@ -5346,11 +4655,20 @@
         "documentation": {}
     },
     {
+        "label": "DataValidationError",
+        "kind": 6,
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "class DataValidationError(Exception):\n    \"\"\"Custom exception for data validation errors\"\"\"\n    pass\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    def __init__(\n        self,\n        features: Union[list, np.ndarray, torch.Tensor],",
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
         "label": "StockDataset",
         "kind": 6,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "class StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    def __init__(self, features: Union[list, np.ndarray, torch.Tensor], \n                 targets: Union[list, np.ndarray, torch.Tensor], \n                 sequence_length: int = 60):\n        # Validate inputs\n        if features is None or targets is None:\n            raise DataValidationError(\"Features and targets cannot be None\")",
+        "peekOfCode": "class StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    def __init__(\n        self,\n        features: Union[list, np.ndarray, torch.Tensor],\n        targets: Union[list, np.ndarray, torch.Tensor],\n        sequence_length: int = 60,\n    ):",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -5359,7 +4677,7 @@
         "kind": 2,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> bool:\n    \"\"\"Validate that a DataFrame contains required columns and has valid data\n    Args:\n        df: DataFrame to validate\n        required_columns: List of required column names\n    Returns:\n        True if valid, False otherwise\n    \"\"\"\n    if df is None or df.empty:\n        logger.error(\"DataFrame is None or empty\")",
+        "peekOfCode": "def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> bool:\n    \"\"\"Validate DataFrame contains required columns and has valid data\n    Args:\n        df: DataFrame to validate\n        required_columns: List of required column names\n    Returns:\n        True if valid, False otherwise\n    \"\"\"\n    if df is None or df.empty:\n        logger.error(\"DataFrame is None or empty\")",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -5377,7 +4695,7 @@
         "kind": 5,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nCACHE_DIR = Path.home() / \".trading_bot_cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    def __init__(self, features: Union[list, np.ndarray, torch.Tensor], \n                 targets: Union[list, np.ndarray, torch.Tensor], \n                 sequence_length: int = 60):",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nCACHE_DIR = Path.home() / \".trading_bot_cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nclass DataValidationError(Exception):\n    \"\"\"Custom exception for data validation errors\"\"\"\n    pass\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -5386,7 +4704,7 @@
         "kind": 5,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "CACHE_DIR = Path.home() / \".trading_bot_cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    def __init__(self, features: Union[list, np.ndarray, torch.Tensor], \n                 targets: Union[list, np.ndarray, torch.Tensor], \n                 sequence_length: int = 60):\n        # Validate inputs",
+        "peekOfCode": "CACHE_DIR = Path.home() / \".trading_bot_cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nclass DataValidationError(Exception):\n    \"\"\"Custom exception for data validation errors\"\"\"\n    pass\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    def __init__(",
         "detail": "data_processing",
         "documentation": {}
     },
