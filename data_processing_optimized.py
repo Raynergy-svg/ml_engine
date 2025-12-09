@@ -485,6 +485,11 @@ def prepare_sequences(
     sequences = np.array(sequences)
     targets = np.array(targets)
     
+    # Log statistics for verification (PyTorch best practice)
+    logger.info(f"Created {len(sequences)} sequences with shape {sequences.shape}")
+    logger.info(f"Feature range: [{sequences.min():.4f}, {sequences.max():.4f}]")
+    logger.info(f"Target range: [{targets.min():.4f}, {targets.max():.4f}]")
+    
     # Prepare metadata
     metadata = {
         'feature_scaler': feature_scaler,
@@ -492,7 +497,130 @@ def prepare_sequences(
         'feature_columns': feature_columns,
         'target_column': target_column,
         'sequence_length': sequence_length,
-        'target_shift': target_shift
+        'target_shift': target_shift,
+        'n_sequences': len(sequences),
+        'feature_shape': sequences.shape,
+        'target_shape': targets.shape
     }
     
     return sequences, targets, metadata
+
+
+def add_technical_indicators(
+    df: pd.DataFrame,
+    price_column: str = "close",
+    volume_column: str = "volume"
+) -> pd.DataFrame:
+    """
+    Add technical indicators for improved prediction (PyTorch best practice for feature engineering).
+    
+    Args:
+        df: Input dataframe with OHLCV data
+        price_column: Name of price column
+        volume_column: Name of volume column
+        
+    Returns:
+        DataFrame with added technical indicators
+    """
+    df = df.copy()
+    
+    # Moving averages (trend indicators)
+    for window in [5, 10, 20, 50]:
+        df[f'ma_{window}'] = df[price_column].rolling(window=window).mean()
+        df[f'ema_{window}'] = df[price_column].ewm(span=window, adjust=False).mean()
+    
+    # Volatility indicators
+    df['returns'] = df[price_column].pct_change()
+    df['log_returns'] = np.log(df[price_column] / df[price_column].shift(1))
+    df['volatility_20'] = df['returns'].rolling(window=20).std()
+    
+    # Momentum indicators
+    df['rsi_14'] = compute_rsi(df[price_column], period=14)
+    df['momentum_10'] = df[price_column] - df[price_column].shift(10)
+    
+    # Volume indicators
+    if volume_column in df.columns:
+        df['volume_ma_20'] = df[volume_column].rolling(window=20).mean()
+        df['volume_ratio'] = df[volume_column] / df['volume_ma_20']
+    
+    # MACD
+    ema_12 = df[price_column].ewm(span=12, adjust=False).mean()
+    ema_26 = df[price_column].ewm(span=26, adjust=False).mean()
+    df['macd'] = ema_12 - ema_26
+    df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+    df['macd_diff'] = df['macd'] - df['macd_signal']
+    
+    # Bollinger Bands
+    df['bb_middle'] = df[price_column].rolling(window=20).mean()
+    bb_std = df[price_column].rolling(window=20).std()
+    df['bb_upper'] = df['bb_middle'] + (bb_std * 2)
+    df['bb_lower'] = df['bb_middle'] - (bb_std * 2)
+    df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
+    
+    # Price position within bands
+    df['bb_position'] = (df[price_column] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+    
+    # Drop NaN values created by indicators
+    df = df.dropna()
+    
+    logger.info(f"Added {len(df.columns)} technical indicators")
+    return df
+
+
+def compute_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
+    """
+    Compute Relative Strength Index (RSI).
+    
+    Args:
+        prices: Price series
+        period: RSI period
+        
+    Returns:
+        RSI values
+    """
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    
+    return rsi
+
+
+def augment_data(
+    sequences: np.ndarray,
+    targets: np.ndarray,
+    noise_level: float = 0.01,
+    augmentation_factor: int = 2
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Augment training data with noise injection (PyTorch best practice for robustness).
+    
+    Args:
+        sequences: Input sequences
+        targets: Target values
+        noise_level: Standard deviation of Gaussian noise
+        augmentation_factor: Number of augmented copies per original sample
+        
+    Returns:
+        Augmented sequences and targets
+    """
+    augmented_sequences = [sequences]
+    augmented_targets = [targets]
+    
+    for _ in range(augmentation_factor - 1):
+        # Add Gaussian noise
+        noise = np.random.normal(0, noise_level, sequences.shape)
+        noisy_sequences = sequences + noise
+        
+        augmented_sequences.append(noisy_sequences)
+        augmented_targets.append(targets)
+    
+    # Concatenate all augmented data
+    final_sequences = np.concatenate(augmented_sequences, axis=0)
+    final_targets = np.concatenate(augmented_targets, axis=0)
+    
+    logger.info(f"Augmented data from {len(sequences)} to {len(final_sequences)} samples")
+    
+    return final_sequences, final_targets
