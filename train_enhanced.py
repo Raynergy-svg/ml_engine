@@ -92,6 +92,10 @@ class EnhancedTrainer:
             self.optimizer, mode="min", factor=0.5, patience=10, verbose=True
         )
         
+        # Load scheduler state if available
+        if "scheduler_state_dict" in checkpoint:
+            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        
         # Return checkpoint info
         start_epoch = checkpoint.get("epoch", 0) + 1
         best_val_loss = checkpoint.get("val_loss", float("inf"))
@@ -218,7 +222,22 @@ class EnhancedTrainer:
         num_epochs: int = 100,
         resume_from: str = None,
     ):
-        """Complete training pipeline."""
+        """
+        Complete training pipeline.
+        
+        Args:
+            X_train: Training features
+            y_train: Training targets
+            X_val: Validation features
+            y_val: Validation targets
+            num_epochs: Number of additional epochs to train (not total epochs)
+            resume_from: Path to checkpoint file to resume from (optional)
+            
+        Note:
+            When resuming, num_epochs represents additional epochs to train.
+            For example, resuming from epoch 50 with num_epochs=100 will train
+            until epoch 150 (50 + 100).
+        """
         logger.info("Starting training...")
 
         # Create data loaders
@@ -318,6 +337,7 @@ class EnhancedTrainer:
                         "epoch": epoch,
                         "model_state_dict": self.model.state_dict(),
                         "optimizer_state_dict": self.optimizer.state_dict(),
+                        "scheduler_state_dict": self.scheduler.state_dict(),
                         "val_loss": val_loss,
                         "metrics": metrics,
                     },

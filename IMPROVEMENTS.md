@@ -75,8 +75,11 @@ This feature allows you to:
 The resume functionality automatically:
 - Loads the model state
 - Restores the optimizer state
+- Restores the learning rate scheduler state
 - Continues from the saved epoch
 - Maintains the best validation loss for early stopping
+
+**Note:** The `--epochs` parameter specifies *additional* epochs to train, not total epochs. For example, if you resume from epoch 50 and specify `--epochs 50`, training will continue until epoch 100 (50 + 50).
 
 ### 3. Using Different Model Architectures
 
