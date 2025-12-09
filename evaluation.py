@@ -19,6 +19,95 @@ import seaborn as sns
 logger = logging.getLogger(__name__)
 
 
+def smooth_predictions(
+    predictions: np.ndarray,
+    method: str = "ema",
+    window: int = 5,
+    alpha: float = 0.3
+) -> np.ndarray:
+    """
+    Smooth predictions to reduce noise and improve stability.
+    
+    Args:
+        predictions: Raw predictions
+        method: Smoothing method ('ema', 'sma', 'median')
+        window: Window size for smoothing
+        alpha: Alpha parameter for EMA
+        
+    Returns:
+        Smoothed predictions
+    """
+    if len(predictions) < window:
+        logger.warning(f"Predictions length {len(predictions)} < window {window}, returning original")
+        return predictions
+    
+    if method == "ema":
+        # Exponential Moving Average - gives more weight to recent predictions
+        smoothed = np.zeros_like(predictions)
+        smoothed[0] = predictions[0]
+        for i in range(1, len(predictions)):
+            smoothed[i] = alpha * predictions[i] + (1 - alpha) * smoothed[i-1]
+        return smoothed
+    
+    elif method == "sma":
+        # Simple Moving Average
+        smoothed = np.copy(predictions)
+        for i in range(window, len(predictions)):
+            smoothed[i] = np.mean(predictions[i-window:i])
+        return smoothed
+    
+    elif method == "median":
+        # Median filter - more robust to outliers
+        smoothed = np.copy(predictions)
+        for i in range(window, len(predictions)):
+            smoothed[i] = np.median(predictions[i-window:i])
+        return smoothed
+    
+    else:
+        logger.warning(f"Unknown smoothing method: {method}, returning original")
+        return predictions
+
+
+def ensemble_predictions(
+    predictions_list: List[np.ndarray],
+    method: str = "mean",
+    weights: Optional[List[float]] = None
+) -> np.ndarray:
+    """
+    Ensemble multiple predictions for better accuracy.
+    
+    Args:
+        predictions_list: List of prediction arrays
+        method: Ensemble method ('mean', 'median', 'weighted')
+        weights: Weights for weighted averaging
+        
+    Returns:
+        Ensembled predictions
+    """
+    if not predictions_list:
+        raise ValueError("predictions_list cannot be empty")
+    
+    if len(predictions_list) == 1:
+        return predictions_list[0]
+    
+    predictions_array = np.array(predictions_list)
+    
+    if method == "mean":
+        return np.mean(predictions_array, axis=0)
+    elif method == "median":
+        return np.median(predictions_array, axis=0)
+    elif method == "weighted":
+        if weights is None:
+            logger.warning("No weights provided, using equal weights")
+            weights = [1.0 / len(predictions_list)] * len(predictions_list)
+        weights = np.array(weights)
+        weights = weights / weights.sum()  # Normalize
+        return np.average(predictions_array, axis=0, weights=weights)
+    else:
+        logger.warning(f"Unknown ensemble method: {method}, using mean")
+        return np.mean(predictions_array, axis=0)
+
+
 class ModelEvaluator:
     """Comprehensive model evaluation."""
 

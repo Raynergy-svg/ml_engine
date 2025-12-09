@@ -12,6 +12,22 @@ import math
 from typing import Tuple, Optional, Union, List
 
 
+class Mish(nn.Module):
+    """Mish activation function: x * tanh(softplus(x))
+    Better than ReLU for deep networks with smoother gradients."""
+    
+    def forward(self, x):
+        return x * torch.tanh(F.softplus(x))
+
+
+class Swish(nn.Module):
+    """Swish activation function: x * sigmoid(x)
+    Also known as SiLU, performs better than ReLU in many cases."""
+    
+    def forward(self, x):
+        return x * torch.sigmoid(x)
+
+
 class StockPredictor(nn.Module):
     """Enhanced LSTM-based predictor with residual connections and layer normalization."""
 
@@ -23,6 +39,8 @@ class StockPredictor(nn.Module):
         dropout: float = 0.2,
         bidirectional: bool = False,
         use_layer_norm: bool = True,
+        use_batch_norm: bool = False,
+        activation: str = "relu",
     ):
         super(StockPredictor, self).__init__()
 
@@ -38,35 +56,61 @@ class StockPredictor(nn.Module):
         )
 
         self.use_layer_norm = use_layer_norm
+        self.use_batch_norm = use_batch_norm
+        
         if use_layer_norm:
             self.layer_norm = nn.LayerNorm(lstm_output_size)
 
         self.dropout = nn.Dropout(dropout)
 
-        # Improved architecture with residual connections
+        # Improved architecture with residual connections and batch norm
         self.fc1 = nn.Linear(lstm_output_size, 128)
+        self.bn1 = nn.BatchNorm1d(128) if use_batch_norm else nn.Identity()
+        
         self.fc2 = nn.Linear(128, 64)
+        self.bn2 = nn.BatchNorm1d(64) if use_batch_norm else nn.Identity()
+        
         self.fc3 = nn.Linear(64, 32)
+        self.bn3 = nn.BatchNorm1d(32) if use_batch_norm else nn.Identity()
+        
         self.fc4 = nn.Linear(32, 1)
 
         # Skip connection
         self.skip = nn.Linear(lstm_output_size, 1)
+        
+        # Activation function selection
+        if activation == "mish":
+            self.activation = Mish()
+        elif activation == "swish" or activation == "silu":
+            self.activation = Swish()
+        elif activation == "gelu":
+            self.activation = nn.GELU()
+        else:
+            self.activation = nn.ReLU()
 
         self._init_weights()
 
     def _init_weights(self):
-        """Initialize weights using Xavier initialization."""
+        """Initialize weights using improved initialization strategies."""
         for name, param in self.named_parameters():
             if "weight" in name:
                 if "lstm" in name:
-                    nn.init.xavier_uniform_(param)
+                    # Orthogonal initialization for LSTM for better gradient flow
+                    nn.init.orthogonal_(param)
+                elif "bn" in name or "layer_norm" in name:
+                    # Initialize batch norm and layer norm weights to 1
+                    nn.init.ones_(param)
                 else:
-                    nn.init.xavier_normal_(param)
+                    # He initialization for ReLU-like activations, Xavier for others
+                    if isinstance(self.activation, (nn.ReLU, Mish, Swish)):
+                        nn.init.kaiming_normal_(param, mode='fan_in', nonlinearity='relu')
+                    else:
+                        nn.init.xavier_normal_(param)
             elif "bias" in name:
                 nn.init.zeros_(param)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass with residual connections."""
+        """Forward pass with residual connections and improved activations."""
         lstm_out, _ = self.lstm(x)
         lstm_out = lstm_out[:, -1, :]
 
@@ -75,17 +119,26 @@ class StockPredictor(nn.Module):
 
         lstm_out = self.dropout(lstm_out)
 
-        # Skip connection
+        # Skip connection for better gradient flow
         skip_out = self.skip(lstm_out)
 
-        # Main path
-        out = F.relu(self.fc1(lstm_out))
+        # Main path with improved activations and optional batch norm
+        out = self.fc1(lstm_out)
+        out = self.bn1(out)
+        out = self.activation(out)
         out = self.dropout(out)
-        out = F.relu(self.fc2(out))
+        
+        out = self.fc2(out)
+        out = self.bn2(out)
+        out = self.activation(out)
         out = self.dropout(out)
-        out = F.relu(self.fc3(out))
+        
+        out = self.fc3(out)
+        out = self.bn3(out)
+        out = self.activation(out)
         out = self.fc4(out)
 
+        # Residual connection improves gradient flow and model performance
         return out + skip_out
 
 
