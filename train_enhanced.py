@@ -29,6 +29,35 @@ from utils import setup_logging, load_config
 logger = setup_logging(log_file="training.log")
 
 
+class LabelSmoothingLoss(nn.Module):
+    """
+    Label smoothing loss for regression tasks.
+    Adds noise to targets to prevent overfitting and improve generalization.
+    """
+    
+    def __init__(self, base_loss=nn.MSELoss(), smoothing: float = 0.1):
+        """
+        Args:
+            base_loss: Base loss function (MSELoss, HuberLoss, etc.)
+            smoothing: Amount of label smoothing (0 = no smoothing, higher = more smoothing)
+        """
+        super(LabelSmoothingLoss, self).__init__()
+        self.base_loss = base_loss
+        self.smoothing = smoothing
+    
+    def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        """
+        Apply label smoothing by adding small random noise to targets.
+        """
+        if self.smoothing > 0 and self.training:
+            # Add small Gaussian noise to targets for label smoothing
+            noise = torch.randn_like(targets) * self.smoothing * targets.std()
+            smoothed_targets = targets + noise
+            return self.base_loss(predictions, smoothed_targets)
+        else:
+            return self.base_loss(predictions, targets)
+
+
 class EnhancedTrainer:
     """Enhanced trainer with modern best practices."""
 
@@ -352,18 +381,27 @@ class EnhancedTrainer:
 
         # Loss function - Use Huber loss for better robustness to outliers
         loss_type = self.config.get("loss_type", "mse")
+        label_smoothing = self.config.get("label_smoothing", 0.0)
+        
         if loss_type == "huber" or self.config.get("use_huber_loss", False):
             # Huber loss is more robust to outliers than MSE
             delta = self.config.get("huber_delta", 1.0)
-            criterion = nn.HuberLoss(delta=delta)
+            base_criterion = nn.HuberLoss(delta=delta)
             logger.info(f"Using Huber loss with delta={delta}")
         elif loss_type == "smooth_l1":
             # Smooth L1 loss (similar to Huber but with different formulation)
-            criterion = nn.SmoothL1Loss()
+            base_criterion = nn.SmoothL1Loss()
             logger.info("Using Smooth L1 loss")
         else:
-            criterion = nn.MSELoss()
+            base_criterion = nn.MSELoss()
             logger.info("Using MSE loss")
+        
+        # Apply label smoothing for better generalization
+        if label_smoothing > 0:
+            criterion = LabelSmoothingLoss(base_criterion, smoothing=label_smoothing)
+            logger.info(f"Applied label smoothing with smoothing={label_smoothing}")
+        else:
+            criterion = base_criterion
 
         # Training loop
         patience = self.config.get("early_stopping_patience", 20)

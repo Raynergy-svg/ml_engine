@@ -177,9 +177,8 @@ class AttentiveLSTM(nn.Module):
             self.head_dim = lstm_output_size // num_heads
             self.scaling = float(self.head_dim) ** -0.5
 
-            self.q_proj = nn.Linear(lstm_output_size, lstm_output_size)
-            self.k_proj = nn.Linear(lstm_output_size, lstm_output_size)
-            self.v_proj = nn.Linear(lstm_output_size, lstm_output_size)
+            # Use single projection for efficiency (fused QKV)
+            self.qkv_proj = nn.Linear(lstm_output_size, lstm_output_size * 3)
             self.out_proj = nn.Linear(lstm_output_size, lstm_output_size)
         else:
             self.attention = nn.MultiheadAttention(
@@ -233,22 +232,21 @@ class AttentiveLSTM(nn.Module):
             residual = lstm_out
             lstm_out = self.layer_norm1(lstm_out)
 
-            q = self.q_proj(lstm_out)
-            k = self.k_proj(lstm_out)
-            v = self.v_proj(lstm_out)
+            # Optimized: Fused QKV projection for better memory efficiency
+            batch_size, seq_len, embed_dim = lstm_out.shape
+            qkv = self.qkv_proj(lstm_out)
+            qkv = qkv.reshape(batch_size, seq_len, 3, self.num_heads, self.head_dim)
+            qkv = qkv.permute(2, 0, 3, 1, 4)  # [3, batch, heads, seq, head_dim]
+            q, k, v = qkv[0], qkv[1], qkv[2]
 
-            batch_size, seq_len, embed_dim = q.shape
-            q = q.view(
-                batch_size, seq_len, self.num_heads, embed_dim // self.num_heads
-            ).transpose(1, 2)
-            k = k.view(
-                batch_size, seq_len, self.num_heads, embed_dim // self.num_heads
-            ).transpose(1, 2)
-            v = v.view(
-                batch_size, seq_len, self.num_heads, embed_dim // self.num_heads
-            ).transpose(1, 2)
-
-            attn_output = F.scaled_dot_product_attention(q, k, v)
+            # Use scaled_dot_product_attention for better performance (flash attention)
+            attn_output = F.scaled_dot_product_attention(
+                q, k, v,
+                dropout_p=self.dropout.p if self.training else 0.0,
+                is_causal=False
+            )
+            
+            # Reshape back
             attn_output = (
                 attn_output.transpose(1, 2)
                 .contiguous()
