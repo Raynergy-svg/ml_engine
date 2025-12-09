@@ -460,4 +460,4 @@ class TransformerPredictor(nn.Module):
         self.positional_encoding = positional_encoding
         if positional_encoding == "learned":
             self.pos_encoder = nn.Parameter(torch.zeros(1, 1000, hidden_size))  # Max sequence length of 1000
-            nn.init.normal_(self.pos_encoder, mean=0, std=<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>
+            nn.init.normal_(self.pos_encoder, mean=0, std=0.02)

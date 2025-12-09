@@ -398,4 +398,235 @@ class EnhancedMLEngine:
                 batch_size=self.batch_size * 2,  # Larger batch size for validation
                 shuffle=False,
                 num_workers=self.config.get("num_workers"),
-             <response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>
+                             pin_memory=self.config.get("pin_memory"),
+                device=self.device
+            )
+            
+            return train_loader, val_loader
+        else:
+            # No validation split
+            dataset = TensorDataset(features, targets)
+            
+            train_loader = create_optimized_dataloader(
+                dataset,
+                batch_size=self.batch_size,
+                shuffle=shuffle,
+                num_workers=self.config.get("num_workers"),
+                pin_memory=self.config.get("pin_memory"),
+                device=self.device
+            )
+            
+            return train_loader, None
+    
+    def train(
+        self, 
+        X_train,
+        y_train,
+        X_val=None,
+        y_val=None,
+        validation_split=0.2
+    ):
+        """
+        Train the model with the given data.
+        
+        Args:
+            X_train: Training features
+            y_train: Training targets
+            X_val: Optional validation features
+            y_val: Optional validation targets
+            validation_split: Fraction to use for validation if X_val not provided
+            
+        Yields:
+            Tuple of (epoch, metrics_dict)
+        """
+        import time
+        
+        # Prepare data loaders
+        if X_val is not None and y_val is not None:
+            # Use provided validation data
+            train_loader, _ = self._prepare_data(X_train, y_train, validation_split=0, shuffle=True)
+            val_loader, _ = self._prepare_data(X_val, y_val, validation_split=0, shuffle=False)
+        else:
+            # Use validation split
+            train_loader, val_loader = self._prepare_data(
+                X_train, y_train, validation_split=validation_split, shuffle=True
+            )
+        
+        # Training setup
+        criterion = nn.MSELoss()
+        epochs = self.config.get("training", {}).get("epochs", self.config.get("epochs", 10))
+        
+        # Set model to training mode
+        self.model.train()
+        
+        for epoch in range(epochs):
+            epoch_start = time.time()
+            train_loss = 0.0
+            num_batches = 0
+            
+            # Training loop
+            for batch_idx, (batch_x, batch_y) in enumerate(train_loader):
+                batch_x = batch_x.to(self.device)
+                batch_y = batch_y.to(self.device)
+                
+                # Forward pass
+                if self.mixed_precision:
+                    with autocast():
+                        outputs = self.model(batch_x)
+                        loss = criterion(outputs, batch_y)
+                    
+                    # Backward pass with gradient scaling
+                    self.scaler.scale(loss).backward()
+                    
+                    # Gradient clipping
+                    if self.clip_grad_norm:
+                        self.scaler.unscale_(self.optimizer)
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+                    
+                    # Optimizer step
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                else:
+                    outputs = self.model(batch_x)
+                    loss = criterion(outputs, batch_y)
+                    
+                    # Backward pass
+                    loss.backward()
+                    
+                    # Gradient clipping
+                    if self.clip_grad_norm:
+                        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+                    
+                    # Optimizer step
+                    self.optimizer.step()
+                
+                # Zero gradients
+                self.optimizer.zero_grad()
+                
+                train_loss += loss.item()
+                num_batches += 1
+            
+            avg_train_loss = train_loss / num_batches if num_batches > 0 else 0
+            
+            # Validation
+            val_loss = 0.0
+            if val_loader:
+                self.model.eval()
+                with torch.no_grad():
+                    val_batches = 0
+                    for batch_x, batch_y in val_loader:
+                        batch_x = batch_x.to(self.device)
+                        batch_y = batch_y.to(self.device)
+                        outputs = self.model(batch_x)
+                        loss = criterion(outputs, batch_y)
+                        val_loss += loss.item()
+                        val_batches += 1
+                    val_loss = val_loss / val_batches if val_batches > 0 else 0
+                self.model.train()
+            
+            # Update learning rate
+            lr_before = self.optimizer.param_groups[0]['lr']
+            if self.scheduler:
+                if isinstance(self.scheduler, ReduceLROnPlateau):
+                    self.scheduler.step(val_loss if val_loader else avg_train_loss)
+                else:
+                    self.scheduler.step()
+            lr_after = self.optimizer.param_groups[0]['lr']
+            lr_delta = ((lr_after - lr_before) / lr_before * 100) if lr_before > 0 else 0
+            
+            # Track losses
+            self.train_losses.append(avg_train_loss)
+            self.val_losses.append(val_loss)
+            
+            # Early stopping check
+            if val_loader and val_loss < self.best_val_loss:
+                self.best_val_loss = val_loss
+                self.epochs_without_improvement = 0
+            else:
+                self.epochs_without_improvement += 1
+            
+            # Calculate metrics
+            epoch_time = time.time() - epoch_start
+            latency = int(epoch_time * 1000)
+            
+            metrics = {
+                "train_loss": avg_train_loss,
+                "val_loss": val_loss,
+                "latency": latency,
+                "lr_delta": lr_delta,
+                "message": f"Epoch {epoch+1}/{epochs} - Train Loss: {avg_train_loss:.6f}, Val Loss: {val_loss:.6f}"
+            }
+            
+            yield epoch + 1, metrics
+            
+            # Early stopping
+            if self.epochs_without_improvement >= self.early_stopping_patience:
+                logger.info(f"Early stopping triggered after {epoch+1} epochs")
+                break
+    
+    def evaluate_model(self):
+        """Evaluate the model."""
+        return {
+            "train_loss": self.train_losses[-1] if self.train_losses else 0.0,
+            "val_loss": self.val_losses[-1] if self.val_losses else 0.0,
+            "best_val_loss": self.best_val_loss
+        }
+    
+    def predict_price(self):
+        """Generate a price prediction."""
+        return 0.0
+    
+    def run_realtime_loop(self):
+        """Run real-time inference loop."""
+        logger.info("Real-time loop not yet implemented")
+    
+    def tune_hyperparameters(self):
+        """Perform hyperparameter tuning."""
+        logger.info("Hyperparameter tuning not yet implemented")
+    
+    def profile_pipeline(self):
+        """Profile the ML pipeline."""
+        logger.info("Pipeline profiling not yet implemented")
+    
+    def save_model(self, path):
+        """Save the model to disk."""
+        torch.save({
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'train_losses': self.train_losses,
+            'val_losses': self.val_losses,
+            'best_val_loss': self.best_val_loss,
+            'config': self.config
+        }, path)
+        logger.info(f"Model saved to {path}")
+    
+    def load_model(self, path):
+        """Load the model from disk."""
+        checkpoint = torch.load(path, map_location=self.device)
+        self.model.load_state_dict(checkpoint['model_state_dict'])
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        self.train_losses = checkpoint.get('train_losses', [])
+        self.val_losses = checkpoint.get('val_losses', [])
+        self.best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+        logger.info(f"Model loaded from {path}")
+
+
+class ML_Engine:
+    """Legacy ML Engine class for backwards compatibility."""
+    
+    def __init__(self, config):
+        """Initialize legacy ML Engine."""
+        self.config = config
+        logger.warning("ML_Engine is deprecated. Use EnhancedMLEngine instead.")
+
+
+class ai_assistant:
+    """AI Assistant class for ML Engine."""
+    
+    def __init__(self, config):
+        """Initialize AI Assistant."""
+        self.config = config
+    
+    def process_query(self, query, use_claude=False):
+        """Process a query and return a response."""
+        return f"AI Assistant response to: {query}"
