@@ -1,9 +1,17 @@
-"""Utility functions and helpers"""
+"""
+Utility functions and helpers for ML Engine.
+
+This module provides common utilities including:
+- Configuration loading and validation
+- Logging setup with multiple handlers
+- Function caching and timing decorators
+- Configuration merging and management
+"""
 
 import time
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Callable
 import yaml
 from joblib import Memory
 import functools
@@ -12,29 +20,47 @@ import copy
 from functools import lru_cache
 
 # Add caching capabilities
-cache_dir = Path("./cache")
-cache_dir.mkdir(exist_ok=True)
-memory = Memory(location=str(cache_dir), verbose=0)
-cache = memory.cache
-
 CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 memory = Memory(location=str(CACHE_DIR), verbose=0)
 
 
 def cache(func):
+    """
+    Decorator to cache function results using joblib.
+    
+    Args:
+        func: Function to cache
+        
+    Returns:
+        Cached version of the function
+    """
     return memory.cache(func)
 
 
-def timer(func):
-    """Print the runtime of the decorated function"""
-
+def timer(func: Callable) -> Callable:
+    """
+    Decorator to measure and log function execution time.
+    
+    Args:
+        func: Function to time
+        
+    Returns:
+        Wrapped function that logs execution time
+        
+    Example:
+        >>> @timer
+        ... def slow_function():
+        ...     time.sleep(1)
+        >>> slow_function()
+        # Logs: Function 'slow_function' took 1.0000 secs
+    """
     @functools.wraps(func)
-    def wrapper_timer(*args, **kwargs):
-        start_time = time.time()  # 1. Record start time
+    def wrapper_timer(*args: Any, **kwargs: Any) -> Any:
+        start_time = time.time()
         value = func(*args, **kwargs)
-        end_time = time.time()  # 2. Record end time
-        run_time = end_time - start_time  # 3. Calculate the execution time
+        end_time = time.time()
+        run_time = end_time - start_time
         logging.info(f"Function {func.__name__!r} took {run_time:.4f} secs")
         return value
 

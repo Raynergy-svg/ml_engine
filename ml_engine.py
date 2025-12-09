@@ -1,6 +1,20 @@
 """
-Optimized ML Engine with improved CPU and GPU performance.
-Includes enhanced training loops, mixed precision, and memory optimization.
+Enhanced ML Engine with optimized CPU and GPU performance.
+
+This module provides the core ML engine for stock market prediction with:
+- Automatic mixed precision training for faster GPU training
+- Dynamic batch sizing and gradient accumulation
+- Memory-efficient operations with automatic cleanup
+- Multiple model architectures (LSTM, GRU, Transformer, TCN, Ensemble)
+- Advanced learning rate scheduling and early stopping
+- Comprehensive metrics tracking and model checkpointing
+
+Example:
+    >>> from ml_engine import EnhancedMLEngine
+    >>> config = {"device": "cuda", "model": {"type": "lstm", "hidden_size": 128}}
+    >>> engine = EnhancedMLEngine(config)
+    >>> for epoch, metrics in engine.train(X_train, y_train):
+    ...     print(f"Epoch {epoch}: {metrics}")
 """
 
 import os
