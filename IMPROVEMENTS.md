@@ -59,7 +59,26 @@ Train a model with enhanced features:
 python train_enhanced.py --data market_data/TSLA_data.csv --epochs 100
 ```
 
-### 2. Using Different Model Architectures
+### 2. Resume Training from Checkpoint
+
+Resume training from a previously saved checkpoint:
+
+```bash
+python train_enhanced.py --data market_data/TSLA_data.csv --epochs 50 --resume trained_data/models/best_model.pth
+```
+
+This feature allows you to:
+- Continue training after interruption
+- Fine-tune a pre-trained model with more epochs
+- Experiment with different hyperparameters starting from a checkpoint
+
+The resume functionality automatically:
+- Loads the model state
+- Restores the optimizer state
+- Continues from the saved epoch
+- Maintains the best validation loss for early stopping
+
+### 3. Using Different Model Architectures
 
 Edit `config.yaml` to change the model:
 
@@ -72,7 +91,7 @@ learning_rate: 0.001
 batch_size: 32
 ```
 
-### 3. Custom Data
+### 4. Custom Data
 
 ```python
 from data_loader import MarketDataLoader

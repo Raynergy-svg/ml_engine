@@ -64,6 +64,42 @@ class EnhancedTrainer:
         for dir_path in dirs:
             Path(dir_path).mkdir(parents=True, exist_ok=True)
 
+    def load_checkpoint(self, checkpoint_path: str, input_size: int):
+        """Load checkpoint to resume training."""
+        logger.info(f"Loading checkpoint from {checkpoint_path}")
+        
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
+        
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        
+        # Build model with same architecture
+        model_type = self.config.get("architecture", "attention_lstm")
+        self.model = self.build_model(model_type, input_size)
+        
+        # Load model state
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        
+        # Setup optimizer
+        learning_rate = self.config.get("learning_rate", 0.001)
+        self.optimizer = torch.optim.Adam(
+            self.model.parameters(), lr=learning_rate, weight_decay=1e-5
+        )
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        
+        # Setup scheduler
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode="min", factor=0.5, patience=10, verbose=True
+        )
+        
+        # Return checkpoint info
+        start_epoch = checkpoint.get("epoch", 0) + 1
+        best_val_loss = checkpoint.get("val_loss", float("inf"))
+        
+        logger.info(f"Resuming from epoch {start_epoch} with val_loss {best_val_loss:.6f}")
+        
+        return start_epoch, best_val_loss
+
     def build_model(self, model_type: str, input_size: int) -> nn.Module:
         """Build model based on type."""
         model_config = self.config.get("model", {})
@@ -180,6 +216,7 @@ class EnhancedTrainer:
         X_val: np.ndarray,
         y_val: np.ndarray,
         num_epochs: int = 100,
+        resume_from: str = None,
     ):
         """Complete training pipeline."""
         logger.info("Starting training...")
@@ -206,34 +243,42 @@ class EnhancedTrainer:
             pin_memory=True if self.device.type == "cuda" else False,
         )
 
-        # Build model
+        # Get input size
         input_size = X_train.shape[2]
-        model_type = self.config.get("architecture", "attention_lstm")
-        self.model = self.build_model(model_type, input_size)
+        
+        # Check if resuming from checkpoint
+        start_epoch = 0
+        best_val_loss = float("inf")
+        
+        if resume_from:
+            start_epoch, best_val_loss = self.load_checkpoint(resume_from, input_size)
+        else:
+            # Build model from scratch
+            model_type = self.config.get("architecture", "attention_lstm")
+            self.model = self.build_model(model_type, input_size)
 
-        # Setup optimizer
-        learning_rate = self.config.get("learning_rate", 0.001)
-        self.optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=learning_rate, weight_decay=1e-5
-        )
+            # Setup optimizer
+            learning_rate = self.config.get("learning_rate", 0.001)
+            self.optimizer = torch.optim.Adam(
+                self.model.parameters(), lr=learning_rate, weight_decay=1e-5
+            )
 
-        # Setup scheduler
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", factor=0.5, patience=10, verbose=True
-        )
+            # Setup scheduler
+            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                self.optimizer, mode="min", factor=0.5, patience=10, verbose=True
+            )
 
         # Loss function
         criterion = nn.MSELoss()
 
         # Training loop
-        best_val_loss = float("inf")
         patience = self.config.get("early_stopping_patience", 20)
         patience_counter = 0
 
         train_losses = []
         val_losses = []
 
-        for epoch in range(num_epochs):
+        for epoch in range(start_epoch, start_epoch + num_epochs):
             # Train
             train_loss = self.train_epoch(train_loader, criterion)
             train_losses.append(train_loss)
@@ -255,7 +300,7 @@ class EnhancedTrainer:
             # Logging
             if epoch % 10 == 0:
                 logger.info(
-                    f"Epoch {epoch}/{num_epochs} - "
+                    f"Epoch {epoch}/{start_epoch + num_epochs} - "
                     f"Train Loss: {train_loss:.6f}, "
                     f"Val Loss: {val_loss:.6f}, "
                     f"Val RMSE: {metrics['val_rmse']:.6f}, "
@@ -348,6 +393,12 @@ def main():
         help="Path to data file",
     )
     parser.add_argument("--epochs", type=int, default=100, help="Number of epochs")
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to checkpoint file to resume training from",
+    )
 
     args = parser.parse_args()
 
@@ -376,7 +427,7 @@ def main():
 
     # Train model
     train_losses, val_losses = trainer.train(
-        X_train, y_train, X_val, y_val, num_epochs=args.epochs
+        X_train, y_train, X_val, y_val, num_epochs=args.epochs, resume_from=args.resume
     )
 
     # Evaluate on test set
