@@ -32,6 +32,7 @@ from watchdog.events import PatternMatchingEventHandler
 from ml_engine import ai_assistant, EnhancedMLEngine
 import ml_engine
 from utils import setup_logging, load_config
+from config_validator import validate_config
 
 # New orchestrating imports:
 import visualizer
@@ -137,8 +138,23 @@ def generate_dashboard(
 # CLI Command Implementations
 def train_model(config_path: str, choose_csv: bool = False) -> None:
     """Run model training with live progress dashboard."""
-    config = load_config(Path(config_path))
-    engine = EnhancedMLEngine(config)
+    try:
+        config = load_config(Path(config_path))
+    except Exception as e:
+        console.print(f"[red]Error loading configuration: {e}[/red]")
+        return
+    
+    # Validate configuration
+    if not validate_config(config):
+        console.print("[red]Configuration validation failed. Please check the logs.[/red]")
+        return
+    
+    try:
+        engine = EnhancedMLEngine(config)
+    except Exception as e:
+        console.print(f"[red]Error initializing ML engine: {e}[/red]")
+        logger.error(f"Engine initialization failed: {e}", exc_info=True)
+        return
 
     # changed: create dummy training data as non-empty tensors
     import torch
@@ -195,8 +211,18 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
 
 def evaluate_model(config_path: str) -> None:
     """Run model evaluation with results dashboard."""
-    config = load_config(Path(config_path))
-    engine = EnhancedMLEngine(config)
+    try:
+        config = load_config(Path(config_path))
+    except Exception as e:
+        console.print(f"[red]Error loading configuration: {e}[/red]")
+        return
+    
+    try:
+        engine = EnhancedMLEngine(config)
+    except Exception as e:
+        console.print(f"[red]Error initializing ML engine: {e}[/red]")
+        logger.error(f"Engine initialization failed: {e}", exc_info=True)
+        return
 
     api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting evaluation"]
     # Provide placeholder values for generate_dashboard arguments
