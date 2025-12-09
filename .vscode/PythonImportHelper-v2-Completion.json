@@ -18,11 +18,12 @@
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "json",
+        "kind": 6,
         "isExtraImport": true,
-        "detail": "pathlib",
+        "importPath": "json",
+        "description": "json",
+        "detail": "json",
         "documentation": {}
     },
     {
@@ -207,6 +208,70 @@
         "description": "pathlib",
         "isExtraImport": true,
         "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
         "documentation": {}
     },
     {
@@ -1250,6 +1315,281 @@
         "documentation": {}
     },
     {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "asdict",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "asdict",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "asdict",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "datetime",
+        "description": "datetime",
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "collections",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "collections",
+        "description": "collections",
+        "detail": "collections",
+        "documentation": {}
+    },
+    {
+        "label": "deque",
+        "importPath": "collections",
+        "description": "collections",
+        "isExtraImport": true,
+        "detail": "collections",
+        "documentation": {}
+    },
+    {
+        "label": "defaultdict",
+        "importPath": "collections",
+        "description": "collections",
+        "isExtraImport": true,
+        "detail": "collections",
+        "documentation": {}
+    },
+    {
+        "label": "deque",
+        "importPath": "collections",
+        "description": "collections",
+        "isExtraImport": true,
+        "detail": "collections",
+        "documentation": {}
+    },
+    {
+        "label": "warnings",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "warnings",
+        "description": "warnings",
+        "detail": "warnings",
+        "documentation": {}
+    },
+    {
         "label": "numpy",
         "kind": 6,
         "isExtraImport": true,
@@ -1277,172 +1617,11 @@
         "documentation": {}
     },
     {
-        "label": "datetime",
-        "kind": 6,
+        "label": "stats",
+        "importPath": "scipy",
+        "description": "scipy",
         "isExtraImport": true,
-        "importPath": "datetime",
-        "description": "datetime",
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
+        "detail": "scipy",
         "documentation": {}
     },
     {
@@ -1608,47 +1787,6 @@
         "documentation": {}
     },
     {
-        "label": "json",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "json",
-        "description": "json",
-        "detail": "json",
-        "documentation": {}
-    },
-    {
-        "label": "dataclass",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "asdict",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "dataclass",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "asdict",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
         "label": "ThreadPoolExecutor",
         "importPath": "concurrent.futures",
         "description": "concurrent.futures",
@@ -1791,15 +1929,6 @@
         "description": "functools",
         "isExtraImport": true,
         "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "warnings",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "warnings",
-        "description": "warnings",
-        "detail": "warnings",
         "documentation": {}
     },
     {
@@ -2325,31 +2454,6 @@
         "description": "pydantic",
         "isExtraImport": true,
         "detail": "pydantic",
-        "documentation": {}
-    },
-    {
-        "label": "collections",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "collections",
-        "description": "collections",
-        "detail": "collections",
-        "documentation": {}
-    },
-    {
-        "label": "defaultdict",
-        "importPath": "collections",
-        "description": "collections",
-        "isExtraImport": true,
-        "detail": "collections",
-        "documentation": {}
-    },
-    {
-        "label": "deque",
-        "importPath": "collections",
-        "description": "collections",
-        "isExtraImport": true,
-        "detail": "collections",
         "documentation": {}
     },
     {
@@ -3380,83 +3484,101 @@
         "documentation": {}
     },
     {
-        "label": "load_trained_engine",
-        "kind": 2,
+        "label": "PredictionResult",
+        "kind": 6,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "def load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary\n    Returns:\n        Loaded EnhancedMLEngine instance",
+        "peekOfCode": "class PredictionResult:\n    \"\"\"Structured prediction result.\"\"\"\n    ticker: str\n    timestamp: datetime\n    current_price: float\n    predicted_price: float\n    change_percent: float\n    confidence_interval: Tuple[float, float]\n    confidence_level: float\n    model_confidence: float",
         "detail": "(redacted) future_use.predict",
         "documentation": {}
     },
     {
-        "label": "fetch_recent_data",
-        "kind": 2,
+        "label": "ValidationMetrics",
+        "kind": 6,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "def fetch_recent_data(ticker: str, days: int = 100) -> Optional[pd.DataFrame]:\n    \"\"\"\n    Fetch recent stock data for prediction.\n    Args:\n        ticker: Stock ticker symbol\n        days: Number of days of historical data to fetch\n    Returns:\n        DataFrame with recent stock data or None on failure\n    \"\"\"\n    try:",
+        "peekOfCode": "class ValidationMetrics:\n    \"\"\"Model validation metrics.\"\"\"\n    mae: float\n    rmse: float\n    mape: float\n    r2_score: float\n    samples: int\n    ticker: str\n    timeframe: str\n# ========================================================================",
         "detail": "(redacted) future_use.predict",
         "documentation": {}
     },
     {
-        "label": "make_prediction",
-        "kind": 2,
+        "label": "ModelManager",
+        "kind": 6,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "def make_prediction(engine: EnhancedMLEngine, data: pd.DataFrame) -> Optional[float]:\n    \"\"\"\n    Make a prediction using the engine.\n    Args:\n        engine: Trained ML engine\n        data: Input data DataFrame\n    Returns:\n        Predicted value or None on failure\n    \"\"\"\n    try:",
+        "peekOfCode": "class ModelManager:\n    \"\"\"Manage model loading and inference.\"\"\"\n    def __init__(self, checkpoint_path: str, config: Dict[str, Any]):\n        self.checkpoint_path = Path(checkpoint_path)\n        self.config = config\n        self.engine = None\n        self.loaded_at = None\n    def load_model(self) -> EnhancedMLEngine:\n        \"\"\"\n        Load trained model from checkpoint.",
         "detail": "(redacted) future_use.predict",
         "documentation": {}
     },
     {
-        "label": "real_time_prediction_loop",
-        "kind": 2,
+        "label": "DataFetcher",
+        "kind": 6,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "def real_time_prediction_loop(\n    engine: EnhancedMLEngine,\n    ticker: str = \"AAPL\",\n    interval: int = 60,\n    use_real_data: bool = True,\n):\n    \"\"\"\n    Run continuous prediction loop.\n    Args:\n        engine: Trained ML engine",
+        "peekOfCode": "class DataFetcher:\n    \"\"\"Enhanced data fetching with caching and validation.\"\"\"\n    def __init__(self, cache_ttl: int = 300):\n        \"\"\"\n        Initialize data fetcher.\n        Args:\n            cache_ttl: Cache time-to-live in seconds\n        \"\"\"\n        self.cache_ttl = cache_ttl\n        self.cache = {}",
         "detail": "(redacted) future_use.predict",
         "documentation": {}
     },
     {
-        "label": "validate_prediction",
-        "kind": 2,
+        "label": "PredictionEngine",
+        "kind": 6,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "def validate_prediction(\n    engine: EnhancedMLEngine, ticker: str = \"AAPL\", days_back: int = 30\n):\n    \"\"\"\n    Validate model predictions against historical data.\n    Args:\n        engine: Trained ML engine\n        ticker: Stock ticker to validate\n        days_back: Number of days to look back\n    \"\"\"",
+        "peekOfCode": "class PredictionEngine:\n    \"\"\"Advanced prediction engine with uncertainty quantification.\"\"\"\n    def __init__(\n        self,\n        model: EnhancedMLEngine,\n        preprocessor: DataPreprocessor\n    ):\n        self.model = model\n        self.preprocessor = preprocessor\n        self.prediction_history = deque(maxlen=1000)",
         "detail": "(redacted) future_use.predict",
         "documentation": {}
     },
     {
-        "label": "batch_predict",
-        "kind": 2,
+        "label": "ModelValidator",
+        "kind": 6,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "def batch_predict(\n    engine: EnhancedMLEngine, tickers: list, output_file: Optional[str] = None\n) -> pd.DataFrame:\n    \"\"\"\n    Make predictions for multiple tickers at once.\n    Args:\n        engine: Trained ML engine\n        tickers: List of ticker symbols\n        output_file: Optional file to save results\n    Returns:",
+        "peekOfCode": "class ModelValidator:\n    \"\"\"Validate model predictions against historical data.\"\"\"\n    def __init__(\n        self,\n        prediction_engine: PredictionEngine,\n        data_fetcher: DataFetcher\n    ):\n        self.prediction_engine = prediction_engine\n        self.data_fetcher = data_fetcher\n    def validate(",
         "detail": "(redacted) future_use.predict",
         "documentation": {}
     },
     {
-        "label": "compare_predictions",
-        "kind": 2,
+        "label": "PredictionDisplay",
+        "kind": 6,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "def compare_predictions(\n    engine: EnhancedMLEngine, ticker: str, lookback_days: int = 30\n) -> None:\n    \"\"\"\n    Compare model predictions with actual historical prices.\n    Args:\n        engine: Trained ML engine\n        ticker: Stock ticker symbol\n        lookback_days: Number of days to look back\n    \"\"\"",
+        "peekOfCode": "class PredictionDisplay:\n    \"\"\"Handle display and reporting of predictions.\"\"\"\n    @staticmethod\n    def show_prediction(result: PredictionResult) -> None:\n        \"\"\"Display single prediction result.\"\"\"\n        if not console:\n            print(f\"Prediction for {result.ticker}: ${result.predicted_price:.2f}\")\n            return\n        # Create table\n        table = Table(",
         "detail": "(redacted) future_use.predict",
         "documentation": {}
     },
     {
-        "label": "save_prediction_log",
-        "kind": 2,
+        "label": "RealTimePredictor",
+        "kind": 6,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "def save_prediction_log(\n    ticker: str,\n    prediction: float,\n    current_price: float,\n    log_file: str = \"predictions.csv\",\n) -> None:\n    \"\"\"\n    Save prediction to a CSV log file.\n    Args:\n        ticker: Stock ticker symbol",
+        "peekOfCode": "class RealTimePredictor:\n    \"\"\"Orchestrate real-time predictions.\"\"\"\n    def __init__(\n        self,\n        checkpoint_path: str = DEFAULT_CHECKPOINT,\n        config: Optional[Dict[str, Any]] = None\n    ):\n        # Initialize components\n        if config is None:\n            config = auto_configure()",
         "detail": "(redacted) future_use.predict",
         "documentation": {}
     },
     {
-        "label": "console",
-        "kind": 5,
+        "label": "save_predictions",
+        "kind": 2,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "console = Console()\nlogger = logging.getLogger(__name__)\ndef load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary",
+        "peekOfCode": "def save_predictions(\n    results: List[PredictionResult],\n    output_file: Union[str, Path]\n) -> None:\n    \"\"\"\n    Save prediction results to CSV.\n    Args:\n        results: List of prediction results\n        output_file: Output file path\n    \"\"\"",
+        "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "load_predictions",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict",
+        "description": "(redacted) future_use.predict",
+        "peekOfCode": "def load_predictions(\n    input_file: Union[str, Path]\n) -> List[PredictionResult]:\n    \"\"\"\n    Load prediction results from CSV.\n    Args:\n        input_file: Input file path\n    Returns:\n        List of PredictionResult objects\n    \"\"\"",
+        "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict",
+        "description": "(redacted) future_use.predict",
+        "peekOfCode": "def main():\n    \"\"\"Main CLI entry point.\"\"\"\n    import argparse\n    parser = argparse.ArgumentParser(\n        description=\"Advanced stock price prediction system\"\n    )\n    parser.add_argument(\n        \"--checkpoint\",\n        type=str,\n        default=DEFAULT_CHECKPOINT,",
         "detail": "(redacted) future_use.predict",
         "documentation": {}
     },
@@ -3465,8 +3587,134 @@
         "kind": 5,
         "importPath": "(redacted) future_use.predict",
         "description": "(redacted) future_use.predict",
-        "peekOfCode": "logger = logging.getLogger(__name__)\ndef load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary\n    Returns:",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nwarnings.filterwarnings('ignore', category=FutureWarning)\n# Initialize console\nconsole = Console() if RICH_AVAILABLE else None\n# Constants\nPREDICTION_CACHE_DIR = Path(\"./trained_data/predictions\")\nPREDICTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)\nDEFAULT_CHECKPOINT = \"./trained_data/models/best_model_checkpoint.pth\"\nCONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================",
         "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "console",
+        "kind": 5,
+        "importPath": "(redacted) future_use.predict",
+        "description": "(redacted) future_use.predict",
+        "peekOfCode": "console = Console() if RICH_AVAILABLE else None\n# Constants\nPREDICTION_CACHE_DIR = Path(\"./trained_data/predictions\")\nPREDICTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)\nDEFAULT_CHECKPOINT = \"./trained_data/models/best_model_checkpoint.pth\"\nCONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass",
+        "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "PREDICTION_CACHE_DIR",
+        "kind": 5,
+        "importPath": "(redacted) future_use.predict",
+        "description": "(redacted) future_use.predict",
+        "peekOfCode": "PREDICTION_CACHE_DIR = Path(\"./trained_data/predictions\")\nPREDICTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)\nDEFAULT_CHECKPOINT = \"./trained_data/models/best_model_checkpoint.pth\"\nCONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PredictionResult:\n    \"\"\"Structured prediction result.\"\"\"",
+        "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "DEFAULT_CHECKPOINT",
+        "kind": 5,
+        "importPath": "(redacted) future_use.predict",
+        "description": "(redacted) future_use.predict",
+        "peekOfCode": "DEFAULT_CHECKPOINT = \"./trained_data/models/best_model_checkpoint.pth\"\nCONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PredictionResult:\n    \"\"\"Structured prediction result.\"\"\"\n    ticker: str\n    timestamp: datetime",
+        "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "CONFIDENCE_LEVELS",
+        "kind": 5,
+        "importPath": "(redacted) future_use.predict",
+        "description": "(redacted) future_use.predict",
+        "peekOfCode": "CONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PredictionResult:\n    \"\"\"Structured prediction result.\"\"\"\n    ticker: str\n    timestamp: datetime\n    current_price: float",
+        "detail": "(redacted) future_use.predict",
+        "documentation": {}
+    },
+    {
+        "label": "load_trained_engine",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "def load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary\n    Returns:\n        Loaded EnhancedMLEngine instance",
+        "detail": "(redacted) future_use.predict_backup",
+        "documentation": {}
+    },
+    {
+        "label": "fetch_recent_data",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "def fetch_recent_data(ticker: str, days: int = 100) -> Optional[pd.DataFrame]:\n    \"\"\"\n    Fetch recent stock data for prediction.\n    Args:\n        ticker: Stock ticker symbol\n        days: Number of days of historical data to fetch\n    Returns:\n        DataFrame with recent stock data or None on failure\n    \"\"\"\n    try:",
+        "detail": "(redacted) future_use.predict_backup",
+        "documentation": {}
+    },
+    {
+        "label": "make_prediction",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "def make_prediction(engine: EnhancedMLEngine, data: pd.DataFrame) -> Optional[float]:\n    \"\"\"\n    Make a prediction using the engine.\n    Args:\n        engine: Trained ML engine\n        data: Input data DataFrame\n    Returns:\n        Predicted value or None on failure\n    \"\"\"\n    try:",
+        "detail": "(redacted) future_use.predict_backup",
+        "documentation": {}
+    },
+    {
+        "label": "real_time_prediction_loop",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "def real_time_prediction_loop(\n    engine: EnhancedMLEngine,\n    ticker: str = \"AAPL\",\n    interval: int = 60,\n    use_real_data: bool = True,\n):\n    \"\"\"\n    Run continuous prediction loop.\n    Args:\n        engine: Trained ML engine",
+        "detail": "(redacted) future_use.predict_backup",
+        "documentation": {}
+    },
+    {
+        "label": "validate_prediction",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "def validate_prediction(\n    engine: EnhancedMLEngine, ticker: str = \"AAPL\", days_back: int = 30\n):\n    \"\"\"\n    Validate model predictions against historical data.\n    Args:\n        engine: Trained ML engine\n        ticker: Stock ticker to validate\n        days_back: Number of days to look back\n    \"\"\"",
+        "detail": "(redacted) future_use.predict_backup",
+        "documentation": {}
+    },
+    {
+        "label": "batch_predict",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "def batch_predict(\n    engine: EnhancedMLEngine, tickers: list, output_file: Optional[str] = None\n) -> pd.DataFrame:\n    \"\"\"\n    Make predictions for multiple tickers at once.\n    Args:\n        engine: Trained ML engine\n        tickers: List of ticker symbols\n        output_file: Optional file to save results\n    Returns:",
+        "detail": "(redacted) future_use.predict_backup",
+        "documentation": {}
+    },
+    {
+        "label": "compare_predictions",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "def compare_predictions(\n    engine: EnhancedMLEngine, ticker: str, lookback_days: int = 30\n) -> None:\n    \"\"\"\n    Compare model predictions with actual historical prices.\n    Args:\n        engine: Trained ML engine\n        ticker: Stock ticker symbol\n        lookback_days: Number of days to look back\n    \"\"\"",
+        "detail": "(redacted) future_use.predict_backup",
+        "documentation": {}
+    },
+    {
+        "label": "save_prediction_log",
+        "kind": 2,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "def save_prediction_log(\n    ticker: str,\n    prediction: float,\n    current_price: float,\n    log_file: str = \"predictions.csv\",\n) -> None:\n    \"\"\"\n    Save prediction to a CSV log file.\n    Args:\n        ticker: Stock ticker symbol",
+        "detail": "(redacted) future_use.predict_backup",
+        "documentation": {}
+    },
+    {
+        "label": "console",
+        "kind": 5,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "console = Console()\nlogger = logging.getLogger(__name__)\ndef load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary",
+        "detail": "(redacted) future_use.predict_backup",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "(redacted) future_use.predict_backup",
+        "description": "(redacted) future_use.predict_backup",
+        "peekOfCode": "logger = logging.getLogger(__name__)\ndef load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary\n    Returns:",
+        "detail": "(redacted) future_use.predict_backup",
         "documentation": {}
     },
     {
