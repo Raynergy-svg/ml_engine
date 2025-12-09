@@ -486,4 +486,256 @@ class TransformerPredictor(nn.Module):
         self.positional_encoding = positional_encoding
         if positional_encoding == "learned":
             self.pos_encoder = nn.Parameter(torch.zeros(1, 1000, hidden_size))  # Max sequence length of 1000
-            nn.init.normal_(self.pos_encoder, mean=0, std=<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>
+            nn.init.normal_(self.pos_encoder, mean=0, std=0.02)
+        elif positional_encoding == "sinusoidal":
+            # Sinusoidal positional encoding will be computed in forward pass
+            pass
+        else:
+            raise ValueError(f"Unknown positional_encoding: {positional_encoding}")
+        
+        # Transformer encoder layers
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_size,
+            nhead=num_heads,
+            dim_feedforward=hidden_size * 4,
+            dropout=dropout,
+            activation=activation,
+            batch_first=True
+        )
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        
+        # Output layers
+        self.fc1 = nn.Linear(hidden_size, hidden_size // 2)
+        self.dropout = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(hidden_size // 2, 1)
+        
+        # Initialize weights
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize weights for better convergence."""
+        nn.init.xavier_uniform_(self.input_embedding.weight)
+        nn.init.xavier_uniform_(self.fc1.weight)
+        nn.init.xavier_uniform_(self.fc2.weight)
+    
+    def _get_positional_encoding(self, seq_len: int, device: torch.device) -> torch.Tensor:
+        """Generate sinusoidal positional encoding."""
+        position = torch.arange(seq_len, dtype=torch.float32, device=device).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, self.input_embedding.out_features, 2, dtype=torch.float32, device=device) * 
+                            (-math.log(10000.0) / self.input_embedding.out_features))
+        
+        pe = torch.zeros(seq_len, self.input_embedding.out_features, device=device)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        return pe.unsqueeze(0)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through the transformer.
+        
+        Args:
+            x: Input tensor of shape [batch_size, sequence_length, input_size]
+            
+        Returns:
+            Predicted values of shape [batch_size, 1]
+        """
+        batch_size, seq_len, _ = x.shape
+        
+        # Input embedding
+        x = self.input_embedding(x)
+        
+        # Add positional encoding
+        if self.positional_encoding == "learned":
+            x = x + self.pos_encoder[:, :seq_len, :]
+        elif self.positional_encoding == "sinusoidal":
+            pe = self._get_positional_encoding(seq_len, x.device)
+            x = x + pe
+        
+        # Transformer encoding
+        x = self.transformer_encoder(x)
+        
+        # Global average pooling
+        x = x.mean(dim=1)
+        
+        # Output layers
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = self.fc2(x)
+        
+        return x
+
+
+class TCNPredictor(nn.Module):
+    """Temporal Convolutional Network for time series prediction."""
+    
+    def __init__(
+        self,
+        input_size: int,
+        hidden_size: int,
+        num_layers: int,
+        dropout: float,
+        kernel_size: int = 3
+    ):
+        super(TCNPredictor, self).__init__()
+        
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        
+        # TCN layers
+        self.tcn_layers = nn.ModuleList()
+        for i in range(num_layers):
+            dilation = 2 ** i
+            in_channels = input_size if i == 0 else hidden_size
+            self.tcn_layers.append(
+                nn.Sequential(
+                    nn.Conv1d(in_channels, hidden_size, kernel_size, 
+                             padding=(kernel_size - 1) * dilation // 2, dilation=dilation),
+                    nn.BatchNorm1d(hidden_size),
+                    nn.ReLU(),
+                    nn.Dropout(dropout)
+                )
+            )
+        
+        # Output layer
+        self.fc = nn.Linear(hidden_size, 1)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through TCN.
+        
+        Args:
+            x: Input tensor of shape [batch_size, sequence_length, input_size]
+            
+        Returns:
+            Predicted values of shape [batch_size, 1]
+        """
+        # Transpose for Conv1d: [batch, features, sequence]
+        x = x.transpose(1, 2)
+        
+        # Apply TCN layers
+        for layer in self.tcn_layers:
+            x = layer(x) + x if x.shape[1] == self.hidden_size else layer(x)
+        
+        # Take the last time step
+        x = x[:, :, -1]
+        
+        # Output prediction
+        return self.fc(x)
+
+
+class EnsemblePredictor(nn.Module):
+    """Ensemble of multiple models with attention-based weighting."""
+    
+    def __init__(
+        self,
+        models: List[nn.Module],
+        input_size: int,
+        hidden_size: int,
+        dropout: float = 0.2,
+        ensemble_method: str = "attention"
+    ):
+        super(EnsemblePredictor, self).__init__()
+        
+        self.models = nn.ModuleList(models)
+        self.ensemble_method = ensemble_method
+        self.num_models = len(models)
+        
+        if ensemble_method == "attention":
+            # Attention mechanism for weighting models
+            self.attention = nn.Sequential(
+                nn.Linear(self.num_models, hidden_size),
+                nn.ReLU(),
+                nn.Linear(hidden_size, self.num_models),
+                nn.Softmax(dim=1)
+            )
+        elif ensemble_method == "weighted":
+            # Learnable weights
+            self.weights = nn.Parameter(torch.ones(self.num_models) / self.num_models)
+        
+        self.dropout = nn.Dropout(dropout)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass through ensemble.
+        
+        Args:
+            x: Input tensor of shape [batch_size, sequence_length, input_size]
+            
+        Returns:
+            Predicted values of shape [batch_size, 1]
+        """
+        # Get predictions from all models
+        predictions = []
+        for model in self.models:
+            pred = model(x)
+            predictions.append(pred)
+        
+        # Stack predictions: [batch_size, num_models]
+        predictions = torch.cat(predictions, dim=1)
+        
+        if self.ensemble_method == "mean":
+            # Simple averaging
+            return predictions.mean(dim=1, keepdim=True)
+        elif self.ensemble_method == "weighted":
+            # Weighted average
+            weights = F.softmax(self.weights, dim=0)
+            return (predictions * weights.unsqueeze(0)).sum(dim=1, keepdim=True)
+        elif self.ensemble_method == "attention":
+            # Attention-based weighting
+            attention_weights = self.attention(predictions)
+            return (predictions * attention_weights).sum(dim=1, keepdim=True)
+        else:
+            raise ValueError(f"Unknown ensemble method: {self.ensemble_method}")
+
+
+class GRUPredictor(nn.Module):
+    """GRU-based predictor similar to StockPredictor but using GRU cells."""
+    
+    def __init__(
+        self,
+        input_size: int = 7,
+        hidden_size: int = 128,
+        num_layers: int = 3,
+        dropout: float = 0.2,
+        bidirectional: bool = False
+    ):
+        super(GRUPredictor, self).__init__()
+        
+        gru_output_size = hidden_size * 2 if bidirectional else hidden_size
+        
+        self.gru = nn.GRU(
+            input_size,
+            hidden_size,
+            num_layers,
+            batch_first=True,
+            dropout=dropout if num_layers > 1 else 0,
+            bidirectional=bidirectional
+        )
+        
+        self.fc1 = nn.Linear(gru_output_size, 64)
+        self.fc2 = nn.Linear(64, 32)
+        self.fc3 = nn.Linear(32, 1)
+        self.dropout = nn.Dropout(dropout)
+        
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize weights."""
+        for name, param in self.named_parameters():
+            if 'weight' in name:
+                nn.init.xavier_uniform_(param)
+            elif 'bias' in name:
+                nn.init.zeros_(param)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass through GRU."""
+        gru_out, _ = self.gru(x)
+        gru_out = gru_out[:, -1, :]
+        
+        out = F.relu(self.fc1(gru_out))
+        out = self.dropout(out)
+        out = F.relu(self.fc2(out))
+        out = self.fc3(out)
+        
+        return out
