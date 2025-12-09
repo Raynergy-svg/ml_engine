@@ -462,6 +462,9 @@ class GRUPredictor(nn.Module):
 
 class TransformerPredictor(nn.Module):
     """Optimized Transformer-based predictor for sequential data."""
+    
+    # Class constants
+    POSITIONAL_ENCODING_BASE = 10000.0  # Base for sinusoidal positional encoding
 
     def __init__(
         self, 
@@ -522,7 +525,7 @@ class TransformerPredictor(nn.Module):
         """Generate sinusoidal positional encoding."""
         position = torch.arange(seq_len, dtype=torch.float32, device=device).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, self.input_embedding.out_features, 2, dtype=torch.float32, device=device) * 
-                            (-math.log(10000.0) / self.input_embedding.out_features))
+                            (-math.log(self.POSITIONAL_ENCODING_BASE) / self.input_embedding.out_features))
         
         pe = torch.zeros(seq_len, self.input_embedding.out_features, device=device)
         pe[:, 0::2] = torch.sin(position * div_term)
@@ -576,7 +579,22 @@ class TCNPredictor(nn.Module):
         dropout: float,
         kernel_size: int = 3
     ):
-        super(TCNPredictor, self).__init__()
+        super().__init__()
+        
+        # Validate inputs
+        if input_size <= 0:
+            raise ValueError(f"input_size must be positive, got {input_size}")
+        if hidden_size <= 0:
+            raise ValueError(f"hidden_size must be positive, got {hidden_size}")
+        if num_layers <= 0:
+            raise ValueError(f"num_layers must be positive, got {num_layers}")
+        if not 0 <= dropout < 1:
+            raise ValueError(f"dropout must be in [0, 1), got {dropout}")
+        if kernel_size <= 0:
+            raise ValueError(f"kernel_size must be positive, got {kernel_size}")
+        
+        logger.info(f"Initializing TCNPredictor: input_size={input_size}, "
+                   f"hidden_size={hidden_size}, num_layers={num_layers}")
         
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -600,6 +618,12 @@ class TCNPredictor(nn.Module):
         # Output layer
         self.fc = nn.Linear(hidden_size, 1)
     
+    def _apply_residual_connection(self, layer_output: torch.Tensor, residual: torch.Tensor) -> torch.Tensor:
+        """Apply residual connection if dimensions match."""
+        if residual.shape[1] == self.hidden_size:
+            return layer_output + residual
+        return layer_output
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass through TCN.
@@ -613,9 +637,10 @@ class TCNPredictor(nn.Module):
         # Transpose for Conv1d: [batch, features, sequence]
         x = x.transpose(1, 2)
         
-        # Apply TCN layers
+        # Apply TCN layers with residual connections
         for layer in self.tcn_layers:
-            x = layer(x) + x if x.shape[1] == self.hidden_size else layer(x)
+            layer_output = layer(x)
+            x = self._apply_residual_connection(layer_output, x)
         
         # Take the last time step
         x = x[:, :, -1]
@@ -627,6 +652,8 @@ class TCNPredictor(nn.Module):
 class EnsemblePredictor(nn.Module):
     """Ensemble of multiple models with attention-based weighting."""
     
+    SUPPORTED_METHODS = {"mean", "weighted", "attention"}
+    
     def __init__(
         self,
         models: List[nn.Module],
@@ -635,7 +662,17 @@ class EnsemblePredictor(nn.Module):
         dropout: float = 0.2,
         ensemble_method: str = "attention"
     ):
-        super(EnsemblePredictor, self).__init__()
+        super().__init__()
+        
+        # Validate inputs
+        if not models:
+            raise ValueError("models list cannot be empty")
+        if ensemble_method not in self.SUPPORTED_METHODS:
+            raise ValueError(f"ensemble_method must be one of {self.SUPPORTED_METHODS}, got '{ensemble_method}'")
+        if not 0 <= dropout < 1:
+            raise ValueError(f"dropout must be in [0, 1), got {dropout}")
+        
+        logger.info(f"Initializing EnsemblePredictor with {len(models)} models, method={ensemble_method}")
         
         self.models = nn.ModuleList(models)
         self.ensemble_method = ensemble_method
@@ -700,7 +737,7 @@ class GRUPredictor(nn.Module):
         dropout: float = 0.2,
         bidirectional: bool = False
     ):
-        super(GRUPredictor, self).__init__()
+        super().__init__()
         
         gru_output_size = hidden_size * 2 if bidirectional else hidden_size
         
