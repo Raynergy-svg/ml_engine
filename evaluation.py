@@ -37,7 +37,9 @@ def predict_with_uncertainty(
     Returns:
         Tuple of (mean_predictions, std_predictions)
     """
-    model.train()  # Enable dropout
+    # Enable training mode to activate dropout for Monte Carlo sampling
+    # Note: This also affects batch norm and other training-specific layers
+    model.train()
     predictions = []
     
     with torch.no_grad():

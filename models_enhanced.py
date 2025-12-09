@@ -437,9 +437,10 @@ class TransformerPredictor(nn.Module):
         self._init_weights()
     
     def _get_sinusoidal_encoding(self, max_len: int, d_model: int) -> torch.Tensor:
-        """Generate sinusoidal positional encodings."""
-        position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        """Generate sinusoidal positional encodings with improved numerical stability."""
+        position = torch.arange(max_len).unsqueeze(1).float()
+        # More numerically stable formulation
+        div_term = torch.pow(10000.0, -torch.arange(0, d_model, 2).float() / d_model)
         
         pe = torch.zeros(1, max_len, d_model)
         pe[0, :, 0::2] = torch.sin(position * div_term)
@@ -528,13 +529,22 @@ class TCNPredictor(nn.Module):
         
         self.dropout = nn.Dropout(dropout)
 
-        # Enhanced output layers
+        # Enhanced output layers - create fresh activation instances
+        if activation == "mish":
+            act_fn1, act_fn2 = Mish(), Mish()
+        elif activation == "swish" or activation == "silu":
+            act_fn1, act_fn2 = Swish(), Swish()
+        elif activation == "gelu":
+            act_fn1, act_fn2 = nn.GELU(), nn.GELU()
+        else:
+            act_fn1, act_fn2 = nn.ReLU(), nn.ReLU()
+        
         self.fc = nn.Sequential(
             nn.Linear(hidden_size, 64),
-            self.activation.__class__() if hasattr(self.activation, '__class__') else nn.ReLU(),
+            act_fn1,
             nn.Dropout(dropout),
             nn.Linear(64, 32),
-            self.activation.__class__() if hasattr(self.activation, '__class__') else nn.ReLU(),
+            act_fn2,
             nn.Dropout(dropout),
             nn.Linear(32, 1)
         )

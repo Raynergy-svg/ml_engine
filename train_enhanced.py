@@ -253,7 +253,8 @@ class EnhancedTrainer:
                     ):
                         self.scheduler.step()
 
-            total_loss += loss.item() * accumulation_steps  # Un-normalize for logging
+            # Store un-normalized loss for logging (loss was divided by accumulation_steps for backprop)
+            total_loss += loss.item() * accumulation_steps
 
         return total_loss / len(train_loader)
 
