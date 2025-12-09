@@ -276,7 +276,7 @@ class AttentiveLSTM(nn.Module):
 
 
 class GRUPredictor(nn.Module):
-    """GRU-based predictor with improved architecture."""
+    """GRU-based predictor with improved architecture and modern enhancements."""
 
     def __init__(
         self,
@@ -285,6 +285,8 @@ class GRUPredictor(nn.Module):
         num_layers: int = 3,
         dropout: float = 0.2,
         bidirectional: bool = False,
+        use_batch_norm: bool = False,
+        activation: str = "relu",
     ):
         super(GRUPredictor, self).__init__()
 
@@ -300,40 +302,83 @@ class GRUPredictor(nn.Module):
         )
 
         self.layer_norm = nn.LayerNorm(gru_output_size)
+        self.use_batch_norm = use_batch_norm
         self.dropout = nn.Dropout(dropout)
 
-        self.fc = nn.Sequential(
-            nn.Linear(gru_output_size, 128),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(64, 1),
-        )
+        # Enhanced architecture with configurable activation and optional batch norm
+        self.fc1 = nn.Linear(gru_output_size, 128)
+        self.bn1 = nn.BatchNorm1d(128) if use_batch_norm else nn.Identity()
+        
+        self.fc2 = nn.Linear(128, 64)
+        self.bn2 = nn.BatchNorm1d(64) if use_batch_norm else nn.Identity()
+        
+        self.fc3 = nn.Linear(64, 1)
+        
+        # Skip connection for better gradient flow
+        self.skip = nn.Linear(gru_output_size, 1)
+        
+        # Activation function selection
+        if activation == "mish":
+            self.activation = Mish()
+        elif activation == "swish" or activation == "silu":
+            self.activation = Swish()
+        elif activation == "gelu":
+            self.activation = nn.GELU()
+        else:
+            self.activation = nn.ReLU()
 
         self._init_weights()
 
     def _init_weights(self):
-        """Initialize weights."""
+        """Initialize weights with improved strategies."""
         for name, param in self.named_parameters():
             if "weight" in name:
-                nn.init.xavier_normal_(param)
+                if "gru" in name:
+                    # Orthogonal for GRU recurrent weights, Xavier for input weights
+                    if "weight_hh" in name:
+                        nn.init.orthogonal_(param)
+                    else:
+                        nn.init.xavier_uniform_(param)
+                elif "bn" in name or "layer_norm" in name:
+                    nn.init.ones_(param)
+                else:
+                    # Kaiming for ReLU-like, Xavier for others
+                    if isinstance(self.activation, (nn.ReLU, Mish, Swish)):
+                        nn.init.kaiming_normal_(param, mode='fan_in', nonlinearity='relu')
+                    else:
+                        nn.init.xavier_normal_(param)
             elif "bias" in name:
                 nn.init.zeros_(param)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass."""
+        """Forward pass with residual connections."""
         gru_out, _ = self.gru(x)
         gru_out = gru_out[:, -1, :]
         gru_out = self.layer_norm(gru_out)
         gru_out = self.dropout(gru_out)
 
-        return self.fc(gru_out)
+        # Skip connection
+        skip_out = self.skip(gru_out)
+        
+        # Main path with improved activations
+        out = self.fc1(gru_out)
+        out = self.bn1(out)
+        out = self.activation(out)
+        out = self.dropout(out)
+        
+        out = self.fc2(out)
+        out = self.bn2(out)
+        out = self.activation(out)
+        out = self.dropout(out)
+        
+        out = self.fc3(out)
+        
+        # Residual connection
+        return out + skip_out
 
 
 class TransformerPredictor(nn.Module):
-    """Transformer-based predictor for time series."""
+    """Transformer-based predictor for time series with enhanced features."""
 
     def __init__(
         self,
@@ -344,21 +389,26 @@ class TransformerPredictor(nn.Module):
         dropout: float = 0.2,
         use_flash_attention: bool = True,
         positional_encoding: str = "learned",
+        activation: str = "gelu",
     ):
         super(TransformerPredictor, self).__init__()
 
         self.input_projection = nn.Linear(input_size, hidden_size)
         self.positional_encoding_type = positional_encoding
+        self.hidden_size = hidden_size
 
         if positional_encoding == "learned":
             self.pos_encoding = nn.Parameter(torch.randn(1, 1000, hidden_size))
+        elif positional_encoding == "sinusoidal":
+            # Register sinusoidal encoding as buffer (not trainable)
+            self.register_buffer('pos_encoding', self._get_sinusoidal_encoding(1000, hidden_size))
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=hidden_size,
             nhead=num_heads,
             dim_feedforward=hidden_size * 4,
             dropout=dropout,
-            activation="gelu",
+            activation=activation,
             batch_first=True,
         )
 
@@ -366,24 +416,53 @@ class TransformerPredictor(nn.Module):
             encoder_layer, num_layers=num_layers
         )
 
+        # Improved output layers with configurable activation
+        if activation == "mish":
+            act_fn = Mish()
+        elif activation == "swish":
+            act_fn = Swish()
+        else:
+            act_fn = nn.GELU()
+        
         self.fc = nn.Sequential(
-            nn.Linear(hidden_size, 64), nn.ReLU(), nn.Dropout(dropout), nn.Linear(64, 1)
+            nn.Linear(hidden_size, 64),
+            act_fn,
+            nn.Dropout(dropout),
+            nn.Linear(64, 32),
+            act_fn,
+            nn.Dropout(dropout),
+            nn.Linear(32, 1)
         )
 
         self._init_weights()
+    
+    def _get_sinusoidal_encoding(self, max_len: int, d_model: int) -> torch.Tensor:
+        """Generate sinusoidal positional encodings."""
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        
+        pe = torch.zeros(1, max_len, d_model)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        
+        return pe
 
     def _init_weights(self):
-        """Initialize weights."""
-        for p in self.parameters():
-            if p.dim() > 1:
-                nn.init.xavier_uniform_(p)
+        """Initialize weights with improved strategies."""
+        for name, param in self.named_parameters():
+            if param.dim() > 1:
+                # Use Xavier uniform for transformer weights
+                nn.init.xavier_uniform_(param)
+            elif "bias" in name:
+                nn.init.zeros_(param)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass."""
+        """Forward pass with positional encoding."""
         x = self.input_projection(x)
 
-        if self.positional_encoding_type == "learned":
-            seq_len = x.size(1)
+        # Add positional encoding
+        seq_len = x.size(1)
+        if self.positional_encoding_type in ["learned", "sinusoidal"]:
             x = x + self.pos_encoding[:, :seq_len, :]
 
         x = self.transformer_encoder(x)
@@ -393,7 +472,7 @@ class TransformerPredictor(nn.Module):
 
 
 class TCNPredictor(nn.Module):
-    """Temporal Convolutional Network for time series prediction."""
+    """Temporal Convolutional Network for time series prediction with enhanced features."""
 
     def __init__(
         self,
@@ -402,49 +481,108 @@ class TCNPredictor(nn.Module):
         num_layers: int = 3,
         kernel_size: int = 3,
         dropout: float = 0.2,
+        activation: str = "relu",
+        use_residual: bool = True,
     ):
         super(TCNPredictor, self).__init__()
 
-        layers = []
-        num_channels = [hidden_size] * num_layers
+        self.use_residual = use_residual
+        
+        # Activation function selection
+        if activation == "mish":
+            self.activation = Mish()
+        elif activation == "swish" or activation == "silu":
+            self.activation = Swish()
+        elif activation == "gelu":
+            self.activation = nn.GELU()
+        else:
+            self.activation = nn.ReLU()
 
+        # Build TCN layers with residual connections
+        self.tcn_layers = nn.ModuleList()
+        self.residual_layers = nn.ModuleList()
+        
         for i in range(num_layers):
             dilation_size = 2**i
             in_channels = input_size if i == 0 else hidden_size
-            out_channels = num_channels[i]
+            out_channels = hidden_size
 
-            layers.append(
+            # Main convolutional block
+            conv_block = nn.Sequential(
                 nn.Conv1d(
                     in_channels,
                     out_channels,
                     kernel_size,
                     padding=(kernel_size - 1) * dilation_size,
                     dilation=dilation_size,
-                )
+                ),
+                nn.BatchNorm1d(out_channels),
             )
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(dropout))
+            self.tcn_layers.append(conv_block)
+            
+            # Residual connection (1x1 conv if dimensions don't match)
+            if use_residual and in_channels != out_channels:
+                self.residual_layers.append(nn.Conv1d(in_channels, out_channels, 1))
+            else:
+                self.residual_layers.append(nn.Identity())
+        
+        self.dropout = nn.Dropout(dropout)
 
-        self.network = nn.Sequential(*layers)
-
+        # Enhanced output layers
         self.fc = nn.Sequential(
-            nn.Linear(hidden_size, 64), nn.ReLU(), nn.Dropout(dropout), nn.Linear(64, 1)
+            nn.Linear(hidden_size, 64),
+            self.activation.__class__() if hasattr(self.activation, '__class__') else nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, 32),
+            self.activation.__class__() if hasattr(self.activation, '__class__') else nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(32, 1)
         )
 
         self._init_weights()
 
     def _init_weights(self):
-        """Initialize weights."""
+        """Initialize weights with improved strategies."""
         for m in self.modules():
             if isinstance(m, nn.Conv1d):
-                nn.init.kaiming_normal_(m.weight)
+                # Kaiming for conv layers (best for ReLU-like activations)
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
             elif isinstance(m, nn.Linear):
                 nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass."""
-        x = x.transpose(1, 2)
-        x = self.network(x)
+        """Forward pass with residual connections."""
+        x = x.transpose(1, 2)  # [batch, features, seq_len]
+        
+        for i, (conv_block, residual_layer) in enumerate(zip(self.tcn_layers, self.residual_layers)):
+            residual = x
+            
+            # Apply convolution
+            out = conv_block(x)
+            
+            # Crop to proper length (causal padding)
+            if out.size(-1) != residual.size(-1):
+                out = out[:, :, :residual.size(-1)]
+            
+            # Apply activation
+            out = self.activation(out)
+            out = self.dropout(out)
+            
+            # Add residual connection
+            if self.use_residual:
+                residual = residual_layer(residual)
+                x = out + residual
+            else:
+                x = out
+        
+        # Take last timestep
         x = x[:, :, -1]
 
         return self.fc(x)

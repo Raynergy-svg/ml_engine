@@ -193,50 +193,67 @@ class EnhancedTrainer:
         return model.to(self.device)
 
     def train_epoch(self, train_loader: DataLoader, criterion: nn.Module, use_step_scheduler: bool = False) -> float:
-        """Train for one epoch with improved gradient handling."""
+        """Train for one epoch with improved gradient handling and accumulation support."""
         self.model.train()
         total_loss = 0
         
         # Improved gradient clipping value
         max_grad_norm = self.config.get("grad_clip_norm", 1.0)
+        
+        # Gradient accumulation for effective larger batch sizes
+        accumulation_steps = self.config.get("gradient_accumulation_steps", 1)
 
         for batch_idx, (X_batch, y_batch) in enumerate(train_loader):
             X_batch = X_batch.to(self.device)
             y_batch = y_batch.to(self.device)
-
-            self.optimizer.zero_grad()
 
             # Mixed precision training for faster computation and lower memory
             if self.scaler is not None:
                 with torch.cuda.amp.autocast():
                     predictions = self.model(X_batch)
                     loss = criterion(predictions, y_batch.unsqueeze(1))
+                    # Normalize loss for gradient accumulation
+                    loss = loss / accumulation_steps
 
                 self.scaler.scale(loss).backward()
 
-                # Adaptive gradient clipping for better training stability
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_grad_norm)
+                # Only step optimizer every accumulation_steps batches
+                if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
+                    # Adaptive gradient clipping for better training stability
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_grad_norm)
 
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
+                    
+                    # Step scheduler if using OneCycleLR (per optimizer step)
+                    if use_step_scheduler and isinstance(
+                        self.scheduler, torch.optim.lr_scheduler.OneCycleLR
+                    ):
+                        self.scheduler.step()
             else:
                 predictions = self.model(X_batch)
                 loss = criterion(predictions, y_batch.unsqueeze(1))
+                # Normalize loss for gradient accumulation
+                loss = loss / accumulation_steps
                 loss.backward()
 
-                # Adaptive gradient clipping
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_grad_norm)
+                # Only step optimizer every accumulation_steps batches
+                if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
+                    # Adaptive gradient clipping
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=max_grad_norm)
 
-                self.optimizer.step()
-            
-            # Step scheduler if using OneCycleLR
-            if use_step_scheduler and isinstance(
-                self.scheduler, torch.optim.lr_scheduler.OneCycleLR
-            ):
-                self.scheduler.step()
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+                    
+                    # Step scheduler if using OneCycleLR (per optimizer step)
+                    if use_step_scheduler and isinstance(
+                        self.scheduler, torch.optim.lr_scheduler.OneCycleLR
+                    ):
+                        self.scheduler.step()
 
-            total_loss += loss.item()
+            total_loss += loss.item() * accumulation_steps  # Un-normalize for logging
 
         return total_loss / len(train_loader)
 
@@ -374,6 +391,21 @@ class EnhancedTrainer:
                     self.optimizer, max_lr=max_lr, total_steps=total_steps
                 )
                 logger.info(f"Using OneCycleLR scheduler with max_lr={max_lr}")
+            elif scheduler_type == "exponential":
+                # Exponential decay
+                gamma = self.config.get("lr_decay_gamma", 0.95)
+                self.scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                    self.optimizer, gamma=gamma
+                )
+                logger.info(f"Using ExponentialLR scheduler with gamma={gamma}")
+            elif scheduler_type == "step":
+                # Step decay
+                step_size = self.config.get("lr_step_size", 30)
+                gamma = self.config.get("lr_decay_gamma", 0.1)
+                self.scheduler = torch.optim.lr_scheduler.StepLR(
+                    self.optimizer, step_size=step_size, gamma=gamma
+                )
+                logger.info(f"Using StepLR scheduler with step_size={step_size}, gamma={gamma}")
             else:
                 # Default: ReduceLROnPlateau
                 self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -430,9 +462,13 @@ class EnhancedTrainer:
             # Update scheduler based on type
             if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 self.scheduler.step(val_loss)
-            elif isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts):
-                self.scheduler.step(epoch)
-            # OneCycleLR is stepped in train_epoch
+            elif isinstance(self.scheduler, (
+                torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,
+                torch.optim.lr_scheduler.ExponentialLR,
+                torch.optim.lr_scheduler.StepLR
+            )):
+                self.scheduler.step()
+            # OneCycleLR is stepped in train_epoch per batch
 
             # Calculate metrics
             metrics = self.evaluator.evaluate(

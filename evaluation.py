@@ -19,6 +19,91 @@ import seaborn as sns
 logger = logging.getLogger(__name__)
 
 
+def predict_with_uncertainty(
+    model: torch.nn.Module,
+    X: torch.Tensor,
+    n_iterations: int = 30,
+    device: str = "cpu"
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Make predictions with uncertainty estimation using Monte Carlo Dropout.
+    
+    Args:
+        model: PyTorch model with dropout layers
+        X: Input tensor
+        n_iterations: Number of forward passes with dropout enabled
+        device: Device to run on
+        
+    Returns:
+        Tuple of (mean_predictions, std_predictions)
+    """
+    model.train()  # Enable dropout
+    predictions = []
+    
+    with torch.no_grad():
+        for _ in range(n_iterations):
+            X_batch = X.to(device)
+            pred = model(X_batch).cpu().numpy()
+            predictions.append(pred)
+    
+    predictions = np.array(predictions)
+    mean_pred = predictions.mean(axis=0).flatten()
+    std_pred = predictions.std(axis=0).flatten()
+    
+    logger.info(f"Uncertainty estimation: mean std={std_pred.mean():.4f}")
+    
+    return mean_pred, std_pred
+
+
+def calibrate_predictions(
+    predictions: np.ndarray,
+    uncertainties: np.ndarray,
+    actual: np.ndarray,
+    confidence_level: float = 0.95
+) -> Dict[str, float]:
+    """
+    Calibrate and evaluate prediction uncertainties.
+    
+    Args:
+        predictions: Point predictions
+        uncertainties: Prediction uncertainties (std)
+        actual: Actual values
+        confidence_level: Desired confidence level
+        
+    Returns:
+        Dictionary with calibration metrics
+    """
+    from scipy import stats
+    
+    # Calculate z-score for confidence level
+    z_score = stats.norm.ppf((1 + confidence_level) / 2)
+    
+    # Calculate prediction intervals
+    lower_bound = predictions - z_score * uncertainties
+    upper_bound = predictions + z_score * uncertainties
+    
+    # Check coverage (how many actual values fall within intervals)
+    coverage = np.mean((actual >= lower_bound) & (actual <= upper_bound))
+    
+    # Calculate interval width
+    avg_interval_width = np.mean(upper_bound - lower_bound)
+    
+    # Calculate sharpness (how tight are the intervals)
+    sharpness = uncertainties.mean()
+    
+    metrics = {
+        'coverage': coverage * 100,
+        'target_coverage': confidence_level * 100,
+        'avg_interval_width': avg_interval_width,
+        'sharpness': sharpness,
+        'calibration_error': abs(coverage - confidence_level) * 100
+    }
+    
+    logger.info(f"Calibration: {coverage*100:.1f}% coverage (target: {confidence_level*100:.1f}%)")
+    
+    return metrics
+
+
 def smooth_predictions(
     predictions: np.ndarray,
     method: str = "ema",

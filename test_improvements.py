@@ -5,7 +5,10 @@ Test script to validate ML model improvements.
 import torch
 import torch.nn as nn
 import numpy as np
-from models_enhanced import StockPredictor, AttentiveLSTM, Mish, Swish
+from models_enhanced import (
+    StockPredictor, AttentiveLSTM, GRUPredictor, 
+    TransformerPredictor, TCNPredictor, Mish, Swish
+)
 from evaluation import smooth_predictions, ensemble_predictions
 from data_processing_optimized import augment_data
 
@@ -62,6 +65,70 @@ def test_improved_stock_predictor():
     output = model_bn(x)
     assert output.shape == (16, 1), "BatchNorm model output shape mismatch"
     print("✓ StockPredictor with BatchNorm works correctly")
+
+def test_improved_gru_predictor():
+    """Test improved GRUPredictor with new features."""
+    print("\nTesting improved GRUPredictor...")
+    
+    for activation in ["relu", "mish", "swish"]:
+        model = GRUPredictor(
+            input_size=7,
+            hidden_size=64,
+            num_layers=2,
+            dropout=0.2,
+            activation=activation,
+            use_batch_norm=True
+        )
+        
+        x = torch.randn(8, 30, 7)
+        output = model(x)
+        
+        assert output.shape == (8, 1), f"GRUPredictor output shape mismatch with {activation}"
+        assert torch.all(torch.isfinite(output)), f"GRUPredictor with {activation} produced non-finite values"
+        print(f"✓ GRUPredictor with {activation} activation works correctly")
+
+def test_improved_transformer_predictor():
+    """Test improved TransformerPredictor with new features."""
+    print("\nTesting improved TransformerPredictor...")
+    
+    # Test with sinusoidal positional encoding
+    model = TransformerPredictor(
+        input_size=7,
+        hidden_size=64,
+        num_layers=2,
+        num_heads=4,
+        dropout=0.2,
+        positional_encoding="sinusoidal",
+        activation="gelu"
+    )
+    
+    x = torch.randn(8, 30, 7)
+    output = model(x)
+    
+    assert output.shape == (8, 1), "TransformerPredictor output shape mismatch"
+    assert torch.all(torch.isfinite(output)), "TransformerPredictor produced non-finite values"
+    print("✓ TransformerPredictor with sinusoidal encoding works correctly")
+
+def test_improved_tcn_predictor():
+    """Test improved TCNPredictor with new features."""
+    print("\nTesting improved TCNPredictor...")
+    
+    model = TCNPredictor(
+        input_size=7,
+        hidden_size=64,
+        num_layers=3,
+        kernel_size=3,
+        dropout=0.2,
+        activation="mish",
+        use_residual=True
+    )
+    
+    x = torch.randn(8, 30, 7)
+    output = model(x)
+    
+    assert output.shape == (8, 1), "TCNPredictor output shape mismatch"
+    assert torch.all(torch.isfinite(output)), "TCNPredictor produced non-finite values"
+    print("✓ TCNPredictor with residual connections works correctly")
 
 def test_improved_attention():
     """Test improved AttentiveLSTM with optimized attention."""
@@ -216,6 +283,9 @@ def main():
     try:
         test_activation_functions()
         test_improved_stock_predictor()
+        test_improved_gru_predictor()
+        test_improved_transformer_predictor()
+        test_improved_tcn_predictor()
         test_improved_attention()
         test_prediction_smoothing()
         test_ensemble_predictions()
