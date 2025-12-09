@@ -13,9 +13,9 @@ except Exception as e:
     print("Failed to import Torch:", e)
 
 try:
-    from packaging import version
+    from packaging import version as pkg_version
 
-    print("Packaging imported successfully")
+    print("Packaging imported successfully, version:", pkg_version.Version)
 except Exception as e:
     print("Failed to import packaging:", e)
 

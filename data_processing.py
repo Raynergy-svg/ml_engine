@@ -1,15 +1,25 @@
 """Data processing and dataset utilities"""
 
-from functools import lru_cache
+from functools import lru_cache, partial
+from pathlib import Path
+import asyncio
+import aiohttp
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
 import logging
+import yfinance as yf
 from typing import List, Tuple, Optional
+
+logger = logging.getLogger(__name__)
+CACHE_DIR = Path.home() / ".trading_bot_cache"
+CACHE_DIR.mkdir(exist_ok=True)
 
 
 class StockDataset(Dataset):
-    """PyTorch Dataset for generating sequences from stock market data."""
+    """
+    PyTorch Dataset for generating sequences from stock market data.
+    """
 
     def __init__(self, features: list, targets: list, sequence_length: int = 60):
         self.features = features
@@ -17,8 +27,6 @@ class StockDataset(Dataset):
         self.sequence_length = sequence_length
 
     def __len__(self) -> int:
-        if isinstance(self.features, da.Array):
-            return self.features.shape[0]
         return len(self.features)
 
     def __getitem__(self, idx: int) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
@@ -28,7 +36,9 @@ class StockDataset(Dataset):
 
 
 def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:
-    """Stack ticker-specific DataFrames extracted from MultiIndex data."""
+    """
+    Stack ticker-specific DataFrames extracted from MultiIndex data.
+    """
     all_data = []
     for ticker in tickers:
         if (ticker,) in data.columns:
@@ -39,14 +49,18 @@ def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFr
             all_data.append(df_ticker)
         else:
             logger.warning(f"Ticker {ticker} not found in data.")
-    return pd.concat(all_data, ignore_index=True) if all_data else pd.DataFrame()
+    result = pd.concat(all_data, ignore_index=True) if all_data else pd.DataFrame()
+    return result
 
 
 @lru_cache(maxsize=32)
 async def async_cached_download(
     ticker: str, start: str, end: str
 ) -> Optional[pd.DataFrame]:
-    """Asynchronously download and cache stock data to avoid repeated API calls."""
+    """
+    Asynchronously download and cache stock data
+    to avoid repeated API calls.
+    """
     cache_file = CACHE_DIR / f"{ticker}_{start}_{end}.parquet"
     required_cols = {"open", "high", "low", "close", "volume"}
 
@@ -71,9 +85,11 @@ async def async_cached_download(
         df.columns = fix_columns(df.columns)
         if "close" not in df.columns and "adj close" in df.columns:
             df["close"] = df["adj close"]
-        if not required_cols.issubset(set(df.columns)):
+        missing_cols = required_cols - set(df.columns)
+        if missing_cols:
             logging.error(
-                f"Cached data missing required columns: {missing}. Deleting cache file."
+                f"Cached data missing required columns: {missing_cols}. "
+                f"Deleting cache file."
             )
             cache_file.unlink()
         else:
@@ -83,21 +99,24 @@ async def async_cached_download(
     async with aiohttp.ClientSession() as session:
         try:
             loop = asyncio.get_event_loop()
-            data = await loop.run_in_executor(
-                None, partial(yf.download, ticker, start=start, end=end, progress=False)
+            download_fn = partial(
+                yf.download, ticker, start=start, end=end, progress=False
             )
+            data = await loop.run_in_executor(None, download_fn)
         except Exception as e:
             logging.warning(f"yf.download failed: {e}")
             data = None
 
-    # If download failed or the data is missing columns, try yf.Ticker().history
-    if (
-        data is None
-        or data.empty
-        or not required_cols.issubset(set(fix_columns(data.columns)))
-    ):
+    # If download failed or the data is missing columns,
+    # try yf.Ticker().history
+    has_required = (
+        data is not None
+        and not data.empty
+        and required_cols.issubset(set(fix_columns(data.columns)))
+    )
+    if not has_required:
         logging.warning(
-            "yf.download did not return valid data; trying yf.Ticker().history"
+            'yf.download did not return valid data; "\n            "trying yf.Ticker().history'
         )
         data = yf.Ticker(ticker).history(start=start, end=end)
     if data is None or data.empty:

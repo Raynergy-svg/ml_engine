@@ -5,6 +5,16 @@ from gymnasium import spaces
 import numpy as np
 import pandas as pd
 
+try:
+    from stable_baselines3 import PPO
+except ImportError:
+    PPO = None
+    import logging
+
+    logging.warning(
+        "stable_baselines3 not installed. RL training will not be available."
+    )
+
 
 # ========= Reinforcement Learning Environment =========
 class TradingEnv(gym.Env):
@@ -19,7 +29,7 @@ class TradingEnv(gym.Env):
       - Custom reward based on trade sequences.
     """
 
-    def __init__(self, engine: "EnhancedMLEngine", data: pd.DataFrame):
+    def __init__(self, engine, data: pd.DataFrame):
         super(TradingEnv, self).__init__()
         self.engine = engine
         self.data = data
@@ -131,7 +141,16 @@ class TradingEnv(gym.Env):
 
 
 def train_rl_agent(engine, data: pd.DataFrame):
-    """Train a reinforcement learning agent using PPO on the trading environment."""
+    """
+    Train a reinforcement learning agent using PPO on the
+    trading environment.
+    """
+    if PPO is None:
+        raise ImportError(
+            "stable_baselines3 is required for RL training. "
+            "Install with: pip install stable-baselines3"
+        )
+
     env = TradingEnv(engine, data)
     model = PPO("MlpPolicy", env, verbose=1)
     model.learn(total_timesteps=10000)
