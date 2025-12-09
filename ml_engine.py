@@ -587,20 +587,48 @@ class EnhancedMLEngine:
         }
     
     def predict_price(self):
-        """Generate a price prediction."""
+        """
+        Generate a price prediction.
+        
+        Note:
+            This is a placeholder implementation. Override this method or use
+            the model's forward pass directly for actual predictions.
+            
+        Returns:
+            float: Placeholder value (0.0). Should be replaced with actual prediction logic.
+        """
+        logger.warning("predict_price is not implemented. Returning placeholder value.")
         return 0.0
     
     def run_realtime_loop(self):
-        """Run real-time inference loop."""
-        logger.info("Real-time loop not yet implemented")
+        """
+        Run real-time inference loop.
+        
+        Note:
+            This is a placeholder implementation. Should be implemented with actual
+            real-time data streaming and prediction logic.
+        """
+        logger.warning("Real-time loop not yet implemented")
     
     def tune_hyperparameters(self):
-        """Perform hyperparameter tuning."""
-        logger.info("Hyperparameter tuning not yet implemented")
+        """
+        Perform hyperparameter tuning.
+        
+        Note:
+            This is a placeholder implementation. Should be implemented with a
+            hyperparameter optimization library like Optuna or Ray Tune.
+        """
+        logger.warning("Hyperparameter tuning not yet implemented")
     
     def profile_pipeline(self):
-        """Profile the ML pipeline."""
-        logger.info("Pipeline profiling not yet implemented")
+        """
+        Profile the ML pipeline to identify bottlenecks.
+        
+        Note:
+            This is a placeholder implementation. Should be implemented with
+            profiling tools like cProfile or PyTorch Profiler.
+        """
+        logger.warning("Pipeline profiling not yet implemented")
     
     def save_model(self, path):
         """Save the model to disk."""

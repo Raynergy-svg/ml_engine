@@ -440,5 +440,6 @@ class AttentionIntegrationModel(nn.Module):
         # Extract attention weights for each engine
         engine_weights = attn_weights.mean(dim=1)  # Average attention across batch
         
-        # Apply output projec
+        # Apply output projection (placeholder - needs implementation)
+        # This should project the combined features to the output space
         pass

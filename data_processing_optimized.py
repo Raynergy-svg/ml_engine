@@ -440,9 +440,13 @@ def prepare_sequences(
         
     Returns:
         Tuple of (features, targets, metadata)
+        
+    Raises:
+        NotImplementedError: This function needs to be fully implemented
     """
-    # Placeholder implementation
-    features = np.array([[[]]])
-    targets = np.array([[]])
-    metadata = {}
-    return features, targets, metadata
+    raise NotImplementedError(
+        "prepare_sequences needs to be implemented. "
+        "This function should preprocess time series data into sequences "
+        "suitable for training. Consider using the implementation from "
+        "data_loader.py or implementing based on your specific requirements."
+    )
