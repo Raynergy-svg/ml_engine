@@ -12,18 +12,20 @@ from training_utils import ModelEnsemble
 
 # Set random seeds for reproducibility (PyTorch best practice)
 torch.manual_seed(42)
-np.random.seed(42)
+rng = np.random.default_rng(42)
 if torch.cuda.is_available():
     torch.cuda.manual_seed(42)
 
 
-def create_sample_data(n_samples=1000, seq_length=60, n_features=7):
+def create_sample_data(n_samples=1000, n_features=7, rng=None, seed=42):
     """Create sample time series data for demonstration."""
+    rng = rng if rng is not None else np.random.default_rng(seed)
+
     # Generate synthetic stock data
     time = np.arange(n_samples)
     trend = 0.01 * time
     seasonality = 10 * np.sin(2 * np.pi * time / 252)  # Annual cycle
-    noise = np.random.normal(0, 2, n_samples)
+    noise = rng.normal(0, 2, n_samples)
     
     prices = 100 + trend + seasonality + noise
     
@@ -33,7 +35,7 @@ def create_sample_data(n_samples=1000, seq_length=60, n_features=7):
     features[:, 1] = prices * 1.01  # high
     features[:, 2] = prices * 0.99  # low
     features[:, 3] = prices * 0.995  # open
-    features[:, 4] = np.random.uniform(1e6, 1e7, n_samples)  # volume
+    features[:, 4] = rng.uniform(1e6, 1e7, n_samples)  # volume
     features[:, 5] = np.gradient(prices)  # price change
     features[:, 6] = np.abs(features[:, 1] - features[:, 2])  # high-low range
     
@@ -75,20 +77,19 @@ def main():
         "device": "cuda" if torch.cuda.is_available() else "cpu",
         "num_workers": 4,
         "pin_memory": True,
+        "enable_data_augmentation": False,
     }
     
     print(f"\nUsing device: {config['device']}")
     print(f"Model architecture: {config['model']['type']}")
     print(f"Loss function: {config['loss_type']}")
     
-    # 2. Create sample data
-    print("\n" + "-" * 80)
     print("Generating sample data...")
-    raw_data = create_sample_data(n_samples=2000, n_features=7)
+    raw_data = create_sample_data(n_samples=2000, n_features=7, rng=rng)
     
     # 3. Prepare sequences
     print("Preparing sequences...")
-    sequences, targets, metadata = prepare_sequences(
+    sequences, targets, _ = prepare_sequences(
         df=None,  # Would use actual DataFrame in practice
         sequence_length=60,
         target_column="close",
@@ -104,15 +105,15 @@ def main():
     print(f"Created {len(sequences)} sequences")
     print(f"Sequence shape: {sequences.shape}")
     print(f"Target shape: {targets.shape}")
-    
     # 4. Optional: Data augmentation
-    if False:  # Enable for data augmentation
+    if config.get("enable_data_augmentation", False):
         print("\nApplying data augmentation...")
         sequences, targets = augment_data(
             sequences, targets,
             noise_level=0.01,
             augmentation_factor=2
         )
+        print(f"Augmented to {len(sequences)} samples")
         print(f"Augmented to {len(sequences)} samples")
     
     # 5. Split data

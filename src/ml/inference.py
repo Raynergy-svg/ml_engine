@@ -13,16 +13,18 @@ class InferenceEngine:
         self.config = config or {}
         self.batch_size = self.config.get("batch_size", 32)
         self.num_workers = self.config.get("num_workers", 4)
+        self.rng = np.random.default_rng(self.config.get("seed"))
         self._warmup()
 
     def _warmup(self):
         """Warm up the model with dummy data"""
         try:
             input_dim = getattr(self.model, "input_dim", 10)
-            dummy_input = np.random.randn(1, input_dim)
+            dummy_input = self.rng.standard_normal((1, input_dim))
             self.predict(dummy_input)
             logger.info("Model warmup completed")
         except Exception as e:
+            logger.warning(f"Warmup failed: {e}")
             logger.warning(f"Warmup failed: {e}")
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -52,10 +54,10 @@ class InferenceEngine:
 
         return np.vstack(results)
 
-    def predict_async(self, X_list: List[np.ndarray]) -> List[np.ndarray]:
+    def predict_async(self, x_list: List[np.ndarray]) -> List[np.ndarray]:
         """Async batch predictions using thread pool"""
         with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-            futures = [executor.submit(self.predict, X) for X in X_list]
+            futures = [executor.submit(self.predict, X) for X in x_list]
             results = [future.result() for future in futures]
 
         return results
@@ -99,9 +101,9 @@ class InferenceEngine:
         importance = np.zeros(X.shape)
 
         for i in range(X.shape[1]):
-            X_perturbed = X.copy()
-            X_perturbed[:, i] += epsilon
-            perturbed_pred = self.predict(X_perturbed)
+            x_perturbed = X.copy()
+            x_perturbed[:, i] += epsilon
+            perturbed_pred = self.predict(x_perturbed)
             importance[:, i] = np.abs(perturbed_pred - base_pred).flatten()
 
         # Normalize

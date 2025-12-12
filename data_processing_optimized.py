@@ -3,7 +3,6 @@
 import os
 import logging
 import asyncio
-import aiohttp
 from functools import lru_cache, partial
 from pathlib import Path
 from typing import List, Tuple, Optional, Union, Dict, Any
@@ -197,6 +196,100 @@ def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFr
     return pd.concat(all_data, ignore_index=True) if all_data else pd.DataFrame()
 
 
+_REQUIRED_STOCK_COLS = {"open", "high", "low", "close", "volume"}
+_ADJ_CLOSE_COL = "adj close"
+
+
+def _normalize_columns(columns) -> List[str]:
+    """Normalize column names to lowercase and handle tuples."""
+    new_cols = []
+    for col in columns:
+        if isinstance(col, tuple):
+            new_cols.append("_".join(map(str, col)).lower())
+        else:
+            new_cols.append(str(col).lower())
+    return new_cols
+
+
+def _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure 'close' exists, mapping from adjusted close when needed."""
+    if "close" not in df.columns and _ADJ_CLOSE_COL in df.columns:
+        df["close"] = df[_ADJ_CLOSE_COL]
+    return df
+
+
+def _normalize_and_validate_stock_df(
+    df: Optional[pd.DataFrame],
+    required_cols: set,
+) -> Optional[pd.DataFrame]:
+    """Return a normalized DataFrame if valid, otherwise None."""
+    if df is None or df.empty:
+        return None
+
+    df = df.copy()
+    df.columns = _normalize_columns(df.columns)
+    df = _ensure_close_column(df)
+
+    missing = required_cols - set(df.columns)
+    if missing:
+        return None
+
+    return df
+
+
+def _try_delete_file(path: Path) -> None:
+    try:
+        path.unlink()
+    except OSError:
+        pass
+
+
+def _read_cached_stock_df(cache_file: Path, required_cols: set) -> Optional[pd.DataFrame]:
+    if not cache_file.exists():
+        return None
+
+    try:
+        df = pd.read_parquet(cache_file, engine="pyarrow")
+    except Exception as e:
+        logger.warning(f"Failed to read cache file: {e}. Will download fresh data.")
+        _try_delete_file(cache_file)
+        return None
+
+    normalized = _normalize_and_validate_stock_df(df, required_cols)
+    if normalized is not None:
+        return normalized
+
+    logger.error("Cached data missing required columns. Deleting cache file.")
+    _try_delete_file(cache_file)
+    return None
+
+
+async def _download_with_yfinance_download(ticker: str, start: str, end: str) -> Optional[pd.DataFrame]:
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, partial(yf.download, ticker, start=start, end=end, progress=False)
+        )
+    except Exception as e:
+        logger.warning(f"yf.download failed: {e}")
+        return None
+
+
+def _download_with_yfinance_history(ticker: str, start: str, end: str) -> Optional[pd.DataFrame]:
+    try:
+        return yf.Ticker(ticker).history(start=start, end=end)
+    except Exception as e:
+        logger.error(f"yf.Ticker().history failed: {e}")
+        return None
+
+
+def _write_stock_cache(df: pd.DataFrame, cache_file: Path) -> None:
+    try:
+        df.to_parquet(cache_file)
+    except Exception as e:
+        logger.warning(f"Failed to save cache file: {e}")
+
+
 @lru_cache(maxsize=32)
 async def async_cached_download(
     ticker: str, start: str, end: str
@@ -213,84 +306,109 @@ async def async_cached_download(
         DataFrame with stock data or None if download failed
     """
     cache_file = CACHE_DIR / f"{ticker}_{start}_{end}.parquet"
-    required_cols = {"open", "high", "low", "close", "volume"}
+    required_cols = _REQUIRED_STOCK_COLS
 
-    def fix_columns(columns):
-        """Normalize column names to lowercase and handle tuples."""
-        new_cols = []
-        for col in columns:
-            if isinstance(col, tuple):
-                new_cols.append("_".join(map(str, col)).lower())
-            else:
-                new_cols.append(str(col).lower())
-        return new_cols
+    cached = _read_cached_stock_df(cache_file, required_cols)
+    if cached is not None:
+        return cached
 
-    # Try reading from cache
-    if cache_file.exists():
-        try:
-            df = pd.read_parquet(cache_file, engine="pyarrow")
-            df.columns = fix_columns(df.columns)
-            
-            # Handle 'adj close' vs 'close'
-            if "close" not in df.columns and "adj close" in df.columns:
-                df["close"] = df["adj close"]
-                
-            # Verify required columns exist
-            missing = required_cols - set(df.columns)
-            if missing:
-                logger.error(f"Cached data missing required columns: {missing}. Deleting cache file.")
-                cache_file.unlink()
-            else:
-                return df
-        except Exception as e:
-            logger.warning(f"Failed to read cache file: {e}. Will download fresh data.")
-            try:
-                cache_file.unlink()
-            except OSError:
-                pass
-
-    # Download using yf.download
-    try:
-        async with aiohttp.ClientSession():
-            loop = asyncio.get_event_loop()
-            data = await loop.run_in_executor(
-                None, partial(yf.download, ticker, start=start, end=end, progress=False)
-            )
-    except Exception as e:
-        logger.warning(f"yf.download failed: {e}")
-        data = None
-
-    # If download failed or the data is missing columns, try yf.Ticker().history
-    if data is None or data.empty or not required_cols.issubset(set(fix_columns(data.columns))):
+    data = await _download_with_yfinance_download(ticker, start, end)
+    normalized = _normalize_and_validate_stock_df(data, required_cols)
+    if normalized is None:
         logger.warning("yf.download did not return valid data; trying yf.Ticker().history")
-        try:
-            data = yf.Ticker(ticker).history(start=start, end=end)
-        except Exception as e:
-            logger.error(f"yf.Ticker().history failed: {e}")
-            return None
-            
-    if data is None or data.empty:
-        logger.error("Downloaded data is empty or None after fallback.")
+        normalized = _normalize_and_validate_stock_df(
+            _download_with_yfinance_history(ticker, start, end),
+            required_cols,
+        )
+
+    if normalized is None:
+        logger.error("Downloaded data is empty/invalid after fallback.")
         return None
 
-    # Process and validate data
-    data.columns = fix_columns(data.columns)
-    if "close" not in data.columns and "adj close" in data.columns:
-        data["close"] = data["adj close"]
-        
-    # Verify required columns exist
-    missing = required_cols - set(data.columns)
-    if missing:
-        logger.error(f"Downloaded data missing required columns: {missing}")
-        return None
+    _write_stock_cache(normalized, cache_file)
+    return normalized
 
-    # Save to cache
+
+def _normalize_stock_df(df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+    """Normalize columns and ensure a 'close' column exists when possible."""
+    if df is None or df.empty:
+        return None
+    df = df.copy()
+    df.columns = _normalize_columns(df.columns)
+    return _ensure_close_column(df)
+
+
+async def _download_ticker_no_cache(ticker: str, start: str, end: str) -> Optional[pd.DataFrame]:
+    """Download a single ticker without caching, with a fallback method."""
     try:
-        data.to_parquet(cache_file)
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(
+            None, partial(yf.download, ticker, start=start, end=end, progress=False)
+        )
+        data = _normalize_stock_df(data)
+        if data is not None and not data.empty:
+            return data
+
+        logger.warning(f"No data for {ticker} via yf.download, trying yf.Ticker().history")
+        data = await loop.run_in_executor(None, partial(yf.Ticker(ticker).history, start=start, end=end))
+        return _normalize_stock_df(data)
     except Exception as e:
-        logger.warning(f"Failed to save cache file: {e}")
-        
-    return data
+        logger.error(f"Error downloading {ticker}: {e}")
+        return None
+
+
+async def _load_all_tickers_async(
+    tickers: List[str],
+    start_date: str,
+    end_date: str,
+    use_cache: bool,
+) -> Dict[str, pd.DataFrame]:
+    """Load all tickers in parallel and return non-empty results."""
+    coros = [
+        async_cached_download(ticker, start_date, end_date) if use_cache
+        else _download_ticker_no_cache(ticker, start_date, end_date)
+        for ticker in tickers
+    ]
+    results = await asyncio.gather(*coros, return_exceptions=True)
+
+    ticker_data: Dict[str, pd.DataFrame] = {}
+    for ticker, result in zip(tickers, results):
+        if isinstance(result, Exception):
+            logger.error(f"Error downloading {ticker}: {result}")
+            continue
+        if result is None or result.empty:
+            logger.warning(f"No data for {ticker}")
+            continue
+        ticker_data[ticker] = result
+
+    return ticker_data
+
+
+def _run_async(coro):
+    """Run a coroutine in a dedicated event loop."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
+def _ticker_df_to_frame(ticker: str, data: pd.DataFrame, features: List[str]) -> Optional[pd.DataFrame]:
+    """Convert a single ticker dataframe into the standardized output schema."""
+    if data is None or data.empty:
+        return None
+
+    data = data.copy()
+    data["ticker"] = ticker
+
+    requested = [str(f).lower() for f in features]
+    available = [f for f in requested if f in data.columns]
+    if len(available) < len(requested):
+        missing = set(requested) - set(available)
+        logger.warning(f"Missing features for {ticker}: {missing}")
+
+    data = data[available + ["ticker"]]
+    return data.reset_index()
 
 
 def load_stock_data_efficient(
@@ -313,110 +431,25 @@ def load_stock_data_efficient(
     Returns:
         DataFrame with stock data
     """
-    if features is None:
-        features = ["open", "high", "low", "close", "volume"]
-    
-    # Create cache directory if it doesn't exist
+    features = features or ["open", "high", "low", "close", "volume"]
     if use_cache:
         CACHE_DIR.mkdir(exist_ok=True, parents=True)
-    
-    async def load_all_tickers():
-        """Load all tickers in parallel."""
-        tasks = []
-        for ticker in tickers:
-            if use_cache:
-                tasks.append(async_cached_download(ticker, start_date, end_date))
-            else:
-                # Use direct download without caching
-                tasks.append(download_ticker(ticker, start_date, end_date))
-        
-        # Wait for all downloads to complete
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Process results
-        ticker_data = {}
-        for ticker, result in zip(tickers, results):
-            if isinstance(result, Exception):
-                logger.error(f"Error downloading {ticker}: {result}")
-            elif result is not None and not result.empty:
-                ticker_data[ticker] = result
-            else:
-                logger.warning(f"No data for {ticker}")
-                
-        return ticker_data
-    
-    async def download_ticker(ticker, start, end):
-        """Download a single ticker without caching."""
-        try:
-            loop = asyncio.get_event_loop()
-            data = await loop.run_in_executor(
-                None, partial(yf.download, ticker, start=start, end=end, progress=False)
-            )
-            
-            if data is None or data.empty:
-                logger.warning(f"No data for {ticker}, trying alternative method")
-                data = yf.Ticker(ticker).history(start=start, end=end)
-                
-            if data is not None and not data.empty:
-                # Normalize column names
-                data.columns = [
-                    col.lower()
-                    if not isinstance(col, tuple)
-                    else "_".join(map(str, col)).lower()
-                    for col in data.columns
-                ]
-                
-                # Handle 'adj close' vs 'close'
-                if "close" not in data.columns and "adj close" in data.columns:
-                    data["close"] = data["adj close"]
-                    
-                return data
-            return None
-        except Exception as e:
-            logger.error(f"Error downloading {ticker}: {e}")
-            return None
-    
-    # Run the async function to load all tickers
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    ticker_data = loop.run_until_complete(load_all_tickers())
-    
-    # Combine all ticker data into a single DataFrame
+
+    ticker_data = _run_async(_load_all_tickers_async(tickers, start_date, end_date, use_cache))
     if not ticker_data:
         logger.error("No data loaded for any ticker")
         return pd.DataFrame()
-    
-    # Create a list to hold DataFrames for each ticker
-    dfs = []
-    for ticker, data in ticker_data.items():
-        if data is not None and not data.empty:
-            # Add ticker column
-            data = data.copy()
-            data["ticker"] = ticker
-            
-            # Select only requested features
-            available_features = [f for f in features if f in data.columns]
-            if len(available_features) < len(features):
-                missing = set(features) - set(available_features)
-                logger.warning(f"Missing features for {ticker}: {missing}")
-            
-            # Select columns including ticker and date index
-            data = data[available_features + ["ticker"]]
-            
-            # Reset index to make date a column
-            data = data.reset_index()
-            
-            dfs.append(data)
-    
-    # Combine all DataFrames
+
+    dfs = [
+        frame
+        for ticker, data in ticker_data.items()
+        for frame in [_ticker_df_to_frame(ticker, data, features)]
+        if frame is not None
+    ]
     if not dfs:
         logger.error("No valid data frames to combine")
         return pd.DataFrame()
-        
+
     return pd.concat(dfs, ignore_index=True)
 
 
@@ -625,7 +658,9 @@ def augment_data(
     noise_level: float = 0.01,
     augmentation_factor: int = 2,
     use_mixup: bool = True,
-    mixup_alpha: float = 0.2
+    mixup_alpha: float = 0.2,
+    rng: Optional[np.random.Generator] = None,
+    seed: int = 0,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Augment training data with multiple strategies (PyTorch best practice for robustness).
@@ -637,24 +672,28 @@ def augment_data(
         augmentation_factor: Number of augmented copies per original sample
         use_mixup: Whether to apply mixup augmentation
         mixup_alpha: Alpha parameter for Beta distribution in mixup
+        rng: Optional numpy random Generator for reproducible augmentation
+        seed: Seed used when creating a default RNG (only used if rng is not provided)
         
     Returns:
         Augmented sequences and targets
     """
+    rng = rng or np.random.default_rng(seed)
+
     augmented_sequences = [sequences]
     augmented_targets = [targets]
     
     for i in range(augmentation_factor - 1):
         # Strategy 1: Add Gaussian noise
         if i % 3 == 0:
-            noise = np.random.normal(0, noise_level, sequences.shape)
+            noise = rng.normal(0, noise_level, size=sequences.shape)
             noisy_sequences = sequences + noise
             augmented_sequences.append(noisy_sequences)
             augmented_targets.append(targets)
         
         # Strategy 2: Scale perturbation (random scaling of features)
         elif i % 3 == 1:
-            scale = np.random.uniform(0.95, 1.05, (sequences.shape[0], 1, sequences.shape[2]))
+            scale = rng.uniform(0.95, 1.05, size=(sequences.shape[0], 1, sequences.shape[2]))
             scaled_sequences = sequences * scale
             augmented_sequences.append(scaled_sequences)
             augmented_targets.append(targets)
@@ -662,14 +701,14 @@ def augment_data(
         # Strategy 3: Mixup augmentation for better generalization
         elif i % 3 == 2 and use_mixup:
             # Randomly shuffle indices
-            indices = np.random.permutation(len(sequences))
+            indices = rng.permutation(len(sequences))
             shuffled_sequences = sequences[indices]
             shuffled_targets = targets[indices]
             
             # Sample lambda from Beta distribution
-            lam = np.random.beta(mixup_alpha, mixup_alpha, size=(len(sequences), 1, 1))
+            lam = rng.beta(mixup_alpha, mixup_alpha, size=(len(sequences), 1, 1))
             # Properly handle dimensions for mixing
-            lam_targets = np.random.beta(mixup_alpha, mixup_alpha, size=len(sequences))
+            lam_targets = rng.beta(mixup_alpha, mixup_alpha, size=len(sequences))
             
             # Create mixed samples
             mixed_sequences = lam * sequences + (1 - lam) * shuffled_sequences

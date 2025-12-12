@@ -14,7 +14,6 @@ import sys
 import time
 import logging
 import argparse
-from pathlib import Path
 from typing import Dict, Any
 
 import torch
@@ -24,7 +23,8 @@ from rich.layout import Layout
 from rich.table import Table
 from rich.panel import Panel
 
-from ml_engine import ai_assistant, EnhancedMLEngine
+from ai_assistant import ai_assistant
+from ml_engine_enhanced import EnhancedMLEngine
 from utils import setup_logging, load_config
 
 # New orchestrating imports:
@@ -34,6 +34,7 @@ import openai_integration
 # Constants
 DEFAULT_MESSAGE_FORMAT = "Epoch {epoch} completed"
 TIMESTAMP_FORMAT = "%H:%M:%S"
+TABLE_HEADER_STYLE = "bold magenta"
 
 # Initialize console and logging
 console = Console()
@@ -63,7 +64,7 @@ def generate_dashboard(
         Layout(name="body", size=8),
         Layout(name="footer", size=8),
     )
-    metrics_table = Table(show_header=True, header_style="bold magenta", expand=True)
+    metrics_table = Table(show_header=True, header_style=TABLE_HEADER_STYLE, expand=True)
     metrics_table.add_column("Metric", justify="right", style="cyan", no_wrap=True)
     metrics_table.add_column("Value", style="green")
     metrics_table.add_row("Epoch", f"{epoch}/{total_epochs}")
@@ -107,7 +108,7 @@ def generate_dashboard(
         Panel(logs_content, title="[bold]Recent Updates[/bold]", border_style="yellow")
     )
     layout["body"].update(body_layout)
-    config_table = Table(show_header=True, header_style="bold magenta", expand=True)
+    config_table = Table(show_header=True, header_style=TABLE_HEADER_STYLE, expand=True)
     config_table.add_column("Parameter", style="cyan")
     config_table.add_column("Value", style="green")
     model_config = config.get("model", {})
@@ -119,7 +120,7 @@ def generate_dashboard(
     config_table.add_row("Dropout", f"{model_config.get('dropout', 'N/A')}")
     optimizer_config = model_config.get("optimizer", {})
     config_table.add_row("Optimizer", f"{optimizer_config.get('type', 'Adam')}")
-    logs_table = Table(show_header=True, header_style="bold magenta", expand=True)
+    logs_table = Table(show_header=True, header_style=TABLE_HEADER_STYLE, expand=True)
     logs_table.add_column("Latest Log", style="green")
     latest_log = api_logs[-1] if api_logs else "No logs available"
     logs_table.add_row(latest_log)
@@ -146,7 +147,7 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
     """
     try:
         # Load and validate configuration
-        config = load_config(Path(config_path))
+        config = load_config(config_path)
         
         # Validate training configuration
         if "training" not in config:
@@ -158,7 +159,7 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
         engine = EnhancedMLEngine(config)
 
         # changed: create dummy training data as non-empty tensors
-        X_train_data = [torch.tensor([0.0])]  # dummy training data with one sample
+        x_train_data = [torch.tensor([0.0])]  # dummy training data with one sample
         y_train_data = [torch.tensor([0.0])]  # dummy target data with one sample
 
         api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting training"]
@@ -172,9 +173,7 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
             refresh_per_second=10,
         ) as live:
             try:
-                for epoch, metrics in engine.train(
-                    X_train_data, y_train_data
-                ):  # changed: using dummy data lists
+                for epoch, metrics in engine.train(x_train_data, y_train_data):
                     # Update dashboard with training progress
                     message = metrics.get('message', DEFAULT_MESSAGE_FORMAT.format(epoch=epoch))
                     api_logs.append(
@@ -249,7 +248,7 @@ def evaluate_model(config_path: str) -> None:
     """
     try:
         console.print("[bold blue]Loading configuration and model...[/bold blue]")
-        config = load_config(Path(config_path))
+        config = load_config(config_path)
         engine = EnhancedMLEngine(config)
 
         api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting evaluation"]
@@ -282,7 +281,7 @@ def evaluate_model(config_path: str) -> None:
 # New CLI command implementations
 def visualize_dashboard(config_path: str) -> None:
     """Display dashboard visualizations using the visualizer module."""
-    config = load_config(Path(config_path))
+    config = load_config(config_path)
     console.print("[bold blue]Launching visualizations...[/bold blue]")
     visualizer.display_dashboard(
         config
@@ -291,7 +290,7 @@ def visualize_dashboard(config_path: str) -> None:
 
 def openai_tune(config_path: str) -> None:
     """Execute OpenAI-based auto-tuning using the openai_integration module."""
-    current_config = load_config(Path(config_path))  # Convert config_path to Path
+    current_config = load_config(config_path)
 
     # Gather current metrics from the engine
     engine = EnhancedMLEngine(current_config)
@@ -342,7 +341,7 @@ def predict_price(config_path: str) -> None:
     """
     try:
         console.print("[bold blue]Loading model for prediction...[/bold blue]")
-        config = load_config(Path(config_path))
+        config = load_config(config_path)
         engine = EnhancedMLEngine(config)
         
         console.print("[bold green]Generating prediction...[/bold green]")
@@ -365,7 +364,7 @@ def realtime_loop(config_path: str) -> None:
     """
     Run the ML engine in a real-time loop for continuous inference.
     """
-    config = load_config(Path(config_path))
+    config = load_config(config_path)
     engine = EnhancedMLEngine(config)
     engine.run_realtime_loop()
     console.print("[bold yellow]Realtime Loop command executed[/bold yellow]")
@@ -375,7 +374,7 @@ def tune_model(config_path: str) -> None:
     """
     Perform advanced hyperparameter tuning using ML engine methods.
     """
-    config = load_config(Path(config_path))
+    config = load_config(config_path)
     engine = EnhancedMLEngine(config)
     engine.tune_hyperparameters()
     console.print("[bold yellow]Tune Model command executed[/bold yellow]")
@@ -385,7 +384,7 @@ def profile_pipeline(config_path: str) -> None:
     """
     Profile the ML pipeline for bottlenecks.
     """
-    config = load_config(Path(config_path))
+    config = load_config(config_path)
     engine = EnhancedMLEngine(config)
     engine.profile_pipeline()
     console.print("[bold yellow]Profile Pipeline command executed[/bold yellow]")
@@ -397,7 +396,7 @@ def run_ai_assistant(config_path: str) -> None:
     assistant_instance = ai_assistant(config)
     console.print("[bold blue]Launching AI Assistant...[/bold blue]")
     query = input("Enter your query: ")
-    response = assistant_instance.process_query(query, use_claude=True)
+    response = assistant_instance.process_query(query)
     console.print(f"[bold green]Response:[/bold green] {response}")
 
     # Optionally use ML Engine's AI assistant for simulation tasks

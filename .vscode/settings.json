@@ -1,6 +1,9 @@
 {
   "deepscan.enable": true,
   "DockerRun.DisableDockerrc": true,
+  "sonarlint.analyzerProperties": {
+    "sonar.python.version": "3.12"
+  },
   "python.testing.unittestArgs": [
     "-v",
     "-s",

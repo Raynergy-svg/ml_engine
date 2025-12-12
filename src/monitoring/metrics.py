@@ -1,6 +1,6 @@
 import time
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import defaultdict, deque
 import threading
 import logging
@@ -22,7 +22,7 @@ class MetricsCollector:
             self.metrics[name].append(
                 {
                     "value": value,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "tags": tags or {},
                 }
             )
@@ -34,7 +34,7 @@ class MetricsCollector:
                 {
                     "type": event_type,
                     "data": data or {},
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 }
             )
             self.counters[event_type] += 1
@@ -73,7 +73,7 @@ class MetricsCollector:
                 "metrics": {},
                 "counters": dict(self.counters),
                 "recent_events": list(self.events)[-100:],  # Last 100 events
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             for name in self.metrics.keys():
@@ -109,7 +109,10 @@ class MetricsCollector:
     def export_metrics(self) -> Dict[str, Any]:
         """Export metrics in Prometheus-like format"""
         with self.lock:
-            export_data = {"timestamp": datetime.utcnow().isoformat(), "metrics": []}
+            export_data = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "metrics": [],
+            }
 
             # Export counters
             for name, value in self.counters.items():

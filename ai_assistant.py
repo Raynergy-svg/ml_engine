@@ -8,16 +8,18 @@ import torch
 from pathlib import Path
 from typing import Dict, Any, Tuple, List
 
+USER_PROMPT = "User: "
+
 
 try:
-    import openai
+    import openai  # type: ignore[import-not-found]
 
     openai_available = True
 except ImportError:
     openai_available = False
 
 try:
-    from anthropic import Client
+    from anthropic import Client  # type: ignore[import-not-found]
 
     anthropic_available = True
 except ImportError:
@@ -83,7 +85,7 @@ class ai_assistant:
         else:
             logging.warning("Anthropic key missing or anthropic not installed.")
 
-    def load_training_data(self, data_path: str) -> bool:
+    def load_training_data(self, data_path: str) -> None:
         """Load training data or model weights from file."""
         try:
             if not os.path.isfile(data_path):
@@ -94,13 +96,11 @@ class ai_assistant:
             if ext == ".pth":
                 self.active_model = torch.load(data_path)
                 logging.info(f"Loaded PyTorch model from {data_path}")
-                return True
             elif ext == ".npz":
                 import numpy as np
 
                 self.active_model = np.load(data_path)
                 logging.info(f"Loaded NumPy model from {data_path}")
-                return True
             else:
                 raise DataError(f"Unsupported file format: {ext}")
 
@@ -150,26 +150,26 @@ class ai_assistant:
         except Exception as e:
             return f"Error during simulation: {e}"
 
-    def process_query(self, query: str, use_claude: bool = False) -> str:
+    def process_query(self, query: str) -> str:
         if query.strip().lower() == "simulate":
             return self.simulate_scenario()
         logging.debug("Prompting user for simulation parameters.")
         print(
             "AI Assistant: Which historical market data would you like to use? (Enter time period, assets, etc.)"
         )
-        data_input = input("User: ")
+        data_input = input(USER_PROMPT)
         print(
             "AI Assistant: Which machine learning model do you prefer? (e.g. random forest, LSTM, reinforcement learning)"
         )
-        model_input = input("User: ")
+        model_input = input(USER_PROMPT)
         print(
             "AI Assistant: What are your primary trading objectives? (e.g. maximizing Sharpe ratio, limiting drawdown)"
         )
-        objectives_input = input("User: ")
+        objectives_input = input(USER_PROMPT)
         print(
             "AI Assistant: How would you like the simulation results presented? (e.g. visualizations, dashboard, summary)"
         )
-        presentation_input = input("User: ")
+        presentation_input = input(USER_PROMPT)
         response_text = (
             f"Simulation parameters received:\n"
             f"- Historical Data: {data_input}\n"
@@ -356,8 +356,8 @@ class ai_assistant:
         args = parser.parse_args()
 
         if args.load_data:
-            success = self.load_training_data(args.load_data[0])
-            logging.info(f"Data load success: {success}")
+            self.load_training_data(args.load_data[0])
+            logging.info("Data load success")
         if args.train:
             trained = self.train_model(args.train[0])
             logging.info(f"Training success: {trained}")

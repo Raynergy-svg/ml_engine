@@ -54,7 +54,7 @@ def main():
     logger.info("\n3. Preprocessing data and creating features...")
     logger.info("   This will create 100+ technical indicators and features...")
 
-    X_train, y_train, X_val, y_val, X_test, y_test = loader.preprocess(
+    X_train, y_train, x_val, y_val, X_test, y_test = loader.preprocess(
         df,
         add_features=True,
         scaler_type="standard",
@@ -65,7 +65,7 @@ def main():
 
     logger.info("✓ Data preprocessed:")
     logger.info(f"   Train: {X_train.shape}")
-    logger.info(f"   Val:   {X_val.shape}")
+    logger.info(f"   Val:   {x_val.shape}")
     logger.info(f"   Test:  {X_test.shape}")
 
     # Save scaler for future use
@@ -85,7 +85,7 @@ def main():
     train_losses, val_losses = trainer.train(
         X_train,
         y_train,
-        X_val,
+        x_val,
         y_val,
         num_epochs=50,  # Reduced for quick start
     )

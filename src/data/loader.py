@@ -36,10 +36,10 @@ class DataLoader:
             raise
 
     def load_from_numpy(
-        self, X_path: str, y_path: str = None
+        self, x_path: str, y_path: str = None
     ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """Load data from numpy files"""
-        X = np.load(X_path)
+        X = np.load(x_path)
         y = np.load(y_path) if y_path else None
         logger.info(f"Loaded numpy data: X shape {X.shape}")
         return X, y
@@ -53,9 +53,9 @@ class DataLoader:
         random_state: int = 42,
     ) -> Dict[str, np.ndarray]:
         """Split data into train/val/test sets"""
-        np.random.seed(random_state)
+        rng = np.random.default_rng(random_state)
         n_samples = len(X)
-        indices = np.random.permutation(n_samples)
+        indices = rng.permutation(n_samples)
 
         # Calculate split points
         test_split = int(n_samples * (1 - test_size))
@@ -83,16 +83,16 @@ class DataLoader:
         if fit or self.scaler is None:
             self.scaler = self._fit_scaler(X)
 
-        X_scaled = self._apply_scaler(X)
+        x_scaled = self._apply_scaler(X)
 
-        return X_scaled
+        return x_scaled
 
     def _handle_missing(self, X: np.ndarray) -> np.ndarray:
         """Handle missing values"""
         if np.isnan(X).any():
             logger.warning("Missing values detected, filling with column means")
             col_means = np.nanmean(X, axis=0)
-            nan_idx = np.where(np.isnan(X))
+            nan_idx = np.nonzero(np.isnan(X))
             X[nan_idx] = np.take(col_means, nan_idx[1])
         return X
 
@@ -113,13 +113,18 @@ class DataLoader:
             yield X[i : i + batch_size], y[i : i + batch_size]
 
     def augment_data(
-        self, X: np.ndarray, y: np.ndarray, noise_level: float = 0.01
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        noise_level: float = 0.01,
+        random_state: int = 42,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Augment data with noise"""
-        X_augmented = X + np.random.randn(*X.shape) * noise_level
+        rng = np.random.default_rng(random_state)
+        x_augmented = X + rng.standard_normal(size=X.shape) * noise_level
         y_augmented = y.copy()
 
-        X_combined = np.vstack([X, X_augmented])
+        x_combined = np.vstack([X, x_augmented])
         y_combined = np.hstack([y, y_augmented])
 
-        return X_combined, y_combined
+        return x_combined, y_combined

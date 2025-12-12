@@ -243,14 +243,6 @@
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -460,14 +452,6 @@
     },
     {
         "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -907,7 +891,15 @@
         "documentation": {}
     },
     {
-        "label": "Union",
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "TYPE_CHECKING",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1204,7 +1196,23 @@
         "documentation": {}
     },
     {
+        "label": "timezone",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
         "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timezone",
         "importPath": "datetime",
         "description": "datetime",
         "isExtraImport": true,
@@ -1880,22 +1888,6 @@
         "documentation": {}
     },
     {
-        "label": "ai_assistant",
-        "importPath": "ml_engine",
-        "description": "ml_engine",
-        "isExtraImport": true,
-        "detail": "ml_engine",
-        "documentation": {}
-    },
-    {
-        "label": "EnhancedMLEngine",
-        "importPath": "ml_engine",
-        "description": "ml_engine",
-        "isExtraImport": true,
-        "detail": "ml_engine",
-        "documentation": {}
-    },
-    {
         "label": "APIRouter",
         "importPath": "fastapi",
         "description": "fastapi",
@@ -2195,6 +2187,14 @@
         "description": "data_processing_optimized",
         "isExtraImport": true,
         "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "isExtraImport": true,
+        "detail": "ml_engine_enhanced",
         "documentation": {}
     },
     {
@@ -2780,15 +2780,6 @@
         "documentation": {}
     },
     {
-        "label": "aiohttp",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "aiohttp",
-        "description": "aiohttp",
-        "detail": "aiohttp",
-        "documentation": {}
-    },
-    {
         "label": "dask.array",
         "kind": 6,
         "isExtraImport": true,
@@ -2918,6 +2909,14 @@
         "documentation": {}
     },
     {
+        "label": "ai_assistant",
+        "importPath": "ai_assistant",
+        "description": "ai_assistant",
+        "isExtraImport": true,
+        "detail": "ai_assistant",
+        "documentation": {}
+    },
+    {
         "label": "visualizer",
         "kind": 6,
         "isExtraImport": true,
@@ -2951,6 +2950,15 @@
         "importPath": "psutil",
         "description": "psutil",
         "detail": "psutil",
+        "documentation": {}
+    },
+    {
+        "label": "contextlib",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "contextlib",
+        "description": "contextlib",
+        "detail": "contextlib",
         "documentation": {}
     },
     {
@@ -3000,15 +3008,6 @@
         "description": "enum",
         "isExtraImport": true,
         "detail": "enum",
-        "documentation": {}
-    },
-    {
-        "label": "vaex",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "vaex",
-        "description": "vaex",
-        "detail": "vaex",
         "documentation": {}
     },
     {
@@ -4174,7 +4173,7 @@
         "kind": 6,
         "importPath": "src.ml.inference",
         "description": "src.ml.inference",
-        "peekOfCode": "class InferenceEngine:\n    def __init__(self, model, config: Dict[str, Any] = None):\n        self.model = model\n        self.config = config or {}\n        self.batch_size = self.config.get(\"batch_size\", 32)\n        self.num_workers = self.config.get(\"num_workers\", 4)\n        self._warmup()\n    def _warmup(self):\n        \"\"\"Warm up the model with dummy data\"\"\"\n        try:",
+        "peekOfCode": "class InferenceEngine:\n    def __init__(self, model, config: Dict[str, Any] = None):\n        self.model = model\n        self.config = config or {}\n        self.batch_size = self.config.get(\"batch_size\", 32)\n        self.num_workers = self.config.get(\"num_workers\", 4)\n        self.rng = np.random.default_rng(self.config.get(\"seed\"))\n        self._warmup()\n    def _warmup(self):\n        \"\"\"Warm up the model with dummy data\"\"\"",
         "detail": "src.ml.inference",
         "documentation": {}
     },
@@ -4183,7 +4182,7 @@
         "kind": 5,
         "importPath": "src.ml.inference",
         "description": "src.ml.inference",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass InferenceEngine:\n    def __init__(self, model, config: Dict[str, Any] = None):\n        self.model = model\n        self.config = config or {}\n        self.batch_size = self.config.get(\"batch_size\", 32)\n        self.num_workers = self.config.get(\"num_workers\", 4)\n        self._warmup()\n    def _warmup(self):\n        \"\"\"Warm up the model with dummy data\"\"\"",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass InferenceEngine:\n    def __init__(self, model, config: Dict[str, Any] = None):\n        self.model = model\n        self.config = config or {}\n        self.batch_size = self.config.get(\"batch_size\", 32)\n        self.num_workers = self.config.get(\"num_workers\", 4)\n        self.rng = np.random.default_rng(self.config.get(\"seed\"))\n        self._warmup()\n    def _warmup(self):",
         "detail": "src.ml.inference",
         "documentation": {}
     },
@@ -4192,7 +4191,7 @@
         "kind": 6,
         "importPath": "src.ml.trainer",
         "description": "src.ml.trainer",
-        "peekOfCode": "class ModelTrainer:\n    def __init__(self, config: Dict[str, Any]):\n        self.config = config\n        self.model = None\n        self.history = {}\n    def train(self, X_train, y_train, X_val=None, y_val=None) -> Dict[str, Any]:\n        \"\"\"Train the model with actual training logic\"\"\"\n        try:\n            logger.info(f\"Starting training with {len(X_train)} samples\")\n            # Initialize model based on config",
+        "peekOfCode": "class ModelTrainer:\n    def __init__(self, config: dict[str, Any]):\n        self.config = config\n        self.rng = np.random.default_rng(self.config.get(\"seed\"))\n        self.model = None\n        self.history = {}\n    def train(self, x_train, y_train, x_val=None, y_val=None) -> dict[str, Any]:\n        \"\"\"Train the model with actual training logic.\"\"\"\n        try:\n            logger.info(\"Starting training with %s samples\", len(x_train))",
         "detail": "src.ml.trainer",
         "documentation": {}
     },
@@ -4201,7 +4200,7 @@
         "kind": 6,
         "importPath": "src.ml.trainer",
         "description": "src.ml.trainer",
-        "peekOfCode": "class LinearModel:\n    def __init__(self, input_dim: int, output_dim: int):\n        self.weights = np.random.randn(input_dim, output_dim) * 0.01\n        self.bias = np.zeros(output_dim)\n    def forward(self, X):\n        return X @ self.weights + self.bias\n    def backward(self, X, y, predictions):\n        m = len(X)\n        dw = (1 / m) * X.T @ (predictions - y)\n        db = (1 / m) * np.sum(predictions - y, axis=0)",
+        "peekOfCode": "class LinearModel:\n    def __init__(self, input_dim: int, output_dim: int, *, rng: np.random.Generator):\n        self.weights = rng.standard_normal((input_dim, output_dim)) * 0.01\n        self.bias = np.zeros(output_dim)\n    def forward(self, X):\n        return X @ self.weights + self.bias\n    def backward(self, X, y, predictions):\n        m = len(X)\n        dw = (1 / m) * X.T @ (predictions - y)\n        db = (1 / m) * np.sum(predictions - y, axis=0)",
         "detail": "src.ml.trainer",
         "documentation": {}
     },
@@ -4210,7 +4209,7 @@
         "kind": 6,
         "importPath": "src.ml.trainer",
         "description": "src.ml.trainer",
-        "peekOfCode": "class NeuralNetwork:\n    def __init__(self, input_dim: int, hidden_dims: list, output_dim: int):\n        self.layers = []\n        dims = [input_dim] + hidden_dims + [output_dim]\n        for i in range(len(dims) - 1):\n            self.layers.append(\n                {\n                    \"W\": np.random.randn(dims[i], dims[i + 1]) * np.sqrt(2.0 / dims[i]),\n                    \"b\": np.zeros(dims[i + 1]),\n                }",
+        "peekOfCode": "class NeuralNetwork:\n    def __init__(self, input_dim: int, hidden_dims: list[int], output_dim: int, *, rng: np.random.Generator):\n        self.layers = []\n        dims = [input_dim] + hidden_dims + [output_dim]\n        for i in range(len(dims) - 1):\n            self.layers.append(\n                {\n                    \"W\": rng.standard_normal((dims[i], dims[i + 1])) * np.sqrt(2.0 / dims[i]),\n                    \"b\": np.zeros(dims[i + 1]),\n                }",
         "detail": "src.ml.trainer",
         "documentation": {}
     },
@@ -4219,7 +4218,7 @@
         "kind": 5,
         "importPath": "src.ml.trainer",
         "description": "src.ml.trainer",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ModelTrainer:\n    def __init__(self, config: Dict[str, Any]):\n        self.config = config\n        self.model = None\n        self.history = {}\n    def train(self, X_train, y_train, X_val=None, y_val=None) -> Dict[str, Any]:\n        \"\"\"Train the model with actual training logic\"\"\"\n        try:\n            logger.info(f\"Starting training with {len(X_train)} samples\")",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ModelTrainer:\n    def __init__(self, config: dict[str, Any]):\n        self.config = config\n        self.rng = np.random.default_rng(self.config.get(\"seed\"))\n        self.model = None\n        self.history = {}\n    def train(self, x_train, y_train, x_val=None, y_val=None) -> dict[str, Any]:\n        \"\"\"Train the model with actual training logic.\"\"\"\n        try:",
         "detail": "src.ml.trainer",
         "documentation": {}
     },
@@ -4566,6 +4565,15 @@
         "documentation": {}
     },
     {
+        "label": "USER_PROMPT",
+        "kind": 5,
+        "importPath": "ai_assistant",
+        "description": "ai_assistant",
+        "peekOfCode": "USER_PROMPT = \"User: \"\ntry:\n    import openai  # type: ignore[import-not-found]\n    openai_available = True\nexcept ImportError:\n    openai_available = False\ntry:\n    from anthropic import Client  # type: ignore[import-not-found]\n    anthropic_available = True\nexcept ImportError:",
+        "detail": "ai_assistant",
+        "documentation": {}
+    },
+    {
         "label": "StockPredictionCLI",
         "kind": 6,
         "importPath": "cli_enhanced",
@@ -4768,7 +4776,7 @@
         "kind": 2,
         "importPath": "data_processing_optimized",
         "description": "data_processing_optimized",
-        "peekOfCode": "def augment_data(\n    sequences: np.ndarray,\n    targets: np.ndarray,\n    noise_level: float = 0.01,\n    augmentation_factor: int = 2,\n    use_mixup: bool = True,\n    mixup_alpha: float = 0.2\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"\n    Augment training data with multiple strategies (PyTorch best practice for robustness).",
+        "peekOfCode": "def augment_data(\n    sequences: np.ndarray,\n    targets: np.ndarray,\n    noise_level: float = 0.01,\n    augmentation_factor: int = 2,\n    use_mixup: bool = True,\n    mixup_alpha: float = 0.2,\n    rng: Optional[np.random.Generator] = None,\n    seed: int = 0,\n) -> Tuple[np.ndarray, np.ndarray]:",
         "detail": "data_processing_optimized",
         "documentation": {}
     },
@@ -4788,6 +4796,51 @@
         "description": "data_processing_optimized",
         "peekOfCode": "CACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", \"./cache\"))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for generating sequences from stock market data with optimized memory usage.\"\"\"\n    def __init__(\n        self, \n        features: Union[List, np.ndarray, da.Array], \n        targets: Union[List, np.ndarray, da.Array], \n        sequence_length: int = 60,\n        device: Optional[torch.device] = None",
         "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "_REQUIRED_STOCK_COLS",
+        "kind": 5,
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "peekOfCode": "_REQUIRED_STOCK_COLS = {\"open\", \"high\", \"low\", \"close\", \"volume\"}\n_ADJ_CLOSE_COL = \"adj close\"\ndef _normalize_columns(columns) -> List[str]:\n    \"\"\"Normalize column names to lowercase and handle tuples.\"\"\"\n    new_cols = []\n    for col in columns:\n        if isinstance(col, tuple):\n            new_cols.append(\"_\".join(map(str, col)).lower())\n        else:\n            new_cols.append(str(col).lower())",
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "_ADJ_CLOSE_COL",
+        "kind": 5,
+        "importPath": "data_processing_optimized",
+        "description": "data_processing_optimized",
+        "peekOfCode": "_ADJ_CLOSE_COL = \"adj close\"\ndef _normalize_columns(columns) -> List[str]:\n    \"\"\"Normalize column names to lowercase and handle tuples.\"\"\"\n    new_cols = []\n    for col in columns:\n        if isinstance(col, tuple):\n            new_cols.append(\"_\".join(map(str, col)).lower())\n        else:\n            new_cols.append(str(col).lower())\n    return new_cols",
+        "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "TRAIN_COMMAND",
+        "kind": 5,
+        "importPath": "demo_resume_training",
+        "description": "demo_resume_training",
+        "peekOfCode": "TRAIN_COMMAND = \"python train_enhanced.py \\\\\"\nDATA_ARG_LINE = \"    --data market_data/TSLA_data.csv \\\\\"\nFINE_TUNE_HEADER = \"\\n3. Fine-tune with Different Config:\"\nprint(\"\\n📋 Feature Overview:\")\nprint(\"-\" * 60)\nprint(\"The resume training feature allows you to:\")\nprint(\"  ✓ Continue training after interruption\")\nprint(\"  ✓ Fine-tune a pre-trained model with more epochs\")\nprint(\"  ✓ Experiment with different hyperparameters\")\nprint()",
+        "detail": "demo_resume_training",
+        "documentation": {}
+    },
+    {
+        "label": "DATA_ARG_LINE",
+        "kind": 5,
+        "importPath": "demo_resume_training",
+        "description": "demo_resume_training",
+        "peekOfCode": "DATA_ARG_LINE = \"    --data market_data/TSLA_data.csv \\\\\"\nFINE_TUNE_HEADER = \"\\n3. Fine-tune with Different Config:\"\nprint(\"\\n📋 Feature Overview:\")\nprint(\"-\" * 60)\nprint(\"The resume training feature allows you to:\")\nprint(\"  ✓ Continue training after interruption\")\nprint(\"  ✓ Fine-tune a pre-trained model with more epochs\")\nprint(\"  ✓ Experiment with different hyperparameters\")\nprint()\nprint(\"The feature preserves:\")",
+        "detail": "demo_resume_training",
+        "documentation": {}
+    },
+    {
+        "label": "FINE_TUNE_HEADER",
+        "kind": 5,
+        "importPath": "demo_resume_training",
+        "description": "demo_resume_training",
+        "peekOfCode": "FINE_TUNE_HEADER = \"\\n3. Fine-tune with Different Config:\"\nprint(\"\\n📋 Feature Overview:\")\nprint(\"-\" * 60)\nprint(\"The resume training feature allows you to:\")\nprint(\"  ✓ Continue training after interruption\")\nprint(\"  ✓ Fine-tune a pre-trained model with more epochs\")\nprint(\"  ✓ Experiment with different hyperparameters\")\nprint()\nprint(\"The feature preserves:\")\nprint(\"  ✓ Model weights and architecture\")",
+        "detail": "demo_resume_training",
         "documentation": {}
     },
     {
@@ -4876,7 +4929,7 @@
         "kind": 2,
         "importPath": "example_improved_training",
         "description": "example_improved_training",
-        "peekOfCode": "def create_sample_data(n_samples=1000, seq_length=60, n_features=7):\n    \"\"\"Create sample time series data for demonstration.\"\"\"\n    # Generate synthetic stock data\n    time = np.arange(n_samples)\n    trend = 0.01 * time\n    seasonality = 10 * np.sin(2 * np.pi * time / 252)  # Annual cycle\n    noise = np.random.normal(0, 2, n_samples)\n    prices = 100 + trend + seasonality + noise\n    # Create OHLCV-like features\n    features = np.zeros((n_samples, n_features))",
+        "peekOfCode": "def create_sample_data(n_samples=1000, n_features=7, rng=None, seed=42):\n    \"\"\"Create sample time series data for demonstration.\"\"\"\n    rng = rng if rng is not None else np.random.default_rng(seed)\n    # Generate synthetic stock data\n    time = np.arange(n_samples)\n    trend = 0.01 * time\n    seasonality = 10 * np.sin(2 * np.pi * time / 252)  # Annual cycle\n    noise = rng.normal(0, 2, n_samples)\n    prices = 100 + trend + seasonality + noise\n    # Create OHLCV-like features",
         "detail": "example_improved_training",
         "documentation": {}
     },
@@ -4886,6 +4939,15 @@
         "importPath": "example_improved_training",
         "description": "example_improved_training",
         "peekOfCode": "def main():\n    \"\"\"Main training example with all improvements.\"\"\"\n    print(\"=\" * 80)\n    print(\"Enhanced ML Engine Training Example\")\n    print(\"Using PyTorch Best Practices\")\n    print(\"=\" * 80)\n    # 1. Configuration with optimized settings\n    config = {\n        \"model\": {\n            \"type\": \"attention_lstm\",  # or \"transformer\", \"lstm\", \"gru\"",
+        "detail": "example_improved_training",
+        "documentation": {}
+    },
+    {
+        "label": "rng",
+        "kind": 5,
+        "importPath": "example_improved_training",
+        "description": "example_improved_training",
+        "peekOfCode": "rng = np.random.default_rng(42)\nif torch.cuda.is_available():\n    torch.cuda.manual_seed(42)\ndef create_sample_data(n_samples=1000, n_features=7, rng=None, seed=42):\n    \"\"\"Create sample time series data for demonstration.\"\"\"\n    rng = rng if rng is not None else np.random.default_rng(seed)\n    # Generate synthetic stock data\n    time = np.arange(n_samples)\n    trend = 0.01 * time\n    seasonality = 10 * np.sin(2 * np.pi * time / 252)  # Annual cycle",
         "detail": "example_improved_training",
         "documentation": {}
     },
@@ -4930,7 +4992,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def evaluate_model(config_path: str) -> None:\n    \"\"\"Run model evaluation with results dashboard.\n    Args:\n        config_path: Path to configuration file\n    Raises:\n        RuntimeError: If evaluation fails\n    \"\"\"\n    try:\n        console.print(\"[bold blue]Loading configuration and model...[/bold blue]\")\n        config = load_config(Path(config_path))",
+        "peekOfCode": "def evaluate_model(config_path: str) -> None:\n    \"\"\"Run model evaluation with results dashboard.\n    Args:\n        config_path: Path to configuration file\n    Raises:\n        RuntimeError: If evaluation fails\n    \"\"\"\n    try:\n        console.print(\"[bold blue]Loading configuration and model...[/bold blue]\")\n        config = load_config(config_path)",
         "detail": "main",
         "documentation": {}
     },
@@ -4939,7 +5001,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def visualize_dashboard(config_path: str) -> None:\n    \"\"\"Display dashboard visualizations using the visualizer module.\"\"\"\n    config = load_config(Path(config_path))\n    console.print(\"[bold blue]Launching visualizations...[/bold blue]\")\n    visualizer.display_dashboard(\n        config\n    )  # Assumes implementation exists in visualizer.py\ndef openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"\n    current_config = load_config(Path(config_path))  # Convert config_path to Path",
+        "peekOfCode": "def visualize_dashboard(config_path: str) -> None:\n    \"\"\"Display dashboard visualizations using the visualizer module.\"\"\"\n    config = load_config(config_path)\n    console.print(\"[bold blue]Launching visualizations...[/bold blue]\")\n    visualizer.display_dashboard(\n        config\n    )  # Assumes implementation exists in visualizer.py\ndef openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"\n    current_config = load_config(config_path)",
         "detail": "main",
         "documentation": {}
     },
@@ -4948,7 +5010,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"\n    current_config = load_config(Path(config_path))  # Convert config_path to Path\n    # Gather current metrics from the engine\n    engine = EnhancedMLEngine(current_config)\n    train_loss = (\n        engine.train_losses[-1]\n        if hasattr(engine, \"train_losses\") and engine.train_losses\n        else None\n    )",
+        "peekOfCode": "def openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"\n    current_config = load_config(config_path)\n    # Gather current metrics from the engine\n    engine = EnhancedMLEngine(current_config)\n    train_loss = (\n        engine.train_losses[-1]\n        if hasattr(engine, \"train_losses\") and engine.train_losses\n        else None\n    )",
         "detail": "main",
         "documentation": {}
     },
@@ -4957,7 +5019,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def predict_price(config_path: str) -> None:\n    \"\"\"Use ML engine to predict prices given a dataset.\n    Args:\n        config_path: Path to configuration file\n    Raises:\n        RuntimeError: If prediction fails\n    \"\"\"\n    try:\n        console.print(\"[bold blue]Loading model for prediction...[/bold blue]\")\n        config = load_config(Path(config_path))",
+        "peekOfCode": "def predict_price(config_path: str) -> None:\n    \"\"\"Use ML engine to predict prices given a dataset.\n    Args:\n        config_path: Path to configuration file\n    Raises:\n        RuntimeError: If prediction fails\n    \"\"\"\n    try:\n        console.print(\"[bold blue]Loading model for prediction...[/bold blue]\")\n        config = load_config(config_path)",
         "detail": "main",
         "documentation": {}
     },
@@ -4966,7 +5028,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def realtime_loop(config_path: str) -> None:\n    \"\"\"\n    Run the ML engine in a real-time loop for continuous inference.\n    \"\"\"\n    config = load_config(Path(config_path))\n    engine = EnhancedMLEngine(config)\n    engine.run_realtime_loop()\n    console.print(\"[bold yellow]Realtime Loop command executed[/bold yellow]\")\ndef tune_model(config_path: str) -> None:\n    \"\"\"",
+        "peekOfCode": "def realtime_loop(config_path: str) -> None:\n    \"\"\"\n    Run the ML engine in a real-time loop for continuous inference.\n    \"\"\"\n    config = load_config(config_path)\n    engine = EnhancedMLEngine(config)\n    engine.run_realtime_loop()\n    console.print(\"[bold yellow]Realtime Loop command executed[/bold yellow]\")\ndef tune_model(config_path: str) -> None:\n    \"\"\"",
         "detail": "main",
         "documentation": {}
     },
@@ -4975,7 +5037,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def tune_model(config_path: str) -> None:\n    \"\"\"\n    Perform advanced hyperparameter tuning using ML engine methods.\n    \"\"\"\n    config = load_config(Path(config_path))\n    engine = EnhancedMLEngine(config)\n    engine.tune_hyperparameters()\n    console.print(\"[bold yellow]Tune Model command executed[/bold yellow]\")\ndef profile_pipeline(config_path: str) -> None:\n    \"\"\"",
+        "peekOfCode": "def tune_model(config_path: str) -> None:\n    \"\"\"\n    Perform advanced hyperparameter tuning using ML engine methods.\n    \"\"\"\n    config = load_config(config_path)\n    engine = EnhancedMLEngine(config)\n    engine.tune_hyperparameters()\n    console.print(\"[bold yellow]Tune Model command executed[/bold yellow]\")\ndef profile_pipeline(config_path: str) -> None:\n    \"\"\"",
         "detail": "main",
         "documentation": {}
     },
@@ -4984,7 +5046,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def profile_pipeline(config_path: str) -> None:\n    \"\"\"\n    Profile the ML pipeline for bottlenecks.\n    \"\"\"\n    config = load_config(Path(config_path))\n    engine = EnhancedMLEngine(config)\n    engine.profile_pipeline()\n    console.print(\"[bold yellow]Profile Pipeline command executed[/bold yellow]\")\ndef run_ai_assistant(config_path: str) -> None:\n    config = load_config(config_path)  # removed Path() wrapper for proper string input",
+        "peekOfCode": "def profile_pipeline(config_path: str) -> None:\n    \"\"\"\n    Profile the ML pipeline for bottlenecks.\n    \"\"\"\n    config = load_config(config_path)\n    engine = EnhancedMLEngine(config)\n    engine.profile_pipeline()\n    console.print(\"[bold yellow]Profile Pipeline command executed[/bold yellow]\")\ndef run_ai_assistant(config_path: str) -> None:\n    config = load_config(config_path)  # removed Path() wrapper for proper string input",
         "detail": "main",
         "documentation": {}
     },
@@ -4993,7 +5055,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def run_ai_assistant(config_path: str) -> None:\n    config = load_config(config_path)  # removed Path() wrapper for proper string input\n    # Instantiate the AI assistant using the class from ml_engine\n    assistant_instance = ai_assistant(config)\n    console.print(\"[bold blue]Launching AI Assistant...[/bold blue]\")\n    query = input(\"Enter your query: \")\n    response = assistant_instance.process_query(query, use_claude=True)\n    console.print(f\"[bold green]Response:[/bold green] {response}\")\n    # Optionally use ML Engine's AI assistant for simulation tasks\n    engine_instance = EnhancedMLEngine(config)",
+        "peekOfCode": "def run_ai_assistant(config_path: str) -> None:\n    config = load_config(config_path)  # removed Path() wrapper for proper string input\n    # Instantiate the AI assistant using the class from ml_engine\n    assistant_instance = ai_assistant(config)\n    console.print(\"[bold blue]Launching AI Assistant...[/bold blue]\")\n    query = input(\"Enter your query: \")\n    response = assistant_instance.process_query(query)\n    console.print(f\"[bold green]Response:[/bold green] {response}\")\n    # Optionally use ML Engine's AI assistant for simulation tasks\n    engine_instance = EnhancedMLEngine(config)",
         "detail": "main",
         "documentation": {}
     },
@@ -5011,7 +5073,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "DEFAULT_MESSAGE_FORMAT = \"Epoch {epoch} completed\"\nTIMESTAMP_FORMAT = \"%H:%M:%S\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(",
+        "peekOfCode": "DEFAULT_MESSAGE_FORMAT = \"Epoch {epoch} completed\"\nTIMESTAMP_FORMAT = \"%H:%M:%S\"\nTABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)",
         "detail": "main",
         "documentation": {}
     },
@@ -5020,7 +5082,16 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "TIMESTAMP_FORMAT = \"%H:%M:%S\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(\n    epoch: int,",
+        "peekOfCode": "TIMESTAMP_FORMAT = \"%H:%M:%S\"\nTABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "TABLE_HEADER_STYLE",
+        "kind": 5,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "TABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(\n    epoch: int,",
         "detail": "main",
         "documentation": {}
     },
@@ -5785,7 +5856,7 @@
         "kind": 2,
         "importPath": "utils",
         "description": "utils",
-        "peekOfCode": "def validate_config(config: Dict[str, Any]) -> bool:\n    \"\"\"Validate configuration has required fields and sensible values.\n    Args:\n        config: Configuration dictionary to validate\n    Returns:\n        True if valid, False otherwise\n    Logs warnings for missing or invalid fields.\n    \"\"\"\n    logger = logging.getLogger(__name__)\n    is_valid = True",
+        "peekOfCode": "def validate_config(config: Dict[str, Any]) -> bool:\n    \"\"\"Validate configuration has required fields and sensible values.\n    Args:\n        config: Configuration dictionary to validate\n    Returns:\n        True if valid, False otherwise\n    Logs warnings for missing or invalid fields.\n    \"\"\"\n    logger = logging.getLogger(__name__)\n    required_fields = {",
         "detail": "utils",
         "documentation": {}
     },

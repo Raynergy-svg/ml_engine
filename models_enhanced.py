@@ -11,6 +11,35 @@ import torch.nn.functional as F
 from typing import List
 
 
+def _make_activation(activation: str) -> nn.Module:
+    act = (activation or "relu").lower()
+    if act == "mish":
+        return Mish()
+    if act in {"swish", "silu"}:
+        return Swish()
+    if act == "gelu":
+        return nn.GELU()
+    return nn.ReLU()
+
+
+def _is_relu_like_activation(activation: nn.Module) -> bool:
+    return isinstance(activation, (nn.ReLU, Mish, Swish))
+
+
+def _init_recurrent_weights(param_name: str, param: torch.Tensor) -> None:
+    if "weight_hh" in param_name:
+        nn.init.orthogonal_(param)
+        return
+    nn.init.xavier_uniform_(param)
+
+
+def _init_dense_weights(param: torch.Tensor, relu_like: bool) -> None:
+    if relu_like:
+        nn.init.kaiming_normal_(param, mode="fan_in", nonlinearity="relu")
+        return
+    nn.init.xavier_normal_(param)
+
+
 class Mish(nn.Module):
     """Mish activation function: x * tanh(softplus(x))
     Better than ReLU for deep networks with smoother gradients."""
@@ -77,40 +106,26 @@ class StockPredictor(nn.Module):
         # Skip connection
         self.skip = nn.Linear(lstm_output_size, 1)
         
-        # Activation function selection
-        if activation == "mish":
-            self.activation = Mish()
-        elif activation == "swish" or activation == "silu":
-            self.activation = Swish()
-        elif activation == "gelu":
-            self.activation = nn.GELU()
-        else:
-            self.activation = nn.ReLU()
+        self.activation = _make_activation(activation)
 
         self._init_weights()
 
     def _init_weights(self):
         """Initialize weights using improved initialization strategies."""
+        relu_like = _is_relu_like_activation(self.activation)
         for name, param in self.named_parameters():
-            if "weight" in name:
-                if "lstm" in name:
-                    # Orthogonal initialization for LSTM recurrent weights (weight_hh)
-                    # Xavier for input weights (weight_ih)
-                    if "weight_hh" in name:
-                        nn.init.orthogonal_(param)
-                    else:
-                        nn.init.xavier_uniform_(param)
-                elif "bn" in name or "layer_norm" in name:
-                    # Initialize batch norm and layer norm weights to 1
-                    nn.init.ones_(param)
-                else:
-                    # He initialization for ReLU-like activations, Xavier for others
-                    if isinstance(self.activation, (nn.ReLU, Mish, Swish)):
-                        nn.init.kaiming_normal_(param, mode='fan_in', nonlinearity='relu')
-                    else:
-                        nn.init.xavier_normal_(param)
-            elif "bias" in name:
+            if "bias" in name:
                 nn.init.zeros_(param)
+                continue
+            if "weight" not in name:
+                continue
+            if "lstm" in name:
+                _init_recurrent_weights(name, param)
+                continue
+            if "bn" in name or "layer_norm" in name:
+                nn.init.ones_(param)
+                continue
+            _init_dense_weights(param, relu_like)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with residual connections and improved activations."""
@@ -319,38 +334,26 @@ class GRUPredictor(nn.Module):
         # Skip connection for better gradient flow
         self.skip = nn.Linear(gru_output_size, 1)
         
-        # Activation function selection
-        if activation == "mish":
-            self.activation = Mish()
-        elif activation == "swish" or activation == "silu":
-            self.activation = Swish()
-        elif activation == "gelu":
-            self.activation = nn.GELU()
-        else:
-            self.activation = nn.ReLU()
+        self.activation = _make_activation(activation)
 
         self._init_weights()
 
     def _init_weights(self):
         """Initialize weights with improved strategies."""
+        relu_like = _is_relu_like_activation(self.activation)
         for name, param in self.named_parameters():
-            if "weight" in name:
-                if "gru" in name:
-                    # Orthogonal for GRU recurrent weights, Xavier for input weights
-                    if "weight_hh" in name:
-                        nn.init.orthogonal_(param)
-                    else:
-                        nn.init.xavier_uniform_(param)
-                elif "bn" in name or "layer_norm" in name:
-                    nn.init.ones_(param)
-                else:
-                    # Kaiming for ReLU-like, Xavier for others
-                    if isinstance(self.activation, (nn.ReLU, Mish, Swish)):
-                        nn.init.kaiming_normal_(param, mode='fan_in', nonlinearity='relu')
-                    else:
-                        nn.init.xavier_normal_(param)
-            elif "bias" in name:
+            if "bias" in name:
                 nn.init.zeros_(param)
+                continue
+            if "weight" not in name:
+                continue
+            if "gru" in name:
+                _init_recurrent_weights(name, param)
+                continue
+            if "bn" in name or "layer_norm" in name:
+                nn.init.ones_(param)
+                continue
+            _init_dense_weights(param, relu_like)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with residual connections."""
@@ -490,27 +493,38 @@ class TCNPredictor(nn.Module):
         super(TCNPredictor, self).__init__()
 
         self.use_residual = use_residual
-        
-        # Activation function selection
-        if activation == "mish":
-            self.activation = Mish()
-        elif activation == "swish" or activation == "silu":
-            self.activation = Swish()
-        elif activation == "gelu":
-            self.activation = nn.GELU()
-        else:
-            self.activation = nn.ReLU()
+        self.activation = _make_activation(activation)
 
-        # Build TCN layers with residual connections
-        self.tcn_layers = nn.ModuleList()
-        self.residual_layers = nn.ModuleList()
-        
-        for i in range(num_layers):
-            dilation_size = 2**i
-            in_channels = input_size if i == 0 else hidden_size
+        self.tcn_layers, self.residual_layers = self._build_tcn_layers(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            kernel_size=kernel_size,
+            use_residual=use_residual,
+        )
+
+        self.dropout = nn.Dropout(dropout)
+        self.fc = self._build_fc(hidden_size=hidden_size, dropout=dropout, activation=activation)
+
+        self._init_weights()
+
+    @staticmethod
+    def _build_tcn_layers(
+        *,
+        input_size: int,
+        hidden_size: int,
+        num_layers: int,
+        kernel_size: int,
+        use_residual: bool,
+    ) -> tuple[nn.ModuleList, nn.ModuleList]:
+        tcn_layers = nn.ModuleList()
+        residual_layers = nn.ModuleList()
+
+        for layer_index in range(num_layers):
+            dilation_size = 2**layer_index
+            in_channels = input_size if layer_index == 0 else hidden_size
             out_channels = hidden_size
 
-            # Main convolutional block
             conv_block = nn.Sequential(
                 nn.Conv1d(
                     in_channels,
@@ -521,37 +535,28 @@ class TCNPredictor(nn.Module):
                 ),
                 nn.BatchNorm1d(out_channels),
             )
-            self.tcn_layers.append(conv_block)
-            
-            # Residual connection (1x1 conv if dimensions don't match)
-            if use_residual and in_channels != out_channels:
-                self.residual_layers.append(nn.Conv1d(in_channels, out_channels, 1))
-            else:
-                self.residual_layers.append(nn.Identity())
-        
-        self.dropout = nn.Dropout(dropout)
+            tcn_layers.append(conv_block)
 
-        # Enhanced output layers - create fresh activation instances
-        if activation == "mish":
-            act_fn1, act_fn2 = Mish(), Mish()
-        elif activation == "swish" or activation == "silu":
-            act_fn1, act_fn2 = Swish(), Swish()
-        elif activation == "gelu":
-            act_fn1, act_fn2 = nn.GELU(), nn.GELU()
-        else:
-            act_fn1, act_fn2 = nn.ReLU(), nn.ReLU()
-        
-        self.fc = nn.Sequential(
+            if use_residual and in_channels != out_channels:
+                residual_layers.append(nn.Conv1d(in_channels, out_channels, 1))
+            else:
+                residual_layers.append(nn.Identity())
+
+        return tcn_layers, residual_layers
+
+    @staticmethod
+    def _build_fc(*, hidden_size: int, dropout: float, activation: str) -> nn.Sequential:
+        act_fn1 = _make_activation(activation)
+        act_fn2 = _make_activation(activation)
+        return nn.Sequential(
             nn.Linear(hidden_size, 64),
             act_fn1,
             nn.Dropout(dropout),
             nn.Linear(64, 32),
             act_fn2,
             nn.Dropout(dropout),
-            nn.Linear(32, 1)
+            nn.Linear(32, 1),
         )
-
-        self._init_weights()
 
     def _init_weights(self):
         """Initialize weights with improved strategies."""

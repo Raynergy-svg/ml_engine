@@ -1,55 +1,66 @@
-import numpy as np
-from typing import Dict, Any
+from datetime import datetime, timezone
 import logging
-from datetime import datetime
+from typing import Any
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
 class ModelTrainer:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
+        self.rng = np.random.default_rng(self.config.get("seed"))
         self.model = None
         self.history = {}
 
-    def train(self, X_train, y_train, X_val=None, y_val=None) -> Dict[str, Any]:
-        """Train the model with actual training logic"""
+    def train(self, x_train, y_train, x_val=None, y_val=None) -> dict[str, Any]:
+        """Train the model with actual training logic."""
         try:
-            logger.info(f"Starting training with {len(X_train)} samples")
+            logger.info("Starting training with %s samples", len(x_train))
 
             # Initialize model based on config
             self.model = self._build_model()
 
             # Training loop
-            epochs = self.config.get("epochs", 10)
-            batch_size = self.config.get("batch_size", 32)
+            epochs = int(self.config.get("epochs", 10))
+            batch_size = max(1, int(self.config.get("batch_size", 32)))
+
+            if len(x_train) == 0:
+                raise ValueError("x_train is empty")
+
+            self.history = {}
 
             for epoch in range(epochs):
                 # Shuffle training data
-                indices = np.random.permutation(len(X_train))
-                X_shuffled = X_train[indices]
+                indices = self.rng.permutation(len(x_train))
+                x_shuffled = x_train[indices]
                 y_shuffled = y_train[indices]
 
                 # Mini-batch training
-                epoch_loss = 0
-                num_batches = len(X_train) // batch_size
+                epoch_loss = 0.0
+                num_batches = int(np.ceil(len(x_train) / batch_size))
 
-                for i in range(0, len(X_train), batch_size):
-                    X_batch = X_shuffled[i : i + batch_size]
+                for i in range(0, len(x_train), batch_size):
+                    x_batch = x_shuffled[i : i + batch_size]
                     y_batch = y_shuffled[i : i + batch_size]
 
-                    loss = self._train_step(X_batch, y_batch)
+                    loss = float(self._train_step(x_batch, y_batch))
                     epoch_loss += loss
 
-                avg_loss = epoch_loss / num_batches
+                avg_loss = epoch_loss / max(num_batches, 1)
 
                 # Validation
-                val_metrics = {}
-                if X_val is not None and y_val is not None:
-                    val_metrics = self._validate(X_val, y_val)
+                val_metrics: dict[str, float] = {}
+                if x_val is not None and y_val is not None:
+                    val_metrics = self._validate(x_val, y_val)
 
                 logger.info(
-                    f"Epoch {epoch + 1}/{epochs} - Loss: {avg_loss:.4f} - Val metrics: {val_metrics}"
+                    "Epoch %s/%s - Loss: %.4f - Val metrics: %s",
+                    epoch + 1,
+                    epochs,
+                    avg_loss,
+                    val_metrics,
                 )
 
                 # Store history
@@ -61,11 +72,11 @@ class ModelTrainer:
                 "status": "success",
                 "history": self.history,
                 "final_loss": self.history["loss"][-1],
-                "trained_at": datetime.utcnow().isoformat(),
+                "trained_at": datetime.now(tz=timezone.utc).isoformat(),
             }
 
-        except Exception as e:
-            logger.error(f"Training failed: {str(e)}")
+        except Exception:
+            logger.exception("Training failed")
             raise
 
     def _build_model(self):
@@ -75,18 +86,18 @@ class ModelTrainer:
         output_dim = self.config.get("output_dim", 1)
 
         if model_type == "linear":
-            return LinearModel(input_dim, output_dim)
+            return LinearModel(input_dim, output_dim, rng=self.rng)
         elif model_type == "neural_net":
             hidden_dims = self.config.get("hidden_dims", [64, 32])
-            return NeuralNetwork(input_dim, hidden_dims, output_dim)
+            return NeuralNetwork(input_dim, hidden_dims, output_dim, rng=self.rng)
         else:
             raise ValueError(f"Unknown model type: {model_type}")
 
-    def _train_step(self, X_batch, y_batch) -> float:
+    def _train_step(self, x_batch, y_batch) -> float:
         """Single training step"""
-        predictions = self.model.forward(X_batch)
+        predictions = self.model.forward(x_batch)
         loss = self._compute_loss(predictions, y_batch)
-        gradients = self._compute_gradients(X_batch, y_batch, predictions)
+        gradients = self._compute_gradients(x_batch, y_batch, predictions)
         self.model.update_weights(gradients, self.config.get("learning_rate", 0.01))
         return loss
 
@@ -98,9 +109,9 @@ class ModelTrainer:
         """Compute gradients for backpropagation"""
         return self.model.backward(X, y, predictions)
 
-    def _validate(self, X_val, y_val) -> Dict[str, float]:
+    def _validate(self, x_val, y_val) -> dict[str, float]:
         """Validate model on validation set"""
-        predictions = self.model.forward(X_val)
+        predictions = self.model.forward(x_val)
         mse = np.mean((predictions - y_val) ** 2)
         mae = np.mean(np.abs(predictions - y_val))
 
@@ -108,8 +119,8 @@ class ModelTrainer:
 
 
 class LinearModel:
-    def __init__(self, input_dim: int, output_dim: int):
-        self.weights = np.random.randn(input_dim, output_dim) * 0.01
+    def __init__(self, input_dim: int, output_dim: int, *, rng: np.random.Generator):
+        self.weights = rng.standard_normal((input_dim, output_dim)) * 0.01
         self.bias = np.zeros(output_dim)
 
     def forward(self, X):
@@ -127,14 +138,14 @@ class LinearModel:
 
 
 class NeuralNetwork:
-    def __init__(self, input_dim: int, hidden_dims: list, output_dim: int):
+    def __init__(self, input_dim: int, hidden_dims: list[int], output_dim: int, *, rng: np.random.Generator):
         self.layers = []
         dims = [input_dim] + hidden_dims + [output_dim]
 
         for i in range(len(dims) - 1):
             self.layers.append(
                 {
-                    "W": np.random.randn(dims[i], dims[i + 1]) * np.sqrt(2.0 / dims[i]),
+                    "W": rng.standard_normal((dims[i], dims[i + 1])) * np.sqrt(2.0 / dims[i]),
                     "b": np.zeros(dims[i + 1]),
                 }
             )
@@ -158,23 +169,23 @@ class NeuralNetwork:
         gradients = []
 
         # Output layer gradient
-        dA = predictions - y
+        d_a = predictions - y
 
         # Backpropagate through layers
         for i in reversed(range(len(self.layers))):
             Z = self.cache[f"Z{i + 1}"]
-            A_prev = self.cache[f"A{i}"]
+            a_prev = self.cache[f"A{i}"]
 
             if i < len(self.layers) - 1:
-                dA = dA * self._relu_derivative(Z)
+                d_a = d_a * self._relu_derivative(Z)
 
-            dW = (1 / m) * A_prev.T @ dA
-            db = (1 / m) * np.sum(dA, axis=0)
+            d_w = (1 / m) * a_prev.T @ d_a
+            db = (1 / m) * np.sum(d_a, axis=0)
 
-            gradients.insert(0, {"dW": dW, "db": db})
+            gradients.insert(0, {"dW": d_w, "db": db})
 
             if i > 0:
-                dA = dA @ self.layers[i]["W"].T
+                d_a = d_a @ self.layers[i]["W"].T
 
         return gradients
 

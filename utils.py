@@ -201,6 +201,57 @@ def merge_config(user_config, default_config):
     return recursive_merge(merged, user_config)
 
 
+def _validate_required_fields(
+    config: Dict[str, Any],
+    required_fields: Dict[str, list],
+    logger: logging.Logger,
+) -> bool:
+    is_valid = True
+
+    for section, fields in required_fields.items():
+        section_value = config.get(section)
+        if section_value is None:
+            logger.warning(f"Missing configuration section: {section}")
+            is_valid = False
+            continue
+
+        if not isinstance(section_value, dict):
+            logger.warning(
+                f"Invalid configuration section type: {section} (must be a dict)"
+            )
+            is_valid = False
+            continue
+
+        for field in fields:
+            if field not in section_value:
+                logger.warning(f"Missing configuration field: {section}.{field}")
+                is_valid = False
+
+    return is_valid
+
+
+def _validate_positive_field(
+    config: Dict[str, Any],
+    section: str,
+    field: str,
+    logger: logging.Logger,
+) -> bool:
+    if section not in config:
+        return True
+
+    section_value = config.get(section)
+    if not isinstance(section_value, dict):
+        logger.warning(f"Invalid configuration section type: {section} (must be a dict)")
+        return False
+
+    value = section_value.get(field, 0)
+    if not isinstance(value, (int, float)) or value <= 0:
+        logger.warning(f"Invalid {field} value: {value} (must be > 0)")
+        return False
+
+    return True
+
+
 def validate_config(config: Dict[str, Any]) -> bool:
     """Validate configuration has required fields and sensible values.
     
@@ -213,44 +264,24 @@ def validate_config(config: Dict[str, Any]) -> bool:
     Logs warnings for missing or invalid fields.
     """
     logger = logging.getLogger(__name__)
-    is_valid = True
-    
-    # Check for common required fields
+
     required_fields = {
         'model': ['hidden_size', 'num_layers'],
         'training': ['epochs'],
         'data': ['sequence_length']
     }
-    
-    for section, fields in required_fields.items():
-        if section not in config:
-            logger.warning(f"Missing configuration section: {section}")
+
+    is_valid = _validate_required_fields(config, required_fields, logger)
+
+    numeric_checks = [
+        ("training", "epochs"),
+        ("model", "hidden_size"),
+        ("model", "num_layers"),
+    ]
+    for section, field in numeric_checks:
+        if not _validate_positive_field(config, section, field, logger):
             is_valid = False
-            continue
-            
-        for field in fields:
-            if field not in config[section]:
-                logger.warning(f"Missing configuration field: {section}.{field}")
-                is_valid = False
-    
-    # Validate numeric ranges
-    if 'training' in config:
-        epochs = config['training'].get('epochs', 0)
-        if epochs <= 0:
-            logger.warning(f"Invalid epochs value: {epochs} (must be > 0)")
-            is_valid = False
-    
-    if 'model' in config:
-        hidden_size = config['model'].get('hidden_size', 0)
-        if hidden_size <= 0:
-            logger.warning(f"Invalid hidden_size: {hidden_size} (must be > 0)")
-            is_valid = False
-            
-        num_layers = config['model'].get('num_layers', 0)
-        if num_layers <= 0:
-            logger.warning(f"Invalid num_layers: {num_layers} (must be > 0)")
-            is_valid = False
-    
+
     return is_valid
 
 
@@ -272,9 +303,8 @@ def get_config(config_path="config.yaml", default_config=None, validate=True):
     if default_config is not None:
         user_config = merge_config(user_config, default_config)
     
-    if validate:
-        if not validate_config(user_config):
-            logger.warning("Configuration validation found issues, but continuing...")
+    if validate and not validate_config(user_config):
+        logger.warning("Configuration validation found issues, but continuing...")
     
     return user_config
 

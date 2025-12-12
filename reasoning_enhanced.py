@@ -83,8 +83,7 @@ class ReasoningEngine:
         # Generate trading signals
         signals = self._generate_signals(
             predictions, 
-            uncertainties=uncertainties,
-            timestamps=timestamps
+            uncertainties=uncertainties
         )
         results["signals"] = signals
         
@@ -104,9 +103,7 @@ class ReasoningEngine:
             predictions, 
             uncertainties=uncertainties,
             actual_values=actual_values,
-            signals=signals,
-            timestamps=timestamps,
-            ticker_symbols=ticker_symbols
+            signals=signals
         )
         results["insights"] = insights
         
@@ -160,8 +157,7 @@ class ReasoningEngine:
     def _generate_signals(
         self,
         predictions: np.ndarray,
-        uncertainties: Optional[np.ndarray] = None,
-        timestamps: Optional[np.ndarray] = None
+        uncertainties: Optional[np.ndarray] = None
     ) -> Dict[str, np.ndarray]:
         """
         Generate trading signals based on predictions and uncertainties.
@@ -169,12 +165,10 @@ class ReasoningEngine:
         Args:
             predictions: Model predictions
             uncertainties: Prediction uncertainties (optional)
-            timestamps: Timestamps for predictions (optional)
             
         Returns:
             Dictionary of trading signals
         """
-        # Ensure predictions are flattened
         predictions = predictions.flatten()
         
         # Calculate price changes
@@ -229,6 +223,80 @@ class ReasoningEngine:
         
         return signals
     
+    def _build_explanation_base(
+        self,
+        index: int,
+        prediction: float,
+        timestamps: Optional[np.ndarray],
+        ticker_symbols: Optional[List[str]]
+    ) -> Dict[str, Any]:
+        return {
+            "index": index,
+            "prediction": prediction,
+            "timestamp": timestamps[index] if timestamps is not None else None,
+            "ticker": ticker_symbols[index] if ticker_symbols is not None else None
+        }
+    
+    def _add_uncertainty_to_explanation(
+        self,
+        explanation: Dict[str, Any],
+        uncertainty: float
+    ) -> Dict[str, Any]:
+        confidence = 1.0 - uncertainty
+
+        if confidence > 0.8:
+            confidence_level = "high"
+        elif confidence > 0.5:
+            confidence_level = "medium"
+        else:
+            confidence_level = "low"
+        
+        explanation.update({
+            "uncertainty": uncertainty,
+            "confidence": confidence,
+            "confidence_level": confidence_level
+        })
+        
+        return explanation
+    
+    def _add_actual_to_explanation(
+        self,
+        explanation: Dict[str, Any],
+        actual: float,
+        prediction: float
+    ) -> Dict[str, Any]:
+        error = prediction - actual
+        
+        explanation.update({
+            "actual": actual,
+            "error": error,
+            "error_percentage": error / actual * 100 if actual != 0 else float('inf')
+        })
+        
+        return explanation
+    
+    def _add_trend_to_explanation(
+        self,
+        explanation: Dict[str, Any],
+        current_prediction: float,
+        previous_prediction: float
+    ) -> Dict[str, Any]:
+        price_change = current_prediction - previous_prediction
+
+        if price_change > 0:
+            direction = "up"
+        elif price_change < 0:
+            direction = "down"
+        else:
+            direction = "flat"
+        
+        explanation.update({
+            "price_change": price_change,
+            "direction": direction
+        })
+        
+        return explanation
+    
     def _generate_explanations(
         self,
         predictions: np.ndarray,
@@ -250,65 +318,95 @@ class ReasoningEngine:
         Returns:
             List of explanation dictionaries
         """
-        # Ensure predictions are flattened
         predictions = predictions.flatten()
+        uncertainties_flat = uncertainties.flatten() if uncertainties is not None else None
+        actual_values_flat = actual_values.flatten() if actual_values is not None else None
         
-        # Initialize explanations
-        explanations = []
+        explanations: List[Dict[str, Any]] = []
         
-        # Generate explanations for each prediction
-        for i in range(len(predictions)):
-            explanation = {
-                "index": i,
-                "prediction": predictions[i],
-                "timestamp": timestamps[i] if timestamps is not None else None,
-                "ticker": ticker_symbols[i] if ticker_symbols is not None else None
-            }
+        for i, pred in enumerate(predictions):
+            explanation = self._build_explanation_base(
+                index=i,
+                prediction=pred,
+                timestamps=timestamps,
+                ticker_symbols=ticker_symbols
+            )
             
-            # Add uncertainty if available
-            if uncertainties is not None:
-                uncertainty = uncertainties.flatten()[i]
-                confidence = 1.0 - uncertainty
-                
-                explanation.update({
-                    "uncertainty": uncertainty,
-                    "confidence": confidence,
-                    "confidence_level": "high" if confidence > 0.8 else "medium" if confidence > 0.5 else "low"
-                })
+            if uncertainties_flat is not None:
+                self._add_uncertainty_to_explanation(explanation, uncertainties_flat[i])
             
-            # Add actual value if available
-            if actual_values is not None:
-                actual = actual_values.flatten()[i]
-                error = predictions[i] - actual
-                
-                explanation.update({
-                    "actual": actual,
-                    "error": error,
-                    "error_percentage": error / actual * 100 if actual != 0 else float('inf')
-                })
+            if actual_values_flat is not None:
+                self._add_actual_to_explanation(explanation, actual_values_flat[i], pred)
             
-            # Add trend information if possible
             if i > 0:
-                price_change = predictions[i] - predictions[i-1]
-                direction = "up" if price_change > 0 else "down" if price_change < 0 else "flat"
-                
-                explanation.update({
-                    "price_change": price_change,
-                    "direction": direction
-                })
+                self._add_trend_to_explanation(explanation, pred, predictions[i - 1])
             
             explanations.append(explanation)
         
         return explanations
     
+    def _overall_trend_insight(self, predictions: np.ndarray) -> Optional[str]:
+        if len(predictions) <= 1:
+            return None
+
+        overall_change = predictions[-1] - predictions[0]
+        direction = "upward" if overall_change > 0 else "downward"
+
+        if predictions[0] != 0:
+            overall_percent = (overall_change / predictions[0]) * 100
+            return f"Overall trend is {direction} with a {abs(overall_percent):.2f}% change."
+
+        return f"Overall trend is {direction} with an absolute change of {overall_change:.4f}."
+
+    def _uncertainty_insights(self, uncertainties: np.ndarray) -> List[str]:
+        insights: List[str] = []
+
+        avg_uncertainty = float(np.mean(uncertainties))
+        max_uncertainty = float(np.max(uncertainties))
+        min_uncertainty = float(np.min(uncertainties))
+        insights.append(
+            f"Average prediction uncertainty is {avg_uncertainty:.2f} (range: {min_uncertainty:.2f} to {max_uncertainty:.2f})."
+        )
+
+        high_uncertainty_count = int(np.sum(uncertainties > self.uncertainty_threshold))
+        if high_uncertainty_count > 0:
+            insights.append(f"High uncertainty detected in {high_uncertainty_count} predictions.")
+
+        return insights
+
+    def _performance_insights(self, predictions: np.ndarray, actual_values: np.ndarray) -> List[str]:
+        insights: List[str] = []
+
+        errors = predictions - actual_values
+        mse = np.mean(errors ** 2)
+        rmse = np.sqrt(mse)
+        mae = np.mean(np.abs(errors))
+        insights.append(f"Model performance: RMSE = {rmse:.4f}, MAE = {mae:.4f}.")
+
+        direction_actual = np.sign(np.diff(actual_values, prepend=actual_values[0]))
+        direction_pred = np.sign(np.diff(predictions, prepend=predictions[0]))
+        directional_accuracy = np.mean(direction_actual == direction_pred) * 100
+        insights.append(f"Directional accuracy: {directional_accuracy:.2f}%.")
+
+        return insights
+
+    def _signal_summary_insight(self, signals: Dict[str, np.ndarray]) -> Optional[str]:
+        if "confident_direction" not in signals:
+            return None
+
+        confident_direction = signals["confident_direction"]
+        buy_signals = int(np.sum(confident_direction > 0))
+        sell_signals = int(np.sum(confident_direction < 0))
+        hold_signals = int(np.sum(confident_direction == 0))
+
+        return f"Trading signals: {buy_signals} buy, {sell_signals} sell, {hold_signals} hold."
+
     def _generate_insights(
         self,
         predictions: np.ndarray,
         uncertainties: Optional[np.ndarray] = None,
         actual_values: Optional[np.ndarray] = None,
-        signals: Dict[str, np.ndarray] = None,
-        timestamps: Optional[np.ndarray] = None,
-        ticker_symbols: Optional[List[str]] = None
+        signals: Optional[Dict[str, np.ndarray]] = None
     ) -> List[str]:
         """
         Generate insights from predictions and signals.
@@ -318,72 +416,29 @@ class ReasoningEngine:
             uncertainties: Prediction uncertainties (optional)
             actual_values: Actual values for comparison (optional)
             signals: Trading signals (optional)
-            timestamps: Timestamps for predictions (optional)
-            ticker_symbols: Ticker symbols for predictions (optional)
             
         Returns:
             List of insight strings
         """
-        insights = []
-        
+        insights: List[str] = []
         # Ensure predictions are flattened
         predictions = predictions.flatten()
-        
-        # Overall trend insight
-        if len(predictions) > 1:
-            overall_change = predictions[-1] - predictions[0]
-            overall_percent = (overall_change / predictions[0]) * 100
-            
-            trend_message = f"Overall trend is {'upward' if overall_change > 0 else 'downward'} with a {abs(overall_percent):.2f}% change."
+
+        trend_message = self._overall_trend_insight(predictions)
+        if trend_message is not None:
             insights.append(trend_message)
-        
-        # Uncertainty insights
+
         if uncertainties is not None:
-            uncertainties = uncertainties.flatten()
-            avg_uncertainty = np.mean(uncertainties)
-            max_uncertainty = np.max(uncertainties)
-            min_uncertainty = np.min(uncertainties)
-            
-            uncertainty_message = f"Average prediction uncertainty is {avg_uncertainty:.2f} (range: {min_uncertainty:.2f} to {max_uncertainty:.2f})."
-            insights.append(uncertainty_message)
-            
-            # High uncertainty periods
-            high_uncertainty_indices = np.where(uncertainties > self.uncertainty_threshold)[0]
-            if len(high_uncertainty_indices) > 0:
-                high_uncertainty_message = f"High uncertainty detected in {len(high_uncertainty_indices)} predictions."
-                insights.append(high_uncertainty_message)
-        
-        # Performance insights if actual values are available
+            insights.extend(self._uncertainty_insights(uncertainties.flatten()))
+
         if actual_values is not None:
-            actual_values = actual_values.flatten()
-            
-            # Calculate errors
-            errors = predictions - actual_values
-            mse = np.mean(errors ** 2)
-            rmse = np.sqrt(mse)
-            mae = np.mean(np.abs(errors))
-            
-            performance_message = f"Model performance: RMSE = {rmse:.4f}, MAE = {mae:.4f}."
-            insights.append(performance_message)
-            
-            # Directional accuracy
-            direction_actual = np.sign(np.diff(actual_values, prepend=actual_values[0]))
-            direction_pred = np.sign(np.diff(predictions, prepend=predictions[0]))
-            directional_accuracy = np.mean(direction_actual == direction_pred) * 100
-            
-            direction_message = f"Directional accuracy: {directional_accuracy:.2f}%."
-            insights.append(direction_message)
-        
-        # Signal insights
-        if signals is not None and "confident_direction" in signals:
-            confident_direction = signals["confident_direction"]
-            buy_signals = np.sum(confident_direction > 0)
-            sell_signals = np.sum(confident_direction < 0)
-            hold_signals = np.sum(confident_direction == 0)
-            
-            signal_message = f"Trading signals: {buy_signals} buy, {sell_signals} sell, {hold_signals} hold."
-            insights.append(signal_message)
-        
+            insights.extend(self._performance_insights(predictions, actual_values.flatten()))
+
+        if signals is not None:
+            signal_message = self._signal_summary_insight(signals)
+            if signal_message is not None:
+                insights.append(signal_message)
+
         return insights
     
     def visualize_predictions(
@@ -391,8 +446,6 @@ class ReasoningEngine:
         predictions: Optional[np.ndarray] = None,
         uncertainties: Optional[np.ndarray] = None,
         actual_values: Optional[np.ndarray] = None,
-        timestamps: Optional[np.ndarray] = None,
-        ticker_symbols: Optional[List[str]] = None,
         save_path: Optional[str] = None,
         show_plot: bool = False
     ) -> Optional[plt.Figure]:
@@ -403,8 +456,6 @@ class ReasoningEngine:
             predictions: Model predictions (optional, uses stored predictions if None)
             uncertainties: Prediction uncertainties (optional, uses stored uncertainties if None)
             actual_values: Actual values for comparison (optional)
-            timestamps: Timestamps for predictions (optional)
-            ticker_symbols: Ticker symbols for predictions (optional)
             save_path: Path to save visualization (optional)
             show_plot: Whether to show the plot
             
@@ -422,13 +473,9 @@ class ReasoningEngine:
         # Create figure
         fig, ax = plt.subplots(figsize=(12, 6))
         
-        # Generate x-axis (indices or timestamps)
-        if timestamps is not None:
-            x = timestamps
-            ax.set_xlabel("Time")
-        else:
-            x = np.arange(len(predictions))
-            ax.set_xlabel("Index")
+        # Generate x-axis (indices)
+        x = np.arange(len(predictions))
+        ax.set_xlabel("Index")
         
         # Plot predictions
         ax.plot(x, predictions, label="Predictions", color="blue", linewidth=2)

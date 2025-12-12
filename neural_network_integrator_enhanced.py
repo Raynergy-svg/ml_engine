@@ -347,7 +347,7 @@ class BasicIntegrationModel(nn.Module):
         Returns:
             Tuple of (integrated_prediction, weights)
         """
-        batch_size, num_engines, input_dim = x.shape
+        batch_size, _, _ = x.shape
         
         # Flatten inputs
         x_flat = x.reshape(batch_size, -1)
@@ -422,7 +422,7 @@ class AttentionIntegrationModel(nn.Module):
         Returns:
             Tuple of (integrated_prediction, attention_weights)
         """
-        batch_size, num_engines, input_dim = x.shape
+        _, _, _ = x.shape
         
         # Apply attention
         query = self.layer_norm1(x)

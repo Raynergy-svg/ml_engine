@@ -109,142 +109,93 @@ class EnhancedMLEngine:
         """
         model_config = self.config.get("model", {})
         model_type = model_config.get("type", "lstm")
-        input_size = model_config.get("input_size", 7)
-        hidden_size = model_config.get("hidden_size", 128)
-        num_layers = model_config.get("num_layers", 3)
-        dropout = model_config.get("dropout", 0.2)
-        bidirectional = model_config.get("bidirectional", False)
-        
-        # Create model based on type
-        if model_type == "lstm":
-            model = StockPredictor(
-                input_size=input_size,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                dropout=dropout,
-                bidirectional=bidirectional
-            )
-        elif model_type == "attention_lstm":
-            model = AttentiveLSTM(
-                input_size=input_size,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                num_heads=model_config.get("num_heads", 4),
-                dropout=dropout,
-                bidirectional=bidirectional,
-                use_flash_attention=model_config.get("use_flash_attention", True)
-            )
-        elif model_type == "gru":
-            model = GRUPredictor(
-                input_size=input_size,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                dropout=dropout,
-                bidirectional=bidirectional
-            )
-        elif model_type == "transformer":
-            model = TransformerPredictor(
-                input_size=input_size,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                dropout=dropout,
-                num_heads=model_config.get("num_heads", 8),
-                use_flash_attention=model_config.get("use_flash_attention", True),
-                positional_encoding=model_config.get("positional_encoding", "learned")
-            )
-        # elif model_type == "tcn":
-        #     # TCNPredictor not yet implemented
-        #     model = TCNPredictor(
-        #         input_size=input_size,
-        #         hidden_size=hidden_size,
-        #         num_layers=num_layers,
-        #         dropout=dropout,
-        #         kernel_size=model_config.get("kernel_size", 3)
-        #     )
-        elif model_type == "ensemble":
-            # Create base models
-            base_models = []
-            for base_config in model_config.get("base_models", []):
-                base_type = base_config.get("type", "lstm")
-                if base_type == "lstm":
-                    base_model = StockPredictor(
-                        input_size=input_size,
-                        hidden_size=base_config.get("hidden_size", hidden_size),
-                        num_layers=base_config.get("num_layers", num_layers),
-                        dropout=base_config.get("dropout", dropout),
-                        bidirectional=base_config.get("bidirectional", bidirectional)
-                    )
-                elif base_type == "attention_lstm":
-                    base_model = AttentiveLSTM(
-                        input_size=input_size,
-                        hidden_size=base_config.get("hidden_size", hidden_size),
-                        num_layers=base_config.get("num_layers", num_layers),
-                        num_heads=base_config.get("num_heads", 4),
-                        dropout=base_config.get("dropout", dropout),
-                        bidirectional=base_config.get("bidirectional", bidirectional)
-                    )
-                elif base_type == "gru":
-                    base_model = GRUPredictor(
-                        input_size=input_size,
-                        hidden_size=base_config.get("hidden_size", hidden_size),
-                        num_layers=base_config.get("num_layers", num_layers),
-                        dropout=base_config.get("dropout", dropout),
-                        bidirectional=base_config.get("bidirectional", bidirectional)
-                    )
-                elif base_type == "transformer":
-                    base_model = TransformerPredictor(
-                        input_size=input_size,
-                        hidden_size=base_config.get("hidden_size", hidden_size),
-                        num_layers=base_config.get("num_layers", num_layers),
-                        dropout=base_config.get("dropout", dropout),
-                        num_heads=base_config.get("num_heads", 8)
-                    )
-                # elif base_type == "tcn":
-                #     # TCNPredictor not yet implemented
-                #     base_model = TCNPredictor(
-                #         input_size=input_size,
-                #         hidden_size=base_config.get("hidden_size", hidden_size),
-                #         num_layers=base_config.get("num_layers", num_layers),
-                #         dropout=base_config.get("dropout", dropout)
-                #     )
-                base_models.append(base_model)
-            
-            # If no base models specified, create default set
-            if not base_models:
-                base_models = [
-                    StockPredictor(input_size=input_size, hidden_size=hidden_size),
-                    AttentiveLSTM(input_size=input_size, hidden_size=hidden_size),
-                    GRUPredictor(input_size=input_size, hidden_size=hidden_size)
-                ]
-            
-            # Create ensemble model - EnsemblePredictor not yet implemented
-            # For now, just use the first base model as a fallback
-            # model = EnsemblePredictor(
-            #     models=base_models,
-            #     input_size=input_size,
-            #     hidden_size=hidden_size,
-            #     dropout=dropout,
-            #     ensemble_method=model_config.get("ensemble_method", "attention")
-            # )
-            # Fallback to using first base model
-            if base_models:
-                model = base_models[0]
-                logger.warning("EnsemblePredictor not yet implemented, using first base model instead")
-            else:
-                model = StockPredictor(input_size=input_size, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout)
+
+        base_kwargs = {
+            "input_size": model_config.get("input_size", 7),
+            "hidden_size": model_config.get("hidden_size", 128),
+            "num_layers": model_config.get("num_layers", 3),
+            "dropout": model_config.get("dropout", 0.2),
+            "bidirectional": model_config.get("bidirectional", False),
+        }
+
+        if model_type == "ensemble":
+            model = self._create_ensemble_model(model_config, base_kwargs)
         else:
-            raise ValueError(f"Unknown model type: {model_type}")
-        
+            model = self._create_single_model(model_type, model_config, base_kwargs)
+
         # Load pre-trained weights if specified
         pretrained_path = model_config.get("pretrained_path")
         if pretrained_path:
-            try:
-                model.load_state_dict(torch.load(pretrained_path, map_location=self.device))
-                logger.info(f"Loaded pre-trained weights from {pretrained_path}")
-            except Exception as e:
-                logger.warning(f"Failed to load pre-trained weights: {e}")
-        
+            self._load_pretrained_weights(model, pretrained_path)
+
         return model
+
+    def _create_single_model(
+        self,
+        model_type: str,
+        model_config: Dict[str, Any],
+        base_kwargs: Dict[str, Any]
+    ) -> nn.Module:
+        builders = {
+            "lstm": lambda: StockPredictor(**base_kwargs),
+            "attention_lstm": lambda: AttentiveLSTM(
+                **base_kwargs,
+                num_heads=model_config.get("num_heads", 4),
+                use_flash_attention=model_config.get("use_flash_attention", True)
+            ),
+            "gru": lambda: GRUPredictor(**base_kwargs),
+            "transformer": lambda: TransformerPredictor(
+                **base_kwargs,
+                num_heads=model_config.get("num_heads", 8),
+                use_flash_attention=model_config.get("use_flash_attention", True),
+                positional_encoding=model_config.get("positional_encoding", "learned")
+            ),
+        }
+
+        try:
+            return builders[model_type]()
+        except KeyError as e:
+            raise ValueError(f"Unknown model type: {model_type}") from e
+
+    def _create_ensemble_model(
+        self,
+        model_config: Dict[str, Any],
+        base_kwargs: Dict[str, Any]
+    ) -> nn.Module:
+        base_models = []
+        for base_config in model_config.get("base_models", []):
+            base_type = base_config.get("type", "lstm")
+
+            per_model_kwargs = dict(base_kwargs)
+            for k in ("input_size", "hidden_size", "num_layers", "dropout", "bidirectional"):
+                if k in base_config:
+                    per_model_kwargs[k] = base_config[k]
+
+            base_models.append(self._create_single_model(base_type, base_config, per_model_kwargs))
+
+        # If no base models specified, create default set
+        if not base_models:
+            base_models = [
+                self._create_single_model("lstm", {}, base_kwargs),
+                self._create_single_model("attention_lstm", {}, base_kwargs),
+                self._create_single_model("gru", {}, base_kwargs),
+            ]
+
+        # EnsemblePredictor not yet implemented; fallback to first base model
+        if base_models:
+            logger.warning("EnsemblePredictor not yet implemented, using first base model instead")
+            return base_models[0]
+
+        return StockPredictor(**base_kwargs)
+
+    def _load_pretrained_weights(self, model: nn.Module, pretrained_path: str) -> None:
+        try:
+            checkpoint = torch.load(pretrained_path, map_location=self.device)
+            state_dict = checkpoint.get("model_state_dict", checkpoint) if isinstance(checkpoint, dict) else checkpoint
+            model.load_state_dict(state_dict)
+            logger.info(f"Loaded pre-trained weights from {pretrained_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load pre-trained weights: {e}")
     
     def _create_optimizer(self) -> torch.optim.Optimizer:
         """
@@ -255,8 +206,11 @@ class EnhancedMLEngine:
         """
         optimizer_config = self.config.get("optimizer", {})
         optimizer_type = optimizer_config.get("type", "adam")
-        lr = optimizer_config.get("learning_rate", 0.001)
+        lr = float(optimizer_config.get("learning_rate", 0.001))
         weight_decay = optimizer_config.get("weight_decay", 0.0)
+
+        # Keep a stable reference for LR warmup regardless of how config is structured
+        self.base_lr = lr
         
         # Create optimizer based on type
         if optimizer_type.lower() == "adam":
@@ -452,22 +406,164 @@ class EnhancedMLEngine:
         Returns:
             Loss function module
         """
-        loss_type = self.config.get("loss_type", "mse")
-        
+        loss_type = str(self.config.get("loss_type", "mse") or "mse").lower()
+
         if loss_type == "mse":
             return nn.MSELoss()
-        elif loss_type == "mae":
+        if loss_type == "mae":
             return nn.L1Loss()
-        elif loss_type == "huber":
+        if loss_type == "huber":
             # Huber loss is more robust to outliers (PyTorch best practice)
             delta = self.config.get("huber_delta", 1.0)
             return nn.HuberLoss(delta=delta)
-        elif loss_type == "smooth_l1":
+        if loss_type == "smooth_l1":
             return nn.SmoothL1Loss()
+        logger.warning(f"Unknown loss type: {loss_type}, using MSE")
+        return nn.MSELoss()
+
+    def _ensure_float_tensor(self, x: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
+        if isinstance(x, np.ndarray):
+            return torch.tensor(x, dtype=torch.float32)
+        return x
+
+    def _match_target_shape(self, targets: torch.Tensor, outputs: torch.Tensor) -> torch.Tensor:
+        if targets.dim() == 1:
+            targets = targets.unsqueeze(1)
+
+        if targets.shape != outputs.shape:
+            if targets.numel() == outputs.numel():
+                targets = targets.view_as(outputs)
+            else:
+                raise ValueError(f"Target shape {targets.shape} does not match output shape {outputs.shape}")
+
+        return targets
+
+    def _build_train_val_loaders(
+        self,
+        train_features: Union[np.ndarray, torch.Tensor],
+        train_targets: Union[np.ndarray, torch.Tensor],
+        val_features: Optional[Union[np.ndarray, torch.Tensor]],
+        val_targets: Optional[Union[np.ndarray, torch.Tensor]],
+    ) -> Tuple[DataLoader, Optional[DataLoader]]:
+        if val_features is None or val_targets is None:
+            return self._prepare_data(
+                train_features,
+                train_targets,
+                validation_split=self.config.get("validation_split", 0.2),
+            )
+
+        train_loader = self._prepare_data(train_features, train_targets, validation_split=0.0)[0]
+
+        val_features = self._ensure_float_tensor(val_features)
+        val_targets = self._ensure_float_tensor(val_targets)
+        if isinstance(val_targets, torch.Tensor) and val_targets.dim() == 1:
+            val_targets = val_targets.unsqueeze(1)
+
+        val_dataset = TensorDataset(val_features, val_targets)
+        val_loader = create_optimized_dataloader(
+            val_dataset,
+            batch_size=self.batch_size * 2,
+            shuffle=False,
+            num_workers=self.config.get("num_workers"),
+            pin_memory=self.config.get("pin_memory"),
+            device=self.device,
+        )
+        return train_loader, val_loader
+
+    def _should_step_optimizer(self, batch_idx: int) -> bool:
+        return (batch_idx + 1) % self.accumulation_steps == 0
+
+    def _backward(self, loss: torch.Tensor) -> None:
+        if self.mixed_precision:
+            self.scaler.scale(loss).backward()
         else:
-            logger.warning(f"Unknown loss type {loss_type}, defaulting to MSE")
-            return nn.MSELoss()
-    
+            loss.backward()
+
+    def _optimizer_step(self) -> None:
+        if self.mixed_precision:
+            self.scaler.unscale_(self.optimizer)
+
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad_norm)
+
+        if self.mixed_precision:
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            self.optimizer.step()
+
+        self.optimizer.zero_grad(set_to_none=True)
+
+    def _apply_lr_warmup(self, global_step: int, warmup_steps: int) -> None:
+        if warmup_steps <= 0 or global_step >= warmup_steps:
+            return
+
+        lr_scale = min(1.0, float(global_step + 1) / warmup_steps)
+        base_lr = float(getattr(self, "base_lr", self.optimizer.param_groups[0]["lr"]))
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = base_lr * lr_scale
+
+    def _train_one_epoch(
+        self,
+        epoch: int,
+        train_loader: DataLoader,
+        criterion: nn.Module,
+        warmup_steps: int,
+    ) -> float:
+        self.model.train()
+        self.optimizer.zero_grad(set_to_none=True)
+
+        epoch_loss = 0.0
+        steps = 0
+
+        for batch_idx, (batch_features, batch_targets) in enumerate(train_loader):
+            batch_features = batch_features.to(self.device)
+            batch_targets = batch_targets.to(self.device)
+
+            with mixed_precision_context(self.mixed_precision):
+                outputs = self.model(batch_features)
+                batch_targets = self._match_target_shape(batch_targets, outputs)
+                loss = criterion(outputs, batch_targets) / self.accumulation_steps
+
+            self._backward(loss)
+
+            if self._should_step_optimizer(batch_idx):
+                self._optimizer_step()
+                global_step = epoch * len(train_loader) + batch_idx
+                self._apply_lr_warmup(global_step, warmup_steps)
+
+            epoch_loss += loss.item() * self.accumulation_steps
+            steps += 1
+
+        return epoch_loss / max(steps, 1)
+
+    def _validate_one_epoch(self, val_loader: DataLoader, criterion: nn.Module) -> float:
+        self.model.eval()
+        epoch_loss = 0.0
+        steps = 0
+
+        with torch.no_grad():
+            for batch_features, batch_targets in val_loader:
+                batch_features = batch_features.to(self.device)
+                batch_targets = batch_targets.to(self.device)
+
+                outputs = self.model(batch_features)
+                batch_targets = self._match_target_shape(batch_targets, outputs)
+
+                loss = criterion(outputs, batch_targets)
+                epoch_loss += loss.item()
+                steps += 1
+
+        return epoch_loss / max(steps, 1)
+
+    def _step_scheduler(self, val_loss: float) -> None:
+        if self.scheduler is None:
+            return
+
+        if isinstance(self.scheduler, ReduceLROnPlateau):
+            self.scheduler.step(val_loss)
+        else:
+            self.scheduler.step()
+
     def train(
         self,
         train_features: Union[np.ndarray, torch.Tensor],
@@ -496,179 +592,60 @@ class EnhancedMLEngine:
         Returns:
             Dictionary with training history
         """
-        # Initialize weights using proper initialization
         self.model.apply(self._init_weights)
-        
-        # Get number of epochs
+
         num_epochs = epochs if epochs is not None else self.config.get("epochs", 100)
-        
-        # Prepare data loaders
-        if val_features is not None and val_targets is not None:
-            # Convert validation data to tensors
-            if isinstance(val_features, np.ndarray):
-                val_features = torch.tensor(val_features, dtype=torch.float32)
-            if isinstance(val_targets, np.ndarray):
-                val_targets = torch.tensor(val_targets, dtype=torch.float32)
-            
-            train_loader = self._prepare_data(train_features, train_targets, validation_split=0.0)[0]
-            val_dataset = TensorDataset(val_features, val_targets)
-            val_loader = create_optimized_dataloader(
-                val_dataset,
-                batch_size=self.batch_size * 2,
-                shuffle=False,
-                num_workers=self.config.get("num_workers"),
-                pin_memory=self.config.get("pin_memory"),
-                device=self.device
-            )
-        else:
-            train_loader, val_loader = self._prepare_data(
-                train_features, 
-                train_targets,
-                validation_split=self.config.get("validation_split", 0.2)
-            )
-        
-        # Get loss function
+        train_loader, val_loader = self._build_train_val_loaders(
+            train_features, train_targets, val_features, val_targets
+        )
+
         criterion = self._get_loss_function()
-        
-        # Learning rate warmup setup (PyTorch best practice for transformers)
-        warmup_steps = self.config.get("warmup_steps", 1000)
-        
-        # Training loop
-        best_val_loss = float('inf')
+        warmup_steps = int(self.config.get("warmup_steps", 1000) or 0)
+
+        best_val_loss = float("inf")
         epochs_without_improvement = 0
-        train_losses = []
-        val_losses = []
-        
+        train_losses: List[float] = []
+        val_losses: List[float] = []
+
         logger.info(f"Starting training for {num_epochs} epochs")
         logger.info(f"Using {criterion.__class__.__name__} loss function")
         logger.info(f"Mixed precision: {self.mixed_precision}, Gradient clipping: {self.clip_grad_norm}")
-        
+
         for epoch in range(num_epochs):
-            # Training phase
-            self.model.train()
-            epoch_train_loss = 0.0
-            train_steps = 0
-            
-            for batch_idx, (batch_features, batch_targets) in enumerate(train_loader):
-                # Move to device
-                batch_features = batch_features.to(self.device)
-                batch_targets = batch_targets.to(self.device)
-                
-                # Mixed precision training context
-                with mixed_precision_context(self.mixed_precision):
-                    # Forward pass
-                    outputs = self.model(batch_features)
-                    
-                    # Ensure shapes match
-                    if outputs.shape != batch_targets.shape:
-                        if len(batch_targets.shape) == 1:
-                            batch_targets = batch_targets.unsqueeze(1)
-                    
-                    loss = criterion(outputs, batch_targets)
-                    
-                    # Scale loss for gradient accumulation
-                    loss = loss / self.accumulation_steps
-                
-                # Backward pass with gradient scaling for mixed precision
-                if self.mixed_precision:
-                    self.scaler.scale(loss).backward()
-                else:
-                    loss.backward()
-                
-                # Gradient accumulation
-                if (batch_idx + 1) % self.accumulation_steps == 0:
-                    # Gradient clipping (PyTorch best practice)
-                    if self.mixed_precision:
-                        self.scaler.unscale_(self.optimizer)
-                    
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), 
-                        self.clip_grad_norm
-                    )
-                    
-                    # Optimizer step
-                    if self.mixed_precision:
-                        self.scaler.step(self.optimizer)
-                        self.scaler.update()
-                    else:
-                        self.optimizer.step()
-                    
-                    self.optimizer.zero_grad()
-                    
-                    # Learning rate warmup (PyTorch best practice)
-                    global_step = epoch * len(train_loader) + batch_idx
-                    if global_step < warmup_steps:
-                        lr_scale = min(1.0, float(global_step + 1) / warmup_steps)
-                        for param_group in self.optimizer.param_groups:
-                            param_group['lr'] = self.config.get("learning_rate", 0.001) * lr_scale
-                
-                epoch_train_loss += loss.item() * self.accumulation_steps
-                train_steps += 1
-            
-            avg_train_loss = epoch_train_loss / train_steps
+            avg_train_loss = self._train_one_epoch(epoch, train_loader, criterion, warmup_steps)
             train_losses.append(avg_train_loss)
-            
-            # Validation phase
-            if val_loader is not None:
-                self.model.eval()
-                epoch_val_loss = 0.0
-                val_steps = 0
-                
-                with torch.no_grad():
-                    for batch_features, batch_targets in val_loader:
-                        batch_features = batch_features.to(self.device)
-                        batch_targets = batch_targets.to(self.device)
-                        
-                        outputs = self.model(batch_features)
-                        
-                        # Ensure shapes match
-                        if outputs.shape != batch_targets.shape:
-                            if len(batch_targets.shape) == 1:
-                                batch_targets = batch_targets.unsqueeze(1)
-                        
-                        loss = criterion(outputs, batch_targets)
-                        epoch_val_loss += loss.item()
-                        val_steps += 1
-                
-                avg_val_loss = epoch_val_loss / val_steps
-                val_losses.append(avg_val_loss)
-                
-                # Learning rate scheduling
-                if self.scheduler is not None:
-                    if isinstance(self.scheduler, ReduceLROnPlateau):
-                        self.scheduler.step(avg_val_loss)
-                    else:
-                        self.scheduler.step()
-                
-                # Early stopping
-                if avg_val_loss < best_val_loss:
-                    best_val_loss = avg_val_loss
-                    epochs_without_improvement = 0
-                    
-                    # Save best model (PyTorch best practice)
-                    self.save_model("best_model.pth")
-                else:
-                    epochs_without_improvement += 1
-                
-                logger.info(
-                    f"Epoch {epoch+1}/{num_epochs} - "
-                    f"Train Loss: {avg_train_loss:.6f}, "
-                    f"Val Loss: {avg_val_loss:.6f}, "
-                    f"LR: {self.optimizer.param_groups[0]['lr']:.6f}"
-                )
-                
-                # Early stopping check
-                if epochs_without_improvement >= self.early_stopping_patience:
-                    logger.info(f"Early stopping triggered after {epoch+1} epochs")
-                    break
-            else:
+
+            if val_loader is None:
                 logger.info(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}")
-        
-        # Store losses for analysis
+                continue
+
+            avg_val_loss = self._validate_one_epoch(val_loader, criterion)
+            val_losses.append(avg_val_loss)
+
+            self._step_scheduler(avg_val_loss)
+
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                epochs_without_improvement = 0
+                self.save_model("best_model.pth")
+            else:
+                epochs_without_improvement += 1
+
+            logger.info(
+                f"Epoch {epoch+1}/{num_epochs} - "
+                f"Train Loss: {avg_train_loss:.6f}, "
+                f"Val Loss: {avg_val_loss:.6f}, "
+                f"LR: {self.optimizer.param_groups[0]['lr']:.6f}"
+            )
+
+            if epochs_without_improvement >= self.early_stopping_patience:
+                logger.info(f"Early stopping triggered after {epoch+1} epochs")
+                break
+
         self.train_losses = train_losses
         self.val_losses = val_losses
         self.best_val_loss = best_val_loss
-        
+
         return {
             "train_losses": train_losses,
             "val_losses": val_losses,

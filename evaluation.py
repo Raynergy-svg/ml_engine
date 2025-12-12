@@ -43,8 +43,8 @@ def predict_with_uncertainty(
     
     with torch.no_grad():
         for _ in range(n_iterations):
-            X_batch = X.to(device)
-            pred = model(X_batch).cpu().numpy()
+            x_batch = X.to(device)
+            pred = model(x_batch).cpu().numpy()
             predictions.append(pred)
     
     predictions = np.array(predictions)
@@ -248,7 +248,7 @@ class ModelEvaluator:
         save_path: Optional[str] = None,
     ) -> None:
         """Plot predictions against actual values."""
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        _, axes = plt.subplots(2, 2, figsize=(15, 10))
 
         # Time series plot
         axes[0, 0].plot(y_true, label="Actual", alpha=0.7)
@@ -406,54 +406,66 @@ class Backtester:
 
     def calculate_performance_metrics(self) -> Dict[str, float]:
         """Calculate comprehensive performance metrics."""
-        if len(self.portfolio_values) == 0:
+        if not self.portfolio_values:
             return {}
 
-        portfolio_values = np.array(self.portfolio_values)
-        returns = np.diff(portfolio_values) / portfolio_values[:-1]
+        portfolio_values = np.asarray(self.portfolio_values, dtype=float)
+        returns = (
+            np.diff(portfolio_values) / portfolio_values[:-1]
+            if len(portfolio_values) > 1
+            else np.array([])
+        )
 
-        metrics = {}
+        metrics: Dict[str, float] = {}
+        metrics.update(self._calculate_return_metrics(portfolio_values))
+        metrics.update(self._calculate_risk_metrics(returns))
+        metrics.update(self._calculate_trade_metrics())
 
-        # Return metrics
-        total_return = (
+        return metrics
+
+    def _calculate_return_metrics(self, portfolio_values: np.ndarray) -> Dict[str, float]:
+        total_return_pct = (
             (portfolio_values[-1] - self.initial_capital) / self.initial_capital * 100
         )
-        metrics["total_return_pct"] = total_return
-        metrics["final_value"] = portfolio_values[-1]
+        return {
+            "total_return_pct": total_return_pct,
+            "final_value": float(portfolio_values[-1]),
+        }
 
-        # Risk metrics
-        if len(returns) > 0:
-            metrics["volatility"] = np.std(returns) * np.sqrt(252) * 100  # Annualized
-            metrics["sharpe_ratio"] = (
-                (np.mean(returns) / np.std(returns)) * np.sqrt(252)
-                if np.std(returns) > 0
-                else 0
-            )
+    def _calculate_risk_metrics(self, returns: np.ndarray) -> Dict[str, float]:
+        if returns.size == 0:
+            return {}
 
-            # Maximum drawdown
-            cumulative = (1 + returns).cumprod()
-            running_max = np.maximum.accumulate(cumulative)
-            drawdown = (cumulative - running_max) / running_max
-            metrics["max_drawdown_pct"] = np.min(drawdown) * 100
+        std = float(np.std(returns))
+        volatility = std * np.sqrt(252) * 100  # Annualized
+        sharpe_ratio = (float(np.mean(returns)) / std) * np.sqrt(252) if std > 0 else 0
 
-        # Trade metrics
-        metrics["num_trades"] = len(self.trades)
+        cumulative = (1 + returns).cumprod()
+        running_max = np.maximum.accumulate(cumulative)
+        drawdown = (cumulative - running_max) / running_max
+        max_drawdown_pct = float(np.min(drawdown)) * 100
 
-        if len(self.trades) > 1:
-            # Win rate
-            profitable_trades = 0
-            for i in range(0, len(self.trades), 2):
-                if i + 1 < len(self.trades):
-                    buy_trade = self.trades[i]
-                    sell_trade = self.trades[i + 1]
-                    if sell_trade["revenue"] > buy_trade["cost"]:
-                        profitable_trades += 1
+        return {
+            "volatility": float(volatility),
+            "sharpe_ratio": float(sharpe_ratio),
+            "max_drawdown_pct": float(max_drawdown_pct),
+        }
 
-            metrics["win_rate_pct"] = (
-                (profitable_trades / (len(self.trades) // 2)) * 100
-                if len(self.trades) > 0
-                else 0
-            )
+    def _calculate_trade_metrics(self) -> Dict[str, float]:
+        metrics: Dict[str, float] = {"num_trades": len(self.trades)}
+
+        if len(self.trades) <= 1:
+            return metrics
+
+        profitable_trades = sum(
+            1
+            for i in range(0, len(self.trades) - 1, 2)
+            if self.trades[i + 1]["revenue"] > self.trades[i]["cost"]
+        )
+        num_round_trips = len(self.trades) // 2
+        metrics["win_rate_pct"] = (
+            (profitable_trades / num_round_trips) * 100 if num_round_trips > 0 else 0
+        )
 
         return metrics
 
@@ -464,7 +476,7 @@ class Backtester:
         save_path: Optional[str] = None,
     ) -> None:
         """Plot backtest results."""
-        fig, axes = plt.subplots(2, 1, figsize=(15, 10))
+        _, axes = plt.subplots(2, 1, figsize=(15, 10))
 
         x_axis = timestamps if timestamps is not None else range(len(prices))
 

@@ -1,8 +1,12 @@
-from typing import Tuple, Dict, Union
+from typing import Tuple, Dict, Any, TYPE_CHECKING
 import torch
 import torch.nn as nn
 from enum import Enum
-import vaex  # Added for optimized, memory-efficient computations (Vaex)
+
+if TYPE_CHECKING:
+    import vaex  # type: ignore[import-not-found]
+else:
+    vaex = None  # type: ignore[assignment]
 
 
 class ActivationType(Enum):
@@ -29,7 +33,7 @@ class MREngine(nn.Module):
         dropout: float = 0.2,
         explanation_dim: int = 3,
         risk_dim: int = 1,
-        activation: Union[str, ActivationType] = ActivationType.RELU,
+        activation: str | ActivationType = ActivationType.RELU,
         num_attention_heads: int = 1,  # New parameter for multi-head attention
     ):
         """
@@ -47,10 +51,16 @@ class MREngine(nn.Module):
         """
         super().__init__()
         self._validate_inputs(
-            input_size, hidden_size, num_layers, dropout, num_attention_heads
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+            num_attention_heads=num_attention_heads,
         )
+
         self.activation = self._get_activation(activation)
         self.num_attention_heads = num_attention_heads
+        self.dropout = nn.Dropout(dropout)
 
         # LSTM backbone to process sequential data
         self.lstm = nn.LSTM(
@@ -91,7 +101,7 @@ class MREngine(nn.Module):
         if num_attention_heads < 1:
             raise ValueError("num_attention_heads must be at least 1")
 
-    def _get_activation(self, activation: Union[str, ActivationType]) -> nn.Module:
+    def _get_activation(self, activation: str | ActivationType) -> nn.Module:
         if isinstance(activation, str):
             try:
                 activation = ActivationType(activation.lower())
@@ -208,25 +218,19 @@ class MREngine(nn.Module):
         model.explanation_labels = checkpoint["explanation_labels"]
         return model
 
-    def summary(self) -> None:
-        """
-        Print a summary of the model: layers, output shapes, and total trainable parameters.
-        """
-        print("MREngine Model Summary:")
-        print("-----------------------")
-        print(self)
-        total_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        print(f"Total trainable parameters: {total_params}")
-
-    def load_data_with_vaex(self, file_path: str) -> vaex.dataframe.DataFrame:
+    def load_data_with_vaex(self, file_path: str) -> Any:
         """
         Load large CSV data into a Vaex DataFrame.
         """
+        if vaex is None:
+            raise ImportError(
+                "vaex is not installed; install it (e.g., `pip install vaex`) or avoid calling load_data_with_vaex()."
+            )
         try:
             df = vaex.from_csv(file_path, convert=True)
             return df
         except Exception as e:
-            raise RuntimeError(f"Failed to load dataset with Vaex: {e}")
+            raise RuntimeError(f"Failed to load dataset with Vaex: {e}") from e
 
 
 # Example usage:
@@ -246,6 +250,11 @@ if __name__ == "__main__":
         "Attention weights shape:", attn_weights.shape
     )  # Expected: (16, 50, num_attention_heads) if multi-head
     model.summary()
+
+    print(
+        "Attention weights shape:", attn_weights.shape
+    )  # Expected: (16, 50, num_attention_heads) if multi-head
+    print(model)
 
     # Demonstrate interpretation of explanation vector.
     interpretation = model.get_interpretation(explanation)
