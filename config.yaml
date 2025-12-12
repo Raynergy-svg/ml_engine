@@ -193,6 +193,10 @@ use_wandb_logging: true
 text:
   enabled: true
   text_column: text
+  use_hash_ngrams: false
+  hash_ngram_dim: 64
+  hash_ngram_min: 1
+  hash_ngram_max: 2
   rolling_windows:
     - 3
     - 7

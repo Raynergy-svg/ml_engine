@@ -218,3 +218,52 @@ ValueError: num_samples should be a positive integer value, but got num_samples=
 2025-12-12 09:25:53 - root - INFO - [train_enhanced.py:670] - num_trades: 14.00
 2025-12-12 09:25:53 - root - INFO - [train_enhanced.py:670] - win_rate_pct: 0.00
 2025-12-12 09:25:53 - root - INFO - [train_enhanced.py:672] - All done!
+2025-12-12 09:33:08 - utils - INFO - [utils.py:175] - Successfully loaded configuration from config.yaml
+2025-12-12 09:33:08 - root - INFO - [train_enhanced.py:72] - Using device: cpu
+2025-12-12 09:33:08 - root - INFO - [train_enhanced.py:623] - Loading data from market_data/RIOT_data.csv
+2025-12-12 09:33:08 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/RIOT_data.csv
+2025-12-12 09:33:08 - data_loader - INFO - [data_loader.py:50] - Loaded 2229 rows from market_data/RIOT_data.csv
+2025-12-12 09:33:08 - root - INFO - [train_enhanced.py:627] - Loading and merging text data: demo/sample_text.csv
+2025-12-12 09:33:08 - data_loader - INFO - [data_loader.py:103] - Loading text data from demo/sample_text.csv
+2025-12-12 09:33:08 - root - INFO - [train_enhanced.py:641] - Preprocessing data...
+2025-12-12 09:33:08 - data_loader - INFO - [data_loader.py:245] - Starting data preprocessing...
+2025-12-12 09:33:08 - feature_engineering - INFO - [feature_engineering.py:381] - Starting feature engineering...
+2025-12-12 09:33:08 - feature_engineering - INFO - [feature_engineering.py:406] - Feature engineering complete: (2229, 26) -> (2229, 149)
+2025-12-12 09:33:08 - feature_engineering - INFO - [feature_engineering.py:411] - Added 123 new features
+2025-12-12 09:33:08 - data_loader - INFO - [data_loader.py:273] - Features shape: (2229, 146), Target shape: (2229,)
+2025-12-12 09:33:08 - data_loader - INFO - [data_loader.py:290] - Created sequences: X=(2169, 60, 146), y=(2169,)
+2025-12-12 09:33:08 - data_loader - INFO - [data_loader.py:317] - Train: (1518, 60, 146), Val: (217, 60, 146), Test: (434, 60, 146)
+2025-12-12 09:33:08 - data_loader - INFO - [data_loader.py:348] - Scaler saved to trained_data/models/scaler.pkl
+2025-12-12 09:33:08 - root - INFO - [train_enhanced.py:334] - Starting training...
+2025-12-12 09:33:09 - root - INFO - [train_enhanced.py:382] - Using AdamW optimizer with lr=0.0005, weight_decay=0.0
+2025-12-12 09:33:09 - root - INFO - [train_enhanced.py:392] - Using CosineAnnealingWarmRestarts scheduler with warmup_steps=1000
+2025-12-12 09:33:09 - root - INFO - [train_enhanced.py:431] - Using Huber loss with delta=1.0
+2025-12-12 09:33:09 - root - INFO - [train_enhanced.py:443] - Applied label smoothing with smoothing=0.05
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:487] - Epoch 0/1 - Train Loss: 4.758388, Val Loss: 3.818818, Val RMSE: 4.683268, Val R2: -3.338389
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:512] - Saved best model with val_loss: 3.818818
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:521] - Training complete!
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:522] - Best validation loss: 3.818818
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:528] - Evaluating on test set...
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:235] - ==================================================
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:236] - Model Evaluation Metrics
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:237] - ==================================================
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:240] - test_mse................................ 49.654915
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:240] - test_rmse............................... 7.046624
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:240] - test_mae................................ 6.143167
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:240] - test_r2................................. -5.726515
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:240] - test_mape............................... 56.738472
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:240] - test_max_error.......................... 15.796546
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:240] - test_median_error....................... 6.037307
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:240] - test_direction_accuracy................. 48.267898
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:242] - ==================================================
+2025-12-12 09:33:16 - evaluation - INFO - [evaluation.py:295] - Plot saved to trained_data/visualizations/test_predictions.png
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:663] - Running backtest...
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:668] - Backtest Results:
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:670] - total_return_pct: -40.55
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:670] - final_value: 5945.44
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:670] - volatility: 69.10
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:670] - sharpe_ratio: -0.09
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:670] - max_drawdown_pct: -74.03
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:670] - num_trades: 18.00
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:670] - win_rate_pct: 33.33
+2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:672] - All done!

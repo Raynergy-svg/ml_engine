@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 import joblib
 
 from feature_engineering import FeatureEngineering
-from text_features import text_feature_summary
+from text_features import hashed_ngram_features, text_feature_summary
 
 logger = logging.getLogger(__name__)
 
@@ -126,18 +126,39 @@ class DataLoader:
         normalized_dates = df_text[date_col].dt.normalize()
         grouped = df_text.groupby(normalized_dates)[text_col].apply(list)
 
+        text_cfg = (self.config or {}).get("text", {})
+        use_hash = bool(text_cfg.get("use_hash_ngrams", False))
+        hash_dim = int(text_cfg.get("hash_ngram_dim", 64))
+        ngram_min = int(text_cfg.get("hash_ngram_min", 1))
+        ngram_max = int(text_cfg.get("hash_ngram_max", 2))
+
         rows = []
         for day, texts in grouped.items():
             summary = text_feature_summary(texts)
-            rows.append(
-                {
-                    "date": day,
-                    "text_sentiment": summary.sentiment,
-                    "text_token_count": summary.token_count,
-                    "text_char_count": summary.char_count,
-                    "text_count": int(len(texts)),
-                }
-            )
+            row = {
+                "date": day,
+                "text_sentiment": summary.sentiment,
+                "text_sentiment_std": summary.sentiment_std,
+                "text_sentiment_min": summary.sentiment_min,
+                "text_sentiment_max": summary.sentiment_max,
+                "text_sentiment_abs_mean": summary.sentiment_abs_mean,
+                "text_sentiment_nonzero_frac": summary.sentiment_nonzero_frac,
+                "text_token_count": summary.token_count,
+                "text_char_count": summary.char_count,
+                "text_count": int(len(texts)),
+            }
+
+            if use_hash:
+                vec = hashed_ngram_features(
+                    texts,
+                    dim=hash_dim,
+                    min_n=ngram_min,
+                    max_n=ngram_max,
+                )
+                for i, value in enumerate(vec):
+                    row[f"text_hash_{i}"] = float(value)
+
+            rows.append(row)
 
         features_df = pd.DataFrame(rows).set_index("date").sort_index()
         return features_df
@@ -172,14 +193,24 @@ class DataLoader:
         merged = df.join(text_df, how=how)
 
         # Fill missing text features with 0 (no text signal available)
-        for col in [
+        base_cols = [
             "text_sentiment",
+            "text_sentiment_std",
+            "text_sentiment_min",
+            "text_sentiment_max",
+            "text_sentiment_abs_mean",
+            "text_sentiment_nonzero_frac",
             "text_token_count",
             "text_char_count",
             "text_count",
-        ]:
+        ]
+        for col in base_cols:
             if col in merged.columns:
                 merged[col] = merged[col].fillna(0)
+
+        hash_cols = [c for c in merged.columns if c.startswith("text_hash_")]
+        for col in hash_cols:
+            merged[col] = merged[col].fillna(0)
 
         return merged
 

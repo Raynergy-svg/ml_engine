@@ -322,6 +322,18 @@ class FeatureEngineering:
             )
         return df
 
+    def _add_text_ewm(
+        self, df: pd.DataFrame, spans: List[int]
+    ) -> pd.DataFrame:
+        for span in spans:
+            if span <= 1:
+                continue
+            df[f"text_sentiment_ewm_{span}"] = df["text_sentiment"].ewm(
+                span=span,
+                adjust=False,
+            ).mean()
+        return df
+
     def add_text_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add text-derived numeric features when enabled in config."""
         text_cfg = (self.config or {}).get("text", {})
@@ -333,6 +345,14 @@ class FeatureEngineering:
         df = self._ensure_text_sentiment(df, text_col)
         if "text_sentiment" not in df.columns:
             return df
+
+        if "text_count" in df.columns:
+            df["text_has_news"] = (df["text_count"] > 0).astype(int)
+
+        if "text_count" in df.columns:
+            df["text_sentiment_x_count"] = df["text_sentiment"] * df[
+                "text_count"
+            ]
 
         rolling_windows = self._parse_int_list(
             text_cfg.get("rolling_windows"),
@@ -347,6 +367,7 @@ class FeatureEngineering:
 
         if rolling_windows:
             df = self._add_text_rolling(df, rolling_windows)
+            df = self._add_text_ewm(df, rolling_windows)
         if lags:
             df = self._add_text_lags(df, lags)
 
@@ -376,7 +397,7 @@ class FeatureEngineering:
         df = df.replace([np.inf, -np.inf], np.nan)
 
         # Forward fill then backward fill NaN values
-        df = df.fillna(method="ffill").fillna(method="bfill")
+        df = df.ffill().bfill()
 
         # If still NaN, fill with 0
         df = df.fillna(0)

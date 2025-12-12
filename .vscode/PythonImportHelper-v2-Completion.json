@@ -2912,6 +2912,14 @@
         "documentation": {}
     },
     {
+        "label": "hashed_ngram_features",
+        "importPath": "text_features",
+        "description": "text_features",
+        "isExtraImport": true,
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
         "label": "text_feature_summary",
         "importPath": "text_features",
         "description": "text_features",
@@ -5953,7 +5961,7 @@
         "kind": 6,
         "importPath": "text_features",
         "description": "text_features",
-        "peekOfCode": "class TextFeatureResult:\n    sentiment: float\n    token_count: int\n    char_count: int\ndef _tokenize(text: str) -> list[str]:\n    return [m.group(0).lower() for m in _WORD_RE.finditer(text or \"\")]\ndef _token_polarity(token: str) -> int:\n    if token in _POSITIVE:\n        return 1\n    if token in _NEGATIVE:",
+        "peekOfCode": "class TextFeatureResult:\n    sentiment: float\n    sentiment_std: float\n    sentiment_min: float\n    sentiment_max: float\n    sentiment_abs_mean: float\n    sentiment_nonzero_frac: float\n    token_count: int\n    char_count: int\ndef _stable_hash_to_bucket(text: str, dim: int) -> int:",
         "detail": "text_features",
         "documentation": {}
     },
@@ -5971,7 +5979,16 @@
         "kind": 2,
         "importPath": "text_features",
         "description": "text_features",
-        "peekOfCode": "def text_feature_summary(texts: Iterable[str]) -> TextFeatureResult:\n    \"\"\"Aggregate a collection of texts into numeric features.\"\"\"\n    texts_list = list(texts)\n    if not texts_list:\n        return TextFeatureResult(sentiment=0.0, token_count=0, char_count=0)\n    sentiments = [simple_sentiment_score(t) for t in texts_list]\n    joined = \" \".join([t for t in texts_list if t])\n    tokens = _tokenize(joined)\n    # Mean sentiment across rows (already bounded)\n    sentiment = sum(sentiments) / float(len(sentiments)) if sentiments else 0.0",
+        "peekOfCode": "def text_feature_summary(texts: Iterable[str]) -> TextFeatureResult:\n    \"\"\"Aggregate a collection of texts into numeric features.\"\"\"\n    texts_list = list(texts)\n    if not texts_list:\n        return TextFeatureResult(\n            sentiment=0.0,\n            sentiment_std=0.0,\n            sentiment_min=0.0,\n            sentiment_max=0.0,\n            sentiment_abs_mean=0.0,",
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
+        "label": "hashed_ngram_features",
+        "kind": 2,
+        "importPath": "text_features",
+        "description": "text_features",
+        "peekOfCode": "def hashed_ngram_features(\n    texts: Iterable[str],\n    dim: int = 64,\n    min_n: int = 1,\n    max_n: int = 2,\n) -> list[float]:\n    \"\"\"Return a normalized hashed n-gram vector (bag-of-ngrams).\n    Dependency-free alternative to TF-IDF. Output is length `dim` with\n    normalized counts in [0, 1].\n    \"\"\"",
         "detail": "text_features",
         "documentation": {}
     },
@@ -6007,7 +6024,7 @@
         "kind": 5,
         "importPath": "text_features",
         "description": "text_features",
-        "peekOfCode": "_NEGATIONS = {\"not\", \"no\", \"never\", \"without\"}\n@dataclass(frozen=True)\nclass TextFeatureResult:\n    sentiment: float\n    token_count: int\n    char_count: int\ndef _tokenize(text: str) -> list[str]:\n    return [m.group(0).lower() for m in _WORD_RE.finditer(text or \"\")]\ndef _token_polarity(token: str) -> int:\n    if token in _POSITIVE:",
+        "peekOfCode": "_NEGATIONS = {\"not\", \"no\", \"never\", \"without\"}\n@dataclass(frozen=True)\nclass TextFeatureResult:\n    sentiment: float\n    sentiment_std: float\n    sentiment_min: float\n    sentiment_max: float\n    sentiment_abs_mean: float\n    sentiment_nonzero_frac: float\n    token_count: int",
         "detail": "text_features",
         "documentation": {}
     },

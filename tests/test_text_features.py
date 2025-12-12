@@ -67,6 +67,11 @@ class TestTextCsvMerge(unittest.TestCase):
 
         text_df = self.loader.load_text_csv(str(text_csv))
         self.assertIn("text_sentiment", text_df.columns)
+        self.assertIn("text_sentiment_std", text_df.columns)
+        self.assertIn("text_sentiment_min", text_df.columns)
+        self.assertIn("text_sentiment_max", text_df.columns)
+        self.assertIn("text_sentiment_abs_mean", text_df.columns)
+        self.assertIn("text_sentiment_nonzero_frac", text_df.columns)
         self.assertIn("text_count", text_df.columns)
 
         merged = self.loader.merge_text_features(self.market_df, text_df)
@@ -75,6 +80,34 @@ class TestTextCsvMerge(unittest.TestCase):
 
         # Missing days should be 0
         self.assertEqual(float(merged.loc["2024-01-03", "text_count"]), 0.0)
+
+    def test_load_text_csv_with_hash_ngrams(self):
+        self.config["text"]["use_hash_ngrams"] = True
+        self.config["text"]["hash_ngram_dim"] = 8
+        self.config["text"]["hash_ngram_min"] = 1
+        self.config["text"]["hash_ngram_max"] = 2
+        self.loader = MarketDataLoader(self.config)
+
+        text_csv = self.tmp_path / "text.csv"
+        with open(text_csv, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["date", "text"])
+            writer.writeheader()
+            writer.writerow({"date": "2024-01-02", "text": "bullish upgrade"})
+            writer.writerow({"date": "2024-01-05", "text": "misses earnings"})
+
+        text_df = self.loader.load_text_csv(str(text_csv))
+        hash_cols = [c for c in text_df.columns if c.startswith("text_hash_")]
+        self.assertEqual(len(hash_cols), 8)
+
+        merged = self.loader.merge_text_features(self.market_df, text_df)
+        merged_hash_cols = [
+            c for c in merged.columns if c.startswith("text_hash_")
+        ]
+        self.assertEqual(len(merged_hash_cols), 8)
+
+        # Missing days should be 0 for hash columns too
+        for col in merged_hash_cols:
+            self.assertEqual(float(merged.loc["2024-01-03", col]), 0.0)
 
 
 if __name__ == "__main__":
