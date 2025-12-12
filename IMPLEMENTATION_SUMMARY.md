@@ -37,14 +37,14 @@ Successfully implemented comprehensive improvements to the ML engine's predictio
 - ✅ Switched to AdamW optimizer for better regularization
 - ✅ Implemented proper scheduler stepping logic
 
-### 6. Enhanced Data Processing (data_processing_optimized.py)
+### 6. Enhanced Data Processing (data_processing.py)
 - ✅ Integrated RobustScaler for better outlier handling
 - ✅ Added Parkinson's volatility calculation
 - ✅ Added multiple RSI periods (7 and 14)
 - ✅ Added Rate of Change (ROC) indicators
 - ✅ Added multiple volatility measures
 
-### 7. Advanced Data Augmentation (data_processing_optimized.py)
+### 7. Advanced Data Augmentation (data_processing.py)
 - ✅ Implemented mixup augmentation
 - ✅ Added scale perturbation strategy
 - ✅ Kept Gaussian noise injection
@@ -92,7 +92,7 @@ Successfully implemented comprehensive improvements to the ML engine's predictio
    - Enhanced optimizer and schedulers
    - Improved training loop
 
-3. **data_processing_optimized.py** (85 lines changed)
+3. **data_processing.py** (consolidated)
    - Added RobustScaler integration
    - Enhanced technical indicators
    - Improved data augmentation

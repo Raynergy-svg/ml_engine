@@ -29,7 +29,11 @@ from ai_assistant import ai_assistant
 from ml_engine_enhanced import EnhancedMLEngine
 from mr_engine import MREngine
 from neural_network_integrator_enhanced import NeuralNetworkIntegrator
+from neural_engine_unified import UnifiedNeuralEngine
 from reasoning_enhanced import ReasoningEngine
+from unified_multitask_training import train_unified_multitask
+from unified_chat import run_unified_chat
+from unified_talk import run_unified_talk
 from utils import setup_logging, load_config
 
 # Constants
@@ -69,67 +73,31 @@ def _configure_predict_output(verbose: bool) -> None:
 
 
 def _build_integrated_engines(config: Dict[str, Any]) -> NeuralNetworkIntegrator:
-    """Create and wire ML/MT/MR engines into the neural integrator."""
+    """Create and wire the unified neural engine into the integrator."""
     integrator_config = {
         "device": config.get("device", "cpu"),
         "use_attention": False,
         "use_dynamic_weights": True,
     }
     integrator = NeuralNetworkIntegrator(integrator_config)
-
-    ml_engine = EnhancedMLEngine(config)
-
-    class _TorchPredictAdapter:
-        def __init__(self, module: torch.nn.Module, device: str, kind: str):
-            self._module = module.to(device)
-            self._device = device
-            self._kind = kind
-
-        def predict(self, features):
-            if features is None:
-                raise ValueError(f"Missing features for {self._kind}")
-            if not isinstance(features, torch.Tensor):
-                features = torch.tensor(features, dtype=torch.float32)
-            features = features.to(self._device)
-            self._module.eval()
-            with torch.no_grad():
-                out = self._module(features)
-            # Handle multi-output modules
-            if isinstance(out, (tuple, list)):
-                out = out[0]
-            return {"prediction": out.detach().cpu().numpy(), "uncertainty": 0.2}
-
-    def _build_mt_model() -> torch.nn.Module:
-        try:
-            from mt_engine import MultiTaskModel
-
-            return MultiTaskModel(input_size=11)
-        except Exception:
-            class _MTModel(torch.nn.Module):
-                def __init__(self, input_size: int = 11, hidden_size: int = 32):
-                    super().__init__()
-                    self._lstm = torch.nn.LSTM(input_size, hidden_size, batch_first=True)
-                    self._head = torch.nn.Linear(hidden_size, 1)
-
-                def forward(self, x: torch.Tensor) -> torch.Tensor:
-                    out, _ = self._lstm(x)
-                    return self._head(out[:, -1, :])
-
-            return _MTModel(input_size=11)
-
-    mt_model = _build_mt_model()
-    mr_model = MREngine(input_size=11)
-    mt_engine = _TorchPredictAdapter(mt_model, integrator.device, "mt")
-    mr_engine = _TorchPredictAdapter(mr_model, integrator.device, "mr")
-
     reasoning_engine = ReasoningEngine(config.get("reasoning", {}))
 
-    integrator.set_engines(
-        ml_engine=ml_engine,
-        mt_engine=mt_engine,
-        mr_engine=mr_engine,
-        reasoning_engine=reasoning_engine,
+    base_input = int(config.get("model", {}).get("input_size", 7))
+    unified_input = base_input + 11 + 11
+    unified_engine = UnifiedNeuralEngine(
+        {
+            "device": integrator.device,
+            "model": {
+                "input_size": unified_input,
+                "hidden_size": int(config.get("model", {}).get("hidden_size", 64)),
+                "num_layers": int(config.get("model", {}).get("num_layers", 2)),
+                "dropout": float(config.get("model", {}).get("dropout", 0.1)),
+                "bidirectional": bool(config.get("model", {}).get("bidirectional", False)),
+            },
+        }
     )
+
+    integrator.set_unified_engine(unified_engine=unified_engine, reasoning_engine=reasoning_engine)
     return integrator
 
 
@@ -624,7 +592,7 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
         
         # Preprocess the data
         console.print("[bold blue]Preprocessing data...[/bold blue]")
-        X_train, y_train, X_val, y_val, X_test, y_test = data_loader.preprocess(
+        x_train, y_train, x_val, y_val, _, _ = data_loader.preprocess(
             df,
             add_features=True,
             scaler_type="standard",
@@ -632,10 +600,10 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
             test_size=0.2,
         )
         
-        console.print(f"[bold green]Data prepared: {len(X_train)} training samples, {len(X_val)} validation samples[/bold green]")
+        console.print(f"[bold green]Data prepared: {len(x_train)} training samples, {len(x_val)} validation samples[/bold green]")
         
         # Update config with correct input size based on actual features
-        input_size = X_train.shape[-1]  # Get feature dimension
+        input_size = x_train.shape[-1]  # Get feature dimension
         if "model" not in config:
             config["model"] = {}
         config["model"]["input_size"] = input_size
@@ -649,7 +617,7 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
         
         # Train the model and get results
         console.print("[bold green]Starting training...[/bold green]")
-        result = engine.train(X_train, y_train, X_val, y_val, epochs=epochs)
+        result = engine.train(x_train, y_train, x_val, y_val, epochs=epochs)
         
         console.print("[bold green]Training completed successfully![/bold green]")
         console.print(f"[cyan]Total epochs trained: {result.get('total_epochs', epochs)}[/cyan]")
@@ -850,6 +818,39 @@ def run_ai_assistant(config_path: str) -> None:
     )
 
 
+def train_unified(config_path: str, csv_path: str | None = None) -> None:
+    """Train the unified multi-head model and print head-health insights."""
+    result = train_unified_multitask(config_path, csv_path=csv_path)
+    console.print(
+        f"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}"
+    )
+
+
+def chat_unified(config_path: str, metrics_path: str | None = None) -> None:
+    """Interactive chat over the latest unified head metrics."""
+    run_unified_chat(config_path, metrics_path=metrics_path)
+
+
+def talk_unified(
+    config_path: str,
+    *,
+    checkpoint_path: str | None = None,
+    csv_path: str | None = None,
+    ticker: str | None = None,
+    period: str = "5d",
+    interval: str = "1h",
+) -> None:
+    """Interactive REPL that runs the unified neural engine on-demand."""
+    run_unified_talk(
+        config_path,
+        checkpoint_path=checkpoint_path,
+        csv_path=csv_path,
+        ticker=ticker,
+        period=period,
+        interval=interval,
+    )
+
+
 def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="ML Engine Trading Bot CLI")
@@ -867,6 +868,9 @@ def main() -> None:
             "visualize",  # New command
             "openai-tune",  # New command
             "ai-assistant",  # New sub-command
+            "train-unified",
+            "chat-unified",
+            "talk-unified",
             "integrated-predict",
             "predict",
             "fx",
@@ -885,6 +889,16 @@ def main() -> None:
         "-f",
         default=None,
         help="Path to market CSV file (used by integrated-predict)",
+    )
+    parser.add_argument(
+        "--metrics",
+        default=None,
+        help="Path to unified training metrics JSON (used by chat-unified)",
+    )
+    parser.add_argument(
+        "--model-path",
+        default=None,
+        help="Path to unified checkpoint .pth (used by talk-unified)",
     )
     parser.add_argument(
         "--ticker",
@@ -974,6 +988,9 @@ def main() -> None:
         "visualize": visualize_dashboard,  # New mapping
         "openai-tune": openai_tune,  # New mapping
         "ai-assistant": run_ai_assistant,  # updated mapping
+        "train-unified": train_unified,
+        "chat-unified": chat_unified,
+        "talk-unified": talk_unified,
     }
 
     try:
@@ -1002,7 +1019,21 @@ def main() -> None:
                 risk_per_trade_pct=args.risk,
             )
             return
-        command_map[args.command](args.config)
+        if args.command == "train-unified":
+            command_map[args.command](args.config, args.csv)
+        elif args.command == "chat-unified":
+            command_map[args.command](args.config, args.metrics)
+        elif args.command == "talk-unified":
+            command_map[args.command](
+                args.config,
+                checkpoint_path=args.model_path,
+                csv_path=args.csv,
+                ticker=args.ticker,
+                period=args.period,
+                interval=args.interval,
+            )
+        else:
+            command_map[args.command](args.config)
     except KeyboardInterrupt:
         console.print("\n[yellow]Operation interrupted by user[/yellow]")
     except Exception as e:

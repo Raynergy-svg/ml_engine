@@ -7,3 +7,25 @@ venv/
 *.pyd
 .Python
 .env
+
+# OS / editor
+.DS_Store
+.vscode/
+
+# Logs / databases
+*.log
+*.db
+
+# Experiment & tool outputs
+wandb/
+mlruns/
+tensorboard/
+
+# Local runtime artifacts
+cache/
+output/
+.pytest_cache/
+.ruff_cache/
+trained_data/cache/
+trained_data/logs/
+trained_data/visualizations/

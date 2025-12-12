@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import optimized modules
-from data_processing_optimized import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader
+from data_processing import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader
 from ml_engine_enhanced import EnhancedMLEngine
 from memory_manager_enhanced import MemoryManager
 from models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor

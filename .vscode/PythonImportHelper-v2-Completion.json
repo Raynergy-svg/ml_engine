@@ -1,253 +1,198 @@
 [
     {
-        "label": "time",
+        "label": "datetime",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "time",
-        "description": "time",
-        "detail": "time",
+        "importPath": "datetime",
+        "description": "datetime",
+        "detail": "datetime",
         "documentation": {}
     },
     {
-        "label": "logging",
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timezone",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timezone",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "os",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "logging",
-        "description": "logging",
-        "detail": "logging",
+        "importPath": "os",
+        "description": "os",
+        "detail": "os",
         "documentation": {}
     },
     {
-        "label": "json",
+        "label": "sys",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "json",
-        "description": "json",
-        "detail": "json",
+        "importPath": "sys",
+        "description": "sys",
+        "detail": "sys",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "getpass",
+        "importPath": "getpass",
+        "description": "getpass",
         "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "getpass",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "OptionParser",
+        "importPath": "optparse",
+        "description": "optparse",
         "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "optparse",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "*",
+        "importPath": "peewee",
+        "description": "peewee",
         "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "peewee",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "print_",
+        "importPath": "peewee",
+        "description": "peewee",
         "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "peewee",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "__version__",
+        "importPath": "peewee",
+        "description": "peewee",
         "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "peewee",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "CockroachDatabase",
+        "importPath": "playhouse.cockroachdb",
+        "description": "playhouse.cockroachdb",
         "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "playhouse.cockroachdb",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "*",
+        "importPath": "playhouse.reflection",
+        "description": "playhouse.reflection",
         "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "playhouse.reflection",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "csv",
+        "kind": 6,
         "isExtraImport": true,
-        "detail": "pathlib",
+        "importPath": "csv",
+        "description": "csv",
+        "detail": "csv",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
         "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "typing",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
         "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "typing",
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
         "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
+        "detail": "typing",
         "documentation": {}
     },
     {
@@ -267,7 +212,7 @@
         "documentation": {}
     },
     {
-        "label": "Optional",
+        "label": "Tuple",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -276,6 +221,126 @@
     },
     {
         "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -299,455 +364,7 @@
         "documentation": {}
     },
     {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Union",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Union",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
+        "label": "TYPE_CHECKING",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -971,6 +588,62 @@
         "documentation": {}
     },
     {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Any",
         "importPath": "typing",
         "description": "typing",
@@ -1115,6 +788,94 @@
         "documentation": {}
     },
     {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Callable",
         "importPath": "typing",
         "description": "typing",
@@ -1123,239 +884,11 @@
         "documentation": {}
     },
     {
-        "label": "dataclass",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
+        "label": "urlencode",
+        "importPath": "urllib.parse",
+        "description": "urllib.parse",
         "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "asdict",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "dataclass",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "dataclass",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "dataclass",
-        "importPath": "dataclasses",
-        "description": "dataclasses",
-        "isExtraImport": true,
-        "detail": "dataclasses",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "datetime",
-        "description": "datetime",
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timezone",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timezone",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "collections",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "collections",
-        "description": "collections",
-        "detail": "collections",
-        "documentation": {}
-    },
-    {
-        "label": "deque",
-        "importPath": "collections",
-        "description": "collections",
-        "isExtraImport": true,
-        "detail": "collections",
-        "documentation": {}
-    },
-    {
-        "label": "defaultdict",
-        "importPath": "collections",
-        "description": "collections",
-        "isExtraImport": true,
-        "detail": "collections",
-        "documentation": {}
-    },
-    {
-        "label": "deque",
-        "importPath": "collections",
-        "description": "collections",
-        "isExtraImport": true,
-        "detail": "collections",
-        "documentation": {}
-    },
-    {
-        "label": "warnings",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "warnings",
-        "description": "warnings",
-        "detail": "warnings",
-        "documentation": {}
-    },
-    {
-        "label": "numpy",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "numpy",
-        "description": "numpy",
-        "detail": "numpy",
+        "detail": "urllib.parse",
         "documentation": {}
     },
     {
@@ -1368,182 +901,363 @@
         "documentation": {}
     },
     {
-        "label": "yfinance",
+        "label": "numpy",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "yfinance",
-        "description": "yfinance",
-        "detail": "yfinance",
+        "importPath": "numpy",
+        "description": "numpy",
+        "detail": "numpy",
         "documentation": {}
     },
     {
-        "label": "stats",
-        "importPath": "scipy",
-        "description": "scipy",
-        "isExtraImport": true,
-        "detail": "scipy",
-        "documentation": {}
-    },
-    {
-        "label": "EnhancedMLEngine",
-        "importPath": "train",
-        "description": "train",
-        "isExtraImport": true,
-        "detail": "train",
-        "documentation": {}
-    },
-    {
-        "label": "auto_configure",
-        "importPath": "train",
-        "description": "train",
-        "isExtraImport": true,
-        "detail": "train",
-        "documentation": {}
-    },
-    {
-        "label": "preprocess_data",
-        "importPath": "preprocess",
-        "description": "preprocess",
-        "isExtraImport": true,
-        "detail": "preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "_create_features",
-        "importPath": "preprocess",
-        "description": "preprocess",
-        "isExtraImport": true,
-        "detail": "preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "cached_download",
-        "importPath": "preprocess",
-        "description": "preprocess",
-        "isExtraImport": true,
-        "detail": "preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "preprocess_data",
-        "importPath": "preprocess",
-        "description": "preprocess",
-        "isExtraImport": true,
-        "detail": "preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "validate_data_quality",
-        "importPath": "preprocess",
-        "description": "preprocess",
-        "isExtraImport": true,
-        "detail": "preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "process_multiindex_data",
-        "importPath": "preprocess",
-        "description": "preprocess",
-        "isExtraImport": true,
-        "detail": "preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "_create_features",
-        "importPath": "preprocess",
-        "description": "preprocess",
-        "isExtraImport": true,
-        "detail": "preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "_add_technical_indicators",
-        "importPath": "preprocess",
-        "description": "preprocess",
-        "isExtraImport": true,
-        "detail": "preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "preprocess_data",
-        "importPath": "preprocess",
-        "description": "preprocess",
-        "isExtraImport": true,
-        "detail": "preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "Console",
-        "importPath": "rich.console",
-        "description": "rich.console",
-        "isExtraImport": true,
-        "detail": "rich.console",
-        "documentation": {}
-    },
-    {
-        "label": "Console",
-        "importPath": "rich.console",
-        "description": "rich.console",
-        "isExtraImport": true,
-        "detail": "rich.console",
-        "documentation": {}
-    },
-    {
-        "label": "Table",
-        "importPath": "rich.table",
-        "description": "rich.table",
-        "isExtraImport": true,
-        "detail": "rich.table",
-        "documentation": {}
-    },
-    {
-        "label": "Table",
-        "importPath": "rich.table",
-        "description": "rich.table",
-        "isExtraImport": true,
-        "detail": "rich.table",
-        "documentation": {}
-    },
-    {
-        "label": "Progress",
-        "importPath": "rich.progress",
-        "description": "rich.progress",
-        "isExtraImport": true,
-        "detail": "rich.progress",
-        "documentation": {}
-    },
-    {
-        "label": "SpinnerColumn",
-        "importPath": "rich.progress",
-        "description": "rich.progress",
-        "isExtraImport": true,
-        "detail": "rich.progress",
-        "documentation": {}
-    },
-    {
-        "label": "TextColumn",
-        "importPath": "rich.progress",
-        "description": "rich.progress",
-        "isExtraImport": true,
-        "detail": "rich.progress",
-        "documentation": {}
-    },
-    {
-        "label": "sys",
+        "label": "re",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "sys",
-        "description": "sys",
-        "detail": "sys",
+        "importPath": "re",
+        "description": "re",
+        "detail": "re",
         "documentation": {}
     },
     {
-        "label": "multiprocessing",
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "logging",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "multiprocessing",
-        "description": "multiprocessing",
-        "detail": "multiprocessing",
+        "importPath": "logging",
+        "description": "logging",
+        "detail": "logging",
+        "documentation": {}
+    },
+    {
+        "label": "json",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "json",
+        "description": "json",
+        "detail": "json",
+        "documentation": {}
+    },
+    {
+        "label": "asyncio",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "asyncio",
+        "description": "asyncio",
+        "detail": "asyncio",
+        "documentation": {}
+    },
+    {
+        "label": "matplotlib.pyplot",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "matplotlib.pyplot",
+        "description": "matplotlib.pyplot",
+        "detail": "matplotlib.pyplot",
+        "documentation": {}
+    },
+    {
+        "label": "requests",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "requests",
+        "description": "requests",
+        "detail": "requests",
+        "documentation": {}
+    },
+    {
+        "label": "StringIO",
+        "importPath": "io",
+        "description": "io",
+        "isExtraImport": true,
+        "detail": "io",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "argparse",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "argparse",
+        "description": "argparse",
+        "detail": "argparse",
         "documentation": {}
     },
     {
@@ -1565,117 +1279,435 @@
         "documentation": {}
     },
     {
-        "label": "torch.optim",
-        "kind": 6,
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "importPath": "torch.optim",
-        "description": "torch.optim",
-        "detail": "torch.optim",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "GradScaler",
-        "importPath": "torch.cuda.amp",
-        "description": "torch.cuda.amp",
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.cuda.amp",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "GradScaler",
-        "importPath": "torch.cuda.amp",
-        "description": "torch.cuda.amp",
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.cuda.amp",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "DataLoader",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.utils.data",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "Dataset",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
+        "label": "TCNPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.utils.data",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "Dataset",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
+        "label": "Mish",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.utils.data",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "DataLoader",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
+        "label": "Swish",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.utils.data",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "DataLoader",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.utils.data",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "TensorDataset",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.utils.data",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "DataLoader",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.utils.data",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "TensorDataset",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.utils.data",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "SummaryWriter",
-        "importPath": "torch.utils.tensorboard",
-        "description": "torch.utils.tensorboard",
+        "label": "EnsemblePredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "torch.utils.tensorboard",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "optuna",
-        "kind": 6,
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "importPath": "optuna",
-        "description": "optuna",
-        "detail": "optuna",
+        "detail": "models_enhanced",
         "documentation": {}
     },
     {
-        "label": "setup_logging",
-        "importPath": "utils",
-        "description": "utils",
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
         "isExtraImport": true,
-        "detail": "utils",
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "EnsemblePredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "StockPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "AttentiveLSTM",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "GRUPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerPredictor",
+        "importPath": "models_enhanced",
+        "description": "models_enhanced",
+        "isExtraImport": true,
+        "detail": "models_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "smooth_predictions",
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "isExtraImport": true,
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "ensemble_predictions",
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "isExtraImport": true,
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "Backtester",
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "isExtraImport": true,
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "generate_simple_strategy_signals",
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "isExtraImport": true,
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "ModelEvaluator",
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "isExtraImport": true,
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "Backtester",
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "isExtraImport": true,
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "generate_simple_strategy_signals",
+        "importPath": "evaluation",
+        "description": "evaluation",
+        "isExtraImport": true,
+        "detail": "evaluation",
+        "documentation": {}
+    },
+    {
+        "label": "augment_data",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "DataValidationError",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "validate_dataframe",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "process_multiindex_data",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "normalize_features",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "create_sequences",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "load_stock_data_efficient",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "create_optimized_dataloader",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "load_stock_data_efficient",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "StockDataset",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "create_optimized_dataloader",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "load_stock_data_efficient",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "augment_data",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "create_optimized_dataloader",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "importPath": "ml_engine",
+        "description": "ml_engine",
+        "isExtraImport": true,
+        "detail": "ml_engine",
         "documentation": {}
     },
     {
@@ -1775,302 +1807,43 @@
         "documentation": {}
     },
     {
-        "label": "os",
-        "kind": 6,
+        "label": "load_config",
+        "importPath": "utils",
+        "description": "utils",
         "isExtraImport": true,
-        "importPath": "os",
-        "description": "os",
-        "detail": "os",
+        "detail": "utils",
         "documentation": {}
     },
     {
-        "label": "getpass",
-        "importPath": "getpass",
-        "description": "getpass",
+        "label": "load_config",
+        "importPath": "utils",
+        "description": "utils",
         "isExtraImport": true,
-        "detail": "getpass",
+        "detail": "utils",
         "documentation": {}
     },
     {
-        "label": "OptionParser",
-        "importPath": "optparse",
-        "description": "optparse",
+        "label": "setup_logging",
+        "importPath": "utils",
+        "description": "utils",
         "isExtraImport": true,
-        "detail": "optparse",
+        "detail": "utils",
         "documentation": {}
     },
     {
-        "label": "*",
-        "importPath": "peewee",
-        "description": "peewee",
+        "label": "load_config",
+        "importPath": "utils",
+        "description": "utils",
         "isExtraImport": true,
-        "detail": "peewee",
-        "documentation": {}
-    },
-    {
-        "label": "print_",
-        "importPath": "peewee",
-        "description": "peewee",
-        "isExtraImport": true,
-        "detail": "peewee",
-        "documentation": {}
-    },
-    {
-        "label": "__version__",
-        "importPath": "peewee",
-        "description": "peewee",
-        "isExtraImport": true,
-        "detail": "peewee",
-        "documentation": {}
-    },
-    {
-        "label": "CockroachDatabase",
-        "importPath": "playhouse.cockroachdb",
-        "description": "playhouse.cockroachdb",
-        "isExtraImport": true,
-        "detail": "playhouse.cockroachdb",
+        "detail": "utils",
         "documentation": {}
     },
     {
         "label": "*",
-        "importPath": "playhouse.reflection",
-        "description": "playhouse.reflection",
+        "importPath": "fx_paper",
+        "description": "fx_paper",
         "isExtraImport": true,
-        "detail": "playhouse.reflection",
-        "documentation": {}
-    },
-    {
-        "label": "csv",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "csv",
-        "description": "csv",
-        "detail": "csv",
-        "documentation": {}
-    },
-    {
-        "label": "urlencode",
-        "importPath": "urllib.parse",
-        "description": "urllib.parse",
-        "isExtraImport": true,
-        "detail": "urllib.parse",
-        "documentation": {}
-    },
-    {
-        "label": "re",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "re",
-        "description": "re",
-        "detail": "re",
-        "documentation": {}
-    },
-    {
-        "label": "asyncio",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "asyncio",
-        "description": "asyncio",
-        "detail": "asyncio",
-        "documentation": {}
-    },
-    {
-        "label": "matplotlib.pyplot",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "matplotlib.pyplot",
-        "description": "matplotlib.pyplot",
-        "detail": "matplotlib.pyplot",
-        "documentation": {}
-    },
-    {
-        "label": "requests",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "requests",
-        "description": "requests",
-        "detail": "requests",
-        "documentation": {}
-    },
-    {
-        "label": "StringIO",
-        "importPath": "io",
-        "description": "io",
-        "isExtraImport": true,
-        "detail": "io",
-        "documentation": {}
-    },
-    {
-        "label": "annotations",
-        "importPath": "__future__",
-        "description": "__future__",
-        "isExtraImport": true,
-        "detail": "__future__",
-        "documentation": {}
-    },
-    {
-        "label": "annotations",
-        "importPath": "__future__",
-        "description": "__future__",
-        "isExtraImport": true,
-        "detail": "__future__",
-        "documentation": {}
-    },
-    {
-        "label": "annotations",
-        "importPath": "__future__",
-        "description": "__future__",
-        "isExtraImport": true,
-        "detail": "__future__",
-        "documentation": {}
-    },
-    {
-        "label": "annotations",
-        "importPath": "__future__",
-        "description": "__future__",
-        "isExtraImport": true,
-        "detail": "__future__",
-        "documentation": {}
-    },
-    {
-        "label": "argparse",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "argparse",
-        "description": "argparse",
-        "detail": "argparse",
-        "documentation": {}
-    },
-    {
-        "label": "EnhancedMLEngine",
-        "importPath": "ml_engine",
-        "description": "ml_engine",
-        "isExtraImport": true,
-        "detail": "ml_engine",
-        "documentation": {}
-    },
-    {
-        "label": "APIRouter",
-        "importPath": "fastapi",
-        "description": "fastapi",
-        "isExtraImport": true,
-        "detail": "fastapi",
-        "documentation": {}
-    },
-    {
-        "label": "HTTPException",
-        "importPath": "fastapi",
-        "description": "fastapi",
-        "isExtraImport": true,
-        "detail": "fastapi",
-        "documentation": {}
-    },
-    {
-        "label": "UploadFile",
-        "importPath": "fastapi",
-        "description": "fastapi",
-        "isExtraImport": true,
-        "detail": "fastapi",
-        "documentation": {}
-    },
-    {
-        "label": "File",
-        "importPath": "fastapi",
-        "description": "fastapi",
-        "isExtraImport": true,
-        "detail": "fastapi",
-        "documentation": {}
-    },
-    {
-        "label": "BackgroundTasks",
-        "importPath": "fastapi",
-        "description": "fastapi",
-        "isExtraImport": true,
-        "detail": "fastapi",
-        "documentation": {}
-    },
-    {
-        "label": "BaseModel",
-        "importPath": "pydantic",
-        "description": "pydantic",
-        "isExtraImport": true,
-        "detail": "pydantic",
-        "documentation": {}
-    },
-    {
-        "label": "Field",
-        "importPath": "pydantic",
-        "description": "pydantic",
-        "isExtraImport": true,
-        "detail": "pydantic",
-        "documentation": {}
-    },
-    {
-        "label": "validator",
-        "importPath": "pydantic",
-        "description": "pydantic",
-        "isExtraImport": true,
-        "detail": "pydantic",
-        "documentation": {}
-    },
-    {
-        "label": "BaseSettings",
-        "importPath": "pydantic",
-        "description": "pydantic",
-        "isExtraImport": true,
-        "detail": "pydantic",
-        "documentation": {}
-    },
-    {
-        "label": "Field",
-        "importPath": "pydantic",
-        "description": "pydantic",
-        "isExtraImport": true,
-        "detail": "pydantic",
-        "documentation": {}
-    },
-    {
-        "label": "ThreadPoolExecutor",
-        "importPath": "concurrent.futures",
-        "description": "concurrent.futures",
-        "isExtraImport": true,
-        "detail": "concurrent.futures",
-        "documentation": {}
-    },
-    {
-        "label": "threading",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "threading",
-        "description": "threading",
-        "detail": "threading",
-        "documentation": {}
-    },
-    {
-        "label": "pickle",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "pickle",
-        "description": "pickle",
-        "detail": "pickle",
-        "documentation": {}
-    },
-    {
-        "label": "shutil",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "shutil",
-        "description": "shutil",
-        "detail": "shutil",
-        "documentation": {}
-    },
-    {
-        "label": "hashlib",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "hashlib",
-        "description": "hashlib",
-        "detail": "hashlib",
+        "detail": "fx_paper",
         "documentation": {}
     },
     {
@@ -2088,54 +1861,6 @@
         "description": "unittest",
         "isExtraImport": true,
         "detail": "unittest",
-        "documentation": {}
-    },
-    {
-        "label": "StockDataset",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "DataValidationError",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "validate_dataframe",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "process_multiindex_data",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "normalize_features",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "create_sequences",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
         "documentation": {}
     },
     {
@@ -2185,126 +1910,6 @@
         "importPath": "matplotlib",
         "description": "matplotlib",
         "detail": "matplotlib",
-        "documentation": {}
-    },
-    {
-        "label": "load_stock_data_efficient",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "prepare_sequences",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "StockDataset",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "create_optimized_dataloader",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "load_stock_data_efficient",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "prepare_sequences",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "StockDataset",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "create_optimized_dataloader",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "load_stock_data_efficient",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "prepare_sequences",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "prepare_sequences",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "augment_data",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "create_optimized_dataloader",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "augment_data",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "EnhancedMLEngine",
-        "importPath": "ml_engine_enhanced",
-        "description": "ml_engine_enhanced",
-        "isExtraImport": true,
-        "detail": "ml_engine_enhanced",
         "documentation": {}
     },
     {
@@ -2396,206 +2001,6 @@
         "documentation": {}
     },
     {
-        "label": "StockPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "AttentiveLSTM",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "GRUPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "TransformerPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "EnsemblePredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "StockPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "AttentiveLSTM",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "GRUPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "TransformerPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "EnsemblePredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "StockPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "AttentiveLSTM",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "GRUPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "TransformerPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "StockPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "AttentiveLSTM",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "GRUPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "TransformerPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "TCNPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "Mish",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "Swish",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "StockPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "AttentiveLSTM",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "GRUPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "TransformerPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
         "label": "ReasoningEngine",
         "importPath": "reasoning_enhanced",
         "description": "reasoning_enhanced",
@@ -2644,6 +2049,30 @@
         "documentation": {}
     },
     {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
         "label": "NeuralNetworkIntegrator",
         "importPath": "neural_network_integrator",
         "description": "neural_network_integrator",
@@ -2669,14 +2098,6 @@
     },
     {
         "label": "ModelSynchronizer",
-        "importPath": "neural_network_integrator",
-        "description": "neural_network_integrator",
-        "isExtraImport": true,
-        "detail": "neural_network_integrator",
-        "documentation": {}
-    },
-    {
-        "label": "NeuralNetworkIntegrator",
         "importPath": "neural_network_integrator",
         "description": "neural_network_integrator",
         "isExtraImport": true,
@@ -2810,6 +2231,63 @@
         "documentation": {}
     },
     {
+        "label": "shutil",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "shutil",
+        "description": "shutil",
+        "detail": "shutil",
+        "documentation": {}
+    },
+    {
+        "label": "NeuralNetworkIntegrator",
+        "importPath": "neural_network_integrator_enhanced",
+        "description": "neural_network_integrator_enhanced",
+        "isExtraImport": true,
+        "detail": "neural_network_integrator_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "NeuralNetworkIntegrator",
+        "importPath": "neural_network_integrator_enhanced",
+        "description": "neural_network_integrator_enhanced",
+        "isExtraImport": true,
+        "detail": "neural_network_integrator_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "UnifiedNeuralEngine",
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "isExtraImport": true,
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "UnifiedNeuralEngine",
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "isExtraImport": true,
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "UnifiedNeuralEngine",
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "isExtraImport": true,
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "UnifiedNeuralEngine",
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "isExtraImport": true,
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
         "label": "StandardScaler",
         "importPath": "sklearn.preprocessing",
         "description": "sklearn.preprocessing",
@@ -2892,22 +2370,6 @@
         "documentation": {}
     },
     {
-        "label": "lru_cache",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
-        "label": "partial",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
         "label": "wraps",
         "importPath": "functools",
         "description": "functools",
@@ -2924,12 +2386,76 @@
         "documentation": {}
     },
     {
-        "label": "dask.array",
+        "label": "DataLoader",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "Dataset",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "TensorDataset",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "TensorDataset",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "TensorDataset",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "yfinance",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "dask.array",
-        "description": "dask.array",
-        "detail": "dask.array",
+        "importPath": "yfinance",
+        "description": "yfinance",
+        "detail": "yfinance",
         "documentation": {}
     },
     {
@@ -3029,6 +2555,79 @@
         "documentation": {}
     },
     {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "time",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "time",
+        "description": "time",
+        "detail": "time",
+        "documentation": {}
+    },
+    {
+        "label": "Console",
+        "importPath": "rich.console",
+        "description": "rich.console",
+        "isExtraImport": true,
+        "detail": "rich.console",
+        "documentation": {}
+    },
+    {
         "label": "Live",
         "importPath": "rich.live",
         "description": "rich.live",
@@ -3042,6 +2641,14 @@
         "description": "rich.layout",
         "isExtraImport": true,
         "detail": "rich.layout",
+        "documentation": {}
+    },
+    {
+        "label": "Table",
+        "importPath": "rich.table",
+        "description": "rich.table",
+        "isExtraImport": true,
+        "detail": "rich.table",
         "documentation": {}
     },
     {
@@ -3069,11 +2676,27 @@
         "documentation": {}
     },
     {
-        "label": "NeuralNetworkIntegrator",
-        "importPath": "neural_network_integrator_enhanced",
-        "description": "neural_network_integrator_enhanced",
+        "label": "train_unified_multitask",
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
         "isExtraImport": true,
-        "detail": "neural_network_integrator_enhanced",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
+        "label": "run_unified_chat",
+        "importPath": "unified_chat",
+        "description": "unified_chat",
+        "isExtraImport": true,
+        "detail": "unified_chat",
+        "documentation": {}
+    },
+    {
+        "label": "run_unified_talk",
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "isExtraImport": true,
+        "detail": "unified_talk",
         "documentation": {}
     },
     {
@@ -3109,6 +2732,23 @@
         "description": "contextlib",
         "isExtraImport": true,
         "detail": "contextlib",
+        "documentation": {}
+    },
+    {
+        "label": "torch.optim",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "torch.optim",
+        "description": "torch.optim",
+        "detail": "torch.optim",
+        "documentation": {}
+    },
+    {
+        "label": "GradScaler",
+        "importPath": "torch.cuda.amp",
+        "description": "torch.cuda.amp",
+        "isExtraImport": true,
+        "detail": "torch.cuda.amp",
         "documentation": {}
     },
     {
@@ -3171,67 +2811,20 @@
         "documentation": {}
     },
     {
+        "label": "optuna",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "optuna",
+        "description": "optuna",
+        "detail": "optuna",
+        "documentation": {}
+    },
+    {
         "label": "load_dotenv",
         "importPath": "dotenv",
         "description": "dotenv",
         "isExtraImport": true,
         "detail": "dotenv",
-        "documentation": {}
-    },
-    {
-        "label": "Backtester",
-        "importPath": "evaluation",
-        "description": "evaluation",
-        "isExtraImport": true,
-        "detail": "evaluation",
-        "documentation": {}
-    },
-    {
-        "label": "generate_simple_strategy_signals",
-        "importPath": "evaluation",
-        "description": "evaluation",
-        "isExtraImport": true,
-        "detail": "evaluation",
-        "documentation": {}
-    },
-    {
-        "label": "smooth_predictions",
-        "importPath": "evaluation",
-        "description": "evaluation",
-        "isExtraImport": true,
-        "detail": "evaluation",
-        "documentation": {}
-    },
-    {
-        "label": "ensemble_predictions",
-        "importPath": "evaluation",
-        "description": "evaluation",
-        "isExtraImport": true,
-        "detail": "evaluation",
-        "documentation": {}
-    },
-    {
-        "label": "ModelEvaluator",
-        "importPath": "evaluation",
-        "description": "evaluation",
-        "isExtraImport": true,
-        "detail": "evaluation",
-        "documentation": {}
-    },
-    {
-        "label": "Backtester",
-        "importPath": "evaluation",
-        "description": "evaluation",
-        "isExtraImport": true,
-        "detail": "evaluation",
-        "documentation": {}
-    },
-    {
-        "label": "generate_simple_strategy_signals",
-        "importPath": "evaluation",
-        "description": "evaluation",
-        "isExtraImport": true,
-        "detail": "evaluation",
         "documentation": {}
     },
     {
@@ -3249,6 +2842,15 @@
         "importPath": "math",
         "description": "math",
         "detail": "math",
+        "documentation": {}
+    },
+    {
+        "label": "hashlib",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "hashlib",
+        "description": "hashlib",
+        "detail": "hashlib",
         "documentation": {}
     },
     {
@@ -3278,6 +2880,22 @@
         "documentation": {}
     },
     {
+        "label": "build_multitask_targets",
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "isExtraImport": true,
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "split_time_series",
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "isExtraImport": true,
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
         "label": "FuncAnimation",
         "importPath": "matplotlib.animation",
         "description": "matplotlib.animation",
@@ -3286,398 +2904,20 @@
         "documentation": {}
     },
     {
+        "label": "collections",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "collections",
+        "description": "collections",
+        "detail": "collections",
+        "documentation": {}
+    },
+    {
         "label": "savgol_filter",
         "importPath": "scipy.signal",
         "description": "scipy.signal",
         "isExtraImport": true,
         "detail": "scipy.signal",
-        "documentation": {}
-    },
-    {
-        "label": "PredictionResult",
-        "kind": 6,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "class PredictionResult:\n    \"\"\"Structured prediction result.\"\"\"\n    ticker: str\n    timestamp: datetime\n    current_price: float\n    predicted_price: float\n    change_percent: float\n    confidence_interval: Tuple[float, float]\n    confidence_level: float\n    model_confidence: float",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "ValidationMetrics",
-        "kind": 6,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "class ValidationMetrics:\n    \"\"\"Model validation metrics.\"\"\"\n    mae: float\n    rmse: float\n    mape: float\n    r2_score: float\n    samples: int\n    ticker: str\n    timeframe: str\n# ========================================================================",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "ModelManager",
-        "kind": 6,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "class ModelManager:\n    \"\"\"Manage model loading and inference.\"\"\"\n    def __init__(self, checkpoint_path: str, config: Dict[str, Any]):\n        self.checkpoint_path = Path(checkpoint_path)\n        self.config = config\n        self.engine = None\n        self.loaded_at = None\n    def load_model(self) -> EnhancedMLEngine:\n        \"\"\"\n        Load trained model from checkpoint.",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "DataFetcher",
-        "kind": 6,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "class DataFetcher:\n    \"\"\"Enhanced data fetching with caching and validation.\"\"\"\n    def __init__(self, cache_ttl: int = 300):\n        \"\"\"\n        Initialize data fetcher.\n        Args:\n            cache_ttl: Cache time-to-live in seconds\n        \"\"\"\n        self.cache_ttl = cache_ttl\n        self.cache = {}",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "PredictionEngine",
-        "kind": 6,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "class PredictionEngine:\n    \"\"\"Advanced prediction engine with uncertainty quantification.\"\"\"\n    def __init__(\n        self,\n        model: EnhancedMLEngine,\n        preprocessor: DataPreprocessor\n    ):\n        self.model = model\n        self.preprocessor = preprocessor\n        self.prediction_history = deque(maxlen=1000)",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "ModelValidator",
-        "kind": 6,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "class ModelValidator:\n    \"\"\"Validate model predictions against historical data.\"\"\"\n    def __init__(\n        self,\n        prediction_engine: PredictionEngine,\n        data_fetcher: DataFetcher\n    ):\n        self.prediction_engine = prediction_engine\n        self.data_fetcher = data_fetcher\n    def validate(",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "PredictionDisplay",
-        "kind": 6,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "class PredictionDisplay:\n    \"\"\"Handle display and reporting of predictions.\"\"\"\n    @staticmethod\n    def show_prediction(result: PredictionResult) -> None:\n        \"\"\"Display single prediction result.\"\"\"\n        if not console:\n            print(f\"Prediction for {result.ticker}: ${result.predicted_price:.2f}\")\n            return\n        # Create table\n        table = Table(",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "RealTimePredictor",
-        "kind": 6,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "class RealTimePredictor:\n    \"\"\"Orchestrate real-time predictions.\"\"\"\n    def __init__(\n        self,\n        checkpoint_path: str = DEFAULT_CHECKPOINT,\n        config: Optional[Dict[str, Any]] = None\n    ):\n        # Initialize components\n        if config is None:\n            config = auto_configure()",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "save_predictions",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "def save_predictions(\n    results: List[PredictionResult],\n    output_file: Union[str, Path]\n) -> None:\n    \"\"\"\n    Save prediction results to CSV.\n    Args:\n        results: List of prediction results\n        output_file: Output file path\n    \"\"\"",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "load_predictions",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "def load_predictions(\n    input_file: Union[str, Path]\n) -> List[PredictionResult]:\n    \"\"\"\n    Load prediction results from CSV.\n    Args:\n        input_file: Input file path\n    Returns:\n        List of PredictionResult objects\n    \"\"\"",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "main",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "def main():\n    \"\"\"Main CLI entry point.\"\"\"\n    import argparse\n    parser = argparse.ArgumentParser(\n        description=\"Advanced stock price prediction system\"\n    )\n    parser.add_argument(\n        \"--checkpoint\",\n        type=str,\n        default=DEFAULT_CHECKPOINT,",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nwarnings.filterwarnings('ignore', category=FutureWarning)\n# Initialize console\nconsole = Console() if RICH_AVAILABLE else None\n# Constants\nPREDICTION_CACHE_DIR = Path(\"./trained_data/predictions\")\nPREDICTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)\nDEFAULT_CHECKPOINT = \"./trained_data/models/best_model_checkpoint.pth\"\nCONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "console",
-        "kind": 5,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "console = Console() if RICH_AVAILABLE else None\n# Constants\nPREDICTION_CACHE_DIR = Path(\"./trained_data/predictions\")\nPREDICTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)\nDEFAULT_CHECKPOINT = \"./trained_data/models/best_model_checkpoint.pth\"\nCONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "PREDICTION_CACHE_DIR",
-        "kind": 5,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "PREDICTION_CACHE_DIR = Path(\"./trained_data/predictions\")\nPREDICTION_CACHE_DIR.mkdir(parents=True, exist_ok=True)\nDEFAULT_CHECKPOINT = \"./trained_data/models/best_model_checkpoint.pth\"\nCONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PredictionResult:\n    \"\"\"Structured prediction result.\"\"\"",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "DEFAULT_CHECKPOINT",
-        "kind": 5,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "DEFAULT_CHECKPOINT = \"./trained_data/models/best_model_checkpoint.pth\"\nCONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PredictionResult:\n    \"\"\"Structured prediction result.\"\"\"\n    ticker: str\n    timestamp: datetime",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "CONFIDENCE_LEVELS",
-        "kind": 5,
-        "importPath": "(redacted) future_use.predict",
-        "description": "(redacted) future_use.predict",
-        "peekOfCode": "CONFIDENCE_LEVELS = [0.68, 0.95, 0.99]  # 1σ, 2σ, 3σ\n# ========================================================================\n# Data Classes\n# ========================================================================\n@dataclass\nclass PredictionResult:\n    \"\"\"Structured prediction result.\"\"\"\n    ticker: str\n    timestamp: datetime\n    current_price: float",
-        "detail": "(redacted) future_use.predict",
-        "documentation": {}
-    },
-    {
-        "label": "load_trained_engine",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "def load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary\n    Returns:\n        Loaded EnhancedMLEngine instance",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "fetch_recent_data",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "def fetch_recent_data(ticker: str, days: int = 100) -> Optional[pd.DataFrame]:\n    \"\"\"\n    Fetch recent stock data for prediction.\n    Args:\n        ticker: Stock ticker symbol\n        days: Number of days of historical data to fetch\n    Returns:\n        DataFrame with recent stock data or None on failure\n    \"\"\"\n    try:",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "make_prediction",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "def make_prediction(engine: EnhancedMLEngine, data: pd.DataFrame) -> Optional[float]:\n    \"\"\"\n    Make a prediction using the engine.\n    Args:\n        engine: Trained ML engine\n        data: Input data DataFrame\n    Returns:\n        Predicted value or None on failure\n    \"\"\"\n    try:",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "real_time_prediction_loop",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "def real_time_prediction_loop(\n    engine: EnhancedMLEngine,\n    ticker: str = \"AAPL\",\n    interval: int = 60,\n    use_real_data: bool = True,\n):\n    \"\"\"\n    Run continuous prediction loop.\n    Args:\n        engine: Trained ML engine",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "validate_prediction",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "def validate_prediction(\n    engine: EnhancedMLEngine, ticker: str = \"AAPL\", days_back: int = 30\n):\n    \"\"\"\n    Validate model predictions against historical data.\n    Args:\n        engine: Trained ML engine\n        ticker: Stock ticker to validate\n        days_back: Number of days to look back\n    \"\"\"",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "batch_predict",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "def batch_predict(\n    engine: EnhancedMLEngine, tickers: list, output_file: Optional[str] = None\n) -> pd.DataFrame:\n    \"\"\"\n    Make predictions for multiple tickers at once.\n    Args:\n        engine: Trained ML engine\n        tickers: List of ticker symbols\n        output_file: Optional file to save results\n    Returns:",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "compare_predictions",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "def compare_predictions(\n    engine: EnhancedMLEngine, ticker: str, lookback_days: int = 30\n) -> None:\n    \"\"\"\n    Compare model predictions with actual historical prices.\n    Args:\n        engine: Trained ML engine\n        ticker: Stock ticker symbol\n        lookback_days: Number of days to look back\n    \"\"\"",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "save_prediction_log",
-        "kind": 2,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "def save_prediction_log(\n    ticker: str,\n    prediction: float,\n    current_price: float,\n    log_file: str = \"predictions.csv\",\n) -> None:\n    \"\"\"\n    Save prediction to a CSV log file.\n    Args:\n        ticker: Stock ticker symbol",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "console",
-        "kind": 5,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "console = Console()\nlogger = logging.getLogger(__name__)\ndef load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "(redacted) future_use.predict_backup",
-        "description": "(redacted) future_use.predict_backup",
-        "peekOfCode": "logger = logging.getLogger(__name__)\ndef load_trained_engine(\n    checkpoint_path: str, config: Dict[str, Any]\n) -> EnhancedMLEngine:\n    \"\"\"\n    Load a trained ML engine from checkpoint.\n    Args:\n        checkpoint_path: Path to model checkpoint file\n        config: Engine configuration dictionary\n    Returns:",
-        "detail": "(redacted) future_use.predict_backup",
-        "documentation": {}
-    },
-    {
-        "label": "test_cached_download",
-        "kind": 2,
-        "importPath": "(redacted) future_use.test_preprocess",
-        "description": "(redacted) future_use.test_preprocess",
-        "peekOfCode": "def test_cached_download():\n    \"\"\"Test the improved cached download functionality.\"\"\"\n    print(\"\\n\" + \"=\" * 60)\n    print(\"TEST 1: Cached Download\")\n    print(\"=\" * 60)\n    ticker = \"AAPL\"\n    start = \"2023-01-01\"\n    end = \"2023-12-31\"\n    print(f\"\\nDownloading {ticker} data...\")\n    data = cached_download(ticker, start, end)",
-        "detail": "(redacted) future_use.test_preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "test_data_validation",
-        "kind": 2,
-        "importPath": "(redacted) future_use.test_preprocess",
-        "description": "(redacted) future_use.test_preprocess",
-        "peekOfCode": "def test_data_validation(data):\n    \"\"\"Test the data quality validation.\"\"\"\n    print(\"\\n\" + \"=\" * 60)\n    print(\"TEST 2: Data Quality Validation\")\n    print(\"=\" * 60)\n    # Ensure columns are lowercase\n    data.columns = data.columns.str.lower()\n    report = validate_data_quality(data)\n    print(f\"\\nValidation Results:\")\n    print(f\"  Valid: {report['valid']}\")",
-        "detail": "(redacted) future_use.test_preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "test_technical_indicators",
-        "kind": 2,
-        "importPath": "(redacted) future_use.test_preprocess",
-        "description": "(redacted) future_use.test_preprocess",
-        "peekOfCode": "def test_technical_indicators(data):\n    \"\"\"Test technical indicator calculation.\"\"\"\n    print(\"\\n\" + \"=\" * 60)\n    print(\"TEST 3: Technical Indicators\")\n    print(\"=\" * 60)\n    # Ensure columns are lowercase\n    data.columns = data.columns.str.lower()\n    # Create features with technical indicators\n    features = _create_features(data, add_technical=True)\n    if features is not None:",
-        "detail": "(redacted) future_use.test_preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "test_preprocessing_basic",
-        "kind": 2,
-        "importPath": "(redacted) future_use.test_preprocess",
-        "description": "(redacted) future_use.test_preprocess",
-        "peekOfCode": "def test_preprocessing_basic(data):\n    \"\"\"Test basic preprocessing without technical indicators.\"\"\"\n    print(\"\\n\" + \"=\" * 60)\n    print(\"TEST 4: Basic Preprocessing\")\n    print(\"=\" * 60)\n    # Ensure columns are lowercase\n    data.columns = data.columns.str.lower()\n    X, y = preprocess_data(data, sequence_length=60, add_technical=False)\n    if X is not None and y is not None:\n        print(f\"\\n✓ Preprocessing successful\")",
-        "detail": "(redacted) future_use.test_preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "test_preprocessing_advanced",
-        "kind": 2,
-        "importPath": "(redacted) future_use.test_preprocess",
-        "description": "(redacted) future_use.test_preprocess",
-        "peekOfCode": "def test_preprocessing_advanced(data):\n    \"\"\"Test advanced preprocessing with technical indicators.\"\"\"\n    print(\"\\n\" + \"=\" * 60)\n    print(\"TEST 5: Advanced Preprocessing (with Technical Indicators)\")\n    print(\"=\" * 60)\n    # Ensure columns are lowercase\n    data.columns = data.columns.str.lower()\n    X, y, scaler = preprocess_data(\n        data,\n        sequence_length=60,",
-        "detail": "(redacted) future_use.test_preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "test_different_configurations",
-        "kind": 2,
-        "importPath": "(redacted) future_use.test_preprocess",
-        "description": "(redacted) future_use.test_preprocess",
-        "peekOfCode": "def test_different_configurations(data):\n    \"\"\"Test different preprocessing configurations.\"\"\"\n    print(\"\\n\" + \"=\" * 60)\n    print(\"TEST 6: Different Preprocessing Configurations\")\n    print(\"=\" * 60)\n    # Ensure columns are lowercase\n    data.columns = data.columns.str.lower()\n    configs = [\n        {\n            \"name\": \"Short sequences (30)\",",
-        "detail": "(redacted) future_use.test_preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "test_multi_ticker",
-        "kind": 2,
-        "importPath": "(redacted) future_use.test_preprocess",
-        "description": "(redacted) future_use.test_preprocess",
-        "peekOfCode": "def test_multi_ticker():\n    \"\"\"Test multi-ticker data processing.\"\"\"\n    print(\"\\n\" + \"=\" * 60)\n    print(\"TEST 7: Multi-Ticker Processing\")\n    print(\"=\" * 60)\n    tickers = [\"AAPL\", \"MSFT\", \"GOOGL\"]\n    print(f\"\\nDownloading data for: {tickers}\")\n    all_data = []\n    for ticker in tickers:\n        data = cached_download(ticker, \"2023-01-01\", \"2023-12-31\")",
-        "detail": "(redacted) future_use.test_preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "run_all_tests",
-        "kind": 2,
-        "importPath": "(redacted) future_use.test_preprocess",
-        "description": "(redacted) future_use.test_preprocess",
-        "peekOfCode": "def run_all_tests():\n    \"\"\"Run all tests.\"\"\"\n    print(\"\\n\" + \"=\" * 70)\n    print(\" \" * 15 + \"PREPROCESS.PY TEST SUITE\")\n    print(\"=\" * 70)\n    print(\"\\nTesting enhanced preprocessing module with:\")\n    print(\"  • Intelligent caching system\")\n    print(\"  • Technical indicator calculation\")\n    print(\"  • Data quality validation\")\n    print(\"  • Multiple preprocessing configurations\")",
-        "detail": "(redacted) future_use.test_preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "(redacted) future_use.test_preprocess",
-        "description": "(redacted) future_use.test_preprocess",
-        "peekOfCode": "logger = logging.getLogger(__name__)\ndef test_cached_download():\n    \"\"\"Test the improved cached download functionality.\"\"\"\n    print(\"\\n\" + \"=\" * 60)\n    print(\"TEST 1: Cached Download\")\n    print(\"=\" * 60)\n    ticker = \"AAPL\"\n    start = \"2023-01-01\"\n    end = \"2023-12-31\"\n    print(f\"\\nDownloading {ticker} data...\")",
-        "detail": "(redacted) future_use.test_preprocess",
-        "documentation": {}
-    },
-    {
-        "label": "StockDataset",
-        "kind": 6,
-        "importPath": "(redacted) future_use.train",
-        "description": "(redacted) future_use.train",
-        "peekOfCode": "class StockDataset(torch.utils.data.Dataset):\n    \"\"\"PyTorch Dataset for stock market data sequences.\"\"\"\n    def __init__(\n        self, features: np.ndarray, targets: np.ndarray, sequence_length: int = 60\n    ):\n        self.features = features\n        self.targets = targets\n    def __len__(self) -> int:\n        return len(self.features)\n    def __getitem__(self, idx: int) -> Tuple[torch.FloatTensor, torch.FloatTensor]:",
-        "detail": "(redacted) future_use.train",
-        "documentation": {}
-    },
-    {
-        "label": "StockPredictor",
-        "kind": 6,
-        "importPath": "(redacted) future_use.train",
-        "description": "(redacted) future_use.train",
-        "peekOfCode": "class StockPredictor(nn.Module):\n    \"\"\"Enhanced LSTM-based predictor with residual connections.\"\"\"\n    def __init__(\n        self,\n        input_size: int = 10,\n        hidden_size: int = 64,\n        num_layers: int = 2,\n        dropout: float = 0.2,\n    ):\n        super().__init__()",
-        "detail": "(redacted) future_use.train",
-        "documentation": {}
-    },
-    {
-        "label": "EnhancedMLEngine",
-        "kind": 6,
-        "importPath": "(redacted) future_use.train",
-        "description": "(redacted) future_use.train",
-        "peekOfCode": "class EnhancedMLEngine:\n    \"\"\"\n    Enhanced ML engine for trading bot training,\n    prediction, and monitoring.\n    \"\"\"\n    def __init__(self, config: Dict[str, Any]):\n        self.config = config\n        device_type = \"cuda\" if torch.cuda.is_available() else \"cpu\"\n        self.device = torch.device(device_type)\n        from sklearn.preprocessing import StandardScaler",
-        "detail": "(redacted) future_use.train",
-        "documentation": {}
-    },
-    {
-        "label": "run_hyperparameter_tuning",
-        "kind": 2,
-        "importPath": "(redacted) future_use.train",
-        "description": "(redacted) future_use.train",
-        "peekOfCode": "def run_hyperparameter_tuning(data: pd.DataFrame, n_trials: int = 20) -> Dict[str, Any]:\n    \"\"\"Run Optuna hyperparameter optimization.\"\"\"\n    def objective(trial: optuna.trial.Trial) -> float:\n        from train import auto_configure\n        config = auto_configure()\n        config.update(\n            {\n                \"hidden_size\": trial.suggest_int(\"hidden_size\", 32, 256),\n                \"num_layers\": trial.suggest_int(\"num_layers\", 1, 4),\n                \"dropout\": trial.suggest_float(\"dropout\", 0.1, 0.5),",
-        "detail": "(redacted) future_use.train",
-        "documentation": {}
-    },
-    {
-        "label": "auto_configure",
-        "kind": 2,
-        "importPath": "(redacted) future_use.train",
-        "description": "(redacted) future_use.train",
-        "peekOfCode": "def auto_configure() -> Dict[str, Any]:\n    \"\"\"\n    Automatically configure hyperparameters based on system resources.\n    \"\"\"\n    import psutil\n    config = {}\n    cpu_count = mp.cpu_count()\n    config[\"num_workers\"] = max(1, cpu_count - 1)\n    total_mem = psutil.virtual_memory().total / (1024**3)\n    logger.info(f\"Total system memory: {total_mem:.2f} GB\")",
-        "detail": "(redacted) future_use.train",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "(redacted) future_use.train",
-        "description": "(redacted) future_use.train",
-        "peekOfCode": "logger = setup_logging(log_file=\"my_app.log\")\nlog_dir = Path.home() / \".trading_bot_logs\" / datetime.now().strftime(\"%Y%m%d_%H%M%S\")\nwriter = SummaryWriter(log_dir=str(log_dir))\n# ---------------------------------------------------------------------\n# Dataset definition\n# ---------------------------------------------------------------------\nclass StockDataset(torch.utils.data.Dataset):\n    \"\"\"PyTorch Dataset for stock market data sequences.\"\"\"\n    def __init__(\n        self, features: np.ndarray, targets: np.ndarray, sequence_length: int = 60",
-        "detail": "(redacted) future_use.train",
-        "documentation": {}
-    },
-    {
-        "label": "log_dir",
-        "kind": 5,
-        "importPath": "(redacted) future_use.train",
-        "description": "(redacted) future_use.train",
-        "peekOfCode": "log_dir = Path.home() / \".trading_bot_logs\" / datetime.now().strftime(\"%Y%m%d_%H%M%S\")\nwriter = SummaryWriter(log_dir=str(log_dir))\n# ---------------------------------------------------------------------\n# Dataset definition\n# ---------------------------------------------------------------------\nclass StockDataset(torch.utils.data.Dataset):\n    \"\"\"PyTorch Dataset for stock market data sequences.\"\"\"\n    def __init__(\n        self, features: np.ndarray, targets: np.ndarray, sequence_length: int = 60\n    ):",
-        "detail": "(redacted) future_use.train",
-        "documentation": {}
-    },
-    {
-        "label": "writer",
-        "kind": 5,
-        "importPath": "(redacted) future_use.train",
-        "description": "(redacted) future_use.train",
-        "peekOfCode": "writer = SummaryWriter(log_dir=str(log_dir))\n# ---------------------------------------------------------------------\n# Dataset definition\n# ---------------------------------------------------------------------\nclass StockDataset(torch.utils.data.Dataset):\n    \"\"\"PyTorch Dataset for stock market data sequences.\"\"\"\n    def __init__(\n        self, features: np.ndarray, targets: np.ndarray, sequence_length: int = 60\n    ):\n        self.features = features",
-        "detail": "(redacted) future_use.train",
         "documentation": {}
     },
     {
@@ -4194,219 +3434,129 @@
         "documentation": {}
     },
     {
+        "label": "test_activation_functions",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_activation_functions():\n    \"\"\"Test new activation functions.\"\"\"\n    print(\"Testing activation functions...\")\n    # Test Mish\n    mish = Mish()\n    x = torch.randn(10, 5)\n    out = mish(x)\n    assert out.shape == x.shape, \"Mish output shape mismatch\"\n    assert torch.all(torch.isfinite(out)), \"Mish produced non-finite values\"\n    print(\"✓ Mish activation works correctly\")",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_stock_predictor",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_improved_stock_predictor():\n    \"\"\"Test improved StockPredictor with new features.\"\"\"\n    print(\"\\nTesting improved StockPredictor...\")\n    # Test with different activation functions\n    for activation in [\"relu\", \"mish\", \"swish\", \"gelu\"]:\n        model = StockPredictor(\n            input_size=7,\n            hidden_size=64,\n            num_layers=2,\n            dropout=0.2,",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_gru_predictor",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_improved_gru_predictor():\n    \"\"\"Test improved GRUPredictor with new features.\"\"\"\n    print(\"\\nTesting improved GRUPredictor...\")\n    for activation in [\"relu\", \"mish\", \"swish\"]:\n        model = GRUPredictor(\n            input_size=7,\n            hidden_size=64,\n            num_layers=2,\n            dropout=0.2,\n            activation=activation,",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_transformer_predictor",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_improved_transformer_predictor():\n    \"\"\"Test improved TransformerPredictor with new features.\"\"\"\n    print(\"\\nTesting improved TransformerPredictor...\")\n    # Test with sinusoidal positional encoding\n    model = TransformerPredictor(\n        input_size=7,\n        hidden_size=64,\n        num_layers=2,\n        num_heads=4,\n        dropout=0.2,",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_tcn_predictor",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_improved_tcn_predictor():\n    \"\"\"Test improved TCNPredictor with new features.\"\"\"\n    print(\"\\nTesting improved TCNPredictor...\")\n    model = TCNPredictor(\n        input_size=7,\n        hidden_size=64,\n        num_layers=3,\n        kernel_size=3,\n        dropout=0.2,\n        activation=\"mish\",",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_attention",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_improved_attention():\n    \"\"\"Test improved AttentiveLSTM with optimized attention.\"\"\"\n    print(\"\\nTesting improved AttentiveLSTM...\")\n    model = AttentiveLSTM(\n        input_size=7,\n        hidden_size=64,\n        num_layers=2,\n        num_heads=4,\n        dropout=0.2,\n        use_flash_attention=True",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_prediction_smoothing",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_prediction_smoothing():\n    \"\"\"Test prediction smoothing utilities.\"\"\"\n    print(\"\\nTesting prediction smoothing...\")\n    predictions = RNG.standard_normal(100)\n    # Test EMA smoothing\n    smoothed_ema = smooth_predictions(predictions, method=\"ema\", alpha=0.3)\n    # Test EMA smoothing\n    smoothed_ema = smooth_predictions(predictions, method=\"ema\", alpha=0.3)\n    assert smoothed_ema.shape == predictions.shape, \"EMA smoothing shape mismatch\"\n    assert np.all(np.isfinite(smoothed_ema)), \"EMA smoothing produced non-finite values\"",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_ensemble_predictions",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_ensemble_predictions():\n    \"\"\"Test ensemble prediction utilities.\"\"\"\n    print(\"\\nTesting ensemble predictions...\")\n    pred1 = RNG.standard_normal(100)\n    pred2 = RNG.standard_normal(100)\n    pred3 = RNG.standard_normal(100)\n    predictions_list = [pred1, pred2, pred3]\n    pred2 = np.random.randn(100)\n    pred3 = np.random.randn(100)\n    predictions_list = [pred1, pred2, pred3]",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_improved_augmentation",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_improved_augmentation():\n    \"\"\"Test improved data augmentation strategies.\"\"\"\n    print(\"\\nTesting improved data augmentation...\")\n    sequences = RNG.standard_normal((50, 30, 7))\n    targets = RNG.standard_normal(50)\n    # Test augmentation with mixup\n    aug_seq, aug_tgt = augment_data(\n    # Test augmentation with mixup\n    aug_seq, aug_tgt = augment_data(\n        sequences, targets,",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_gradient_flow",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_gradient_flow():\n    \"\"\"Test that gradients flow properly through improved models.\"\"\"\n    print(\"\\nTesting gradient flow...\")\n    model = StockPredictor(\n        input_size=7,\n        hidden_size=64,\n        num_layers=2,\n        activation=\"mish\",\n        use_batch_norm=True\n    )",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "test_huber_loss",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def test_huber_loss():\n    \"\"\"Test Huber loss functionality.\"\"\"\n    print(\"\\nTesting Huber loss...\")\n    predictions = torch.randn(32, 1)\n    targets = torch.randn(32, 1)\n    # Test Huber loss\n    huber_loss = nn.HuberLoss(delta=1.0)\n    loss = huber_loss(predictions, targets)\n    assert torch.isfinite(loss), \"Huber loss is not finite\"\n    assert loss >= 0, \"Huber loss is negative\"",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "def main():\n    \"\"\"Run all tests.\"\"\"\n    print(\"=\" * 60)\n    print(\"Testing ML Model Improvements\")\n    print(\"=\" * 60)\n    try:\n        test_activation_functions()\n        test_improved_stock_predictor()\n        test_improved_gru_predictor()\n        test_improved_transformer_predictor()",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "RNG",
+        "kind": 5,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "RNG = np.random.default_rng(0)\nfrom models_enhanced import (\n    StockPredictor, AttentiveLSTM, GRUPredictor, \n    TransformerPredictor, TCNPredictor, Mish, Swish\n)\nfrom evaluation import smooth_predictions, ensemble_predictions\nfrom data_processing import augment_data\ndef test_activation_functions():\n    \"\"\"Test new activation functions.\"\"\"\n    print(\"Testing activation functions...\")",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
         "label": "main",
         "kind": 2,
         "importPath": "examples.basic_usage",
         "description": "examples.basic_usage",
         "peekOfCode": "def main():\n    print(\"ML Engine - Basic Usage Example\")\n    print(\"=\" * 60)\n    # Simple example configuration\n    config = {\n        \"device\": \"cpu\",\n        \"model\": {\"type\": \"lstm\", \"input_size\": 7, \"hidden_size\": 64, \"num_layers\": 2, \"dropout\": 0.2},\n        \"optimizer\": {\"type\": \"adam\", \"learning_rate\": 0.001},\n        \"training\": {\"epochs\": 3},\n        \"batch_size\": 32,",
         "detail": "examples.basic_usage",
-        "documentation": {}
-    },
-    {
-        "label": "TrainingRequest",
-        "kind": 6,
-        "importPath": "src.api.routes",
-        "description": "src.api.routes",
-        "peekOfCode": "class TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)\n    batch_size: int = Field(32, ge=1, le=1024)\n    learning_rate: float = Field(0.01, gt=0, lt=1)\n    hidden_dims: Optional[List[int]] = Field(\n        None, description=\"Hidden layer dimensions for neural_net\"\n    )",
-        "detail": "src.api.routes",
-        "documentation": {}
-    },
-    {
-        "label": "PredictionRequest",
-        "kind": 6,
-        "importPath": "src.api.routes",
-        "description": "src.api.routes",
-        "peekOfCode": "class PredictionRequest(BaseModel):\n    model_id: str = Field(..., description=\"Model identifier\")\n    data: List[List[float]] = Field(..., description=\"Input data as 2D array\")\n    @validator(\"data\")\n    def validate_data(cls, v):\n        if not v or not v[0]:\n            raise ValueError(\"data cannot be empty\")\n        return v\nclass ModelResponse(BaseModel):\n    model_id: str",
-        "detail": "src.api.routes",
-        "documentation": {}
-    },
-    {
-        "label": "ModelResponse",
-        "kind": 6,
-        "importPath": "src.api.routes",
-        "description": "src.api.routes",
-        "peekOfCode": "class ModelResponse(BaseModel):\n    model_id: str\n    status: str\n    message: str\n    metadata: Optional[Dict[str, Any]] = None\nclass PredictionResponse(BaseModel):\n    model_id: str\n    predictions: List[float]\n    confidence: Optional[List[float]] = None\n    inference_time_ms: float",
-        "detail": "src.api.routes",
-        "documentation": {}
-    },
-    {
-        "label": "PredictionResponse",
-        "kind": 6,
-        "importPath": "src.api.routes",
-        "description": "src.api.routes",
-        "peekOfCode": "class PredictionResponse(BaseModel):\n    model_id: str\n    predictions: List[float]\n    confidence: Optional[List[float]] = None\n    inference_time_ms: float\n# Health check\n@router.get(\"/health\")\nasync def health_check():\n    \"\"\"Check API health status\"\"\"\n    return {",
-        "detail": "src.api.routes",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "src.api.routes",
-        "description": "src.api.routes",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nrouter = APIRouter()\nmodel_store = ModelStore()\nmetrics_collector = MetricsCollector()\n# Pydantic models for request validation\nclass TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)",
-        "detail": "src.api.routes",
-        "documentation": {}
-    },
-    {
-        "label": "router",
-        "kind": 5,
-        "importPath": "src.api.routes",
-        "description": "src.api.routes",
-        "peekOfCode": "router = APIRouter()\nmodel_store = ModelStore()\nmetrics_collector = MetricsCollector()\n# Pydantic models for request validation\nclass TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)\n    batch_size: int = Field(32, ge=1, le=1024)",
-        "detail": "src.api.routes",
-        "documentation": {}
-    },
-    {
-        "label": "model_store",
-        "kind": 5,
-        "importPath": "src.api.routes",
-        "description": "src.api.routes",
-        "peekOfCode": "model_store = ModelStore()\nmetrics_collector = MetricsCollector()\n# Pydantic models for request validation\nclass TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)\n    batch_size: int = Field(32, ge=1, le=1024)\n    learning_rate: float = Field(0.01, gt=0, lt=1)",
-        "detail": "src.api.routes",
-        "documentation": {}
-    },
-    {
-        "label": "metrics_collector",
-        "kind": 5,
-        "importPath": "src.api.routes",
-        "description": "src.api.routes",
-        "peekOfCode": "metrics_collector = MetricsCollector()\n# Pydantic models for request validation\nclass TrainingRequest(BaseModel):\n    model_type: str = Field(..., description=\"Type of model: 'linear' or 'neural_net'\")\n    input_dim: int = Field(..., gt=0, description=\"Input dimension\")\n    output_dim: int = Field(1, gt=0, description=\"Output dimension\")\n    epochs: int = Field(10, ge=1, le=1000)\n    batch_size: int = Field(32, ge=1, le=1024)\n    learning_rate: float = Field(0.01, gt=0, lt=1)\n    hidden_dims: Optional[List[int]] = Field(",
-        "detail": "src.api.routes",
-        "documentation": {}
-    },
-    {
-        "label": "Settings",
-        "kind": 6,
-        "importPath": "src.config.settings",
-        "description": "src.config.settings",
-        "peekOfCode": "class Settings(BaseSettings):\n    # Application\n    app_name: str = \"ML Engine\"\n    app_version: str = \"1.0.0\"\n    environment: str = Field(default=\"development\", env=\"ENV\")\n    debug: bool = Field(default=True, env=\"DEBUG\")\n    # API\n    api_host: str = Field(default=\"0.0.0.0\", env=\"API_HOST\")\n    api_port: int = Field(default=8000, env=\"API_PORT\")\n    api_workers: int = Field(default=4, env=\"API_WORKERS\")",
-        "detail": "src.config.settings",
-        "documentation": {}
-    },
-    {
-        "label": "settings",
-        "kind": 5,
-        "importPath": "src.config.settings",
-        "description": "src.config.settings",
-        "peekOfCode": "settings = Settings()",
-        "detail": "src.config.settings",
-        "documentation": {}
-    },
-    {
-        "label": "DataLoader",
-        "kind": 6,
-        "importPath": "src.data.loader",
-        "description": "src.data.loader",
-        "peekOfCode": "class DataLoader:\n    def __init__(self, config: Dict[str, Any] = None):\n        self.config = config or {}\n        self.scaler = None\n        self.feature_names = None\n    def load_from_csv(\n        self, filepath: str, target_column: str = None\n    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:\n        \"\"\"Load data from CSV file\"\"\"\n        try:",
-        "detail": "src.data.loader",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "src.data.loader",
-        "description": "src.data.loader",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass DataLoader:\n    def __init__(self, config: Dict[str, Any] = None):\n        self.config = config or {}\n        self.scaler = None\n        self.feature_names = None\n    def load_from_csv(\n        self, filepath: str, target_column: str = None\n    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:\n        \"\"\"Load data from CSV file\"\"\"",
-        "detail": "src.data.loader",
-        "documentation": {}
-    },
-    {
-        "label": "InferenceEngine",
-        "kind": 6,
-        "importPath": "src.ml.inference",
-        "description": "src.ml.inference",
-        "peekOfCode": "class InferenceEngine:\n    def __init__(self, model, config: Dict[str, Any] = None):\n        self.model = model\n        self.config = config or {}\n        self.batch_size = self.config.get(\"batch_size\", 32)\n        self.num_workers = self.config.get(\"num_workers\", 4)\n        self.rng = np.random.default_rng(self.config.get(\"seed\"))\n        self._warmup()\n    def _warmup(self):\n        \"\"\"Warm up the model with dummy data\"\"\"",
-        "detail": "src.ml.inference",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "src.ml.inference",
-        "description": "src.ml.inference",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass InferenceEngine:\n    def __init__(self, model, config: Dict[str, Any] = None):\n        self.model = model\n        self.config = config or {}\n        self.batch_size = self.config.get(\"batch_size\", 32)\n        self.num_workers = self.config.get(\"num_workers\", 4)\n        self.rng = np.random.default_rng(self.config.get(\"seed\"))\n        self._warmup()\n    def _warmup(self):",
-        "detail": "src.ml.inference",
-        "documentation": {}
-    },
-    {
-        "label": "ModelTrainer",
-        "kind": 6,
-        "importPath": "src.ml.trainer",
-        "description": "src.ml.trainer",
-        "peekOfCode": "class ModelTrainer:\n    def __init__(self, config: dict[str, Any]):\n        self.config = config\n        self.rng = np.random.default_rng(self.config.get(\"seed\"))\n        self.model = None\n        self.history = {}\n    def train(self, x_train, y_train, x_val=None, y_val=None) -> dict[str, Any]:\n        \"\"\"Train the model with actual training logic.\"\"\"\n        try:\n            logger.info(\"Starting training with %s samples\", len(x_train))",
-        "detail": "src.ml.trainer",
-        "documentation": {}
-    },
-    {
-        "label": "LinearModel",
-        "kind": 6,
-        "importPath": "src.ml.trainer",
-        "description": "src.ml.trainer",
-        "peekOfCode": "class LinearModel:\n    def __init__(self, input_dim: int, output_dim: int, *, rng: np.random.Generator):\n        self.weights = rng.standard_normal((input_dim, output_dim)) * 0.01\n        self.bias = np.zeros(output_dim)\n    def forward(self, X):\n        return X @ self.weights + self.bias\n    def backward(self, X, y, predictions):\n        m = len(X)\n        dw = (1 / m) * X.T @ (predictions - y)\n        db = (1 / m) * np.sum(predictions - y, axis=0)",
-        "detail": "src.ml.trainer",
-        "documentation": {}
-    },
-    {
-        "label": "NeuralNetwork",
-        "kind": 6,
-        "importPath": "src.ml.trainer",
-        "description": "src.ml.trainer",
-        "peekOfCode": "class NeuralNetwork:\n    def __init__(self, input_dim: int, hidden_dims: list[int], output_dim: int, *, rng: np.random.Generator):\n        self.layers = []\n        dims = [input_dim] + hidden_dims + [output_dim]\n        for i in range(len(dims) - 1):\n            self.layers.append(\n                {\n                    \"W\": rng.standard_normal((dims[i], dims[i + 1])) * np.sqrt(2.0 / dims[i]),\n                    \"b\": np.zeros(dims[i + 1]),\n                }",
-        "detail": "src.ml.trainer",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "src.ml.trainer",
-        "description": "src.ml.trainer",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ModelTrainer:\n    def __init__(self, config: dict[str, Any]):\n        self.config = config\n        self.rng = np.random.default_rng(self.config.get(\"seed\"))\n        self.model = None\n        self.history = {}\n    def train(self, x_train, y_train, x_val=None, y_val=None) -> dict[str, Any]:\n        \"\"\"Train the model with actual training logic.\"\"\"\n        try:",
-        "detail": "src.ml.trainer",
-        "documentation": {}
-    },
-    {
-        "label": "MetricsCollector",
-        "kind": 6,
-        "importPath": "src.monitoring.metrics",
-        "description": "src.monitoring.metrics",
-        "peekOfCode": "class MetricsCollector:\n    def __init__(self, max_history: int = 1000):\n        self.max_history = max_history\n        self.metrics = defaultdict(lambda: deque(maxlen=max_history))\n        self.events = deque(maxlen=max_history)\n        self.counters = defaultdict(int)\n        self.lock = threading.Lock()\n    def record_metric(self, name: str, value: float, tags: Dict[str, Any] = None):\n        \"\"\"Record a numeric metric\"\"\"\n        with self.lock:",
-        "detail": "src.monitoring.metrics",
-        "documentation": {}
-    },
-    {
-        "label": "PerformanceMonitor",
-        "kind": 6,
-        "importPath": "src.monitoring.metrics",
-        "description": "src.monitoring.metrics",
-        "peekOfCode": "class PerformanceMonitor:\n    \"\"\"Context manager for monitoring code performance\"\"\"\n    def __init__(self, metrics_collector: MetricsCollector, operation_name: str):\n        self.metrics_collector = metrics_collector\n        self.operation_name = operation_name\n        self.start_time = None\n    def __enter__(self):\n        self.start_time = time.time()\n        return self\n    def __exit__(self, exc_type, exc_val, exc_tb):",
-        "detail": "src.monitoring.metrics",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "src.monitoring.metrics",
-        "description": "src.monitoring.metrics",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass MetricsCollector:\n    def __init__(self, max_history: int = 1000):\n        self.max_history = max_history\n        self.metrics = defaultdict(lambda: deque(maxlen=max_history))\n        self.events = deque(maxlen=max_history)\n        self.counters = defaultdict(int)\n        self.lock = threading.Lock()\n    def record_metric(self, name: str, value: float, tags: Dict[str, Any] = None):\n        \"\"\"Record a numeric metric\"\"\"",
-        "detail": "src.monitoring.metrics",
-        "documentation": {}
-    },
-    {
-        "label": "ModelStore",
-        "kind": 6,
-        "importPath": "src.storage.model_store",
-        "description": "src.storage.model_store",
-        "peekOfCode": "class ModelStore:\n    def __init__(self, base_path: str = None):\n        self.base_path = Path(\n            base_path or \"/Users/davidcertan/Documents/ml_engine/models\"\n        )\n        self.base_path.mkdir(parents=True, exist_ok=True)\n        self.index_file = self.base_path / \"index.json\"\n        self._load_index()\n    def _load_index(self):\n        \"\"\"Load model index from disk\"\"\"",
-        "detail": "src.storage.model_store",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "src.storage.model_store",
-        "description": "src.storage.model_store",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ModelStore:\n    def __init__(self, base_path: str = None):\n        self.base_path = Path(\n            base_path or \"/Users/davidcertan/Documents/ml_engine/models\"\n        )\n        self.base_path.mkdir(parents=True, exist_ok=True)\n        self.index_file = self.base_path / \"index.json\"\n        self._load_index()\n    def _load_index(self):",
-        "detail": "src.storage.model_store",
         "documentation": {}
     },
     {
@@ -4531,7 +3681,7 @@
         "kind": 5,
         "importPath": "tests.test_integration",
         "description": "tests.test_integration",
-        "peekOfCode": "logger = logging.getLogger(__name__)\n# Add project directory to path\nsys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n# Import optimized modules\nfrom data_processing_optimized import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader\nfrom ml_engine_enhanced import EnhancedMLEngine\nfrom memory_manager_enhanced import MemoryManager\nfrom models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor\nfrom reasoning_enhanced import ReasoningEngine, UncertaintyEstimator\nfrom neural_network_integrator import NeuralNetworkIntegrator, ModelSynchronizer",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# Add project directory to path\nsys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n# Import optimized modules\nfrom data_processing import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader\nfrom ml_engine_enhanced import EnhancedMLEngine\nfrom memory_manager_enhanced import MemoryManager\nfrom models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor\nfrom reasoning_enhanced import ReasoningEngine, UncertaintyEstimator\nfrom neural_network_integrator import NeuralNetworkIntegrator, ModelSynchronizer",
         "detail": "tests.test_integration",
         "documentation": {}
     },
@@ -4684,7 +3834,7 @@
         "kind": 5,
         "importPath": "tests.test_optimized_model",
         "description": "tests.test_optimized_model",
-        "peekOfCode": "logger = logging.getLogger(__name__)\n# Add project directory to path\nsys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n# Import optimized modules\nfrom data_processing_optimized import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader\nfrom ml_engine_enhanced import EnhancedMLEngine\nfrom memory_manager_enhanced import MemoryManager\nfrom models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor\nfrom reasoning_enhanced import ReasoningEngine, UncertaintyEstimator\nfrom neural_network_integrator import NeuralNetworkIntegrator, ModelSynchronizer",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# Add project directory to path\nsys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n# Import optimized modules\nfrom data_processing import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader\nfrom ml_engine_enhanced import EnhancedMLEngine\nfrom memory_manager_enhanced import MemoryManager\nfrom models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor\nfrom reasoning_enhanced import ReasoningEngine, UncertaintyEstimator\nfrom neural_network_integrator import NeuralNetworkIntegrator, ModelSynchronizer",
         "detail": "tests.test_optimized_model",
         "documentation": {}
     },
@@ -4869,20 +4019,11 @@
         "documentation": {}
     },
     {
-        "label": "DataValidationError",
-        "kind": 6,
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "peekOfCode": "class DataValidationError(Exception):\n    \"\"\"Custom exception for data validation errors\"\"\"\n    pass\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    def __init__(\n        self,\n        features: Union[list, np.ndarray, torch.Tensor],",
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
         "label": "StockDataset",
         "kind": 6,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "class StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    def __init__(\n        self,\n        features: Union[list, np.ndarray, torch.Tensor],\n        targets: Union[list, np.ndarray, torch.Tensor],\n        sequence_length: int = 60,\n    ):",
+        "peekOfCode": "class StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod\n    def _coerce_to_array(cls, x: Union[list, np.ndarray, torch.Tensor, DaskArray]) -> Union[np.ndarray, DaskArray]:\n        # Convert to numpy arrays for consistent handling (unless dask)",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -4900,134 +4041,89 @@
         "kind": 2,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Stack ticker-specific DataFrames extracted from MultiIndex data.\n    \"\"\"\n    all_data = []\n    for ticker in tickers:\n        if (ticker,) in data.columns:\n            df_ticker = data[ticker].copy()\n            df_ticker.columns = df_ticker.columns.str.lower()\n            df_ticker[\"ticker\"] = ticker",
+        "peekOfCode": "def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Stack ticker-specific DataFrames extracted from MultiIndex data.\n    \"\"\"\n    if data is None:\n        raise DataValidationError(\"Data cannot be None\")\n    if not tickers:\n        raise DataValidationError(\"Tickers list cannot be empty\")\n    all_data = []\n    for ticker in tickers:",
         "detail": "data_processing",
         "documentation": {}
     },
     {
-        "label": "logger",
-        "kind": 5,
+        "label": "normalize_features",
+        "kind": 2,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nCACHE_DIR = Path.home() / \".trading_bot_cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nclass DataValidationError(Exception):\n    \"\"\"Custom exception for data validation errors\"\"\"\n    pass\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"",
+        "peekOfCode": "def normalize_features(\n    df: pd.DataFrame,\n    columns: List[str],\n    method: str = \"standard\",\n) -> Tuple[pd.DataFrame, Dict[str, Any]]:\n    \"\"\"Normalize selected columns and return (normalized_df, params).\"\"\"\n    if df is None or df.empty:\n        raise DataValidationError(\"DataFrame is None or empty\")\n    if not columns:\n        raise DataValidationError(\"columns cannot be empty\")",
         "detail": "data_processing",
         "documentation": {}
     },
     {
-        "label": "CACHE_DIR",
-        "kind": 5,
+        "label": "create_sequences",
+        "kind": 2,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "CACHE_DIR = Path.home() / \".trading_bot_cache\"\nCACHE_DIR.mkdir(exist_ok=True)\nclass DataValidationError(Exception):\n    \"\"\"Custom exception for data validation errors\"\"\"\n    pass\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    def __init__(",
+        "peekOfCode": "def create_sequences(\n    data: np.ndarray,\n    sequence_length: int,\n    target_column: int = -1,\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"Create rolling window sequences and next-step targets.\"\"\"\n    if data is None:\n        raise DataValidationError(\"data cannot be None\")\n    arr = np.asarray(data)\n    if arr.size == 0:",
         "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "StockDataset",
-        "kind": 6,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "class StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for generating sequences from stock market data with optimized memory usage.\"\"\"\n    def __init__(\n        self, \n        features: Union[List, np.ndarray, da.Array], \n        targets: Union[List, np.ndarray, da.Array], \n        sequence_length: int = 60,\n        device: Optional[torch.device] = None\n    ):\n        \"\"\"",
-        "detail": "data_processing_optimized",
         "documentation": {}
     },
     {
         "label": "create_optimized_dataloader",
         "kind": 2,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "def create_optimized_dataloader(\n    dataset: Dataset, \n    batch_size: int, \n    shuffle: bool = True,\n    num_workers: int = None,\n    pin_memory: bool = None,\n    device: str = None,\n    prefetch_factor: int = 2,\n    persistent_workers: bool = None\n) -> DataLoader:",
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "process_multiindex_data",
-        "kind": 2,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "def process_multiindex_data(data: pd.DataFrame, tickers: List[str]) -> pd.DataFrame:\n    \"\"\"\n    Stack ticker-specific DataFrames extracted from MultiIndex data.\n    Args:\n        data: MultiIndex DataFrame with ticker as the first level\n        tickers: List of ticker symbols to extract\n    Returns:\n        Concatenated DataFrame with ticker-specific data\n    \"\"\"\n    all_data = []",
-        "detail": "data_processing_optimized",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "def create_optimized_dataloader(\n    dataset: Dataset,\n    batch_size: int,\n    shuffle: bool = True,\n    num_workers: Optional[int] = None,\n    pin_memory: Optional[bool] = None,\n    device: Optional[str] = None,\n    prefetch_factor: int = 2,\n    persistent_workers: Optional[bool] = None,\n) -> DataLoader:",
+        "detail": "data_processing",
         "documentation": {}
     },
     {
         "label": "load_stock_data_efficient",
         "kind": 2,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "def load_stock_data_efficient(\n    tickers: List[str],\n    start_date: str,\n    end_date: str,\n    use_cache: bool = True,\n    features: List[str] = None,\n) -> pd.DataFrame:\n    \"\"\"\n    Load stock data efficiently with caching and parallel downloads.\n    Args:",
-        "detail": "data_processing_optimized",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "def load_stock_data_efficient(\n    tickers: List[str],\n    start_date: str,\n    end_date: str,\n    use_cache: bool = True,\n    features: Optional[List[str]] = None,\n) -> pd.DataFrame:\n    \"\"\"Load stock data with caching and parallel downloads.\"\"\"\n    if not tickers:\n        raise DataValidationError(\"tickers cannot be empty\")",
+        "detail": "data_processing",
         "documentation": {}
     },
     {
         "label": "prepare_sequences",
         "kind": 2,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "def prepare_sequences(\n    df: pd.DataFrame,\n    sequence_length: int = 60,\n    target_column: str = \"close\",\n    feature_columns: List[str] = None,\n    target_shift: int = 1,\n    scale_features: bool = True,\n    scale_target: bool = True,\n) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:\n    \"\"\"",
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "add_technical_indicators",
-        "kind": 2,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "def add_technical_indicators(\n    df: pd.DataFrame,\n    price_column: str = \"close\",\n    volume_column: str = \"volume\"\n) -> pd.DataFrame:\n    \"\"\"\n    Add technical indicators for improved prediction (PyTorch best practice for feature engineering).\n    Args:\n        df: Input dataframe with OHLCV data\n        price_column: Name of price column",
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "compute_rsi",
-        "kind": 2,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "def compute_rsi(prices: pd.Series, period: int = 14) -> pd.Series:\n    \"\"\"\n    Compute Relative Strength Index (RSI).\n    Args:\n        prices: Price series\n        period: RSI period\n    Returns:\n        RSI values\n    \"\"\"\n    delta = prices.diff()",
-        "detail": "data_processing_optimized",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "def prepare_sequences(\n    df: pd.DataFrame,\n    sequence_length: int = 60,\n    target_column: str = \"close\",\n    feature_columns: Optional[List[str]] = None,\n    target_shift: int = 1,\n    scale_features: bool = True,\n    scale_target: bool = True,\n) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:\n    \"\"\"Prepare sequences for time-series prediction.\"\"\"",
+        "detail": "data_processing",
         "documentation": {}
     },
     {
         "label": "augment_data",
         "kind": 2,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
+        "importPath": "data_processing",
+        "description": "data_processing",
         "peekOfCode": "def augment_data(\n    sequences: np.ndarray,\n    targets: np.ndarray,\n    noise_level: float = 0.01,\n    augmentation_factor: int = 2,\n    use_mixup: bool = True,\n    mixup_alpha: float = 0.2,\n    rng: Optional[np.random.Generator] = None,\n    seed: int = 0,\n) -> Tuple[np.ndarray, np.ndarray]:",
-        "detail": "data_processing_optimized",
+        "detail": "data_processing",
         "documentation": {}
     },
     {
         "label": "logger",
         "kind": 5,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "logger = logging.getLogger(__name__)\n# Define cache directory\nCACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", \"./cache\"))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for generating sequences from stock market data with optimized memory usage.\"\"\"\n    def __init__(\n        self, \n        features: Union[List, np.ndarray, da.Array], \n        targets: Union[List, np.ndarray, da.Array], ",
-        "detail": "data_processing_optimized",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# Define cache directory (env override supported)\nCACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:",
+        "detail": "data_processing",
         "documentation": {}
     },
     {
         "label": "CACHE_DIR",
         "kind": 5,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "CACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", \"./cache\"))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for generating sequences from stock market data with optimized memory usage.\"\"\"\n    def __init__(\n        self, \n        features: Union[List, np.ndarray, da.Array], \n        targets: Union[List, np.ndarray, da.Array], \n        sequence_length: int = 60,\n        device: Optional[torch.device] = None",
-        "detail": "data_processing_optimized",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "CACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod",
+        "detail": "data_processing",
         "documentation": {}
     },
     {
         "label": "_REQUIRED_STOCK_COLS",
         "kind": 5,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "_REQUIRED_STOCK_COLS = {\"open\", \"high\", \"low\", \"close\", \"volume\"}\n_ADJ_CLOSE_COL = \"adj close\"\ndef _normalize_columns(columns) -> List[str]:\n    \"\"\"Normalize column names to lowercase and handle tuples.\"\"\"\n    new_cols = []\n    for col in columns:\n        if isinstance(col, tuple):\n            new_cols.append(\"_\".join(map(str, col)).lower())\n        else:\n            new_cols.append(str(col).lower())",
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "_ADJ_CLOSE_COL",
-        "kind": 5,
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "peekOfCode": "_ADJ_CLOSE_COL = \"adj close\"\ndef _normalize_columns(columns) -> List[str]:\n    \"\"\"Normalize column names to lowercase and handle tuples.\"\"\"\n    new_cols = []\n    for col in columns:\n        if isinstance(col, tuple):\n            new_cols.append(\"_\".join(map(str, col)).lower())\n        else:\n            new_cols.append(str(col).lower())\n    return new_cols",
-        "detail": "data_processing_optimized",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "_REQUIRED_STOCK_COLS = {\"open\", \"high\", \"low\", \"close\", \"volume\"}\ndef _normalize_columns(columns) -> List[str]:\n    out = []\n    for col in columns:\n        if isinstance(col, tuple):\n            out.append(\"_\".join(map(str, col)).lower())\n        else:\n            out.append(str(col).lower())\n    return out\ndef _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:",
+        "detail": "data_processing",
         "documentation": {}
     },
     {
@@ -5490,6 +4586,33 @@
         "documentation": {}
     },
     {
+        "label": "train_unified",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def train_unified(config_path: str, csv_path: str | None = None) -> None:\n    \"\"\"Train the unified multi-head model and print head-health insights.\"\"\"\n    result = train_unified_multitask(config_path, csv_path=csv_path)\n    console.print(\n        f\"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}\"\n    )\ndef chat_unified(config_path: str, metrics_path: str | None = None) -> None:\n    \"\"\"Interactive chat over the latest unified head metrics.\"\"\"\n    run_unified_chat(config_path, metrics_path=metrics_path)\ndef talk_unified(",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "chat_unified",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def chat_unified(config_path: str, metrics_path: str | None = None) -> None:\n    \"\"\"Interactive chat over the latest unified head metrics.\"\"\"\n    run_unified_chat(config_path, metrics_path=metrics_path)\ndef talk_unified(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    csv_path: str | None = None,\n    ticker: str | None = None,\n    period: str = \"5d\",",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "talk_unified",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def talk_unified(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    csv_path: str | None = None,\n    ticker: str | None = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n) -> None:\n    \"\"\"Interactive REPL that runs the unified neural engine on-demand.\"\"\"",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
         "label": "main",
         "kind": 2,
         "importPath": "main",
@@ -5733,6 +4856,60 @@
         "documentation": {}
     },
     {
+        "label": "MultitaskTargets",
+        "kind": 6,
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "peekOfCode": "class MultitaskTargets:\n    trend: np.ndarray  # (n,)\n    risk: np.ndarray  # (n,)\n    state: np.ndarray  # (n,) int64 classes\ndef _safe_close_series(df: pd.DataFrame, close_col: str) -> np.ndarray:\n    if close_col not in df.columns:\n        raise ValueError(f\"Missing close column: {close_col}\")\n    close = pd.to_numeric(df[close_col], errors=\"coerce\").to_numpy(dtype=float)\n    if np.isnan(close).any():\n        close = np.nan_to_num(close, nan=np.nanmedian(close))",
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "build_multitask_targets",
+        "kind": 2,
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "peekOfCode": "def build_multitask_targets(\n    df: pd.DataFrame,\n    *,\n    sequence_length: int,\n    target_shift: int,\n    close_col: str = \"close\",\n    risk_window: int = 14,\n    state_classes: int = 3,\n) -> MultitaskTargets:\n    \"\"\"Build aligned targets for trend/risk/state.",
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "split_time_series",
+        "kind": 2,
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "peekOfCode": "def split_time_series(\n    n: int, *, val_fraction: float = 0.2\n) -> Tuple[np.ndarray, np.ndarray]:\n    if n <= 1:\n        raise ValueError(\"n must be > 1\")\n    if not (0.0 < val_fraction < 1.0):\n        raise ValueError(\"val_fraction must be in (0,1)\")\n    split = int(round(n * (1.0 - val_fraction)))\n    split = max(1, min(n - 1, split))\n    train_idx = np.arange(0, split, dtype=int)",
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "UnifiedMarketNet",
+        "kind": 6,
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "peekOfCode": "class UnifiedMarketNet(nn.Module):\n    def __init__(\n        self,\n        *,\n        input_size: int,\n        hidden_size: int = 64,\n        num_layers: int = 2,\n        dropout: float = 0.1,\n        bidirectional: bool = False,\n        state_classes: int = 3,",
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "UnifiedPrediction",
+        "kind": 6,
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "peekOfCode": "class UnifiedPrediction:\n    prediction: np.ndarray\n    uncertainty: float\n    trend: Optional[np.ndarray] = None\n    risk: Optional[np.ndarray] = None\n    state_probs: Optional[np.ndarray] = None\nclass UnifiedNeuralEngine:\n    \"\"\"Thin wrapper that exposes a `predict()` API compatible with the integrator.\"\"\"\n    def __init__(self, config: Optional[Dict[str, Any]] = None):\n        self.config = config or {}",
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "UnifiedNeuralEngine",
+        "kind": 6,
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "peekOfCode": "class UnifiedNeuralEngine:\n    \"\"\"Thin wrapper that exposes a `predict()` API compatible with the integrator.\"\"\"\n    def __init__(self, config: Optional[Dict[str, Any]] = None):\n        self.config = config or {}\n        self.device = self.config.get(\"device\", \"cuda\" if torch.cuda.is_available() else \"cpu\")\n        model_cfg = self.config.get(\"model\", {})\n        input_size = int(model_cfg.get(\"input_size\", 32))\n        hidden_size = int(model_cfg.get(\"hidden_size\", 64))\n        num_layers = int(model_cfg.get(\"num_layers\", 2))\n        dropout = float(model_cfg.get(\"dropout\", 0.1))",
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
         "label": "NeuralNetworkIntegrator",
         "kind": 6,
         "importPath": "neural_network_integrator_enhanced",
@@ -5949,114 +5126,6 @@
         "documentation": {}
     },
     {
-        "label": "test_activation_functions",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_activation_functions():\n    \"\"\"Test new activation functions.\"\"\"\n    print(\"Testing activation functions...\")\n    # Test Mish\n    mish = Mish()\n    x = torch.randn(10, 5)\n    out = mish(x)\n    assert out.shape == x.shape, \"Mish output shape mismatch\"\n    assert torch.all(torch.isfinite(out)), \"Mish produced non-finite values\"\n    print(\"✓ Mish activation works correctly\")",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_improved_stock_predictor",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_improved_stock_predictor():\n    \"\"\"Test improved StockPredictor with new features.\"\"\"\n    print(\"\\nTesting improved StockPredictor...\")\n    # Test with different activation functions\n    for activation in [\"relu\", \"mish\", \"swish\", \"gelu\"]:\n        model = StockPredictor(\n            input_size=7,\n            hidden_size=64,\n            num_layers=2,\n            dropout=0.2,",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_improved_gru_predictor",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_improved_gru_predictor():\n    \"\"\"Test improved GRUPredictor with new features.\"\"\"\n    print(\"\\nTesting improved GRUPredictor...\")\n    for activation in [\"relu\", \"mish\", \"swish\"]:\n        model = GRUPredictor(\n            input_size=7,\n            hidden_size=64,\n            num_layers=2,\n            dropout=0.2,\n            activation=activation,",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_improved_transformer_predictor",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_improved_transformer_predictor():\n    \"\"\"Test improved TransformerPredictor with new features.\"\"\"\n    print(\"\\nTesting improved TransformerPredictor...\")\n    # Test with sinusoidal positional encoding\n    model = TransformerPredictor(\n        input_size=7,\n        hidden_size=64,\n        num_layers=2,\n        num_heads=4,\n        dropout=0.2,",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_improved_tcn_predictor",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_improved_tcn_predictor():\n    \"\"\"Test improved TCNPredictor with new features.\"\"\"\n    print(\"\\nTesting improved TCNPredictor...\")\n    model = TCNPredictor(\n        input_size=7,\n        hidden_size=64,\n        num_layers=3,\n        kernel_size=3,\n        dropout=0.2,\n        activation=\"mish\",",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_improved_attention",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_improved_attention():\n    \"\"\"Test improved AttentiveLSTM with optimized attention.\"\"\"\n    print(\"\\nTesting improved AttentiveLSTM...\")\n    model = AttentiveLSTM(\n        input_size=7,\n        hidden_size=64,\n        num_layers=2,\n        num_heads=4,\n        dropout=0.2,\n        use_flash_attention=True",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_prediction_smoothing",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_prediction_smoothing():\n    \"\"\"Test prediction smoothing utilities.\"\"\"\n    print(\"\\nTesting prediction smoothing...\")\n    predictions = np.random.randn(100)\n    # Test EMA smoothing\n    smoothed_ema = smooth_predictions(predictions, method=\"ema\", alpha=0.3)\n    assert smoothed_ema.shape == predictions.shape, \"EMA smoothing shape mismatch\"\n    assert np.all(np.isfinite(smoothed_ema)), \"EMA smoothing produced non-finite values\"\n    print(\"✓ EMA smoothing works correctly\")\n    # Test SMA smoothing",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_ensemble_predictions",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_ensemble_predictions():\n    \"\"\"Test ensemble prediction utilities.\"\"\"\n    print(\"\\nTesting ensemble predictions...\")\n    pred1 = np.random.randn(100)\n    pred2 = np.random.randn(100)\n    pred3 = np.random.randn(100)\n    predictions_list = [pred1, pred2, pred3]\n    # Test mean ensemble\n    ensemble_mean = ensemble_predictions(predictions_list, method=\"mean\")\n    assert ensemble_mean.shape == pred1.shape, \"Mean ensemble shape mismatch\"",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_improved_augmentation",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_improved_augmentation():\n    \"\"\"Test improved data augmentation strategies.\"\"\"\n    print(\"\\nTesting improved data augmentation...\")\n    sequences = np.random.randn(50, 30, 7)\n    targets = np.random.randn(50)\n    # Test augmentation with mixup\n    aug_seq, aug_tgt = augment_data(\n        sequences, targets,\n        noise_level=0.01,\n        augmentation_factor=3,",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_gradient_flow",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_gradient_flow():\n    \"\"\"Test that gradients flow properly through improved models.\"\"\"\n    print(\"\\nTesting gradient flow...\")\n    model = StockPredictor(\n        input_size=7,\n        hidden_size=64,\n        num_layers=2,\n        activation=\"mish\",\n        use_batch_norm=True\n    )",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "test_huber_loss",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def test_huber_loss():\n    \"\"\"Test Huber loss functionality.\"\"\"\n    print(\"\\nTesting Huber loss...\")\n    predictions = torch.randn(32, 1)\n    targets = torch.randn(32, 1)\n    # Test Huber loss\n    huber_loss = nn.HuberLoss(delta=1.0)\n    loss = huber_loss(predictions, targets)\n    assert torch.isfinite(loss), \"Huber loss is not finite\"\n    assert loss >= 0, \"Huber loss is negative\"",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
-        "label": "main",
-        "kind": 2,
-        "importPath": "test_improvements",
-        "description": "test_improvements",
-        "peekOfCode": "def main():\n    \"\"\"Run all tests.\"\"\"\n    print(\"=\" * 60)\n    print(\"Testing ML Model Improvements\")\n    print(\"=\" * 60)\n    try:\n        test_activation_functions()\n        test_improved_stock_predictor()\n        test_improved_gru_predictor()\n        test_improved_transformer_predictor()",
-        "detail": "test_improvements",
-        "documentation": {}
-    },
-    {
         "label": "TextFeatureResult",
         "kind": 6,
         "importPath": "text_features",
@@ -6252,6 +5321,87 @@
         "description": "training_utils",
         "peekOfCode": "logger = logging.getLogger(__name__)\nclass WarmupScheduler:\n    \"\"\"\n    Learning rate warmup scheduler (PyTorch best practice for transformers).\n    Gradually increases learning rate from 0 to base_lr during warmup steps.\n    \"\"\"\n    def __init__(\n        self,\n        optimizer: torch.optim.Optimizer,\n        warmup_steps: int,",
         "detail": "training_utils",
+        "documentation": {}
+    },
+    {
+        "label": "run_unified_chat",
+        "kind": 2,
+        "importPath": "unified_chat",
+        "description": "unified_chat",
+        "peekOfCode": "def run_unified_chat(config_path: str, *, metrics_path: Optional[str] = None) -> None:\n    cfg = load_config(config_path)\n    reasoning = ReasoningEngine(cfg.get(\"reasoning\", {}))\n    path = Path(metrics_path) if metrics_path else _default_metrics_path(cfg)\n    payload = _load_metrics(path, cfg=cfg)\n    resolved = Path(payload.get(\"metrics_path\") or path)\n    print(f\"Unified chat ready. Metrics: {resolved}\")\n    print(\"Ask about head health (type 'exit' to quit).\")\n    while True:\n        q = _read_chat_question()",
+        "detail": "unified_chat",
+        "documentation": {}
+    },
+    {
+        "label": "_EPOCH_RE",
+        "kind": 5,
+        "importPath": "unified_chat",
+        "description": "unified_chat",
+        "peekOfCode": "_EPOCH_RE = re.compile(\n    r\"Epoch\\s+(?P<epoch>\\d+)\\s+\\|\\s+val\\s+\"\n    r\"price=(?P<price>[0-9.]+)\\s+\"\n    r\"trend=(?P<trend>[0-9.]+)\\s+\"\n    r\"risk=(?P<risk>[0-9.]+)\\s+\"\n    r\"state=(?P<state>[0-9.]+)\\s+\"\n    r\"acc=(?P<acc>[0-9.]+)\"\n)\ndef _reconstruct_metrics_from_log(log_path: Path) -> Optional[Dict[str, Any]]:\n    try:",
+        "detail": "unified_chat",
+        "documentation": {}
+    },
+    {
+        "label": "_EXIT_WORDS",
+        "kind": 5,
+        "importPath": "unified_chat",
+        "description": "unified_chat",
+        "peekOfCode": "_EXIT_WORDS = {\"exit\", \"quit\", \"q\"}\ndef _read_chat_question() -> Optional[str]:\n    try:\n        q = input(\"You: \").strip()\n    except (EOFError, KeyboardInterrupt):\n        return None\n    if not q:\n        return \"\"\n    if q.lower() in _EXIT_WORDS:\n        return None",
+        "detail": "unified_chat",
+        "documentation": {}
+    },
+    {
+        "label": "HeadMetrics",
+        "kind": 6,
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
+        "peekOfCode": "class HeadMetrics:\n    price_loss: float\n    trend_loss: float\n    risk_loss: float\n    state_loss: float\n    state_acc: float\ndef _to_loader(\n    x: np.ndarray,\n    y_price: np.ndarray,\n    y_trend: np.ndarray,",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
+        "label": "train_unified_multitask",
+        "kind": 2,
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
+        "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    cfg = load_config(config_path)\n    device = cfg.get(\"device\", \"cuda\" if torch.cuda.is_available() else \"cpu\")\n    csv_path = _resolve_csv_path(cfg, csv_path)\n    df = _load_market_df(csv_path)",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
+        "peekOfCode": "logger = setup_logging(log_file=\"unified_multitask_training.log\")\n@dataclass\nclass HeadMetrics:\n    price_loss: float\n    trend_loss: float\n    risk_loss: float\n    state_loss: float\n    state_acc: float\ndef _to_loader(\n    x: np.ndarray,",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
+        "label": "TalkContext",
+        "kind": 6,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "class TalkContext:\n    config_path: str\n    checkpoint_path: str\n    feature_columns: list[str]\n    sequence_length: int\n    target_shift: int\n    engine: UnifiedNeuralEngine\n    reasoning: ReasoningEngine\n    feature_scaler: Any = None\n    target_scaler: Any = None",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "run_unified_talk",
+        "kind": 2,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "def run_unified_talk(\n    config_path: str,\n    *,\n    checkpoint_path: Optional[str] = None,\n    csv_path: Optional[str] = None,\n    ticker: Optional[str] = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n) -> None:\n    ctx = _load_context(config_path, checkpoint_path=checkpoint_path)",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "ASSISTANT_PREFIX",
+        "kind": 5,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "ASSISTANT_PREFIX = \"Assistant:\\n\"\n@dataclass\nclass TalkContext:\n    config_path: str\n    checkpoint_path: str\n    feature_columns: list[str]\n    sequence_length: int\n    target_shift: int\n    engine: UnifiedNeuralEngine\n    reasoning: ReasoningEngine",
+        "detail": "unified_talk",
         "documentation": {}
     },
     {

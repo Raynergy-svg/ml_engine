@@ -123,7 +123,7 @@ This document details the comprehensive improvements made to the ML engine to en
 ## 5. Enhanced Data Processing
 
 ### RobustScaler
-- **File**: `data_processing_optimized.py`
+- **File**: `data_processing.py`
 - **Purpose**: Better outlier handling than StandardScaler
 - **Benefits**:
   - Uses median and IQR instead of mean and std
@@ -131,7 +131,7 @@ This document details the comprehensive improvements made to the ML engine to en
   - Better normalization for volatile stocks
 
 ### Improved Technical Indicators
-- **File**: `data_processing_optimized.py`
+- **File**: `data_processing.py`
 - **New Indicators**:
   1. **Parkinson's Volatility**:
      - More accurate than simple volatility
@@ -155,7 +155,7 @@ This document details the comprehensive improvements made to the ML engine to en
 ## 6. Advanced Data Augmentation
 
 ### Mixup Augmentation
-- **File**: `data_processing_optimized.py`
+- **File**: `data_processing.py`
 - **Function**: `augment_data`
 - **Purpose**: Better generalization through mixing samples
 - **Implementation**:

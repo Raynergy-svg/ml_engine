@@ -2,15 +2,24 @@
 Test script to validate ML model improvements.
 """
 
+from pathlib import Path
+import sys
+
+# Allow running this file directly (adds repo root to sys.path).
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import torch
 import torch.nn as nn
 import numpy as np
+
+RNG = np.random.default_rng(0)
+
 from models_enhanced import (
     StockPredictor, AttentiveLSTM, GRUPredictor, 
     TransformerPredictor, TCNPredictor, Mish, Swish
 )
 from evaluation import smooth_predictions, ensemble_predictions
-from data_processing_optimized import augment_data
+from data_processing import augment_data
 
 def test_activation_functions():
     """Test new activation functions."""
@@ -147,14 +156,14 @@ def test_improved_attention():
     output = model(x)
     
     assert output.shape == (8, 1), "AttentiveLSTM output shape mismatch"
-    assert torch.all(torch.isfinite(output)), "AttentiveLSTM produced non-finite values"
-    print("✓ AttentiveLSTM with optimized attention works correctly")
-
 def test_prediction_smoothing():
     """Test prediction smoothing utilities."""
     print("\nTesting prediction smoothing...")
     
-    predictions = np.random.randn(100)
+    predictions = RNG.standard_normal(100)
+    
+    # Test EMA smoothing
+    smoothed_ema = smooth_predictions(predictions, method="ema", alpha=0.3)
     
     # Test EMA smoothing
     smoothed_ema = smooth_predictions(predictions, method="ema", alpha=0.3)
@@ -169,14 +178,14 @@ def test_prediction_smoothing():
     
     # Test median smoothing
     smoothed_median = smooth_predictions(predictions, method="median", window=5)
-    assert smoothed_median.shape == predictions.shape, "Median smoothing shape mismatch"
-    print("✓ Median smoothing works correctly")
-
 def test_ensemble_predictions():
     """Test ensemble prediction utilities."""
     print("\nTesting ensemble predictions...")
     
-    pred1 = np.random.randn(100)
+    pred1 = RNG.standard_normal(100)
+    pred2 = RNG.standard_normal(100)
+    pred3 = RNG.standard_normal(100)
+    predictions_list = [pred1, pred2, pred3]
     pred2 = np.random.randn(100)
     pred3 = np.random.randn(100)
     predictions_list = [pred1, pred2, pred3]
@@ -195,15 +204,15 @@ def test_ensemble_predictions():
     # Test weighted ensemble
     weights = [0.5, 0.3, 0.2]
     ensemble_weighted = ensemble_predictions(predictions_list, method="weighted", weights=weights)
-    assert ensemble_weighted.shape == pred1.shape, "Weighted ensemble shape mismatch"
-    print("✓ Weighted ensemble works correctly")
-
 def test_improved_augmentation():
     """Test improved data augmentation strategies."""
     print("\nTesting improved data augmentation...")
     
-    sequences = np.random.randn(50, 30, 7)
-    targets = np.random.randn(50)
+    sequences = RNG.standard_normal((50, 30, 7))
+    targets = RNG.standard_normal(50)
+    
+    # Test augmentation with mixup
+    aug_seq, aug_tgt = augment_data(
     
     # Test augmentation with mixup
     aug_seq, aug_tgt = augment_data(

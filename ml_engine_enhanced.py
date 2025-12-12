@@ -18,7 +18,7 @@ from sklearn.metrics import r2_score, mean_squared_error
 
 # Import optimized modules
 from memory_manager_enhanced import MemoryManager, mixed_precision_context
-from data_processing_optimized import create_optimized_dataloader
+from data_processing import create_optimized_dataloader
 from models_enhanced import (
     StockPredictor,
     AttentiveLSTM,

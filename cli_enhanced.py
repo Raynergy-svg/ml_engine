@@ -16,11 +16,11 @@ import asyncio
 import torch
 
 # Import optimized modules
-from data_processing_optimized import load_stock_data_efficient, prepare_sequences
-from ml_engine_enhanced import EnhancedMLEngine
+from data_processing import load_stock_data_efficient, prepare_sequences
 from memory_manager_enhanced import MemoryManager, memory_efficient
 from reasoning_enhanced import ReasoningEngine
-from neural_network_integrator import NeuralNetworkIntegrator
+from neural_network_integrator_enhanced import NeuralNetworkIntegrator
+from neural_engine_unified import UnifiedNeuralEngine
 
 # Configure logging
 logging.basicConfig(
@@ -172,15 +172,6 @@ class StockPredictionCLI:
             proactive_cleanup=memory_config.get("proactive_cleanup", True),
         )
 
-        # Initialize ML engine
-        self.ml_engine = EnhancedMLEngine(self.config.get("ml_engine", {}))
-
-        # Initialize MT engine
-        self.mt_engine = EnhancedMLEngine(self.config.get("mt_engine", {}))
-
-        # Initialize MR engine
-        self.mr_engine = EnhancedMLEngine(self.config.get("mr_engine", {}))
-
         # Initialize reasoning engine
         reasoning_config = self.config.get("reasoning", {})
         self.reasoning_engine = ReasoningEngine(reasoning_config)
@@ -188,10 +179,23 @@ class StockPredictionCLI:
         # Initialize neural network integrator
         integrator_config = self.config.get("integrator", {})
         self.integrator = NeuralNetworkIntegrator(integrator_config)
-        self.integrator.set_engines(
-            ml_engine=self.ml_engine,
-            mt_engine=self.mt_engine,
-            mr_engine=self.mr_engine,
+
+        # Unified engine uses the single feature tensor produced by `prepare_sequences`.
+        feature_dim = len(self.config.get("data", {}).get("features", [])) or 5
+        unified_engine = UnifiedNeuralEngine(
+            {
+                "device": device,
+                "model": {
+                    "input_size": int(feature_dim),
+                    "hidden_size": int(self.config.get("ml_engine", {}).get("model", {}).get("hidden_size", 64)),
+                    "num_layers": int(self.config.get("ml_engine", {}).get("model", {}).get("num_layers", 2)),
+                    "dropout": float(self.config.get("ml_engine", {}).get("model", {}).get("dropout", 0.1)),
+                    "bidirectional": bool(self.config.get("mr_engine", {}).get("model", {}).get("bidirectional", False)),
+                },
+            }
+        )
+        self.integrator.set_unified_engine(
+            unified_engine=unified_engine,
             reasoning_engine=self.reasoning_engine,
         )
 
@@ -217,8 +221,9 @@ class StockPredictionCLI:
         )
 
         try:
-            # Use optimized data loading function
-            data = load_stock_data_efficient(
+            # Use optimized data loading function (run blocking IO in a worker thread)
+            data = await asyncio.to_thread(
+                load_stock_data_efficient,
                 tickers=tickers,
                 start_date=start_date,
                 end_date=end_date,
@@ -235,7 +240,6 @@ class StockPredictionCLI:
         except Exception as e:
             logger.error(f"Error fetching stock data: {e}")
             return pd.DataFrame()
-
     async def fetch_market_indicators(
         self, start_date: str, end_date: str
     ) -> pd.DataFrame:
@@ -255,8 +259,9 @@ class StockPredictionCLI:
         indicators = ["^GSPC", "^DJI", "^IXIC", "^VIX", "SPY", "QQQ", "IWM"]
 
         try:
-            # Use optimized data loading function
-            data = load_stock_data_efficient(
+            # Use optimized data loading function (run blocking IO in a worker thread)
+            data = await asyncio.to_thread(
+                load_stock_data_efficient,
                 tickers=indicators,
                 start_date=start_date,
                 end_date=end_date,
@@ -273,7 +278,6 @@ class StockPredictionCLI:
         except Exception as e:
             logger.error(f"Error fetching market indicators: {e}")
             return pd.DataFrame()
-
     async def fetch_economic_data(self, start_date: str, end_date: str) -> pd.DataFrame:
         """
         Fetch economic data from online sources.
@@ -291,8 +295,9 @@ class StockPredictionCLI:
         economic_indicators = ["TLT", "GLD", "USO", "UUP"]
 
         try:
-            # Use optimized data loading function
-            data = load_stock_data_efficient(
+            # Use optimized data loading function (run blocking IO in a worker thread)
+            data = await asyncio.to_thread(
+                load_stock_data_efficient,
                 tickers=economic_indicators,
                 start_date=start_date,
                 end_date=end_date,
@@ -306,6 +311,8 @@ class StockPredictionCLI:
             logger.info("Successfully fetched economic data")
             return data
         except Exception as e:
+            logger.error(f"Error fetching economic data: {e}")
+            return pd.DataFrame()
             logger.error(f"Error fetching economic data: {e}")
             return pd.DataFrame()
 

@@ -42,6 +42,9 @@ class NeuralNetworkIntegrator:
         self.mt_engine = None
         self.mr_engine = None
         self.reasoning_engine = None
+
+        # Unified engine (single-network mode)
+        self.unified_engine = None
         
         # Initialize integration model
         self.integration_model = self._create_integration_model()
@@ -92,8 +95,27 @@ class NeuralNetworkIntegrator:
         self.mt_engine = mt_engine
         self.mr_engine = mr_engine
         self.reasoning_engine = reasoning_engine
+
+        # If multi-engine mode is configured, ensure unified mode is off.
+        self.unified_engine = None
         
         logger.info("All engines set for integration")
+
+    def set_unified_engine(self, unified_engine: Any, reasoning_engine: Any):
+        """Use a single neural engine for predictions.
+
+        The unified engine must expose `predict(features)` and return either a dict
+        with `prediction`/`uncertainty` keys or a raw prediction.
+        """
+        self.unified_engine = unified_engine
+        self.reasoning_engine = reasoning_engine
+
+        # Clear legacy engines to avoid accidental use.
+        self.ml_engine = None
+        self.mt_engine = None
+        self.mr_engine = None
+
+        logger.info("Unified engine set for integration")
     
     def _calculate_dynamic_weights(
         self,
@@ -132,6 +154,11 @@ class NeuralNetworkIntegrator:
         return ml_weight, mt_weight, mr_weight
     
     def _ensure_engines_set(self) -> None:
+        if self.unified_engine is not None:
+            if self.reasoning_engine is None:
+                raise ValueError("Reasoning engine must be set before making predictions")
+            return
+
         if any(
             engine is None
             for engine in (
@@ -297,6 +324,43 @@ class NeuralNetworkIntegrator:
             Dictionary of prediction results
         """
         self._ensure_engines_set()
+
+        # Single-network mode: bypass per-engine integration.
+        if self.unified_engine is not None:
+            unified_result = self.unified_engine.predict(features)
+            unified_prediction, unified_uncertainty = self._split_prediction_and_uncertainty(unified_result)
+            pred_tensor = self._as_tensor_prediction(unified_prediction)
+            pred_np = pred_tensor.detach().cpu().numpy()
+
+            # Maintain output compatibility with the multi-engine API.
+            engine_weights = np.array([1.0, 0.0, 0.0], dtype=float)
+            reasoning_result = self.reasoning_engine.analyze_predictions(
+                predictions=pred_np,
+                uncertainties=self._reasoning_uncertainties(pred_np, float(unified_uncertainty)),
+            )
+
+            result = self._build_result(
+                integrated_prediction_np=pred_np,
+                integrated_uncertainty=float(unified_uncertainty),
+                ml_prediction=pred_tensor,
+                mt_prediction=pred_tensor,
+                mr_prediction=pred_tensor,
+                ml_uncertainty=float(unified_uncertainty),
+                mt_uncertainty=float(unified_uncertainty),
+                mr_uncertainty=float(unified_uncertainty),
+                engine_weights=engine_weights,
+                reasoning_result=reasoning_result,
+                features=features,
+                return_features=return_features,
+            )
+
+            if isinstance(unified_result, dict):
+                # Preserve the unified engine's additional head outputs if present.
+                for extra_key in ("trend", "risk", "state_probs"):
+                    if extra_key in unified_result:
+                        result[extra_key] = unified_result[extra_key]
+
+            return result
 
         (
             ml_prediction,

@@ -108,6 +108,121 @@ class ReasoningEngine:
         results["insights"] = insights
         
         return results
+
+    def _to_float(self, value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            return float(value)
+        except Exception:
+            return None
+
+    def _extract_losses(self, metrics: Dict[str, Any]) -> Dict[str, float]:
+        losses: Dict[str, float] = {}
+        for k in ("price_loss", "trend_loss", "risk_loss", "state_loss"):
+            v = self._to_float(metrics.get(k))
+            if v is not None:
+                losses[k] = v
+        return losses
+
+    def _loss_balance_insights(
+        self,
+        losses: Dict[str, float],
+        lag_threshold_ratio: float
+    ) -> Dict[str, Any]:
+        vals = np.array(list(losses.values()), dtype=float)
+        baseline = float(np.median(vals)) if len(vals) else 0.0
+        baseline = max(baseline, 1e-12)
+
+        worst_name, worst_val = max(losses.items(), key=lambda kv: kv[1])
+
+        lagging = (worst_val / baseline) >= float(lag_threshold_ratio)
+        if lagging:
+            message = f"{worst_name} is lagging (loss {worst_val:.4f} vs median {baseline:.4f})."
+        else:
+            message = "All heads look roughly balanced (losses within expected range)."
+
+        return {
+            "insight": message,
+            "worst_name": worst_name,
+            "lagging": lagging,
+        }
+
+    def _regression_insight(
+        self,
+        history: Optional[List[Dict[str, Any]]],
+        worst_name: str,
+        regression_ratio: float,
+        min_history: int,
+    ) -> Optional[str]:
+        if not history or len(history) < int(min_history):
+            return None
+
+        prev = history[-2].get("val", {}) if isinstance(history[-2], dict) else {}
+        cur = history[-1].get("val", {}) if isinstance(history[-1], dict) else {}
+
+        prev_f = self._to_float(prev.get(worst_name))
+        cur_f = self._to_float(cur.get(worst_name))
+        if prev_f is None or cur_f is None or prev_f <= 0:
+            return None
+
+        if (cur_f / prev_f) >= float(regression_ratio):
+            return f"{worst_name} regressed vs last epoch ({prev_f:.4f} -> {cur_f:.4f})."
+
+        return None
+
+    def _accuracy_insight(self, acc_f: Optional[float]) -> Optional[str]:
+        if acc_f is None:
+            return None
+        if acc_f < 0.5:
+            return f"state head accuracy is low ({acc_f:.2%}); check labels or class balance."
+        return f"state head accuracy: {acc_f:.2%}."
+
+    def summarize_head_health(
+        self,
+        head_metrics: Dict[str, Any],
+        *,
+        history: Optional[List[Dict[str, Any]]] = None,
+        lag_threshold_ratio: float = 1.25,
+        regression_ratio: float = 1.10,
+        min_history: int = 3,
+    ) -> Dict[str, Any]:
+        """Summarize multi-head training/eval status in a chat-friendly way.
+
+        Expected `head_metrics` keys (typical):
+        - price_loss, trend_loss, risk_loss, state_loss (lower is better)
+        - state_acc (higher is better)
+
+        This does not replace rigorous evaluation; it provides a quick diagnostic
+        to spot heads that may need re-weighting or capacity.
+        """
+        metrics = dict(head_metrics or {})
+        insights: List[str] = []
+
+        losses = self._extract_losses(metrics)
+        acc_f = self._to_float(metrics.get("state_acc"))
+
+        lagging = False
+        worst_name: Optional[str] = None
+
+        if losses:
+            balance = self._loss_balance_insights(losses, lag_threshold_ratio)
+            insights.append(balance["insight"])
+            lagging = bool(balance["lagging"])
+            worst_name = str(balance["worst_name"])
+
+            regression = self._regression_insight(history, worst_name, regression_ratio, min_history)
+            if regression is not None:
+                insights.append(regression)
+
+        acc_msg = self._accuracy_insight(acc_f)
+        if acc_msg is not None:
+            insights.append(acc_msg)
+
+        if lagging:
+            insights.append("Consider increasing that head's loss weight or adding head-specific capacity.")
+
+        return {"head_metrics": metrics, "insights": insights}
     
     def _calculate_metrics(
         self, 
