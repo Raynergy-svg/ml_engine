@@ -7,8 +7,10 @@ import os
 import sys
 import logging
 import argparse
+import copy
 from pathlib import Path
 from datetime import datetime
+from typing import Tuple
 import numpy as np
 import torch
 import torch.nn as nn
@@ -117,7 +119,11 @@ class EnhancedTrainer:
         if not os.path.exists(checkpoint_path):
             raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
         
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        checkpoint = torch.load(
+            checkpoint_path,
+            map_location=self.device,
+            weights_only=False,
+        )
         
         # Build model with same architecture
         model_type = self.config.get("architecture", "attention_lstm")
@@ -522,7 +528,11 @@ class EnhancedTrainer:
         logger.info("Evaluating on test set...")
 
         # Load best model
-        checkpoint = torch.load("trained_data/models/best_model.pth")
+        checkpoint = torch.load(
+            "trained_data/models/best_model.pth",
+            map_location=self.device,
+            weights_only=False,
+        )
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model.eval()
 
@@ -572,6 +582,27 @@ def main():
         default="market_data/TSLA_data.csv",
         help="Path to data file",
     )
+    parser.add_argument(
+        "--text-data",
+        type=str,
+        default=None,
+        help=(
+            "Optional path to dated text CSV (columns: date,text) to add "
+            "text-derived features"
+        ),
+    )
+    parser.add_argument(
+        "--text-date-col",
+        type=str,
+        default="date",
+        help="Date column name in --text-data CSV",
+    )
+    parser.add_argument(
+        "--text-text-col",
+        type=str,
+        default="text",
+        help="Text column name in --text-data CSV",
+    )
     parser.add_argument("--epochs", type=int, default=100, help="Number of epochs")
     parser.add_argument(
         "--resume",
@@ -583,7 +614,7 @@ def main():
     args = parser.parse_args()
 
     # Load config
-    config = load_config(args.config)
+    config = copy.deepcopy(load_config(args.config))
 
     # Initialize trainer
     trainer = EnhancedTrainer(config)
@@ -591,6 +622,21 @@ def main():
     # Load and preprocess data
     logger.info(f"Loading data from {args.data}")
     df = trainer.data_loader.load_csv(args.data)
+
+    if args.text_data:
+        logger.info("Loading and merging text data: %s", args.text_data)
+        text_cfg = config.get("text")
+        if not isinstance(text_cfg, dict):
+            config["text"] = {}
+        config["text"]["enabled"] = True
+        config["text"]["text_column"] = args.text_text_col
+
+        text_features_df = trainer.data_loader.load_text_csv(
+            args.text_data,
+            date_column=args.text_date_col,
+            text_column=args.text_text_col,
+        )
+        df = trainer.data_loader.merge_text_features(df, text_features_df)
 
     logger.info("Preprocessing data...")
     X_train, y_train, X_val, y_val, X_test, y_test = trainer.data_loader.preprocess(

@@ -259,6 +259,22 @@
         "documentation": {}
     },
     {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -1155,6 +1171,30 @@
         "documentation": {}
     },
     {
+        "label": "Iterable",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "List",
         "importPath": "typing",
         "description": "typing",
@@ -1228,6 +1268,14 @@
     },
     {
         "label": "asdict",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
         "importPath": "dataclasses",
         "description": "dataclasses",
         "isExtraImport": true,
@@ -1855,6 +1903,71 @@
         "documentation": {}
     },
     {
+        "label": "os",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "os",
+        "description": "os",
+        "detail": "os",
+        "documentation": {}
+    },
+    {
+        "label": "getpass",
+        "importPath": "getpass",
+        "description": "getpass",
+        "isExtraImport": true,
+        "detail": "getpass",
+        "documentation": {}
+    },
+    {
+        "label": "OptionParser",
+        "importPath": "optparse",
+        "description": "optparse",
+        "isExtraImport": true,
+        "detail": "optparse",
+        "documentation": {}
+    },
+    {
+        "label": "*",
+        "importPath": "peewee",
+        "description": "peewee",
+        "isExtraImport": true,
+        "detail": "peewee",
+        "documentation": {}
+    },
+    {
+        "label": "print_",
+        "importPath": "peewee",
+        "description": "peewee",
+        "isExtraImport": true,
+        "detail": "peewee",
+        "documentation": {}
+    },
+    {
+        "label": "__version__",
+        "importPath": "peewee",
+        "description": "peewee",
+        "isExtraImport": true,
+        "detail": "peewee",
+        "documentation": {}
+    },
+    {
+        "label": "CockroachDatabase",
+        "importPath": "playhouse.cockroachdb",
+        "description": "playhouse.cockroachdb",
+        "isExtraImport": true,
+        "detail": "playhouse.cockroachdb",
+        "documentation": {}
+    },
+    {
+        "label": "*",
+        "importPath": "playhouse.reflection",
+        "description": "playhouse.reflection",
+        "isExtraImport": true,
+        "detail": "playhouse.reflection",
+        "documentation": {}
+    },
+    {
         "label": "csv",
         "kind": 6,
         "isExtraImport": true,
@@ -1932,15 +2045,6 @@
         "documentation": {}
     },
     {
-        "label": "os",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "os",
-        "description": "os",
-        "detail": "os",
-        "documentation": {}
-    },
-    {
         "label": "asyncio",
         "kind": 6,
         "isExtraImport": true,
@@ -1964,6 +2068,31 @@
         "description": "io",
         "isExtraImport": true,
         "detail": "io",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "argparse",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "argparse",
+        "description": "argparse",
+        "detail": "argparse",
         "documentation": {}
     },
     {
@@ -2751,6 +2880,54 @@
         "documentation": {}
     },
     {
+        "label": "MarketDataLoader",
+        "importPath": "data_loader",
+        "description": "data_loader",
+        "isExtraImport": true,
+        "detail": "data_loader",
+        "documentation": {}
+    },
+    {
+        "label": "MarketDataLoader",
+        "importPath": "data_loader",
+        "description": "data_loader",
+        "isExtraImport": true,
+        "detail": "data_loader",
+        "documentation": {}
+    },
+    {
+        "label": "MarketDataLoader",
+        "importPath": "data_loader",
+        "description": "data_loader",
+        "isExtraImport": true,
+        "detail": "data_loader",
+        "documentation": {}
+    },
+    {
+        "label": "simple_sentiment_score",
+        "importPath": "text_features",
+        "description": "text_features",
+        "isExtraImport": true,
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
+        "label": "text_feature_summary",
+        "importPath": "text_features",
+        "description": "text_features",
+        "isExtraImport": true,
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
+        "label": "simple_sentiment_score",
+        "importPath": "text_features",
+        "description": "text_features",
+        "isExtraImport": true,
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
         "label": "yaml",
         "kind": 6,
         "isExtraImport": true,
@@ -3088,15 +3265,6 @@
         "documentation": {}
     },
     {
-        "label": "argparse",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "argparse",
-        "description": "argparse",
-        "detail": "argparse",
-        "documentation": {}
-    },
-    {
         "label": "Live",
         "importPath": "rich.live",
         "description": "rich.live",
@@ -3271,22 +3439,6 @@
         "description": "dotenv",
         "isExtraImport": true,
         "detail": "dotenv",
-        "documentation": {}
-    },
-    {
-        "label": "MarketDataLoader",
-        "importPath": "data_loader",
-        "description": "data_loader",
-        "isExtraImport": true,
-        "detail": "data_loader",
-        "documentation": {}
-    },
-    {
-        "label": "MarketDataLoader",
-        "importPath": "data_loader",
-        "description": "data_loader",
-        "isExtraImport": true,
-        "detail": "data_loader",
         "documentation": {}
     },
     {
@@ -3799,6 +3951,132 @@
         "documentation": {}
     },
     {
+        "label": "BaseModel",
+        "kind": 6,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "class BaseModel(Model):\n    class Meta:\n        database = database\n\"\"\"\nUNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):\n    def __init__(self, *_, **__): pass\n\"\"\"\nDATABASE_ALIASES = {\n    CockroachDatabase: ['cockroach', 'cockroachdb', 'crdb'],",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "UnknownField",
+        "kind": 6,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "class UnknownField(object):\n    def __init__(self, *_, **__): pass\n\"\"\"\nDATABASE_ALIASES = {\n    CockroachDatabase: ['cockroach', 'cockroachdb', 'crdb'],\n    MySQLDatabase: ['mysql', 'mysqldb'],\n    PostgresqlDatabase: ['postgres', 'postgresql'],\n    SqliteDatabase: ['sqlite', 'sqlite3'],\n}\nDATABASE_MAP = dict((value, key)",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "make_introspector",
+        "kind": 2,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "def make_introspector(database_type, database_name, **kwargs):\n    if database_type not in DATABASE_MAP:\n        err('Unrecognized database, must be one of: %s' %\n            ', '.join(DATABASE_MAP.keys()))\n        sys.exit(1)\n    schema = kwargs.pop('schema', None)\n    DatabaseClass = DATABASE_MAP[database_type]\n    db = DatabaseClass(database_name, **kwargs)\n    return Introspector.from_database(db, schema=schema)\ndef print_models(introspector, tables=None, preserve_order=False,",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "print_models",
+        "kind": 2,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "def print_models(introspector, tables=None, preserve_order=False,\n                 include_views=False, ignore_unknown=False, snake_case=True):\n    database = introspector.introspect(table_names=tables,\n                                       include_views=include_views,\n                                       snake_case=snake_case)\n    db_kwargs = introspector.get_database_kwargs()\n    header = HEADER % (\n        introspector.get_additional_imports(),\n        introspector.get_database_class().__name__,\n        introspector.get_database_name().replace('\\\\', '\\\\\\\\'),",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "print_header",
+        "kind": 2,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "def print_header(cmd_line, introspector):\n    timestamp = datetime.datetime.now()\n    print_('# Code generated by:')\n    print_('# python -m pwiz %s' % cmd_line)\n    print_('# Date: %s' % timestamp.strftime('%B %d, %Y %I:%M%p'))\n    print_('# Database: %s' % introspector.get_database_name())\n    print_('# Peewee version: %s' % peewee_version)\n    print_('')\ndef err(msg):\n    sys.stderr.write('\\033[91m%s\\033[0m\\n' % msg)",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "err",
+        "kind": 2,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "def err(msg):\n    sys.stderr.write('\\033[91m%s\\033[0m\\n' % msg)\n    sys.stderr.flush()\ndef get_option_parser():\n    parser = OptionParser(usage='usage: %prog [options] database_name')\n    ao = parser.add_option\n    ao('-H', '--host', dest='host')\n    ao('-p', '--port', dest='port', type='int')\n    ao('-u', '--user', dest='user')\n    ao('-P', '--password', dest='password', action='store_true')",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "get_option_parser",
+        "kind": 2,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "def get_option_parser():\n    parser = OptionParser(usage='usage: %prog [options] database_name')\n    ao = parser.add_option\n    ao('-H', '--host', dest='host')\n    ao('-p', '--port', dest='port', type='int')\n    ao('-u', '--user', dest='user')\n    ao('-P', '--password', dest='password', action='store_true')\n    engines = sorted(DATABASE_MAP)\n    ao('-e', '--engine', dest='engine', choices=engines,\n       help=('Database type, e.g. sqlite, mysql, postgresql or cockroachdb. '",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "get_connect_kwargs",
+        "kind": 2,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "def get_connect_kwargs(options):\n    ops = ('host', 'port', 'user', 'schema')\n    kwargs = dict((o, getattr(options, o)) for o in ops if getattr(options, o))\n    if options.password:\n        kwargs['password'] = getpass()\n    return kwargs\nif __name__ == '__main__':\n    raw_argv = sys.argv\n    parser = get_option_parser()\n    options, args = parser.parse_args()",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "HEADER",
+        "kind": 5,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "HEADER = \"\"\"from peewee import *%s\ndatabase = %s('%s'%s)\n\"\"\"\nBASE_MODEL = \"\"\"\\\nclass BaseModel(Model):\n    class Meta:\n        database = database\n\"\"\"\nUNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "database",
+        "kind": 5,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "database = %s('%s'%s)\n\"\"\"\nBASE_MODEL = \"\"\"\\\nclass BaseModel(Model):\n    class Meta:\n        database = database\n\"\"\"\nUNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):\n    def __init__(self, *_, **__): pass",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "BASE_MODEL",
+        "kind": 5,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "BASE_MODEL = \"\"\"\\\nclass BaseModel(Model):\n    class Meta:\n        database = database\n\"\"\"\nUNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):\n    def __init__(self, *_, **__): pass\n\"\"\"\nDATABASE_ALIASES = {",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "UNKNOWN_FIELD",
+        "kind": 5,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "UNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):\n    def __init__(self, *_, **__): pass\n\"\"\"\nDATABASE_ALIASES = {\n    CockroachDatabase: ['cockroach', 'cockroachdb', 'crdb'],\n    MySQLDatabase: ['mysql', 'mysqldb'],\n    PostgresqlDatabase: ['postgres', 'postgresql'],\n    SqliteDatabase: ['sqlite', 'sqlite3'],\n}",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "DATABASE_ALIASES",
+        "kind": 5,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "DATABASE_ALIASES = {\n    CockroachDatabase: ['cockroach', 'cockroachdb', 'crdb'],\n    MySQLDatabase: ['mysql', 'mysqldb'],\n    PostgresqlDatabase: ['postgres', 'postgresql'],\n    SqliteDatabase: ['sqlite', 'sqlite3'],\n}\nDATABASE_MAP = dict((value, key)\n                    for key in DATABASE_ALIASES\n                    for value in DATABASE_ALIASES[key])\ndef make_introspector(database_type, database_name, **kwargs):",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
+        "label": "DATABASE_MAP",
+        "kind": 5,
+        "importPath": ".venv.bin.pwiz",
+        "description": ".venv.bin.pwiz",
+        "peekOfCode": "DATABASE_MAP = dict((value, key)\n                    for key in DATABASE_ALIASES\n                    for value in DATABASE_ALIASES[key])\ndef make_introspector(database_type, database_name, **kwargs):\n    if database_type not in DATABASE_MAP:\n        err('Unrecognized database, must be one of: %s' %\n            ', '.join(DATABASE_MAP.keys()))\n        sys.exit(1)\n    schema = kwargs.pop('schema', None)\n    DatabaseClass = DATABASE_MAP[database_type]",
+        "detail": ".venv.bin.pwiz",
+        "documentation": {}
+    },
+    {
         "label": "get_stock_data",
         "kind": 2,
         "importPath": "SLM.stock_slm",
@@ -4165,6 +4443,24 @@
         "description": "demo.fixed_real_data",
         "peekOfCode": "class StockPredictionCLI:\n    \"\"\"Command-line interface for stock prediction with real data.\"\"\"\n    def __init__(self):\n        \"\"\"Initialize the CLI.\"\"\"\n        print(\"Initializing Stock Prediction CLI with real data integration\")\n        self.data_processor = RealDataProcessor()\n        self.ml_engine = None\n        self.reasoning_engine = None\n        # Create output directories\n        os.makedirs(\"output\", exist_ok=True)",
         "detail": "demo.fixed_real_data",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "demo.text_feature_smoke",
+        "description": "demo.text_feature_smoke",
+        "peekOfCode": "def main() -> None:\n    if str(REPO_ROOT) not in sys.path:\n        sys.path.insert(0, str(REPO_ROOT))\n    from data_loader import MarketDataLoader\n    from utils import load_config\n    parser = argparse.ArgumentParser()\n    parser.add_argument(\"--config\", default=\"config.yaml\")\n    parser.add_argument(\"--market\", required=True)\n    parser.add_argument(\"--text\", required=True)\n    parser.add_argument(\"--text-date-col\", default=\"date\")",
+        "detail": "demo.text_feature_smoke",
+        "documentation": {}
+    },
+    {
+        "label": "REPO_ROOT",
+        "kind": 5,
+        "importPath": "demo.text_feature_smoke",
+        "description": "demo.text_feature_smoke",
+        "peekOfCode": "REPO_ROOT = Path(__file__).resolve().parents[1]\ndef main() -> None:\n    if str(REPO_ROOT) not in sys.path:\n        sys.path.insert(0, str(REPO_ROOT))\n    from data_loader import MarketDataLoader\n    from utils import load_config\n    parser = argparse.ArgumentParser()\n    parser.add_argument(\"--config\", default=\"config.yaml\")\n    parser.add_argument(\"--market\", required=True)\n    parser.add_argument(\"--text\", required=True)",
+        "detail": "demo.text_feature_smoke",
         "documentation": {}
     },
     {
@@ -4591,6 +4887,24 @@
         "documentation": {}
     },
     {
+        "label": "TestSimpleSentimentScore",
+        "kind": 6,
+        "importPath": "tests.test_text_features",
+        "description": "tests.test_text_features",
+        "peekOfCode": "class TestSimpleSentimentScore(unittest.TestCase):\n    def test_empty_text(self):\n        self.assertEqual(simple_sentiment_score(None), 0.0)\n        self.assertEqual(simple_sentiment_score(\"\"), 0.0)\n    def test_positive_text(self):\n        score = simple_sentiment_score(\"Company beats earnings, strong growth\")\n        self.assertGreater(score, 0.0)\n    def test_negative_text(self):\n        score = simple_sentiment_score(\"Company misses earnings, weak outlook\")\n        self.assertLess(score, 0.0)",
+        "detail": "tests.test_text_features",
+        "documentation": {}
+    },
+    {
+        "label": "TestTextCsvMerge",
+        "kind": 6,
+        "importPath": "tests.test_text_features",
+        "description": "tests.test_text_features",
+        "peekOfCode": "class TestTextCsvMerge(unittest.TestCase):\n    def setUp(self):\n        self.tmp = tempfile.TemporaryDirectory()\n        self.tmp_path = Path(self.tmp.name)\n        self.config = {\n            \"text\": {\"enabled\": True},\n            \"data\": {\"sequence_length\": 3},\n        }\n        self.loader = MarketDataLoader(self.config)\n        # Small synthetic market df",
+        "detail": "tests.test_text_features",
+        "documentation": {}
+    },
+    {
         "label": "TestLoadConfig",
         "kind": 6,
         "importPath": "tests.test_utils_improved",
@@ -4730,7 +5044,16 @@
         "kind": 5,
         "importPath": "data_loader",
         "description": "data_loader",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass DataLoader:\n    \"\"\"Enhanced data loader with comprehensive preprocessing.\"\"\"\n    def __init__(self, config: Dict[str, Any]):\n        \"\"\"Initialize data loader with configuration.\"\"\"\n        self.config = config\n        self.scaler = None\n        self.feature_engineer = FeatureEngineering(config)\n        self.feature_names = []\n    def load_csv(self, file_path: str) -> pd.DataFrame:",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nPreprocessResult = Tuple[\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n]\nclass DataLoader:",
+        "detail": "data_loader",
+        "documentation": {}
+    },
+    {
+        "label": "PreprocessResult",
+        "kind": 5,
+        "importPath": "data_loader",
+        "description": "data_loader",
+        "peekOfCode": "PreprocessResult = Tuple[\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n]\nclass DataLoader:\n    \"\"\"Enhanced data loader with comprehensive preprocessing.\"\"\"",
         "detail": "data_loader",
         "documentation": {}
     },
@@ -5623,6 +5946,69 @@
         "description": "test_improvements",
         "peekOfCode": "def main():\n    \"\"\"Run all tests.\"\"\"\n    print(\"=\" * 60)\n    print(\"Testing ML Model Improvements\")\n    print(\"=\" * 60)\n    try:\n        test_activation_functions()\n        test_improved_stock_predictor()\n        test_improved_gru_predictor()\n        test_improved_transformer_predictor()",
         "detail": "test_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "TextFeatureResult",
+        "kind": 6,
+        "importPath": "text_features",
+        "description": "text_features",
+        "peekOfCode": "class TextFeatureResult:\n    sentiment: float\n    token_count: int\n    char_count: int\ndef _tokenize(text: str) -> list[str]:\n    return [m.group(0).lower() for m in _WORD_RE.finditer(text or \"\")]\ndef _token_polarity(token: str) -> int:\n    if token in _POSITIVE:\n        return 1\n    if token in _NEGATIVE:",
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
+        "label": "simple_sentiment_score",
+        "kind": 2,
+        "importPath": "text_features",
+        "description": "text_features",
+        "peekOfCode": "def simple_sentiment_score(text: Optional[str]) -> float:\n    \"\"\"Return a small sentiment score in [-1, 1].\n    This is intentionally simple/cheap:\n    - tokenizes alphabetic words\n    - uses a tiny pos/neg lexicon\n    - handles negation by flipping the next token's polarity\n    If text is empty/None, returns 0.\n    \"\"\"\n    if not text:\n        return 0.0",
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
+        "label": "text_feature_summary",
+        "kind": 2,
+        "importPath": "text_features",
+        "description": "text_features",
+        "peekOfCode": "def text_feature_summary(texts: Iterable[str]) -> TextFeatureResult:\n    \"\"\"Aggregate a collection of texts into numeric features.\"\"\"\n    texts_list = list(texts)\n    if not texts_list:\n        return TextFeatureResult(sentiment=0.0, token_count=0, char_count=0)\n    sentiments = [simple_sentiment_score(t) for t in texts_list]\n    joined = \" \".join([t for t in texts_list if t])\n    tokens = _tokenize(joined)\n    # Mean sentiment across rows (already bounded)\n    sentiment = sum(sentiments) / float(len(sentiments)) if sentiments else 0.0",
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
+        "label": "_WORD_RE",
+        "kind": 5,
+        "importPath": "text_features",
+        "description": "text_features",
+        "peekOfCode": "_WORD_RE = re.compile(r\"[a-zA-Z][a-zA-Z\\-']+\")\n# Small lexicon tuned for finance-ish headlines.\n_POSITIVE = {\n    \"beat\",\n    \"beats\",\n    \"bull\",\n    \"bullish\",\n    \"boom\",\n    \"growth\",\n    \"up\",",
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
+        "label": "_POSITIVE",
+        "kind": 5,
+        "importPath": "text_features",
+        "description": "text_features",
+        "peekOfCode": "_POSITIVE = {\n    \"beat\",\n    \"beats\",\n    \"bull\",\n    \"bullish\",\n    \"boom\",\n    \"growth\",\n    \"up\",\n    \"upgrade\",\n    \"upgrades\",",
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
+        "label": "_NEGATIVE",
+        "kind": 5,
+        "importPath": "text_features",
+        "description": "text_features",
+        "peekOfCode": "_NEGATIVE = {\n    \"bear\",\n    \"bearish\",\n    \"miss\",\n    \"misses\",\n    \"down\",\n    \"downgrade\",\n    \"downgrades\",\n    \"underperform\",\n    \"weak\",",
+        "detail": "text_features",
+        "documentation": {}
+    },
+    {
+        "label": "_NEGATIONS",
+        "kind": 5,
+        "importPath": "text_features",
+        "description": "text_features",
+        "peekOfCode": "_NEGATIONS = {\"not\", \"no\", \"never\", \"without\"}\n@dataclass(frozen=True)\nclass TextFeatureResult:\n    sentiment: float\n    token_count: int\n    char_count: int\ndef _tokenize(text: str) -> list[str]:\n    return [m.group(0).lower() for m in _WORD_RE.finditer(text or \"\")]\ndef _token_polarity(token: str) -> int:\n    if token in _POSITIVE:",
+        "detail": "text_features",
         "documentation": {}
     },
     {

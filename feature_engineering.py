@@ -3,10 +3,13 @@ Advanced feature engineering for financial time series.
 Includes technical indicators, statistical features, and derived metrics.
 """
 
+import logging
+from typing import List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import List, Optional, Tuple
-import logging
+
+from text_features import simple_sentiment_score
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,10 @@ class FeatureEngineering:
 
         # Exponential Moving Averages
         for window in [12, 26, 50]:
-            df[f"ema_{window}"] = df["close"].ewm(span=window, adjust=False).mean()
+            df[f"ema_{window}"] = df["close"].ewm(
+                span=window,
+                adjust=False,
+            ).mean()
 
         # Moving Average Convergence Divergence (MACD)
         ema_12 = df["close"].ewm(span=12, adjust=False).mean()
@@ -54,9 +60,10 @@ class FeatureEngineering:
             df[f"bb_width_{window}"] = (
                 df[f"bb_upper_{window}"] - df[f"bb_lower_{window}"]
             )
-            df[f"bb_position_{window}"] = (df["close"] - df[f"bb_lower_{window}"]) / df[
-                f"bb_width_{window}"
-            ]
+            df[f"bb_position_{window}"] = (
+                (df["close"] - df[f"bb_lower_{window}"])
+                / df[f"bb_width_{window}"]
+            )
 
         # Stochastic Oscillator
         low_14 = df["low"].rolling(window=14).min()
@@ -79,14 +86,22 @@ class FeatureEngineering:
         )
 
         # On-Balance Volume (OBV)
-        df["obv"] = (np.sign(df["close"].diff()) * df["volume"]).fillna(0).cumsum()
+        df["obv"] = (
+            (np.sign(df["close"].diff()) * df["volume"]).fillna(0).cumsum()
+        )
 
         # Money Flow Index (MFI)
         typical_price = (df["high"] + df["low"] + df["close"]) / 3
         money_flow = typical_price * df["volume"]
 
-        positive_flow = money_flow.where(typical_price > typical_price.shift(1), 0)
-        negative_flow = money_flow.where(typical_price < typical_price.shift(1), 0)
+        positive_flow = money_flow.where(
+            typical_price > typical_price.shift(1),
+            0,
+        )
+        negative_flow = money_flow.where(
+            typical_price < typical_price.shift(1),
+            0,
+        )
 
         positive_mf = positive_flow.rolling(window=14).sum()
         negative_mf = negative_flow.rolling(window=14).sum()
@@ -95,12 +110,15 @@ class FeatureEngineering:
         df["mfi"] = 100 - (100 / (1 + mfi_ratio))
 
         # Williams %R
-        df["williams_r"] = -100 * ((high_14 - df["close"]) / (high_14 - low_14))
+        df["williams_r"] = -100 * (
+            (high_14 - df["close"]) / (high_14 - low_14)
+        )
 
         # Rate of Change (ROC)
         for window in [5, 10, 20]:
             df[f"roc_{window}"] = (
-                (df["close"] - df["close"].shift(window)) / df["close"].shift(window)
+                (df["close"] - df["close"].shift(window))
+                / df["close"].shift(window)
             ) * 100
 
         # Average Directional Index (ADX)
@@ -132,7 +150,9 @@ class FeatureEngineering:
 
         # Volatility measures
         for window in [5, 10, 20, 60]:
-            df[f"volatility_{window}"] = df["returns"].rolling(window=window).std()
+            df[f"volatility_{window}"] = df["returns"].rolling(
+                window=window
+            ).std()
             df[f"volatility_log_{window}"] = (
                 df["log_returns"].rolling(window=window).std()
             )
@@ -231,15 +251,106 @@ class FeatureEngineering:
 
         for window in windows:
             # Rolling statistics
-            df[f"close_mean_{window}"] = df["close"].rolling(window=window).mean()
-            df[f"close_std_{window}"] = df["close"].rolling(window=window).std()
-            df[f"close_min_{window}"] = df["close"].rolling(window=window).min()
-            df[f"close_max_{window}"] = df["close"].rolling(window=window).max()
+            df[f"close_mean_{window}"] = df["close"].rolling(
+                window=window
+            ).mean()
+            df[f"close_std_{window}"] = df["close"].rolling(
+                window=window
+            ).std()
+            df[f"close_min_{window}"] = df["close"].rolling(
+                window=window
+            ).min()
+            df[f"close_max_{window}"] = df["close"].rolling(
+                window=window
+            ).max()
 
             # Rolling volume statistics
-            df[f"volume_mean_{window}"] = df["volume"].rolling(window=window).mean()
-            df[f"volume_std_{window}"] = df["volume"].rolling(window=window).std()
+            df[f"volume_mean_{window}"] = df["volume"].rolling(
+                window=window
+            ).mean()
+            df[f"volume_std_{window}"] = df["volume"].rolling(
+                window=window
+            ).std()
 
+        return df
+
+    def _parse_int_list(self, values, default, min_value: int) -> List[int]:
+        raw = values if isinstance(values, list) else default
+        parsed: List[int] = []
+        for item in raw:
+            try:
+                int_item = int(item)
+            except (TypeError, ValueError):
+                continue
+            if int_item >= min_value:
+                parsed.append(int_item)
+        return parsed
+
+    def _ensure_text_sentiment(
+        self, df: pd.DataFrame, text_col: str
+    ) -> pd.DataFrame:
+        if "text_sentiment" in df.columns:
+            return df
+        if text_col not in df.columns:
+            return df
+        try:
+            df["text_sentiment"] = df[text_col].astype(str).map(
+                simple_sentiment_score
+            )
+        except Exception as exc:
+            logger.warning("Failed to compute text sentiment: %s", exc)
+        return df
+
+    def _add_text_rolling(
+        self, df: pd.DataFrame, windows: List[int]
+    ) -> pd.DataFrame:
+        for window in windows:
+            df[f"text_sentiment_sma_{window}"] = df["text_sentiment"].rolling(
+                window=window
+            ).mean()
+            df[f"text_sentiment_std_{window}"] = df["text_sentiment"].rolling(
+                window=window
+            ).std()
+        return df
+
+    def _add_text_lags(
+        self, df: pd.DataFrame, lags: List[int]
+    ) -> pd.DataFrame:
+        for lag_i in lags:
+            df[f"text_sentiment_lag_{lag_i}"] = df["text_sentiment"].shift(
+                lag_i
+            )
+        return df
+
+    def add_text_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add text-derived numeric features when enabled in config."""
+        text_cfg = (self.config or {}).get("text", {})
+        if not bool(text_cfg.get("enabled", False)):
+            return df
+
+        df = df.copy()
+        text_col = str(text_cfg.get("text_column", "text")).lower()
+        df = self._ensure_text_sentiment(df, text_col)
+        if "text_sentiment" not in df.columns:
+            return df
+
+        rolling_windows = self._parse_int_list(
+            text_cfg.get("rolling_windows"),
+            default=[3, 7, 14],
+            min_value=2,
+        )
+        lags = self._parse_int_list(
+            text_cfg.get("lags"),
+            default=[1, 2, 3],
+            min_value=1,
+        )
+
+        if rolling_windows:
+            df = self._add_text_rolling(df, rolling_windows)
+        if lags:
+            df = self._add_text_lags(df, lags)
+
+        df["text_sentiment_change"] = df["text_sentiment"].diff()
         return df
 
     def create_features(
@@ -249,6 +360,9 @@ class FeatureEngineering:
         logger.info("Starting feature engineering...")
 
         original_shape = df.shape
+
+        # Optional text-derived features (sentiment/rolling/lags)
+        df = self.add_text_features(df)
 
         # Add all feature sets
         if include_all:
@@ -268,8 +382,15 @@ class FeatureEngineering:
         df = df.fillna(0)
 
         new_shape = df.shape
-        logger.info(f"Feature engineering complete: {original_shape} -> {new_shape}")
-        logger.info(f"Added {new_shape[1] - original_shape[1]} new features")
+        logger.info(
+            "Feature engineering complete: %s -> %s",
+            original_shape,
+            new_shape,
+        )
+        logger.info(
+            "Added %s new features",
+            int(new_shape[1] - original_shape[1]),
+        )
 
         self.feature_names = df.columns.tolist()
 
@@ -304,7 +425,10 @@ class FeatureEngineering:
 
         elif method == "f_test":
             # F-test based selection
-            selector = SelectKBest(score_func=f_regression, k=min(top_k, X.shape[1]))
+            selector = SelectKBest(
+                score_func=f_regression,
+                k=min(top_k, X.shape[1]),
+            )
             selector.fit(X, y)
             top_features = X.columns[selector.get_support()].tolist()
 
@@ -321,6 +445,10 @@ class FeatureEngineering:
 
         selected_df = df[top_features + [target_col]]
 
-        logger.info(f"Selected {len(top_features)} features using {method} method")
+        logger.info(
+            "Selected %s features using %s method",
+            len(top_features),
+            method,
+        )
 
         return selected_df, top_features

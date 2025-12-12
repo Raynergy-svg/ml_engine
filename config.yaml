@@ -11,7 +11,7 @@ attention_dropout: 0.3
 augmentation_methods:
   - 4
 auto_tune: true
-batch_size: 512
+batch_size: 64
 beta_1: 0.9
 beta_2: 0.999
 clip_grad_norm_type: inf
@@ -103,8 +103,8 @@ min_delta: 0.001
 min_lr: 1e-6
 model:
   architecture: attention_lstm
-  hidden_size: 2048
-  num_layers: 8
+  hidden_size: 128
+  num_layers: 2
   optimizer:
     weight_decay: 0.0001
 monitoring:
@@ -190,6 +190,17 @@ use_tensorboard_logging: true
 use_visualizations: true
 use_wandb: true
 use_wandb_logging: true
+text:
+  enabled: true
+  text_column: text
+  rolling_windows:
+    - 3
+    - 7
+    - 14
+  lags:
+    - 1
+    - 2
+    - 3
 validation_split: 0.1
 visualization:
   update_interval: 500

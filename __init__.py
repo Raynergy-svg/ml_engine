@@ -1,8 +1,14 @@
-from .preprocess import DataProcessor
-from .train import ModelTrainer
-from .predict import ModelPredictor
-from .utils import setup_logging, get_device
-from .ml_engine import EnhancedMLEngine
+"""Top-level package for the ML engine.
+
+Keep imports here lightweight to avoid import-time failures when optional
+modules aren't present.
+"""
+
+from .ml_engine_enhanced import EnhancedMLEngine
+from .utils import setup_logging
 
 __version__ = "1.0.0"
-__all__ = ['DataProcessor', 'ModelTrainer', 'ModelPredictor', 'setup_logging', 'get_device', 'EnhancedMLEngine']
+__all__ = [
+    "EnhancedMLEngine",
+    "setup_logging",
+]

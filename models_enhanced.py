@@ -218,6 +218,9 @@ class AttentiveLSTM(nn.Module):
         """Initialize weights."""
         for name, param in self.named_parameters():
             if "weight" in name:
+                if param.dim() < 2:
+                    nn.init.ones_(param)
+                    continue
                 if "lstm" in name:
                     nn.init.xavier_uniform_(param)
                 else:
