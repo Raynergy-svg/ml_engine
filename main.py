@@ -642,8 +642,6 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
         console.print(f"[cyan]Model input size set to: {input_size}[/cyan]")
         
         engine = EnhancedMLEngine(config)
-
-        api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting training"]
         
         # Get epochs from config (not nested in 'training')
         epochs = config.get("epochs", 100)
