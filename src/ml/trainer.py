@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import logging
 from datetime import datetime
 

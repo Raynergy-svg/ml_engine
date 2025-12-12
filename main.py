@@ -10,15 +10,12 @@ A command-line interface for the ML trading engine that handles:
 - Real-time monitoring
 """
 
-import os
 import sys
 import time
 import logging
-import asyncio
 import argparse
 from pathlib import Path
-from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 import torch
 from rich.console import Console
@@ -26,13 +23,9 @@ from rich.live import Live
 from rich.layout import Layout
 from rich.table import Table
 from rich.panel import Panel
-from watchdog.observers import Observer
-from watchdog.events import PatternMatchingEventHandler
 
 from ml_engine import ai_assistant, EnhancedMLEngine
-import ml_engine
 from utils import setup_logging, load_config
-from config_validator import validate_config
 
 # New orchestrating imports:
 import visualizer
@@ -165,8 +158,6 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
         engine = EnhancedMLEngine(config)
 
         # changed: create dummy training data as non-empty tensors
-        import torch
-
         X_train_data = [torch.tensor([0.0])]  # dummy training data with one sample
         y_train_data = [torch.tensor([0.0])]  # dummy target data with one sample
 
@@ -269,7 +260,7 @@ def evaluate_model(config_path: str) -> None:
                 metrics = engine.evaluate_model()
                 
                 # Display evaluation results
-                api_logs.append(f"[green]Evaluation completed[/green]")
+                api_logs.append("[green]Evaluation completed[/green]")
                 if metrics:
                     for key, value in metrics.items():
                         api_logs.append(f"[cyan]{key}: {value:.4f}[/cyan]")
@@ -329,9 +320,7 @@ def openai_tune(config_path: str) -> None:
     result = openai_integration.query_for_auto_configuration(metrics, current_config)
 
     if result:
-        updated_config = openai_integration.report_config_changes(
-            current_config, result
-        )
+        _ = openai_integration.report_config_changes(current_config, result)
         console.print(
             "[bold green]Configuration updated successfully and written to config.yaml[/bold green]"
         )

@@ -14,7 +14,6 @@ from sklearn.metrics import (
     mean_absolute_percentage_error,
 )
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 logger = logging.getLogger(__name__)
 

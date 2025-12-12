@@ -3,19 +3,12 @@ Enhanced reasoning module for stock market prediction with improved performance.
 Includes advanced reasoning techniques, uncertainty quantification, and explainability.
 """
 
-import os
 import logging
 import numpy as np
-import pandas as pd
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import Dict, List, Tuple, Optional, Union, Any
+from typing import Dict, List, Optional, Any
 from pathlib import Path
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
-from scipy.stats import norm
 
 # Configure logging
 logger = logging.getLogger(__name__)

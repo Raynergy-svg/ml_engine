@@ -1,7 +1,7 @@
 """Configuration validation module for ML Engine."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from pathlib import Path
 
 logger = logging.getLogger(__name__)

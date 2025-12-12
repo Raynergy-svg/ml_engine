@@ -3,42 +3,29 @@ Optimized ML Engine with improved CPU and GPU performance.
 Includes enhanced training loops, mixed precision, and memory optimization.
 """
 
-import os
-import gc
-import time
 import logging
 import numpy as np
-import json
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional, Union, List, Iterator, Callable
-from functools import partial
+from typing import Dict, Any, Tuple, Optional, Union, List
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from torch.cuda.amp import autocast, GradScaler
+from torch.cuda.amp import GradScaler
 from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from sklearn.metrics import r2_score, mean_squared_error
 
 # Import optimized modules
-from memory_manager_enhanced import MemoryManager, memory_efficient, mixed_precision_context
-from data_processing_optimized import StockDataset, create_optimized_dataloader
+from memory_manager_enhanced import MemoryManager, mixed_precision_context
+from data_processing_optimized import create_optimized_dataloader
 from models_enhanced import (
     StockPredictor,
     AttentiveLSTM,
     GRUPredictor,
     TransformerPredictor
 )
-from training_utils import (
-    WarmupScheduler,
-    CosineAnnealingWarmup,
-    EarlyStopping,
-    ModelEnsemble,
-    GradientClipping,
-    LossHistory,
-    create_optimizer
-)
+
 
 # Configure logging
 logger = logging.getLogger(__name__)

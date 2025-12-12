@@ -5,10 +5,9 @@ This script shows how to use all the new features for optimal model training.
 
 import numpy as np
 import torch
-from pathlib import Path
 
 from ml_engine_enhanced import EnhancedMLEngine
-from data_processing_optimized import add_technical_indicators, prepare_sequences, augment_data
+from data_processing_optimized import prepare_sequences, augment_data
 from training_utils import ModelEnsemble
 
 # Set random seeds for reproducibility (PyTorch best practice)
@@ -207,7 +206,7 @@ def main():
     
     # Evaluate ensemble
     test_tensor = torch.tensor(test_features[:100], dtype=torch.float32)
-    ensemble_preds = ensemble.predict(test_tensor)
+    _ = ensemble.predict(test_tensor)
     
     print("\nEnsemble predictions completed")
     print(f"Prediction diversity: {ensemble.evaluate_diversity(test_tensor):.6f}")

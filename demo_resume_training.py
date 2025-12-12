@@ -7,9 +7,6 @@ This script shows how to:
 2. Resume training from a checkpoint
 """
 
-import sys
-import os
-
 print("=" * 60)
 print("Resume Training Feature Demonstration")
 print("=" * 60)

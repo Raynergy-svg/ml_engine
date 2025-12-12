@@ -14,7 +14,6 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import yfinance as yf
 import dask.array as da
-import dask.dataframe as dd
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -247,12 +246,12 @@ async def async_cached_download(
             logger.warning(f"Failed to read cache file: {e}. Will download fresh data.")
             try:
                 cache_file.unlink()
-            except:
+            except OSError:
                 pass
 
     # Download using yf.download
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession():
             loop = asyncio.get_event_loop()
             data = await loop.run_in_executor(
                 None, partial(yf.download, ticker, start=start, end=end, progress=False)
@@ -360,8 +359,12 @@ def load_stock_data_efficient(
                 
             if data is not None and not data.empty:
                 # Normalize column names
-                data.columns = [col.lower() if not isinstance(col, tuple) else 
-                               "_".join(map(str, col)).lower() for col in data.columns]
+                data.columns = [
+                    col.lower()
+                    if not isinstance(col, tuple)
+                    else "_".join(map(str, col)).lower()
+                    for col in data.columns
+                ]
                 
                 # Handle 'adj close' vs 'close'
                 if "close" not in data.columns and "adj close" in data.columns:
@@ -458,7 +461,7 @@ def prepare_sequences(
     
     # Scale features if requested - use RobustScaler by default for better outlier handling
     if scale_features:
-        from sklearn.preprocessing import StandardScaler, RobustScaler, MinMaxScaler
+        from sklearn.preprocessing import StandardScaler, RobustScaler
         # RobustScaler is more robust to outliers than StandardScaler
         # It uses median and IQR instead of mean and std
         try:

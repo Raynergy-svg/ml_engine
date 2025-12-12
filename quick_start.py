@@ -13,13 +13,11 @@ Usage:
     python quick_start.py
 """
 
-import logging
 from pathlib import Path
 
 # Import enhanced modules
 from data_loader import MarketDataLoader
-from models_enhanced import AttentiveLSTM
-from evaluation import ModelEvaluator, Backtester, generate_simple_strategy_signals
+from evaluation import Backtester, generate_simple_strategy_signals
 from utils import load_config, setup_logging
 from train_enhanced import EnhancedTrainer
 
@@ -65,7 +63,7 @@ def main():
         validation_size=0.1,
     )
 
-    logger.info(f"✓ Data preprocessed:")
+    logger.info("✓ Data preprocessed:")
     logger.info(f"   Train: {X_train.shape}")
     logger.info(f"   Val:   {X_val.shape}")
     logger.info(f"   Test:  {X_test.shape}")

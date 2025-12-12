@@ -4,12 +4,9 @@ Demonstrates best practices for ML model training.
 """
 
 import os
-import sys
-import logging
 import argparse
 import copy
 from pathlib import Path
-from datetime import datetime
 from typing import Tuple
 import numpy as np
 import torch

@@ -1,0 +1,29 @@
+[flake8]
+exclude =
+    .venv,
+    __pycache__,
+    .pytest_cache,
+    .mypy_cache,
+    .ruff_cache,
+    trained_data,
+    market_data,
+    visualizations,
+    templates,
+    demo,
+    tests,
+    examples,
+    *future_use*,
+    1.25.0
+
+per-file-ignores =
+    test_improvements.py:E302,E305
+
+# This repo has many legacy long lines; keep lint signal useful.
+extend-ignore =
+    E501
+    E203
+    W291
+    W293
+
+# Match common formatting defaults
+max-line-length = 88

@@ -1,7 +1,6 @@
 from pydantic import BaseSettings, Field
 from typing import Optional, List
 from pathlib import Path
-import os
 
 
 class Settings(BaseSettings):

@@ -251,30 +251,6 @@
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -491,14 +467,6 @@
         "documentation": {}
     },
     {
-        "label": "Union",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -508,14 +476,6 @@
     },
     {
         "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -611,14 +571,6 @@
         "documentation": {}
     },
     {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
         "label": "Tuple",
         "importPath": "typing",
         "description": "typing",
@@ -676,14 +628,6 @@
     },
     {
         "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -868,238 +812,6 @@
     },
     {
         "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Callable",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Union",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Iterator",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Callable",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Union",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Union",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Union",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Union",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1131,7 +843,7 @@
         "documentation": {}
     },
     {
-        "label": "List",
+        "label": "Any",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1156,6 +868,118 @@
     },
     {
         "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1211,23 +1035,7 @@
         "documentation": {}
     },
     {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
         "label": "Optional",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1381,30 +1189,6 @@
     },
     {
         "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
         "importPath": "datetime",
         "description": "datetime",
         "isExtraImport": true,
@@ -1703,14 +1487,6 @@
     },
     {
         "label": "GradScaler",
-        "importPath": "torch.cuda.amp",
-        "description": "torch.cuda.amp",
-        "isExtraImport": true,
-        "detail": "torch.cuda.amp",
-        "documentation": {}
-    },
-    {
-        "label": "autocast",
         "importPath": "torch.cuda.amp",
         "description": "torch.cuda.amp",
         "isExtraImport": true,
@@ -2096,24 +1872,7 @@
         "documentation": {}
     },
     {
-        "label": "ml_engine",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "ml_engine",
-        "description": "ml_engine",
-        "detail": "ml_engine",
-        "documentation": {}
-    },
-    {
         "label": "EnhancedMLEngine",
-        "importPath": "ml_engine",
-        "description": "ml_engine",
-        "isExtraImport": true,
-        "detail": "ml_engine",
-        "documentation": {}
-    },
-    {
-        "label": "ML_Engine",
         "importPath": "ml_engine",
         "description": "ml_engine",
         "isExtraImport": true,
@@ -2318,30 +2077,6 @@
         "documentation": {}
     },
     {
-        "label": "process_multiindex_data",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "StockDataset",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "async_cached_download",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
         "label": "matplotlib",
         "kind": 6,
         "isExtraImport": true,
@@ -2431,14 +2166,6 @@
         "documentation": {}
     },
     {
-        "label": "add_technical_indicators",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
         "label": "prepare_sequences",
         "importPath": "data_processing_optimized",
         "description": "data_processing_optimized",
@@ -2448,14 +2175,6 @@
     },
     {
         "label": "augment_data",
-        "importPath": "data_processing_optimized",
-        "description": "data_processing_optimized",
-        "isExtraImport": true,
-        "detail": "data_processing_optimized",
-        "documentation": {}
-    },
-    {
-        "label": "StockDataset",
         "importPath": "data_processing_optimized",
         "description": "data_processing_optimized",
         "isExtraImport": true,
@@ -2544,14 +2263,6 @@
     },
     {
         "label": "MemoryManager",
-        "importPath": "memory_manager_enhanced",
-        "description": "memory_manager_enhanced",
-        "isExtraImport": true,
-        "detail": "memory_manager_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "memory_efficient",
         "importPath": "memory_manager_enhanced",
         "description": "memory_manager_enhanced",
         "isExtraImport": true,
@@ -2672,14 +2383,6 @@
     },
     {
         "label": "TransformerPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "AttentiveLSTM",
         "importPath": "models_enhanced",
         "description": "models_enhanced",
         "isExtraImport": true,
@@ -3069,14 +2772,6 @@
         "documentation": {}
     },
     {
-        "label": "partial",
-        "importPath": "functools",
-        "description": "functools",
-        "isExtraImport": true,
-        "detail": "functools",
-        "documentation": {}
-    },
-    {
         "label": "lru_cache",
         "importPath": "functools",
         "description": "functools",
@@ -3100,15 +2795,6 @@
         "importPath": "dask.array",
         "description": "dask.array",
         "detail": "dask.array",
-        "documentation": {}
-    },
-    {
-        "label": "dask.dataframe",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "dask.dataframe",
-        "description": "dask.dataframe",
-        "detail": "dask.dataframe",
         "documentation": {}
     },
     {
@@ -3200,72 +2886,7 @@
         "documentation": {}
     },
     {
-        "label": "seaborn",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "seaborn",
-        "description": "seaborn",
-        "detail": "seaborn",
-        "documentation": {}
-    },
-    {
         "label": "ModelEnsemble",
-        "importPath": "training_utils",
-        "description": "training_utils",
-        "isExtraImport": true,
-        "detail": "training_utils",
-        "documentation": {}
-    },
-    {
-        "label": "WarmupScheduler",
-        "importPath": "training_utils",
-        "description": "training_utils",
-        "isExtraImport": true,
-        "detail": "training_utils",
-        "documentation": {}
-    },
-    {
-        "label": "CosineAnnealingWarmup",
-        "importPath": "training_utils",
-        "description": "training_utils",
-        "isExtraImport": true,
-        "detail": "training_utils",
-        "documentation": {}
-    },
-    {
-        "label": "EarlyStopping",
-        "importPath": "training_utils",
-        "description": "training_utils",
-        "isExtraImport": true,
-        "detail": "training_utils",
-        "documentation": {}
-    },
-    {
-        "label": "ModelEnsemble",
-        "importPath": "training_utils",
-        "description": "training_utils",
-        "isExtraImport": true,
-        "detail": "training_utils",
-        "documentation": {}
-    },
-    {
-        "label": "GradientClipping",
-        "importPath": "training_utils",
-        "description": "training_utils",
-        "isExtraImport": true,
-        "detail": "training_utils",
-        "documentation": {}
-    },
-    {
-        "label": "LossHistory",
-        "importPath": "training_utils",
-        "description": "training_utils",
-        "isExtraImport": true,
-        "detail": "training_utils",
-        "documentation": {}
-    },
-    {
-        "label": "create_optimizer",
         "importPath": "training_utils",
         "description": "training_utils",
         "isExtraImport": true,
@@ -3294,30 +2915,6 @@
         "description": "rich.panel",
         "isExtraImport": true,
         "detail": "rich.panel",
-        "documentation": {}
-    },
-    {
-        "label": "Observer",
-        "importPath": "watchdog.observers",
-        "description": "watchdog.observers",
-        "isExtraImport": true,
-        "detail": "watchdog.observers",
-        "documentation": {}
-    },
-    {
-        "label": "PatternMatchingEventHandler",
-        "importPath": "watchdog.events",
-        "description": "watchdog.events",
-        "isExtraImport": true,
-        "detail": "watchdog.events",
-        "documentation": {}
-    },
-    {
-        "label": "validate_config",
-        "importPath": "config_validator",
-        "description": "config_validator",
-        "isExtraImport": true,
-        "detail": "config_validator",
         "documentation": {}
     },
     {
@@ -3390,15 +2987,6 @@
         "documentation": {}
     },
     {
-        "label": "math",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "math",
-        "description": "math",
-        "detail": "math",
-        "documentation": {}
-    },
-    {
         "label": "Enum",
         "importPath": "enum",
         "description": "enum",
@@ -3447,14 +3035,6 @@
         "description": "dotenv",
         "isExtraImport": true,
         "detail": "dotenv",
-        "documentation": {}
-    },
-    {
-        "label": "ModelEvaluator",
-        "importPath": "evaluation",
-        "description": "evaluation",
-        "isExtraImport": true,
-        "detail": "evaluation",
         "documentation": {}
     },
     {
@@ -3522,11 +3102,12 @@
         "documentation": {}
     },
     {
-        "label": "norm",
-        "importPath": "scipy.stats",
-        "description": "scipy.stats",
+        "label": "math",
+        "kind": 6,
         "isExtraImport": true,
-        "detail": "scipy.stats",
+        "importPath": "math",
+        "description": "math",
+        "detail": "math",
         "documentation": {}
     },
     {

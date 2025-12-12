@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, Any, List, Union
+from typing import Dict, Any, List
 import logging
 from concurrent.futures import ThreadPoolExecutor
 import time
