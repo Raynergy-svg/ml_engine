@@ -13773,3 +13773,815 @@ ValueError: num_samples should be a positive integer value, but got num_samples=
 2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:670] - num_trades: 18.00
 2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:670] - win_rate_pct: 33.33
 2025-12-12 09:33:16 - root - INFO - [train_enhanced.py:672] - All done!
+2025-12-12 11:51:06 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 11:51:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 11:51:06 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 11:51:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 11:51:06 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 11:51:06 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 11:51:06 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpcg07tglc/text.csv
+2025-12-12 11:51:06 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpy1jut3p0/text.csv
+2025-12-12 11:51:06 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp8cap7tci/empty.yaml
+2025-12-12 11:51:06 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp8cap7tci/empty.yaml
+2025-12-12 11:51:06 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp9dfbaep7/invalid.yaml", line 1, column 14
+2025-12-12 11:51:06 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:51:06 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:51:06 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpwghyzp6d/nonexistent.yaml
+2025-12-12 11:51:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmphs94e194/test_config.yaml
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 11:51:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpjd2z1dzv/test_config.yaml
+2025-12-12 11:51:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp4za3324n/test_config.yaml
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:51:06 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 11:51:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpxf44jt__/test_config.yaml
+2025-12-12 11:53:06 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 11:53:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 11:53:06 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 11:53:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 11:53:06 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 11:53:06 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 11:53:06 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp9p89__1i/text.csv
+2025-12-12 11:53:06 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp24vikka6/text.csv
+2025-12-12 11:53:06 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3zy4ge3o/empty.yaml
+2025-12-12 11:53:06 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3zy4ge3o/empty.yaml
+2025-12-12 11:53:06 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpqzj_8w_1/invalid.yaml", line 1, column 14
+2025-12-12 11:53:06 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:53:06 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:53:06 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp38g_p2a1/nonexistent.yaml
+2025-12-12 11:53:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpg244xxmc/test_config.yaml
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 11:53:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpxq7fe7cp/test_config.yaml
+2025-12-12 11:53:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp863mmwqz/test_config.yaml
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:53:06 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 11:53:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpq3oe1rcd/test_config.yaml
+2025-12-12 11:53:59 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 11:53:59 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 11:53:59 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 11:53:59 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 11:53:59 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 11:53:59 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 11:54:00 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpg3s_ap2f/text.csv
+2025-12-12 11:54:00 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp2c_nihmh/text.csv
+2025-12-12 11:54:00 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp5z1kwgll/empty.yaml
+2025-12-12 11:54:00 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp5z1kwgll/empty.yaml
+2025-12-12 11:54:00 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp5lgca4jk/invalid.yaml", line 1, column 14
+2025-12-12 11:54:00 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:54:00 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:54:00 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpuyz8oftz/nonexistent.yaml
+2025-12-12 11:54:00 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpwjdeqjn7/test_config.yaml
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 11:54:00 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpldyjgtz_/test_config.yaml
+2025-12-12 11:54:00 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpmu5opd_6/test_config.yaml
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:54:00 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 11:54:00 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp99ya2wqi/test_config.yaml
+2025-12-12 11:54:30 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 11:54:30 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 11:54:30 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 11:54:30 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 11:54:30 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 11:54:30 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 11:54:30 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp5nym2vlg/text.csv
+2025-12-12 11:54:30 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp_thiwn23/text.csv
+2025-12-12 11:54:30 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpfey_9sih/empty.yaml
+2025-12-12 11:54:30 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpfey_9sih/empty.yaml
+2025-12-12 11:54:30 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpdpzoraa1/invalid.yaml", line 1, column 14
+2025-12-12 11:54:30 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:54:30 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:54:30 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpqn65764p/nonexistent.yaml
+2025-12-12 11:54:30 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpo8k38qeq/test_config.yaml
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 11:54:30 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpelb2ykv7/test_config.yaml
+2025-12-12 11:54:30 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpfic89y4p/test_config.yaml
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:54:30 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 11:54:30 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpj8xcu5xh/test_config.yaml
+2025-12-12 11:55:07 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 11:55:07 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 11:55:07 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 11:55:08 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 11:55:08 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 11:55:08 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 11:55:08 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpjgydgw86/text.csv
+2025-12-12 11:55:08 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp0lsc9fhr/text.csv
+2025-12-12 11:55:08 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpcd_zd2dp/empty.yaml
+2025-12-12 11:55:08 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpcd_zd2dp/empty.yaml
+2025-12-12 11:55:08 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp520wuuek/invalid.yaml", line 1, column 14
+2025-12-12 11:55:08 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:55:08 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 11:55:08 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmplt3ua27q/nonexistent.yaml
+2025-12-12 11:55:08 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp8nnirunr/test_config.yaml
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 11:55:08 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpaj49p9tm/test_config.yaml
+2025-12-12 11:55:08 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmptc43v42r/test_config.yaml
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 11:55:08 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 11:55:08 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmplg2i_8r0/test_config.yaml
+2025-12-12 12:03:42 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:03:42 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:03:42 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:03:42 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:03:42 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:03:42 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:03:42 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpkbi_1vwy/text.csv
+2025-12-12 12:03:42 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp2l7tvsyj/text.csv
+2025-12-12 12:03:42 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp41tn9hsf/empty.yaml
+2025-12-12 12:03:42 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp41tn9hsf/empty.yaml
+2025-12-12 12:03:42 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpstk2kb28/invalid.yaml", line 1, column 14
+2025-12-12 12:03:42 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:03:42 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:03:42 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpw_tc49dp/nonexistent.yaml
+2025-12-12 12:03:42 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpk8xsl7m_/test_config.yaml
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:03:42 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmptgvxmk8i/test_config.yaml
+2025-12-12 12:03:42 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp26gyhk5n/test_config.yaml
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:03:42 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:03:42 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp0o2miq1e/test_config.yaml
+2025-12-12 12:04:05 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:04:05 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:04:05 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:04:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:04:06 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:04:06 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:04:06 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmphik7buao/text.csv
+2025-12-12 12:04:06 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpun6gt4bc/text.csv
+2025-12-12 12:04:06 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpne2j8rbt/empty.yaml
+2025-12-12 12:04:06 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpne2j8rbt/empty.yaml
+2025-12-12 12:04:06 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3hhoupkm/invalid.yaml", line 1, column 14
+2025-12-12 12:04:06 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:04:06 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:04:06 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpuaey3huf/nonexistent.yaml
+2025-12-12 12:04:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmplj4e7iag/test_config.yaml
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:04:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpp60g91ya/test_config.yaml
+2025-12-12 12:04:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpmdlmn3fq/test_config.yaml
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:04:06 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:04:06 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpvpe4d44p/test_config.yaml
+2025-12-12 12:05:29 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-12 12:05:29 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:05:29 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:05:29 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:05:29 - root - ERROR - [main.py:731] - Command failed: 'str' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 724, in main
+    integrated_predict(args.config, args.csv)
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 282, in integrated_predict
+    integrator = _build_integrated_engines(config)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 54, in _build_integrated_engines
+    ml_engine = EnhancedMLEngine(config)
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 86, in __init__
+    self.optimizer = self._create_optimizer()
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 208, in _create_optimizer
+    optimizer_type = optimizer_config.get("type", "adam")
+                     ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-12-12 12:06:24 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-12 12:06:24 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:06:24 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:06:24 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:06:24 - root - ERROR - [main.py:731] - Command failed: 'str' object has no attribute 'get'
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 724, in main
+    integrated_predict(args.config, args.csv)
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 282, in integrated_predict
+    integrator = _build_integrated_engines(config)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 54, in _build_integrated_engines
+    ml_engine = EnhancedMLEngine(config)
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 86, in __init__
+    self.optimizer = self._create_optimizer()
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 208, in _create_optimizer
+    optimizer_type = optimizer_config.get("type", "adam")
+                     ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-12-12 12:07:29 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-12 12:07:29 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:07:29 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:07:29 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:07:30 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:07:30 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:07:30 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:07:47 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:07:47 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:07:47 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:07:47 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:07:47 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:07:47 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:07:47 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3djy_lmq/text.csv
+2025-12-12 12:07:47 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpnsrtupl0/text.csv
+2025-12-12 12:07:47 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpr0c602fv/empty.yaml
+2025-12-12 12:07:47 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpr0c602fv/empty.yaml
+2025-12-12 12:07:47 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpuryznx48/invalid.yaml", line 1, column 14
+2025-12-12 12:07:47 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:07:47 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:07:47 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpddwy_8lk/nonexistent.yaml
+2025-12-12 12:07:47 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpkn4hig76/test_config.yaml
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:07:47 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp39xlcvp0/test_config.yaml
+2025-12-12 12:07:47 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpuedx_14x/test_config.yaml
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:07:47 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:07:47 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmptmvvew80/test_config.yaml
+2025-12-12 12:10:17 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:10:17 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:10:17 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:10:18 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:10:18 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:10:18 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:10:18 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpuzdvetig/text.csv
+2025-12-12 12:10:18 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpsmxhfr3z/text.csv
+2025-12-12 12:10:18 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpji_ubs8n/empty.yaml
+2025-12-12 12:10:18 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpji_ubs8n/empty.yaml
+2025-12-12 12:10:18 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpdys119me/invalid.yaml", line 1, column 14
+2025-12-12 12:10:18 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:10:18 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:10:18 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpy1_2yqcr/nonexistent.yaml
+2025-12-12 12:10:18 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpn9209pm5/test_config.yaml
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:10:18 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpor4h9qmz/test_config.yaml
+2025-12-12 12:10:18 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpbrdmqvhk/test_config.yaml
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:10:18 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:10:18 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpu2hy2bct/test_config.yaml
+2025-12-12 12:10:45 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-12 12:10:45 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:10:45 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:10:45 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:10:46 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:10:46 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:10:46 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:12:08 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-12 12:12:08 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:12:08 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:12:08 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:12:08 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:12:08 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:12:08 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:13:34 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:13:34 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:13:34 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:13:35 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:13:35 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:13:35 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:13:35 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpmr30_7wh/text.csv
+2025-12-12 12:13:35 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp40s11i12/text.csv
+2025-12-12 12:13:35 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp8bcewu1a/empty.yaml
+2025-12-12 12:13:35 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp8bcewu1a/empty.yaml
+2025-12-12 12:13:35 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpbl68p426/invalid.yaml", line 1, column 14
+2025-12-12 12:13:35 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:13:35 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:13:35 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp6ibtu7ls/nonexistent.yaml
+2025-12-12 12:13:35 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpdkghwj7o/test_config.yaml
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:13:35 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp9shylpvr/test_config.yaml
+2025-12-12 12:13:35 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpfaazefgt/test_config.yaml
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:13:35 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:13:35 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmplu8uc79f/test_config.yaml
+2025-12-12 12:16:28 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:16:28 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:16:28 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:16:28 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:16:28 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:16:28 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:16:28 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpm_c5xkj4/text.csv
+2025-12-12 12:16:28 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp_mcaefh1/text.csv
+2025-12-12 12:16:28 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpyl956_cr/empty.yaml
+2025-12-12 12:16:28 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpyl956_cr/empty.yaml
+2025-12-12 12:16:28 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp6ksinzuy/invalid.yaml", line 1, column 14
+2025-12-12 12:16:28 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:16:28 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:16:28 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp4012pjqk/nonexistent.yaml
+2025-12-12 12:16:28 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpfznfs6fs/test_config.yaml
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:16:28 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp23vkov8x/test_config.yaml
+2025-12-12 12:16:28 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpf3n8s55j/test_config.yaml
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:16:28 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:16:28 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpp8ce4fki/test_config.yaml
+2025-12-12 12:17:01 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:18:36 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:18:36 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:18:36 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:18:37 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:18:37 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:18:37 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:18:37 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpk4u3rqxu/text.csv
+2025-12-12 12:18:37 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpi9i_cu2p/text.csv
+2025-12-12 12:18:37 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp9k505sx7/empty.yaml
+2025-12-12 12:18:37 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp9k505sx7/empty.yaml
+2025-12-12 12:18:37 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpg15zj0p7/invalid.yaml", line 1, column 14
+2025-12-12 12:18:37 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:18:37 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:18:37 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpshfw70k9/nonexistent.yaml
+2025-12-12 12:18:37 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpxoen45su/test_config.yaml
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:18:37 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3z50lxwc/test_config.yaml
+2025-12-12 12:18:37 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpg5n6enk9/test_config.yaml
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:18:37 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:18:37 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpaxnqr2sr/test_config.yaml
+2025-12-12 12:18:57 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:30:44 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:30:44 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:30:44 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:30:45 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:30:45 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:30:45 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:30:45 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpq1j261b7/text.csv
+2025-12-12 12:30:45 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp5jdyvmk0/text.csv
+2025-12-12 12:30:45 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp1oud_doe/empty.yaml
+2025-12-12 12:30:45 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp1oud_doe/empty.yaml
+2025-12-12 12:30:45 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpemhky6kz/invalid.yaml", line 1, column 14
+2025-12-12 12:30:45 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:30:45 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:30:45 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp24ze9rdh/nonexistent.yaml
+2025-12-12 12:30:45 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmphl8sosv7/test_config.yaml
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:30:45 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp0vxbe1jg/test_config.yaml
+2025-12-12 12:30:45 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpzmvs89fo/test_config.yaml
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:30:45 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:30:45 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpa71lcr_0/test_config.yaml
+2025-12-12 12:33:04 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:51] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:33:04 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:33:04 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:33:05 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:33:05 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:33:05 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:95] - All engines set for integration
+2025-12-12 12:33:05 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpdjx2ol4h/text.csv
+2025-12-12 12:33:05 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpytvrogtw/text.csv
+2025-12-12 12:33:05 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3kuocpw3/empty.yaml
+2025-12-12 12:33:05 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3kuocpw3/empty.yaml
+2025-12-12 12:33:05 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpa8zu_6fp/invalid.yaml", line 1, column 14
+2025-12-12 12:33:05 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:33:05 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:33:05 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpxhrfzorl/nonexistent.yaml
+2025-12-12 12:33:05 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmphj5v33i8/test_config.yaml
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:33:05 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp7pfroafr/test_config.yaml
+2025-12-12 12:33:05 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpwv4w3tui/test_config.yaml
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:33:05 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:33:05 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpake2luew/test_config.yaml
+2025-12-12 12:41:40 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:52] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 12:41:40 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 12:41:40 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 12:41:41 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:101] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 12:41:41 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 12:41:41 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:96] - All engines set for integration
+2025-12-12 12:41:41 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpcb78o00m/text.csv
+2025-12-12 12:41:41 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp4qh7185c/text.csv
+2025-12-12 12:41:41 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpr2lswd25/empty.yaml
+2025-12-12 12:41:41 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpr2lswd25/empty.yaml
+2025-12-12 12:41:41 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpjr8yikr_/invalid.yaml", line 1, column 14
+2025-12-12 12:41:41 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:41:41 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 12:41:41 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpeuaxdh17/nonexistent.yaml
+2025-12-12 12:41:41 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpb1t3p_gd/test_config.yaml
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 12:41:41 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpr0gkdmvz/test_config.yaml
+2025-12-12 12:41:41 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp172vw6a3/test_config.yaml
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 12:41:41 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 12:41:41 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpvn5xok0q/test_config.yaml
+2025-12-12 13:10:56 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:52] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 13:10:56 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:59] - Using device: cpu
+2025-12-12 13:10:56 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 13:10:57 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:105] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 13:10:57 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 13:10:57 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:96] - All engines set for integration
+2025-12-12 13:10:57 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp4_uwsk_v/text.csv
+2025-12-12 13:10:57 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp1tk20spp/text.csv
+2025-12-12 13:10:57 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmphaikflh0/empty.yaml
+2025-12-12 13:10:57 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmphaikflh0/empty.yaml
+2025-12-12 13:10:57 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpee8kqskm/invalid.yaml", line 1, column 14
+2025-12-12 13:10:57 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 13:10:57 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 13:10:57 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmps4yn03un/nonexistent.yaml
+2025-12-12 13:10:57 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp2d65_mn2/test_config.yaml
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 13:10:57 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpvfwhswsj/test_config.yaml
+2025-12-12 13:10:57 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpb0aulfwc/test_config.yaml
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 13:10:57 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 13:10:57 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpqrtjuoih/test_config.yaml
+2025-12-12 13:19:39 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:52] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 13:19:39 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:61] - Using device: cpu
+2025-12-12 13:19:39 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 13:19:39 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:107] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 13:19:39 - reasoning_enhanced - INFO - [reasoning_enhanced.py:42] - ReasoningEngine initialized
+2025-12-12 13:19:39 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:96] - All engines set for integration
+2025-12-12 13:19:39 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpobqk_w4r/text.csv
+2025-12-12 13:19:39 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpzf2pxvti/text.csv
+2025-12-12 13:19:40 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpb1bd8acm/empty.yaml
+2025-12-12 13:19:40 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpb1bd8acm/empty.yaml
+2025-12-12 13:19:40 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmppjo4_unv/invalid.yaml", line 1, column 14
+2025-12-12 13:19:40 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 13:19:40 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 13:19:40 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp942egxgp/nonexistent.yaml
+2025-12-12 13:19:40 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpyosyshn_/test_config.yaml
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 13:19:40 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpyxt4w5wq/test_config.yaml
+2025-12-12 13:19:40 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp1thg5_is/test_config.yaml
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 13:19:40 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 13:19:40 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp62f7cxw2/test_config.yaml
+2025-12-12 13:23:13 - utils - INFO - [utils.py:174] - Successfully loaded configuration from config.yaml
+2025-12-12 13:23:13 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:61] - Using device: cpu
+2025-12-12 13:23:13 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 13:23:13 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:107] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 13:23:13 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:603] - Initializing model weights from scratch
+2025-12-12 13:23:13 - root - ERROR - [main.py:671] - Training failed: num_samples should be a positive integer value, but got num_samples=0
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 622, in train_model
+    for epoch, metrics in engine.train(x_train_data, y_train_data):
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 697, in train
+    train_loader, val_loader = self._build_train_val_loaders(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 468, in _build_train_val_loaders
+    return self._prepare_data(
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 363, in _prepare_data
+    train_loader = create_optimized_dataloader(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/data_processing_optimized.py", line 156, in create_optimized_dataloader
+    return DataLoader(
+           ^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 388, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/utils/data/sampler.py", line 162, in __init__
+    raise ValueError(
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+2025-12-12 13:23:13 - root - ERROR - [main.py:682] - Unexpected error in train_model: Training failed: num_samples should be a positive integer value, but got num_samples=0
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 622, in train_model
+    for epoch, metrics in engine.train(x_train_data, y_train_data):
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 697, in train
+    train_loader, val_loader = self._build_train_val_loaders(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 468, in _build_train_val_loaders
+    return self._prepare_data(
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 363, in _prepare_data
+    train_loader = create_optimized_dataloader(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/data_processing_optimized.py", line 156, in create_optimized_dataloader
+    return DataLoader(
+           ^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 388, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/utils/data/sampler.py", line 162, in __init__
+    raise ValueError(
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 672, in train_model
+    raise RuntimeError(f"Training failed: {e}")
+RuntimeError: Training failed: num_samples should be a positive integer value, but got num_samples=0
+2025-12-12 13:23:13 - root - ERROR - [main.py:1025] - Command failed: Training failed: num_samples should be a positive integer value, but got num_samples=0
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 622, in train_model
+    for epoch, metrics in engine.train(x_train_data, y_train_data):
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 697, in train
+    train_loader, val_loader = self._build_train_val_loaders(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 468, in _build_train_val_loaders
+    return self._prepare_data(
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 363, in _prepare_data
+    train_loader = create_optimized_dataloader(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/data_processing_optimized.py", line 156, in create_optimized_dataloader
+    return DataLoader(
+           ^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/utils/data/dataloader.py", line 388, in __init__
+    sampler = RandomSampler(dataset, generator=generator)  # type: ignore[arg-type]
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/utils/data/sampler.py", line 162, in __init__
+    raise ValueError(
+ValueError: num_samples should be a positive integer value, but got num_samples=0
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1020, in main
+    command_map[args.command](args.config)
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 672, in train_model
+    raise RuntimeError(f"Training failed: {e}")
+RuntimeError: Training failed: num_samples should be a positive integer value, but got num_samples=0
+2025-12-12 13:26:09 - utils - INFO - [utils.py:174] - Successfully loaded configuration from config.yaml
+2025-12-12 13:26:09 - root - ERROR - [main.py:639] - Unexpected error in train_model: 'MarketDataLoader' object has no attribute 'load_and_prepare_data'
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 611, in train_model
+    X_train, X_val, y_train, y_val = data_loader.load_and_prepare_data()
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MarketDataLoader' object has no attribute 'load_and_prepare_data'
+2025-12-12 13:26:09 - root - ERROR - [main.py:982] - Command failed: 'MarketDataLoader' object has no attribute 'load_and_prepare_data'
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 977, in main
+    command_map[args.command](args.config)
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 611, in train_model
+    X_train, X_val, y_train, y_val = data_loader.load_and_prepare_data()
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MarketDataLoader' object has no attribute 'load_and_prepare_data'
+2025-12-12 13:27:03 - utils - INFO - [utils.py:174] - Successfully loaded configuration from config.yaml
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/ORCL_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:50] - Loaded 9805 rows from market_data/ORCL_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:432] - Loaded ORCL: 9805 rows
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/NVDA_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:50] - Loaded 6553 rows from market_data/NVDA_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:432] - Loaded NVDA: 6553 rows
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/TSLA_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:50] - Loaded 3677 rows from market_data/TSLA_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:432] - Loaded TSLA: 3677 rows
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/MSFT_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:50] - Loaded 9804 rows from market_data/MSFT_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:432] - Loaded MSFT: 9804 rows
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/RIOT_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:50] - Loaded 2229 rows from market_data/RIOT_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:432] - Loaded RIOT: 2229 rows
+2025-12-12 13:27:03 - data_loader - WARNING - [data_loader.py:436] - File not found for ORCL.predictions: market_data/ORCL.predictions_data.csv
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:264] - Starting data preprocessing...
+2025-12-12 13:27:03 - feature_engineering - INFO - [feature_engineering.py:381] - Starting feature engineering...
+2025-12-12 13:27:03 - feature_engineering - WARNING - [feature_engineering.py:200] - No datetime index or date column found
+2025-12-12 13:27:03 - feature_engineering - INFO - [feature_engineering.py:406] - Feature engineering complete: (32068, 17) -> (32068, 111)
+2025-12-12 13:27:03 - feature_engineering - INFO - [feature_engineering.py:411] - Added 94 new features
+2025-12-12 13:27:03 - data_loader - INFO - [data_loader.py:292] - Features shape: (32068, 108), Target shape: (32068,)
+2025-12-12 13:27:04 - data_loader - INFO - [data_loader.py:309] - Created sequences: X=(32008, 60, 108), y=(32008,)
+2025-12-12 13:27:05 - data_loader - INFO - [data_loader.py:336] - Train: (22405, 60, 108), Val: (3201, 60, 108), Test: (6402, 60, 108)
+2025-12-12 13:27:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:61] - Using device: cpu
+2025-12-12 13:27:06 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 13:27:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:107] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 13:27:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:603] - Initializing model weights from scratch
+2025-12-12 13:27:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:709] - Training from epoch 1 to 200 (+200 epochs)
+2025-12-12 13:27:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:713] - Using HuberLoss loss function
+2025-12-12 13:27:06 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:714] - Mixed precision: False, Gradient clipping: 1.0
+2025-12-12 13:27:17 - root - ERROR - [main.py:662] - Unexpected error in train_model: input.size(-1) must be equal to input_size. Expected 7, got 108
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 647, in train_model
+    result = engine.train(X_train, y_train, X_val, y_val, epochs=epochs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 718, in train
+    train_losses, val_losses, best_val_loss, completed_epoch = self._train_epochs(
+                                                               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 628, in _train_epochs
+    avg_train_loss = self._train_one_epoch(epoch, train_loader, criterion, warmup_steps)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 542, in _train_one_epoch
+    outputs = self.model(batch_features)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/models_enhanced.py", line 132, in forward
+    lstm_out, _ = self.lstm(x)
+                  ^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py", line 1104, in forward
+    self.check_forward_args(input, hx, batch_sizes)
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py", line 1005, in check_forward_args
+    self.check_input(input, batch_sizes)
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py", line 315, in check_input
+    raise RuntimeError(
+RuntimeError: input.size(-1) must be equal to input_size. Expected 7, got 108
+2025-12-12 13:27:17 - root - ERROR - [main.py:1005] - Command failed: input.size(-1) must be equal to input_size. Expected 7, got 108
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1000, in main
+    command_map[args.command](args.config)
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 647, in train_model
+    result = engine.train(X_train, y_train, X_val, y_val, epochs=epochs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 718, in train
+    train_losses, val_losses, best_val_loss, completed_epoch = self._train_epochs(
+                                                               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 628, in _train_epochs
+    avg_train_loss = self._train_one_epoch(epoch, train_loader, criterion, warmup_steps)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/ml_engine_enhanced.py", line 542, in _train_one_epoch
+    outputs = self.model(batch_features)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/models_enhanced.py", line 132, in forward
+    lstm_out, _ = self.lstm(x)
+                  ^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1775, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/module.py", line 1786, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py", line 1104, in forward
+    self.check_forward_args(input, hx, batch_sizes)
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py", line 1005, in check_forward_args
+    self.check_input(input, batch_sizes)
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/nn/modules/rnn.py", line 315, in check_input
+    raise RuntimeError(
+RuntimeError: input.size(-1) must be equal to input_size. Expected 7, got 108
+2025-12-12 13:28:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from config.yaml
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/ORCL_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:50] - Loaded 9805 rows from market_data/ORCL_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:432] - Loaded ORCL: 9805 rows
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/NVDA_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:50] - Loaded 6553 rows from market_data/NVDA_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:432] - Loaded NVDA: 6553 rows
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/TSLA_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:50] - Loaded 3677 rows from market_data/TSLA_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:432] - Loaded TSLA: 3677 rows
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/MSFT_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:50] - Loaded 9804 rows from market_data/MSFT_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:432] - Loaded MSFT: 9804 rows
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:43] - Loading data from market_data/RIOT_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:50] - Loaded 2229 rows from market_data/RIOT_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:432] - Loaded RIOT: 2229 rows
+2025-12-12 13:28:04 - data_loader - WARNING - [data_loader.py:436] - File not found for ORCL.predictions: market_data/ORCL.predictions_data.csv
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:264] - Starting data preprocessing...
+2025-12-12 13:28:04 - feature_engineering - INFO - [feature_engineering.py:381] - Starting feature engineering...
+2025-12-12 13:28:04 - feature_engineering - WARNING - [feature_engineering.py:200] - No datetime index or date column found
+2025-12-12 13:28:04 - feature_engineering - INFO - [feature_engineering.py:406] - Feature engineering complete: (32068, 17) -> (32068, 111)
+2025-12-12 13:28:04 - feature_engineering - INFO - [feature_engineering.py:411] - Added 94 new features
+2025-12-12 13:28:04 - data_loader - INFO - [data_loader.py:292] - Features shape: (32068, 108), Target shape: (32068,)
+2025-12-12 13:28:05 - data_loader - INFO - [data_loader.py:309] - Created sequences: X=(32008, 60, 108), y=(32008,)
+2025-12-12 13:28:06 - data_loader - INFO - [data_loader.py:336] - Train: (22405, 60, 108), Val: (3201, 60, 108), Test: (6402, 60, 108)
+2025-12-12 13:28:07 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:61] - Using device: cpu
+2025-12-12 13:28:07 - memory_manager_enhanced - INFO - [memory_manager_enhanced.py:42] - MemoryManager initialized on cpu with 1000MB threshold
+2025-12-12 13:28:08 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:107] - EnhancedMLEngine initialized with StockPredictor model
+2025-12-12 13:28:08 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:603] - Initializing model weights from scratch
+2025-12-12 13:28:08 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:709] - Training from epoch 1 to 200 (+200 epochs)
+2025-12-12 13:28:08 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:713] - Using HuberLoss loss function
+2025-12-12 13:28:08 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:714] - Mixed precision: False, Gradient clipping: 1.0
+2025-12-12 13:28:50 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:844] - Model saved to models/best_model.pth
+2025-12-12 13:28:50 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:645] - ✓ New best model saved (improved by inf)
+2025-12-12 13:28:50 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:649] - Epoch 1/200 - Train Loss: 18.763191, Val Loss: 1.957473, LR: 0.000175
+2025-12-12 13:29:10 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:844] - Model saved to models/best_model.pth
+2025-12-12 13:29:10 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:645] - ✓ New best model saved (improved by 0.562178)
+2025-12-12 13:29:10 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:649] - Epoch 2/200 - Train Loss: 4.716062, Val Loss: 1.395294, LR: 0.000350
+2025-12-12 13:29:30 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:844] - Model saved to models/best_model.pth
+2025-12-12 13:29:30 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:645] - ✓ New best model saved (improved by 0.908759)
+2025-12-12 13:29:30 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:649] - Epoch 3/200 - Train Loss: 3.291479, Val Loss: 0.486536, LR: 0.000500
+2025-12-12 13:29:50 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:649] - Epoch 4/200 - Train Loss: 2.902322, Val Loss: 1.267922, LR: 0.000500
+2025-12-12 13:30:17 - ml_engine_enhanced - INFO - [ml_engine_enhanced.py:649] - Epoch 5/200 - Train Loss: 2.670755, Val Loss: 2.170512, LR: 0.000500

@@ -3,13 +3,14 @@ Neural Network Integration Module for connecting ML, MT, MR engines and reasonin
 Optimized for CPU and GPU performance with enhanced model synchronization.
 """
 
-import os
 import logging
+import os
+from typing import Any, Dict, Tuple
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Dict, Tuple, Any
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -130,6 +131,156 @@ class NeuralNetworkIntegrator:
         
         return ml_weight, mt_weight, mr_weight
     
+    def _ensure_engines_set(self) -> None:
+        if any(
+            engine is None
+            for engine in (
+                self.ml_engine,
+                self.mt_engine,
+                self.mr_engine,
+                self.reasoning_engine,
+            )
+        ):
+            raise ValueError("All engines must be set before making predictions")
+
+    @staticmethod
+    def _split_prediction_and_uncertainty(result: Any) -> Tuple[Any, float]:
+        if isinstance(result, dict):
+            prediction = result.get("prediction", result)
+            uncertainty = result.get("uncertainty", 0.2)
+        else:
+            prediction = result
+            uncertainty = 0.2
+
+        if isinstance(uncertainty, torch.Tensor):
+            uncertainty = float(uncertainty.detach().cpu().item())
+        elif isinstance(uncertainty, np.ndarray):
+            uncertainty = float(np.mean(uncertainty))
+        else:
+            uncertainty = float(uncertainty)
+
+        return prediction, uncertainty
+
+    def _as_tensor_prediction(self, prediction: Any) -> torch.Tensor:
+        if isinstance(prediction, torch.Tensor):
+            tensor_pred = prediction
+        else:
+            tensor_pred = torch.as_tensor(prediction)
+
+        tensor_pred = tensor_pred.to(self.device)
+
+        # Normalize to (batch, pred_dim) so stacking/weighting works consistently
+        if tensor_pred.dim() == 0:
+            tensor_pred = tensor_pred.view(1, 1)
+        elif tensor_pred.dim() == 1:
+            tensor_pred = tensor_pred.unsqueeze(-1)
+        elif tensor_pred.dim() > 2:
+            tensor_pred = tensor_pred.reshape(tensor_pred.shape[0], -1)
+
+        return tensor_pred
+
+    def _get_engine_outputs(
+        self, features: Dict[str, torch.Tensor]
+    ) -> Tuple[torch.Tensor, float, torch.Tensor, float, torch.Tensor, float]:
+        ml_result = self.ml_engine.predict(features.get("ml_features"))
+        mt_result = self.mt_engine.predict(features.get("mt_features"))
+        mr_result = self.mr_engine.predict(features.get("mr_features"))
+
+        ml_prediction, ml_uncertainty = self._split_prediction_and_uncertainty(ml_result)
+        mt_prediction, mt_uncertainty = self._split_prediction_and_uncertainty(mt_result)
+        mr_prediction, mr_uncertainty = self._split_prediction_and_uncertainty(mr_result)
+
+        ml_prediction = self._as_tensor_prediction(ml_prediction)
+        mt_prediction = self._as_tensor_prediction(mt_prediction)
+        mr_prediction = self._as_tensor_prediction(mr_prediction)
+
+        return ml_prediction, ml_uncertainty, mt_prediction, mt_uncertainty, mr_prediction, mr_uncertainty
+
+    @staticmethod
+    def _weights_to_1d_numpy(weights: Any) -> np.ndarray:
+        if isinstance(weights, torch.Tensor):
+            weights = weights.detach().cpu().numpy()
+        weights = np.asarray(weights, dtype=float)
+        if weights.ndim > 1:
+            weights = weights.mean(axis=0)
+        return weights.reshape(-1)
+
+    def _integrate_predictions(
+        self,
+        ml_prediction: torch.Tensor,
+        mt_prediction: torch.Tensor,
+        mr_prediction: torch.Tensor,
+    ) -> Tuple[torch.Tensor, np.ndarray]:
+        with torch.no_grad():
+            if self.use_attention:
+                engine_outputs = torch.stack([ml_prediction, mt_prediction, mr_prediction], dim=1)
+                integrated_prediction, attention_weights = self.integration_model(engine_outputs)
+                engine_weights = self._weights_to_1d_numpy(attention_weights)
+                return integrated_prediction, engine_weights
+
+            engine_weights = np.array([self.ml_weight, self.mt_weight, self.mr_weight], dtype=float)
+            integrated_prediction = (
+                self.ml_weight * ml_prediction +
+                self.mt_weight * mt_prediction +
+                self.mr_weight * mr_prediction
+            )
+            return integrated_prediction, engine_weights
+
+    @staticmethod
+    def _compute_integrated_uncertainty(
+        engine_weights: np.ndarray,
+        ml_uncertainty: float,
+        mt_uncertainty: float,
+        mr_uncertainty: float
+    ) -> float:
+        weights = np.asarray(engine_weights, dtype=float).reshape(-1)
+        if weights.size != 3:
+            weights = np.array([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0], dtype=float)
+
+        uncs = np.array([ml_uncertainty, mt_uncertainty, mr_uncertainty], dtype=float)
+        return float(np.dot(weights, uncs))
+
+    @staticmethod
+    def _reasoning_uncertainties(prediction_np: np.ndarray, integrated_uncertainty: float) -> np.ndarray:
+        return np.full_like(prediction_np, float(integrated_uncertainty), dtype=float)
+
+    def _build_result(
+        self,
+        integrated_prediction_np: np.ndarray,
+        integrated_uncertainty: float,
+        ml_prediction: torch.Tensor,
+        mt_prediction: torch.Tensor,
+        mr_prediction: torch.Tensor,
+        ml_uncertainty: float,
+        mt_uncertainty: float,
+        mr_uncertainty: float,
+        engine_weights: np.ndarray,
+        reasoning_result: Any,
+        features: Dict[str, torch.Tensor],
+        return_features: bool,
+    ) -> Dict[str, Any]:
+        result = {
+            "prediction": integrated_prediction_np,
+            "uncertainty": integrated_uncertainty,
+            "ml_prediction": ml_prediction.cpu().numpy(),
+            "mt_prediction": mt_prediction.cpu().numpy(),
+            "mr_prediction": mr_prediction.cpu().numpy(),
+            "ml_uncertainty": ml_uncertainty,
+            "mt_uncertainty": mt_uncertainty,
+            "mr_uncertainty": mr_uncertainty,
+            "weights": engine_weights,
+            "reasoning": reasoning_result
+        }
+
+        if return_features:
+            result.update({
+                "ml_features": features.get("ml_features"),
+                "mt_features": features.get("mt_features"),
+                "mr_features": features.get("mr_features")
+            })
+
+        return result
+
     def predict(
         self,
         features: Dict[str, torch.Tensor],
@@ -145,111 +296,54 @@ class NeuralNetworkIntegrator:
         Returns:
             Dictionary of prediction results
         """
-        # Ensure all engines are set
-        if any(engine is None for engine in [self.ml_engine, self.mt_engine, self.mr_engine, self.reasoning_engine]):
-            raise ValueError("All engines must be set before making predictions")
-        
-        # Get predictions from each engine
-        ml_result = self.ml_engine.predict(features.get("ml_features"))
-        mt_result = self.mt_engine.predict(features.get("mt_features"))
-        mr_result = self.mr_engine.predict(features.get("mr_features"))
-        
-        # Extract predictions and uncertainties
-        ml_prediction = ml_result.get("prediction", ml_result)
-        mt_prediction = mt_result.get("prediction", mt_result)
-        mr_prediction = mr_result.get("prediction", mr_result)
-        
-        ml_uncertainty = ml_result.get("uncertainty", 0.2)
-        mt_uncertainty = mt_result.get("uncertainty", 0.2)
-        mr_uncertainty = mr_result.get("uncertainty", 0.2)
-        
-        # Calculate dynamic weights if enabled
-        if self.use_dynamic_weights:
+        self._ensure_engines_set()
+
+        (
+            ml_prediction,
+            ml_uncertainty,
+            mt_prediction,
+            mt_uncertainty,
+            mr_prediction,
+            mr_uncertainty,
+        ) = self._get_engine_outputs(features)
+
+        # Calculate dynamic weights if enabled (used by non-attention integration)
+        if self.use_dynamic_weights and not self.use_attention:
             self.ml_weight, self.mt_weight, self.mr_weight = self._calculate_dynamic_weights(
                 ml_uncertainty, mt_uncertainty, mr_uncertainty
             )
-        
-        # Convert predictions to tensors if needed
-        if not isinstance(ml_prediction, torch.Tensor):
-            ml_prediction = torch.tensor(ml_prediction, device=self.device)
-        if not isinstance(mt_prediction, torch.Tensor):
-            mt_prediction = torch.tensor(mt_prediction, device=self.device)
-        if not isinstance(mr_prediction, torch.Tensor):
-            mr_prediction = torch.tensor(mr_prediction, device=self.device)
-        
-        # Ensure predictions are on the correct device
-        ml_prediction = ml_prediction.to(self.device)
-        mt_prediction = mt_prediction.to(self.device)
-        mr_prediction = mr_prediction.to(self.device)
-        
-        # Combine predictions using the integration model
-        with torch.no_grad():
-            if self.use_attention:
-                # Prepare inputs for attention model
-                engine_outputs = torch.stack([ml_prediction, mt_prediction, mr_prediction], dim=1)
-                
-                # Get integrated prediction
-                integrated_prediction, attention_weights = self.integration_model(engine_outputs)
-                
-                # Convert attention weights to numpy for analysis
-                attention_weights = attention_weights.cpu().numpy()
-            else:
-                # Simple weighted average
-                integrated_prediction = (
-                    self.ml_weight * ml_prediction +
-                    self.mt_weight * mt_prediction +
-                    self.mr_weight * mr_prediction
-                )
-                attention_weights = np.array([self.ml_weight, self.mt_weight, self.mr_weight])
-        
-        # Convert to numpy for further processing
+
+        integrated_prediction, engine_weights = self._integrate_predictions(
+            ml_prediction, mt_prediction, mr_prediction
+        )
         integrated_prediction_np = integrated_prediction.cpu().numpy()
-        
-        # Calculate integrated uncertainty
-        if self.use_attention:
-            # Weighted uncertainty based on attention weights
-            integrated_uncertainty = (
-                attention_weights[0] * ml_uncertainty +
-                attention_weights[1] * mt_uncertainty +
-                attention_weights[2] * mr_uncertainty
-            )
-        else:
-            # Weighted uncertainty based on fixed/dynamic weights
-            integrated_uncertainty = (
-                self.ml_weight * ml_uncertainty +
-                self.mt_weight * mt_uncertainty +
-                self.mr_weight * mr_uncertainty
-            )
-        
-        # Process through reasoning engine
+
+        integrated_uncertainty = self._compute_integrated_uncertainty(
+            engine_weights=engine_weights,
+            ml_uncertainty=ml_uncertainty,
+            mt_uncertainty=mt_uncertainty,
+            mr_uncertainty=mr_uncertainty,
+        )
+
         reasoning_result = self.reasoning_engine.analyze_predictions(
             predictions=integrated_prediction_np,
-            uncertainties=integrated_uncertainty
+            uncertainties=self._reasoning_uncertainties(integrated_prediction_np, integrated_uncertainty),
         )
-        
-        # Prepare result dictionary
-        result = {
-            "prediction": integrated_prediction_np,
-            "uncertainty": integrated_uncertainty,
-            "ml_prediction": ml_prediction.cpu().numpy(),
-            "mt_prediction": mt_prediction.cpu().numpy(),
-            "mr_prediction": mr_prediction.cpu().numpy(),
-            "ml_uncertainty": ml_uncertainty,
-            "mt_uncertainty": mt_uncertainty,
-            "mr_uncertainty": mr_uncertainty,
-            "weights": attention_weights if self.use_attention else np.array([self.ml_weight, self.mt_weight, self.mr_weight]),
-            "reasoning": reasoning_result
-        }
-        
-        # Add intermediate features if requested
-        if return_features:
-            result.update({
-                "ml_features": features.get("ml_features"),
-                "mt_features": features.get("mt_features"),
-                "mr_features": features.get("mr_features")
-            })
-        
-        return result
+
+        return self._build_result(
+            integrated_prediction_np=integrated_prediction_np,
+            integrated_uncertainty=integrated_uncertainty,
+            ml_prediction=ml_prediction,
+            mt_prediction=mt_prediction,
+            mr_prediction=mr_prediction,
+            ml_uncertainty=ml_uncertainty,
+            mt_uncertainty=mt_uncertainty,
+            mr_uncertainty=mr_uncertainty,
+            engine_weights=engine_weights,
+            reasoning_result=reasoning_result,
+            features=features,
+            return_features=return_features,
+        )
     
     def save_model(self, path: str):
         """
@@ -374,7 +468,13 @@ class BasicIntegrationModel(nn.Module):
 class AttentionIntegrationModel(nn.Module):
     """Attention-based neural network for integrating predictions from multiple engines."""
     
-    def __init__(self, input_dim: int, hidden_dim: int, num_heads: int = 4, dropout: float = 0.2):
+    def __init__(
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        num_heads: int = 4,
+        dropout: float = 0.2,
+    ):
         """
         Initialize the attention integration model.
         
@@ -391,24 +491,23 @@ class AttentionIntegrationModel(nn.Module):
             embed_dim=input_dim,
             num_heads=num_heads,
             dropout=dropout,
-            batch_first=True
+            batch_first=True,
         )
-        
-        # Layer normalization
+
         self.layer_norm1 = nn.LayerNorm(input_dim)
         self.layer_norm2 = nn.LayerNorm(input_dim)
-        
+
         # Feed-forward network
         self.ffn = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim, input_dim)
+            nn.Linear(hidden_dim, input_dim),
         )
-        
+
         # Output projection
         self.output_proj = nn.Linear(input_dim, 1)
-        
+
         # Dropout for regularization
         self.dropout = nn.Dropout(dropout)
     
@@ -422,7 +521,7 @@ class AttentionIntegrationModel(nn.Module):
         Returns:
             Tuple of (integrated_prediction, attention_weights)
         """
-        _, _, _ = x.shape
+        # x: [batch_size, 3, input_dim]
         
         # Apply attention
         query = self.layer_norm1(x)
@@ -435,7 +534,8 @@ class AttentionIntegrationModel(nn.Module):
         x = x + self.dropout(self.ffn(self.layer_norm2(x)))
         
         # Extract attention weights for each engine
-        engine_weights = attn_weights.mean(dim=1)  # Average attention across batch
+        # attn_weights: [batch, tgt_len(=3), src_len(=3)] -> per-engine weights: [batch, 3]
+        engine_weights = attn_weights.mean(dim=1)
         
         # Apply output projection to get final prediction
         # Average across engines

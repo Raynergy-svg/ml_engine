@@ -7,20 +7,48 @@ and aggregates sentiment data.
 """
 
 import csv
-from typing import Dict, List
-import requests
-from bs4 import BeautifulSoup
+from typing import Dict, List, Optional
 from urllib.parse import urlencode
-import yfinance as yf
 import pandas as pd
-from textblob import TextBlob
 import numpy as np
 import re
 from pathlib import Path
-from newsapi import NewsApiClient  # pip install newsapi-python
-import praw  # pip install praw
-import finnhub  # pip install finnhub-python
 import logging
+
+try:
+    import requests  # type: ignore
+except Exception:  # pragma: no cover
+    requests = None
+
+try:
+    from bs4 import BeautifulSoup  # type: ignore
+except Exception:  # pragma: no cover
+    BeautifulSoup = None
+
+try:
+    import yfinance as yf  # type: ignore
+except Exception:  # pragma: no cover
+    yf = None
+
+try:
+    from textblob import TextBlob  # type: ignore
+except Exception:  # pragma: no cover
+    TextBlob = None
+
+try:
+    from newsapi import NewsApiClient  # type: ignore
+except Exception:  # pragma: no cover
+    NewsApiClient = None
+
+try:
+    import praw  # type: ignore
+except Exception:  # pragma: no cover
+    praw = None
+
+try:
+    import finnhub  # type: ignore
+except Exception:  # pragma: no cover
+    finnhub = None
 
 logger = logging.getLogger(__name__)
 
@@ -140,13 +168,14 @@ def analyze_sentiment(text_list):
             continue
     total_texts = len(text_list)
     overall_polarity = total_polarity / total_texts if total_texts > 0 else 0
-    overall_sentiment = (
-        "Positive"
-        if overall_polarity > 0.1
-        else "Negative"
-        if overall_polarity < -0.1
-        else "Neutral"
-    )
+
+    if overall_polarity > 0.1:
+        overall_sentiment = "Positive"
+    elif overall_polarity < -0.1:
+        overall_sentiment = "Negative"
+    else:
+        overall_sentiment = "Neutral"
+
     return {
         "positive": positive_count,
         "negative": negative_count,
@@ -363,7 +392,9 @@ def download_market_data_from_sources(ticker: str) -> pd.DataFrame:
 # ------------------------ Data Collection & Saving ------------------------
 
 
-def collect_comprehensive_data(ticker: str, save_dir: str = "stock_data") -> Path:
+def collect_comprehensive_data(
+    ticker: str, save_dir: str = "stock_data"
+) -> Optional[Path]:
     """
     Collects comprehensive stock data by attempting multiple sources,
     calculating technical indicators, and saving the result as CSV.
@@ -408,7 +439,7 @@ def collect_comprehensive_data(ticker: str, save_dir: str = "stock_data") -> Pat
     print(f"Market Cap: ${info.get('marketCap', 0):,}")
 
     print("\nAnalyzing market sentiment...")
-    sentiment, sources = get_market_sentiment(ticker)
+    _, _ = get_market_sentiment(ticker)
 
     # Save the processed data as CSV
     data_csv_path = save_path / f"{ticker}_data.csv"

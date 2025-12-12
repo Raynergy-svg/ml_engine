@@ -182,16 +182,24 @@ class ReasoningEngine:
         
         # Generate signals with uncertainty if available
         if uncertainties is not None:
-            uncertainties = uncertainties.flatten()
+            uncertainties_arr = np.asarray(uncertainties, dtype=float)
+            if uncertainties_arr.ndim == 0:
+                uncertainties_arr = np.full_like(predictions, float(uncertainties_arr))
+            else:
+                uncertainties_arr = uncertainties_arr.flatten()
+                if uncertainties_arr.size == 1 and predictions.size > 1:
+                    uncertainties_arr = np.full_like(predictions, float(uncertainties_arr[0]))
+                elif uncertainties_arr.size != predictions.size:
+                    uncertainties_arr = np.full_like(predictions, float(np.mean(uncertainties_arr)))
             
             # Calculate confidence scores
-            confidence = 1.0 - uncertainties
+            confidence = 1.0 - uncertainties_arr
             
             # Generate confidence-weighted signals
             confident_direction = np.sign(price_changes) * (confidence > self.confidence_threshold)
             
             signals.update({
-                "uncertainty": uncertainties,
+                "uncertainty": uncertainties_arr,
                 "confidence": confidence,
                 "confident_direction": confident_direction
             })
@@ -296,6 +304,59 @@ class ReasoningEngine:
         })
         
         return explanation
+
+    def _normalize_uncertainties(
+        self,
+        predictions_flat: np.ndarray,
+        uncertainties: Optional[np.ndarray]
+    ) -> Optional[np.ndarray]:
+        if uncertainties is None:
+            return None
+
+        uncertainties_arr = np.asarray(uncertainties, dtype=float)
+        if uncertainties_arr.ndim == 0:
+            return np.full_like(predictions_flat, float(uncertainties_arr))
+
+        uncertainties_flat = uncertainties_arr.flatten()
+        if uncertainties_flat.size == 1 and predictions_flat.size > 1:
+            return np.full_like(predictions_flat, float(uncertainties_flat[0]))
+
+        if uncertainties_flat.size != predictions_flat.size:
+            return np.full_like(predictions_flat, float(np.mean(uncertainties_flat)))
+
+        return uncertainties_flat
+
+    def _apply_optional_uncertainty(
+        self,
+        explanation: Dict[str, Any],
+        uncertainties_flat: Optional[np.ndarray],
+        index: int
+    ) -> None:
+        if uncertainties_flat is None:
+            return
+        self._add_uncertainty_to_explanation(explanation, float(uncertainties_flat[index]))
+
+    def _apply_optional_actual(
+        self,
+        explanation: Dict[str, Any],
+        actual_values_flat: Optional[np.ndarray],
+        index: int,
+        prediction: float
+    ) -> None:
+        if actual_values_flat is None:
+            return
+        self._add_actual_to_explanation(explanation, float(actual_values_flat[index]), float(prediction))
+
+    def _apply_optional_trend(
+        self,
+        explanation: Dict[str, Any],
+        index: int,
+        prediction: float,
+        predictions_flat: np.ndarray
+    ) -> None:
+        if index <= 0:
+            return
+        self._add_trend_to_explanation(explanation, float(prediction), float(predictions_flat[index - 1]))
     
     def _generate_explanations(
         self,
@@ -318,13 +379,13 @@ class ReasoningEngine:
         Returns:
             List of explanation dictionaries
         """
-        predictions = predictions.flatten()
-        uncertainties_flat = uncertainties.flatten() if uncertainties is not None else None
+        predictions_flat = predictions.flatten()
+        uncertainties_flat = self._normalize_uncertainties(predictions_flat, uncertainties)
         actual_values_flat = actual_values.flatten() if actual_values is not None else None
         
         explanations: List[Dict[str, Any]] = []
         
-        for i, pred in enumerate(predictions):
+        for i, pred in enumerate(predictions_flat):
             explanation = self._build_explanation_base(
                 index=i,
                 prediction=pred,
@@ -332,14 +393,9 @@ class ReasoningEngine:
                 ticker_symbols=ticker_symbols
             )
             
-            if uncertainties_flat is not None:
-                self._add_uncertainty_to_explanation(explanation, uncertainties_flat[i])
-            
-            if actual_values_flat is not None:
-                self._add_actual_to_explanation(explanation, actual_values_flat[i], pred)
-            
-            if i > 0:
-                self._add_trend_to_explanation(explanation, pred, predictions[i - 1])
+            self._apply_optional_uncertainty(explanation, uncertainties_flat, i)
+            self._apply_optional_actual(explanation, actual_values_flat, i, pred)
+            self._apply_optional_trend(explanation, i, pred, predictions_flat)
             
             explanations.append(explanation)
         

@@ -243,6 +243,14 @@
         "documentation": {}
     },
     {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -363,6 +371,14 @@
         "documentation": {}
     },
     {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "List",
         "importPath": "typing",
         "description": "typing",
@@ -788,6 +804,30 @@
     },
     {
         "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Literal",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -931,6 +971,14 @@
         "documentation": {}
     },
     {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -948,6 +996,22 @@
     },
     {
         "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1068,6 +1132,22 @@
     },
     {
         "label": "asdict",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
         "importPath": "dataclasses",
         "description": "dataclasses",
         "isExtraImport": true,
@@ -1639,6 +1719,14 @@
         "documentation": {}
     },
     {
+        "label": "load_config",
+        "importPath": "utils",
+        "description": "utils",
+        "isExtraImport": true,
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
         "label": "setup_logging",
         "importPath": "utils",
         "description": "utils",
@@ -1761,36 +1849,11 @@
         "documentation": {}
     },
     {
-        "label": "requests",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "requests",
-        "description": "requests",
-        "detail": "requests",
-        "documentation": {}
-    },
-    {
-        "label": "BeautifulSoup",
-        "importPath": "bs4",
-        "description": "bs4",
-        "isExtraImport": true,
-        "detail": "bs4",
-        "documentation": {}
-    },
-    {
         "label": "urlencode",
         "importPath": "urllib.parse",
         "description": "urllib.parse",
         "isExtraImport": true,
         "detail": "urllib.parse",
-        "documentation": {}
-    },
-    {
-        "label": "TextBlob",
-        "importPath": "textblob",
-        "description": "textblob",
-        "isExtraImport": true,
-        "detail": "textblob",
         "documentation": {}
     },
     {
@@ -1800,32 +1863,6 @@
         "importPath": "re",
         "description": "re",
         "detail": "re",
-        "documentation": {}
-    },
-    {
-        "label": "NewsApiClient",
-        "importPath": "newsapi",
-        "description": "newsapi",
-        "isExtraImport": true,
-        "detail": "newsapi",
-        "documentation": {}
-    },
-    {
-        "label": "praw",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "praw",
-        "description": "praw",
-        "detail": "praw",
-        "documentation": {}
-    },
-    {
-        "label": "finnhub",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "finnhub",
-        "description": "finnhub",
-        "detail": "finnhub",
         "documentation": {}
     },
     {
@@ -1847,11 +1884,36 @@
         "documentation": {}
     },
     {
+        "label": "requests",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "requests",
+        "description": "requests",
+        "detail": "requests",
+        "documentation": {}
+    },
+    {
         "label": "StringIO",
         "importPath": "io",
         "description": "io",
         "isExtraImport": true,
         "detail": "io",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
         "documentation": {}
     },
     {
@@ -2021,6 +2083,14 @@
         "documentation": {}
     },
     {
+        "label": "mock",
+        "importPath": "unittest",
+        "description": "unittest",
+        "isExtraImport": true,
+        "detail": "unittest",
+        "documentation": {}
+    },
+    {
         "label": "StockDataset",
         "importPath": "data_processing",
         "description": "data_processing",
@@ -2066,6 +2136,46 @@
         "description": "data_processing",
         "isExtraImport": true,
         "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "candles_to_ohlcv_df",
+        "importPath": "ml_engine.fx_paper",
+        "description": "ml_engine.fx_paper",
+        "isExtraImport": true,
+        "detail": "ml_engine.fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "atr",
+        "importPath": "ml_engine.fx_paper",
+        "description": "ml_engine.fx_paper",
+        "isExtraImport": true,
+        "detail": "ml_engine.fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "pip_size",
+        "importPath": "ml_engine.fx_paper",
+        "description": "ml_engine.fx_paper",
+        "isExtraImport": true,
+        "detail": "ml_engine.fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "position_size_units",
+        "importPath": "ml_engine.fx_paper",
+        "description": "ml_engine.fx_paper",
+        "isExtraImport": true,
+        "detail": "ml_engine.fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "setup_signal",
+        "importPath": "ml_engine.fx_paper",
+        "description": "ml_engine.fx_paper",
+        "isExtraImport": true,
+        "detail": "ml_engine.fx_paper",
         "documentation": {}
     },
     {
@@ -2187,6 +2297,14 @@
         "description": "data_processing_optimized",
         "isExtraImport": true,
         "detail": "data_processing_optimized",
+        "documentation": {}
+    },
+    {
+        "label": "EnhancedMLEngine",
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "isExtraImport": true,
+        "detail": "ml_engine_enhanced",
         "documentation": {}
     },
     {
@@ -2518,6 +2636,14 @@
         "documentation": {}
     },
     {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
         "label": "NeuralNetworkIntegrator",
         "importPath": "neural_network_integrator",
         "description": "neural_network_integrator",
@@ -2566,11 +2692,29 @@
         "documentation": {}
     },
     {
+        "label": "pytest",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "pytest",
+        "description": "pytest",
+        "detail": "pytest",
+        "documentation": {}
+    },
+    {
         "label": "StockPredictor",
         "importPath": "models",
         "description": "models",
         "isExtraImport": true,
         "detail": "models",
+        "documentation": {}
+    },
+    {
+        "label": "oanda_practice",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "oanda_practice",
+        "description": "oanda_practice",
+        "detail": "oanda_practice",
         "documentation": {}
     },
     {
@@ -2917,21 +3061,19 @@
         "documentation": {}
     },
     {
-        "label": "visualizer",
-        "kind": 6,
+        "label": "MREngine",
+        "importPath": "mr_engine",
+        "description": "mr_engine",
         "isExtraImport": true,
-        "importPath": "visualizer",
-        "description": "visualizer",
-        "detail": "visualizer",
+        "detail": "mr_engine",
         "documentation": {}
     },
     {
-        "label": "openai_integration",
-        "kind": 6,
+        "label": "NeuralNetworkIntegrator",
+        "importPath": "neural_network_integrator_enhanced",
+        "description": "neural_network_integrator_enhanced",
         "isExtraImport": true,
-        "importPath": "openai_integration",
-        "description": "openai_integration",
-        "detail": "openai_integration",
+        "detail": "neural_network_integrator_enhanced",
         "documentation": {}
     },
     {
@@ -3840,7 +3982,7 @@
         "kind": 2,
         "importPath": "SLM.stock_slm",
         "description": "SLM.stock_slm",
-        "peekOfCode": "def collect_comprehensive_data(ticker: str, save_dir: str = \"stock_data\") -> Path:\n    \"\"\"\n    Collects comprehensive stock data by attempting multiple sources,\n    calculating technical indicators, and saving the result as CSV.\n    \"\"\"\n    save_path = Path(save_dir)\n    save_path.mkdir(exist_ok=True)\n    print(f\"\\nCollecting comprehensive data for {ticker}...\")\n    market_data = download_market_data_from_sources(ticker)\n    if market_data.empty:",
+        "peekOfCode": "def collect_comprehensive_data(\n    ticker: str, save_dir: str = \"stock_data\"\n) -> Optional[Path]:\n    \"\"\"\n    Collects comprehensive stock data by attempting multiple sources,\n    calculating technical indicators, and saving the result as CSV.\n    \"\"\"\n    save_path = Path(save_dir)\n    save_path.mkdir(exist_ok=True)\n    print(f\"\\nCollecting comprehensive data for {ticker}...\")",
         "detail": "SLM.stock_slm",
         "documentation": {}
     },
@@ -4313,6 +4455,42 @@
         "documentation": {}
     },
     {
+        "label": "TestCandlesToOHLCV",
+        "kind": 6,
+        "importPath": "tests.test_fx_paper",
+        "description": "tests.test_fx_paper",
+        "peekOfCode": "class TestCandlesToOHLCV(unittest.TestCase):\n    def test_converts_complete_candles(self):\n        resp = {\n            \"candles\": [\n                {\n                    \"complete\": True,\n                    \"time\": \"2025-01-01T00:00:00Z\",\n                    \"mid\": {\"o\": \"1.1000\", \"h\": \"1.1010\", \"l\": \"1.0990\", \"c\": \"1.1005\"},\n                    \"volume\": 123,\n                },",
+        "detail": "tests.test_fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "TestIndicatorsAndSizing",
+        "kind": 6,
+        "importPath": "tests.test_fx_paper",
+        "description": "tests.test_fx_paper",
+        "peekOfCode": "class TestIndicatorsAndSizing(unittest.TestCase):\n    def _df_from_close(self, close):\n        # Make simple OHLC around close\n        close = pd.Series(close, dtype=float)\n        return pd.DataFrame(\n            {\n                \"high\": close + 0.0005,\n                \"low\": close - 0.0005,\n                \"close\": close,\n            }",
+        "detail": "tests.test_fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "test_build_integrated_feature_tensors_shapes",
+        "kind": 2,
+        "importPath": "tests.test_integrated_feature_tensors",
+        "description": "tests.test_integrated_feature_tensors",
+        "peekOfCode": "def test_build_integrated_feature_tensors_shapes():\n    import main\n    rows = 80\n    df = pd.DataFrame(\n        {\n            \"open\": np.linspace(100, 120, rows),\n            \"high\": np.linspace(101, 121, rows),\n            \"low\": np.linspace(99, 119, rows),\n            \"close\": np.linspace(100, 120, rows) + np.sin(np.linspace(0, 4, rows)),\n            \"volume\": np.linspace(1_000_000, 1_100_000, rows),",
+        "detail": "tests.test_integrated_feature_tensors",
+        "documentation": {}
+    },
+    {
+        "label": "test_build_integrated_feature_tensors_padding_when_allowed",
+        "kind": 2,
+        "importPath": "tests.test_integrated_feature_tensors",
+        "description": "tests.test_integrated_feature_tensors",
+        "peekOfCode": "def test_build_integrated_feature_tensors_padding_when_allowed():\n    import main\n    rows = 5\n    df = pd.DataFrame(\n        {\n            \"open\": np.linspace(100, 101, rows),\n            \"high\": np.linspace(101, 102, rows),\n            \"low\": np.linspace(99, 100, rows),\n            \"close\": np.linspace(100, 101, rows),\n            \"volume\": np.linspace(1_000_000, 1_000_100, rows),",
+        "detail": "tests.test_integrated_feature_tensors",
+        "documentation": {}
+    },
+    {
         "label": "TestDataIntegration",
         "kind": 6,
         "importPath": "tests.test_integration",
@@ -4355,6 +4533,24 @@
         "description": "tests.test_integration",
         "peekOfCode": "logger = logging.getLogger(__name__)\n# Add project directory to path\nsys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n# Import optimized modules\nfrom data_processing_optimized import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader\nfrom ml_engine_enhanced import EnhancedMLEngine\nfrom memory_manager_enhanced import MemoryManager\nfrom models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor\nfrom reasoning_enhanced import ReasoningEngine, UncertaintyEstimator\nfrom neural_network_integrator import NeuralNetworkIntegrator, ModelSynchronizer",
         "detail": "tests.test_integration",
+        "documentation": {}
+    },
+    {
+        "label": "test_integrated_predict_once_smoke",
+        "kind": 2,
+        "importPath": "tests.test_main_integrated_system",
+        "description": "tests.test_main_integrated_system",
+        "peekOfCode": "def test_integrated_predict_once_smoke():\n    import main\n    result = main.integrated_predict_once(_minimal_config())\n    assert isinstance(result, dict)\n    assert \"prediction\" in result\n    assert \"reasoning\" in result\n    pred = result[\"prediction\"]\n    assert getattr(pred, \"shape\", None) is not None\n    assert pred.shape[0] == 2\ndef test_compute_slm_indicators_smoke():",
+        "detail": "tests.test_main_integrated_system",
+        "documentation": {}
+    },
+    {
+        "label": "test_compute_slm_indicators_smoke",
+        "kind": 2,
+        "importPath": "tests.test_main_integrated_system",
+        "description": "tests.test_main_integrated_system",
+        "peekOfCode": "def test_compute_slm_indicators_smoke():\n    pd = pytest.importorskip(\"pandas\")\n    import main\n    df = pd.DataFrame({\"Close\": [1, 2, 3, 4, 5]})\n    indicators = main.compute_slm_indicators(df)\n    assert \"rsi_14\" in indicators\n    assert len(indicators[\"rsi_14\"]) == len(df)",
+        "detail": "tests.test_main_integrated_system",
         "documentation": {}
     },
     {
@@ -4427,6 +4623,24 @@
         "description": "tests.test_models_improved",
         "peekOfCode": "class TestModelRobustness(unittest.TestCase):\n    \"\"\"Test model robustness to edge cases\"\"\"\n    def test_single_sample_batch(self):\n        \"\"\"Test model works with single sample\"\"\"\n        model = StockPredictor(input_size=5, hidden_size=32, num_layers=2)\n        x = torch.randn(1, 20, 5)\n        output = model(x)\n        self.assertEqual(output.shape, (1, 1))\n    def test_large_batch(self):\n        \"\"\"Test model works with large batch\"\"\"",
         "detail": "tests.test_models_improved",
+        "documentation": {}
+    },
+    {
+        "label": "TestOandaPracticeClient",
+        "kind": 6,
+        "importPath": "tests.test_oanda_practice",
+        "description": "tests.test_oanda_practice",
+        "peekOfCode": "class TestOandaPracticeClient(unittest.TestCase):\n    def test_from_env_missing_vars_raises(self):\n        with mock.patch.dict(\"os.environ\", {}, clear=True):\n            with self.assertRaises(EnvironmentError):\n                oanda_practice.OandaPracticeClient.from_env()\n    def test_get_candles_calls_expected_endpoint(self):\n        session = mock.Mock()\n        session.headers = {}\n        def _fake_request(method, url, params=None, json=None, timeout=None):\n            resp = mock.Mock()",
+        "detail": "tests.test_oanda_practice",
+        "documentation": {}
+    },
+    {
+        "label": "PROJECT_ROOT",
+        "kind": 5,
+        "importPath": "tests.test_oanda_practice",
+        "description": "tests.test_oanda_practice",
+        "peekOfCode": "PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), \"..\"))\nif PROJECT_ROOT not in sys.path:\n    sys.path.insert(0, PROJECT_ROOT)\nimport oanda_practice\nclass TestOandaPracticeClient(unittest.TestCase):\n    def test_from_env_missing_vars_raises(self):\n        with mock.patch.dict(\"os.environ\", {}, clear=True):\n            with self.assertRaises(EnvironmentError):\n                oanda_practice.OandaPracticeClient.from_env()\n    def test_get_candles_calls_expected_endpoint(self):",
+        "detail": "tests.test_oanda_practice",
         "documentation": {}
     },
     {
@@ -4817,6 +5031,105 @@
         "documentation": {}
     },
     {
+        "label": "config",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "config = load_config(\"config.yaml\")\nconfig[\"epochs\"] = 5  # Short runs for demo\nconfig[\"batch_size\"] = 32\nconfig[\"auto_resume\"] = True  # Enable auto-resume (now default)\nprint(\"Configuration:\")\nprint(f\"  • auto_resume: {config['auto_resume']}\")\nprint(f\"  • epochs per run: {config['epochs']}\")\nprint(f\"  • early_stopping_patience: {config.get('early_stopping_patience', 10)}\")\nprint()\n# Create dummy data for demo",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "config[\"epochs\"]",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "config[\"epochs\"] = 5  # Short runs for demo\nconfig[\"batch_size\"] = 32\nconfig[\"auto_resume\"] = True  # Enable auto-resume (now default)\nprint(\"Configuration:\")\nprint(f\"  • auto_resume: {config['auto_resume']}\")\nprint(f\"  • epochs per run: {config['epochs']}\")\nprint(f\"  • early_stopping_patience: {config.get('early_stopping_patience', 10)}\")\nprint()\n# Create dummy data for demo\nprint(\"Creating dummy training data...\")",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "config[\"batch_size\"]",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "config[\"batch_size\"] = 32\nconfig[\"auto_resume\"] = True  # Enable auto-resume (now default)\nprint(\"Configuration:\")\nprint(f\"  • auto_resume: {config['auto_resume']}\")\nprint(f\"  • epochs per run: {config['epochs']}\")\nprint(f\"  • early_stopping_patience: {config.get('early_stopping_patience', 10)}\")\nprint()\n# Create dummy data for demo\nprint(\"Creating dummy training data...\")\nnp.random.seed(42)",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "config[\"auto_resume\"]",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "config[\"auto_resume\"] = True  # Enable auto-resume (now default)\nprint(\"Configuration:\")\nprint(f\"  • auto_resume: {config['auto_resume']}\")\nprint(f\"  • epochs per run: {config['epochs']}\")\nprint(f\"  • early_stopping_patience: {config.get('early_stopping_patience', 10)}\")\nprint()\n# Create dummy data for demo\nprint(\"Creating dummy training data...\")\nnp.random.seed(42)\nn_samples = 200",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "n_samples",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "n_samples = 200\nseq_len = 60\nn_features = config.get(\"model\", {}).get(\"input_size\", 7)\nX_train = torch.randn(n_samples, seq_len, n_features)\ny_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "seq_len",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "seq_len = 60\nn_features = config.get(\"model\", {}).get(\"input_size\", 7)\nX_train = torch.randn(n_samples, seq_len, n_features)\ny_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "n_features",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "n_features = config.get(\"model\", {}).get(\"input_size\", 7)\nX_train = torch.randn(n_samples, seq_len, n_features)\ny_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "X_train",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "X_train = torch.randn(n_samples, seq_len, n_features)\ny_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)\nprint(\"SIMULATING MULTIPLE TRAINING SESSIONS\")",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "y_train",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "y_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)\nprint(\"SIMULATING MULTIPLE TRAINING SESSIONS\")\nprint(\"=\" * 70)",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "X_val",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "X_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)\nprint(\"SIMULATING MULTIPLE TRAINING SESSIONS\")\nprint(\"=\" * 70)\nprint()",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
+        "label": "y_val",
+        "kind": 5,
+        "importPath": "demo_auto_continuity",
+        "description": "demo_auto_continuity",
+        "peekOfCode": "y_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)\nprint(\"SIMULATING MULTIPLE TRAINING SESSIONS\")\nprint(\"=\" * 70)\nprint()\nfor session in range(1, 4):",
+        "detail": "demo_auto_continuity",
+        "documentation": {}
+    },
+    {
         "label": "TRAIN_COMMAND",
         "kind": 5,
         "importPath": "demo_resume_training",
@@ -4970,6 +5283,123 @@
         "documentation": {}
     },
     {
+        "label": "RiskRules",
+        "kind": 6,
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "peekOfCode": "class RiskRules:\n    equity: float\n    risk_per_trade_pct: float = 0.005  # 0.5%\n    max_daily_loss_pct: float = 0.02\n    max_open_positions: int = 1\n    atr_stop_mult: float = 1.5\n    rr_take_profit: float = 1.5  # risk-reward\ndef position_size_units(\n    *,\n    instrument: str,",
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "candles_to_ohlcv_df",
+        "kind": 2,
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "peekOfCode": "def candles_to_ohlcv_df(oanda_candles_response: Any) -> pd.DataFrame:\n    candles = oanda_candles_response.get(\"candles\", [])\n    if not candles:\n        raise ValueError(\"No candles in OANDA response\")\n    rows: list[dict[str, Any]] = []\n    for c in candles:\n        if not c.get(\"complete\", True):\n            continue\n        mid = c.get(\"mid\") or {}\n        rows.append(",
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "atr",
+        "kind": 2,
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "peekOfCode": "def atr(df: pd.DataFrame, period: int = 14) -> float:\n    high = df[\"high\"].astype(float)\n    low = df[\"low\"].astype(float)\n    close = df[\"close\"].astype(float)\n    prev_close = close.shift(1)\n    tr = pd.concat(\n        [\n            (high - low).abs(),\n            (high - prev_close).abs(),\n            (low - prev_close).abs(),",
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "pip_size",
+        "kind": 2,
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "peekOfCode": "def pip_size(instrument: str) -> float:\n    # Simple default: JPY pairs use 0.01, most others 0.0001\n    return 0.01 if instrument.endswith(\"_JPY\") else 0.0001\n@dataclass(frozen=True)\nclass RiskRules:\n    equity: float\n    risk_per_trade_pct: float = 0.005  # 0.5%\n    max_daily_loss_pct: float = 0.02\n    max_open_positions: int = 1\n    atr_stop_mult: float = 1.5",
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "position_size_units",
+        "kind": 2,
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "peekOfCode": "def position_size_units(\n    *,\n    instrument: str,\n    equity: float,\n    risk_per_trade_pct: float,\n    stop_distance_price: float,\n    price: float,\n    pip_value_per_unit: Optional[float] = None,\n) -> int:\n    \"\"\"Compute position size in units, conservative approximation.",
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "setup_signal",
+        "kind": 2,
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "peekOfCode": "def setup_signal(df: pd.DataFrame) -> Signal:\n    \"\"\"A simple setup-based signal (placeholder until ML setup model is trained).\n    - trend: close vs EMA(20)\n    - momentum: RSI(14)\n    \"\"\"\n    close = df[\"close\"].astype(float)\n    ema_20 = close.ewm(span=20, adjust=False).mean()\n    delta = close.diff()\n    up = delta.clip(lower=0)\n    down = (-delta).clip(lower=0)",
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "Signal",
+        "kind": 5,
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "peekOfCode": "Signal = Literal[\"buy\", \"sell\", \"hold\"]\ndef candles_to_ohlcv_df(oanda_candles_response: Any) -> pd.DataFrame:\n    candles = oanda_candles_response.get(\"candles\", [])\n    if not candles:\n        raise ValueError(\"No candles in OANDA response\")\n    rows: list[dict[str, Any]] = []\n    for c in candles:\n        if not c.get(\"complete\", True):\n            continue\n        mid = c.get(\"mid\") or {}",
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "integrated_predict_once",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def integrated_predict_once(config: Dict[str, Any]) -> Dict[str, Any]:\n    \"\"\"Smoke: run one integrated prediction across ML/MT/MR.\"\"\"\n    integrator = _build_integrated_engines(config)\n    ml_features = torch.zeros((2, 5, int(config.get(\"model\", {}).get(\"input_size\", 7))), dtype=torch.float32)\n    mt_features = torch.zeros((2, 5, 11), dtype=torch.float32)\n    mr_features = torch.zeros((2, 5, 11), dtype=torch.float32)\n    return integrator.predict(\n        {\"ml_features\": ml_features, \"mt_features\": mt_features, \"mr_features\": mr_features}\n    )\ndef compute_slm_indicators(market_data_df):",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "compute_slm_indicators",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def compute_slm_indicators(market_data_df):\n    \"\"\"Compute a small subset of SLM technical indicators without network calls.\"\"\"\n    try:\n        from SLM.stock_slm import (\n            calculate_sma,\n            calculate_ema,\n            calculate_rsi,\n            calculate_macd,\n            calculate_bollinger_bands,\n        )",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "build_integrated_feature_tensors",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def build_integrated_feature_tensors(\n    market_data_df, config: Dict[str, Any], *, allow_pad: bool = False\n) -> Dict[str, torch.Tensor]:\n    \"\"\"Build feature tensors for ML/MT/MR using OHLCV + SLM indicators.\"\"\"\n    import pandas as pd\n    import numpy as np\n    df = _normalize_market_dataframe(market_data_df)\n    seq_len = int(\n        config.get(\"data\", {}).get(\"sequence_length\")\n        or config.get(\"sequence_length\")",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "integrated_predict",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def integrated_predict(config_path: str, csv_path: str | None = None) -> None:\n    \"\"\"Run a unified prediction: CSV -> SLM indicators -> ML/MT/MR -> integrator -> reasoning.\"\"\"\n    import pandas as pd\n    config = load_config(config_path)\n    if csv_path is None:\n        csv_path = _pick_default_market_csv(config)\n    df = pd.read_csv(csv_path)\n    features = build_integrated_feature_tensors(df, config)\n    integrator = _build_integrated_engines(config)\n    result = integrator.predict(features)",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "integrated_predict_live",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def integrated_predict_live(\n    config_path: str,\n    ticker: str,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n    watch_seconds: int | None = None,\n) -> None:\n    \"\"\"Run the unified prediction using live-ish OHLCV from yfinance.\"\"\"\n    config = load_config(config_path)\n    integrator = _build_integrated_engines(config)",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "fx_paper_trade",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def fx_paper_trade(\n    config_path: str,\n    instrument: str,\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = False,\n    equity: float = 10_000.0,\n    risk_per_trade_pct: float = 0.005,\n) -> None:\n    \"\"\"Paper trade forex on OANDA PRACTICE using a simple setup rule.",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
         "label": "generate_dashboard",
         "kind": 2,
         "importPath": "main",
@@ -5001,7 +5431,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def visualize_dashboard(config_path: str) -> None:\n    \"\"\"Display dashboard visualizations using the visualizer module.\"\"\"\n    config = load_config(config_path)\n    console.print(\"[bold blue]Launching visualizations...[/bold blue]\")\n    visualizer.display_dashboard(\n        config\n    )  # Assumes implementation exists in visualizer.py\ndef openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"\n    current_config = load_config(config_path)",
+        "peekOfCode": "def visualize_dashboard(config_path: str) -> None:\n    \"\"\"Display dashboard visualizations using the visualizer module.\"\"\"\n    import visualizer\n    config = load_config(config_path)\n    console.print(\"[bold blue]Launching visualizations...[/bold blue]\")\n    visualizer.display_dashboard(\n        config\n    )  # Assumes implementation exists in visualizer.py\ndef openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"",
         "detail": "main",
         "documentation": {}
     },
@@ -5010,7 +5440,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"\n    current_config = load_config(config_path)\n    # Gather current metrics from the engine\n    engine = EnhancedMLEngine(current_config)\n    train_loss = (\n        engine.train_losses[-1]\n        if hasattr(engine, \"train_losses\") and engine.train_losses\n        else None\n    )",
+        "peekOfCode": "def openai_tune(config_path: str) -> None:\n    \"\"\"Execute OpenAI-based auto-tuning using the openai_integration module.\"\"\"\n    try:\n        import openai_integration\n    except Exception as e:  # pragma: no cover\n        raise ImportError(\n            \"openai_integration requires the `openai` package; install it to use openai-tune.\"\n        ) from e\n    current_config = load_config(config_path)\n    # Only set credentials when we actually use OpenAI integration.",
         "detail": "main",
         "documentation": {}
     },
@@ -5064,7 +5494,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def main() -> None:\n    \"\"\"Main CLI entry point.\"\"\"\n    parser = argparse.ArgumentParser(description=\"ML Engine Trading Bot CLI\")\n    parser.add_argument(\n        \"command\",\n        choices=[\n            \"train-model\",\n            \"evaluate-model\",\n            \"predict-price\",\n            \"realtime-loop\",",
+        "peekOfCode": "def main() -> None:\n    \"\"\"Main CLI entry point.\"\"\"\n    parser = argparse.ArgumentParser(description=\"ML Engine Trading Bot CLI\")\n    parser.add_argument(\n        \"command\",\n        nargs=\"?\",\n        default=\"predict\",\n        choices=[\n            \"train-model\",\n            \"evaluate-model\",",
         "detail": "main",
         "documentation": {}
     },
@@ -5073,7 +5503,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "DEFAULT_MESSAGE_FORMAT = \"Epoch {epoch} completed\"\nTIMESTAMP_FORMAT = \"%H:%M:%S\"\nTABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)",
+        "peekOfCode": "DEFAULT_MESSAGE_FORMAT = \"Epoch {epoch} completed\"\nTIMESTAMP_FORMAT = \"%H:%M:%S\"\nTABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return",
         "detail": "main",
         "documentation": {}
     },
@@ -5082,7 +5512,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "TIMESTAMP_FORMAT = \"%H:%M:%S\"\nTABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(",
+        "peekOfCode": "TIMESTAMP_FORMAT = \"%H:%M:%S\"\nTABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    import warnings",
         "detail": "main",
         "documentation": {}
     },
@@ -5091,7 +5521,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "TABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(\n    epoch: int,",
+        "peekOfCode": "TABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    import warnings\n    # Silence torch GradScaler deprecation warning during prediction.",
         "detail": "main",
         "documentation": {}
     },
@@ -5100,7 +5530,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "console = Console()\nlogger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(\n    epoch: int,\n    total_epochs: int,\n    latency: int,",
+        "peekOfCode": "console = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    import warnings\n    # Silence torch GradScaler deprecation warning during prediction.\n    warnings.filterwarnings(\n        \"ignore\",",
         "detail": "main",
         "documentation": {}
     },
@@ -5109,16 +5539,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "logger = setup_logging(log_file=\"cli.log\")\n# Load configuration from config.yaml\nconfig = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(\n    epoch: int,\n    total_epochs: int,\n    latency: int,\n    train_loss: float,",
-        "detail": "main",
-        "documentation": {}
-    },
-    {
-        "label": "config",
-        "kind": 5,
-        "importPath": "main",
-        "description": "main",
-        "peekOfCode": "config = load_config(\"config.yaml\")\n# Set OpenAI credentials using the configuration read from YAML.\nopenai_integration.set_openai_credentials(config)\ndef generate_dashboard(\n    epoch: int,\n    total_epochs: int,\n    latency: int,\n    train_loss: float,\n    val_loss: float,\n    lr_delta: float,",
+        "peekOfCode": "logger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    import warnings\n    # Silence torch GradScaler deprecation warning during prediction.\n    warnings.filterwarnings(\n        \"ignore\",\n        category=FutureWarning,",
         "detail": "main",
         "documentation": {}
     },
@@ -5334,7 +5755,7 @@
         "kind": 6,
         "importPath": "neural_network_integrator_enhanced",
         "description": "neural_network_integrator_enhanced",
-        "peekOfCode": "class AttentionIntegrationModel(nn.Module):\n    \"\"\"Attention-based neural network for integrating predictions from multiple engines.\"\"\"\n    def __init__(self, input_dim: int, hidden_dim: int, num_heads: int = 4, dropout: float = 0.2):\n        \"\"\"\n        Initialize the attention integration model.\n        Args:\n            input_dim: Input dimension\n            hidden_dim: Hidden dimension\n            num_heads: Number of attention heads\n            dropout: Dropout rate",
+        "peekOfCode": "class AttentionIntegrationModel(nn.Module):\n    \"\"\"Attention-based neural network for integrating predictions from multiple engines.\"\"\"\n    def __init__(\n        self,\n        input_dim: int,\n        hidden_dim: int,\n        num_heads: int = 4,\n        dropout: float = 0.2,\n    ):\n        \"\"\"",
         "detail": "neural_network_integrator_enhanced",
         "documentation": {}
     },
@@ -5345,6 +5766,33 @@
         "description": "neural_network_integrator_enhanced",
         "peekOfCode": "logger = logging.getLogger(__name__)\nclass NeuralNetworkIntegrator:\n    \"\"\"\n    Neural Network Integrator for connecting ML (Machine Learning), MT (Market Trends),\n    and MR (Market Reasoning) engines with the reasoning head for synchronized predictions.\n    \"\"\"\n    def __init__(self, config: Dict[str, Any] = None):\n        \"\"\"\n        Initialize the Neural Network Integrator.\n        Args:",
         "detail": "neural_network_integrator_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "OandaPracticeConfig",
+        "kind": 6,
+        "importPath": "oanda_practice",
+        "description": "oanda_practice",
+        "peekOfCode": "class OandaPracticeConfig:\n    api_token: str\n    account_id: str\n    timeout_seconds: int = 15\nclass OandaPracticeClient:\n    def __init__(self, config: OandaPracticeConfig):\n        self._config = config\n        self._session = requests.Session()\n        self._session.headers.update(\n            {",
+        "detail": "oanda_practice",
+        "documentation": {}
+    },
+    {
+        "label": "OandaPracticeClient",
+        "kind": 6,
+        "importPath": "oanda_practice",
+        "description": "oanda_practice",
+        "peekOfCode": "class OandaPracticeClient:\n    def __init__(self, config: OandaPracticeConfig):\n        self._config = config\n        self._session = requests.Session()\n        self._session.headers.update(\n            {\n                \"Authorization\": f\"Bearer {config.api_token}\",\n                \"Content-Type\": \"application/json\",\n                \"Accept\": \"application/json\",\n            }",
+        "detail": "oanda_practice",
+        "documentation": {}
+    },
+    {
+        "label": "PRACTICE_API_URL",
+        "kind": 5,
+        "importPath": "oanda_practice",
+        "description": "oanda_practice",
+        "peekOfCode": "PRACTICE_API_URL = \"https://api-fxpractice.oanda.com/v3\"\n@dataclass(frozen=True)\nclass OandaPracticeConfig:\n    api_token: str\n    account_id: str\n    timeout_seconds: int = 15\nclass OandaPracticeClient:\n    def __init__(self, config: OandaPracticeConfig):\n        self._config = config\n        self._session = requests.Session()",
+        "detail": "oanda_practice",
         "documentation": {}
     },
     {

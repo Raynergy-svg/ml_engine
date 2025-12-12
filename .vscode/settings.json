@@ -1,4 +1,21 @@
 {
+  "sonarlint.pathToNodeExecutable": "",
+  "sonarlint.rules": {
+    "python:S6796": {
+      "level": "off"
+    },
+    "python:S107": {
+      "level": "off"
+    },
+    "python:S6792": {
+      "level": "off"
+    }
+  },
+  "sonarlint.analysis.excludedFiles": [
+    "**/.venv/**",
+    "**/.vscode/**",
+    "**/node_modules/**"
+  ],
   "deepscan.enable": true,
   "DockerRun.DisableDockerrc": true,
   "sonarlint.analyzerProperties": {

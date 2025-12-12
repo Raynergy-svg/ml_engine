@@ -44,6 +44,8 @@ class EnhancedMLEngine:
     - Model architecture selection
     - Ensemble methods
     """
+
+    BEST_MODEL_FILENAME = "best_model.pth"
     
     def __init__(self, config: Dict[str, Any]):
         """
@@ -97,6 +99,10 @@ class EnhancedMLEngine:
         self.mixed_precision = config.get("mixed_precision", True) and self.device == "cuda"
         self.clip_grad_norm = config.get("clip_grad_norm", 1.0)
         self.early_stopping_patience = config.get("early_stopping_patience", 10)
+        
+        # Auto-resume configuration
+        self.auto_resume = config.get("auto_resume", True)
+        self.start_epoch = 0
         
         logger.info(f"EnhancedMLEngine initialized with {self.model.__class__.__name__} model")
         
@@ -205,9 +211,22 @@ class EnhancedMLEngine:
             PyTorch optimizer
         """
         optimizer_config = self.config.get("optimizer", {})
+        if optimizer_config is None:
+            optimizer_config = {}
+        if isinstance(optimizer_config, str):
+            optimizer_config = {"type": optimizer_config}
+
         optimizer_type = optimizer_config.get("type", "adam")
-        lr = float(optimizer_config.get("learning_rate", 0.001))
-        weight_decay = optimizer_config.get("weight_decay", 0.0)
+        lr = float(
+            optimizer_config.get(
+                "learning_rate",
+                self.config.get("learning_rate", self.config.get("model", {}).get("learning_rate", 0.001)),
+            )
+        )
+        weight_decay = optimizer_config.get(
+            "weight_decay",
+            self.config.get("model", {}).get("optimizer", {}).get("weight_decay", 0.0),
+        )
 
         # Keep a stable reference for LR warmup regardless of how config is structured
         self.base_lr = lr
@@ -564,6 +583,82 @@ class EnhancedMLEngine:
         else:
             self.scheduler.step()
 
+    def _maybe_resume_from_checkpoint(self, checkpoint_path: Path) -> bool:
+        if not self.auto_resume or not checkpoint_path.exists():
+            return False
+        
+        try:
+            logger.info(f"Auto-resuming from checkpoint: {checkpoint_path}")
+            self.load_model(self.BEST_MODEL_FILENAME)
+            logger.info(
+                f"Resumed from epoch {self.start_epoch} with "
+                f"best_val_loss={self.best_val_loss:.6f}"
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to resume from checkpoint: {e}. Starting fresh.")
+            return False
+
+    def _initialize_fresh_training_state(self) -> None:
+        logger.info("Initializing model weights from scratch")
+        self.model.apply(self._init_weights)
+        self.start_epoch = 0
+        self.best_val_loss = float("inf")
+        self.train_losses = []
+        self.val_losses = []
+
+    def _train_epochs(
+        self,
+        start_epoch: int,
+        total_epochs: int,
+        train_loader: DataLoader,
+        val_loader: Optional[DataLoader],
+        criterion: nn.Module,
+        warmup_steps: int,
+        best_val_loss: float,
+        train_losses: List[float],
+        val_losses: List[float],
+    ) -> Tuple[List[float], List[float], float, int]:
+        epochs_without_improvement = 0
+        completed_epoch = start_epoch
+
+        for epoch in range(start_epoch, total_epochs):
+            completed_epoch = epoch + 1
+
+            avg_train_loss = self._train_one_epoch(epoch, train_loader, criterion, warmup_steps)
+            train_losses.append(avg_train_loss)
+
+            if val_loader is None:
+                logger.info(f"Epoch {epoch+1}/{total_epochs} - Train Loss: {avg_train_loss:.6f}")
+                continue
+
+            avg_val_loss = self._validate_one_epoch(val_loader, criterion)
+            val_losses.append(avg_val_loss)
+
+            self._step_scheduler(avg_val_loss)
+
+            if avg_val_loss < best_val_loss:
+                improvement = best_val_loss - avg_val_loss
+                best_val_loss = avg_val_loss
+                epochs_without_improvement = 0
+                self.save_model(self.BEST_MODEL_FILENAME)
+                logger.info(f"✓ New best model saved (improved by {improvement:.6f})")
+            else:
+                epochs_without_improvement += 1
+
+            logger.info(
+                f"Epoch {epoch+1}/{total_epochs} - "
+                f"Train Loss: {avg_train_loss:.6f}, "
+                f"Val Loss: {avg_val_loss:.6f}, "
+                f"LR: {self.optimizer.param_groups[0]['lr']:.6f}"
+            )
+
+            if epochs_without_improvement >= self.early_stopping_patience:
+                logger.info(f"Early stopping triggered after {epoch+1} epochs")
+                break
+
+        return train_losses, val_losses, best_val_loss, completed_epoch
+
     def train(
         self,
         train_features: Union[np.ndarray, torch.Tensor],
@@ -576,6 +671,7 @@ class EnhancedMLEngine:
         Train the model with enhanced training loop using PyTorch best practices.
         
         Features:
+        - Automatic checkpoint resumption
         - Gradient clipping
         - Learning rate warmup
         - Mixed precision training
@@ -592,7 +688,10 @@ class EnhancedMLEngine:
         Returns:
             Dictionary with training history
         """
-        self.model.apply(self._init_weights)
+        checkpoint_path = self.model_dir / self.BEST_MODEL_FILENAME
+        resumed = self._maybe_resume_from_checkpoint(checkpoint_path)
+        if not resumed:
+            self._initialize_fresh_training_state()
 
         num_epochs = epochs if epochs is not None else self.config.get("epochs", 100)
         train_loader, val_loader = self._build_train_val_loaders(
@@ -602,55 +701,45 @@ class EnhancedMLEngine:
         criterion = self._get_loss_function()
         warmup_steps = int(self.config.get("warmup_steps", 1000) or 0)
 
-        best_val_loss = float("inf")
-        epochs_without_improvement = 0
-        train_losses: List[float] = []
-        val_losses: List[float] = []
+        best_val_loss = self.best_val_loss
+        train_losses: List[float] = self.train_losses.copy()
+        val_losses: List[float] = self.val_losses.copy()
 
-        logger.info(f"Starting training for {num_epochs} epochs")
+        total_epochs = self.start_epoch + num_epochs
+        logger.info(
+            f"Training from epoch {self.start_epoch + 1} to {total_epochs} "
+            f"(+{num_epochs} epochs)"
+        )
         logger.info(f"Using {criterion.__class__.__name__} loss function")
         logger.info(f"Mixed precision: {self.mixed_precision}, Gradient clipping: {self.clip_grad_norm}")
+        if resumed:
+            logger.info(f"Continuing from best_val_loss={best_val_loss:.6f}")
 
-        for epoch in range(num_epochs):
-            avg_train_loss = self._train_one_epoch(epoch, train_loader, criterion, warmup_steps)
-            train_losses.append(avg_train_loss)
+        train_losses, val_losses, best_val_loss, completed_epoch = self._train_epochs(
+            start_epoch=self.start_epoch,
+            total_epochs=total_epochs,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            criterion=criterion,
+            warmup_steps=warmup_steps,
+            best_val_loss=best_val_loss,
+            train_losses=train_losses,
+            val_losses=val_losses,
+        )
 
-            if val_loader is None:
-                logger.info(f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}")
-                continue
-
-            avg_val_loss = self._validate_one_epoch(val_loader, criterion)
-            val_losses.append(avg_val_loss)
-
-            self._step_scheduler(avg_val_loss)
-
-            if avg_val_loss < best_val_loss:
-                best_val_loss = avg_val_loss
-                epochs_without_improvement = 0
-                self.save_model("best_model.pth")
-            else:
-                epochs_without_improvement += 1
-
-            logger.info(
-                f"Epoch {epoch+1}/{num_epochs} - "
-                f"Train Loss: {avg_train_loss:.6f}, "
-                f"Val Loss: {avg_val_loss:.6f}, "
-                f"LR: {self.optimizer.param_groups[0]['lr']:.6f}"
-            )
-
-            if epochs_without_improvement >= self.early_stopping_patience:
-                logger.info(f"Early stopping triggered after {epoch+1} epochs")
-                break
-
+        # Update engine state for next training session
         self.train_losses = train_losses
         self.val_losses = val_losses
         self.best_val_loss = best_val_loss
+        self.start_epoch = completed_epoch
 
         return {
             "train_losses": train_losses,
             "val_losses": val_losses,
             "best_val_loss": best_val_loss,
-            "epochs_trained": len(train_losses)
+            "epochs_trained": len(train_losses),
+            "total_epochs": total_epochs,
+            "resumed": resumed
         }
     
     def evaluate(
@@ -733,7 +822,7 @@ class EnhancedMLEngine:
     
     def save_model(self, filepath: str):
         """
-        Save model state.
+        Save model state including training progress.
         
         Args:
             filepath: Path to save model
@@ -748,30 +837,32 @@ class EnhancedMLEngine:
             'config': self.config,
             'train_losses': self.train_losses,
             'val_losses': self.val_losses,
-            'best_val_loss': self.best_val_loss
+            'best_val_loss': self.best_val_loss,
+            'start_epoch': self.start_epoch
         }, save_path)
         
         logger.info(f"Model saved to {save_path}")
     
     def load_model(self, filepath: str):
         """
-        Load model state.
+        Load model state including training progress.
         
         Args:
             filepath: Path to load model from
         """
         load_path = self.model_dir / filepath
         
-        checkpoint = torch.load(load_path, map_location=self.device)
+        checkpoint = torch.load(load_path, map_location=self.device, weights_only=False)
         
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         
-        if checkpoint['scheduler_state_dict'] and self.scheduler:
+        if checkpoint.get('scheduler_state_dict') and self.scheduler:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         
         self.train_losses = checkpoint.get('train_losses', [])
         self.val_losses = checkpoint.get('val_losses', [])
         self.best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+        self.start_epoch = checkpoint.get('start_epoch', 0)
         
         logger.info(f"Model loaded from {load_path}")

@@ -10,6 +10,7 @@ architecture: attention_lstm
 attention_dropout: 0.3
 augmentation_methods:
   - 4
+auto_resume: true
 auto_tune: true
 batch_size: 64
 beta_1: 0.9
