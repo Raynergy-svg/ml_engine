@@ -43,7 +43,7 @@ class TestFxGuardrails(unittest.TestCase):
                     "slippage_pips_spread_mult": 0.25,
                     "spread_fallback_pips": {"EUR_USD": 1.0},
                 },
-                "confidence": {"low_lt": 0.60, "high_gte": 0.75, "profit_stop_pct_by_band": {"medium": 0.20, "high": 0.30}},
+                "confidence": {"low_lt": 0.60, "high_gte": 0.75, "profit_stop_pct_by_band": {"medium": 0.30, "high": 0.30}},
                 "execution": {"require_confirmation": True, "practice_only": True},
             }
         }
@@ -60,7 +60,7 @@ class TestFxGuardrails(unittest.TestCase):
     def test_profit_stop_pct_for_band(self) -> None:
         policy = load_fx_policy(self.cfg)
         self.assertEqual(profit_stop_pct_for_band(policy, "high"), 0.30)
-        self.assertEqual(profit_stop_pct_for_band(policy, "medium"), 0.20)
+        self.assertEqual(profit_stop_pct_for_band(policy, "medium"), 0.30)
         self.assertIsNone(profit_stop_pct_for_band(policy, "low"))
 
     def test_daily_stops_loss_and_profit(self) -> None:
@@ -71,7 +71,7 @@ class TestFxGuardrails(unittest.TestCase):
         self.assertIn("loss stop", (reason or "").lower())
         self.assertEqual(kind, "loss")
 
-        hit, reason, kind = check_daily_stops(policy, drawdown_pct=-0.09, realized_pct=0.20, confidence_band="medium")
+        hit, reason, kind = check_daily_stops(policy, drawdown_pct=-0.09, realized_pct=0.30, confidence_band="medium")
         self.assertTrue(hit)
         self.assertIn("profit stop", (reason or "").lower())
         self.assertEqual(kind, "profit")

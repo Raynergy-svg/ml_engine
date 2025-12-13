@@ -4698,7 +4698,7 @@
         "kind": 2,
         "importPath": "fx_guardrails",
         "description": "fx_guardrails",
-        "peekOfCode": "def now_in_tz(tz_name: str, *, now: Optional[datetime] = None) -> datetime:\n    base = now or datetime.utcnow().replace(tzinfo=_tzinfo(\"UTC\"))\n    return base.astimezone(_tzinfo(tz_name))\ndef session_date_str(policy: FxPolicy, *, now: Optional[datetime] = None) -> str:\n    \"\"\"Return the *session date* (YYYY-MM-DD) in the policy timezone.\n    Session date respects `policy.session.reset_at`: times before reset are\n    attributed to the previous session day.\n    \"\"\"\n    dt = now_in_tz(policy.session.timezone, now=now)\n    t = dt.timetz().replace(tzinfo=None)",
+        "peekOfCode": "def now_in_tz(tz_name: str, *, now: Optional[datetime] = None) -> datetime:\n    if now is None:\n        base = datetime.now(tz=_tzinfo(\"UTC\"))\n    else:\n        base = now\n        if base.tzinfo is None:\n            base = base.replace(tzinfo=_tzinfo(\"UTC\"))\n    return base.astimezone(_tzinfo(tz_name))\ndef session_date_str(policy: FxPolicy, *, now: Optional[datetime] = None) -> str:\n    \"\"\"Return the *session date* (YYYY-MM-DD) in the policy timezone.",
         "detail": "fx_guardrails",
         "documentation": {}
     },
@@ -4752,7 +4752,7 @@
         "kind": 2,
         "importPath": "fx_guardrails",
         "description": "fx_guardrails",
-        "peekOfCode": "def profit_stop_pct_for_band(policy: FxPolicy, band: str) -> Optional[float]:\n    if band == \"high\":\n        return policy.confidence.profit_stop_pct_by_band.get(\"high\")\n    if band == \"medium\":\n        return policy.confidence.profit_stop_pct_by_band.get(\"medium\")\n    return None\ndef state_path(cfg: Dict[str, Any], policy: FxPolicy, *, date_str: str) -> Path:\n    log_dir = (\n        cfg.get(\"LOG_DIR\")\n        or cfg.get(\"paths\", {}).get(\"log_dir\")",
+        "peekOfCode": "def profit_stop_pct_for_band(policy: FxPolicy, band: str) -> Optional[float]:\n    if band == \"high\":\n        return policy.confidence.profit_stop_pct_by_band.get(\"high\")\n    if band == \"medium\":\n        return policy.confidence.profit_stop_pct_by_band.get(\"medium\")\n    return None\ndef state_path(cfg: Dict[str, Any], *, date_str: str) -> Path:\n    log_dir = (\n        cfg.get(\"LOG_DIR\")\n        or cfg.get(\"paths\", {}).get(\"log_dir\")",
         "detail": "fx_guardrails",
         "documentation": {}
     },
@@ -4761,7 +4761,7 @@
         "kind": 2,
         "importPath": "fx_guardrails",
         "description": "fx_guardrails",
-        "peekOfCode": "def state_path(cfg: Dict[str, Any], policy: FxPolicy, *, date_str: str) -> Path:\n    log_dir = (\n        cfg.get(\"LOG_DIR\")\n        or cfg.get(\"paths\", {}).get(\"log_dir\")\n        or cfg.get(\"LOG_DIR\")\n        or \"trained_data/logs\"\n    )\n    p = Path(log_dir)\n    p.mkdir(parents=True, exist_ok=True)\n    return p / f\"fx_state_{date_str}.json\"",
+        "peekOfCode": "def state_path(cfg: Dict[str, Any], *, date_str: str) -> Path:\n    log_dir = (\n        cfg.get(\"LOG_DIR\")\n        or cfg.get(\"paths\", {}).get(\"log_dir\")\n        or cfg.get(\"LOG_DIR\")\n        or \"trained_data/logs\"\n    )\n    p = Path(log_dir)\n    p.mkdir(parents=True, exist_ok=True)\n    return p / f\"fx_state_{date_str}.json\"",
         "detail": "fx_guardrails",
         "documentation": {}
     },
@@ -4770,7 +4770,7 @@
         "kind": 2,
         "importPath": "fx_guardrails",
         "description": "fx_guardrails",
-        "peekOfCode": "def load_state(cfg: Dict[str, Any], policy: FxPolicy, *, now: Optional[datetime] = None) -> FxDailyState:\n    date_str = session_date_str(policy, now=now)\n    path = state_path(cfg, policy, date_str=date_str)\n    if not path.exists():\n        return FxDailyState(date=date_str)\n    try:\n        payload = json.loads(path.read_text())\n    except Exception:\n        return FxDailyState(date=date_str)\n    st = FxDailyState(date=str(payload.get(\"date\") or date_str))",
+        "peekOfCode": "def load_state(cfg: Dict[str, Any], policy: FxPolicy, *, now: Optional[datetime] = None) -> FxDailyState:\n    date_str = session_date_str(policy, now=now)\n    path = state_path(cfg, date_str=date_str)\n    if not path.exists():\n        return FxDailyState(date=date_str)\n    try:\n        payload = json.loads(path.read_text())\n    except Exception:\n        return FxDailyState(date=date_str)\n    st = FxDailyState(date=str(payload.get(\"date\") or date_str))",
         "detail": "fx_guardrails",
         "documentation": {}
     },
@@ -4779,7 +4779,7 @@
         "kind": 2,
         "importPath": "fx_guardrails",
         "description": "fx_guardrails",
-        "peekOfCode": "def save_state(cfg: Dict[str, Any], policy: FxPolicy, state: FxDailyState) -> Path:\n    path = state_path(cfg, policy, date_str=state.date)\n    payload = {\n        \"date\": state.date,\n        \"start_nav\": state.start_nav,\n        \"start_balance\": state.start_balance,\n        \"entries_today\": state.entries_today,\n        \"disabled_reason\": state.disabled_reason,\n        \"disabled_kind\": state.disabled_kind,\n        \"last_updated_at\": state.last_updated_at,",
+        "peekOfCode": "def save_state(cfg: Dict[str, Any], state: FxDailyState) -> Path:\n    path = state_path(cfg, date_str=state.date)\n    payload = {\n        \"date\": state.date,\n        \"start_nav\": state.start_nav,\n        \"start_balance\": state.start_balance,\n        \"entries_today\": state.entries_today,\n        \"disabled_reason\": state.disabled_reason,\n        \"disabled_kind\": state.disabled_kind,\n        \"last_updated_at\": state.last_updated_at,",
         "detail": "fx_guardrails",
         "documentation": {}
     },
@@ -5031,7 +5031,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def train_unified(config_path: str, csv_path: str | None = None) -> None:\n    \"\"\"Train the unified multi-head model and print head-health insights.\"\"\"\n    from unified_multitask_training import train_unified_multitask\n    result = train_unified_multitask(config_path, csv_path=csv_path)\n    console.print(\n        f\"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}\"\n    )\ndef chat_unified(config_path: str, metrics_path: str | None = None) -> None:\n    \"\"\"Interactive chat over the latest unified head metrics.\"\"\"\n    from unified_chat import run_unified_chat",
+        "peekOfCode": "def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_path: str | None = None) -> None:\n    \"\"\"Train the unified multi-head model and print head-health insights.\"\"\"\n    from unified_multitask_training import train_unified_multitask\n    result = train_unified_multitask(config_path, csv_path=csv_path, resume_path=checkpoint_path)\n    console.print(\n        f\"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}\"\n    )\ndef chat_unified(config_path: str, metrics_path: str | None = None) -> None:\n    \"\"\"Interactive chat over the latest unified head metrics.\"\"\"\n    from unified_chat import run_unified_chat",
         "detail": "main",
         "documentation": {}
     },
@@ -5841,7 +5841,7 @@
         "kind": 2,
         "importPath": "unified_multitask_training",
         "description": "unified_multitask_training",
-        "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    cfg = load_config(config_path)\n    device = cfg.get(\"device\", \"cuda\" if torch.cuda.is_available() else \"cpu\")\n    csv_path = _resolve_csv_path(cfg, csv_path)\n    df = _load_market_df(csv_path)",
+        "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n    resume_path: Optional[str] = None,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    cfg = load_config(config_path)\n    device = cfg.get(\"device\", \"cuda\" if torch.cuda.is_available() else \"cpu\")\n    csv_path = _resolve_csv_path(cfg, csv_path)",
         "detail": "unified_multitask_training",
         "documentation": {}
     },

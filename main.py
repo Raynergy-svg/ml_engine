@@ -107,12 +107,13 @@ def _fx_refresh_fx_state(cfg: Dict[str, Any], policy: Any, state: Any, client: A
 
     pnl = fxg.update_state_from_account_summary(policy, state, client.get_account_summary())
 
-    # Only evaluate the *loss* stop here. Profit stop depends on confidence band
-    # which is computed later from the current setup/model output.
+    # Evaluate daily circuit breakers early so we can stop even if we later end up
+    # in a HOLD / no-setup path. Profit stop may be configured per-band, but the
+    # repo's Tier-1 defaults use a fixed 30% target for both medium/high.
     stop_hit, stop_reason, stop_kind = fxg.check_daily_stops(
         policy,
         drawdown_pct=pnl.get("drawdown_pct"),
-        realized_pct=None,
+        realized_pct=pnl.get("realized_pct"),
         confidence_band="medium",
     )
     if stop_hit and stop_reason:
@@ -1186,11 +1187,11 @@ def run_ai_assistant(config_path: str) -> None:
     )
 
 
-def train_unified(config_path: str, csv_path: str | None = None) -> None:
+def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_path: str | None = None) -> None:
     """Train the unified multi-head model and print head-health insights."""
     from unified_multitask_training import train_unified_multitask
 
-    result = train_unified_multitask(config_path, csv_path=csv_path)
+    result = train_unified_multitask(config_path, csv_path=csv_path, resume_path=checkpoint_path)
     console.print(
         f"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}"
     )
@@ -1428,7 +1429,7 @@ def main() -> None:
             )
             return
         if args.command == "train-unified":
-            command_map[args.command](args.config, args.csv)
+            command_map[args.command](args.config, args.csv, checkpoint_path=args.model_path)
         elif args.command == "chat-unified":
             command_map[args.command](args.config, args.metrics)
         elif args.command == "talk-unified":

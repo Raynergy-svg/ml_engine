@@ -154,7 +154,7 @@ def load_fx_policy(cfg: Dict[str, Any]) -> FxPolicy:
     )
 
     conf_cfg = dict(fx.get("confidence") or {})
-    profit_stop = dict(conf_cfg.get("profit_stop_pct_by_band") or {"medium": 0.20, "high": 0.30})
+    profit_stop = dict(conf_cfg.get("profit_stop_pct_by_band") or {"medium": 0.30, "high": 0.30})
     confidence = FxConfidence(
         low_lt=float(conf_cfg.get("low_lt", 0.60)),
         high_gte=float(conf_cfg.get("high_gte", 0.75)),
@@ -188,7 +188,12 @@ def _tzinfo(name: str):
 
 
 def now_in_tz(tz_name: str, *, now: Optional[datetime] = None) -> datetime:
-    base = now or datetime.utcnow().replace(tzinfo=_tzinfo("UTC"))
+    if now is None:
+        base = datetime.now(tz=_tzinfo("UTC"))
+    else:
+        base = now
+        if base.tzinfo is None:
+            base = base.replace(tzinfo=_tzinfo("UTC"))
     return base.astimezone(_tzinfo(tz_name))
 
 
@@ -255,7 +260,7 @@ def profit_stop_pct_for_band(policy: FxPolicy, band: str) -> Optional[float]:
     return None
 
 
-def state_path(cfg: Dict[str, Any], policy: FxPolicy, *, date_str: str) -> Path:
+def state_path(cfg: Dict[str, Any], *, date_str: str) -> Path:
     log_dir = (
         cfg.get("LOG_DIR")
         or cfg.get("paths", {}).get("log_dir")
@@ -269,7 +274,7 @@ def state_path(cfg: Dict[str, Any], policy: FxPolicy, *, date_str: str) -> Path:
 
 def load_state(cfg: Dict[str, Any], policy: FxPolicy, *, now: Optional[datetime] = None) -> FxDailyState:
     date_str = session_date_str(policy, now=now)
-    path = state_path(cfg, policy, date_str=date_str)
+    path = state_path(cfg, date_str=date_str)
     if not path.exists():
         return FxDailyState(date=date_str)
 
@@ -288,8 +293,8 @@ def load_state(cfg: Dict[str, Any], policy: FxPolicy, *, now: Optional[datetime]
     return st
 
 
-def save_state(cfg: Dict[str, Any], policy: FxPolicy, state: FxDailyState) -> Path:
-    path = state_path(cfg, policy, date_str=state.date)
+def save_state(cfg: Dict[str, Any], state: FxDailyState) -> Path:
+    path = state_path(cfg, date_str=state.date)
     payload = {
         "date": state.date,
         "start_nav": state.start_nav,

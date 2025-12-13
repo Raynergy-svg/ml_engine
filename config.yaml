@@ -166,7 +166,7 @@ fx:
     low_lt: 0.60
     high_gte: 0.75
     profit_stop_pct_by_band:
-      medium: 0.20
+      medium: 0.30
       high: 0.30
   rolling_windows:
     - 3
@@ -176,7 +176,6 @@ fx:
     - 1
     - 2
     - 3
-validation_split: 0.1
 visualization:
   update_interval: 500
 warmup_steps: 1000
