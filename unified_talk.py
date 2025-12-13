@@ -510,7 +510,8 @@ def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
         print(
             f"{ctx.assistant_name}: Try 'use csv market_data/MSFT_data.csv' then 'predict'. Or 'use ticker MSFT' then 'predict'.\n"
             f"{ctx.assistant_name}: OANDA demo/practice: 'use oanda EUR_USD M5 300' then 'predict'.\n"
-            f"{ctx.assistant_name}: Trading (practice): 'trade buy 1000 EUR_USD' (dry-run unless 'execute on').\n"
+            f"{ctx.assistant_name}: Trading (practice): 'trade' (auto from last prediction; dry-run unless 'execute on').\n"
+            f"{ctx.assistant_name}: Manual: 'trade buy 1000 EUR_USD' | 'trade sell 1000 EUR_USD' | 'trade close EUR_USD'.\n"
             f"{ctx.assistant_name}: After a prediction, ask 'should I buy?', 'what is the risk?', 'what's the trend?'."
         )
         return True
@@ -685,25 +686,124 @@ def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str]) -> 
     print(_assistant_prefix(ctx) + f"order submitted (id={tx.get('id')}).")
 
 
+def _default_trade_units() -> int:
+    # Keep conservative, predictable sizing for practice.
+    # Can be overridden by explicit units in the command.
+    return 1000
+
+
+def _try_parse_int(val: Any) -> Optional[int]:
+    try:
+        return int(val)
+    except Exception:
+        return None
+
+
+def _ensure_last_prediction(ctx: TalkContext) -> None:
+    if ctx.last_result is not None:
+        return
+    if ctx.active_df is None:
+        raise ValueError("No active data source. Run 'use oanda ...' then 'predict' first.")
+    if ctx.active_source and ctx.active_source.startswith("oanda:"):
+        ctx.active_df = _load_df_from_oanda(
+            ctx,
+            instrument=ctx.oanda_instrument,
+            granularity=ctx.oanda_granularity,
+            candles=ctx.oanda_candles,
+            price=ctx.oanda_price,
+        )
+    ctx.last_result = _predict_one(ctx, ctx.active_df)
+
+
+def _parse_trade_auto_units_and_instrument(ctx: TalkContext, parts: list[str]) -> tuple[int, str]:
+    # Supported:
+    # - trade
+    # - trade auto
+    # - trade auto <units> [instrument]
+    # - trade <units> [instrument]
+    instrument = ctx.oanda_instrument
+    units: Optional[int] = None
+
+    if len(parts) >= 2 and parts[1].lower().strip() == "auto":
+        units = _try_parse_int(parts[2]) if len(parts) >= 3 else None
+        if len(parts) >= 4 and parts[3]:
+            instrument = parts[3]
+    elif len(parts) >= 2:
+        units = _try_parse_int(parts[1])
+        if units is not None and len(parts) >= 3 and parts[2]:
+            instrument = parts[2]
+
+    if units is None:
+        units = _default_trade_units()
+    return int(units), instrument
+
+
+def _handle_trade_auto(ctx: TalkContext, parts: list[str]) -> None:
+    units, instrument = _parse_trade_auto_units_and_instrument(ctx, parts)
+
+    _ensure_last_prediction(ctx)
+    pred = (ctx.last_result or {}).get("prediction")
+    last_close = (ctx.last_result or {}).get("last_close")
+    if pred is None or last_close is None:
+        raise ValueError("Need a valid prediction and last close. Run 'predict' first.")
+
+    pred_f = float(pred)
+    last_f = float(last_close)
+    delta = pred_f - last_f
+
+    if delta == 0:
+        print(_assistant_prefix(ctx) + "auto-trade: HOLD (prediction equals last close).")
+        return
+
+    action = "buy" if delta > 0 else "sell"
+    signed_units = abs(int(units)) * (1 if action == "buy" else -1)
+
+    rationale = f"pred={pred_f:.5f} last={last_f:.5f} Δ={delta:+.5f}"
+
+    if not ctx.oanda_execute:
+        print(
+            _assistant_prefix(ctx)
+            + f"dry-run: auto-trade would {action.upper()} {abs(signed_units)} {instrument} ({rationale}). "
+            + "Run 'execute on' to send."
+        )
+        return
+
+    resp = ctx.oanda_client.create_market_order(instrument=instrument, units=signed_units)
+    tx = (resp or {}).get("orderFillTransaction") or (resp or {}).get("orderCreateTransaction") or {}
+    print(_assistant_prefix(ctx) + f"auto-trade submitted: {action.upper()} {abs(signed_units)} {instrument} (id={tx.get('id')}).")
+
+
 def _handle_trade_commands(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
-    if not ql.startswith("trade "):
+    if not ql.startswith("trade"):
         return None
 
     parts = q.split()
-    if len(parts) < 2:
-        raise ValueError("Usage: trade buy|sell|close ...")
+
+    # Ensure client only when we're actually going to trade.
+    _ensure_oanda_client(ctx)
+
+    # Auto trade:
+    # - `trade`
+    # - `trade auto ...`
+    # - `trade <units> [instrument]`
+    if len(parts) == 1:
+        _handle_trade_auto(ctx, parts)
+        return True
 
     action = parts[1].lower().strip()
-    if action not in {"buy", "sell", "close"}:
-        raise ValueError(
-            "Usage: trade buy <units> [instrument] | trade sell <units> [instrument] | trade close [instrument]"
-        )
-
-    _ensure_oanda_client(ctx)
-    if action == "close":
-        _handle_trade_close(ctx, parts)
+    if action in {"buy", "sell", "close"}:
+        if action == "close":
+            _handle_trade_close(ctx, parts)
+            return True
+        _handle_trade_market(ctx, action=action, parts=parts)
         return True
-    _handle_trade_market(ctx, action=action, parts=parts)
+
+    if action == "auto":
+        _handle_trade_auto(ctx, parts)
+        return True
+
+    # Fallback: interpret `trade <units> [instrument]` as auto-trade.
+    _handle_trade_auto(ctx, parts)
     return True
 
 

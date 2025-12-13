@@ -1943,6 +1943,31 @@
         "documentation": {}
     },
     {
+        "label": "unified_talk",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "select_latest_checkpoint",
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "isExtraImport": true,
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "run_unified_talk",
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "isExtraImport": true,
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
         "label": "tempfile",
         "kind": 6,
         "isExtraImport": true,
@@ -1983,22 +2008,6 @@
         "description": "unittest",
         "isExtraImport": true,
         "detail": "unittest",
-        "documentation": {}
-    },
-    {
-        "label": "select_latest_checkpoint",
-        "importPath": "unified_talk",
-        "description": "unified_talk",
-        "isExtraImport": true,
-        "detail": "unified_talk",
-        "documentation": {}
-    },
-    {
-        "label": "run_unified_talk",
-        "importPath": "unified_talk",
-        "description": "unified_talk",
-        "isExtraImport": true,
-        "detail": "unified_talk",
         "documentation": {}
     },
     {
@@ -3750,6 +3759,51 @@
         "description": "examples.basic_usage",
         "peekOfCode": "def main():\n    print(\"ML Engine - Basic Usage Example\")\n    print(\"=\" * 60)\n    # Simple example configuration\n    config = {\n        \"device\": \"cpu\",\n        \"model\": {\"type\": \"lstm\", \"input_size\": 7, \"hidden_size\": 64, \"num_layers\": 2, \"dropout\": 0.2},\n        \"optimizer\": {\"type\": \"adam\", \"learning_rate\": 0.001},\n        \"training\": {\"epochs\": 3},\n        \"batch_size\": 32,",
         "detail": "examples.basic_usage",
+        "documentation": {}
+    },
+    {
+        "label": "_StubOandaClient",
+        "kind": 6,
+        "importPath": "tests.test_buddy_trade_commands",
+        "description": "tests.test_buddy_trade_commands",
+        "peekOfCode": "class _StubOandaClient:\n    def __init__(self):\n        self.orders = []\n        self.closes = []\n    def create_market_order(self, *, instrument: str, units: int, **kwargs):\n        self.orders.append((instrument, int(units)))\n        # mimic OANDA response shape\n        return {\"orderCreateTransaction\": {\"id\": \"T-1\"}}\n    def close_position(self, *, instrument: str, **kwargs):\n        self.closes.append(str(instrument))",
+        "detail": "tests.test_buddy_trade_commands",
+        "documentation": {}
+    },
+    {
+        "label": "test_trade_auto_dry_run_uses_last_prediction",
+        "kind": 2,
+        "importPath": "tests.test_buddy_trade_commands",
+        "description": "tests.test_buddy_trade_commands",
+        "peekOfCode": "def test_trade_auto_dry_run_uses_last_prediction(capsys):\n    ctx = _ctx()\n    ctx.last_result = {\"prediction\": 1.2000, \"last_close\": 1.1000}\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"dry-run\" in out.lower()\n    assert \"auto-trade\" in out.lower()\n    assert \"buy\" in out.lower()\n    assert ctx.oanda_client.orders == []\ndef test_trade_auto_execute_places_order(capsys):",
+        "detail": "tests.test_buddy_trade_commands",
+        "documentation": {}
+    },
+    {
+        "label": "test_trade_auto_execute_places_order",
+        "kind": 2,
+        "importPath": "tests.test_buddy_trade_commands",
+        "description": "tests.test_buddy_trade_commands",
+        "peekOfCode": "def test_trade_auto_execute_places_order(capsys):\n    ctx = _ctx()\n    ctx.oanda_execute = True\n    ctx.last_result = {\"prediction\": 1.0000, \"last_close\": 1.1000}\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"auto-trade submitted\" in out.lower()\n    assert ctx.oanda_client.orders == [(\"EUR_USD\", -1000)]\ndef test_manual_trade_buy_dry_run(capsys):\n    ctx = _ctx()",
+        "detail": "tests.test_buddy_trade_commands",
+        "documentation": {}
+    },
+    {
+        "label": "test_manual_trade_buy_dry_run",
+        "kind": 2,
+        "importPath": "tests.test_buddy_trade_commands",
+        "description": "tests.test_buddy_trade_commands",
+        "peekOfCode": "def test_manual_trade_buy_dry_run(capsys):\n    ctx = _ctx()\n    assert unified_talk._handle_talk_command(ctx, \"trade buy 2000 EUR_USD\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"dry-run\" in out.lower()\n    assert \"market order\" in out.lower()\n    assert ctx.oanda_client.orders == []\ndef test_manual_trade_close_dry_run(capsys):\n    ctx = _ctx()\n    assert unified_talk._handle_talk_command(ctx, \"trade close EUR_USD\", period=\"5d\", interval=\"1h\") is True",
+        "detail": "tests.test_buddy_trade_commands",
+        "documentation": {}
+    },
+    {
+        "label": "test_manual_trade_close_dry_run",
+        "kind": 2,
+        "importPath": "tests.test_buddy_trade_commands",
+        "description": "tests.test_buddy_trade_commands",
+        "peekOfCode": "def test_manual_trade_close_dry_run(capsys):\n    ctx = _ctx()\n    assert unified_talk._handle_talk_command(ctx, \"trade close EUR_USD\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"dry-run\" in out.lower()\n    assert \"close\" in out.lower()\n    assert ctx.oanda_client.closes == []",
+        "detail": "tests.test_buddy_trade_commands",
         "documentation": {}
     },
     {
