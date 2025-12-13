@@ -25,6 +25,7 @@ plotly>=5.14.0
 # CLI and UI
 rich>=13.4.0
 typer>=0.9.0
+ipykernel
 tqdm>=4.65.0
 
 # Configuration
