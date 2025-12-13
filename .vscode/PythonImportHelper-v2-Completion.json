@@ -5035,7 +5035,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def talk_unified(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    csv_path: str | None = None,\n    ticker: str | None = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n) -> None:\n    \"\"\"Interactive REPL that runs the unified neural engine on-demand.\"\"\"",
+        "peekOfCode": "def talk_unified(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    csv_path: str | None = None,\n    ticker: str | None = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n    verbose: bool = False,\n) -> None:",
         "detail": "main",
         "documentation": {}
     },
@@ -5044,7 +5044,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"EUR_USD\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = False,\n) -> None:\n    \"\"\"Buddy: interactive offline REPL + OANDA demo/practice source.\"\"\"",
+        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"EUR_USD\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = False,\n    verbose: bool = False,\n) -> None:",
         "detail": "main",
         "documentation": {}
     },
@@ -5868,11 +5868,11 @@
         "documentation": {}
     },
     {
-        "label": "ASSISTANT_PREFIX",
+        "label": "DEFAULT_ASSISTANT_NAME",
         "kind": 5,
         "importPath": "unified_talk",
         "description": "unified_talk",
-        "peekOfCode": "ASSISTANT_PREFIX = \"Assistant:\\n\"\n@dataclass\nclass TalkContext:\n    config_path: str\n    checkpoint_path: str\n    feature_columns: list[str]\n    sequence_length: int\n    target_shift: int\n    engine: UnifiedNeuralEngine\n    reasoning: ReasoningEngine",
+        "peekOfCode": "DEFAULT_ASSISTANT_NAME = \"Assistant\"\ndef _assistant_prefix(ctx: \"TalkContext\") -> str:\n    return f\"{ctx.assistant_name}: \"\ndef _load_project_dotenv() -> None:\n    \"\"\"Load env vars from common local files.\n    We support both `.env.local` and `.env` so Buddy can run with either.\n    \"\"\"\n    if load_dotenv is None:\n        return\n    try:",
         "detail": "unified_talk",
         "documentation": {}
     },

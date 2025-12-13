@@ -5,4 +5,11 @@ set -euo pipefail
 # Usage: ./Buddy --config ./config.yaml [--instrument EUR_USD --granularity M5 --candles 300 --execute]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec python3 "${SCRIPT_DIR}/main.py" buddy "$@"
+
+if [[ -x "${SCRIPT_DIR}/.venv/bin/python" ]]; then
+	PY="${SCRIPT_DIR}/.venv/bin/python"
+else
+	PY="python3"
+fi
+
+exec "$PY" "${SCRIPT_DIR}/main.py" buddy "$@"

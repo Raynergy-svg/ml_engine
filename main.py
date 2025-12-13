@@ -1190,8 +1190,10 @@ def talk_unified(
     ticker: str | None = None,
     period: str = "5d",
     interval: str = "1h",
+    verbose: bool = False,
 ) -> None:
     """Interactive REPL that runs the unified neural engine on-demand."""
+    _configure_predict_output(verbose)
     run_unified_talk(
         config_path,
         checkpoint_path=checkpoint_path,
@@ -1199,6 +1201,7 @@ def talk_unified(
         ticker=ticker,
         period=period,
         interval=interval,
+        verbose=verbose,
     )
 
 
@@ -1210,8 +1213,10 @@ def buddy(
     granularity: str = "M5",
     candles: int = 300,
     execute: bool = False,
+    verbose: bool = False,
 ) -> None:
     """Buddy: interactive offline REPL + OANDA demo/practice source."""
+    _configure_predict_output(verbose)
     run_unified_talk(
         config_path,
         checkpoint_path=checkpoint_path,
@@ -1220,6 +1225,8 @@ def buddy(
         oanda_granularity=granularity,
         oanda_candles=candles,
         oanda_execute=execute,
+        verbose=verbose,
+        assistant_name="Buddy",
     )
 
 
@@ -1336,7 +1343,7 @@ def main() -> None:
         "-r",
         type=float,
         default=0.005,
-        help="Risk per trade fraction (e.g. 0.005 = 0.5%) (used by fx/fx-paper)",
+        help="Risk per trade fraction (e.g. 0.005 = 0.5%%) (used by fx/fx-paper)",
     )
     parser.add_argument(
         "--execute",
@@ -1407,6 +1414,7 @@ def main() -> None:
                 ticker=args.ticker,
                 period=args.period,
                 interval=args.interval,
+                verbose=args.verbose,
             )
         elif args.command in {"buddy", "Buddy"}:
             command_map[args.command](
@@ -1416,6 +1424,7 @@ def main() -> None:
                 granularity=args.granularity,
                 candles=args.candles,
                 execute=args.execute,
+                verbose=args.verbose,
             )
         else:
             command_map[args.command](args.config)

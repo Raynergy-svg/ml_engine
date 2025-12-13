@@ -1972,3 +1972,28 @@ Check the documentation of torch.load to learn more about types accepted by defa
 2025-12-12 23:16:04 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
 2025-12-12 23:16:04 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
 2025-12-12 23:16:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpsv1uo681/test_config.yaml
+2025-12-12 23:42:16 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-12 23:42:16 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 23:42:16 - root - ERROR - [main.py:1426] - Command failed: Missing OANDA env vars. Set OANDA_API_TOKEN (or OANDA_API_KEY) and OANDA_ACCOUNT_ID.
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1412, in main
+    command_map[args.command](
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1215, in buddy
+    run_unified_talk(
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 662, in run_unified_talk
+    _maybe_run_initial_prediction(
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 358, in _maybe_run_initial_prediction
+    df = _load_df_from_oanda(
+         ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 139, in _load_df_from_oanda
+    ctx.oanda_client = OandaPracticeClient.from_env()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/oanda_practice.py", line 75, in from_env
+    raise EnvironmentError(
+OSError: Missing OANDA env vars. Set OANDA_API_TOKEN (or OANDA_API_KEY) and OANDA_ACCOUNT_ID.
+2025-12-12 23:53:57 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-12 23:53:57 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 23:55:19 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-12 23:55:19 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 23:55:38 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-12 23:55:38 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
