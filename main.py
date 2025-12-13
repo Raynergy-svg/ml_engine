@@ -18,16 +18,25 @@ from typing import Dict, Any
 
 from pathlib import Path
 
-import torch
+try:
+    import torch  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    class _TorchStub:  # minimal surface for type hints
+        _IS_STUB = True
+
+        class Tensor:  # noqa: D401
+            """Stub type for torch.Tensor when torch isn't installed."""
+
+        float32 = "float32"
+
+    torch = _TorchStub()  # type: ignore
 from rich.console import Console
 from rich.live import Live
 from rich.layout import Layout
 from rich.table import Table
 from rich.panel import Panel
 
-from ai_assistant import ai_assistant
 from ml_engine_enhanced import EnhancedMLEngine
-from mr_engine import MREngine
 from neural_network_integrator_enhanced import NeuralNetworkIntegrator
 from neural_engine_unified import UnifiedNeuralEngine
 from reasoning_enhanced import ReasoningEngine
@@ -70,6 +79,302 @@ def _configure_predict_output(verbose: bool) -> None:
         "reasoning_enhanced",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def _fx_confirm(prompt: str) -> bool:
+    ans = (console.input(prompt) or "").strip().lower()
+    return ans == "y"
+
+
+def _fx_open_position_instruments(payload: Any) -> list[str]:
+    pos = (payload or {}).get("positions") or []
+    return [str(p.get("instrument")) for p in pos if p.get("instrument")]
+
+
+def _fx_enforce_fx_policy(cfg: Dict[str, Any], *, instrument: str, granularity: str):
+    from fx_guardrails import load_fx_policy
+
+    policy = load_fx_policy(cfg)
+    if instrument not in set(policy.instruments):
+        console.print(f"[bold red]Blocked[/bold red]: instrument not allowed ({instrument}).")
+        console.print(f"Allowed: {', '.join(policy.instruments)}")
+        return None
+    if granularity != policy.granularity:
+        console.print(f"[bold red]Blocked[/bold red]: granularity must be {policy.granularity} (got {granularity}).")
+        return None
+    return policy
+
+
+def _fx_refresh_fx_state(cfg: Dict[str, Any], policy: Any, state: Any, client: Any) -> tuple[dict[str, Any], str]:
+    import fx_guardrails as fxg
+
+    pnl = fxg.update_state_from_account_summary(policy, state, client.get_account_summary())
+
+    # Only evaluate the *loss* stop here. Profit stop depends on confidence band
+    # which is computed later from the current setup/model output.
+    stop_hit, stop_reason, stop_kind = fxg.check_daily_stops(
+        policy,
+        drawdown_pct=pnl.get("drawdown_pct"),
+        realized_pct=None,
+        confidence_band="medium",
+    )
+    if stop_hit and stop_reason:
+        state.disabled_reason = stop_reason
+        state.disabled_kind = stop_kind
+        fxg.save_state(cfg, policy, state)
+        console.print(f"[bold red]Trading disabled[/bold red]: {stop_reason}")
+
+    # Band is computed later; keep placeholder here for display.
+    return pnl, "unknown"
+
+
+def _fx_maybe_force_flat(policy: Any, state: Any, client: Any, *, execute: bool) -> bool:
+    from fx_guardrails import should_force_flat
+
+    # Only force-flat automatically for the time cutoff or loss-stop.
+    force_flat_due_to_stop = bool(state.disabled_reason) and (getattr(state, "disabled_kind", None) == "loss")
+    if not should_force_flat(policy) and not force_flat_due_to_stop:
+        return False
+
+    insts = _fx_open_position_instruments(client.get_open_positions())
+    if not insts:
+        console.print("[dim]No open positions to close.[/dim]")
+        return True
+
+    console.print("[yellow]Force-flat: open positions detected.[/yellow]")
+    if not execute:
+        console.print("[dim]Dry-run: would close all open positions.[/dim]")
+        return True
+
+    if policy.require_confirmation and not _fx_confirm("Confirm CLOSE ALL positions? (y/N): "):
+        console.print("[dim]Close cancelled.[/dim]")
+        return True
+
+    for inst in insts:
+        try:
+            client.close_position(instrument=inst)
+            console.print(f"Closed position: {inst}")
+        except Exception as e:
+            console.print(f"[bold red]Failed[/bold red] closing {inst}: {e}")
+
+    return True
+
+
+def _fx_gate_fx_entry(policy: Any, state: Any, client: Any) -> bool:
+    from fx_guardrails import can_open_new_trade
+
+    ok, why = can_open_new_trade(policy, state)
+    if not ok:
+        console.print(f"[bold red]Blocked[/bold red]: {why}")
+        return False
+
+    insts = _fx_open_position_instruments(client.get_open_positions())
+    if len(insts) >= policy.limits.max_open_positions:
+        console.print("[bold red]Blocked[/bold red]: max open positions reached.")
+        return False
+
+    return True
+
+
+def _fx_load_fx_df(client: Any, *, instrument: str, granularity: str, candles: int):
+    from fx_paper import candles_to_ohlcv_df
+
+    resp = client.get_candles(instrument, granularity=granularity, count=candles, price="MBA")
+    return candles_to_ohlcv_df(resp)
+
+
+def _fx_spread_and_slippage(policy: Any, df: Any, *, instrument: str) -> tuple[bool, float, float, float]:
+    from fx_paper import conservative_slippage_pips, pip_size, spread_pips_from_df
+
+    spread_pips = spread_pips_from_df(df, instrument)
+    if spread_pips is None:
+        spread_pips = float(policy.costs.spread_fallback_pips.get(instrument, 0.0) or 0.0)
+
+    max_spread = float(policy.costs.max_spread_pips.get(instrument, 0.0) or 0.0)
+    if max_spread > 0 and spread_pips > max_spread:
+        console.print(
+            f"[bold red]Blocked[/bold red]: spread too wide ({spread_pips:.2f} pips > {max_spread:.2f} pips)."
+        )
+        return False, spread_pips, 0.0, 0.0
+
+    slippage_pips = conservative_slippage_pips(
+        spread_pips=spread_pips,
+        min_pips=policy.costs.slippage_pips_min,
+        spread_mult=policy.costs.slippage_pips_spread_mult,
+    )
+    slippage_price = slippage_pips * pip_size(instrument)
+    return True, float(spread_pips), float(slippage_pips), float(slippage_price)
+
+
+def _fx_require_account_metrics(pnl: Dict[str, Any]) -> bool:
+    """Fail-closed if we can't read basic account metrics."""
+    nav = pnl.get("nav")
+    balance = pnl.get("balance")
+    if nav is None or balance is None:
+        console.print("[bold red]Blocked[/bold red]: missing account NAV/balance from broker.")
+        console.print(f"[dim]pnl payload keys: {sorted((pnl or {}).keys())}[/dim]")
+        return False
+    return True
+
+
+def _fx_get_signal_context(df: Any) -> tuple[str, float, float]:
+    from fx_paper import atr as fx_atr
+    from fx_paper import setup_signal
+
+    signal = setup_signal(df)
+    last_close = float(df["close"].iloc[-1])
+    atr_value = float(fx_atr(df, period=14))
+    return str(signal), float(last_close), float(atr_value)
+
+
+def _fx_build_risk_rules(
+    policy: Any,
+    pnl: Dict[str, Any],
+    *,
+    equity: float,
+    risk_per_trade_pct: float,
+):
+    from fx_paper import RiskRules
+
+    # Prefer live NAV when available.
+    nav = pnl.get("nav")
+    base_equity = float(nav) if nav is not None else float(equity)
+
+    # Use the explicit CLI flag if provided, else fallback to policy.
+    rpt = float(risk_per_trade_pct) if risk_per_trade_pct is not None else float(policy.risk.risk_per_trade_pct)
+
+    return RiskRules(
+        equity=base_equity,
+        risk_per_trade_pct=rpt,
+        max_daily_loss_pct=float(getattr(policy.risk, "daily_loss_stop_pct", 0.02)),
+        max_open_positions=int(getattr(policy.limits, "max_open_positions", 1)),
+        atr_stop_mult=float(getattr(policy.risk, "atr_stop_mult", 1.5)),
+        rr_take_profit=float(getattr(policy.risk, "rr_take_profit", 1.5)),
+    )
+
+
+def _fx_compute_confidence_and_band(
+    policy: Any,
+    *,
+    instrument: str,
+    signal: str,
+    _price: float,
+    atr_value: float,
+    spread_pips: float,
+) -> tuple[float, str, list[str]]:
+    """Heuristic confidence score for guardrails (not ML-based)."""
+    import fx_guardrails as fxg
+
+    reasons: list[str] = []
+    confidence = 0.70
+
+    if signal not in {"buy", "sell"}:
+        confidence = 0.0
+        reasons.append("no actionable signal")
+        return confidence, "low", reasons
+
+    max_spread = float(getattr(policy.costs, "max_spread_pips", {}).get(instrument, 0.0) or 0.0)
+    if max_spread > 0:
+        ratio = float(spread_pips) / max_spread
+        if ratio >= 0.9:
+            confidence -= 0.15
+            reasons.append("spread near max")
+        elif ratio >= 0.75:
+            confidence -= 0.08
+            reasons.append("spread elevated")
+
+    import math
+
+    if float(atr_value) <= 0 or not math.isfinite(float(atr_value)):
+        confidence -= 0.20
+        reasons.append("invalid ATR")
+
+    confidence = float(max(0.0, min(1.0, confidence)))
+    band = fxg.confidence_band(policy, confidence)
+    if not reasons:
+        reasons.append("baseline")
+    return confidence, str(band), reasons
+
+
+def _fx_apply_daily_stops(cfg: Dict[str, Any], policy: Any, state: Any, pnl: Dict[str, Any], *, band: str) -> bool:
+    import fx_guardrails as fxg
+
+    stop_hit, stop_reason, stop_kind = fxg.check_daily_stops(
+        policy,
+        drawdown_pct=pnl.get("drawdown_pct"),
+        realized_pct=pnl.get("realized_pct"),
+        confidence_band=str(band),
+    )
+    if not stop_hit:
+        return False
+
+    if stop_reason:
+        state.disabled_reason = stop_reason
+        state.disabled_kind = stop_kind
+        fxg.save_state(cfg, policy, state)
+        console.print(f"[bold red]Trading disabled[/bold red]: {stop_reason}")
+    return True
+
+
+def _fx_build_order_units_and_prices(
+    policy: Any,
+    rules: Any,
+    *,
+    instrument: str,
+    signal: str,
+    price: float,
+    atr_value: float,
+    slippage_price: float,
+) -> tuple[int, float, float, float, float]:
+    from fx_paper import position_size_units
+
+    stop_distance = float(atr_value) * float(getattr(policy.risk, "atr_stop_mult", 1.5))
+    stop_distance = float(max(stop_distance, 0.0)) + float(max(slippage_price, 0.0))
+    if stop_distance <= 0:
+        raise ValueError("Computed stop distance is not positive")
+
+    tp_distance = stop_distance * float(getattr(policy.risk, "rr_take_profit", 1.5))
+
+    if signal == "buy":
+        stop_price = float(price) - stop_distance
+        tp_price = float(price) + tp_distance
+        side = 1
+    else:
+        stop_price = float(price) + stop_distance
+        tp_price = float(price) - tp_distance
+        side = -1
+
+    units_abs = position_size_units(
+        instrument=instrument,
+        equity=float(getattr(rules, "equity", 0.0)),
+        risk_per_trade_pct=float(getattr(rules, "risk_per_trade_pct", 0.005)),
+        stop_distance_price=stop_distance,
+        price=float(price),
+        pip_value_per_unit=None,
+    )
+    return int(side * units_abs), float(stop_price), float(tp_price), float(stop_distance), float(tp_distance)
+
+
+def _fx_execution_guard_price_bound(_policy: Any, client: Any, *, instrument: str, units: int) -> float | None:
+    from fx_paper import pip_size
+
+    try:
+        q = client.get_price_quote(instrument=instrument)
+    except Exception as e:
+        console.print(f"[bold red]Blocked[/bold red]: could not fetch live quote: {e}")
+        return None
+
+    bid = float(q["bid"])
+    ask = float(q["ask"])
+    mid = (bid + ask) / 2.0
+    half_spread = max(0.0, ask - mid)
+
+    # Add a small, conservative buffer on top of half-spread.
+    buffer_price = 2.0 * pip_size(instrument)
+
+    if int(units) > 0:
+        return float(ask + half_spread + buffer_price)
+    return float(bid - half_spread - buffer_price)
 
 
 def _build_integrated_engines(config: Dict[str, Any]) -> NeuralNetworkIntegrator:
@@ -210,7 +515,7 @@ def _normalize_market_dataframe(df):
 
 def build_integrated_feature_tensors(
     market_data_df, config: Dict[str, Any], *, allow_pad: bool = False
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Any]:
     """Build feature tensors for ML/MT/MR using OHLCV + SLM indicators."""
     import pandas as pd
     import numpy as np
@@ -263,9 +568,15 @@ def build_integrated_feature_tensors(
     ml_arr = window[ml_cols].to_numpy(dtype=np.float32, copy=True)
     mt_mr_arr = window[mt_mr_cols].to_numpy(dtype=np.float32, copy=True)
 
-    ml_tensor = torch.tensor(ml_arr, dtype=torch.float32).unsqueeze(0)
-    mt_tensor = torch.tensor(mt_mr_arr, dtype=torch.float32).unsqueeze(0)
-    mr_tensor = torch.tensor(mt_mr_arr, dtype=torch.float32).unsqueeze(0)
+    def _as_tensor(arr):
+        # Fall back to NumPy arrays if torch isn't available.
+        if getattr(torch, "_IS_STUB", False):
+            return arr[None, :, :]
+        return torch.tensor(arr, dtype=torch.float32).unsqueeze(0)
+
+    ml_tensor = _as_tensor(ml_arr)
+    mt_tensor = _as_tensor(mt_mr_arr)
+    mr_tensor = _as_tensor(mt_mr_arr)
 
     return {"ml_features": ml_tensor, "mt_features": mt_tensor, "mr_features": mr_tensor}
 
@@ -409,46 +720,81 @@ def fx_paper_trade(
 
     This is intentionally conservative and defaults to DRY-RUN (no order placed).
     """
-    _ = load_config(config_path)
+    cfg = load_config(config_path)
 
     from oanda_practice import OandaPracticeClient
-    from fx_paper import candles_to_ohlcv_df, atr, setup_signal, RiskRules, position_size_units
+    import fx_guardrails as fxg
+
+    policy = _fx_enforce_fx_policy(cfg, instrument=instrument, granularity=granularity)
+    if policy is None:
+        return
 
     client = OandaPracticeClient.from_env()
-    resp = client.get_candles(instrument, granularity=granularity, count=candles)
-    df = candles_to_ohlcv_df(resp)
+    state = fxg.load_state(cfg, policy)
 
-    signal = setup_signal(df)
-    last_close = float(df["close"].iloc[-1])
-    atr_value = atr(df, period=14)
+    pnl, _ = _fx_refresh_fx_state(cfg, policy, state, client)
+    if _fx_maybe_force_flat(policy, state, client, execute=execute):
+        return
 
-    rules = RiskRules(equity=equity, risk_per_trade_pct=risk_per_trade_pct)
-    stop_distance = rules.atr_stop_mult * atr_value
-    tp_distance = rules.rr_take_profit * stop_distance
+    if not _fx_require_account_metrics(pnl):
+        return
 
+    if not _fx_gate_fx_entry(policy, state, client):
+        return
+
+    df = _fx_load_fx_df(client, instrument=instrument, granularity=granularity, candles=candles)
+    ok_spread, spread_pips, slippage_pips, slippage_price = _fx_spread_and_slippage(policy, df, instrument=instrument)
+    if not ok_spread:
+        return
+
+    signal, last_close, atr_value = _fx_get_signal_context(df)
     if signal == "hold":
         console.print(f"FX setup: HOLD  {instrument} {granularity}  close={last_close:.5f}  ATR14={atr_value:.5f}")
         return
 
-    direction = 1 if signal == "buy" else -1
-    stop_price = last_close - direction * stop_distance
-    tp_price = last_close + direction * tp_distance
+    rules = _fx_build_risk_rules(policy, pnl, equity=equity, risk_per_trade_pct=risk_per_trade_pct)
 
-    units = position_size_units(
+    confidence, band, conf_reasons = _fx_compute_confidence_and_band(
+        policy,
         instrument=instrument,
-        equity=rules.equity,
-        risk_per_trade_pct=rules.risk_per_trade_pct,
-        stop_distance_price=abs(last_close - stop_price),
-        price=last_close,
+        signal=signal,
+        _price=last_close,
+        atr_value=atr_value,
+        spread_pips=float(spread_pips),
     )
-    units = int(units * direction)
+    if band == "low":
+        console.print(f"[bold red]Blocked[/bold red]: low confidence ({confidence:.2f}) => no trades.")
+        console.print(f"[dim]Reasons: {', '.join(conf_reasons)}[/dim]")
+        return
+
+    if _fx_apply_daily_stops(cfg, policy, state, pnl, band=band):
+        return
+
+    units, stop_price, tp_price, _, _ = _fx_build_order_units_and_prices(
+        policy,
+        rules,
+        instrument=instrument,
+        signal=signal,
+        price=last_close,
+        atr_value=atr_value,
+        slippage_price=float(slippage_price),
+    )
 
     console.print(
         f"FX setup: {signal.upper()}  {instrument} {granularity}  close={last_close:.5f}  units={units}  SL={stop_price:.5f}  TP={tp_price:.5f}"
+        f"  spread={spread_pips:.2f}p  slip={slippage_pips:.2f}p  conf={confidence:.2f}  band={band}"
     )
 
     if not execute:
         console.print("[dim]Dry-run (no order). Pass --execute to place a PRACTICE order.[/dim]")
+        return
+
+    if policy.require_confirmation and not _fx_confirm("Confirm PLACE ORDER? (y/N): "):
+        console.print("[dim]Order cancelled.[/dim]")
+        return
+
+    price_bound = _fx_execution_guard_price_bound(policy, client, instrument=instrument, units=units)
+    if price_bound is None:
         return
 
     result = client.create_market_order(
@@ -456,7 +802,10 @@ def fx_paper_trade(
         units=units,
         stop_loss_price=stop_price,
         take_profit_price=tp_price,
+        price_bound=price_bound,
     )
+    state.entries_today += 1
+    fxg.save_state(cfg, policy, state)
     console.print("[bold green]Order submitted (PRACTICE).[/bold green]")
     console.print(result)
 
@@ -804,6 +1153,8 @@ def profile_pipeline(config_path: str) -> None:
 def run_ai_assistant(config_path: str) -> None:
     config = load_config(config_path)  # removed Path() wrapper for proper string input
     # Instantiate the AI assistant using the class from ml_engine
+    from ai_assistant import ai_assistant
+
     assistant_instance = ai_assistant(config)
     console.print("[bold blue]Launching AI Assistant...[/bold blue]")
     query = input("Enter your query: ")
@@ -851,6 +1202,27 @@ def talk_unified(
     )
 
 
+def buddy(
+    config_path: str,
+    *,
+    checkpoint_path: str | None = None,
+    instrument: str = "EUR_USD",
+    granularity: str = "M5",
+    candles: int = 300,
+    execute: bool = False,
+) -> None:
+    """Buddy: interactive offline REPL + OANDA demo/practice source."""
+    run_unified_talk(
+        config_path,
+        checkpoint_path=checkpoint_path,
+        oanda=True,
+        oanda_instrument=instrument,
+        oanda_granularity=granularity,
+        oanda_candles=candles,
+        oanda_execute=execute,
+    )
+
+
 def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="ML Engine Trading Bot CLI")
@@ -871,6 +1243,8 @@ def main() -> None:
             "train-unified",
             "chat-unified",
             "talk-unified",
+            "buddy",
+            "Buddy",
             "integrated-predict",
             "predict",
             "fx",
@@ -991,6 +1365,8 @@ def main() -> None:
         "train-unified": train_unified,
         "chat-unified": chat_unified,
         "talk-unified": talk_unified,
+        "buddy": buddy,
+        "Buddy": buddy,
     }
 
     try:
@@ -1031,6 +1407,15 @@ def main() -> None:
                 ticker=args.ticker,
                 period=args.period,
                 interval=args.interval,
+            )
+        elif args.command in {"buddy", "Buddy"}:
+            command_map[args.command](
+                args.config,
+                checkpoint_path=args.model_path,
+                instrument=args.instrument,
+                granularity=args.granularity,
+                candles=args.candles,
+                execute=args.execute,
             )
         else:
             command_map[args.command](args.config)

@@ -79,6 +79,40 @@ class TestOandaPracticeClient(unittest.TestCase):
         self.assertEqual(order["stopLossOnFill"]["price"], "1.23456")
         self.assertEqual(order["takeProfitOnFill"]["price"], "1.34567")
 
+    def test_get_price_quote_parses_bid_ask(self):
+        session = mock.Mock()
+        session.headers = {}
+
+        def _fake_request(method, url, params=None, json=None, timeout=None):
+            resp = mock.Mock()
+            resp.status_code = 200
+            resp.json.return_value = {
+                "prices": [
+                    {
+                        "instrument": "EUR_USD",
+                        "bids": [{"price": "1.10000", "liquidity": 1000000}],
+                        "asks": [{"price": "1.10010", "liquidity": 1000000}],
+                    }
+                ]
+            }
+            return resp
+
+        session.request.side_effect = _fake_request
+
+        with mock.patch.object(oanda_practice.requests, "Session", return_value=session):
+            client = oanda_practice.OandaPracticeClient(
+                oanda_practice.OandaPracticeConfig(api_token="t", account_id="acct")
+            )
+            quote = client.get_price_quote(instrument="EUR_USD")
+
+        session.request.assert_called_once()
+        (method, url), kwargs = session.request.call_args
+        self.assertEqual(method, "GET")
+        self.assertIn("/accounts/acct/pricing", url)
+        self.assertEqual(kwargs["params"]["instruments"], "EUR_USD")
+        self.assertAlmostEqual(quote["bid"], 1.10000)
+        self.assertAlmostEqual(quote["ask"], 1.10010)
+
 
 if __name__ == "__main__":
     unittest.main()

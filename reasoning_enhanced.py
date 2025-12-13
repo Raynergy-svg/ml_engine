@@ -14,6 +14,65 @@ from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 logger = logging.getLogger(__name__)
 
 
+def fx_confidence_v1(
+    *,
+    signal: str,
+    price: float,
+    atr: float,
+    spread_pips: float,
+    max_spread_pips: float,
+) -> Dict[str, Any]:
+    """Compute a conservative scalar confidence for FX Tier-1 gating.
+
+    This is intentionally *fail-closed*: if any required inputs are missing or
+    invalid, returns confidence=0.0.
+
+    Until an FX-specific model head is wired in, this function combines:
+    - setup direction (buy/sell vs hold)
+    - execution quality (spread vs configured max)
+    - regime volatility proxy (ATR / price)
+
+    Returns a dict: {confidence: float in [0,1], reasons: [str]}
+    """
+    reasons: list[str] = []
+    try:
+        sig = str(signal).strip().lower()
+        if sig not in {"buy", "sell"}:
+            return {"confidence": 0.0, "reasons": ["signal is not actionable"]}
+
+        p = float(price)
+        a = float(atr)
+        sp = float(spread_pips)
+        msp = float(max_spread_pips)
+        if not np.isfinite(p) or p <= 0:
+            return {"confidence": 0.0, "reasons": ["invalid price"]}
+        if not np.isfinite(a) or a <= 0:
+            return {"confidence": 0.0, "reasons": ["invalid ATR"]}
+        if not np.isfinite(sp) or sp < 0:
+            return {"confidence": 0.0, "reasons": ["invalid spread"]}
+        if not np.isfinite(msp) or msp <= 0:
+            return {"confidence": 0.0, "reasons": ["invalid max_spread_pips"]}
+
+        # Base: mildly optimistic for an actionable setup.
+        conf = 0.72
+        reasons.append(f"setup={sig}")
+
+        # Penalize if spread is a large fraction of the cap.
+        spread_ratio = min(2.0, sp / msp)
+        conf -= 0.25 * spread_ratio
+        reasons.append(f"spread_ratio={spread_ratio:.2f}")
+
+        # Penalize very high volatility regimes (ATR as a % of price).
+        vol_pct = a / p
+        conf -= min(0.25, max(0.0, (vol_pct - 0.001)) * 50.0)  # kicks in above ~0.1%
+        reasons.append(f"atr_pct={vol_pct:.3%}")
+
+        conf = float(max(0.0, min(1.0, conf)))
+        return {"confidence": conf, "reasons": reasons}
+    except Exception as e:
+        return {"confidence": 0.0, "reasons": [f"confidence error: {e}"]}
+
+
 class ReasoningEngine:
     """
     Enhanced reasoning engine for stock market prediction with improved explainability,

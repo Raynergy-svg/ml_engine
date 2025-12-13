@@ -42,67 +42,55 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path(os.environ.get("CACHE_DIR", str(Path.home() / ".trading_bot_cache")))
 CACHE_DIR.mkdir(exist_ok=True, parents=True)
 
+
+class DataValidationError(Exception):
+    """Raised when inputs or derived data are invalid."""
+
+
 class StockDataset(Dataset):
-    """
-    PyTorch Dataset for generating sequences from stock market data.
-    """
+    """PyTorch Dataset for (sequence, target) pairs."""
 
     @staticmethod
     def _is_dask_array(x: Any) -> bool:
         return da is not None and isinstance(x, da.Array)
 
     @classmethod
-    def _coerce_to_array(cls, x: Union[list, np.ndarray, torch.Tensor, DaskArray]) -> Union[np.ndarray, DaskArray]:
-        # Convert to numpy arrays for consistent handling (unless dask)
+    def _coerce_to_array(
+        cls, x: Union[list, np.ndarray, torch.Tensor, DaskArray]
+    ) -> Union[np.ndarray, DaskArray]:
         if cls._is_dask_array(x):
             return x
         if isinstance(x, list):
-            return np.array(x)
-        if isinstance(x, torch.Tensor):
-            return x.detach().cpu().numpy()
-        return x  # type: ignore[return-value]
-        if cls._is_dask_array(x):
-            return x
-        if isinstance(x, list):
-            return np.array(x)
+            return np.asarray(x)
         if isinstance(x, torch.Tensor):
             return x.detach().cpu().numpy()
         return x  # type: ignore[return-value]
 
     @classmethod
     def _validate_shapes(cls, features: Any, targets: Any) -> None:
+        if features is None or targets is None:
+            raise DataValidationError("Features and targets cannot be None")
         if len(features) == 0 or len(targets) == 0:
             raise DataValidationError("Features and targets cannot be empty")
-
         if len(features) != len(targets):
-            msg = (
-                f"Features length ({len(features)}) must match "
-                f"targets length ({len(targets)})"
+            raise DataValidationError(
+                f"Features length ({len(features)}) must match targets length ({len(targets)})"
             )
-            raise DataValidationError(msg)
 
     @classmethod
     def _sanitize_values(cls, features: Any, targets: Any) -> Tuple[Any, Any]:
-        # Check for NaN/inf values when materialized
         if cls._is_dask_array(features) or cls._is_dask_array(targets):
             return features, targets
 
         if np.any(np.isnan(features)) or np.any(np.isinf(features)):
-            logger.warning("Features contain NaN or infinite values, replacing with zeros")
+            logger.warning("Features contain NaN/inf; replacing with zeros")
             features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
 
         if np.any(np.isnan(targets)) or np.any(np.isinf(targets)):
-            logger.warning("Targets contain NaN or infinite values, replacing with zeros")
+            logger.warning("Targets contain NaN/inf; replacing with zeros")
             targets = np.nan_to_num(targets, nan=0.0, posinf=0.0, neginf=0.0)
 
         return features, targets
-
-    @classmethod
-    def _compute_length(cls, features: Any) -> int:
-        # Pre-compute length for efficiency
-        if cls._is_dask_array(features):
-            return int(features.shape[0])
-        return int(len(features))
 
     @classmethod
     def _maybe_preload(
@@ -112,97 +100,66 @@ class StockDataset(Dataset):
         device: Optional[torch.device],
         length: int,
     ) -> Tuple[Any, Any, bool]:
-        # Optional preload for small datasets
         if device is None or cls._is_dask_array(features):
             return features, targets, False
-        if length >= 10000:
+        if int(length) >= 10_000:
             return features, targets, False
 
         try:
-            features_t = torch.as_tensor(features, dtype=torch.float32).to(device)
+            feat_t = torch.as_tensor(features, dtype=torch.float32, device=device)
+            tgt_t = torch.as_tensor(targets, dtype=torch.float32, device=device).view(-1, 1)
+            return feat_t, tgt_t, True
+        except Exception:
+            return features, targets, False
+
     def __init__(
         self,
         features: Union[list, np.ndarray, torch.Tensor, DaskArray],
         targets: Union[list, np.ndarray, torch.Tensor, DaskArray],
         sequence_length: int = 60,
         device: Optional[torch.device] = None,
-    ):
-    def __init__(
-        self,
-        features: Union[list, np.ndarray, torch.Tensor, "da.Array"],
-        targets: Union[list, np.ndarray, torch.Tensor, "da.Array"],
-        sequence_length: int = 60,
-        device: Optional[torch.device] = None,
-    ):
-        # Validate inputs
-        if features is None or targets is None:
-            raise DataValidationError("Features and targets cannot be None")
-
+    ) -> None:
         self.device = device
-        self.preloaded = False
+        self.sequence_length = int(sequence_length)
 
-        features = self._coerce_to_array(features)
-        targets = self._coerce_to_array(targets)
+        features_arr = self._coerce_to_array(features)
+        targets_arr = self._coerce_to_array(targets)
 
-        self._validate_shapes(features, targets)
-        features, targets = self._sanitize_values(features, targets)
+        self._validate_shapes(features_arr, targets_arr)
+        features_arr, targets_arr = self._sanitize_values(features_arr, targets_arr)
 
-        self.features = features
-        self.targets = targets
-        self.sequence_length = sequence_length
-
-        self._length = self._compute_length(self.features)
+        self._length = int(features_arr.shape[0]) if self._is_dask_array(features_arr) else int(len(features_arr))
         self.features, self.targets, self.preloaded = self._maybe_preload(
-            self.features,
-            self.targets,
-            self.device,
-            self._length,
+            features_arr, targets_arr, self.device, self._length
         )
 
-        logger.info("Initialized StockDataset with %s samples", len(self))
-
     def __len__(self) -> int:
-        return self._length
+        return int(self._length)
 
     def __getitem__(self, idx: int) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
-        """Get a sample from the dataset
-
-        Args:
-            idx: Index of the sample
-
-        Returns:
-            Tuple of (features_tensor, target_tensor)
-
-        Raises:
-            IndexError: If index is out of bounds
-        """
         if idx < 0 or idx >= len(self):
-            msg = f"Index {idx} out of bounds for dataset of size {len(self)}"
-            raise IndexError(msg)
+            raise IndexError(f"Index {idx} out of bounds for dataset of size {len(self)}")
 
-        try:
-            if self.preloaded:
-                seq = self.features[idx]
-                target_value = self.targets[idx]
-                if target_value.dim() == 0:
-                    target_value = target_value.unsqueeze(0)
-                return seq, target_value
+        if self.preloaded:
+            seq = self.features[idx]
+            tgt = self.targets[idx]
+            if tgt.dim() == 0:
+                tgt = tgt.unsqueeze(0)
+            return seq, tgt
 
-            if da is not None and isinstance(self.features, da.Array):
-                seq = torch.as_tensor(self.features[idx].compute(), dtype=torch.float32)
-                target_val = float(self.targets[idx].compute())
-                target = torch.tensor([target_val], dtype=torch.float32)
-            else:
-                seq = torch.as_tensor(self.features[idx], dtype=torch.float32)
-                target = torch.tensor([float(self.targets[idx])], dtype=torch.float32)
+        if da is not None and isinstance(self.features, da.Array):
+            seq_np = self.features[idx].compute()
+            tgt_val = float(self.targets[idx].compute())
+            seq = torch.as_tensor(seq_np, dtype=torch.float32)
+            tgt = torch.tensor([tgt_val], dtype=torch.float32)
+        else:
+            seq = torch.as_tensor(self.features[idx], dtype=torch.float32)
+            tgt = torch.tensor([float(self.targets[idx])], dtype=torch.float32)
 
-            if self.device is not None:
-                seq = seq.to(self.device, non_blocking=True)
-                target = target.to(self.device, non_blocking=True)
-            return seq, target
-        except Exception as e:
-            logger.error(f"Error retrieving sample at index {idx}: {e}")
-            raise
+        if self.device is not None:
+            seq = seq.to(self.device, non_blocking=True)
+            tgt = tgt.to(self.device, non_blocking=True)
+        return seq, tgt
 
 
 def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> bool:

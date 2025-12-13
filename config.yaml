@@ -198,6 +198,55 @@ text:
   hash_ngram_dim: 64
   hash_ngram_min: 1
   hash_ngram_max: 2
+
+# FX day trading policy (Tier-1, fail-safe defaults)
+fx:
+  enabled: true
+  tier: 1
+  timezone: America/New_York
+  granularity: M5
+  horizon_bars: 1
+  instruments:
+    - EUR_USD
+    - GBP_USD
+    - USD_JPY
+  session:
+    start: "08:00"
+    end: "11:30"
+    force_flat_at: "11:55"
+    reset_at: "08:00"
+  limits:
+    max_open_positions: 1
+    max_entries_per_day: 1
+  risk:
+    risk_per_trade_pct: 0.005
+    daily_loss_stop_pct: 0.10
+    atr_stop_mult: 1.5
+    rr_take_profit: 1.5
+  execution:
+    require_confirmation: true
+    practice_only: true
+  costs:
+    # Reject trading when spread is wide (pips)
+    max_spread_pips:
+      EUR_USD: 1.0
+      GBP_USD: 1.6
+      USD_JPY: 1.2
+    # Conservative slippage buffer applied against you (pips)
+    slippage_pips_min: 0.2
+    slippage_pips_spread_mult: 0.25
+    # Fallback if bid/ask unavailable
+    spread_fallback_pips:
+      EUR_USD: 1.0
+      GBP_USD: 1.6
+      USD_JPY: 1.2
+  confidence:
+    # Combined confidence bands (low => no trades)
+    low_lt: 0.60
+    high_gte: 0.75
+    profit_stop_pct_by_band:
+      medium: 0.20
+      high: 0.30
   rolling_windows:
     - 3
     - 7

@@ -1777,3 +1777,198 @@ Then run:
 2025-12-12 18:06:37 - root - INFO - [unified_multitask_training.py:425] - HEAD: price_loss is lagging (loss 2.6558 vs median 1.3914).
 2025-12-12 18:06:37 - root - INFO - [unified_multitask_training.py:425] - HEAD: state head accuracy is low (48.15%); check labels or class balance.
 2025-12-12 18:06:37 - root - INFO - [unified_multitask_training.py:425] - HEAD: Consider increasing that head's loss weight or adding head-specific capacity.
+2025-12-12 19:35:35 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:55] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 19:35:35 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 19:35:35 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:118] - Unified engine set for integration
+2025-12-12 19:35:35 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpdinm00v5/text.csv
+2025-12-12 19:35:35 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpa8jjzs3z/text.csv
+2025-12-12 19:35:35 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpvntjdp4u/empty.yaml
+2025-12-12 19:35:35 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpvntjdp4u/empty.yaml
+2025-12-12 19:35:35 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp26_02l02/invalid.yaml", line 1, column 14
+2025-12-12 19:35:35 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 19:35:35 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 19:35:35 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpt7465rly/nonexistent.yaml
+2025-12-12 19:35:35 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmplf85fuwn/test_config.yaml
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 19:35:35 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp7tld93ii/test_config.yaml
+2025-12-12 19:35:35 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp5a64fgdv/test_config.yaml
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 19:35:35 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 19:35:35 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmperem0lyo/test_config.yaml
+2025-12-12 21:03:32 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:55] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 21:03:32 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 21:03:32 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:118] - Unified engine set for integration
+2025-12-12 21:03:32 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp5poodjyd/text.csv
+2025-12-12 21:03:32 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp8_xhp38i/text.csv
+2025-12-12 21:03:32 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpur5qybmo/empty.yaml
+2025-12-12 21:03:32 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpur5qybmo/empty.yaml
+2025-12-12 21:03:32 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmphc8jtsmi/invalid.yaml", line 1, column 14
+2025-12-12 21:03:32 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 21:03:32 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 21:03:32 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpjras_fzd/nonexistent.yaml
+2025-12-12 21:03:32 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpn4juy7g4/test_config.yaml
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 21:03:32 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpfxcryoek/test_config.yaml
+2025-12-12 21:03:32 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpt6te64f9/test_config.yaml
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 21:03:32 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 21:03:32 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp09mza8sk/test_config.yaml
+2025-12-12 21:09:52 - utils - INFO - [utils.py:174] - Successfully loaded configuration from config.yaml
+2025-12-12 21:09:52 - root - ERROR - [main.py:1392] - Command failed: Weights only load failed. This file can still be loaded, to do so you have two options, [1mdo those steps only if you trust the source of the checkpoint[0m. 
+	(1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+	(2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+	WeightsUnpickler error: Unsupported global: GLOBAL sklearn.preprocessing._data.RobustScaler was not an allowed global by default. Please use `torch.serialization.add_safe_globals([sklearn.preprocessing._data.RobustScaler])` or the `torch.serialization.safe_globals([sklearn.preprocessing._data.RobustScaler])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1378, in main
+    command_map[args.command](
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1195, in talk_unified
+    run_unified_talk(
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 344, in run_unified_talk
+    ctx = _load_context(config_path, checkpoint_path=checkpoint_path)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 226, in _load_context
+    engine = UnifiedNeuralEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/neural_engine_unified.py", line 103, in from_checkpoint
+    ckpt = torch.load(checkpoint_path, map_location="cpu")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/serialization.py", line 1529, in load
+    raise pickle.UnpicklingError(_get_wo_message(str(e))) from None
+_pickle.UnpicklingError: Weights only load failed. This file can still be loaded, to do so you have two options, [1mdo those steps only if you trust the source of the checkpoint[0m. 
+	(1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+	(2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+	WeightsUnpickler error: Unsupported global: GLOBAL sklearn.preprocessing._data.RobustScaler was not an allowed global by default. Please use `torch.serialization.add_safe_globals([sklearn.preprocessing._data.RobustScaler])` or the `torch.serialization.safe_globals([sklearn.preprocessing._data.RobustScaler])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+2025-12-12 21:12:52 - utils - INFO - [utils.py:174] - Successfully loaded configuration from config.yaml
+2025-12-12 21:12:52 - root - ERROR - [main.py:1392] - Command failed: Weights only load failed. This file can still be loaded, to do so you have two options, [1mdo those steps only if you trust the source of the checkpoint[0m. 
+	(1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+	(2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+	WeightsUnpickler error: Unsupported global: GLOBAL numpy._core.multiarray._reconstruct was not an allowed global by default. Please use `torch.serialization.add_safe_globals([numpy._core.multiarray._reconstruct])` or the `torch.serialization.safe_globals([numpy._core.multiarray._reconstruct])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1378, in main
+    command_map[args.command](
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1195, in talk_unified
+    run_unified_talk(
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 344, in run_unified_talk
+    ctx = _load_context(config_path, checkpoint_path=checkpoint_path)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 226, in _load_context
+    engine = UnifiedNeuralEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/neural_engine_unified.py", line 132, in from_checkpoint
+    ckpt = safe_torch_load(checkpoint_path, map_location="cpu")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/neural_engine_unified.py", line 44, in safe_torch_load
+    return torch.load(checkpoint_path, map_location=map_location)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Documents/ml_engine/.venv/lib/python3.12/site-packages/torch/serialization.py", line 1529, in load
+    raise pickle.UnpicklingError(_get_wo_message(str(e))) from None
+_pickle.UnpicklingError: Weights only load failed. This file can still be loaded, to do so you have two options, [1mdo those steps only if you trust the source of the checkpoint[0m. 
+	(1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+	(2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+	WeightsUnpickler error: Unsupported global: GLOBAL numpy._core.multiarray._reconstruct was not an allowed global by default. Please use `torch.serialization.add_safe_globals([numpy._core.multiarray._reconstruct])` or the `torch.serialization.safe_globals([numpy._core.multiarray._reconstruct])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+2025-12-12 21:16:27 - utils - INFO - [utils.py:174] - Successfully loaded configuration from config.yaml
+2025-12-12 21:16:27 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 21:16:45 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:55] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 21:16:45 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 21:16:45 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:118] - Unified engine set for integration
+2025-12-12 21:16:46 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpunu0n13a/text.csv
+2025-12-12 21:16:46 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp_s03vrgn/text.csv
+2025-12-12 21:16:46 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3m1mgyg9/empty.yaml
+2025-12-12 21:16:46 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3m1mgyg9/empty.yaml
+2025-12-12 21:16:46 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpjaaixzyi/invalid.yaml", line 1, column 14
+2025-12-12 21:16:46 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 21:16:46 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 21:16:46 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpuwktblas/nonexistent.yaml
+2025-12-12 21:16:46 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpmqmlfkw8/test_config.yaml
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 21:16:46 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpbc6cw5us/test_config.yaml
+2025-12-12 21:16:46 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpmr0i6s1q/test_config.yaml
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 21:16:46 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 21:16:46 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp8_d545nk/test_config.yaml
+2025-12-12 21:20:49 - utils - INFO - [utils.py:174] - Successfully loaded configuration from config.yaml
+2025-12-12 21:20:49 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 21:21:00 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:55] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 21:21:00 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 21:21:00 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:118] - Unified engine set for integration
+2025-12-12 21:21:00 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpr5d5xyaz/text.csv
+2025-12-12 21:21:00 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpirqqnvc2/text.csv
+2025-12-12 21:21:01 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp50u77gx1/empty.yaml
+2025-12-12 21:21:01 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp50u77gx1/empty.yaml
+2025-12-12 21:21:01 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpijgbcmr8/invalid.yaml", line 1, column 14
+2025-12-12 21:21:01 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 21:21:01 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 21:21:01 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpnaai1mh2/nonexistent.yaml
+2025-12-12 21:21:01 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpgqt9mxtl/test_config.yaml
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 21:21:01 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpht6axgng/test_config.yaml
+2025-12-12 21:21:01 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpmjcgtr5n/test_config.yaml
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 21:21:01 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 21:21:01 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp7_bfnvp0/test_config.yaml
+2025-12-12 23:16:04 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:55] - NeuralNetworkIntegrator initialized on cpu
+2025-12-12 23:16:04 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-12 23:16:04 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:118] - Unified engine set for integration
+2025-12-12 23:16:04 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpb0rj7bl9/text.csv
+2025-12-12 23:16:04 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp9s94u_3v/text.csv
+2025-12-12 23:16:04 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp8oy39fvb/empty.yaml
+2025-12-12 23:16:04 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp8oy39fvb/empty.yaml
+2025-12-12 23:16:04 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp0spzm0j6/invalid.yaml", line 1, column 14
+2025-12-12 23:16:04 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-12 23:16:04 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-12 23:16:04 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpbrdo3rzw/nonexistent.yaml
+2025-12-12 23:16:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp6p603501/test_config.yaml
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-12 23:16:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp_nnk15ks/test_config.yaml
+2025-12-12 23:16:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp4_lhgjrl/test_config.yaml
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-12 23:16:04 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-12 23:16:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpsv1uo681/test_config.yaml

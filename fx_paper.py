@@ -20,6 +20,74 @@ import pandas as pd
 Signal = Literal["buy", "sell", "hold"]
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except Exception:
+        return None
+
+
+def _extract_ohlc(d: dict[str, Any]) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+    return (
+        _safe_float(d.get("o")),
+        _safe_float(d.get("h")),
+        _safe_float(d.get("l")),
+        _safe_float(d.get("c")),
+    )
+
+
+def _mid_close_from_bid_ask(bid_c: Optional[float], ask_c: Optional[float]) -> Optional[float]:
+    if bid_c is None or ask_c is None:
+        return None
+    return (bid_c + ask_c) / 2.0
+
+
+def _fill_ohl_with_close(
+    open_: Optional[float],
+    high: Optional[float],
+    low: Optional[float],
+    close: Optional[float],
+) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+    if close is None:
+        return open_, high, low, close
+    return (
+        close if open_ is None else open_,
+        close if high is None else high,
+        close if low is None else low,
+        close,
+    )
+
+
+def _parse_oanda_candle_row(candle: dict[str, Any]) -> Optional[dict[str, Any]]:
+    if not candle.get("complete", True):
+        return None
+
+    mid = candle.get("mid") or {}
+    bid = candle.get("bid") or {}
+    ask = candle.get("ask") or {}
+
+    # Prefer mid for OHLCV, but preserve bid/ask closes when available for spread checks.
+    open_, high, low, close = _extract_ohlc(mid)
+    bid_c = _safe_float(bid.get("c"))
+    ask_c = _safe_float(ask.get("c"))
+
+    close = close if close is not None else _mid_close_from_bid_ask(bid_c, ask_c)
+    open_, high, low, close = _fill_ohl_with_close(open_, high, low, close)
+
+    return {
+        "time": candle.get("time"),
+        "open": float(open_) if open_ is not None else float("nan"),
+        "high": float(high) if high is not None else float("nan"),
+        "low": float(low) if low is not None else float("nan"),
+        "close": float(close) if close is not None else float("nan"),
+        "volume": float(candle.get("volume", 0.0)),
+        "bid_close": float(bid_c) if bid_c is not None else np.nan,
+        "ask_close": float(ask_c) if ask_c is not None else np.nan,
+    }
+
+
 def candles_to_ohlcv_df(oanda_candles_response: Any) -> pd.DataFrame:
     candles = oanda_candles_response.get("candles", [])
     if not candles:
@@ -27,23 +95,23 @@ def candles_to_ohlcv_df(oanda_candles_response: Any) -> pd.DataFrame:
 
     rows: list[dict[str, Any]] = []
     for c in candles:
-        if not c.get("complete", True):
-            continue
-        mid = c.get("mid") or {}
-        rows.append(
-            {
-                "time": c.get("time"),
-                "open": float(mid.get("o")),
-                "high": float(mid.get("h")),
-                "low": float(mid.get("l")),
-                "close": float(mid.get("c")),
-                "volume": float(c.get("volume", 0.0)),
-            }
-        )
+        row = _parse_oanda_candle_row(c)
+        if row is not None:
+            rows.append(row)
 
     df = pd.DataFrame(rows)
     if df.empty:
         raise ValueError("No complete candles available")
+
+    # Drop rows with missing core OHLC.
+    df = df.replace([np.inf, -np.inf], np.nan).dropna(subset=["open", "high", "low", "close"])
+    if df.empty:
+        raise ValueError("No usable candles after cleaning")
+
+    # Back-compat: only keep bid/ask columns if present in data.
+    for col in ("bid_close", "ask_close"):
+        if col in df.columns and df[col].isna().all():
+            df = df.drop(columns=[col])
 
     return df
 
@@ -73,6 +141,22 @@ def atr(df: pd.DataFrame, period: int = 14) -> float:
 def pip_size(instrument: str) -> float:
     # Simple default: JPY pairs use 0.01, most others 0.0001
     return 0.01 if instrument.endswith("_JPY") else 0.0001
+
+
+def spread_pips_from_df(df: pd.DataFrame, instrument: str) -> Optional[float]:
+    """Compute spread (ask - bid) in pips from the last candle, if available."""
+    if "bid_close" not in df.columns or "ask_close" not in df.columns:
+        return None
+    bid = float(df["bid_close"].iloc[-1])
+    ask = float(df["ask_close"].iloc[-1])
+    if not np.isfinite(bid) or not np.isfinite(ask) or bid <= 0 or ask <= 0:
+        return None
+    return (ask - bid) / pip_size(instrument)
+
+
+def conservative_slippage_pips(*, spread_pips: float, min_pips: float, spread_mult: float) -> float:
+    """Conservative slippage buffer (pips) applied against you."""
+    return float(max(float(min_pips), float(spread_mult) * float(spread_pips)))
 
 
 @dataclass(frozen=True)

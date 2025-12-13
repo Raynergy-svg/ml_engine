@@ -65,6 +65,38 @@
         "documentation": {}
     },
     {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "time",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
         "label": "timezone",
         "importPath": "datetime",
         "description": "datetime",
@@ -405,6 +437,38 @@
     },
     {
         "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -852,14 +916,6 @@
         "documentation": {}
     },
     {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
         "label": "Any",
         "importPath": "typing",
         "description": "typing",
@@ -1119,6 +1175,30 @@
         "documentation": {}
     },
     {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
         "label": "logging",
         "kind": 6,
         "isExtraImport": true,
@@ -1169,6 +1249,22 @@
         "description": "io",
         "isExtraImport": true,
         "detail": "io",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
         "documentation": {}
     },
     {
@@ -1847,6 +1943,32 @@
         "documentation": {}
     },
     {
+        "label": "tempfile",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "tempfile",
+        "description": "tempfile",
+        "detail": "tempfile",
+        "documentation": {}
+    },
+    {
+        "label": "TemporaryDirectory",
+        "importPath": "tempfile",
+        "description": "tempfile",
+        "isExtraImport": true,
+        "detail": "tempfile",
+        "documentation": {}
+    },
+    {
+        "label": "time",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "time",
+        "description": "time",
+        "detail": "time",
+        "documentation": {}
+    },
+    {
         "label": "unittest",
         "kind": 6,
         "isExtraImport": true,
@@ -1861,6 +1983,94 @@
         "description": "unittest",
         "isExtraImport": true,
         "detail": "unittest",
+        "documentation": {}
+    },
+    {
+        "label": "select_latest_checkpoint",
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "isExtraImport": true,
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "run_unified_talk",
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "isExtraImport": true,
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "FxDailyState",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "isExtraImport": true,
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "can_open_new_trade",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "isExtraImport": true,
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "check_daily_stops",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "isExtraImport": true,
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "confidence_band",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "isExtraImport": true,
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "load_fx_policy",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "isExtraImport": true,
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "load_state",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "isExtraImport": true,
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "profit_stop_pct_for_band",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "isExtraImport": true,
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "session_date_str",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "isExtraImport": true,
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "save_state",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "isExtraImport": true,
+        "detail": "fx_guardrails",
         "documentation": {}
     },
     {
@@ -2139,15 +2349,6 @@
         "documentation": {}
     },
     {
-        "label": "tempfile",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "tempfile",
-        "description": "tempfile",
-        "detail": "tempfile",
-        "documentation": {}
-    },
-    {
         "label": "MarketDataLoader",
         "importPath": "data_loader",
         "description": "data_loader",
@@ -2281,6 +2482,14 @@
     },
     {
         "label": "UnifiedNeuralEngine",
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "isExtraImport": true,
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "safe_torch_load",
         "importPath": "neural_engine_unified",
         "description": "neural_engine_unified",
         "isExtraImport": true,
@@ -2611,12 +2820,11 @@
         "documentation": {}
     },
     {
-        "label": "time",
-        "kind": 6,
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
         "isExtraImport": true,
-        "importPath": "time",
-        "description": "time",
-        "detail": "time",
+        "detail": "dataclasses",
         "documentation": {}
     },
     {
@@ -2660,22 +2868,6 @@
         "documentation": {}
     },
     {
-        "label": "ai_assistant",
-        "importPath": "ai_assistant",
-        "description": "ai_assistant",
-        "isExtraImport": true,
-        "detail": "ai_assistant",
-        "documentation": {}
-    },
-    {
-        "label": "MREngine",
-        "importPath": "mr_engine",
-        "description": "mr_engine",
-        "isExtraImport": true,
-        "detail": "mr_engine",
-        "documentation": {}
-    },
-    {
         "label": "train_unified_multitask",
         "importPath": "unified_multitask_training",
         "description": "unified_multitask_training",
@@ -2689,14 +2881,6 @@
         "description": "unified_chat",
         "isExtraImport": true,
         "detail": "unified_chat",
-        "documentation": {}
-    },
-    {
-        "label": "run_unified_talk",
-        "importPath": "unified_talk",
-        "description": "unified_talk",
-        "isExtraImport": true,
-        "detail": "unified_talk",
         "documentation": {}
     },
     {
@@ -2799,6 +2983,15 @@
         "importPath": "xarray",
         "description": "xarray",
         "detail": "xarray",
+        "documentation": {}
+    },
+    {
+        "label": "uuid",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "uuid",
+        "description": "uuid",
+        "detail": "uuid",
         "documentation": {}
     },
     {
@@ -3560,6 +3753,24 @@
         "documentation": {}
     },
     {
+        "label": "TestCheckpointSync",
+        "kind": 6,
+        "importPath": "tests.test_checkpoint_sync",
+        "description": "tests.test_checkpoint_sync",
+        "peekOfCode": "class TestCheckpointSync(unittest.TestCase):\n    def test_select_latest_checkpoint_prefers_unified(self):\n        with tempfile.TemporaryDirectory() as tmp:\n            model_dir = Path(tmp) / \"models\"\n            model_dir.mkdir(parents=True)\n            other = model_dir / \"best_model.pth\"\n            other.write_bytes(b\"x\")\n            unified_old = model_dir / \"unified_market_net.pth\"\n            unified_old.write_bytes(b\"x\")\n            unified_new = model_dir / \"unified_market_net_checkpoint.pth\"",
+        "detail": "tests.test_checkpoint_sync",
+        "documentation": {}
+    },
+    {
+        "label": "PROJECT_ROOT",
+        "kind": 5,
+        "importPath": "tests.test_checkpoint_sync",
+        "description": "tests.test_checkpoint_sync",
+        "peekOfCode": "PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), \"..\"))\nif PROJECT_ROOT not in sys.path:\n    sys.path.insert(0, PROJECT_ROOT)\nfrom unified_talk import select_latest_checkpoint  # noqa: E402\nclass TestCheckpointSync(unittest.TestCase):\n    def test_select_latest_checkpoint_prefers_unified(self):\n        with tempfile.TemporaryDirectory() as tmp:\n            model_dir = Path(tmp) / \"models\"\n            model_dir.mkdir(parents=True)\n            other = model_dir / \"best_model.pth\"",
+        "detail": "tests.test_checkpoint_sync",
+        "documentation": {}
+    },
+    {
         "label": "TestStockDataset",
         "kind": 6,
         "importPath": "tests.test_data_processing",
@@ -3602,6 +3813,15 @@
         "description": "tests.test_data_processing",
         "peekOfCode": "class TestProcessMultiIndexData(unittest.TestCase):\n    \"\"\"Test process_multiindex_data function\"\"\"\n    def test_valid_multiindex_processing(self):\n        \"\"\"Test processing valid MultiIndex data\"\"\"\n        # Create MultiIndex DataFrame\n        dates = pd.date_range('2020-01-01', periods=10)\n        data = pd.DataFrame({\n            ('AAPL', 'open'): np.random.randn(10),\n            ('AAPL', 'close'): np.random.randn(10),\n            ('GOOGL', 'open'): np.random.randn(10),",
         "detail": "tests.test_data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "TestFxGuardrails",
+        "kind": 6,
+        "importPath": "tests.test_fx_guardrails",
+        "description": "tests.test_fx_guardrails",
+        "peekOfCode": "class TestFxGuardrails(unittest.TestCase):\n    def setUp(self) -> None:\n        self.cfg = {\n            \"fx\": {\n                \"enabled\": True,\n                \"tier\": 1,\n                \"instruments\": [\"EUR_USD\", \"GBP_USD\", \"USD_JPY\"],\n                \"granularity\": \"M5\",\n                \"horizon_bars\": 1,\n                \"timezone\": \"America/New_York\",",
+        "detail": "tests.test_fx_guardrails",
         "documentation": {}
     },
     {
@@ -4019,11 +4239,20 @@
         "documentation": {}
     },
     {
+        "label": "DataValidationError",
+        "kind": 6,
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "class DataValidationError(Exception):\n    \"\"\"Raised when inputs or derived data are invalid.\"\"\"\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for (sequence, target) pairs.\"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod\n    def _coerce_to_array(\n        cls, x: Union[list, np.ndarray, torch.Tensor, DaskArray]",
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
         "label": "StockDataset",
         "kind": 6,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "class StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod\n    def _coerce_to_array(cls, x: Union[list, np.ndarray, torch.Tensor, DaskArray]) -> Union[np.ndarray, DaskArray]:\n        # Convert to numpy arrays for consistent handling (unless dask)",
+        "peekOfCode": "class StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for (sequence, target) pairs.\"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod\n    def _coerce_to_array(\n        cls, x: Union[list, np.ndarray, torch.Tensor, DaskArray]\n    ) -> Union[np.ndarray, DaskArray]:\n        if cls._is_dask_array(x):",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -4104,7 +4333,7 @@
         "kind": 5,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "logger = logging.getLogger(__name__)\n# Define cache directory (env override supported)\nCACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# Define cache directory (env override supported)\nCACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass DataValidationError(Exception):\n    \"\"\"Raised when inputs or derived data are invalid.\"\"\"\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for (sequence, target) pairs.\"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -4113,7 +4342,7 @@
         "kind": 5,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "CACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass StockDataset(Dataset):\n    \"\"\"\n    PyTorch Dataset for generating sequences from stock market data.\n    \"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod",
+        "peekOfCode": "CACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass DataValidationError(Exception):\n    \"\"\"Raised when inputs or derived data are invalid.\"\"\"\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for (sequence, target) pairs.\"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -4379,6 +4608,186 @@
         "documentation": {}
     },
     {
+        "label": "FxCosts",
+        "kind": 6,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "class FxCosts:\n    max_spread_pips: Dict[str, float]\n    slippage_pips_min: float\n    slippage_pips_spread_mult: float\n    spread_fallback_pips: Dict[str, float]\n@dataclass(frozen=True)\nclass FxSession:\n    timezone: str\n    start: time\n    end: time",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "FxSession",
+        "kind": 6,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "class FxSession:\n    timezone: str\n    start: time\n    end: time\n    force_flat_at: time\n    reset_at: time\n@dataclass(frozen=True)\nclass FxLimits:\n    max_open_positions: int\n    max_entries_per_day: int",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "FxLimits",
+        "kind": 6,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "class FxLimits:\n    max_open_positions: int\n    max_entries_per_day: int\n@dataclass(frozen=True)\nclass FxRisk:\n    risk_per_trade_pct: float\n    daily_loss_stop_pct: float\n    atr_stop_mult: float\n    rr_take_profit: float\n@dataclass(frozen=True)",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "FxRisk",
+        "kind": 6,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "class FxRisk:\n    risk_per_trade_pct: float\n    daily_loss_stop_pct: float\n    atr_stop_mult: float\n    rr_take_profit: float\n@dataclass(frozen=True)\nclass FxConfidence:\n    low_lt: float\n    high_gte: float\n    profit_stop_pct_by_band: Dict[str, float]",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "FxConfidence",
+        "kind": 6,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "class FxConfidence:\n    low_lt: float\n    high_gte: float\n    profit_stop_pct_by_band: Dict[str, float]\n@dataclass(frozen=True)\nclass FxPolicy:\n    enabled: bool\n    tier: int\n    instruments: Tuple[str, ...]\n    granularity: str",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "FxPolicy",
+        "kind": 6,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "class FxPolicy:\n    enabled: bool\n    tier: int\n    instruments: Tuple[str, ...]\n    granularity: str\n    horizon_bars: int\n    session: FxSession\n    limits: FxLimits\n    risk: FxRisk\n    costs: FxCosts",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "FxDailyState",
+        "kind": 6,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "class FxDailyState:\n    date: str  # YYYY-MM-DD in policy timezone (session date)\n    start_nav: Optional[float] = None\n    start_balance: Optional[float] = None\n    entries_today: int = 0\n    disabled_reason: Optional[str] = None\n    disabled_kind: Optional[str] = None  # \"loss\" | \"profit\" | None\n    last_updated_at: Optional[str] = None\ndef load_fx_policy(cfg: Dict[str, Any]) -> FxPolicy:\n    fx = dict((cfg or {}).get(\"fx\") or {})",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "load_fx_policy",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def load_fx_policy(cfg: Dict[str, Any]) -> FxPolicy:\n    fx = dict((cfg or {}).get(\"fx\") or {})\n    enabled = bool(fx.get(\"enabled\", True))\n    tier = int(fx.get(\"tier\", 1))\n    instruments = tuple(str(x) for x in (fx.get(\"instruments\") or [\"EUR_USD\"]))\n    granularity = str(fx.get(\"granularity\", \"M5\"))\n    horizon_bars = int(fx.get(\"horizon_bars\", 1))\n    session_cfg = dict(fx.get(\"session\") or {})\n    tz = str(fx.get(\"timezone\") or session_cfg.get(\"timezone\") or \"America/New_York\")\n    session = FxSession(",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "now_in_tz",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def now_in_tz(tz_name: str, *, now: Optional[datetime] = None) -> datetime:\n    base = now or datetime.utcnow().replace(tzinfo=_tzinfo(\"UTC\"))\n    return base.astimezone(_tzinfo(tz_name))\ndef session_date_str(policy: FxPolicy, *, now: Optional[datetime] = None) -> str:\n    \"\"\"Return the *session date* (YYYY-MM-DD) in the policy timezone.\n    Session date respects `policy.session.reset_at`: times before reset are\n    attributed to the previous session day.\n    \"\"\"\n    dt = now_in_tz(policy.session.timezone, now=now)\n    t = dt.timetz().replace(tzinfo=None)",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "session_date_str",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def session_date_str(policy: FxPolicy, *, now: Optional[datetime] = None) -> str:\n    \"\"\"Return the *session date* (YYYY-MM-DD) in the policy timezone.\n    Session date respects `policy.session.reset_at`: times before reset are\n    attributed to the previous session day.\n    \"\"\"\n    dt = now_in_tz(policy.session.timezone, now=now)\n    t = dt.timetz().replace(tzinfo=None)\n    if t < policy.session.reset_at:\n        return (dt.date() - timedelta(days=1)).isoformat()\n    return dt.date().isoformat()",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "within_time_window",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def within_time_window(dt: datetime, start: time, end: time) -> bool:\n    # Only same-day windows are supported (conservative, matches day trading).\n    t = dt.timetz().replace(tzinfo=None)\n    return (t >= start) and (t <= end)\ndef should_force_flat(policy: FxPolicy, *, now: Optional[datetime] = None) -> bool:\n    dt = now_in_tz(policy.session.timezone, now=now)\n    t = dt.timetz().replace(tzinfo=None)\n    return t >= policy.session.force_flat_at\ndef can_open_new_trade(policy: FxPolicy, state: FxDailyState, *, now: Optional[datetime] = None) -> Tuple[bool, str]:\n    if not policy.enabled:",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "should_force_flat",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def should_force_flat(policy: FxPolicy, *, now: Optional[datetime] = None) -> bool:\n    dt = now_in_tz(policy.session.timezone, now=now)\n    t = dt.timetz().replace(tzinfo=None)\n    return t >= policy.session.force_flat_at\ndef can_open_new_trade(policy: FxPolicy, state: FxDailyState, *, now: Optional[datetime] = None) -> Tuple[bool, str]:\n    if not policy.enabled:\n        return False, \"FX disabled\"\n    dt = now_in_tz(policy.session.timezone, now=now)\n    if state.disabled_reason:\n        return False, f\"Trading disabled: {state.disabled_reason}\"",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "can_open_new_trade",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def can_open_new_trade(policy: FxPolicy, state: FxDailyState, *, now: Optional[datetime] = None) -> Tuple[bool, str]:\n    if not policy.enabled:\n        return False, \"FX disabled\"\n    dt = now_in_tz(policy.session.timezone, now=now)\n    if state.disabled_reason:\n        return False, f\"Trading disabled: {state.disabled_reason}\"\n    if not within_time_window(dt, policy.session.start, policy.session.end):\n        return False, \"Outside session window\"\n    if should_force_flat(policy, now=now):\n        return False, \"Past force-flat cutoff\"",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "confidence_band",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def confidence_band(policy: FxPolicy, confidence: float) -> str:\n    c = float(max(0.0, min(1.0, confidence)))\n    if c < policy.confidence.low_lt:\n        return \"low\"\n    if c >= policy.confidence.high_gte:\n        return \"high\"\n    return \"medium\"\ndef profit_stop_pct_for_band(policy: FxPolicy, band: str) -> Optional[float]:\n    if band == \"high\":\n        return policy.confidence.profit_stop_pct_by_band.get(\"high\")",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "profit_stop_pct_for_band",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def profit_stop_pct_for_band(policy: FxPolicy, band: str) -> Optional[float]:\n    if band == \"high\":\n        return policy.confidence.profit_stop_pct_by_band.get(\"high\")\n    if band == \"medium\":\n        return policy.confidence.profit_stop_pct_by_band.get(\"medium\")\n    return None\ndef state_path(cfg: Dict[str, Any], policy: FxPolicy, *, date_str: str) -> Path:\n    log_dir = (\n        cfg.get(\"LOG_DIR\")\n        or cfg.get(\"paths\", {}).get(\"log_dir\")",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "state_path",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def state_path(cfg: Dict[str, Any], policy: FxPolicy, *, date_str: str) -> Path:\n    log_dir = (\n        cfg.get(\"LOG_DIR\")\n        or cfg.get(\"paths\", {}).get(\"log_dir\")\n        or cfg.get(\"LOG_DIR\")\n        or \"trained_data/logs\"\n    )\n    p = Path(log_dir)\n    p.mkdir(parents=True, exist_ok=True)\n    return p / f\"fx_state_{date_str}.json\"",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "load_state",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def load_state(cfg: Dict[str, Any], policy: FxPolicy, *, now: Optional[datetime] = None) -> FxDailyState:\n    date_str = session_date_str(policy, now=now)\n    path = state_path(cfg, policy, date_str=date_str)\n    if not path.exists():\n        return FxDailyState(date=date_str)\n    try:\n        payload = json.loads(path.read_text())\n    except Exception:\n        return FxDailyState(date=date_str)\n    st = FxDailyState(date=str(payload.get(\"date\") or date_str))",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "save_state",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def save_state(cfg: Dict[str, Any], policy: FxPolicy, state: FxDailyState) -> Path:\n    path = state_path(cfg, policy, date_str=state.date)\n    payload = {\n        \"date\": state.date,\n        \"start_nav\": state.start_nav,\n        \"start_balance\": state.start_balance,\n        \"entries_today\": state.entries_today,\n        \"disabled_reason\": state.disabled_reason,\n        \"disabled_kind\": state.disabled_kind,\n        \"last_updated_at\": state.last_updated_at,",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "update_state_from_account_summary",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def update_state_from_account_summary(\n    policy: FxPolicy,\n    state: FxDailyState,\n    account_summary: Dict[str, Any],\n    *,\n    now: Optional[datetime] = None,\n) -> Dict[str, Optional[float]]:\n    dt = now_in_tz(policy.session.timezone, now=now)\n    state.last_updated_at = dt.isoformat()\n    acct = (account_summary or {}).get(\"account\") or {}",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
+        "label": "check_daily_stops",
+        "kind": 2,
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "peekOfCode": "def check_daily_stops(\n    policy: FxPolicy,\n    *,\n    drawdown_pct: Optional[float],\n    realized_pct: Optional[float],\n    confidence_band: str,\n) -> Tuple[bool, Optional[str], Optional[str]]:\n    # Loss stop triggers on equity (realized + unrealized).\n    if drawdown_pct is not None and drawdown_pct <= -abs(policy.risk.daily_loss_stop_pct):\n        return True, f\"Daily loss stop hit ({drawdown_pct:.1%})\", \"loss\"",
+        "detail": "fx_guardrails",
+        "documentation": {}
+    },
+    {
         "label": "RiskRules",
         "kind": 6,
         "importPath": "fx_paper",
@@ -4392,7 +4801,7 @@
         "kind": 2,
         "importPath": "fx_paper",
         "description": "fx_paper",
-        "peekOfCode": "def candles_to_ohlcv_df(oanda_candles_response: Any) -> pd.DataFrame:\n    candles = oanda_candles_response.get(\"candles\", [])\n    if not candles:\n        raise ValueError(\"No candles in OANDA response\")\n    rows: list[dict[str, Any]] = []\n    for c in candles:\n        if not c.get(\"complete\", True):\n            continue\n        mid = c.get(\"mid\") or {}\n        rows.append(",
+        "peekOfCode": "def candles_to_ohlcv_df(oanda_candles_response: Any) -> pd.DataFrame:\n    candles = oanda_candles_response.get(\"candles\", [])\n    if not candles:\n        raise ValueError(\"No candles in OANDA response\")\n    rows: list[dict[str, Any]] = []\n    for c in candles:\n        row = _parse_oanda_candle_row(c)\n        if row is not None:\n            rows.append(row)\n    df = pd.DataFrame(rows)",
         "detail": "fx_paper",
         "documentation": {}
     },
@@ -4410,7 +4819,25 @@
         "kind": 2,
         "importPath": "fx_paper",
         "description": "fx_paper",
-        "peekOfCode": "def pip_size(instrument: str) -> float:\n    # Simple default: JPY pairs use 0.01, most others 0.0001\n    return 0.01 if instrument.endswith(\"_JPY\") else 0.0001\n@dataclass(frozen=True)\nclass RiskRules:\n    equity: float\n    risk_per_trade_pct: float = 0.005  # 0.5%\n    max_daily_loss_pct: float = 0.02\n    max_open_positions: int = 1\n    atr_stop_mult: float = 1.5",
+        "peekOfCode": "def pip_size(instrument: str) -> float:\n    # Simple default: JPY pairs use 0.01, most others 0.0001\n    return 0.01 if instrument.endswith(\"_JPY\") else 0.0001\ndef spread_pips_from_df(df: pd.DataFrame, instrument: str) -> Optional[float]:\n    \"\"\"Compute spread (ask - bid) in pips from the last candle, if available.\"\"\"\n    if \"bid_close\" not in df.columns or \"ask_close\" not in df.columns:\n        return None\n    bid = float(df[\"bid_close\"].iloc[-1])\n    ask = float(df[\"ask_close\"].iloc[-1])\n    if not np.isfinite(bid) or not np.isfinite(ask) or bid <= 0 or ask <= 0:",
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "spread_pips_from_df",
+        "kind": 2,
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "peekOfCode": "def spread_pips_from_df(df: pd.DataFrame, instrument: str) -> Optional[float]:\n    \"\"\"Compute spread (ask - bid) in pips from the last candle, if available.\"\"\"\n    if \"bid_close\" not in df.columns or \"ask_close\" not in df.columns:\n        return None\n    bid = float(df[\"bid_close\"].iloc[-1])\n    ask = float(df[\"ask_close\"].iloc[-1])\n    if not np.isfinite(bid) or not np.isfinite(ask) or bid <= 0 or ask <= 0:\n        return None\n    return (ask - bid) / pip_size(instrument)\ndef conservative_slippage_pips(*, spread_pips: float, min_pips: float, spread_mult: float) -> float:",
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "conservative_slippage_pips",
+        "kind": 2,
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "peekOfCode": "def conservative_slippage_pips(*, spread_pips: float, min_pips: float, spread_mult: float) -> float:\n    \"\"\"Conservative slippage buffer (pips) applied against you.\"\"\"\n    return float(max(float(min_pips), float(spread_mult) * float(spread_pips)))\n@dataclass(frozen=True)\nclass RiskRules:\n    equity: float\n    risk_per_trade_pct: float = 0.005  # 0.5%\n    max_daily_loss_pct: float = 0.02\n    max_open_positions: int = 1\n    atr_stop_mult: float = 1.5",
         "detail": "fx_paper",
         "documentation": {}
     },
@@ -4437,7 +4864,7 @@
         "kind": 5,
         "importPath": "fx_paper",
         "description": "fx_paper",
-        "peekOfCode": "Signal = Literal[\"buy\", \"sell\", \"hold\"]\ndef candles_to_ohlcv_df(oanda_candles_response: Any) -> pd.DataFrame:\n    candles = oanda_candles_response.get(\"candles\", [])\n    if not candles:\n        raise ValueError(\"No candles in OANDA response\")\n    rows: list[dict[str, Any]] = []\n    for c in candles:\n        if not c.get(\"complete\", True):\n            continue\n        mid = c.get(\"mid\") or {}",
+        "peekOfCode": "Signal = Literal[\"buy\", \"sell\", \"hold\"]\ndef _safe_float(value: Any) -> Optional[float]:\n    try:\n        if value is None:\n            return None\n        return float(value)\n    except Exception:\n        return None\ndef _extract_ohlc(d: dict[str, Any]) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:\n    return (",
         "detail": "fx_paper",
         "documentation": {}
     },
@@ -4464,7 +4891,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def build_integrated_feature_tensors(\n    market_data_df, config: Dict[str, Any], *, allow_pad: bool = False\n) -> Dict[str, torch.Tensor]:\n    \"\"\"Build feature tensors for ML/MT/MR using OHLCV + SLM indicators.\"\"\"\n    import pandas as pd\n    import numpy as np\n    df = _normalize_market_dataframe(market_data_df)\n    seq_len = int(\n        config.get(\"data\", {}).get(\"sequence_length\")\n        or config.get(\"sequence_length\")",
+        "peekOfCode": "def build_integrated_feature_tensors(\n    market_data_df, config: Dict[str, Any], *, allow_pad: bool = False\n) -> Dict[str, Any]:\n    \"\"\"Build feature tensors for ML/MT/MR using OHLCV + SLM indicators.\"\"\"\n    import pandas as pd\n    import numpy as np\n    df = _normalize_market_dataframe(market_data_df)\n    seq_len = int(\n        config.get(\"data\", {}).get(\"sequence_length\")\n        or config.get(\"sequence_length\")",
         "detail": "main",
         "documentation": {}
     },
@@ -4581,7 +5008,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def run_ai_assistant(config_path: str) -> None:\n    config = load_config(config_path)  # removed Path() wrapper for proper string input\n    # Instantiate the AI assistant using the class from ml_engine\n    assistant_instance = ai_assistant(config)\n    console.print(\"[bold blue]Launching AI Assistant...[/bold blue]\")\n    query = input(\"Enter your query: \")\n    response = assistant_instance.process_query(query)\n    console.print(f\"[bold green]Response:[/bold green] {response}\")\n    # Optionally use ML Engine's AI assistant for simulation tasks\n    engine_instance = EnhancedMLEngine(config)",
+        "peekOfCode": "def run_ai_assistant(config_path: str) -> None:\n    config = load_config(config_path)  # removed Path() wrapper for proper string input\n    # Instantiate the AI assistant using the class from ml_engine\n    from ai_assistant import ai_assistant\n    assistant_instance = ai_assistant(config)\n    console.print(\"[bold blue]Launching AI Assistant...[/bold blue]\")\n    query = input(\"Enter your query: \")\n    response = assistant_instance.process_query(query)\n    console.print(f\"[bold green]Response:[/bold green] {response}\")\n    # Optionally use ML Engine's AI assistant for simulation tasks",
         "detail": "main",
         "documentation": {}
     },
@@ -4609,6 +5036,15 @@
         "importPath": "main",
         "description": "main",
         "peekOfCode": "def talk_unified(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    csv_path: str | None = None,\n    ticker: str | None = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n) -> None:\n    \"\"\"Interactive REPL that runs the unified neural engine on-demand.\"\"\"",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "buddy",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"EUR_USD\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = False,\n) -> None:\n    \"\"\"Buddy: interactive offline REPL + OANDA demo/practice source.\"\"\"",
         "detail": "main",
         "documentation": {}
     },
@@ -4910,6 +5346,15 @@
         "documentation": {}
     },
     {
+        "label": "safe_torch_load",
+        "kind": 2,
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "peekOfCode": "def safe_torch_load(checkpoint_path: str, *, map_location: str):\n    \"\"\"Load project checkpoints safely on PyTorch>=2.6.\n    PyTorch changed `torch.load()` default `weights_only=True`, which uses a\n    restricted unpickler. Our checkpoints may include sklearn scalers inside\n    metadata; we allowlist the known scaler classes used by this project.\n    \"\"\"\n    import inspect\n    def _torch_load(*, weights_only: Optional[bool]):\n        kwargs: Dict[str, Any] = {\"map_location\": map_location}\n        try:",
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
         "label": "NeuralNetworkIntegrator",
         "kind": 6,
         "importPath": "neural_network_integrator_enhanced",
@@ -4946,6 +5391,15 @@
         "documentation": {}
     },
     {
+        "label": "OandaApiError",
+        "kind": 6,
+        "importPath": "oanda_practice",
+        "description": "oanda_practice",
+        "peekOfCode": "class OandaApiError(RuntimeError):\n    def __init__(\n        self,\n        status_code: int,\n        message: str,\n        *,\n        error_message: Optional[str] = None,\n        reject_reason: Optional[str] = None,\n        response_text: Optional[str] = None,\n    ):",
+        "detail": "oanda_practice",
+        "documentation": {}
+    },
+    {
         "label": "OandaPracticeConfig",
         "kind": 6,
         "importPath": "oanda_practice",
@@ -4959,7 +5413,7 @@
         "kind": 6,
         "importPath": "oanda_practice",
         "description": "oanda_practice",
-        "peekOfCode": "class OandaPracticeClient:\n    def __init__(self, config: OandaPracticeConfig):\n        self._config = config\n        self._session = requests.Session()\n        self._session.headers.update(\n            {\n                \"Authorization\": f\"Bearer {config.api_token}\",\n                \"Content-Type\": \"application/json\",\n                \"Accept\": \"application/json\",\n            }",
+        "peekOfCode": "class OandaPracticeClient:\n    def __init__(self, config: OandaPracticeConfig):\n        self._config = config\n        self._session = requests.Session()\n        self._session.headers.update(\n            {\n                \"Authorization\": f\"Bearer {config.api_token}\",\n                \"Content-Type\": \"application/json\",\n                \"Accept\": \"application/json\",\n                \"User-Agent\": \"ml_engine-oanda-practice/1.0\",",
         "detail": "oanda_practice",
         "documentation": {}
     },
@@ -4968,7 +5422,7 @@
         "kind": 5,
         "importPath": "oanda_practice",
         "description": "oanda_practice",
-        "peekOfCode": "PRACTICE_API_URL = \"https://api-fxpractice.oanda.com/v3\"\n@dataclass(frozen=True)\nclass OandaPracticeConfig:\n    api_token: str\n    account_id: str\n    timeout_seconds: int = 15\nclass OandaPracticeClient:\n    def __init__(self, config: OandaPracticeConfig):\n        self._config = config\n        self._session = requests.Session()",
+        "peekOfCode": "PRACTICE_API_URL = \"https://api-fxpractice.oanda.com/v3\"\nclass OandaApiError(RuntimeError):\n    def __init__(\n        self,\n        status_code: int,\n        message: str,\n        *,\n        error_message: Optional[str] = None,\n        reject_reason: Optional[str] = None,\n        response_text: Optional[str] = None,",
         "detail": "oanda_practice",
         "documentation": {}
     },
@@ -5117,11 +5571,20 @@
         "documentation": {}
     },
     {
+        "label": "fx_confidence_v1",
+        "kind": 2,
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "peekOfCode": "def fx_confidence_v1(\n    *,\n    signal: str,\n    price: float,\n    atr: float,\n    spread_pips: float,\n    max_spread_pips: float,\n) -> Dict[str, Any]:\n    \"\"\"Compute a conservative scalar confidence for FX Tier-1 gating.\n    This is intentionally *fail-closed*: if any required inputs are missing or",
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
         "label": "logger",
         "kind": 5,
         "importPath": "reasoning_enhanced",
         "description": "reasoning_enhanced",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ReasoningEngine:\n    \"\"\"\n    Enhanced reasoning engine for stock market prediction with improved explainability,\n    uncertainty quantification, and decision support.\n    \"\"\"\n    def __init__(self, config: Dict[str, Any] = None):\n        \"\"\"\n        Initialize the reasoning engine.\n        Args:",
+        "peekOfCode": "logger = logging.getLogger(__name__)\ndef fx_confidence_v1(\n    *,\n    signal: str,\n    price: float,\n    atr: float,\n    spread_pips: float,\n    max_spread_pips: float,\n) -> Dict[str, Any]:\n    \"\"\"Compute a conservative scalar confidence for FX Tier-1 gating.",
         "detail": "reasoning_enhanced",
         "documentation": {}
     },
@@ -5387,11 +5850,20 @@
         "documentation": {}
     },
     {
+        "label": "select_latest_checkpoint",
+        "kind": 2,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "def select_latest_checkpoint(model_dir: Path) -> Optional[Path]:\n    \"\"\"Pick the newest unified checkpoint in a directory.\n    Prefer filenames containing 'unified' to avoid accidentally loading unrelated models.\n    \"\"\"\n    if not model_dir.exists() or not model_dir.is_dir():\n        return None\n    candidates = [p for p in model_dir.glob(\"*.pth\") if p.is_file()]\n    if not candidates:\n        return None\n    def _mtime(p: Path) -> float:",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
         "label": "run_unified_talk",
         "kind": 2,
         "importPath": "unified_talk",
         "description": "unified_talk",
-        "peekOfCode": "def run_unified_talk(\n    config_path: str,\n    *,\n    checkpoint_path: Optional[str] = None,\n    csv_path: Optional[str] = None,\n    ticker: Optional[str] = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n) -> None:\n    ctx = _load_context(config_path, checkpoint_path=checkpoint_path)",
+        "peekOfCode": "def run_unified_talk(\n    config_path: str,\n    *,\n    checkpoint_path: Optional[str] = None,\n    csv_path: Optional[str] = None,\n    ticker: Optional[str] = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n    oanda: bool = False,\n    oanda_instrument: str = \"EUR_USD\",",
         "detail": "unified_talk",
         "documentation": {}
     },
