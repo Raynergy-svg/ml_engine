@@ -10,11 +10,13 @@ A command-line interface for the ML trading engine that handles:
 - Real-time monitoring
 """
 
+from __future__ import annotations
+
 import sys
 import time
 import logging
 import argparse
-from typing import Dict, Any
+from typing import Dict, Any, TYPE_CHECKING
 
 from pathlib import Path
 
@@ -35,15 +37,10 @@ from rich.live import Live
 from rich.layout import Layout
 from rich.table import Table
 from rich.panel import Panel
-
-from ml_engine_enhanced import EnhancedMLEngine
-from neural_network_integrator_enhanced import NeuralNetworkIntegrator
-from neural_engine_unified import UnifiedNeuralEngine
-from reasoning_enhanced import ReasoningEngine
-from unified_multitask_training import train_unified_multitask
-from unified_chat import run_unified_chat
-from unified_talk import run_unified_talk
 from utils import setup_logging, load_config
+
+if TYPE_CHECKING:
+    from neural_network_integrator_enhanced import NeuralNetworkIntegrator
 
 # Constants
 DEFAULT_MESSAGE_FORMAT = "Epoch {epoch} completed"
@@ -379,6 +376,10 @@ def _fx_execution_guard_price_bound(_policy: Any, client: Any, *, instrument: st
 
 def _build_integrated_engines(config: Dict[str, Any]) -> NeuralNetworkIntegrator:
     """Create and wire the unified neural engine into the integrator."""
+    from neural_network_integrator_enhanced import NeuralNetworkIntegrator
+    from neural_engine_unified import UnifiedNeuralEngine
+    from reasoning_enhanced import ReasoningEngine
+
     integrator_config = {
         "device": config.get("device", "cpu"),
         "use_attention": False,
@@ -957,7 +958,9 @@ def train_model(config_path: str, choose_csv: bool = False) -> None:
             config["model"] = {}
         config["model"]["input_size"] = input_size
         console.print(f"[cyan]Model input size set to: {input_size}[/cyan]")
-        
+
+        from ml_engine_enhanced import EnhancedMLEngine
+
         engine = EnhancedMLEngine(config)
         
         # Get epochs from config (not nested in 'training')
@@ -997,6 +1000,8 @@ def evaluate_model(config_path: str) -> None:
     try:
         console.print("[bold blue]Loading configuration and model...[/bold blue]")
         config = load_config(config_path)
+        from ml_engine_enhanced import EnhancedMLEngine
+
         engine = EnhancedMLEngine(config)
 
         api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting evaluation"]
@@ -1053,6 +1058,8 @@ def openai_tune(config_path: str) -> None:
     openai_integration.set_openai_credentials(current_config)
 
     # Gather current metrics from the engine
+    from ml_engine_enhanced import EnhancedMLEngine
+
     engine = EnhancedMLEngine(current_config)
     train_loss = (
         engine.train_losses[-1]
@@ -1102,6 +1109,8 @@ def predict_price(config_path: str) -> None:
     try:
         console.print("[bold blue]Loading model for prediction...[/bold blue]")
         config = load_config(config_path)
+        from ml_engine_enhanced import EnhancedMLEngine
+
         engine = EnhancedMLEngine(config)
         
         console.print("[bold green]Generating prediction...[/bold green]")
@@ -1125,6 +1134,8 @@ def realtime_loop(config_path: str) -> None:
     Run the ML engine in a real-time loop for continuous inference.
     """
     config = load_config(config_path)
+    from ml_engine_enhanced import EnhancedMLEngine
+
     engine = EnhancedMLEngine(config)
     engine.run_realtime_loop()
     console.print("[bold yellow]Realtime Loop command executed[/bold yellow]")
@@ -1135,6 +1146,8 @@ def tune_model(config_path: str) -> None:
     Perform advanced hyperparameter tuning using ML engine methods.
     """
     config = load_config(config_path)
+    from ml_engine_enhanced import EnhancedMLEngine
+
     engine = EnhancedMLEngine(config)
     engine.tune_hyperparameters()
     console.print("[bold yellow]Tune Model command executed[/bold yellow]")
@@ -1145,6 +1158,8 @@ def profile_pipeline(config_path: str) -> None:
     Profile the ML pipeline for bottlenecks.
     """
     config = load_config(config_path)
+    from ml_engine_enhanced import EnhancedMLEngine
+
     engine = EnhancedMLEngine(config)
     engine.profile_pipeline()
     console.print("[bold yellow]Profile Pipeline command executed[/bold yellow]")
@@ -1162,6 +1177,8 @@ def run_ai_assistant(config_path: str) -> None:
     console.print(f"[bold green]Response:[/bold green] {response}")
 
     # Optionally use ML Engine's AI assistant for simulation tasks
+    from ml_engine_enhanced import EnhancedMLEngine
+
     engine_instance = EnhancedMLEngine(config)
     simulation_output = engine_instance.ai_assistant.process_query("simulate")
     console.print(
@@ -1171,6 +1188,8 @@ def run_ai_assistant(config_path: str) -> None:
 
 def train_unified(config_path: str, csv_path: str | None = None) -> None:
     """Train the unified multi-head model and print head-health insights."""
+    from unified_multitask_training import train_unified_multitask
+
     result = train_unified_multitask(config_path, csv_path=csv_path)
     console.print(
         f"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}"
@@ -1179,6 +1198,8 @@ def train_unified(config_path: str, csv_path: str | None = None) -> None:
 
 def chat_unified(config_path: str, metrics_path: str | None = None) -> None:
     """Interactive chat over the latest unified head metrics."""
+    from unified_chat import run_unified_chat
+
     run_unified_chat(config_path, metrics_path=metrics_path)
 
 
@@ -1194,6 +1215,8 @@ def talk_unified(
 ) -> None:
     """Interactive REPL that runs the unified neural engine on-demand."""
     _configure_predict_output(verbose)
+    from unified_talk import run_unified_talk
+
     run_unified_talk(
         config_path,
         checkpoint_path=checkpoint_path,
@@ -1217,6 +1240,8 @@ def buddy(
 ) -> None:
     """Buddy: interactive offline REPL + OANDA demo/practice source."""
     _configure_predict_output(verbose)
+    from unified_talk import run_unified_talk
+
     run_unified_talk(
         config_path,
         checkpoint_path=checkpoint_path,

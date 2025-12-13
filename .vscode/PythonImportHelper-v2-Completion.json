@@ -532,6 +532,14 @@
         "documentation": {}
     },
     {
+        "label": "TYPE_CHECKING",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Callable",
         "importPath": "typing",
         "description": "typing",
@@ -1348,6 +1356,14 @@
         "documentation": {}
     },
     {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
         "label": "argparse",
         "kind": 6,
         "isExtraImport": true,
@@ -1960,14 +1976,6 @@
         "documentation": {}
     },
     {
-        "label": "run_unified_talk",
-        "importPath": "unified_talk",
-        "description": "unified_talk",
-        "isExtraImport": true,
-        "detail": "unified_talk",
-        "documentation": {}
-    },
-    {
         "label": "tempfile",
         "kind": 6,
         "isExtraImport": true,
@@ -2164,14 +2172,6 @@
         "documentation": {}
     },
     {
-        "label": "EnhancedMLEngine",
-        "importPath": "ml_engine_enhanced",
-        "description": "ml_engine_enhanced",
-        "isExtraImport": true,
-        "detail": "ml_engine_enhanced",
-        "documentation": {}
-    },
-    {
         "label": "MemoryManager",
         "importPath": "memory_manager_enhanced",
         "description": "memory_manager_enhanced",
@@ -2245,14 +2245,6 @@
     },
     {
         "label": "UncertaintyEstimator",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "ReasoningEngine",
         "importPath": "reasoning_enhanced",
         "description": "reasoning_enhanced",
         "isExtraImport": true,
@@ -2455,22 +2447,6 @@
         "description": "neural_network_integrator_enhanced",
         "isExtraImport": true,
         "detail": "neural_network_integrator_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "NeuralNetworkIntegrator",
-        "importPath": "neural_network_integrator_enhanced",
-        "description": "neural_network_integrator_enhanced",
-        "isExtraImport": true,
-        "detail": "neural_network_integrator_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "UnifiedNeuralEngine",
-        "importPath": "neural_engine_unified",
-        "description": "neural_engine_unified",
-        "isExtraImport": true,
-        "detail": "neural_engine_unified",
         "documentation": {}
     },
     {
@@ -2874,22 +2850,6 @@
         "description": "rich.panel",
         "isExtraImport": true,
         "detail": "rich.panel",
-        "documentation": {}
-    },
-    {
-        "label": "train_unified_multitask",
-        "importPath": "unified_multitask_training",
-        "description": "unified_multitask_training",
-        "isExtraImport": true,
-        "detail": "unified_multitask_training",
-        "documentation": {}
-    },
-    {
-        "label": "run_unified_chat",
-        "importPath": "unified_chat",
-        "description": "unified_chat",
-        "isExtraImport": true,
-        "detail": "unified_chat",
         "documentation": {}
     },
     {
@@ -5035,7 +4995,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def realtime_loop(config_path: str) -> None:\n    \"\"\"\n    Run the ML engine in a real-time loop for continuous inference.\n    \"\"\"\n    config = load_config(config_path)\n    engine = EnhancedMLEngine(config)\n    engine.run_realtime_loop()\n    console.print(\"[bold yellow]Realtime Loop command executed[/bold yellow]\")\ndef tune_model(config_path: str) -> None:\n    \"\"\"",
+        "peekOfCode": "def realtime_loop(config_path: str) -> None:\n    \"\"\"\n    Run the ML engine in a real-time loop for continuous inference.\n    \"\"\"\n    config = load_config(config_path)\n    from ml_engine_enhanced import EnhancedMLEngine\n    engine = EnhancedMLEngine(config)\n    engine.run_realtime_loop()\n    console.print(\"[bold yellow]Realtime Loop command executed[/bold yellow]\")\ndef tune_model(config_path: str) -> None:",
         "detail": "main",
         "documentation": {}
     },
@@ -5044,7 +5004,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def tune_model(config_path: str) -> None:\n    \"\"\"\n    Perform advanced hyperparameter tuning using ML engine methods.\n    \"\"\"\n    config = load_config(config_path)\n    engine = EnhancedMLEngine(config)\n    engine.tune_hyperparameters()\n    console.print(\"[bold yellow]Tune Model command executed[/bold yellow]\")\ndef profile_pipeline(config_path: str) -> None:\n    \"\"\"",
+        "peekOfCode": "def tune_model(config_path: str) -> None:\n    \"\"\"\n    Perform advanced hyperparameter tuning using ML engine methods.\n    \"\"\"\n    config = load_config(config_path)\n    from ml_engine_enhanced import EnhancedMLEngine\n    engine = EnhancedMLEngine(config)\n    engine.tune_hyperparameters()\n    console.print(\"[bold yellow]Tune Model command executed[/bold yellow]\")\ndef profile_pipeline(config_path: str) -> None:",
         "detail": "main",
         "documentation": {}
     },
@@ -5053,7 +5013,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def profile_pipeline(config_path: str) -> None:\n    \"\"\"\n    Profile the ML pipeline for bottlenecks.\n    \"\"\"\n    config = load_config(config_path)\n    engine = EnhancedMLEngine(config)\n    engine.profile_pipeline()\n    console.print(\"[bold yellow]Profile Pipeline command executed[/bold yellow]\")\ndef run_ai_assistant(config_path: str) -> None:\n    config = load_config(config_path)  # removed Path() wrapper for proper string input",
+        "peekOfCode": "def profile_pipeline(config_path: str) -> None:\n    \"\"\"\n    Profile the ML pipeline for bottlenecks.\n    \"\"\"\n    config = load_config(config_path)\n    from ml_engine_enhanced import EnhancedMLEngine\n    engine = EnhancedMLEngine(config)\n    engine.profile_pipeline()\n    console.print(\"[bold yellow]Profile Pipeline command executed[/bold yellow]\")\ndef run_ai_assistant(config_path: str) -> None:",
         "detail": "main",
         "documentation": {}
     },
@@ -5071,7 +5031,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def train_unified(config_path: str, csv_path: str | None = None) -> None:\n    \"\"\"Train the unified multi-head model and print head-health insights.\"\"\"\n    result = train_unified_multitask(config_path, csv_path=csv_path)\n    console.print(\n        f\"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}\"\n    )\ndef chat_unified(config_path: str, metrics_path: str | None = None) -> None:\n    \"\"\"Interactive chat over the latest unified head metrics.\"\"\"\n    run_unified_chat(config_path, metrics_path=metrics_path)\ndef talk_unified(",
+        "peekOfCode": "def train_unified(config_path: str, csv_path: str | None = None) -> None:\n    \"\"\"Train the unified multi-head model and print head-health insights.\"\"\"\n    from unified_multitask_training import train_unified_multitask\n    result = train_unified_multitask(config_path, csv_path=csv_path)\n    console.print(\n        f\"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}\"\n    )\ndef chat_unified(config_path: str, metrics_path: str | None = None) -> None:\n    \"\"\"Interactive chat over the latest unified head metrics.\"\"\"\n    from unified_chat import run_unified_chat",
         "detail": "main",
         "documentation": {}
     },
@@ -5080,7 +5040,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def chat_unified(config_path: str, metrics_path: str | None = None) -> None:\n    \"\"\"Interactive chat over the latest unified head metrics.\"\"\"\n    run_unified_chat(config_path, metrics_path=metrics_path)\ndef talk_unified(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    csv_path: str | None = None,\n    ticker: str | None = None,\n    period: str = \"5d\",",
+        "peekOfCode": "def chat_unified(config_path: str, metrics_path: str | None = None) -> None:\n    \"\"\"Interactive chat over the latest unified head metrics.\"\"\"\n    from unified_chat import run_unified_chat\n    run_unified_chat(config_path, metrics_path=metrics_path)\ndef talk_unified(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    csv_path: str | None = None,\n    ticker: str | None = None,",
         "detail": "main",
         "documentation": {}
     },
