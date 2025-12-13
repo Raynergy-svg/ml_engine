@@ -1997,3 +1997,31 @@ OSError: Missing OANDA env vars. Set OANDA_API_TOKEN (or OANDA_API_KEY) and OAND
 2025-12-12 23:55:19 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
 2025-12-12 23:55:38 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
 2025-12-12 23:55:38 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-13 00:12:13 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-13 00:12:13 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-13 00:13:04 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:55] - NeuralNetworkIntegrator initialized on cpu
+2025-12-13 00:13:04 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-13 00:13:04 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:118] - Unified engine set for integration
+2025-12-13 00:13:04 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp0_2s0h3u/text.csv
+2025-12-13 00:13:04 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpjc4a3g9i/text.csv
+2025-12-13 00:13:04 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp0jibxbvw/empty.yaml
+2025-12-13 00:13:04 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp0jibxbvw/empty.yaml
+2025-12-13 00:13:04 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpqjfws81c/invalid.yaml", line 1, column 14
+2025-12-13 00:13:04 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-13 00:13:04 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-13 00:13:04 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp_xwnpwi7/nonexistent.yaml
+2025-12-13 00:13:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpjb1dfp2u/test_config.yaml
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-13 00:13:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpp4zlddxc/test_config.yaml
+2025-12-13 00:13:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpx_3efnd9/test_config.yaml
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-13 00:13:04 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-13 00:13:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp_xfrjazg/test_config.yaml
