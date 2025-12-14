@@ -5146,7 +5146,7 @@
         "kind": 2,
         "importPath": "enhanced_training",
         "description": "enhanced_training",
-        "peekOfCode": "def augment_sequences(x: np.ndarray, noise_std: float = 0.01, \n                      time_shift_range: int = 2) -> np.ndarray:\n    \"\"\"Apply data augmentation to sequences.\n    Techniques:\n    - Gaussian noise injection\n    - Time shift (jitter)\n    - Scaling perturbation\n    \"\"\"\n    augmented = x.copy()\n    batch_size, seq_len, features = augmented.shape",
+        "peekOfCode": "def augment_sequences(x: np.ndarray, noise_std: float = 0.01, \n                      time_shift_range: int = 2,\n                      rng: Optional[np.random.Generator] = None) -> np.ndarray:\n    \"\"\"Apply data augmentation to sequences.\n    Techniques:\n    - Gaussian noise injection\n    - Time shift (jitter)\n    - Scaling perturbation\n    \"\"\"\n    if rng is None:",
         "detail": "enhanced_training",
         "documentation": {}
     },
@@ -5155,7 +5155,7 @@
         "kind": 2,
         "importPath": "enhanced_training",
         "description": "enhanced_training",
-        "peekOfCode": "def create_balanced_sampler(labels: np.ndarray) -> WeightedRandomSampler:\n    \"\"\"Create a weighted sampler for class-balanced training.\"\"\"\n    unique, counts = np.unique(labels, return_counts=True)\n    class_weights = 1.0 / counts\n    sample_weights = class_weights[labels]\n    return WeightedRandomSampler(\n        weights=torch.tensor(sample_weights, dtype=torch.float64),\n        num_samples=len(labels),\n        replacement=True\n    )",
+        "peekOfCode": "def create_balanced_sampler(labels: np.ndarray) -> WeightedRandomSampler:\n    \"\"\"Create a weighted sampler for class-balanced training.\"\"\"\n    _, counts = np.unique(labels, return_counts=True)\n    class_weights = 1.0 / counts\n    sample_weights = class_weights[labels]\n    return WeightedRandomSampler(\n        weights=torch.tensor(sample_weights, dtype=torch.float64),\n        num_samples=len(labels),\n        replacement=True\n    )",
         "detail": "enhanced_training",
         "documentation": {}
     },
@@ -5164,7 +5164,7 @@
         "kind": 2,
         "importPath": "enhanced_training",
         "description": "enhanced_training",
-        "peekOfCode": "def create_stratified_val_split(\n    n_samples: int,\n    labels: np.ndarray,\n    val_fraction: float = 0.1,\n    min_per_class: int = 20\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"Create stratified train/val split ensuring balanced validation set.\"\"\"\n    unique_classes = np.unique(labels)\n    train_idx, val_idx = [], []\n    for cls in unique_classes:",
+        "peekOfCode": "def create_stratified_val_split(\n    labels: np.ndarray,\n    val_fraction: float = 0.1,\n    min_per_class: int = 20,\n    rng: Optional[np.random.Generator] = None\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"Create stratified train/val split ensuring balanced validation set.\"\"\"\n    if rng is None:\n        rng = np.random.default_rng(seed=42)\n    unique_classes = np.unique(labels)",
         "detail": "enhanced_training",
         "documentation": {}
     },

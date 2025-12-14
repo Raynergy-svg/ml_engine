@@ -151,12 +151,12 @@ def run_tuning(
     grid = QUICK_GRID if quick else PARAM_GRID
     combinations = generate_param_combinations(grid)
     
-    print(f"=" * 60)
-    print(f"AUTOMATED HYPERPARAMETER TUNING")
-    print(f"=" * 60)
+    print("=" * 60)
+    print("AUTOMATED HYPERPARAMETER TUNING")
+    print("=" * 60)
     print(f"Total combinations to try: {len(combinations)}")
     print(f"Grid: {grid}")
-    print(f"=" * 60)
+    print("=" * 60)
     
     base_config = load_config(base_config_path)
     
@@ -199,14 +199,14 @@ def run_tuning(
                 best_score = score
                 best_params = params
                 best_model_path = result.get("model_path")
-                print(f"    ★ NEW BEST!")
+                print("    ★ NEW BEST!")
         else:
             print(f"    → Failed or no score: {result.get('error', 'unknown')}")
     
     # Summary
-    print(f"\n{'=' * 60}")
-    print(f"TUNING COMPLETE")
-    print(f"{'=' * 60}")
+    print("\n" + "=" * 60)
+    print("TUNING COMPLETE")
+    print("=" * 60)
     print(f"Best score: {best_score:.4f}")
     print(f"Best params: {best_params}")
     print(f"Best model: {best_model_path}")
@@ -231,7 +231,7 @@ def run_tuning(
         final_cfg["min_epochs"] = base_config.get("min_epochs", 50)
         final_cfg["early_stop_patience"] = base_config.get("early_stop_patience", 15)
         save_config(final_cfg, base_config_path)
-        print(f"✓ Config updated with best params")
+        print("✓ Config updated with best params")
     
     return {
         "best_score": best_score,

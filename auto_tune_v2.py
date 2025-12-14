@@ -247,7 +247,7 @@ def run_tuning(
     best_score = 0.0
     best_params: Optional[Dict[str, Any]] = None
     best_model_path: Optional[str] = None
-    best_metrics: Optional[Dict] = None
+    best_metrics: Optional[Dict[str, Any]] = None
     
     start_time = datetime.now()
     
@@ -275,16 +275,15 @@ def run_tuning(
             "best_epoch_metrics": entry_metrics,
         }
         results.append(entry)
-        
         if score is not None:
-            marker = ""
-            if score > best_score:
+            is_new_best = score > best_score
+            if is_new_best:
                 best_score = score
                 best_params = params
                 best_model_path = result.get("model_path")
                 best_metrics = entry_metrics
-                marker = " ★ NEW BEST"
-            print(f"    → state_acc: {score:.2%}{marker} ({iter_time:.0f}s)")
+
+            print(f"    → BEST val state_acc: {score:.2%} (time: {iter_time:.1f}s){' ★ NEW BEST' if is_new_best else ''}")
         else:
             print(f"    → FAILED: {result.get('error', 'unknown')[:60]}")
     
@@ -302,25 +301,26 @@ def run_tuning(
     ranked = sorted([r for r in results if r["score"]], key=lambda x: x["score"], reverse=True)
     if ranked:
         print(f"\nTop 5 configurations:")
-        for rank, r in enumerate(ranked[:5], 1):
-            p = r["params"]
-            print(f"  {rank}. {r['score']:.2%} | h={p.get('hidden_size')}, L={p.get('num_layers')}, d={p.get('dropout')}, lr={p.get('learning_rate')}")
-    
     # Save results
-    results_path = tune_dir / f"tuning_v2_{strategy}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    results_path = tune_dir / f"tune_results_v2_{strategy}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(results_path, "w") as f:
         json.dump({
             "strategy": strategy,
             "best_score": best_score,
             "best_params": best_params,
             "best_model_path": best_model_path,
+            "best_epoch_metrics": best_metrics,
             "total_time_seconds": total_time,
             "all_results": results,
-            "ranked_top10": [{"score": r["score"], "params": r["params"]} for r in ranked[:10]],
+            "ranked_top10": [{"score": r["score"], "params": r["params"]} for r in ranked[:10]] if ranked else [],
         }, f, indent=2)
     print(f"\nResults saved to: {results_path}")
     
-    # Update main config with best params
+    if ranked:
+        print(f"\nTop 5 configurations:")
+        for rank, r in enumerate(ranked[:5], 1):
+            p = r["params"]
+            print(f"  {rank}. {r['score']:.2%} | h={p.get('hidden_size')}, L={p.get('num_layers')}, d={p.get('dropout')}, lr={p.get('learning_rate')}")
     if best_params and best_score > 0.79:  # Only update if we beat 79%
         print(f"\n✓ Updating {base_config_path} with best params (beat 79% threshold)...")
         final_cfg = apply_params(base_config, best_params)
@@ -329,18 +329,15 @@ def run_tuning(
         final_cfg["early_stop_patience"] = base_config.get("early_stop_patience", 15)
         save_config(final_cfg, base_config_path)
         print("✓ Config updated")
-    elif best_params:
-        print(f"\n⚠ Best score {best_score:.2%} did not beat 79% threshold - config NOT updated")
-        print("  Run with --force-update to update anyway")
-    
+    return {
+        "best_score": best_score,
     return {
         "best_score": best_score,
         "best_params": best_params,
         "best_model_path": best_model_path,
+        "best_epoch_metrics": best_metrics,
         "results": results,
     }
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Enhanced hyperparameter tuning v2")
     parser.add_argument("--config", "-c", default="config.yaml", help="Base config file")

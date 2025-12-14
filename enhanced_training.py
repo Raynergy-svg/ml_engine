@@ -37,7 +37,8 @@ def set_seed(seed: int = 42):
 # ============================================================================
 
 def augment_sequences(x: np.ndarray, noise_std: float = 0.01, 
-                      time_shift_range: int = 2) -> np.ndarray:
+                      time_shift_range: int = 2,
+                      rng: Optional[np.random.Generator] = None) -> np.ndarray:
     """Apply data augmentation to sequences.
     
     Techniques:
@@ -45,24 +46,27 @@ def augment_sequences(x: np.ndarray, noise_std: float = 0.01,
     - Time shift (jitter)
     - Scaling perturbation
     """
+    if rng is None:
+        rng = np.random.default_rng(seed=42)
+    
     augmented = x.copy()
     batch_size, seq_len, features = augmented.shape
     
     # 1. Gaussian noise (50% of samples)
-    noise_mask = np.random.random(batch_size) < 0.5
-    noise = np.random.normal(0, noise_std, (noise_mask.sum(), seq_len, features))
+    noise_mask = rng.random(batch_size) < 0.5
+    noise = rng.normal(0, noise_std, (noise_mask.sum(), seq_len, features))
     augmented[noise_mask] += noise
     
     # 2. Small scaling perturbation (30% of samples)
-    scale_mask = np.random.random(batch_size) < 0.3
-    scales = np.random.uniform(0.98, 1.02, (scale_mask.sum(), 1, features))
+    scale_mask = rng.random(batch_size) < 0.3
+    scales = rng.uniform(0.98, 1.02, (scale_mask.sum(), 1, features))
     augmented[scale_mask] *= scales
     
     # 3. Time jitter - shift sequences slightly (20% of samples)
     if time_shift_range > 0:
-        jitter_mask = np.random.random(batch_size) < 0.2
-        for i in np.where(jitter_mask)[0]:
-            shift = np.random.randint(-time_shift_range, time_shift_range + 1)
+        jitter_mask = rng.random(batch_size) < 0.2
+        for i in np.nonzero(jitter_mask)[0]:
+            shift = rng.integers(-time_shift_range, time_shift_range + 1)
             if shift != 0:
                 augmented[i] = np.roll(augmented[i], shift, axis=0)
     
@@ -75,7 +79,7 @@ def augment_sequences(x: np.ndarray, noise_std: float = 0.01,
 
 def create_balanced_sampler(labels: np.ndarray) -> WeightedRandomSampler:
     """Create a weighted sampler for class-balanced training."""
-    unique, counts = np.unique(labels, return_counts=True)
+    _, counts = np.unique(labels, return_counts=True)
     class_weights = 1.0 / counts
     sample_weights = class_weights[labels]
     return WeightedRandomSampler(
@@ -86,17 +90,20 @@ def create_balanced_sampler(labels: np.ndarray) -> WeightedRandomSampler:
 
 
 def create_stratified_val_split(
-    n_samples: int,
     labels: np.ndarray,
     val_fraction: float = 0.1,
-    min_per_class: int = 20
+    min_per_class: int = 20,
+    rng: Optional[np.random.Generator] = None
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Create stratified train/val split ensuring balanced validation set."""
+    if rng is None:
+        rng = np.random.default_rng(seed=42)
+    
     unique_classes = np.unique(labels)
     train_idx, val_idx = [], []
     
     for cls in unique_classes:
-        cls_indices = np.where(labels == cls)[0]
+        cls_indices = np.nonzero(labels == cls)[0]
         n_cls = len(cls_indices)
         
         # Ensure minimum samples per class in validation
@@ -104,7 +111,7 @@ def create_stratified_val_split(
         n_val = min(n_val, n_cls - min_per_class)  # Keep min in train too
         
         # Shuffle and split
-        np.random.shuffle(cls_indices)
+        rng.shuffle(cls_indices)
         val_idx.extend(cls_indices[:n_val])
         train_idx.extend(cls_indices[n_val:])
     
@@ -246,27 +253,14 @@ def train_one_epoch(
         optimizer.step()
 
 
-def enhanced_train(
-    config_path: str,
-    csv_path: Optional[str] = None,
-    n_candles: int = 3000,
-    n_ensemble: int = 3,
-    epochs: int = 100,
-    patience: int = 20,
-) -> Dict[str, Any]:
-    """
-    Enhanced training with all improvements:
-    1. More data (n_candles)
-    2. Data augmentation
-    3. Class balancing (stratified split + weighted sampling)
-    4. Ensemble of models
-    """
-    set_seed(42)
-    cfg = load_config(config_path)
-    device = cfg.get("device", "cpu")
-    
-    # Load data
+def _load_and_prepare_data(
+    cfg: Dict[str, Any],
+    csv_path: Optional[str],
+    n_candles: int,
+) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any], Any, int, List[str]]:
+    """Load CSV data and prepare sequences for training."""
     import pandas as pd
+    
     if csv_path is None:
         data_dir = cfg.get("data", {}).get("data_dir") or "market_data"
         csv_files = sorted(Path(data_dir).glob("*.csv"))
@@ -277,12 +271,10 @@ def enhanced_train(
     df = pd.read_csv(csv_path)
     df.columns = [c.strip().lower() for c in df.columns]
     
-    # Use more data if available
     if len(df) > n_candles:
         df = df.tail(n_candles)
     print(f"[Enhanced] Using {len(df)} candles")
     
-    # Prepare sequences
     seq_len = cfg.get("sequence_length", 60)
     feature_cols = cfg.get("data", {}).get("required_features", ["open", "high", "low", "close", "volume"])
     
@@ -305,16 +297,23 @@ def enhanced_train(
         state_classes=int(cfg.get("state_classes", 2)),
     )
     
-    # 3. STRATIFIED SPLIT for balanced validation
+    return x, y_price, meta, targets, seq_len, list(feature_cols)
+
+
+def _create_data_loaders(
+    x: np.ndarray,
+    y_price: np.ndarray,
+    targets: Any,
+    cfg: Dict[str, Any],
+) -> Tuple[DataLoader, DataLoader, np.ndarray, np.ndarray]:
+    """Create train and validation data loaders with stratified split."""
     train_idx, val_idx = create_stratified_val_split(
-        len(x), targets.state, 
+        targets.state, 
         val_fraction=0.1, 
         min_per_class=50
     )
-    
     print(f"[Enhanced] Train: {len(train_idx)}, Val: {len(val_idx)}")
     
-    # Print class distribution
     train_state = targets.state[train_idx]
     val_state = targets.state[val_idx]
     unique_train, counts_train = np.unique(train_state, return_counts=True)
@@ -322,7 +321,6 @@ def enhanced_train(
     print(f"[Enhanced] Train distribution: {dict(zip(unique_train, counts_train))}")
     print(f"[Enhanced] Val distribution: {dict(zip(unique_val, counts_val))}")
     
-    # Create datasets
     def make_tensors(idx):
         return (
             torch.tensor(x[idx], dtype=torch.float32),
@@ -335,110 +333,101 @@ def enhanced_train(
     train_data = TensorDataset(*make_tensors(train_idx))
     val_data = TensorDataset(*make_tensors(val_idx))
     
-    # 3. BALANCED SAMPLER for training
     sampler = create_balanced_sampler(targets.state[train_idx])
-    
     batch_size = cfg.get("batch_size", 64)
+    
     train_loader = DataLoader(train_data, batch_size=batch_size, sampler=sampler, num_workers=0)
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False, num_workers=0)
     
-    # 4. CREATE ENSEMBLE
-    print(f"[Enhanced] Creating ensemble of {n_ensemble} models")
-    models = create_ensemble(cfg, device, input_size=x.shape[-1], n_models=n_ensemble)
+    return train_loader, val_loader, train_idx, val_idx
+
+
+def _train_single_model(
+    model: nn.Module,
+    model_idx: int,
+    n_ensemble: int,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    device: str,
+    cfg: Dict[str, Any],
+    weights: Dict[str, float],
+    loss_fns: Tuple[nn.Module, nn.Module, nn.Module, nn.Module],
+    epochs: int,
+    patience: int,
+) -> Dict[str, Any]:
+    """Train a single model and return its history."""
+    price_loss_fn, trend_loss_fn, risk_loss_fn, state_loss_fn = loss_fns
     
-    # Loss functions
-    price_loss_fn = nn.HuberLoss(delta=1.0)
-    trend_loss_fn = nn.MSELoss()
-    risk_loss_fn = nn.BCELoss()
-    state_loss_fn = nn.CrossEntropyLoss()
-    
-    weights = cfg.get("unified_head_loss_weights", {
-        "price": 1.0, "trend": 0.5, "risk": 0.5, "state": 7.0
-    })
-    
-    # Train each model in ensemble
-    all_histories = []
-    
-    for model_idx, model in enumerate(models):
-        print(f"\n{'='*50}")
-        print(f"Training model {model_idx + 1}/{n_ensemble}")
-        print(f"{'='*50}")
-        
-        set_seed(42 + model_idx * 100)
-        
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=float(cfg.get("learning_rate", 0.0005)),
-            weight_decay=0.0,
-        )
-        
-        best_acc = 0.0
-        best_state = None
-        no_improve = 0
-        history = []
-        
-        for epoch in range(epochs):
-            # 2. TRAIN WITH AUGMENTATION
-            train_one_epoch(
-                model, train_loader, device, optimizer, weights,
-                price_loss_fn, trend_loss_fn, risk_loss_fn, state_loss_fn,
-                use_augmentation=True
-            )
-            
-            # Evaluate
-            metrics = evaluate_model(model, val_loader, device, price_loss_fn, state_loss_fn)
-            acc = metrics["state_acc"]
-            
-            marker = ""
-            if acc > best_acc:
-                best_acc = acc
-                best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-                no_improve = 0
-                marker = " ★"
-            else:
-                no_improve += 1
-            
-            history.append({"epoch": epoch + 1, "state_acc": acc})
-            
-            if (epoch + 1) % 5 == 0 or marker:
-                print(f"  E{epoch+1:02d} | state_acc: {acc:.2%}{marker}")
-            
-            if no_improve >= patience:
-                print(f"  Early stop at epoch {epoch + 1}")
-                break
-        
-        # Restore best weights
-        if best_state:
-            model.load_state_dict(best_state)
-        
-        all_histories.append({"model": model_idx, "best_acc": best_acc, "history": history})
-        print(f"  Model {model_idx + 1} best: {best_acc:.2%}")
-    
-    # Evaluate ensemble
     print(f"\n{'='*50}")
-    print("Evaluating ensemble")
+    print(f"Training model {model_idx + 1}/{n_ensemble}")
     print(f"{'='*50}")
     
-    ensemble = EnsembleModel(models)
-    ensemble_metrics = evaluate_model(ensemble, val_loader, device, price_loss_fn, state_loss_fn)
-    ensemble_acc = ensemble_metrics["state_acc"]
+    set_seed(42 + model_idx * 100)
     
-    individual_accs = [h["best_acc"] for h in all_histories]
-    avg_individual = sum(individual_accs) / len(individual_accs)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=float(cfg.get("learning_rate", 0.0005)),
+        weight_decay=0.0,
+    )
     
-    print(f"\nIndividual model accuracies: {[f'{a:.2%}' for a in individual_accs]}")
-    print(f"Average individual: {avg_individual:.2%}")
-    print(f"Ensemble accuracy: {ensemble_acc:.2%}")
+    best_acc = 0.0
+    best_state = None
+    no_improve = 0
+    history = []
     
-    # Save best model (or ensemble)
+    for epoch in range(epochs):
+        train_one_epoch(
+            model, train_loader, device, optimizer, weights,
+            price_loss_fn, trend_loss_fn, risk_loss_fn, state_loss_fn,
+            use_augmentation=True
+        )
+        
+        metrics = evaluate_model(model, val_loader, device, price_loss_fn, state_loss_fn)
+        acc = metrics["state_acc"]
+        
+        marker = ""
+        if acc > best_acc:
+            best_acc = acc
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            no_improve = 0
+            marker = " ★"
+        else:
+            no_improve += 1
+        
+        history.append({"epoch": epoch + 1, "state_acc": acc})
+        
+        if (epoch + 1) % 5 == 0 or marker:
+            print(f"  E{epoch+1:02d} | state_acc: {acc:.2%}{marker}")
+        
+        if no_improve >= patience:
+            print(f"  Early stop at epoch {epoch + 1}")
+            break
+    
+    if best_state:
+        model.load_state_dict(best_state)
+    
+    print(f"  Model {model_idx + 1} best: {best_acc:.2%}")
+    return {"model": model_idx, "best_acc": best_acc, "history": history}
+
+
+def _save_models(
+    models: List[nn.Module],
+    all_histories: List[Dict[str, Any]],
+    cfg: Dict[str, Any],
+    x: np.ndarray,
+    meta: Dict[str, Any],
+    feature_cols: List[str],
+    seq_len: int,
+) -> None:
+    """Save trained models to disk."""
     model_dir = Path(cfg.get("MODEL_DIR", "trained_data/models"))
     model_dir.mkdir(parents=True, exist_ok=True)
     
-    # Save the best individual model
-    best_model_idx = np.argmax(individual_accs)
+    individual_accs = [h["best_acc"] for h in all_histories]
+    avg_individual = sum(individual_accs) / len(individual_accs)
+    best_model_idx = int(np.argmax(individual_accs))
     best_model = models[best_model_idx]
     
-    # Prepare model params and data meta for checkpoint
     model_params = {
         "input_size": x.shape[-1],
         "hidden_size": int(cfg.get("model", {}).get("hidden_size", 48)),
@@ -449,7 +438,7 @@ def enhanced_train(
     }
     
     data_meta = {
-        "feature_columns": list(feature_cols),
+        "feature_columns": feature_cols,
         "target_column": "close",
         "sequence_length": seq_len,
         "target_shift": 1,
@@ -467,13 +456,81 @@ def enhanced_train(
         "best_acc": individual_accs[best_model_idx],
     }, model_dir / "unified_market_net.pth")
     
-    # Save all ensemble models
     for i, m in enumerate(models):
         torch.save({"model_state_dict": m.state_dict()}, model_dir / f"ensemble_model_{i}.pth")
     
     print(f"\nSaved best model (#{best_model_idx + 1}) to {model_dir / 'unified_market_net.pth'}")
-    print(f"Saved all {n_ensemble} ensemble models")
+    print(f"Saved all {len(models)} ensemble models")
+
+
+def enhanced_train(
+    config_path: str,
+    csv_path: Optional[str] = None,
+    n_candles: int = 3000,
+    n_ensemble: int = 3,
+    epochs: int = 100,
+    patience: int = 20,
+) -> Dict[str, Any]:
+    """
+    Enhanced training with all improvements:
+    1. More data (n_candles)
+    2. Data augmentation
+    3. Class balancing (stratified split + weighted sampling)
+    4. Ensemble of models
+    """
+    set_seed(42)
+    cfg = load_config(config_path)
+    device = cfg.get("device", "cpu")
     
+    # Load and prepare data
+    x, y_price, meta, targets, seq_len, feature_cols = _load_and_prepare_data(cfg, csv_path, n_candles)
+    
+    # Create data loaders
+    train_loader, val_loader, _, _ = _create_data_loaders(x, y_price, targets, cfg)
+    
+    # Create ensemble
+    print(f"[Enhanced] Creating ensemble of {n_ensemble} models")
+    models = create_ensemble(cfg, device, input_size=x.shape[-1], n_models=n_ensemble)
+    
+    # Loss functions
+    price_loss_fn = nn.HuberLoss(delta=1.0)
+    trend_loss_fn = nn.MSELoss()
+    risk_loss_fn = nn.BCELoss()
+    state_loss_fn = nn.CrossEntropyLoss()
+    loss_fns = (price_loss_fn, trend_loss_fn, risk_loss_fn, state_loss_fn)
+    
+    weights = cfg.get("unified_head_loss_weights", {
+        "price": 1.0, "trend": 0.5, "risk": 0.5, "state": 7.0
+    })
+    
+    # Train each model in ensemble
+    all_histories = [
+        _train_single_model(
+            model, model_idx, n_ensemble, train_loader, val_loader,
+            device, cfg, weights, loss_fns, epochs, patience
+        )
+        for model_idx, model in enumerate(models)
+    ]
+    
+    # Evaluate ensemble
+    print(f"\n{'='*50}")
+    print("Evaluating ensemble")
+    print(f"{'='*50}")
+    
+    ensemble = EnsembleModel(models)
+    ensemble_metrics = evaluate_model(ensemble, val_loader, device, price_loss_fn, state_loss_fn)
+    ensemble_acc = ensemble_metrics["state_acc"]
+    
+    individual_accs = [h["best_acc"] for h in all_histories]
+    avg_individual = sum(individual_accs) / len(individual_accs)
+    
+    print(f"\nIndividual model accuracies: {[f'{a:.2%}' for a in individual_accs]}")
+    print(f"Average individual: {avg_individual:.2%}")
+    print(f"Ensemble accuracy: {ensemble_acc:.2%}")
+    
+    # Save models
+    # Save models
+    _save_models(models, all_histories, cfg, x, meta, feature_cols, seq_len)
     return {
         "best_individual_acc": max(individual_accs),
         "ensemble_acc": ensemble_acc,
