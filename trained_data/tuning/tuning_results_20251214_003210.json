@@ -1,0 +1,109 @@
+{
+  "best_score": 0.7916666666666666,
+  "best_params": {
+    "hidden_size": 64,
+    "num_layers": 3,
+    "dropout": 0.2,
+    "learning_rate": 0.0005,
+    "batch_size": 64
+  },
+  "best_model_path": "trained_data/models/unified_market_net.pth",
+  "all_results": [
+    {
+      "params": {
+        "hidden_size": 64,
+        "num_layers": 2,
+        "dropout": 0.1,
+        "learning_rate": 0.0005,
+        "batch_size": 64
+      },
+      "score": 0.7777777777777778,
+      "success": true,
+      "error": null
+    },
+    {
+      "params": {
+        "hidden_size": 64,
+        "num_layers": 2,
+        "dropout": 0.2,
+        "learning_rate": 0.0005,
+        "batch_size": 64
+      },
+      "score": 0.7708333333333334,
+      "success": true,
+      "error": null
+    },
+    {
+      "params": {
+        "hidden_size": 64,
+        "num_layers": 3,
+        "dropout": 0.1,
+        "learning_rate": 0.0005,
+        "batch_size": 64
+      },
+      "score": 0.75,
+      "success": true,
+      "error": null
+    },
+    {
+      "params": {
+        "hidden_size": 64,
+        "num_layers": 3,
+        "dropout": 0.2,
+        "learning_rate": 0.0005,
+        "batch_size": 64
+      },
+      "score": 0.7916666666666666,
+      "success": true,
+      "error": null
+    },
+    {
+      "params": {
+        "hidden_size": 128,
+        "num_layers": 2,
+        "dropout": 0.1,
+        "learning_rate": 0.0005,
+        "batch_size": 64
+      },
+      "score": 0.7847222222222222,
+      "success": true,
+      "error": null
+    },
+    {
+      "params": {
+        "hidden_size": 128,
+        "num_layers": 2,
+        "dropout": 0.2,
+        "learning_rate": 0.0005,
+        "batch_size": 64
+      },
+      "score": 0.7708333333333334,
+      "success": true,
+      "error": null
+    },
+    {
+      "params": {
+        "hidden_size": 128,
+        "num_layers": 3,
+        "dropout": 0.1,
+        "learning_rate": 0.0005,
+        "batch_size": 64
+      },
+      "score": 0.7708333333333334,
+      "success": true,
+      "error": null
+    },
+    {
+      "params": {
+        "hidden_size": 128,
+        "num_layers": 3,
+        "dropout": 0.2,
+        "learning_rate": 0.0005,
+        "batch_size": 64
+      },
+      "score": 0.7430555555555556,
+      "success": true,
+      "error": null
+    }
+  ]
+}

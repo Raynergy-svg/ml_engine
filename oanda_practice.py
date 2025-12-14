@@ -15,6 +15,49 @@ import os
 import requests
 
 
+def _load_project_dotenv() -> None:
+    """Best-effort load of `.env.local` / `.env` for local runs.
+
+    This keeps CLI workflows consistent with `unified_talk`/Buddy, and is
+    fail-open: missing `python-dotenv` or parse issues should not crash.
+    """
+    try:
+        from pathlib import Path
+
+        try:
+            from dotenv import load_dotenv  # type: ignore
+        except Exception:
+            return
+
+        candidates = []
+        try:
+            candidates.append(Path.cwd())
+        except Exception:
+            pass
+
+        try:
+            candidates.append(Path(__file__).resolve().parent)
+        except Exception:
+            pass
+
+        seen: set[str] = set()
+        for base in candidates:
+            try:
+                base = base.resolve()
+            except Exception:
+                continue
+            if str(base) in seen:
+                continue
+            seen.add(str(base))
+
+            for name in (".env.local", ".env"):
+                p = base / name
+                if p.exists() and p.is_file():
+                    load_dotenv(dotenv_path=str(p), override=False)
+    except Exception:
+        return
+
+
 # OANDA REST v20 base URLs (see: https://developer.oanda.com/rest-live-v20/development-guide/)
 PRACTICE_API_URL = "https://api-fxpractice.oanda.com/v3"
 
@@ -69,6 +112,7 @@ class OandaPracticeClient:
 
     @classmethod
     def from_env(cls) -> "OandaPracticeClient":
+        _load_project_dotenv()
         api_token = os.getenv("OANDA_API_TOKEN") or os.getenv("OANDA_API_KEY")
         account_id = os.getenv("OANDA_ACCOUNT_ID")
         if not api_token or not account_id:
@@ -154,11 +198,28 @@ class OandaPracticeClient:
         granularity: str = "M5",
         count: int = 500,
         price: str = "M",
+        from_time: Optional[str] = None,
+        to_time: Optional[str] = None,
+        smooth: Optional[bool] = None,
+        include_first: Optional[bool] = None,
     ) -> Any:
+        params: Dict[str, Any] = {
+            "granularity": granularity,
+            "count": int(count),
+            "price": price,
+        }
+        if from_time:
+            params["from"] = str(from_time)
+        if to_time:
+            params["to"] = str(to_time)
+        if smooth is not None:
+            params["smooth"] = bool(smooth)
+        if include_first is not None:
+            params["includeFirst"] = bool(include_first)
         return self._request(
             "GET",
             f"/instruments/{instrument}/candles",
-            params={"granularity": granularity, "count": int(count), "price": price},
+            params=params,
         )
 
     def get_account_summary(self) -> Any:

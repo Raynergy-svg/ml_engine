@@ -1197,6 +1197,29 @@ def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_p
     )
 
 
+def train_oanda_unified(
+    config_path: str,
+    *,
+    instruments: str,
+    granularity: str,
+    candles: int,
+    checkpoint_path: str | None = None,
+) -> None:
+    """Fetch OANDA candles into local cache and train unified model (auto-resume)."""
+    from oanda_unified_training import run_oanda_unified_training_session
+
+    result = run_oanda_unified_training_session(
+        config_path,
+        instruments=instruments,
+        granularity=granularity,
+        candles=int(candles),
+        resume_path=checkpoint_path,
+    )
+    console.print(
+        f"[bold green]OANDA unified session complete[/bold green] model={result.model_path} metrics={result.metrics_path}"
+    )
+
+
 def chat_unified(config_path: str, metrics_path: str | None = None) -> None:
     """Interactive chat over the latest unified head metrics."""
     from unified_chat import run_unified_chat
@@ -1274,6 +1297,7 @@ def main() -> None:
             "openai-tune",  # New command
             "ai-assistant",  # New sub-command
             "train-unified",
+            "train-oanda-unified",
             "chat-unified",
             "talk-unified",
             "buddy",
@@ -1396,6 +1420,7 @@ def main() -> None:
         "openai-tune": openai_tune,  # New mapping
         "ai-assistant": run_ai_assistant,  # updated mapping
         "train-unified": train_unified,
+        "train-oanda-unified": train_oanda_unified,
         "chat-unified": chat_unified,
         "talk-unified": talk_unified,
         "buddy": buddy,
@@ -1430,6 +1455,14 @@ def main() -> None:
             return
         if args.command == "train-unified":
             command_map[args.command](args.config, args.csv, checkpoint_path=args.model_path)
+        elif args.command == "train-oanda-unified":
+            command_map[args.command](
+                args.config,
+                instruments=args.instrument,
+                granularity=args.granularity,
+                candles=args.candles,
+                checkpoint_path=args.model_path,
+            )
         elif args.command == "chat-unified":
             command_map[args.command](args.config, args.metrics)
         elif args.command == "talk-unified":

@@ -269,7 +269,25 @@ def _format_state_probs_line(state_probs: Any) -> Optional[str]:
     if state_probs is None or not isinstance(state_probs, list) or len(state_probs) == 0:
         return None
     best = int(np.argmax(np.asarray(state_probs, dtype=float)))
-    return f"State probs: {state_probs} (most likely state={best})"
+    confidence = float(max(state_probs))
+    state_labels = ["BEARISH", "BULLISH"] if len(state_probs) == 2 else [f"state_{i}" for i in range(len(state_probs))]
+    return f"Market state: {state_labels[best]} ({confidence:.1%} confidence)"
+
+
+def _format_state_answer(state_probs: Any) -> str:
+    """Format answer specifically about market state."""
+    if state_probs is None or not isinstance(state_probs, list) or len(state_probs) == 0:
+        return "I don't have state classification data available."
+    best = int(np.argmax(np.asarray(state_probs, dtype=float)))
+    confidence = float(max(state_probs))
+    state_labels = ["BEARISH", "BULLISH"] if len(state_probs) == 2 else [f"state_{i}" for i in range(len(state_probs))]
+    label = state_labels[best]
+    if confidence > 0.8:
+        return f"The model is quite confident: {label} ({confidence:.1%})."
+    elif confidence > 0.6:
+        return f"Leaning {label} ({confidence:.1%}), but not highly certain."
+    else:
+        return f"Uncertain, slight edge to {label} ({confidence:.1%})."
 
 
 def _format_trade_note(q: str, trend: Any, risk: Any) -> Optional[str]:
@@ -321,10 +339,48 @@ def _render_answer(q: str, result: Dict[str, Any]) -> str:
     last_close = result.get("last_close")
     risk = result.get("risk")
     trend = result.get("trend")
-
+    state_probs = result.get("state_probs")
+    
+    ql = q.lower()
     lines: list[str] = []
-
-    # Keep output concise by default.
+    
+    # Handle specific questions
+    if any(k in ql for k in ("risk", "risky", "dangerous", "safe")):
+        if risk is not None:
+            r = float(risk)
+            bucket = _risk_bucket(r)
+            if bucket == "high":
+                lines.append(f"Risk looks HIGH ({r:.2f}). Consider smaller position or waiting.")
+            elif bucket == "medium":
+                lines.append(f"Risk is moderate ({r:.2f}). Proceed with caution.")
+            else:
+                lines.append(f"Risk looks low ({r:.2f}). Conditions seem relatively calm.")
+        else:
+            lines.append("I don't have risk data for this prediction.")
+        return "\n".join(lines) if lines else "No risk assessment available."
+    
+    if any(k in ql for k in ("trend", "direction", "going")):
+        if trend is not None:
+            t = float(trend)
+            if t > 0.01:
+                lines.append(f"Trend is pointing UP ({t:+.4f}).")
+            elif t < -0.01:
+                lines.append(f"Trend is pointing DOWN ({t:+.4f}).")
+            else:
+                lines.append(f"Trend is mostly FLAT ({t:+.4f}).")
+        if state_probs:
+            lines.append(_format_state_answer(state_probs))
+        return "\n".join(lines) if lines else "No trend data available."
+    
+    if any(k in ql for k in ("state", "bullish", "bearish", "sentiment")):
+        return _format_state_answer(state_probs)
+    
+    # Default: full summary
+    # Include state classification
+    state_line = _format_state_probs_line(state_probs)
+    if state_line:
+        lines.append(state_line)
+    
     summary = _summary_line(pred, last_close)
     if summary is not None:
         lines.append(summary)
@@ -338,9 +394,6 @@ def _render_answer(q: str, result: Dict[str, Any]) -> str:
             lines.append(f"Risk looks {_risk_bucket(r)}.")
         except Exception:
             pass
-
-    # Only show raw heads/probabilities when explicitly requested via verbose mode.
-    # (Verbose output is added by the caller when needed.)
 
     trade_note = _format_trade_note(q, trend, risk)
     if trade_note:
@@ -508,12 +561,54 @@ def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
 
     if ql in {"help", "?"}:
         print(
-            f"{ctx.assistant_name}: Try 'use csv market_data/MSFT_data.csv' then 'predict'. Or 'use ticker MSFT' then 'predict'.\n"
-            f"{ctx.assistant_name}: OANDA demo/practice: 'use oanda EUR_USD M5 300' then 'predict'.\n"
-            f"{ctx.assistant_name}: Trading (practice): 'trade' (auto from last prediction; dry-run unless 'execute on').\n"
-            f"{ctx.assistant_name}: Manual: 'trade buy 1000 EUR_USD' | 'trade sell 1000 EUR_USD' | 'trade close EUR_USD'.\n"
-            f"{ctx.assistant_name}: After a prediction, ask 'should I buy?', 'what is the risk?', 'what's the trend?'."
+            f"{ctx.assistant_name}: Commands:\n"
+            f"  • 'predict' - run prediction on current data source\n"
+            f"  • 'summary' - quick overview of last prediction\n"
+            f"  • 'use csv <path>' - load CSV data file\n"
+            f"  • 'use ticker <SYM>' - load from yfinance\n"
+            f"  • 'use oanda <INSTR> <GRAN> <COUNT>' - load from OANDA\n"
+            f"  • 'trade' - auto trade based on prediction (dry-run)\n"
+            f"  • 'execute on/off' - toggle real practice orders\n"
+            f"{ctx.assistant_name}: Questions I can answer:\n"
+            f"  • 'what is the risk?'\n"
+            f"  • 'what's the trend?'\n"
+            f"  • 'is it bullish or bearish?'\n"
+            f"  • 'should I buy?'"
         )
+        return True
+    
+    if ql in {"summary", "status", "overview"}:
+        if ctx.last_result is None:
+            print(_assistant_prefix(ctx) + "No prediction yet. Run 'predict' first.")
+            return True
+        
+        result = ctx.last_result
+        state_probs = result.get("state_probs")
+        risk = result.get("risk")
+        trend = result.get("trend")
+        
+        lines = [f"📊 Summary for {ctx.active_source or 'unknown'}:"]
+        
+        # State
+        if state_probs:
+            best = int(np.argmax(state_probs))
+            conf = float(max(state_probs))
+            labels = ["🔴 BEARISH", "🟢 BULLISH"] if len(state_probs) == 2 else [f"State {i}" for i in range(len(state_probs))]
+            lines.append(f"  State: {labels[best]} ({conf:.0%})")
+        
+        # Risk
+        if risk is not None:
+            r = float(risk)
+            emoji = "🟢" if r < 0.35 else ("🟡" if r < 0.7 else "🔴")
+            lines.append(f"  Risk: {emoji} {_risk_bucket(r)} ({r:.2f})")
+        
+        # Trend
+        if trend is not None:
+            t = float(trend)
+            emoji = "📈" if t > 0.01 else ("📉" if t < -0.01 else "➡️")
+            lines.append(f"  Trend: {emoji} {t:+.4f}")
+        
+        print(_assistant_prefix(ctx) + "\n".join(lines))
         return True
 
     if ql in {"execute on", "execute true"}:

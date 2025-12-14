@@ -237,6 +237,14 @@ class ReasoningEngine:
             return f"state head accuracy is low ({acc_f:.2%}); check labels or class balance."
         return f"state head accuracy: {acc_f:.2%}."
 
+    # Head descriptions for user-friendly diagnostics (only shown when needed)
+    HEAD_TIPS: Dict[str, str] = {
+        "price": "↑ `unified_head_loss_weights.price` or check feature scaling",
+        "trend": "↑ `unified_head_loss_weights.trend` or increase `sequence_length`",
+        "risk": "↑ `unified_head_loss_weights.risk` or adjust `risk_window`",
+        "state": "↑ `unified_head_loss_weights.state` or check `state_classes`/class balance",
+    }
+
     def summarize_head_health(
         self,
         head_metrics: Dict[str, Any],
@@ -245,15 +253,13 @@ class ReasoningEngine:
         lag_threshold_ratio: float = 1.25,
         regression_ratio: float = 1.10,
         min_history: int = 3,
+        state_classes: int = 2,
+        verbose: bool = False,
     ) -> Dict[str, Any]:
-        """Summarize multi-head training/eval status in a chat-friendly way.
+        """Summarize multi-head training status - minimal output by default.
 
-        Expected `head_metrics` keys (typical):
-        - price_loss, trend_loss, risk_loss, state_loss (lower is better)
-        - state_acc (higher is better)
-
-        This does not replace rigorous evaluation; it provides a quick diagnostic
-        to spot heads that may need re-weighting or capacity.
+        Returns compact insights only when action is needed.
+        Set verbose=True for detailed diagnostics.
         """
         metrics = dict(head_metrics or {})
         insights: List[str] = []
@@ -263,25 +269,43 @@ class ReasoningEngine:
 
         lagging = False
         worst_name: Optional[str] = None
+        regressed = False
 
         if losses:
             balance = self._loss_balance_insights(losses, lag_threshold_ratio)
-            insights.append(balance["insight"])
             lagging = bool(balance["lagging"])
-            worst_name = str(balance["worst_name"])
+            worst_name = str(balance["worst_name"]) if balance.get("worst_name") else None
 
-            regression = self._regression_insight(history, worst_name, regression_ratio, min_history)
-            if regression is not None:
-                insights.append(regression)
+            # Check for regression (getting worse)
+            if worst_name and history and len(history) >= 2:
+                prev = history[-2].get("val", {}).get(worst_name)
+                curr = losses.get(worst_name)
+                if prev is not None and curr is not None:
+                    if float(curr) > float(prev) * regression_ratio:
+                        regressed = True
 
-        acc_msg = self._accuracy_insight(acc_f)
-        if acc_msg is not None:
-            insights.append(acc_msg)
+        # Determine if state head is healthy based on accuracy
+        head = worst_name.replace("_loss", "") if worst_name else None
+        accuracy_healthy = False
+        if head == "state" and acc_f is not None:
+            baseline = 1.0 / max(state_classes, 2)
+            healthy_threshold = baseline + 0.20
+            accuracy_healthy = acc_f >= healthy_threshold
 
-        if lagging:
-            insights.append("Consider increasing that head's loss weight or adding head-specific capacity.")
+        # Only output when something needs attention
+        if lagging and not accuracy_healthy and head:
+            if regressed:
+                insights.append(f"⚠️  {head} regressing → {self.HEAD_TIPS.get(head, 'check config')}")
+            elif verbose:
+                insights.append(f"📉 {head} lagging → {self.HEAD_TIPS.get(head, 'check config')}")
 
-        return {"head_metrics": metrics, "insights": insights}
+        return {
+            "head_metrics": metrics,
+            "insights": insights,
+            "lagging_head": head if (lagging and not accuracy_healthy) else None,
+            "regressed": regressed,
+            "state_acc_healthy": accuracy_healthy if head == "state" else None,
+        }
     
     def _calculate_metrics(
         self, 

@@ -73,6 +73,22 @@
         "documentation": {}
     },
     {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
         "label": "time",
         "importPath": "datetime",
         "description": "datetime",
@@ -260,6 +276,78 @@
         "documentation": {}
     },
     {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -397,6 +485,46 @@
     },
     {
         "label": "TYPE_CHECKING",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -749,6 +877,62 @@
     },
     {
         "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1207,6 +1391,38 @@
         "documentation": {}
     },
     {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
         "label": "logging",
         "kind": 6,
         "isExtraImport": true,
@@ -1257,6 +1473,38 @@
         "description": "io",
         "isExtraImport": true,
         "detail": "io",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
         "documentation": {}
     },
     {
@@ -1791,6 +2039,14 @@
         "documentation": {}
     },
     {
+        "label": "prepare_sequences",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
         "label": "augment_data",
         "importPath": "data_processing",
         "description": "data_processing",
@@ -1871,7 +2127,31 @@
         "documentation": {}
     },
     {
+        "label": "load_config",
+        "importPath": "utils",
+        "description": "utils",
+        "isExtraImport": true,
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
         "label": "setup_logging",
+        "importPath": "utils",
+        "description": "utils",
+        "isExtraImport": true,
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "setup_logging",
+        "importPath": "utils",
+        "description": "utils",
+        "isExtraImport": true,
+        "detail": "utils",
+        "documentation": {}
+    },
+    {
+        "label": "load_config",
         "importPath": "utils",
         "description": "utils",
         "isExtraImport": true,
@@ -2341,6 +2621,22 @@
         "documentation": {}
     },
     {
+        "label": "merge_dedupe_by_time",
+        "importPath": "oanda_candle_cache",
+        "description": "oanda_candle_cache",
+        "isExtraImport": true,
+        "detail": "oanda_candle_cache",
+        "documentation": {}
+    },
+    {
+        "label": "update_oanda_cache",
+        "importPath": "oanda_candle_cache",
+        "description": "oanda_candle_cache",
+        "isExtraImport": true,
+        "detail": "oanda_candle_cache",
+        "documentation": {}
+    },
+    {
         "label": "oanda_practice",
         "kind": 6,
         "isExtraImport": true,
@@ -2442,6 +2738,33 @@
         "documentation": {}
     },
     {
+        "label": "copy",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "copy",
+        "description": "copy",
+        "detail": "copy",
+        "documentation": {}
+    },
+    {
+        "label": "itertools",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "itertools",
+        "description": "itertools",
+        "detail": "itertools",
+        "documentation": {}
+    },
+    {
+        "label": "random",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "random",
+        "description": "random",
+        "detail": "random",
+        "documentation": {}
+    },
+    {
         "label": "NeuralNetworkIntegrator",
         "importPath": "neural_network_integrator_enhanced",
         "description": "neural_network_integrator_enhanced",
@@ -2459,6 +2782,30 @@
     },
     {
         "label": "UnifiedNeuralEngine",
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "isExtraImport": true,
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "safe_torch_load",
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "isExtraImport": true,
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "UnifiedNeuralEngine",
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "isExtraImport": true,
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "safe_torch_load",
         "importPath": "neural_engine_unified",
         "description": "neural_engine_unified",
         "isExtraImport": true,
@@ -2612,6 +2959,30 @@
         "documentation": {}
     },
     {
+        "label": "WeightedRandomSampler",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
+        "label": "TensorDataset",
+        "importPath": "torch.utils.data",
+        "description": "torch.utils.data",
+        "isExtraImport": true,
+        "detail": "torch.utils.data",
+        "documentation": {}
+    },
+    {
         "label": "DataLoader",
         "importPath": "torch.utils.data",
         "description": "torch.utils.data",
@@ -2650,6 +3021,38 @@
         "importPath": "yfinance",
         "description": "yfinance",
         "detail": "yfinance",
+        "documentation": {}
+    },
+    {
+        "label": "build_multitask_targets",
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "isExtraImport": true,
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "split_time_series",
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "isExtraImport": true,
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "build_multitask_targets",
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "isExtraImport": true,
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "split_time_series",
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "isExtraImport": true,
+        "detail": "multitask_labels",
         "documentation": {}
     },
     {
@@ -2746,6 +3149,22 @@
         "description": "training_utils",
         "isExtraImport": true,
         "detail": "training_utils",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
         "documentation": {}
     },
     {
@@ -3030,31 +3449,6 @@
         "description": "gymnasium",
         "isExtraImport": true,
         "detail": "gymnasium",
-        "documentation": {}
-    },
-    {
-        "label": "copy",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "copy",
-        "description": "copy",
-        "detail": "copy",
-        "documentation": {}
-    },
-    {
-        "label": "build_multitask_targets",
-        "importPath": "multitask_labels",
-        "description": "multitask_labels",
-        "isExtraImport": true,
-        "detail": "multitask_labels",
-        "documentation": {}
-    },
-    {
-        "label": "split_time_series",
-        "importPath": "multitask_labels",
-        "description": "multitask_labels",
-        "isExtraImport": true,
-        "detail": "multitask_labels",
         "documentation": {}
     },
     {
@@ -4010,6 +4404,15 @@
         "documentation": {}
     },
     {
+        "label": "test_merge_dedupe_by_time_sorts_and_dedupes_keep_last",
+        "kind": 2,
+        "importPath": "tests.test_oanda_candle_cache",
+        "description": "tests.test_oanda_candle_cache",
+        "peekOfCode": "def test_merge_dedupe_by_time_sorts_and_dedupes_keep_last():\n    existing = pd.DataFrame(\n        {\n            \"time\": [\n                \"2025-01-01T00:00:00.000000Z\",\n                \"2025-01-01T00:05:00.000000Z\",\n            ],\n            \"open\": [1.0, 2.0],\n            \"high\": [1.1, 2.1],\n            \"low\": [0.9, 1.9],",
+        "detail": "tests.test_oanda_candle_cache",
+        "documentation": {}
+    },
+    {
         "label": "TestOandaPracticeClient",
         "kind": 6,
         "importPath": "tests.test_oanda_practice",
@@ -4169,6 +4572,222 @@
         "description": "ai_assistant",
         "peekOfCode": "USER_PROMPT = \"User: \"\ntry:\n    import openai  # type: ignore[import-not-found]\n    openai_available = True\nexcept ImportError:\n    openai_available = False\ntry:\n    from anthropic import Client  # type: ignore[import-not-found]\n    anthropic_available = True\nexcept ImportError:",
         "detail": "ai_assistant",
+        "documentation": {}
+    },
+    {
+        "label": "load_config",
+        "kind": 2,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "def load_config(config_path: str) -> Dict[str, Any]:\n    with open(config_path, \"r\") as f:\n        return yaml.safe_load(f)\ndef save_config(config: Dict[str, Any], config_path: str) -> None:\n    with open(config_path, \"w\") as f:\n        yaml.dump(config, f, default_flow_style=False, sort_keys=False)\ndef apply_params(config: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:\n    \"\"\"Apply hyperparameters to config.\"\"\"\n    cfg = copy.deepcopy(config)\n    # Model params",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "save_config",
+        "kind": 2,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "def save_config(config: Dict[str, Any], config_path: str) -> None:\n    with open(config_path, \"w\") as f:\n        yaml.dump(config, f, default_flow_style=False, sort_keys=False)\ndef apply_params(config: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:\n    \"\"\"Apply hyperparameters to config.\"\"\"\n    cfg = copy.deepcopy(config)\n    # Model params\n    if \"model\" not in cfg:\n        cfg[\"model\"] = {}\n    cfg[\"model\"][\"hidden_size\"] = params.get(\"hidden_size\", cfg[\"model\"].get(\"hidden_size\", 64))",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "apply_params",
+        "kind": 2,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "def apply_params(config: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:\n    \"\"\"Apply hyperparameters to config.\"\"\"\n    cfg = copy.deepcopy(config)\n    # Model params\n    if \"model\" not in cfg:\n        cfg[\"model\"] = {}\n    cfg[\"model\"][\"hidden_size\"] = params.get(\"hidden_size\", cfg[\"model\"].get(\"hidden_size\", 64))\n    cfg[\"model\"][\"num_layers\"] = params.get(\"num_layers\", cfg[\"model\"].get(\"num_layers\", 2))\n    cfg[\"model\"][\"dropout\"] = params.get(\"dropout\", cfg[\"model\"].get(\"dropout\", 0.1))\n    # Also set at root level for compatibility",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "run_training",
+        "kind": 2,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "def run_training(\n    config_path: str,\n    instrument: str,\n    granularity: str,\n    candles: int,\n) -> Dict[str, Any]:\n    \"\"\"Run unified training and return metrics.\"\"\"\n    from oanda_unified_training import run_oanda_unified_training_session\n    try:\n        result = run_oanda_unified_training_session(",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "extract_best_score",
+        "kind": 2,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "def extract_best_score(result: Dict[str, Any]) -> Optional[float]:\n    \"\"\"Extract the best validation score from training result.\"\"\"\n    if not result.get(\"success\"):\n        return None\n    metrics = result.get(\"metrics\", {})\n    history = metrics.get(\"history\", [])\n    if not history:\n        return None\n    # Find best state accuracy from history\n    best_acc = 0.0",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "generate_param_combinations",
+        "kind": 2,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "def generate_param_combinations(grid: Dict[str, List[Any]]) -> List[Dict[str, Any]]:\n    \"\"\"Generate all combinations of parameters.\"\"\"\n    keys = list(grid.keys())\n    values = list(grid.values())\n    combinations = list(itertools.product(*values))\n    return [dict(zip(keys, combo)) for combo in combinations]\ndef run_tuning(\n    base_config_path: str,\n    instrument: str,\n    granularity: str,",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "run_tuning",
+        "kind": 2,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "def run_tuning(\n    base_config_path: str,\n    instrument: str,\n    granularity: str,\n    candles: int,\n    quick: bool = False,\n) -> Dict[str, Any]:\n    \"\"\"Run hyperparameter tuning.\"\"\"\n    grid = QUICK_GRID if quick else PARAM_GRID\n    combinations = generate_param_combinations(grid)",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "def main() -> None:\n    parser = argparse.ArgumentParser(description=\"Automated hyperparameter tuning\")\n    parser.add_argument(\"--config\", \"-c\", default=\"config.yaml\", help=\"Base config file\")\n    parser.add_argument(\"--instrument\", \"-I\", default=\"EUR_USD\", help=\"OANDA instrument\")\n    parser.add_argument(\"--granularity\", \"-g\", default=\"M5\", help=\"Candle granularity\")\n    parser.add_argument(\"--candles\", \"-n\", type=int, default=1500, help=\"Number of candles\")\n    parser.add_argument(\"--quick\", \"-q\", action=\"store_true\", help=\"Use reduced grid for faster tuning\")\n    args = parser.parse_args()\n    run_tuning(\n        base_config_path=args.config,",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "PARAM_GRID",
+        "kind": 5,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "PARAM_GRID = {\n    \"hidden_size\": [64, 128, 256],\n    \"num_layers\": [2, 3],\n    \"dropout\": [0.1, 0.2, 0.3],\n    \"learning_rate\": [1e-4, 5e-4, 1e-3],\n    \"batch_size\": [32, 64, 128],\n}\n# Reduced grid for quick tuning (comment out above and use this for faster runs)\nQUICK_GRID = {\n    \"hidden_size\": [64, 128],",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "QUICK_GRID",
+        "kind": 5,
+        "importPath": "auto_tune",
+        "description": "auto_tune",
+        "peekOfCode": "QUICK_GRID = {\n    \"hidden_size\": [64, 128],\n    \"num_layers\": [2, 3],\n    \"dropout\": [0.1, 0.2],\n    \"learning_rate\": [5e-4],\n    \"batch_size\": [64],\n}\ndef load_config(config_path: str) -> Dict[str, Any]:\n    with open(config_path, \"r\") as f:\n        return yaml.safe_load(f)",
+        "detail": "auto_tune",
+        "documentation": {}
+    },
+    {
+        "label": "load_config",
+        "kind": 2,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "def load_config(config_path: str) -> Dict[str, Any]:\n    with open(config_path, \"r\") as f:\n        return yaml.safe_load(f)\ndef save_config(config: Dict[str, Any], config_path: str) -> None:\n    with open(config_path, \"w\") as f:\n        yaml.dump(config, f, default_flow_style=False, sort_keys=False)\ndef apply_params(config: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:\n    \"\"\"Apply hyperparameters to config with all new params.\"\"\"\n    cfg = copy.deepcopy(config)\n    # Model architecture params",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "save_config",
+        "kind": 2,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "def save_config(config: Dict[str, Any], config_path: str) -> None:\n    with open(config_path, \"w\") as f:\n        yaml.dump(config, f, default_flow_style=False, sort_keys=False)\ndef apply_params(config: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:\n    \"\"\"Apply hyperparameters to config with all new params.\"\"\"\n    cfg = copy.deepcopy(config)\n    # Model architecture params\n    if \"model\" not in cfg:\n        cfg[\"model\"] = {}\n    cfg[\"model\"][\"hidden_size\"] = params.get(\"hidden_size\", cfg[\"model\"].get(\"hidden_size\", 64))",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "apply_params",
+        "kind": 2,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "def apply_params(config: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:\n    \"\"\"Apply hyperparameters to config with all new params.\"\"\"\n    cfg = copy.deepcopy(config)\n    # Model architecture params\n    if \"model\" not in cfg:\n        cfg[\"model\"] = {}\n    cfg[\"model\"][\"hidden_size\"] = params.get(\"hidden_size\", cfg[\"model\"].get(\"hidden_size\", 64))\n    cfg[\"model\"][\"num_layers\"] = params.get(\"num_layers\", cfg[\"model\"].get(\"num_layers\", 3))\n    cfg[\"model\"][\"dropout\"] = params.get(\"dropout\", cfg[\"model\"].get(\"dropout\", 0.2))\n    # Root level for compatibility",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "run_training",
+        "kind": 2,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "def run_training(\n    config_path: str,\n    instrument: str,\n    granularity: str,\n    candles: int,\n) -> Dict[str, Any]:\n    \"\"\"Run unified training and return metrics.\"\"\"\n    from oanda_unified_training import run_oanda_unified_training_session\n    try:\n        result = run_oanda_unified_training_session(",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "extract_best_score",
+        "kind": 2,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "def extract_best_score(result: Dict[str, Any]) -> Tuple[Optional[float], Optional[Dict]]:\n    \"\"\"Extract best validation state accuracy and full metrics.\"\"\"\n    if not result.get(\"success\"):\n        return None, None\n    metrics = result.get(\"metrics\", {})\n    history = metrics.get(\"history\", [])\n    if not history:\n        return None, None\n    best_acc = 0.0\n    best_entry = None",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "generate_param_combinations",
+        "kind": 2,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "def generate_param_combinations(grid: Dict[str, List[Any]]) -> List[Dict[str, Any]]:\n    \"\"\"Generate all combinations of parameters.\"\"\"\n    keys = list(grid.keys())\n    values = list(grid.values())\n    combinations = list(itertools.product(*values))\n    return [dict(zip(keys, combo)) for combo in combinations]\ndef generate_random_sample(grid: Dict[str, List[Any]], n: int = 20) -> List[Dict[str, Any]]:\n    \"\"\"Generate random sample from grid (for large search spaces).\"\"\"\n    combinations = generate_param_combinations(grid)\n    if len(combinations) <= n:",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "generate_random_sample",
+        "kind": 2,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "def generate_random_sample(grid: Dict[str, List[Any]], n: int = 20) -> List[Dict[str, Any]]:\n    \"\"\"Generate random sample from grid (for large search spaces).\"\"\"\n    combinations = generate_param_combinations(grid)\n    if len(combinations) <= n:\n        return combinations\n    return random.sample(combinations, n)\ndef run_tuning(\n    base_config_path: str,\n    instrument: str,\n    granularity: str,",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "run_tuning",
+        "kind": 2,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "def run_tuning(\n    base_config_path: str,\n    instrument: str,\n    granularity: str,\n    candles: int,\n    strategy: str = \"targeted\",\n    max_combos: Optional[int] = None,\n) -> Dict[str, Any]:\n    \"\"\"Run hyperparameter tuning with specified strategy.\"\"\"\n    grid = STRATEGY_GRIDS.get(strategy, TARGETED_GRID)",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "def main() -> None:\n    parser = argparse.ArgumentParser(description=\"Enhanced hyperparameter tuning v2\")\n    parser.add_argument(\"--config\", \"-c\", default=\"config.yaml\", help=\"Base config file\")\n    parser.add_argument(\"--instrument\", \"-I\", default=\"EUR_USD\", help=\"OANDA instrument\")\n    parser.add_argument(\"--granularity\", \"-g\", default=\"M5\", help=\"Candle granularity\")\n    parser.add_argument(\"--candles\", \"-n\", type=int, default=1500, help=\"Number of candles\")\n    parser.add_argument(\"--strategy\", \"-s\", default=\"targeted\", \n                       choices=[\"full\", \"targeted\", \"quick\", \"sequence\"],\n                       help=\"Search strategy: full (162), targeted (36), quick (8), sequence (12)\")\n    parser.add_argument(\"--max-combos\", \"-m\", type=int, help=\"Max combinations to try (random sample)\")",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "FULL_GRID",
+        "kind": 5,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "FULL_GRID = {\n    \"hidden_size\": [32, 64, 128],\n    \"num_layers\": [2, 3, 4],\n    \"dropout\": [0.15, 0.2, 0.25, 0.3],\n    \"learning_rate\": [3e-4, 5e-4, 8e-4],\n    \"batch_size\": [64],\n    \"weight_decay\": [0.0, 1e-4],\n    \"sequence_length\": [60],\n}\n# Targeted search around winner (hidden=64, layers=3, dropout=0.2) - 36 combos",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "TARGETED_GRID",
+        "kind": 5,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "TARGETED_GRID = {\n    \"hidden_size\": [48, 64, 80],          # Explore around 64\n    \"num_layers\": [3, 4],                  # 3 was best, try 4\n    \"dropout\": [0.15, 0.2, 0.25],          # Explore around 0.2\n    \"learning_rate\": [3e-4, 5e-4, 7e-4],   # Fine-tune LR\n    \"batch_size\": [64],\n    \"weight_decay\": [0.0, 5e-5],           # Light regularization\n    \"state_weight\": [5.0, 7.0],            # Boost state head\n}\n# Quick sanity check grid (8 combos)",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "QUICK_GRID",
+        "kind": 5,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "QUICK_GRID = {\n    \"hidden_size\": [64],\n    \"num_layers\": [3, 4],\n    \"dropout\": [0.2, 0.25],\n    \"learning_rate\": [5e-4],\n    \"batch_size\": [64],\n    \"weight_decay\": [0.0, 1e-4],\n    \"state_weight\": [5.0],\n}\n# Sequence length exploration (12 combos)",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "SEQ_GRID",
+        "kind": 5,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "SEQ_GRID = {\n    \"hidden_size\": [64],\n    \"num_layers\": [3],\n    \"dropout\": [0.2],\n    \"learning_rate\": [5e-4],\n    \"batch_size\": [64],\n    \"weight_decay\": [0.0],\n    \"sequence_length\": [30, 45, 60, 90, 120, 150],\n    \"state_weight\": [5.0, 7.0],\n}",
+        "detail": "auto_tune_v2",
+        "documentation": {}
+    },
+    {
+        "label": "STRATEGY_GRIDS",
+        "kind": 5,
+        "importPath": "auto_tune_v2",
+        "description": "auto_tune_v2",
+        "peekOfCode": "STRATEGY_GRIDS = {\n    \"full\": FULL_GRID,\n    \"targeted\": TARGETED_GRID,\n    \"quick\": QUICK_GRID,\n    \"sequence\": SEQ_GRID,\n}\ndef load_config(config_path: str) -> Dict[str, Any]:\n    with open(config_path, \"r\") as f:\n        return yaml.safe_load(f)\ndef save_config(config: Dict[str, Any], config_path: str) -> None:",
+        "detail": "auto_tune_v2",
         "documentation": {}
     },
     {
@@ -4502,6 +5121,96 @@
         "description": "demo_resume_training",
         "peekOfCode": "checkpoint_contents = [\n    \"epoch: Current training epoch\",\n    \"model_state_dict: Model weights\",\n    \"optimizer_state_dict: Optimizer state (momentum, etc.)\",\n    \"scheduler_state_dict: Learning rate scheduler state\",\n    \"val_loss: Best validation loss so far\",\n    \"metrics: Validation metrics (RMSE, R2, etc.)\"\n]\nfor item in checkpoint_contents:\n    print(f\"  • {item}\")",
         "detail": "demo_resume_training",
+        "documentation": {}
+    },
+    {
+        "label": "EnsembleModel",
+        "kind": 6,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "class EnsembleModel(nn.Module):\n    \"\"\"Ensemble of multiple models with different initializations.\"\"\"\n    def __init__(self, models: List[nn.Module]):\n        super().__init__()\n        self.models = nn.ModuleList(models)\n        self.n_models = len(models)\n    def forward(self, x, return_all: bool = False):\n        \"\"\"Forward pass - average predictions from all models.\"\"\"\n        outputs = [m(x, return_all=return_all) for m in self.models]\n        if return_all:",
+        "detail": "enhanced_training",
+        "documentation": {}
+    },
+    {
+        "label": "set_seed",
+        "kind": 2,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "def set_seed(seed: int = 42):\n    \"\"\"Set all random seeds for reproducibility.\"\"\"\n    random.seed(seed)\n    np.random.seed(seed)\n    torch.manual_seed(seed)\n    if torch.cuda.is_available():\n        torch.cuda.manual_seed_all(seed)\n# ============================================================================\n# 2. DATA AUGMENTATION\n# ============================================================================",
+        "detail": "enhanced_training",
+        "documentation": {}
+    },
+    {
+        "label": "augment_sequences",
+        "kind": 2,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "def augment_sequences(x: np.ndarray, noise_std: float = 0.01, \n                      time_shift_range: int = 2) -> np.ndarray:\n    \"\"\"Apply data augmentation to sequences.\n    Techniques:\n    - Gaussian noise injection\n    - Time shift (jitter)\n    - Scaling perturbation\n    \"\"\"\n    augmented = x.copy()\n    batch_size, seq_len, features = augmented.shape",
+        "detail": "enhanced_training",
+        "documentation": {}
+    },
+    {
+        "label": "create_balanced_sampler",
+        "kind": 2,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "def create_balanced_sampler(labels: np.ndarray) -> WeightedRandomSampler:\n    \"\"\"Create a weighted sampler for class-balanced training.\"\"\"\n    unique, counts = np.unique(labels, return_counts=True)\n    class_weights = 1.0 / counts\n    sample_weights = class_weights[labels]\n    return WeightedRandomSampler(\n        weights=torch.tensor(sample_weights, dtype=torch.float64),\n        num_samples=len(labels),\n        replacement=True\n    )",
+        "detail": "enhanced_training",
+        "documentation": {}
+    },
+    {
+        "label": "create_stratified_val_split",
+        "kind": 2,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "def create_stratified_val_split(\n    n_samples: int,\n    labels: np.ndarray,\n    val_fraction: float = 0.1,\n    min_per_class: int = 20\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"Create stratified train/val split ensuring balanced validation set.\"\"\"\n    unique_classes = np.unique(labels)\n    train_idx, val_idx = [], []\n    for cls in unique_classes:",
+        "detail": "enhanced_training",
+        "documentation": {}
+    },
+    {
+        "label": "create_ensemble",
+        "kind": 2,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "def create_ensemble(cfg: Dict[str, Any], device: str, input_size: int, \n                    n_models: int = 3) -> List[nn.Module]:\n    \"\"\"Create multiple models with different seeds.\"\"\"\n    models = []\n    model_cfg = cfg.get(\"model\", {})\n    for i in range(n_models):\n        set_seed(42 + i * 100)  # Different seed for each model\n        engine = UnifiedNeuralEngine({\n            \"device\": device,\n            \"model\": {",
+        "detail": "enhanced_training",
+        "documentation": {}
+    },
+    {
+        "label": "evaluate_model",
+        "kind": 2,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "def evaluate_model(\n    model: nn.Module,\n    loader: DataLoader,\n    device: str,\n    price_loss_fn: nn.Module,\n    state_loss_fn: nn.Module,\n) -> Dict[str, float]:\n    \"\"\"Evaluate model and return metrics.\"\"\"\n    model.eval()\n    total_price = total_state = 0.0",
+        "detail": "enhanced_training",
+        "documentation": {}
+    },
+    {
+        "label": "train_one_epoch",
+        "kind": 2,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "def train_one_epoch(\n    model: nn.Module,\n    loader: DataLoader,\n    device: str,\n    optimizer: torch.optim.Optimizer,\n    weights: Dict[str, float],\n    price_loss_fn: nn.Module,\n    trend_loss_fn: nn.Module,\n    risk_loss_fn: nn.Module,\n    state_loss_fn: nn.Module,",
+        "detail": "enhanced_training",
+        "documentation": {}
+    },
+    {
+        "label": "enhanced_train",
+        "kind": 2,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "def enhanced_train(\n    config_path: str,\n    csv_path: Optional[str] = None,\n    n_candles: int = 3000,\n    n_ensemble: int = 3,\n    epochs: int = 100,\n    patience: int = 20,\n) -> Dict[str, Any]:\n    \"\"\"\n    Enhanced training with all improvements:",
+        "detail": "enhanced_training",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "enhanced_training",
+        "description": "enhanced_training",
+        "peekOfCode": "logger = setup_logging(log_file=\"enhanced_training.log\")\ndef set_seed(seed: int = 42):\n    \"\"\"Set all random seeds for reproducibility.\"\"\"\n    random.seed(seed)\n    np.random.seed(seed)\n    torch.manual_seed(seed)\n    if torch.cuda.is_available():\n        torch.cuda.manual_seed_all(seed)\n# ============================================================================\n# 2. DATA AUGMENTATION",
+        "detail": "enhanced_training",
         "documentation": {}
     },
     {
@@ -5031,7 +5740,16 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_path: str | None = None) -> None:\n    \"\"\"Train the unified multi-head model and print head-health insights.\"\"\"\n    from unified_multitask_training import train_unified_multitask\n    result = train_unified_multitask(config_path, csv_path=csv_path, resume_path=checkpoint_path)\n    console.print(\n        f\"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}\"\n    )\ndef chat_unified(config_path: str, metrics_path: str | None = None) -> None:\n    \"\"\"Interactive chat over the latest unified head metrics.\"\"\"\n    from unified_chat import run_unified_chat",
+        "peekOfCode": "def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_path: str | None = None) -> None:\n    \"\"\"Train the unified multi-head model and print head-health insights.\"\"\"\n    from unified_multitask_training import train_unified_multitask\n    result = train_unified_multitask(config_path, csv_path=csv_path, resume_path=checkpoint_path)\n    console.print(\n        f\"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}\"\n    )\ndef train_oanda_unified(\n    config_path: str,\n    *,",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "train_oanda_unified",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def train_oanda_unified(\n    config_path: str,\n    *,\n    instruments: str,\n    granularity: str,\n    candles: int,\n    checkpoint_path: str | None = None,\n) -> None:\n    \"\"\"Fetch OANDA candles into local cache and train unified model (auto-resume).\"\"\"\n    from oanda_unified_training import run_oanda_unified_training_session",
         "detail": "main",
         "documentation": {}
     },
@@ -5405,6 +6123,42 @@
         "documentation": {}
     },
     {
+        "label": "OandaCacheSpec",
+        "kind": 6,
+        "importPath": "oanda_candle_cache",
+        "description": "oanda_candle_cache",
+        "peekOfCode": "class OandaCacheSpec:\n    instrument: str\n    granularity: str\n    price: str = \"MBA\"\n    initial_count: int = 5000\n    update_count: int = 1500\ndef _data_dir_from_cfg(cfg: Dict[str, Any]) -> Path:\n    # Prefer top-level path aliases; fall back to paths.*\n    return Path(cfg.get(\"DATA_DIR\") or cfg.get(\"paths\", {}).get(\"data_dir\") or \"trained_data/data\")\ndef cache_csv_path(cfg: Dict[str, Any], *, instrument: str, granularity: str) -> Path:",
+        "detail": "oanda_candle_cache",
+        "documentation": {}
+    },
+    {
+        "label": "cache_csv_path",
+        "kind": 2,
+        "importPath": "oanda_candle_cache",
+        "description": "oanda_candle_cache",
+        "peekOfCode": "def cache_csv_path(cfg: Dict[str, Any], *, instrument: str, granularity: str) -> Path:\n    data_dir = _data_dir_from_cfg(cfg)\n    data_dir.mkdir(parents=True, exist_ok=True)\n    safe_instrument = str(instrument).replace(\"/\", \"_\").replace(\" \", \"\").strip()\n    safe_gran = str(granularity).replace(\"/\", \"_\").replace(\" \", \"\").strip()\n    return data_dir / f\"oanda_{safe_instrument}_{safe_gran}.csv\"\ndef _to_utc_iso_z(ts: pd.Timestamp) -> str:\n    # OANDA expects RFC3339; we emit a Z-suffixed UTC timestamp.\n    if ts.tzinfo is None:\n        ts = ts.tz_localize(\"UTC\")",
+        "detail": "oanda_candle_cache",
+        "documentation": {}
+    },
+    {
+        "label": "merge_dedupe_by_time",
+        "kind": 2,
+        "importPath": "oanda_candle_cache",
+        "description": "oanda_candle_cache",
+        "peekOfCode": "def merge_dedupe_by_time(existing: pd.DataFrame, incoming: pd.DataFrame) -> pd.DataFrame:\n    \"\"\"Merge two OHLCV frames and dedupe by `time` (keep last).\"\"\"\n    if existing is None or len(existing) == 0:\n        out = _normalize_time(incoming)\n    elif incoming is None or len(incoming) == 0:\n        out = _normalize_time(existing)\n    else:\n        a = _normalize_time(existing)\n        b = _normalize_time(incoming)\n        out = pd.concat([a, b], ignore_index=True)",
+        "detail": "oanda_candle_cache",
+        "documentation": {}
+    },
+    {
+        "label": "update_oanda_cache",
+        "kind": 2,
+        "importPath": "oanda_candle_cache",
+        "description": "oanda_candle_cache",
+        "peekOfCode": "def update_oanda_cache(\n    config_path: str,\n    *,\n    instrument: str,\n    granularity: str,\n    candles: int = 1500,\n    price: str = \"MBA\",\n) -> Path:\n    \"\"\"Fetch new candles from OANDA and update the local cache CSV.\n    - If cache exists: fetch from the latest cached timestamp (inclusive) and merge/dedupe.",
+        "detail": "oanda_candle_cache",
+        "documentation": {}
+    },
+    {
         "label": "OandaApiError",
         "kind": 6,
         "importPath": "oanda_practice",
@@ -5438,6 +6192,24 @@
         "description": "oanda_practice",
         "peekOfCode": "PRACTICE_API_URL = \"https://api-fxpractice.oanda.com/v3\"\nclass OandaApiError(RuntimeError):\n    def __init__(\n        self,\n        status_code: int,\n        message: str,\n        *,\n        error_message: Optional[str] = None,\n        reject_reason: Optional[str] = None,\n        response_text: Optional[str] = None,",
         "detail": "oanda_practice",
+        "documentation": {}
+    },
+    {
+        "label": "OandaTrainSessionResult",
+        "kind": 6,
+        "importPath": "oanda_unified_training",
+        "description": "oanda_unified_training",
+        "peekOfCode": "class OandaTrainSessionResult:\n    instruments: List[str]\n    csv_paths: Dict[str, str]\n    model_path: str\n    metrics_path: str\ndef _split_instruments(value: str) -> List[str]:\n    parts: List[str] = []\n    for chunk in str(value).replace(\";\", \",\").split(\",\"):\n        p = chunk.strip()\n        if p:",
+        "detail": "oanda_unified_training",
+        "documentation": {}
+    },
+    {
+        "label": "run_oanda_unified_training_session",
+        "kind": 2,
+        "importPath": "oanda_unified_training",
+        "description": "oanda_unified_training",
+        "peekOfCode": "def run_oanda_unified_training_session(\n    config_path: str,\n    *,\n    instruments: str,\n    granularity: str = \"M5\",\n    candles: int = 1500,\n    resume_path: Optional[str] = None,\n) -> OandaTrainSessionResult:\n    \"\"\"Run one training session using fresh OANDA candles.\n    `instruments` may be a comma-separated string, e.g. \"EUR_USD,GBP_USD\".",
+        "detail": "oanda_unified_training",
         "documentation": {}
     },
     {
@@ -5841,7 +6613,7 @@
         "kind": 2,
         "importPath": "unified_multitask_training",
         "description": "unified_multitask_training",
-        "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n    resume_path: Optional[str] = None,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    cfg = load_config(config_path)\n    device = cfg.get(\"device\", \"cuda\" if torch.cuda.is_available() else \"cpu\")\n    csv_path = _resolve_csv_path(cfg, csv_path)",
+        "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n    resume_path: Optional[str] = None,\n    seed: int = 42,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    # Set seeds for reproducibility\n    import random",
         "detail": "unified_multitask_training",
         "documentation": {}
     },

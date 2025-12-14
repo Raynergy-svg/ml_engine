@@ -34,27 +34,26 @@ validation_split: 0.1
 architecture: attention_lstm
 model:
   type: attention_lstm
-  input_size: 5
+  input_size: 7
   hidden_size: 48
-  num_layers: 3
+  num_layers: 4
   dropout: 0.25
   bidirectional: false
   num_heads: 4
   use_flash_attention: true
-  state_classes: 2
   optimizer:
-    weight_decay: 0.0
+    weight_decay: 0.0001
 optimizer:
   type: adamw
   learning_rate: 0.0005
-  weight_decay: 0.0
+  weight_decay: 0.0001
   betas:
   - 0.9
   - 0.999
 scheduler: {}
-learning_rate: 0.0005
+learning_rate: 0.0007
 batch_size: 64
-epochs: 200
+epochs: 30
 early_stopping_patience: 15
 auto_resume: true
 mixed_precision: true
@@ -69,9 +68,9 @@ unified_head_loss_weights:
   price: 1.0
   trend: 0.5
   risk: 0.5
-  state: 7.0
-early_stop_patience: 15
-min_epochs: 50
+  state: 5.0
+early_stop_patience: 5
+min_epochs: 10
 monitoring:
   enable_memory_monitoring: true
   memory_check_interval: 60
@@ -165,6 +164,6 @@ visualization:
   update_interval: 500
 warmup_steps: 1000
 weight_decay: 0.0
-hidden_size: 64
-num_layers: 3
-dropout: 0.2
+hidden_size: 48
+num_layers: 4
+dropout: 0.25

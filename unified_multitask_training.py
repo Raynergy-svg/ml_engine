@@ -23,7 +23,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from data_processing import prepare_sequences
 from multitask_labels import build_multitask_targets, split_time_series
-from neural_engine_unified import UnifiedNeuralEngine
+from neural_engine_unified import UnifiedNeuralEngine, safe_torch_load
 from reasoning_enhanced import ReasoningEngine
 from utils import load_config, setup_logging
 
@@ -171,6 +171,16 @@ def _prepare_dataloaders(
 
     train_idx, val_idx = split_time_series(len(x), val_fraction=float(cfg.get("validation_split", 0.2)))
 
+
+    # Print state label distribution for train and val sets
+    import numpy as np
+    train_state = targets.state[train_idx]
+    val_state = targets.state[val_idx]
+    unique_train, counts_train = np.unique(train_state, return_counts=True)
+    unique_val, counts_val = np.unique(val_state, return_counts=True)
+    print("[State label distribution] Train:", dict(zip(unique_train, counts_train)))
+    print("[State label distribution] Val:", dict(zip(unique_val, counts_val)))
+
     train_loader = _to_loader(
         x[train_idx],
         y_price[train_idx],
@@ -199,16 +209,24 @@ def _build_unified_engine(
     device: str,
     input_size: int,
 ) -> UnifiedNeuralEngine:
+    # Allow model config to be set via config.yaml (model: section or root)
+    model_cfg = cfg.get("model", {})
+    hidden_size = int(model_cfg.get("hidden_size", cfg.get("hidden_size", 64)))
+    num_layers = int(model_cfg.get("num_layers", cfg.get("num_layers", 2)))
+    dropout = float(model_cfg.get("dropout", cfg.get("dropout", 0.1)))
+    bidirectional = bool(model_cfg.get("bidirectional", cfg.get("bidirectional", False)))
+    state_classes = int(cfg.get("state_classes", model_cfg.get("state_classes", 3)))
+
     engine = UnifiedNeuralEngine(
         {
             "device": device,
             "model": {
                 "input_size": int(input_size),
-                "hidden_size": int(cfg.get("hidden_size", 64)),
-                "num_layers": int(cfg.get("num_layers", 2)),
-                "dropout": float(cfg.get("dropout", 0.1)),
-                "bidirectional": bool(cfg.get("bidirectional", False)),
-                "state_classes": int(cfg.get("state_classes", 3)),
+                "hidden_size": hidden_size,
+                "num_layers": num_layers,
+                "dropout": dropout,
+                "bidirectional": bidirectional,
+                "state_classes": state_classes,
             },
         }
     )
@@ -313,7 +331,8 @@ def _maybe_resume_unified_weights(
         if not (chosen.exists() and chosen.is_file()):
             return False
 
-        payload = torch.load(str(chosen), map_location=device)
+        # Use safe_torch_load which handles sklearn scaler allowlisting for PyTorch 2.6+
+        payload = safe_torch_load(str(chosen), map_location=device)
         state = (payload or {}).get("model_state_dict") if isinstance(payload, dict) else None
         if not isinstance(state, dict) or not state:
             return False
@@ -346,6 +365,52 @@ def _clone_state_dict(model: nn.Module) -> Dict[str, Any]:
         return dict(model.state_dict())
 
 
+def _adaptive_weight_adjustment(
+    weights: Dict[str, float],
+    val_metrics: "HeadMetrics",
+    *,
+    state_classes: int = 2,
+    boost_factor: float = 1.15,
+    max_weight: float = 5.0,
+) -> Tuple[Dict[str, float], Optional[str]]:
+    """Adjust weights to boost lagging heads. Returns (new_weights, adjustment_msg)."""
+    losses = {
+        "price": val_metrics.price_loss,
+        "trend": val_metrics.trend_loss,
+        "risk": val_metrics.risk_loss,
+        "state": val_metrics.state_loss,
+    }
+    
+    # Find median loss for comparison
+    loss_vals = [v for v in losses.values() if v > 0]
+    if not loss_vals:
+        return weights, None
+    median_loss = float(sorted(loss_vals)[len(loss_vals) // 2])
+    
+    # Check if state head is healthy by accuracy (don't boost if already good)
+    # For binary: 65%+ is healthy (15% above 50% random baseline)
+    # For 3-class: 48%+ is healthy (15% above 33% random baseline)
+    state_baseline = 1.0 / max(state_classes, 2)
+    state_healthy = val_metrics.state_acc >= (state_baseline + 0.15)
+    
+    new_weights = dict(weights)
+    adjusted = None
+    
+    for head, loss in losses.items():
+        # Skip state if accuracy is healthy (loss may be high but model is learning)
+        if head == "state" and state_healthy:
+            continue
+        # Boost heads that are lagging (loss > 1.5x median) - more conservative threshold
+        if loss > median_loss * 1.5 and new_weights.get(head, 0.5) < max_weight:
+            old_w = new_weights.get(head, 0.5)
+            new_w = min(old_w * boost_factor, max_weight)
+            new_weights[head] = new_w
+            adjusted = f"↑ {head} weight: {old_w:.2f}→{new_w:.2f}"
+            break  # Only adjust one per epoch
+    
+    return new_weights, adjusted
+
+
 def _train_select_best(
     cfg: Dict[str, Any],
     *,
@@ -361,19 +426,30 @@ def _train_select_best(
     state_loss_fn: nn.Module,
     reasoning: ReasoningEngine,
     epochs: int,
-) -> tuple[list[Dict[str, Any]], Optional[Dict[str, Any]], Optional[float], Optional[int]]:
+    state_classes: int = 2,
+    patience: int = 5,
+    min_epochs: int = 10,
+) -> tuple[list[Dict[str, Any]], Optional[Dict[str, Any]], Optional[float], Optional[int], Dict[str, float]]:
+    """Train with adaptive weights and early stopping.
+    
+    Returns: (history, best_state, best_score, best_epoch, final_weights)
+    """
     history: list[Dict[str, Any]] = []
     best_score: Optional[float] = None
     best_epoch: Optional[int] = None
     best_state: Optional[Dict[str, Any]] = None
-
+    
+    # Adaptive training state
+    current_weights = dict(weights)
+    no_improve_count = 0
+    
     for epoch in range(1, int(epochs) + 1):
         _train_one_epoch(
             model,
             train_loader,
             device=device,
             optimizer=optimizer,
-            weights=weights,
+            weights=current_weights,
             price_loss_fn=price_loss_fn,
             trend_loss_fn=trend_loss_fn,
             risk_loss_fn=risk_loss_fn,
@@ -400,31 +476,51 @@ def _train_select_best(
                 "state_loss": val_metrics.state_loss,
                 "state_acc": val_metrics.state_acc,
             },
+            "weights": dict(current_weights),
         }
         history.append(metrics_dict)
 
-        # Produce "chat mode" insights about head health.
-        head_summary = reasoning.summarize_head_health(metrics_dict["val"], history=history)
+        # Compute score and check improvement
+        score = _unified_val_score(val_metrics, current_weights)
+        is_best = best_score is None or float(score) < float(best_score)
+        
+        if is_best:
+            best_score = float(score)
+            best_epoch = int(epoch)
+            best_state = _clone_state_dict(model)
+            no_improve_count = 0
+        else:
+            no_improve_count += 1
 
+        # Adaptive weight adjustment for lagging heads
+        new_weights, adj_msg = _adaptive_weight_adjustment(
+            current_weights, val_metrics, state_classes=state_classes
+        )
+        
+        # Compact one-liner per epoch
+        best_marker = " ★" if is_best else ""
         logger.info(
-            "Epoch %s | val price=%.4f trend=%.4f risk=%.4f state=%.4f acc=%.3f",
+            "E%02d | P:%.4f T:%.4f R:%.3f S:%.3f (%.0f%%)%s",
             epoch,
             val_metrics.price_loss,
             val_metrics.trend_loss,
             val_metrics.risk_loss,
             val_metrics.state_loss,
-            val_metrics.state_acc,
+            val_metrics.state_acc * 100,
+            best_marker,
         )
-        for line in head_summary.get("insights", []):
-            logger.info("HEAD: %s", line)
+        
+        # Log weight adjustment
+        if adj_msg:
+            logger.info("  %s", adj_msg)
+            current_weights = new_weights
 
-        score = _unified_val_score(val_metrics, weights)
-        if best_score is None or float(score) < float(best_score):
-            best_score = float(score)
-            best_epoch = int(epoch)
-            best_state = _clone_state_dict(model)
+        # Early stopping check (only after min_epochs)
+        if epoch >= min_epochs and no_improve_count >= patience:
+            logger.info("⏹  Early stop: no improvement for %d epochs", patience)
+            break
 
-    return history, best_state, best_score, best_epoch
+    return history, best_state, best_score, best_epoch, current_weights
 
 
 def _default_metrics_path(cfg: Dict[str, Any]) -> Path:
@@ -461,8 +557,17 @@ def train_unified_multitask(
     *,
     csv_path: Optional[str] = None,
     resume_path: Optional[str] = None,
+    seed: int = 42,
 ) -> Dict[str, Any]:
     """Train the unified multi-head model and print per-head status via reasoning."""
+
+    # Set seeds for reproducibility
+    import random
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
     cfg = load_config(config_path)
     device = cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
@@ -492,6 +597,8 @@ def train_unified_multitask(
     risk_loss_fn = nn.BCELoss()
     state_loss_fn = nn.CrossEntropyLoss()
 
+    state_classes = int(cfg.get("state_classes", cfg.get("model", {}).get("state_classes", 2)))
+
     weights = cfg.get("unified_head_loss_weights") or {
         "price": 1.0,
         "trend": 0.5,
@@ -508,7 +615,15 @@ def train_unified_multitask(
     reasoning = ReasoningEngine(cfg.get("reasoning", {}))
 
     epochs = int(cfg.get("epochs", cfg.get("training", {}).get("epochs", 25)))
-    history, best_state, best_score, best_epoch = _train_select_best(
+    patience = int(cfg.get("early_stop_patience", 5))
+    min_epochs = int(cfg.get("min_epochs", 10))
+    
+    # Compact header
+    logger.info("─" * 50)
+    logger.info("Training ≤%d epochs | P=price T=trend R=risk S=state | ★=best", epochs)
+    logger.info("─" * 50)
+    
+    history, best_state, best_score, best_epoch, final_weights = _train_select_best(
         cfg,
         model=model,
         train_loader=train_loader,
@@ -522,6 +637,9 @@ def train_unified_multitask(
         state_loss_fn=state_loss_fn,
         reasoning=reasoning,
         epochs=epochs,
+        state_classes=state_classes,
+        patience=patience,
+        min_epochs=min_epochs,
     )
 
     # Save the best checkpoint (not just the last epoch) so Buddy/trading always loads the best run.
@@ -540,6 +658,36 @@ def train_unified_multitask(
         history=history,
     )
 
+    # Final summary
+    import yaml
+    if history:
+        final = history[-1].get("val", {})
+        actual_epochs = len(history)
+        logger.info("─" * 50)
+        logger.info(
+            "✓ Done | Best: E%02d (score=%.4f) | Ran %d/%d epochs",
+            best_epoch or actual_epochs,
+            best_score or 0,
+            actual_epochs,
+            epochs,
+        )
+        logger.info("  Model: %s", model_path)
+
+        # Auto-update config.yaml if weights changed
+        if final_weights != weights:
+            w_str = " ".join(f"{k}:{v:.2f}" for k, v in final_weights.items())
+            logger.info("  📊 Recommended weights: %s", w_str)
+            config_path = config_path if config_path.endswith('.yaml') else 'config.yaml'
+            try:
+                with open(config_path, 'r') as f:
+                    config_data = yaml.safe_load(f)
+                config_data['unified_head_loss_weights'] = {k: float(f"{v:.2f}") for k, v in final_weights.items()}
+                with open(config_path, 'w') as f:
+                    yaml.dump(config_data, f, sort_keys=False)
+                logger.info("  ✅ config.yaml updated with new unified_head_loss_weights.")
+            except Exception as e:
+                logger.warning(f"  ⚠️ Failed to update config.yaml automatically: {e}")
+
     return {
         "csv": csv_path,
         "model_path": str(model_path),
@@ -547,6 +695,7 @@ def train_unified_multitask(
         "resumed": bool(resumed),
         "best_epoch": best_epoch,
         "best_score": best_score,
+        "final_weights": final_weights,
         "data_meta": {
             "feature_columns": list(meta.get("feature_columns") or []),
             "sequence_length": int(meta.get("sequence_length") or 0),

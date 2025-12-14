@@ -2025,3 +2025,27 @@ OSError: Missing OANDA env vars. Set OANDA_API_TOKEN (or OANDA_API_KEY) and OAND
 2025-12-13 00:13:04 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
 2025-12-13 00:13:04 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
 2025-12-13 00:13:04 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp_xfrjazg/test_config.yaml
+2025-12-14 01:28:25 - utils - INFO - [utils.py:174] - Successfully loaded configuration from config.yaml
+2025-12-14 01:32:18 - root - ERROR - [main.py:1494] - Command failed: Error(s) in loading state_dict for UnifiedMarketNet:
+	size mismatch for _lstm.weight_ih_l0: copying a param with shape torch.Size([192, 5]) from checkpoint, the shape in current model is torch.Size([192, 7]).
+	size mismatch for state_head.weight: copying a param with shape torch.Size([2, 48]) from checkpoint, the shape in current model is torch.Size([3, 48]).
+	size mismatch for state_head.bias: copying a param with shape torch.Size([2]) from checkpoint, the shape in current model is torch.Size([3]).
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1479, in main
+    command_map[args.command](
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1269, in buddy
+    run_unified_talk(
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 866, in run_unified_talk
+    ctx = _load_context(config_path, checkpoint_path=checkpoint_path)
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 389, in _load_context
+    engine = UnifiedNeuralEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
+  File "/Users/mirelacertan/Documents/ml_engine/neural_engine_unified.py", line 172, in from_checkpoint
+    eng.load_checkpoint(checkpoint_path)
+  File "/Users/mirelacertan/Documents/ml_engine/neural_engine_unified.py", line 180, in load_checkpoint
+    self.model.load_state_dict(state)
+  File "/Users/mirelacertan/Library/Python/3.9/lib/python/site-packages/torch/nn/modules/module.py", line 2624, in load_state_dict
+    raise RuntimeError(
+RuntimeError: Error(s) in loading state_dict for UnifiedMarketNet:
+	size mismatch for _lstm.weight_ih_l0: copying a param with shape torch.Size([192, 5]) from checkpoint, the shape in current model is torch.Size([192, 7]).
+	size mismatch for state_head.weight: copying a param with shape torch.Size([2, 48]) from checkpoint, the shape in current model is torch.Size([3, 48]).
+	size mismatch for state_head.bias: copying a param with shape torch.Size([2]) from checkpoint, the shape in current model is torch.Size([3]).
