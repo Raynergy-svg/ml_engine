@@ -39,6 +39,14 @@ class HeadMetrics:
     state_acc: float
 
 
+@dataclass
+class LossFunctions:
+    price: nn.Module
+    trend: nn.Module
+    risk: nn.Module
+    state: nn.Module
+
+
 def _to_loader(
     x: np.ndarray,
     y_price: np.ndarray,
@@ -403,10 +411,8 @@ def _adaptive_weight_adjustment(
         # Boost heads that are lagging (loss > 1.5x median) - more conservative threshold
         if loss > median_loss * 1.5 and new_weights.get(head, 0.5) < max_weight:
             old_w = new_weights.get(head, 0.5)
-            new_w = min(old_w * boost_factor, max_weight)
-            new_weights[head] = new_w
-            adjusted = f"↑ {head} weight: {old_w:.2f}→{new_w:.2f}"
-            break  # Only adjust one per epoch
+            new_weights[head] = min(old_w * boost_factor, max_weight)
+            adjusted = f"↑ {head} weight: {old_w:.2f} → {new_weights[head]:.2f}"
     
     return new_weights, adjusted
 
@@ -420,11 +426,7 @@ def _train_select_best(
     device: str,
     optimizer: torch.optim.Optimizer,
     weights: Dict[str, float],
-    price_loss_fn: nn.Module,
-    trend_loss_fn: nn.Module,
-    risk_loss_fn: nn.Module,
-    state_loss_fn: nn.Module,
-    reasoning: ReasoningEngine,
+    loss_fns: LossFunctions,
     epochs: int,
     state_classes: int = 2,
     patience: int = 5,
@@ -450,21 +452,20 @@ def _train_select_best(
             device=device,
             optimizer=optimizer,
             weights=current_weights,
-            price_loss_fn=price_loss_fn,
-            trend_loss_fn=trend_loss_fn,
-            risk_loss_fn=risk_loss_fn,
-            state_loss_fn=state_loss_fn,
+            price_loss_fn=loss_fns.price,
+            trend_loss_fn=loss_fns.trend,
+            risk_loss_fn=loss_fns.risk,
+            state_loss_fn=loss_fns.state,
             max_grad_norm=float(cfg.get("max_grad_norm", 1.0)),
         )
-
         val_metrics = _evaluate(
             model,
             val_loader,
             device=device,
-            price_loss_fn=price_loss_fn,
-            trend_loss_fn=trend_loss_fn,
-            risk_loss_fn=risk_loss_fn,
-            state_loss_fn=state_loss_fn,
+            price_loss_fn=loss_fns.price,
+            trend_loss_fn=loss_fns.trend,
+            risk_loss_fn=loss_fns.risk,
+            state_loss_fn=loss_fns.state,
         )
 
         metrics_dict = {
@@ -608,11 +609,12 @@ def train_unified_multitask(
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=float(cfg.get("learning_rate", 5e-4)),
-        weight_decay=float(cfg.get("weight_decay", 0.0)),
+    loss_fns = LossFunctions(
+        price=price_loss_fn,
+        trend=trend_loss_fn,
+        risk=risk_loss_fn,
+        state=state_loss_fn,
     )
-
-    reasoning = ReasoningEngine(cfg.get("reasoning", {}))
 
     epochs = int(cfg.get("epochs", cfg.get("training", {}).get("epochs", 25)))
     patience = int(cfg.get("early_stop_patience", 5))
@@ -631,18 +633,14 @@ def train_unified_multitask(
         device=device,
         optimizer=optimizer,
         weights=weights,
-        price_loss_fn=price_loss_fn,
-        trend_loss_fn=trend_loss_fn,
-        risk_loss_fn=risk_loss_fn,
-        state_loss_fn=state_loss_fn,
-        reasoning=reasoning,
+        loss_fns=loss_fns,
         epochs=epochs,
+        state_classes=state_classes,
+        patience=patience,
         state_classes=state_classes,
         patience=patience,
         min_epochs=min_epochs,
     )
-
-    # Save the best checkpoint (not just the last epoch) so Buddy/trading always loads the best run.
     if best_state is not None:
         try:
             model.load_state_dict(best_state, strict=False)

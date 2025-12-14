@@ -121,6 +121,40 @@ class OandaPracticeClient:
             )
         return cls(OandaPracticeConfig(api_token=api_token, account_id=account_id))
 
+    def _parse_error_details(self, resp: requests.Response) -> tuple[Optional[str], Optional[str]]:
+        """Parse common OANDA error shapes from response."""
+        try:
+            err = resp.json()
+            if isinstance(err, dict):
+                return err.get("errorMessage"), err.get("rejectReason")
+        except Exception:
+            pass
+        return None, None
+
+    def _get_retry_sleep(self, resp: requests.Response, default_backoff: float) -> float:
+        """Calculate sleep duration for retry based on response headers."""
+        retry_after = resp.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return float(retry_after)
+            except ValueError:
+                pass
+        return default_backoff
+
+    def _should_retry(self, status_code: int, attempt: int, max_attempts: int) -> bool:
+        """Determine if request should be retried based on status code."""
+        retryable_codes = {429, 500, 502, 503, 504}
+        return status_code in retryable_codes and attempt < max_attempts
+
+    def _build_error_message(self, resp: requests.Response, error_message: Optional[str]) -> str:
+        """Build error message from response."""
+        msg = f"OANDA API error {resp.status_code}"
+        if error_message:
+            msg += f": {error_message}"
+        elif resp.text:
+            msg += f": {resp.text}"
+        return msg
+
     def _request(
         self,
         method: str,
@@ -131,61 +165,28 @@ class OandaPracticeClient:
     ) -> Any:
         url = PRACTICE_API_URL + path
         timeout = (5, self._config.timeout_seconds)
-
-        # Best-practice-ish defaults:
-        # - persistent HTTP connection via requests.Session
-        # - retry a small number of times on transient errors and rate limiting
         max_attempts = 3
         backoff_seconds = 0.5
 
         for attempt in range(1, max_attempts + 1):
             resp = self._session.request(
-                method,
-                url,
-                params=params,
-                json=json,
-                timeout=timeout,
+                method, url, params=params, json=json, timeout=timeout
             )
 
             if resp.status_code < 400:
-                # Some endpoints may return empty bodies; default to {}.
-                if not resp.content:
-                    return {}
-                return resp.json()
+                return resp.json() if resp.content else {}
 
-            # Parse common OANDA error shapes.
-            error_message: Optional[str] = None
-            reject_reason: Optional[str] = None
-            try:
-                err = resp.json()
-                if isinstance(err, dict):
-                    error_message = err.get("errorMessage")
-                    reject_reason = err.get("rejectReason")
-            except Exception:
-                err = None
+            error_message, reject_reason = self._parse_error_details(resp)
 
-            # Retry policy: 429 + 5xx.
-            if resp.status_code in {429, 500, 502, 503, 504} and attempt < max_attempts:
-                retry_after = resp.headers.get("Retry-After")
-                if retry_after:
-                    try:
-                        sleep_s = float(retry_after)
-                    except ValueError:
-                        sleep_s = backoff_seconds
-                else:
-                    sleep_s = backoff_seconds
+            if self._should_retry(resp.status_code, attempt, max_attempts):
+                sleep_s = self._get_retry_sleep(resp, backoff_seconds)
                 time.sleep(max(0.0, sleep_s))
                 backoff_seconds *= 2.0
                 continue
 
-            msg = f"OANDA API error {resp.status_code}"
-            if error_message:
-                msg += f": {error_message}"
-            elif resp.text:
-                msg += f": {resp.text}"
             raise OandaApiError(
                 resp.status_code,
-                msg,
+                self._build_error_message(resp, error_message),
                 error_message=error_message,
                 reject_reason=reject_reason,
                 response_text=resp.text,
@@ -240,6 +241,38 @@ class OandaPracticeClient:
             params={"instruments": instruments},
         )
 
+    def _extract_first_price(self, price_data: Dict[str, Any], side_key: str) -> Optional[float]:
+        """Extract the first price from a bid/ask array."""
+        side = price_data.get(side_key) or []
+        if not isinstance(side, list) or not side:
+            return None
+        first_entry = side[0]
+        if not isinstance(first_entry, dict):
+            return None
+        try:
+            return float(first_entry.get("price"))
+        except (TypeError, ValueError):
+            return None
+
+    def _extract_closeout_price(self, price_data: Dict[str, Any], key: str) -> Optional[float]:
+        """Extract a closeout price as fallback."""
+        try:
+            return float(price_data.get(key))
+        except (TypeError, ValueError):
+            return None
+
+    def _get_bid_ask(self, price_data: Dict[str, Any]) -> tuple[Optional[float], Optional[float]]:
+        """Extract bid and ask prices from price data with fallback to closeout prices."""
+        bid = self._extract_first_price(price_data, "bids")
+        ask = self._extract_first_price(price_data, "asks")
+
+        if bid is None:
+            bid = self._extract_closeout_price(price_data, "closeoutBid")
+        if ask is None:
+            ask = self._extract_closeout_price(price_data, "closeoutAsk")
+
+        return bid, ask
+
     def get_price_quote(self, *, instrument: str) -> Dict[str, float]:
         """Return best bid/ask for a single instrument (floats).
 
@@ -254,29 +287,7 @@ class OandaPracticeClient:
         if not p0:
             raise ValueError("Malformed OANDA pricing response")
 
-        def _first_price(side_key: str) -> Optional[float]:
-            side = p0.get(side_key) or []
-            if isinstance(side, list) and side and isinstance(side[0], dict):
-                try:
-                    return float(side[0].get("price"))
-                except Exception:
-                    return None
-            return None
-
-        bid = _first_price("bids")
-        ask = _first_price("asks")
-
-        # Fallback to closeout prices if top-of-book arrays are missing.
-        if bid is None:
-            try:
-                bid = float(p0.get("closeoutBid"))
-            except Exception:
-                bid = None
-        if ask is None:
-            try:
-                ask = float(p0.get("closeoutAsk"))
-            except Exception:
-                ask = None
+        bid, ask = self._get_bid_ask(p0)
 
         if bid is None or ask is None or bid <= 0 or ask <= 0:
             raise ValueError("Missing bid/ask in OANDA pricing response")

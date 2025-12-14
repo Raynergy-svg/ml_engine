@@ -4966,7 +4966,7 @@
         "kind": 5,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "logger = logging.getLogger(__name__)\n# Define cache directory (env override supported)\nCACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass DataValidationError(Exception):\n    \"\"\"Raised when inputs or derived data are invalid.\"\"\"\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for (sequence, target) pairs.\"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# Define cache directory (env override supported)\nCACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\n# Column name constants\nADJ_CLOSE_COL = \"adj close\"\nCLOSE_COL = \"close\"\nclass DataValidationError(Exception):\n    \"\"\"Raised when inputs or derived data are invalid.\"\"\"\nclass StockDataset(Dataset):",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -4975,7 +4975,25 @@
         "kind": 5,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "CACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\nclass DataValidationError(Exception):\n    \"\"\"Raised when inputs or derived data are invalid.\"\"\"\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for (sequence, target) pairs.\"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod",
+        "peekOfCode": "CACHE_DIR = Path(os.environ.get(\"CACHE_DIR\", str(Path.home() / \".trading_bot_cache\")))\nCACHE_DIR.mkdir(exist_ok=True, parents=True)\n# Column name constants\nADJ_CLOSE_COL = \"adj close\"\nCLOSE_COL = \"close\"\nclass DataValidationError(Exception):\n    \"\"\"Raised when inputs or derived data are invalid.\"\"\"\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for (sequence, target) pairs.\"\"\"\n    @staticmethod",
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "ADJ_CLOSE_COL",
+        "kind": 5,
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "ADJ_CLOSE_COL = \"adj close\"\nCLOSE_COL = \"close\"\nclass DataValidationError(Exception):\n    \"\"\"Raised when inputs or derived data are invalid.\"\"\"\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for (sequence, target) pairs.\"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod",
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "CLOSE_COL",
+        "kind": 5,
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "CLOSE_COL = \"close\"\nclass DataValidationError(Exception):\n    \"\"\"Raised when inputs or derived data are invalid.\"\"\"\nclass StockDataset(Dataset):\n    \"\"\"PyTorch Dataset for (sequence, target) pairs.\"\"\"\n    @staticmethod\n    def _is_dask_array(x: Any) -> bool:\n        return da is not None and isinstance(x, da.Array)\n    @classmethod\n    def _coerce_to_array(",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -4984,7 +5002,7 @@
         "kind": 5,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "_REQUIRED_STOCK_COLS = {\"open\", \"high\", \"low\", \"close\", \"volume\"}\ndef _normalize_columns(columns) -> List[str]:\n    out = []\n    for col in columns:\n        if isinstance(col, tuple):\n            out.append(\"_\".join(map(str, col)).lower())\n        else:\n            out.append(str(col).lower())\n    return out\ndef _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:",
+        "peekOfCode": "_REQUIRED_STOCK_COLS = {\"open\", \"high\", \"low\", \"close\", \"volume\"}\ndef _normalize_columns(columns) -> List[str]:\n    out = []\n    for col in columns:\n        if isinstance(col, tuple):\n            out.append(\"_\".join(map(str, col)).lower())\n        else:\ndef _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:\n    if CLOSE_COL not in df.columns and ADJ_CLOSE_COL in df.columns:\n        df[CLOSE_COL] = df[ADJ_CLOSE_COL]",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -6604,7 +6622,16 @@
         "kind": 6,
         "importPath": "unified_multitask_training",
         "description": "unified_multitask_training",
-        "peekOfCode": "class HeadMetrics:\n    price_loss: float\n    trend_loss: float\n    risk_loss: float\n    state_loss: float\n    state_acc: float\ndef _to_loader(\n    x: np.ndarray,\n    y_price: np.ndarray,\n    y_trend: np.ndarray,",
+        "peekOfCode": "class HeadMetrics:\n    price_loss: float\n    trend_loss: float\n    risk_loss: float\n    state_loss: float\n    state_acc: float\n@dataclass\nclass LossFunctions:\n    price: nn.Module\n    trend: nn.Module",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
+        "label": "LossFunctions",
+        "kind": 6,
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
+        "peekOfCode": "class LossFunctions:\n    price: nn.Module\n    trend: nn.Module\n    risk: nn.Module\n    state: nn.Module\ndef _to_loader(\n    x: np.ndarray,\n    y_price: np.ndarray,\n    y_trend: np.ndarray,\n    y_risk: np.ndarray,",
         "detail": "unified_multitask_training",
         "documentation": {}
     },
@@ -6622,7 +6649,7 @@
         "kind": 5,
         "importPath": "unified_multitask_training",
         "description": "unified_multitask_training",
-        "peekOfCode": "logger = setup_logging(log_file=\"unified_multitask_training.log\")\n@dataclass\nclass HeadMetrics:\n    price_loss: float\n    trend_loss: float\n    risk_loss: float\n    state_loss: float\n    state_acc: float\ndef _to_loader(\n    x: np.ndarray,",
+        "peekOfCode": "logger = setup_logging(log_file=\"unified_multitask_training.log\")\n@dataclass\nclass HeadMetrics:\n    price_loss: float\n    trend_loss: float\n    risk_loss: float\n    state_loss: float\n    state_acc: float\n@dataclass\nclass LossFunctions:",
         "detail": "unified_multitask_training",
         "documentation": {}
     },

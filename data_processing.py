@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path(os.environ.get("CACHE_DIR", str(Path.home() / ".trading_bot_cache")))
 CACHE_DIR.mkdir(exist_ok=True, parents=True)
 
+# Column name constants
+ADJ_CLOSE_COL = "adj close"
+CLOSE_COL = "close"
+
 
 class DataValidationError(Exception):
     """Raised when inputs or derived data are invalid."""
@@ -326,10 +330,10 @@ def _normalize_columns(columns) -> List[str]:
         if isinstance(col, tuple):
             out.append("_".join(map(str, col)).lower())
         else:
-            out.append(str(col).lower())
-    return out
-
-
+def _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:
+    if CLOSE_COL not in df.columns and ADJ_CLOSE_COL in df.columns:
+        df[CLOSE_COL] = df[ADJ_CLOSE_COL]
+    return df
 def _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:
     if "close" not in df.columns and "adj close" in df.columns:
         df["close"] = df["adj close"]
@@ -608,14 +612,14 @@ async def async_cached_download(
         for col in columns:
             if isinstance(col, tuple):
                 new_cols.append("_".join(map(str, col)).lower())
-            else:
-                new_cols.append(str(col).lower())
-        return new_cols
-
     # Try to load from cache
     if cache_file.exists():
         try:
             df = pd.read_parquet(cache_file, engine="pyarrow")
+            df.columns = fix_columns(df.columns)
+            if CLOSE_COL not in df.columns and ADJ_CLOSE_COL in df.columns:
+                df[CLOSE_COL] = df[ADJ_CLOSE_COL]
+            missing_cols = required_cols - set(df.columns)
             df.columns = fix_columns(df.columns)
             if "close" not in df.columns and "adj close" in df.columns:
                 df["close"] = df["adj close"]
@@ -654,11 +658,11 @@ async def async_cached_download(
         logger.warning(msg)
         data = yf.Ticker(ticker).history(start=start, end=end)
 
-    if data is None or data.empty:
-        logger.error("Downloaded data is empty or None after fallback.")
-        return None
-
     data.columns = fix_columns(data.columns)
+    if CLOSE_COL not in data.columns and ADJ_CLOSE_COL in data.columns:
+        data[CLOSE_COL] = data[ADJ_CLOSE_COL]
+
+    if not required_cols.issubset(set(data.columns)):
     if "close" not in data.columns and "adj close" in data.columns:
         data["close"] = data["adj close"]
 
