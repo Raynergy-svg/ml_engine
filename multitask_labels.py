@@ -25,6 +25,7 @@ import pandas as pd
 @dataclass(frozen=True)
 class MultitaskTargets:
     trend: np.ndarray  # (n,)
+    direction: np.ndarray  # (n,)
     risk: np.ndarray  # (n,)
     state: np.ndarray  # (n,) int64 classes
 
@@ -92,6 +93,7 @@ def build_multitask_targets(
 
     target_indices = np.arange(n, dtype=int) + sequence_length + target_shift - 1
     trend_aligned = returns[target_indices]
+    direction_aligned = (trend_aligned > 0).astype(np.float32)
     risk_aligned = risk[target_indices]
     state_aligned = state[target_indices]
 
@@ -105,6 +107,7 @@ def build_multitask_targets(
 
     return MultitaskTargets(
         trend=trend_aligned.astype(np.float32),
+        direction=direction_aligned.astype(np.float32),
         risk=risk_norm.astype(np.float32),
         state=state_aligned.astype(np.int64),
     )

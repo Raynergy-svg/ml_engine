@@ -1408,9 +1408,6 @@ def _default_trade_units(ctx: TalkContext = None, instrument: str = None) -> int
         pass
         
     return _calculate_position_size(ctx, instrument or ctx.oanda_instrument, risk_pct=risk_pct)
-    
-    inst = instrument or ctx.oanda_instrument
-    return _calculate_position_size(ctx, inst, risk_pct=0.02)
 
 
 def _try_parse_int(val: Any) -> Optional[int]:

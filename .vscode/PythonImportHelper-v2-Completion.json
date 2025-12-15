@@ -6554,7 +6554,7 @@
         "kind": 6,
         "importPath": "multitask_labels",
         "description": "multitask_labels",
-        "peekOfCode": "class MultitaskTargets:\n    trend: np.ndarray  # (n,)\n    risk: np.ndarray  # (n,)\n    state: np.ndarray  # (n,) int64 classes\ndef _safe_close_series(df: pd.DataFrame, close_col: str) -> np.ndarray:\n    if close_col not in df.columns:\n        raise ValueError(f\"Missing close column: {close_col}\")\n    close = pd.to_numeric(df[close_col], errors=\"coerce\").to_numpy(dtype=float)\n    if np.isnan(close).any():\n        close = np.nan_to_num(close, nan=np.nanmedian(close))",
+        "peekOfCode": "class MultitaskTargets:\n    trend: np.ndarray  # (n,)\n    direction: np.ndarray  # (n,)\n    risk: np.ndarray  # (n,)\n    state: np.ndarray  # (n,) int64 classes\ndef _safe_close_series(df: pd.DataFrame, close_col: str) -> np.ndarray:\n    if close_col not in df.columns:\n        raise ValueError(f\"Missing close column: {close_col}\")\n    close = pd.to_numeric(df[close_col], errors=\"coerce\").to_numpy(dtype=float)\n    if np.isnan(close).any():",
         "detail": "multitask_labels",
         "documentation": {}
     },

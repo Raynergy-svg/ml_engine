@@ -145,6 +145,7 @@ def load_tensorflow_multitask_data(
         return {
             'price': y_price[indices].astype(np.float32),
             'trend': targets.trend[indices].astype(np.float32),
+            'direction': targets.direction[indices].astype(np.float32),
             'risk': targets.risk[indices].astype(np.float32),
             'state_logits': np.eye(state_classes, dtype=np.float32)[targets.state[indices]],  # One-hot
         }
