@@ -169,9 +169,16 @@ class OandaPracticeClient:
         backoff_seconds = 0.5
 
         for attempt in range(1, max_attempts + 1):
-            resp = self._session.request(
-                method, url, params=params, json=json, timeout=timeout
-            )
+            try:
+                resp = self._session.request(
+                    method, url, params=params, json=json, timeout=timeout
+                )
+            except requests.exceptions.RequestException as e:
+                if attempt == max_attempts:
+                    raise OandaApiError(0, f"Network error: {e}")
+                time.sleep(backoff_seconds)
+                backoff_seconds *= 2.0
+                continue
 
             if resp.status_code < 400:
                 return resp.json() if resp.content else {}

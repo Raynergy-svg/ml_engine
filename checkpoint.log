@@ -12089,3 +12089,111 @@ RuntimeError: Error(s) in loading state_dict for UnifiedMarketNet:
 2025-12-14 21:34:20 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
 2025-12-14 22:13:07 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
 2025-12-14 22:13:08 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 23:03:24 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 23:04:32 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 23:06:09 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 23:06:10 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 23:09:24 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-14 23:09:25 - root - ERROR - [main.py:1513] - Command failed: "['rsi', 'macd', 'macd_signal', 'macd_hist', 'bb_upper_20', 'bb_lower_20', 'bb_width_20', 'bb_position_20', 'atr', 'adx', 'stoch_k', 'stoch_d', 'cci', 'obv', 'mfi', 'williams_r', 'sma_5', 'sma_10', 'sma_20', 'sma_50', 'ema_12', 'ema_26', 'returns', 'volatility_20', 'momentum_10', 'zscore_20', 'roc_5', 'roc_10', 'roc_20'] not in index"
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1473, in main
+    command_map[args.command](
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1212, in train_oanda_unified
+    result = run_oanda_unified_training_session(
+  File "/Users/mirelacertan/Documents/ml_engine/oanda_unified_training.py", line 76, in run_oanda_unified_training_session
+    result: Dict[str, Any] = train_unified_multitask(
+  File "/Users/mirelacertan/Documents/ml_engine/unified_multitask_training.py", line 604, in train_unified_multitask
+    x, _, meta, _, train_loader, val_loader = _prepare_dataloaders(
+  File "/Users/mirelacertan/Documents/ml_engine/unified_multitask_training.py", line 167, in _prepare_dataloaders
+    x, y_price, meta = prepare_sequences(
+  File "/Users/mirelacertan/Documents/ml_engine/data_processing.py", line 480, in prepare_sequences
+    feature_data = df[feature_columns].values
+  File "/Users/mirelacertan/Library/Python/3.9/lib/python/site-packages/pandas/core/frame.py", line 4119, in __getitem__
+    indexer = self.columns._get_indexer_strict(key, "columns")[1]
+  File "/Users/mirelacertan/Library/Python/3.9/lib/python/site-packages/pandas/core/indexes/base.py", line 6212, in _get_indexer_strict
+    self._raise_if_missing(keyarr, indexer, axis_name)
+  File "/Users/mirelacertan/Library/Python/3.9/lib/python/site-packages/pandas/core/indexes/base.py", line 6264, in _raise_if_missing
+    raise KeyError(f"{not_found} not in index")
+KeyError: "['rsi', 'macd', 'macd_signal', 'macd_hist', 'bb_upper_20', 'bb_lower_20', 'bb_width_20', 'bb_position_20', 'atr', 'adx', 'stoch_k', 'stoch_d', 'cci', 'obv', 'mfi', 'williams_r', 'sma_5', 'sma_10', 'sma_20', 'sma_50', 'ema_12', 'ema_26', 'returns', 'volatility_20', 'momentum_10', 'zscore_20', 'roc_5', 'roc_10', 'roc_20'] not in index"
+2025-12-14 23:09:48 - utils - INFO - [utils.py:174] - Successfully loaded configuration from ./config.yaml
+2025-12-14 23:09:49 - root - INFO - [unified_multitask_training.py:151] - Adding all engineered features (technical indicators, statistical, time, lag, rolling)...
+2025-12-14 23:09:49 - feature_engineering - INFO - [feature_engineering.py:465] - Starting feature engineering...
+2025-12-14 23:09:49 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 23:09:49 - feature_engineering - INFO - [feature_engineering.py:490] - Feature engineering complete: (5014, 8) -> (5014, 129)
+2025-12-14 23:09:49 - feature_engineering - INFO - [feature_engineering.py:495] - Added 121 new features
+2025-12-14 23:09:49 - root - INFO - [unified_multitask_training.py:154] - Total features after engineering: 129
+2025-12-14 23:09:49 - root - INFO - [unified_multitask_training.py:600] - All-features mode: using 127 features for training
+2025-12-14 23:09:50 - root - WARNING - [unified_multitask_training.py:361] - Failed to resume unified weights (Error(s) in loading state_dict for UnifiedMarketNet:
+	size mismatch for _lstm.weight_ih_l0: copying a param with shape torch.Size([192, 104]) from checkpoint, the shape in current model is torch.Size([192, 127]).). Training from scratch.
+2025-12-14 23:09:50 - root - INFO - [unified_multitask_training.py:648] - ──────────────────────────────────────────────────
+2025-12-14 23:09:50 - root - INFO - [unified_multitask_training.py:649] - Training ≤200 epochs | P=price T=trend R=risk S=state | ★=best
+2025-12-14 23:09:50 - root - INFO - [unified_multitask_training.py:650] - ──────────────────────────────────────────────────
+2025-12-14 23:09:56 - root - INFO - [unified_multitask_training.py:512] - E01 | P:0.1550 T:0.0000 R:0.472 S:0.320 (85%) ★
+2025-12-14 23:10:02 - root - INFO - [unified_multitask_training.py:512] - E02 | P:0.2895 T:0.0000 R:0.471 S:0.303 (86%)
+2025-12-14 23:10:07 - root - INFO - [unified_multitask_training.py:512] - E03 | P:0.3416 T:0.0000 R:0.472 S:0.288 (87%) ★
+2025-12-14 23:10:13 - root - INFO - [unified_multitask_training.py:512] - E04 | P:0.3499 T:0.0000 R:0.473 S:0.414 (83%)
+2025-12-14 23:10:18 - root - INFO - [unified_multitask_training.py:512] - E05 | P:0.2556 T:0.0000 R:0.474 S:0.264 (88%) ★
+2025-12-14 23:10:24 - root - INFO - [unified_multitask_training.py:512] - E06 | P:0.2062 T:0.0000 R:0.473 S:0.477 (80%)
+2025-12-14 23:10:30 - root - INFO - [unified_multitask_training.py:512] - E07 | P:0.2004 T:0.0000 R:0.473 S:0.432 (81%)
+2025-12-14 23:10:35 - root - INFO - [unified_multitask_training.py:512] - E08 | P:0.2530 T:0.0000 R:0.474 S:0.323 (85%)
+2025-12-14 23:10:41 - root - INFO - [unified_multitask_training.py:512] - E09 | P:0.2602 T:0.0000 R:0.472 S:0.214 (91%) ★
+2025-12-14 23:10:46 - root - INFO - [unified_multitask_training.py:512] - E10 | P:0.2855 T:0.0000 R:0.476 S:0.370 (84%)
+2025-12-14 23:10:52 - root - INFO - [unified_multitask_training.py:512] - E11 | P:0.2041 T:0.0000 R:0.473 S:0.313 (85%)
+2025-12-14 23:10:57 - root - INFO - [unified_multitask_training.py:512] - E12 | P:0.2227 T:0.0000 R:0.472 S:0.304 (85%)
+2025-12-14 23:11:03 - root - INFO - [unified_multitask_training.py:512] - E13 | P:0.2210 T:0.0000 R:0.474 S:0.414 (83%)
+2025-12-14 23:11:08 - root - INFO - [unified_multitask_training.py:512] - E14 | P:0.2454 T:0.0000 R:0.472 S:0.248 (90%)
+2025-12-14 23:11:14 - root - INFO - [unified_multitask_training.py:512] - E15 | P:0.2475 T:0.0000 R:0.473 S:0.276 (89%)
+2025-12-14 23:11:20 - root - INFO - [unified_multitask_training.py:512] - E16 | P:0.2467 T:0.0000 R:0.472 S:0.305 (87%)
+2025-12-14 23:11:25 - root - INFO - [unified_multitask_training.py:512] - E17 | P:0.2559 T:0.0000 R:0.472 S:0.368 (83%)
+2025-12-14 23:11:31 - root - INFO - [unified_multitask_training.py:512] - E18 | P:0.2673 T:0.0000 R:0.472 S:0.377 (84%)
+2025-12-14 23:11:37 - root - INFO - [unified_multitask_training.py:512] - E19 | P:0.2394 T:0.0000 R:0.472 S:0.387 (83%)
+2025-12-14 23:11:43 - root - INFO - [unified_multitask_training.py:512] - E20 | P:0.1916 T:0.0000 R:0.472 S:0.229 (91%)
+2025-12-14 23:11:49 - root - INFO - [unified_multitask_training.py:512] - E21 | P:0.1747 T:0.0000 R:0.476 S:0.654 (79%)
+2025-12-14 23:11:55 - root - INFO - [unified_multitask_training.py:512] - E22 | P:0.1962 T:0.0000 R:0.472 S:0.270 (88%)
+2025-12-14 23:12:01 - root - INFO - [unified_multitask_training.py:512] - E23 | P:0.1543 T:0.0000 R:0.474 S:0.298 (88%)
+2025-12-14 23:12:07 - root - INFO - [unified_multitask_training.py:512] - E24 | P:0.1863 T:0.0000 R:0.473 S:0.368 (85%)
+2025-12-14 23:12:13 - root - INFO - [unified_multitask_training.py:512] - E25 | P:0.1786 T:0.0000 R:0.474 S:0.474 (81%)
+2025-12-14 23:12:19 - root - INFO - [unified_multitask_training.py:512] - E26 | P:0.2124 T:0.0000 R:0.473 S:0.553 (80%)
+2025-12-14 23:39:07 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 23:42:46 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 23:42:46 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-15 00:18:41 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-15 00:18:41 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-15 00:19:37 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-15 00:19:37 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-15 00:29:08 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-15 00:29:17 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-15 00:39:56 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-15 01:26:40 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:55] - NeuralNetworkIntegrator initialized on cpu
+2025-12-15 01:26:40 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-15 01:26:40 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:118] - Unified engine set for integration
+2025-12-15 01:26:40 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpn7yiazv5/text.csv
+2025-12-15 01:26:40 - data_loader - INFO - [data_loader.py:103] - Loading text data from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp3vuz1enf/text.csv
+2025-12-15 01:26:40 - utils - ERROR - [utils.py:166] - Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmph3wzr16u/empty.yaml
+2025-12-15 01:26:40 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration file is empty: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmph3wzr16u/empty.yaml
+2025-12-15 01:26:40 - utils - ERROR - [utils.py:180] - Error parsing YAML file: mapping values are not allowed here
+  in "/var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmp9he21uvu/invalid.yaml", line 1, column 14
+2025-12-15 01:26:40 - utils - ERROR - [utils.py:171] - Configuration must be a dictionary, got <class 'list'>
+2025-12-15 01:26:40 - utils - ERROR - [utils.py:183] - Unexpected error loading configuration: Configuration must be a dictionary, got <class 'list'>
+2025-12-15 01:26:40 - utils - ERROR - [utils.py:157] - Configuration file not found: /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpae6ac0fg/nonexistent.yaml
+2025-12-15 01:26:40 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpsskgi2jb/test_config.yaml
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:249] - Invalid epochs value: 0 (must be > 0)
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:249] - Invalid hidden_size value: -10 (must be > 0)
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:214] - Missing configuration section: training
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:214] - Missing configuration section: data
+2025-12-15 01:26:40 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpnu1xvqn8/test_config.yaml
+2025-12-15 01:26:40 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpbe_k85ky/test_config.yaml
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:227] - Missing configuration field: model.num_layers
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:249] - Invalid num_layers value: 0 (must be > 0)
+2025-12-15 01:26:40 - utils - WARNING - [utils.py:307] - Configuration validation found issues, but continuing...
+2025-12-15 01:26:40 - utils - INFO - [utils.py:174] - Successfully loaded configuration from /var/folders/cw/f0_9d8qd70vfntrkx_x2ttt00000gn/T/tmpou8h5spi/test_config.yaml
+2025-12-15 01:31:07 - root - ERROR - [main.py:1516] - Command failed: run_unified_talk() got an unexpected keyword argument 'oanda_instrument'
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1500, in main
+    command_map[args.command](
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1272, in buddy
+    run_unified_talk(
+TypeError: run_unified_talk() got an unexpected keyword argument 'oanda_instrument'

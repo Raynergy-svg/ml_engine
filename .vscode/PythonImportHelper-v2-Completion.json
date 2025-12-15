@@ -2836,14 +2836,6 @@
         "documentation": {}
     },
     {
-        "label": "ReasoningEngine",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
         "label": "NeuralNetworkIntegrator",
         "importPath": "neural_network_integrator",
         "description": "neural_network_integrator",
@@ -3576,6 +3568,14 @@
         "documentation": {}
     },
     {
+        "label": "field",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
         "label": "Console",
         "importPath": "rich.console",
         "description": "rich.console",
@@ -3927,6 +3927,15 @@
         "documentation": {}
     },
     {
+        "label": "threading",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "threading",
+        "description": "threading",
+        "detail": "threading",
+        "documentation": {}
+    },
+    {
         "label": "TensorFlowUnifiedEngine",
         "importPath": "tensorflow_engine_unified",
         "description": "tensorflow_engine_unified",
@@ -3936,14 +3945,6 @@
     },
     {
         "label": "is_tensorflow_checkpoint",
-        "importPath": "tensorflow_engine_unified",
-        "description": "tensorflow_engine_unified",
-        "isExtraImport": true,
-        "detail": "tensorflow_engine_unified",
-        "documentation": {}
-    },
-    {
-        "label": "is_pytorch_checkpoint",
         "importPath": "tensorflow_engine_unified",
         "description": "tensorflow_engine_unified",
         "isExtraImport": true,
@@ -4636,7 +4637,7 @@
         "kind": 2,
         "importPath": "tests.test_buddy_trade_commands",
         "description": "tests.test_buddy_trade_commands",
-        "peekOfCode": "def test_trade_auto_dry_run_uses_last_prediction(capsys):\n    ctx = _ctx()\n    ctx.last_result = {\"prediction\": 1.2000, \"last_close\": 1.1000}\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"dry-run\" in out.lower()\n    assert \"auto-trade\" in out.lower()\n    assert \"buy\" in out.lower()\n    assert ctx.oanda_client.orders == []\ndef test_trade_auto_execute_places_order(capsys):",
+        "peekOfCode": "def test_trade_auto_dry_run_uses_last_prediction(capsys):\n    ctx = _ctx()\n    # Provide state_probs + risk so confidence gating can evaluate.\n    ctx.last_result = {\n        \"prediction\": 1.2000,\n        \"last_close\": 1.1000,\n        \"state_probs\": [0.05, 0.05, 0.90],\n        \"risk\": 0.10,\n    }\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True",
         "detail": "tests.test_buddy_trade_commands",
         "documentation": {}
     },
@@ -4645,7 +4646,7 @@
         "kind": 2,
         "importPath": "tests.test_buddy_trade_commands",
         "description": "tests.test_buddy_trade_commands",
-        "peekOfCode": "def test_trade_auto_execute_places_order(capsys):\n    ctx = _ctx()\n    ctx.oanda_execute = True\n    ctx.last_result = {\"prediction\": 1.0000, \"last_close\": 1.1000}\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"auto-trade submitted\" in out.lower()\n    assert ctx.oanda_client.orders == [(\"EUR_USD\", -1000)]\ndef test_manual_trade_buy_dry_run(capsys):\n    ctx = _ctx()",
+        "peekOfCode": "def test_trade_auto_execute_places_order(capsys):\n    ctx = _ctx()\n    ctx.oanda_execute = True\n    ctx.last_result = {\n        \"prediction\": 1.0000,\n        \"last_close\": 1.1000,\n        \"state_probs\": [0.05, 0.05, 0.90],\n        \"risk\": 0.10,\n    }\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True",
         "detail": "tests.test_buddy_trade_commands",
         "documentation": {}
     },
@@ -4654,7 +4655,7 @@
         "kind": 2,
         "importPath": "tests.test_buddy_trade_commands",
         "description": "tests.test_buddy_trade_commands",
-        "peekOfCode": "def test_manual_trade_buy_dry_run(capsys):\n    ctx = _ctx()\n    assert unified_talk._handle_talk_command(ctx, \"trade buy 2000 EUR_USD\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"dry-run\" in out.lower()\n    assert \"market order\" in out.lower()\n    assert ctx.oanda_client.orders == []\ndef test_manual_trade_close_dry_run(capsys):\n    ctx = _ctx()\n    assert unified_talk._handle_talk_command(ctx, \"trade close EUR_USD\", period=\"5d\", interval=\"1h\") is True",
+        "peekOfCode": "def test_manual_trade_buy_dry_run(capsys):\n    ctx = _ctx()\n    # Manual trades also require a last prediction (for confidence checks).\n    ctx.last_result = {\n        \"prediction\": 1.2000,\n        \"last_close\": 1.1000,\n        \"state_probs\": [0.05, 0.05, 0.90],\n        \"risk\": 0.10,\n    }\n    assert unified_talk._handle_talk_command(ctx, \"trade buy 2000 EUR_USD\", period=\"5d\", interval=\"1h\") is True",
         "detail": "tests.test_buddy_trade_commands",
         "documentation": {}
     },
@@ -6301,7 +6302,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"USD_JPY\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = True,  # Live trading enabled by default\n    verbose: bool = False,\n) -> None:",
+        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"USD_JPY\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = True,  # Live trading enabled by default\n    all_features: bool = False,\n    verbose: bool = False,",
         "detail": "main",
         "documentation": {}
     },
@@ -7876,7 +7877,7 @@
         "kind": 2,
         "importPath": "unified_multitask_training",
         "description": "unified_multitask_training",
-        "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n    resume_path: Optional[str] = None,\n    seed: int = 42,\n    all_features: bool = False,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    # Set seeds for reproducibility",
+        "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n    resume_path: Optional[str] = None,\n    seed: int = 42,\n    all_features: bool = False,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    _seed_everything(seed)",
         "detail": "unified_multitask_training",
         "documentation": {}
     },
@@ -7899,6 +7900,15 @@
         "documentation": {}
     },
     {
+        "label": "OandaSettings",
+        "kind": 6,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "class OandaSettings:\n    \"\"\"OANDA trading settings.\"\"\"\n    instrument: str = \"USD_JPY\"\n    granularity: str = \"M5\"\n    candles: int = 300\n    execute: bool = True\ndef _apply_oanda_settings(ctx: TalkContext, settings: OandaSettings) -> None:\n    \"\"\"Apply OANDA settings to context.\"\"\"\n    ctx.oanda_instrument = settings.instrument\n    ctx.oanda_granularity = settings.granularity",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
         "label": "select_latest_checkpoint",
         "kind": 2,
         "importPath": "unified_talk",
@@ -7912,7 +7922,7 @@
         "kind": 2,
         "importPath": "unified_talk",
         "description": "unified_talk",
-        "peekOfCode": "def run_unified_talk(\n    config_path: str,\n    *,\n    checkpoint_path: Optional[str] = None,\n    csv_path: Optional[str] = None,\n    ticker: Optional[str] = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n    oanda: bool = False,\n    oanda_instrument: str = \"USD_JPY\",",
+        "peekOfCode": "def run_unified_talk(\n    config_path: str,\n    *,\n    checkpoint_path: Optional[str] = None,\n    csv_path: Optional[str] = None,\n    ticker: Optional[str] = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n    oanda: bool = False,\n    oanda_settings: Optional[OandaSettings] = None,",
         "detail": "unified_talk",
         "documentation": {}
     },
@@ -7921,7 +7931,25 @@
         "kind": 5,
         "importPath": "unified_talk",
         "description": "unified_talk",
-        "peekOfCode": "DEFAULT_ASSISTANT_NAME = \"Assistant\"\ndef _assistant_prefix(ctx: \"TalkContext\") -> str:\n    return f\"{ctx.assistant_name}: \"\ndef _load_project_dotenv() -> None:\n    \"\"\"Load env vars from common local files.\n    We support both `.env.local` and `.env` so Buddy can run with either.\n    \"\"\"\n    if load_dotenv is None:\n        return\n    try:",
+        "peekOfCode": "DEFAULT_ASSISTANT_NAME = \"Assistant\"\n# Constants for execution status display\nEXEC_STATUS_LIVE = \"🟢 LIVE\"\nEXEC_STATUS_DRY_RUN = \"⏸️ DRY-RUN\"\ndef _assistant_prefix(ctx: \"TalkContext\") -> str:\n    return f\"{ctx.assistant_name}: \"\ndef _load_project_dotenv() -> None:\n    \"\"\"Load env vars from common local files.\n    We support both `.env.local` and `.env` so Buddy can run with either.\n    \"\"\"",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "EXEC_STATUS_LIVE",
+        "kind": 5,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "EXEC_STATUS_LIVE = \"🟢 LIVE\"\nEXEC_STATUS_DRY_RUN = \"⏸️ DRY-RUN\"\ndef _assistant_prefix(ctx: \"TalkContext\") -> str:\n    return f\"{ctx.assistant_name}: \"\ndef _load_project_dotenv() -> None:\n    \"\"\"Load env vars from common local files.\n    We support both `.env.local` and `.env` so Buddy can run with either.\n    \"\"\"\n    if load_dotenv is None:\n        return",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "EXEC_STATUS_DRY_RUN",
+        "kind": 5,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "EXEC_STATUS_DRY_RUN = \"⏸️ DRY-RUN\"\ndef _assistant_prefix(ctx: \"TalkContext\") -> str:\n    return f\"{ctx.assistant_name}: \"\ndef _load_project_dotenv() -> None:\n    \"\"\"Load env vars from common local files.\n    We support both `.env.local` and `.env` so Buddy can run with either.\n    \"\"\"\n    if load_dotenv is None:\n        return\n    try:",
         "detail": "unified_talk",
         "documentation": {}
     },

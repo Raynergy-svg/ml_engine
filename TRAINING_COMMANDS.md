@@ -290,3 +290,6 @@ With optimal settings, expect:
 - **State Accuracy**: 90-93%+ (market regime classification)
 - **Price MAE**: Dataset-dependent (lower is better)
 - **Risk Correlation**: 0.7+ with actual volatility
+
+
+python train_visual.py --framework tensorflow --model tft --multi-task --fetch-data --ensemble-size 3 --epochs 100

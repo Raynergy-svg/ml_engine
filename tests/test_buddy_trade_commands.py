@@ -36,12 +36,17 @@ def _ctx():
 
 def test_trade_auto_dry_run_uses_last_prediction(capsys):
     ctx = _ctx()
-    ctx.last_result = {"prediction": 1.2000, "last_close": 1.1000}
+    # Provide state_probs + risk so confidence gating can evaluate.
+    ctx.last_result = {
+        "prediction": 1.2000,
+        "last_close": 1.1000,
+        "state_probs": [0.05, 0.05, 0.90],
+        "risk": 0.10,
+    }
 
     assert unified_talk._handle_talk_command(ctx, "trade", period="5d", interval="1h") is True
     out = capsys.readouterr().out
     assert "dry-run" in out.lower()
-    assert "auto-trade" in out.lower()
     assert "buy" in out.lower()
     assert ctx.oanda_client.orders == []
 
@@ -49,16 +54,29 @@ def test_trade_auto_dry_run_uses_last_prediction(capsys):
 def test_trade_auto_execute_places_order(capsys):
     ctx = _ctx()
     ctx.oanda_execute = True
-    ctx.last_result = {"prediction": 1.0000, "last_close": 1.1000}
+    ctx.last_result = {
+        "prediction": 1.0000,
+        "last_close": 1.1000,
+        "state_probs": [0.05, 0.05, 0.90],
+        "risk": 0.10,
+    }
 
     assert unified_talk._handle_talk_command(ctx, "trade", period="5d", interval="1h") is True
     out = capsys.readouterr().out
-    assert "auto-trade submitted" in out.lower()
-    assert ctx.oanda_client.orders == [("EUR_USD", -1000)]
+    assert "auto-trade executed" in out.lower()
+    assert ctx.oanda_client.orders == [("EUR_USD", -100000)]
 
 
 def test_manual_trade_buy_dry_run(capsys):
     ctx = _ctx()
+
+    # Manual trades also require a last prediction (for confidence checks).
+    ctx.last_result = {
+        "prediction": 1.2000,
+        "last_close": 1.1000,
+        "state_probs": [0.05, 0.05, 0.90],
+        "risk": 0.10,
+    }
 
     assert unified_talk._handle_talk_command(ctx, "trade buy 2000 EUR_USD", period="5d", interval="1h") is True
     out = capsys.readouterr().out

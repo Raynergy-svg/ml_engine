@@ -512,7 +512,7 @@ class TensorFlowEngine:
                         'price': losses.Huber(delta=self.config.get('huber_delta', 1.0)),
                         'trend': losses.Huber(delta=0.5),  # Smaller delta for finer predictions
                         'direction': BinaryFocalLoss(gamma=focal_gamma, alpha=focal_alpha, label_smoothing=0.1),
-                        'risk': losses.BinaryCrossentropy(label_smoothing=0.1),
+                        'risk': losses.MeanSquaredError(),  # Risk is continuous [0,1] regression
                         'state_logits': losses.CategoricalCrossentropy(label_smoothing=0.1),
                     },
                     loss_weights=loss_weights,
@@ -520,7 +520,7 @@ class TensorFlowEngine:
                         'price': [metrics.MeanAbsoluteError(name='mae')],
                         'trend': [metrics.MeanAbsoluteError(name='trend_mae')],
                         'direction': [metrics.BinaryAccuracy(name='dir_acc')],  # Directional accuracy!
-                        'risk': [metrics.BinaryAccuracy(name='risk_acc')],
+                        'risk': [metrics.MeanAbsoluteError(name='risk_mae')],  # Risk is continuous [0,1], not binary
                         'state_logits': [metrics.CategoricalAccuracy(name='state_acc')],
                     }
                 )

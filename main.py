@@ -368,7 +368,8 @@ def _fx_execution_guard_price_bound(_policy: Any, client: Any, *, instrument: st
     half_spread = max(0.0, ask - mid)
 
     # Add a small, conservative buffer on top of half-spread.
-    buffer_price = 2.0 * pip_size(instrument)
+    # Increased to 10.0 pips to prevent nuisance cancellations in volatile markets.
+    buffer_price = 10.0 * pip_size(instrument)
 
     if int(units) > 0:
         return float(ask + half_spread + buffer_price)
@@ -1262,20 +1263,25 @@ def buddy(
     granularity: str = "M5",
     candles: int = 300,
     execute: bool = True,  # Live trading enabled by default
+    all_features: bool = False,
     verbose: bool = False,
 ) -> None:
     """Buddy: interactive offline REPL + OANDA demo/practice source."""
     _configure_predict_output(verbose)
-    from unified_talk import run_unified_talk
+    from unified_talk import run_unified_talk, OandaSettings
 
+    oanda_settings = OandaSettings(
+        instrument=instrument,
+        granularity=granularity,
+        candles=candles,
+        execute=execute,
+    )
     run_unified_talk(
         config_path,
         checkpoint_path=checkpoint_path,
         oanda=True,
-        oanda_instrument=instrument,
-        oanda_granularity=granularity,
-        oanda_candles=candles,
-        oanda_execute=execute,
+        oanda_settings=oanda_settings,
+        all_features=all_features,
         verbose=verbose,
         assistant_name="Buddy",
     )
@@ -1502,6 +1508,7 @@ def main() -> None:
                 granularity=args.granularity,
                 candles=args.candles,
                 execute=should_execute,
+                all_features=getattr(args, "all_features", False),
                 verbose=args.verbose,
             )
         else:

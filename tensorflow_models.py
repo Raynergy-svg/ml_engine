@@ -394,9 +394,13 @@ class TFAttentiveLSTM(Model):
         kernel_regularizer: float = DEFAULT_L2_REG,
         bidirectional: bool = False,
         noise_std: float = 0.05,
+        multi_task: bool = False,
+        state_classes: int = 3,
         **kwargs
     ):
         super().__init__(**kwargs)
+        
+        self.multi_task = multi_task
         
         # L2 regularizer
         l2_reg = regularizers.L2(kernel_regularizer) if kernel_regularizer > 0 else None
@@ -451,11 +455,53 @@ class TFAttentiveLSTM(Model):
         ])
         
         # Output layers with L2 regularization
-        self.fc = keras.Sequential([
-            layers.Dense(64, activation='relu', kernel_regularizer=l2_reg),
-            layers.Dropout(dropout),
-            layers.Dense(1)
-        ])
+        if multi_task:
+            # Price prediction head
+            self.price_head = keras.Sequential([
+                layers.Dense(64, activation='relu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(1, name='price_output')
+            ], name='price_head')
+            
+            # Trend prediction head (continuous return)
+            self.trend_head = keras.Sequential([
+                layers.Dense(64, activation='relu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(32, kernel_regularizer=l2_reg),
+                layers.Activation('relu'),
+                layers.Dropout(dropout * 0.5),
+                layers.Dense(1, name='trend_output')
+            ], name='trend_head')
+            
+            # Direction classification head (binary: up/down)
+            self.direction_head = keras.Sequential([
+                layers.Dense(64, activation='relu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(32, kernel_regularizer=l2_reg),
+                layers.Activation('relu'),
+                layers.Dropout(dropout * 0.5),
+                layers.Dense(1, activation='sigmoid', name='direction_output')
+            ], name='direction_head')
+            
+            # Risk prediction head (sigmoid for 0-1 output)
+            self.risk_head = keras.Sequential([
+                layers.Dense(32, activation='relu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(1, activation='sigmoid', name='risk_output')
+            ], name='risk_head')
+            
+            # Market state classification head
+            self.state_head = keras.Sequential([
+                layers.Dense(32, activation='relu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(state_classes, activation='softmax', name='state_output')
+            ], name='state_head')
+        else:
+            self.fc = keras.Sequential([
+                layers.Dense(64, activation='relu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(1)
+            ])
     
     def call(self, x, training=None):
         # Input augmentation (only during training)
@@ -481,7 +527,22 @@ class TFAttentiveLSTM(Model):
         # Take last timestep
         lstm_out = lstm_out[:, -1, :]
         
-        return self.fc(lstm_out, training=training)
+        if self.multi_task:
+            price = self.price_head(lstm_out, training=training)
+            trend = self.trend_head(lstm_out, training=training)
+            direction = self.direction_head(lstm_out, training=training)
+            risk = self.risk_head(lstm_out, training=training)
+            state_logits = self.state_head(lstm_out, training=training)
+            
+            return {
+                'price': price,
+                'trend': trend,
+                'direction': direction,
+                'risk': risk,
+                'state_logits': state_logits,
+            }
+        else:
+            return self.fc(lstm_out, training=training)
 
 
 class TFTransformerPredictor(Model):
@@ -1114,6 +1175,7 @@ def create_tensorflow_model(config: dict) -> Model:
         return TFAttentiveLSTM(
             **common_params,
             **regularization_params,
+            **multi_task_params,
             num_layers=config.get('num_layers', 2),  # Reduced for small datasets
             num_heads=config.get('num_heads', 4),
             bidirectional=config.get('bidirectional', False),

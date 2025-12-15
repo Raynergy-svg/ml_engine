@@ -641,13 +641,15 @@ class TensorFlowUnifiedEngine:
         """Run model inference and return outputs."""
         tf, _ = _ensure_tensorflow()
         
-        if hasattr(self.model, 'predict'):
-            return self.model.predict(x_np, verbose=0)
-        
-        # Direct call for SavedModel wrapper
-        outputs = self.model(x_np)
-        if isinstance(outputs, tf.Tensor):
-            return [outputs.numpy()]
+        # Prefer direct call for single-batch inference to avoid overhead/hanging
+        # associated with model.predict() in some environments.
+        try:
+            return self.model(x_np, training=False)
+        except Exception:
+            # Fallback to predict() if direct call fails (e.g. for some SavedModels)
+            if hasattr(self.model, 'predict'):
+                return self.model.predict(x_np, verbose=0)
+            raise
         if isinstance(outputs, (list, tuple)):
             return [o.numpy() if hasattr(o, 'numpy') else o for o in outputs]
         return outputs
@@ -667,9 +669,13 @@ class TensorFlowUnifiedEngine:
         if 'risk' in outputs:
             result['risk'] = outputs['risk']
         if 'state_logits' in outputs:
-            result['state_probs'] = tf.nn.softmax(outputs['state_logits'], axis=-1).numpy()
+            # Temperature scaling: lower temp = sharper/more confident probabilities
+            # Use temp=0.5 to make model more decisive when it has a clear winner
+            temperature = 0.5
+            result['state_probs'] = tf.nn.softmax(outputs['state_logits'] / temperature, axis=-1).numpy()
         elif 'state' in outputs:
-            result['state_probs'] = tf.nn.softmax(outputs['state'], axis=-1).numpy()
+            temperature = 0.5
+            result['state_probs'] = tf.nn.softmax(outputs['state'] / temperature, axis=-1).numpy()
     
     def _parse_list_outputs_standard(self, outputs, result):
         """Parse list-style outputs with standard TFT ordering."""
@@ -680,7 +686,9 @@ class TensorFlowUnifiedEngine:
         result['trend'] = outputs[1]
         result['direction'] = outputs[2]
         result['risk'] = outputs[3]
-        result['state_probs'] = tf.nn.softmax(outputs[4], axis=-1).numpy()
+        # Temperature scaling: lower temp = sharper/more confident probabilities
+        temperature = 0.5
+        result['state_probs'] = tf.nn.softmax(outputs[4] / temperature, axis=-1).numpy()
     
     def _parse_list_outputs_by_name(self, outputs, result):
         """Parse list-style outputs by matching output names."""
@@ -706,7 +714,9 @@ class TensorFlowUnifiedEngine:
         elif 'risk' in name:
             result['risk'] = out
         elif 'state' in name:
-            result['state_probs'] = tf.nn.softmax(out, axis=-1).numpy()
+            # Temperature scaling: lower temp = sharper/more confident probabilities
+            temperature = 0.5
+            result['state_probs'] = tf.nn.softmax(out / temperature, axis=-1).numpy()
     
     def predict(self, x) -> Dict[str, Any]:
         """Run prediction on input tensor.

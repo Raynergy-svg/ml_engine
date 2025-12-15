@@ -159,10 +159,10 @@ fx:
     max_open_positions: 1
     max_entries_per_day: 1
   risk:
-    risk_per_trade_pct: 0.005
-    daily_loss_stop_pct: 0.1
-    atr_stop_mult: 1.5
-    rr_take_profit: 1.5
+    risk_per_trade_pct: 0.05
+    daily_loss_stop_pct: 0.2
+    atr_stop_mult: 1.0
+    rr_take_profit: 4.0
   execution:
     require_confirmation: true
     practice_only: true

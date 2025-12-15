@@ -173,8 +173,10 @@ class FeatureEngineering:
         # Momentum Divergence (price making new highs but momentum not)
         price_high_20 = df["close"].rolling(20).max()
         mom_high_20 = df["momentum_10"].rolling(20).max() if "momentum_10" in df.columns else df["close"].diff(10).rolling(20).max()
-        df["momentum_divergence"] = ((df["close"] >= price_high_20 * 0.99) & 
-                                      (df.get("momentum_10", df["close"].diff(10)) < mom_high_20 * 0.9)).astype(float)
+        df["momentum_divergence"] = (
+            (df["close"] >= price_high_20 * 0.99)
+            & (df.get("momentum_10", df["close"].diff(10)) < mom_high_20 * 0.9)
+        ).astype(float)
         
         # Stochastic Crossover
         df["stoch_crossover"] = (df["stoch_k"] > df["stoch_d"]).astype(int).diff().fillna(0)
@@ -217,8 +219,10 @@ class FeatureEngineering:
             df["volume_price_confirm"] = (price_rising * volume_rising - (1 - price_rising) * volume_rising).fillna(0)
         
         # Multi-timeframe RSI agreement
-        rsi_short = df["close"].diff(7).apply(lambda x: max(x, 0)).rolling(7).mean() / \
-                    df["close"].diff(7).abs().rolling(7).mean() * 100
+        rsi_short = (
+            df["close"].diff(7).apply(lambda x: max(x, 0)).rolling(7).mean()
+            / df["close"].diff(7).abs().rolling(7).mean() * 100
+        )
         df["rsi_7"] = rsi_short.fillna(50)
         df["rsi_agreement"] = ((df["rsi"] > 50) == (df["rsi_7"] > 50)).astype(float)
 
@@ -276,12 +280,18 @@ class FeatureEngineering:
         df = df.copy()
 
         if not isinstance(df.index, pd.DatetimeIndex):
-            if "date" in df.columns or "Date" in df.columns:
-                date_col = "date" if "date" in df.columns else "Date"
+            # Check for various datetime column names
+            date_col = None
+            for col in ["date", "Date", "time", "Time", "datetime", "Datetime", "timestamp"]:
+                if col in df.columns:
+                    date_col = col
+                    break
+            
+            if date_col:
                 df[date_col] = pd.to_datetime(df[date_col])
                 df.set_index(date_col, inplace=True)
             else:
-                logger.warning("No datetime index or date column found")
+                logger.debug("No datetime index or date column found - skipping time features")
                 return df
 
         # Temporal features

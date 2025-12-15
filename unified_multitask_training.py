@@ -25,7 +25,6 @@ from data_processing import prepare_sequences
 from feature_engineering import FeatureEngineering
 from multitask_labels import build_multitask_targets, split_time_series
 from neural_engine_unified import UnifiedNeuralEngine, safe_torch_load
-from reasoning_enhanced import ReasoningEngine
 from utils import load_config, setup_logging
 
 logger = setup_logging(log_file="unified_multitask_training.log")
@@ -188,15 +187,13 @@ def _prepare_dataloaders(
 
     train_idx, val_idx = split_time_series(len(x), val_fraction=float(cfg.get("validation_split", 0.2)))
 
-
-    # Print state label distribution for train and val sets
-    import numpy as np
+    # Log state label distribution for train and val sets
     train_state = targets.state[train_idx]
     val_state = targets.state[val_idx]
     unique_train, counts_train = np.unique(train_state, return_counts=True)
     unique_val, counts_val = np.unique(val_state, return_counts=True)
-    print("[State label distribution] Train:", dict(zip(unique_train, counts_train)))
-    print("[State label distribution] Val:", dict(zip(unique_val, counts_val)))
+    logger.info("[State label distribution] Train: %s", dict(zip(unique_train, counts_train)))
+    logger.info("[State label distribution] Val: %s", dict(zip(unique_val, counts_val)))
 
     train_loader = _to_loader(
         x[train_idx],
@@ -509,11 +506,14 @@ def _train_select_best(
         
         # Compact one-liner per epoch
         best_marker = " ★" if is_best else ""
+        # Note: trend loss is tiny (e-7 to e-8) because FX returns are ~0.0001
+        # Display with scientific notation for visibility
+        trend_str = f"{val_metrics.trend_loss:.2e}" if val_metrics.trend_loss < 0.0001 else f"{val_metrics.trend_loss:.4f}"
         logger.info(
-            "E%02d | P:%.4f T:%.4f R:%.3f S:%.3f (%.0f%%)%s",
+            "E%02d | P:%.4f T:%s R:%.3f S:%.3f (%.0f%%)%s",
             epoch,
             val_metrics.price_loss,
-            val_metrics.trend_loss,
+            trend_str,
             val_metrics.risk_loss,
             val_metrics.state_loss,
             val_metrics.state_acc * 100,
@@ -562,6 +562,88 @@ def _save_training_metrics(
     return str(out_path)
 
 
+def _seed_everything(seed: int) -> None:
+    import random
+
+    random.seed(int(seed))
+    np.random.seed(int(seed))
+    torch.manual_seed(int(seed))
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(int(seed))
+
+
+def _all_features_mode(cfg: Dict[str, Any], all_features: bool) -> bool:
+    return bool(all_features) or bool(cfg.get("data", {}).get("all_features", False)) or bool(
+        cfg.get("all_features", False)
+    )
+
+
+def _resolve_sequence_params(cfg: Dict[str, Any]) -> tuple[int, int]:
+    seq_len = int(cfg.get("data", {}).get("sequence_length") or cfg.get("sequence_length") or 60)
+    target_shift = int(cfg.get("data", {}).get("target_shift") or cfg.get("target_shift") or 1)
+    return seq_len, target_shift
+
+
+def _select_feature_columns(cfg: Dict[str, Any], df, *, all_features_mode: bool) -> list[str]:
+    if all_features_mode:
+        exclude_cols = {"close", "target", "label", "y"}
+        feature_cols = [
+            c for c in df.select_dtypes(include=["number"]).columns if c not in exclude_cols
+        ]
+        logger.info("All-features mode: using %d features for training", len(feature_cols))
+        return feature_cols
+
+    return cfg.get("data", {}).get("required_features") or ["open", "high", "low", "close", "volume"]
+
+
+def _build_optimizer(cfg: Dict[str, Any], model: nn.Module, *, lr: float) -> torch.optim.Optimizer:
+    weight_decay = float(cfg.get("weight_decay", cfg.get("training", {}).get("weight_decay", 0.01)))
+    return torch.optim.AdamW(model.parameters(), lr=float(lr), weight_decay=weight_decay)
+
+
+def _resolve_yaml_config_path(config_path: str) -> str:
+    return config_path if str(config_path).endswith(".yaml") else "config.yaml"
+
+
+def _read_yaml(path: str) -> Dict[str, Any]:
+    import yaml
+
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    return data if isinstance(data, dict) else {}
+
+
+def _write_yaml(path: str, data: Dict[str, Any]) -> None:
+    import yaml
+
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, sort_keys=False)
+
+
+def _maybe_update_unified_weights_in_config(
+    *,
+    config_path: str,
+    original_weights: Dict[str, float],
+    final_weights: Dict[str, float],
+) -> None:
+    if final_weights == original_weights:
+        return
+
+    w_str = " ".join(f"{k}:{v:.2f}" for k, v in final_weights.items())
+    logger.info("  📊 Recommended weights: %s", w_str)
+
+    resolved_path = _resolve_yaml_config_path(config_path)
+    try:
+        config_data = _read_yaml(resolved_path)
+        config_data["unified_head_loss_weights"] = {
+            k: float(f"{v:.2f}") for k, v in final_weights.items()
+        }
+        _write_yaml(resolved_path, config_data)
+        logger.info("  ✅ config.yaml updated with new unified_head_loss_weights.")
+    except Exception as e:
+        logger.warning("  ⚠️ Failed to update config.yaml automatically: %s", e)
+
+
 def train_unified_multitask(
     config_path: str,
     *,
@@ -572,34 +654,18 @@ def train_unified_multitask(
 ) -> Dict[str, Any]:
     """Train the unified multi-head model and print per-head status via reasoning."""
 
-    # Set seeds for reproducibility
-    import random
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed)
+    _seed_everything(seed)
 
     cfg = load_config(config_path)
     device = cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
     csv_path = _resolve_csv_path(cfg, csv_path)
 
-    # Check if all_features mode is enabled (use all engineered features)
-    # Parameter overrides config setting
-    all_features_mode = all_features or cfg.get("data", {}).get("all_features", False) or cfg.get("all_features", False)
+    all_features_mode = _all_features_mode(cfg, all_features)
 
     df = _load_market_df(csv_path, add_all_features=all_features_mode, config=cfg)
 
-    seq_len = int(cfg.get("data", {}).get("sequence_length") or cfg.get("sequence_length") or 60)
-    target_shift = int(cfg.get("data", {}).get("target_shift") or cfg.get("target_shift") or 1)
-
-    if all_features_mode:
-        # Use all numeric columns except target-related ones as features
-        exclude_cols = {"close", "target", "label", "y"}
-        feature_cols = [c for c in df.select_dtypes(include=["number"]).columns if c not in exclude_cols]
-        logger.info(f"All-features mode: using {len(feature_cols)} features for training")
-    else:
-        feature_cols = cfg.get("data", {}).get("required_features") or ["open", "high", "low", "close", "volume"]
+    seq_len, target_shift = _resolve_sequence_params(cfg)
+    feature_cols = _select_feature_columns(cfg, df, all_features_mode=all_features_mode)
 
     x, _, meta, _, train_loader, val_loader = _prepare_dataloaders(
         cfg,
@@ -629,10 +695,7 @@ def train_unified_multitask(
     }
 
     lr = float(cfg.get("learning_rate", cfg.get("training", {}).get("learning_rate", 1e-3)))
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=lr,
-    )
+    optimizer = _build_optimizer(cfg, model, lr=lr)
     loss_fns = LossFunctions(
         price=price_loss_fn,
         trend=trend_loss_fn,
@@ -679,9 +742,7 @@ def train_unified_multitask(
     )
 
     # Final summary
-    import yaml
     if history:
-        final = history[-1].get("val", {})
         actual_epochs = len(history)
         logger.info("─" * 50)
         logger.info(
@@ -693,20 +754,11 @@ def train_unified_multitask(
         )
         logger.info("  Model: %s", model_path)
 
-        # Auto-update config.yaml if weights changed
-        if final_weights != weights:
-            w_str = " ".join(f"{k}:{v:.2f}" for k, v in final_weights.items())
-            logger.info("  📊 Recommended weights: %s", w_str)
-            config_path = config_path if config_path.endswith('.yaml') else 'config.yaml'
-            try:
-                with open(config_path, 'r') as f:
-                    config_data = yaml.safe_load(f)
-                config_data['unified_head_loss_weights'] = {k: float(f"{v:.2f}") for k, v in final_weights.items()}
-                with open(config_path, 'w') as f:
-                    yaml.dump(config_data, f, sort_keys=False)
-                logger.info("  ✅ config.yaml updated with new unified_head_loss_weights.")
-            except Exception as e:
-                logger.warning(f"  ⚠️ Failed to update config.yaml automatically: {e}")
+        _maybe_update_unified_weights_in_config(
+            config_path=config_path,
+            original_weights=weights,
+            final_weights=final_weights,
+        )
 
     return {
         "csv": csv_path,
