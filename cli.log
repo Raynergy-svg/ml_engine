@@ -2049,3 +2049,142 @@ RuntimeError: Error(s) in loading state_dict for UnifiedMarketNet:
 	size mismatch for _lstm.weight_ih_l0: copying a param with shape torch.Size([192, 5]) from checkpoint, the shape in current model is torch.Size([192, 7]).
 	size mismatch for state_head.weight: copying a param with shape torch.Size([2, 48]) from checkpoint, the shape in current model is torch.Size([3, 48]).
 	size mismatch for state_head.bias: copying a param with shape torch.Size([2]) from checkpoint, the shape in current model is torch.Size([3]).
+2025-12-14 14:23:45 - root - ERROR - [main.py:1503] - Command failed: Error(s) in loading state_dict for UnifiedMarketNet:
+	size mismatch for _lstm.weight_ih_l0: copying a param with shape torch.Size([192, 104]) from checkpoint, the shape in current model is torch.Size([256, 38]).
+	size mismatch for _lstm.weight_hh_l0: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l0: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l0: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.weight_ih_l1: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.weight_hh_l1: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l1: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l1: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.weight_ih_l2: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.weight_hh_l2: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l2: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l2: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for price_head.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for trend_head.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for risk_head.0.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for state_head.weight: copying a param with shape torch.Size([2, 48]) from checkpoint, the shape in current model is torch.Size([2, 64]).
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1488, in main
+    command_map[args.command](
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1271, in buddy
+    run_unified_talk(
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 961, in run_unified_talk
+    ctx = _load_context(config_path, checkpoint_path=checkpoint_path)
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 442, in _load_context
+    engine = UnifiedNeuralEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
+  File "/Users/mirelacertan/Documents/ml_engine/neural_engine_unified.py", line 188, in from_checkpoint
+    eng.load_checkpoint(checkpoint_path)
+  File "/Users/mirelacertan/Documents/ml_engine/neural_engine_unified.py", line 196, in load_checkpoint
+    self.model.load_state_dict(state)
+  File "/Users/mirelacertan/Library/Python/3.9/lib/python/site-packages/torch/nn/modules/module.py", line 2624, in load_state_dict
+    raise RuntimeError(
+RuntimeError: Error(s) in loading state_dict for UnifiedMarketNet:
+	size mismatch for _lstm.weight_ih_l0: copying a param with shape torch.Size([192, 104]) from checkpoint, the shape in current model is torch.Size([256, 38]).
+	size mismatch for _lstm.weight_hh_l0: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l0: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l0: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.weight_ih_l1: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.weight_hh_l1: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l1: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l1: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.weight_ih_l2: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.weight_hh_l2: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l2: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l2: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for price_head.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for trend_head.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for risk_head.0.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for state_head.weight: copying a param with shape torch.Size([2, 48]) from checkpoint, the shape in current model is torch.Size([2, 64]).
+2025-12-14 14:27:23 - root - ERROR - [main.py:1503] - Command failed: Error(s) in loading state_dict for UnifiedMarketNet:
+	size mismatch for _lstm.weight_ih_l0: copying a param with shape torch.Size([192, 104]) from checkpoint, the shape in current model is torch.Size([256, 38]).
+	size mismatch for _lstm.weight_hh_l0: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l0: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l0: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.weight_ih_l1: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.weight_hh_l1: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l1: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l1: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.weight_ih_l2: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.weight_hh_l2: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l2: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l2: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for price_head.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for trend_head.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for risk_head.0.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for state_head.weight: copying a param with shape torch.Size([2, 48]) from checkpoint, the shape in current model is torch.Size([2, 64]).
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1488, in main
+    command_map[args.command](
+  File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1271, in buddy
+    run_unified_talk(
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 989, in run_unified_talk
+    ctx = _load_context(config_path, checkpoint_path=checkpoint_path)
+  File "/Users/mirelacertan/Documents/ml_engine/unified_talk.py", line 459, in _load_context
+    engine = UnifiedNeuralEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
+  File "/Users/mirelacertan/Documents/ml_engine/neural_engine_unified.py", line 188, in from_checkpoint
+    eng.load_checkpoint(checkpoint_path)
+  File "/Users/mirelacertan/Documents/ml_engine/neural_engine_unified.py", line 196, in load_checkpoint
+    self.model.load_state_dict(state)
+  File "/Users/mirelacertan/Library/Python/3.9/lib/python/site-packages/torch/nn/modules/module.py", line 2624, in load_state_dict
+    raise RuntimeError(
+RuntimeError: Error(s) in loading state_dict for UnifiedMarketNet:
+	size mismatch for _lstm.weight_ih_l0: copying a param with shape torch.Size([192, 104]) from checkpoint, the shape in current model is torch.Size([256, 38]).
+	size mismatch for _lstm.weight_hh_l0: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l0: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l0: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.weight_ih_l1: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.weight_hh_l1: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l1: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l1: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.weight_ih_l2: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.weight_hh_l2: copying a param with shape torch.Size([192, 48]) from checkpoint, the shape in current model is torch.Size([256, 64]).
+	size mismatch for _lstm.bias_ih_l2: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for _lstm.bias_hh_l2: copying a param with shape torch.Size([192]) from checkpoint, the shape in current model is torch.Size([256]).
+	size mismatch for price_head.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for trend_head.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for risk_head.0.weight: copying a param with shape torch.Size([1, 48]) from checkpoint, the shape in current model is torch.Size([1, 64]).
+	size mismatch for state_head.weight: copying a param with shape torch.Size([2, 48]) from checkpoint, the shape in current model is torch.Size([2, 64]).
+2025-12-14 14:28:47 - feature_engineering - WARNING - [feature_engineering.py:200] - No datetime index or date column found
+2025-12-14 14:29:09 - feature_engineering - WARNING - [feature_engineering.py:200] - No datetime index or date column found
+2025-12-14 14:30:53 - feature_engineering - WARNING - [feature_engineering.py:200] - No datetime index or date column found
+2025-12-14 14:30:57 - feature_engineering - WARNING - [feature_engineering.py:200] - No datetime index or date column found
+2025-12-14 14:31:07 - feature_engineering - WARNING - [feature_engineering.py:200] - No datetime index or date column found
+2025-12-14 14:32:50 - feature_engineering - WARNING - [feature_engineering.py:200] - No datetime index or date column found
+2025-12-14 17:13:08 - feature_engineering - WARNING - [feature_engineering.py:244] - No datetime index or date column found
+2025-12-14 17:13:12 - feature_engineering - WARNING - [feature_engineering.py:244] - No datetime index or date column found
+2025-12-14 20:14:07 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 20:14:22 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 20:24:34 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 20:24:39 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 20:26:51 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 20:27:09 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 20:27:16 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 20:42:52 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:15:18 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:15:31 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:17:09 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:17:19 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:18:48 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:18:52 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:21:21 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:21:33 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:21:33 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:25:06 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:25:06 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:25:16 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:25:16 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:25:16 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:27:57 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:27:58 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:28:42 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:28:50 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:28:50 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:29:20 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:29:20 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:34:19 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 21:34:20 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 22:13:07 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found
+2025-12-14 22:13:08 - feature_engineering - WARNING - [feature_engineering.py:284] - No datetime index or date column found

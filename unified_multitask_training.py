@@ -22,6 +22,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from data_processing import prepare_sequences
+from feature_engineering import FeatureEngineering
 from multitask_labels import build_multitask_targets, split_time_series
 from neural_engine_unified import UnifiedNeuralEngine, safe_torch_load
 from reasoning_enhanced import ReasoningEngine
@@ -138,13 +139,21 @@ def _resolve_csv_path(cfg: Dict[str, Any], csv_path: Optional[str]) -> str:
     return str(candidates[0])
 
 
-def _load_market_df(csv_path: str):
+def _load_market_df(csv_path: str, *, add_all_features: bool = False, config: Optional[Dict[str, Any]] = None):
     import pandas as pd
 
     df = pd.read_csv(csv_path)
 
     # Normalize columns to lowercase for label generation.
-    return df.rename(columns={c: str(c).strip().lower() for c in df.columns})
+    df = df.rename(columns={c: str(c).strip().lower() for c in df.columns})
+
+    if add_all_features:
+        logger.info("Adding all engineered features (technical indicators, statistical, time, lag, rolling)...")
+        fe = FeatureEngineering(config=config)
+        df = fe.create_features(df, include_all=True)
+        logger.info(f"Total features after engineering: {len(df.columns)}")
+
+    return df
 
 
 def _prepare_dataloaders(
@@ -559,6 +568,7 @@ def train_unified_multitask(
     csv_path: Optional[str] = None,
     resume_path: Optional[str] = None,
     seed: int = 42,
+    all_features: bool = False,
 ) -> Dict[str, Any]:
     """Train the unified multi-head model and print per-head status via reasoning."""
 
@@ -574,11 +584,22 @@ def train_unified_multitask(
     device = cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
     csv_path = _resolve_csv_path(cfg, csv_path)
 
-    df = _load_market_df(csv_path)
+    # Check if all_features mode is enabled (use all engineered features)
+    # Parameter overrides config setting
+    all_features_mode = all_features or cfg.get("data", {}).get("all_features", False) or cfg.get("all_features", False)
+
+    df = _load_market_df(csv_path, add_all_features=all_features_mode, config=cfg)
 
     seq_len = int(cfg.get("data", {}).get("sequence_length") or cfg.get("sequence_length") or 60)
     target_shift = int(cfg.get("data", {}).get("target_shift") or cfg.get("target_shift") or 1)
-    feature_cols = cfg.get("data", {}).get("required_features") or ["open", "high", "low", "close", "volume"]
+
+    if all_features_mode:
+        # Use all numeric columns except target-related ones as features
+        exclude_cols = {"close", "target", "label", "y"}
+        feature_cols = [c for c in df.select_dtypes(include=["number"]).columns if c not in exclude_cols]
+        logger.info(f"All-features mode: using {len(feature_cols)} features for training")
+    else:
+        feature_cols = cfg.get("data", {}).get("required_features") or ["open", "high", "low", "close", "volume"]
 
     x, _, meta, _, train_loader, val_loader = _prepare_dataloaders(
         cfg,
@@ -607,8 +628,11 @@ def train_unified_multitask(
         "state": 0.5,
     }
 
+    lr = float(cfg.get("learning_rate", cfg.get("training", {}).get("learning_rate", 1e-3)))
     optimizer = torch.optim.AdamW(
         model.parameters(),
+        lr=lr,
+    )
     loss_fns = LossFunctions(
         price=price_loss_fn,
         trend=trend_loss_fn,
@@ -635,8 +659,6 @@ def train_unified_multitask(
         weights=weights,
         loss_fns=loss_fns,
         epochs=epochs,
-        state_classes=state_classes,
-        patience=patience,
         state_classes=state_classes,
         patience=patience,
         min_epochs=min_epochs,

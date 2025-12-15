@@ -28,26 +28,56 @@ data:
   - low
   - close
   - volume
-  sequence_length: 60
-sequence_length: 60
+  - rsi
+  - macd
+  - macd_signal
+  - macd_hist
+  - bb_upper_20
+  - bb_lower_20
+  - bb_width_20
+  - bb_position_20
+  - atr
+  - adx
+  - stoch_k
+  - stoch_d
+  - cci
+  - obv
+  - mfi
+  - williams_r
+  - sma_5
+  - sma_10
+  - sma_20
+  - sma_50
+  - ema_12
+  - ema_26
+  - returns
+  - volatility_20
+  - momentum_10
+  - zscore_20
+  - roc_5
+  - roc_10
+  - roc_20
+  sequence_length: 120
+sequence_length: 120
 validation_split: 0.1
 architecture: attention_lstm
 model:
   type: attention_lstm
-  input_size: 5
+  input_size: 104
   hidden_size: 48
   num_layers: 3
-  dropout: 0.25
+  dropout: 0.35
+  recurrent_dropout: 0.15
   bidirectional: false
   num_heads: 4
   use_flash_attention: true
   state_classes: 2
   optimizer:
-    weight_decay: 0.0
+    weight_decay: 0.001
 optimizer:
   type: adamw
-  learning_rate: 0.0005
-  weight_decay: 0.0
+  learning_rate: 0.0003
+  weight_decay: 0.001
   betas:
   - 0.9
   - 0.999
@@ -68,7 +98,7 @@ state_classes: 2
 unified_head_loss_weights:
   price: 1.0
   trend: 0.5
-  risk: 0.5
+  risk: 5.0
   state: 7.0
 early_stop_patience: 15
 min_epochs: 50
@@ -164,7 +194,38 @@ fx:
 visualization:
   update_interval: 500
 warmup_steps: 1000
-weight_decay: 0.0
-hidden_size: 64
-num_layers: 3
-dropout: 0.2
+weight_decay: 0.001
+hidden_size: 32
+num_layers: 2
+dropout: 0.35
+recurrent_dropout: 0.15
+kernel_regularizer: 0.001
+augmentation_factor: 3
+
+# =============================================================================
+# Framework Selection (pytorch or tensorflow)
+# =============================================================================
+framework: pytorch  # Options: pytorch, tensorflow
+
+# =============================================================================
+# TensorFlow-specific settings
+# =============================================================================
+tensorflow:
+  enabled: true
+  # Model types: lstm, attention_lstm, transformer, tft, tcn
+  model_type: tft  # Temporal Fusion Transformer (recommended for multi-feature)
+  mixed_precision: true  # Use float16 for faster training
+  xla_compile: false  # XLA JIT compilation (experimental)
+
+# =============================================================================
+# TensorBoard Configuration
+# =============================================================================
+tensorboard:
+  enabled: true
+  log_dir: trained_data/tensorboard
+  histogram_freq: 1  # Log weight histograms every N epochs
+  write_graph: true  # Visualize model architecture
+  write_images: false  # Log images (not needed for time series)
+  profile_batch: 0  # Profile batches for performance (0 = disabled)
+  update_freq: epoch  # Log metrics every epoch
+  embeddings_freq: 0  # Log embeddings (0 = disabled)

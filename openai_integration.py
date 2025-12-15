@@ -186,13 +186,10 @@ def query_for_auto_configuration(metrics, current_config):
             response = response.replace("```yaml", "").replace("```", "").strip()
         config_updates = yaml.safe_load(response)
     except Exception as e:
-        logging.error(f"Failed to parse GPT response: {e}\nResponse was: {response}")
-        config_updates = yaml.safe_load(response)
-    except Exception as e:
-        logging.error(f"Failed to parse GPT response: {e}\nResponse was: {response}")
+        logging.error("Failed to parse GPT response: %s\nResponse was: %s", e, response)
         config_updates = {}
 
-    logging.debug(f"Config Updates:\n{config_updates}")
+    logging.debug("Config Updates:\n%s", config_updates)
     return config_updates
 
 

@@ -5,6 +5,7 @@ This is a minimal REPL that:
 - runs predictions on a CSV or yfinance ticker
 - answers in a chat-like format using the reasoning engine + head outputs
 
+Supports both PyTorch (.pth) and TensorFlow (.keras) models.
 No LLM is required; the "AI" here is the trained neural network.
 """
 
@@ -12,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -21,6 +22,14 @@ import torch
 from neural_engine_unified import UnifiedNeuralEngine, safe_torch_load
 from reasoning_enhanced import ReasoningEngine
 from utils import load_config
+
+# TensorFlow support (lazy import)
+from tensorflow_engine_unified import (
+    TensorFlowUnifiedEngine,
+    is_tensorflow_checkpoint,
+    is_pytorch_checkpoint,
+    get_default_tf_checkpoint,
+)
 
 try:  # Optional dependency (listed in requirements.txt)
     from dotenv import load_dotenv  # type: ignore
@@ -61,7 +70,7 @@ class TalkContext:
     feature_columns: list[str]
     sequence_length: int
     target_shift: int
-    engine: UnifiedNeuralEngine
+    engine: Union[UnifiedNeuralEngine, TensorFlowUnifiedEngine]  # Supports both PyTorch and TensorFlow
     reasoning: ReasoningEngine
     feature_scaler: Any = None
     target_scaler: Any = None
@@ -69,13 +78,25 @@ class TalkContext:
     active_df: Optional[pd.DataFrame] = None
     last_result: Optional[Dict[str, Any]] = None
 
+    # Feature engineering flag (True if model was trained with all features)
+    apply_feature_engineering: bool = False
+    
+    # Model type flag
+    is_tensorflow: bool = False
+
     # OANDA demo/practice integration (initialized lazily)
     oanda_client: Any = None
-    oanda_instrument: str = "EUR_USD"
+    oanda_instrument: str = "USD_JPY"
     oanda_granularity: str = "M5"
     oanda_candles: int = 300
     oanda_price: str = "MBA"
-    oanda_execute: bool = False
+    oanda_execute: bool = True  # Live trading enabled by default
+    
+    # Risk management: Stop Loss and Take Profit (in pips)
+    stop_loss_pips: float = 20.0  # Default 20 pips stop loss
+    take_profit_pips: float = 40.0  # Default 40 pips take profit (2:1 risk/reward)
+    use_stop_loss: bool = True
+    use_take_profit: bool = True
 
     # UI/verbosity
     assistant_name: str = DEFAULT_ASSISTANT_NAME
@@ -107,6 +128,18 @@ def select_latest_checkpoint(model_dir: Path) -> Optional[Path]:
 
 
 def _default_checkpoint_path(cfg: Dict[str, Any]) -> str:
+    """Get default checkpoint path, preferring TensorFlow over PyTorch.
+    
+    Priority:
+    1. TensorFlow checkpoint (trained_data/checkpoints/tensorflow/tf_model_best.keras)
+    2. PyTorch checkpoint (trained_data/models/unified_market_net.pth)
+    """
+    # First, check for TensorFlow checkpoint (preferred)
+    tf_checkpoint = Path(get_default_tf_checkpoint())
+    if tf_checkpoint.exists():
+        return str(tf_checkpoint)
+    
+    # Fall back to PyTorch checkpoint
     model_dir = Path(cfg.get("MODEL_DIR") or cfg.get("paths", {}).get("model_dir") or "trained_data/models")
     latest = select_latest_checkpoint(model_dir)
     if latest is not None:
@@ -148,6 +181,15 @@ def _load_df_from_ticker(ticker: str, period: str, interval: str) -> pd.DataFram
     return _normalize_ohlcv_columns(df)
 
 
+def _apply_feature_engineering_if_needed(ctx: TalkContext, df: pd.DataFrame) -> pd.DataFrame:
+    """Apply feature engineering to DataFrame if the model was trained with all features."""
+    if not ctx.apply_feature_engineering:
+        return df
+    from feature_engineering import FeatureEngineering
+    fe = FeatureEngineering()
+    return fe.create_features(df, include_all=True)
+
+
 def _load_df_from_oanda(
     ctx: TalkContext,
     *,
@@ -172,7 +214,12 @@ def _load_df_from_oanda(
         price=price,
     )
     df = candles_to_ohlcv_df(resp)
-    return _normalize_ohlcv_columns(df)
+    df = _normalize_ohlcv_columns(df)
+
+    # Apply feature engineering if model requires it
+    df = _apply_feature_engineering_if_needed(ctx, df)
+
+    return df
 
 
 def _coerce_sequence(
@@ -181,7 +228,32 @@ def _coerce_sequence(
     feature_columns: list[str],
     sequence_length: int,
     feature_scaler: Any,
+    use_all_numeric: bool = False,
+    expected_features: int = None,
 ) -> np.ndarray:
+    """Extract feature sequence from DataFrame.
+    
+    Args:
+        df: DataFrame with features
+        feature_columns: List of columns to use (ignored if use_all_numeric=True)
+        sequence_length: Number of timesteps
+        feature_scaler: Optional scaler for normalization
+        use_all_numeric: If True, use all numeric columns (for TensorFlow)
+        expected_features: If set, select first N numeric features
+    """
+    if use_all_numeric:
+        # Use all numeric columns for TensorFlow models
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        
+        # If expected_features is set, limit to that number
+        if expected_features and len(numeric_cols) > expected_features:
+            numeric_cols = numeric_cols[:expected_features]
+        elif expected_features and len(numeric_cols) < expected_features:
+            # Pad with zeros if we have fewer features
+            pass  # Handle below
+            
+        feature_columns = numeric_cols
+    
     missing = [c for c in feature_columns if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
@@ -191,6 +263,15 @@ def _coerce_sequence(
         raise ValueError(f"Need at least {sequence_length} rows; got {len(window)}")
 
     arr = window.to_numpy(dtype=np.float32, copy=True)
+    
+    # Pad or truncate features to match expected_features
+    if expected_features and arr.shape[1] != expected_features:
+        if arr.shape[1] > expected_features:
+            arr = arr[:, :expected_features]
+        else:
+            # Pad with zeros
+            pad_width = expected_features - arr.shape[1]
+            arr = np.pad(arr, ((0, 0), (0, pad_width)), mode='constant', constant_values=0)
 
     # Use saved scaler when available.
     if feature_scaler is not None:
@@ -207,14 +288,30 @@ def _inverse_target(y_scaled: np.ndarray, target_scaler: Any) -> np.ndarray:
 
 
 def _predict_one(ctx: TalkContext, df: pd.DataFrame) -> Dict[str, Any]:
-    seq = _coerce_sequence(
-        df,
-        feature_columns=ctx.feature_columns,
-        sequence_length=ctx.sequence_length,
-        feature_scaler=ctx.feature_scaler,
-    )
+    # TensorFlow models with feature engineering need all numeric features
+    if ctx.is_tensorflow and ctx.apply_feature_engineering:
+        seq = _coerce_sequence(
+            df,
+            feature_columns=ctx.feature_columns,
+            sequence_length=ctx.sequence_length,
+            feature_scaler=ctx.feature_scaler,
+            use_all_numeric=True,
+            expected_features=128,  # TF model expects 128 features
+        )
+    else:
+        seq = _coerce_sequence(
+            df,
+            feature_columns=ctx.feature_columns,
+            sequence_length=ctx.sequence_length,
+            feature_scaler=ctx.feature_scaler,
+        )
 
-    x = torch.tensor(seq, dtype=torch.float32).unsqueeze(0)  # (1, seq, feat)
+    # Prepare input - TensorFlow takes numpy, PyTorch takes torch tensor
+    if ctx.is_tensorflow:
+        x = np.expand_dims(seq, axis=0)  # (1, seq, feat)
+    else:
+        x = torch.tensor(seq, dtype=torch.float32).unsqueeze(0)  # (1, seq, feat)
+    
     out = ctx.engine.predict(x)
 
     pred_scaled = np.asarray(out.get("prediction"), dtype=float).reshape(-1)
@@ -277,17 +374,17 @@ def _format_state_probs_line(state_probs: Any) -> Optional[str]:
 def _format_state_answer(state_probs: Any) -> str:
     """Format answer specifically about market state."""
     if state_probs is None or not isinstance(state_probs, list) or len(state_probs) == 0:
-        return "I don't have state classification data available."
+        return "Hmm, I don't have state data right now. Try running 'predict' first."
     best = int(np.argmax(np.asarray(state_probs, dtype=float)))
     confidence = float(max(state_probs))
     state_labels = ["BEARISH", "BULLISH"] if len(state_probs) == 2 else [f"state_{i}" for i in range(len(state_probs))]
     label = state_labels[best]
     if confidence > 0.8:
-        return f"The model is quite confident: {label} ({confidence:.1%})."
+        return f"I'm feeling pretty confident here - looks {label} to me ({confidence:.0%} sure)."
     elif confidence > 0.6:
-        return f"Leaning {label} ({confidence:.1%}), but not highly certain."
+        return f"Leaning {label} ({confidence:.0%}), but I'm not super certain about it."
     else:
-        return f"Uncertain, slight edge to {label} ({confidence:.1%})."
+        return f"Honestly? I'm not sure. Slight edge to {label} ({confidence:.0%}), but it's a coin flip."
 
 
 def _format_trade_note(q: str, trend: Any, risk: Any) -> Optional[str]:
@@ -296,11 +393,11 @@ def _format_trade_note(q: str, trend: Any, risk: Any) -> Optional[str]:
         return None
 
     if risk is not None and float(risk) > 0.7:
-        return "Trade note: risk looks high; consider smaller size or waiting."
+        return "⚠️ Careful - risk is elevated right now. Maybe size down or wait for a cleaner setup."
     if trend is not None and float(trend) > 0 and (risk is None or float(risk) < 0.6):
-        return "Trade note: trend is positive with moderate risk; consider long bias (not financial advice)."
+        return "📈 Trend looks positive with manageable risk - could favor longs here."
     if trend is not None and float(trend) < 0 and (risk is None or float(risk) < 0.6):
-        return "Trade note: trend is negative with moderate risk; consider caution/short bias (not financial advice)."
+        return "📉 Trend is pointing down - might want to stay cautious or look for shorts."
     return None
 
 
@@ -320,6 +417,44 @@ def _risk_bucket(risk: float) -> str:
     return "high"
 
 
+def _confidence_bucket(confidence: float) -> str:
+    """Categorize confidence level."""
+    if confidence >= 0.75:
+        return "high"
+    if confidence >= 0.55:
+        return "medium"
+    return "low"
+
+
+def _can_execute_trade(state_probs: Any, risk: Any) -> tuple[bool, str]:
+    """Determine if trade should be executed based on confidence and risk.
+    
+    Rules:
+    - HIGH confidence (>=75%): Always execute
+    - MEDIUM confidence (55-75%): Execute only if risk is LOW (<0.35)
+    - LOW confidence (<55%): Never execute
+    
+    Returns (can_execute, reason)
+    """
+    if state_probs is None or not isinstance(state_probs, list) or len(state_probs) == 0:
+        return False, "no prediction data available"
+    
+    confidence = float(max(state_probs))
+    conf_bucket = _confidence_bucket(confidence)
+    risk_val = float(risk) if risk is not None else 0.5
+    risk_level = _risk_bucket(risk_val)
+    
+    if conf_bucket == "high":
+        return True, f"high confidence ({confidence:.0%})"
+    elif conf_bucket == "medium":
+        if risk_level == "low":
+            return True, f"medium confidence ({confidence:.0%}) with low risk"
+        else:
+            return False, f"medium confidence ({confidence:.0%}) but risk is {risk_level} - waiting for better setup"
+    else:
+        return False, f"low confidence ({confidence:.0%}) - not trading"
+
+
 def _summary_line(pred: Any, last_close: Any) -> Optional[str]:
     if pred is None or last_close is None:
         return None
@@ -329,7 +464,8 @@ def _summary_line(pred: Any, last_close: Any) -> Optional[str]:
         delta = pred_f - last_f
         pct = (delta / last_f) if last_f != 0 else 0.0
         direction = _direction_label(delta)
-        return f"I'm leaning {direction}. Estimated next close {pred_f:.5f} vs {last_f:.5f} ({pct:+.2%})."
+        emoji = "📈" if delta > 0 else ("📉" if delta < 0 else "➡️")
+        return f"{emoji} I'm leaning {direction}. Next close estimate: {pred_f:.5f} (currently {last_f:.5f}, that's {pct:+.2%})."
     except Exception:
         return None
 
@@ -350,27 +486,27 @@ def _render_answer(q: str, result: Dict[str, Any]) -> str:
             r = float(risk)
             bucket = _risk_bucket(r)
             if bucket == "high":
-                lines.append(f"Risk looks HIGH ({r:.2f}). Consider smaller position or waiting.")
+                lines.append(f"🔴 Risk is HIGH ({r:.2f}). I'd be careful here - maybe smaller size or just wait.")
             elif bucket == "medium":
-                lines.append(f"Risk is moderate ({r:.2f}). Proceed with caution.")
+                lines.append(f"🟡 Risk is moderate ({r:.2f}). Not terrible, but stay alert.")
             else:
-                lines.append(f"Risk looks low ({r:.2f}). Conditions seem relatively calm.")
+                lines.append(f"🟢 Risk looks low ({r:.2f}). Things are relatively calm right now.")
         else:
-            lines.append("I don't have risk data for this prediction.")
+            lines.append("I don't have risk data at the moment. Run 'predict' first?")
         return "\n".join(lines) if lines else "No risk assessment available."
     
     if any(k in ql for k in ("trend", "direction", "going")):
         if trend is not None:
             t = float(trend)
             if t > 0.01:
-                lines.append(f"Trend is pointing UP ({t:+.4f}).")
+                lines.append(f"📈 Trend is pointing UP ({t:+.4f}).")
             elif t < -0.01:
-                lines.append(f"Trend is pointing DOWN ({t:+.4f}).")
+                lines.append(f"📉 Trend is pointing DOWN ({t:+.4f}).")
             else:
-                lines.append(f"Trend is mostly FLAT ({t:+.4f}).")
+                lines.append(f"➡️ Trend is pretty FLAT right now ({t:+.4f}).")
         if state_probs:
             lines.append(_format_state_answer(state_probs))
-        return "\n".join(lines) if lines else "No trend data available."
+        return "\n".join(lines) if lines else "No trend data yet. Try 'predict' first."
     
     if any(k in ql for k in ("state", "bullish", "bearish", "sentiment")):
         return _format_state_answer(state_probs)
@@ -430,22 +566,83 @@ def _render_answer_verbose(q: str, result: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _find_pytorch_checkpoint(cfg: Dict[str, Any]) -> Optional[str]:
+    """Find a PyTorch checkpoint as fallback."""
+    # Check common locations
+    paths_to_try = [
+        "trained_data/models/unified_market_net.pth",
+        cfg.get("paths", {}).get("checkpoint"),
+        cfg.get("data", {}).get("checkpoint_path"),
+    ]
+    
+    for path in paths_to_try:
+        if path and Path(path).exists():
+            return str(path)
+    
+    return None
+
+
 def _load_context(config_path: str, *, checkpoint_path: Optional[str] = None) -> TalkContext:
     cfg = load_config(config_path)
     ckpt_path = checkpoint_path or _default_checkpoint_path(cfg)
 
     if not Path(ckpt_path).exists():
         raise FileNotFoundError(
-            f"Unified checkpoint not found: {ckpt_path}. Run: python main.py train-unified --config {config_path} --csv <file.csv>"
+            f"Checkpoint not found: {ckpt_path}. Run training first:\n"
+            f"  TensorFlow: python3 train_visual.py --framework tensorflow --model tft --multi-task --data-dir trained_data/data\n"
+            f"  PyTorch: python main.py train-unified --config {config_path} --csv <file.csv>"
         )
 
-    engine = UnifiedNeuralEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
-    ckpt = safe_torch_load(ckpt_path, map_location="cpu")
-    data_meta = dict(ckpt.get("data_meta") or {})
+    # Determine model type and load appropriate engine
+    is_tf_model = is_tensorflow_checkpoint(ckpt_path)
+    
+    if is_tf_model:
+        # Load TensorFlow model
+        print(f"🔷 Loading TensorFlow TFT model...")
+        try:
+            engine = TensorFlowUnifiedEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
+        except Exception as e:
+            # Fall back to PyTorch if TensorFlow fails
+            print(f"⚠ TensorFlow model load failed: {e}")
+            pytorch_ckpt = _find_pytorch_checkpoint(cfg)
+            if pytorch_ckpt:
+                print(f"🔶 Falling back to PyTorch model: {pytorch_ckpt}")
+                ckpt_path = pytorch_ckpt
+                is_tf_model = False
+                engine = UnifiedNeuralEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
+            else:
+                raise RuntimeError(
+                    f"TensorFlow model failed to load and no PyTorch fallback found.\n"
+                    f"Retrain with: python3 train_visual.py --framework tensorflow --model tft --multi-task --data-dir trained_data/data"
+                )
+        
+        if is_tf_model:
+            # TensorFlow models use config-based metadata
+            feature_columns = cfg.get("data", {}).get("feature_columns") or ["open", "high", "low", "close", "volume"]
+            sequence_length = int(cfg.get("data", {}).get("sequence_length") or cfg.get("sequence_length") or 60)
+            target_shift = int(cfg.get("data", {}).get("target_shift") or cfg.get("target_shift") or 1)
+            feature_scaler = None  # TF models handle scaling internally
+            target_scaler = None
+            
+            # TensorFlow TFT models typically use all features
+            apply_feature_engineering = True
+        
+    if not is_tf_model:
+        # Load PyTorch model (original behavior)
+        print(f"🔶 Loading PyTorch model...")
+        engine = UnifiedNeuralEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
+        ckpt = safe_torch_load(ckpt_path, map_location="cpu")
+        data_meta = dict(ckpt.get("data_meta") or {})
 
-    feature_columns = list(data_meta.get("feature_columns") or ["open", "high", "low", "close", "volume"])
-    sequence_length = int(data_meta.get("sequence_length") or cfg.get("data", {}).get("sequence_length") or cfg.get("sequence_length") or 60)
-    target_shift = int(data_meta.get("target_shift") or cfg.get("data", {}).get("target_shift") or cfg.get("target_shift") or 1)
+        feature_columns = list(data_meta.get("feature_columns") or ["open", "high", "low", "close", "volume"])
+        sequence_length = int(data_meta.get("sequence_length") or cfg.get("data", {}).get("sequence_length") or cfg.get("sequence_length") or 60)
+        target_shift = int(data_meta.get("target_shift") or cfg.get("data", {}).get("target_shift") or cfg.get("target_shift") or 1)
+        feature_scaler = data_meta.get("feature_scaler")
+        target_scaler = data_meta.get("target_scaler")
+        
+        # Detect if model was trained with feature engineering (more than base OHLCV columns)
+        base_ohlcv_count = 8  # open, high, low, close, volume, bid_close, ask_close, time
+        apply_feature_engineering = len(feature_columns) > base_ohlcv_count
 
     reasoning = ReasoningEngine(cfg.get("reasoning", {}))
 
@@ -457,27 +654,33 @@ def _load_context(config_path: str, *, checkpoint_path: Optional[str] = None) ->
         target_shift=target_shift,
         engine=engine,
         reasoning=reasoning,
-        feature_scaler=data_meta.get("feature_scaler"),
-        target_scaler=data_meta.get("target_scaler"),
+        feature_scaler=feature_scaler,
+        target_scaler=target_scaler,
+        apply_feature_engineering=apply_feature_engineering,
+        is_tensorflow=is_tf_model,
     )
 
 
 def _print_talk_banner(ctx: TalkContext) -> None:
     if ctx.verbose:
-        print("Unified engine talk mode.")
+        model_type = "TensorFlow TFT" if ctx.is_tensorflow else "PyTorch LSTM"
+        print(f"🤖 Buddy - {model_type} Trading Engine")
         print(f"Model: {ctx.checkpoint_path}")
         print(
-            f"Features: {ctx.feature_columns} | seq_len={ctx.sequence_length} | shift={ctx.target_shift}"
+            f"Features: {len(ctx.feature_columns)} | seq_len={ctx.sequence_length} | shift={ctx.target_shift}"
         )
         print(
-            "Commands: 'use csv <path>' | 'use ticker <SYM>' | 'use oanda [INSTR GRAN COUNT]' | 'predict' | 'help' | 'exit'"
+            "Commands: 'predict' | 'summary' | 'trade' | 'help' | 'exit'"
         )
         print(
-            "Tip: after you run 'predict' once, you can ask natural questions like 'should I buy?' or 'what's the trend?'."
+            "Tip: I only execute trades on HIGH confidence, or MEDIUM + LOW risk."
         )
         return
 
-    print(_assistant_prefix(ctx) + "Ready. Ask a question, or type 'help'.")
+    exec_status = "🟢 LIVE" if ctx.oanda_execute else "⏸️ DRY-RUN"
+    sl_info = f"SL={ctx.stop_loss_pips}p" if ctx.use_stop_loss else "SL=OFF"
+    tp_info = f"TP={ctx.take_profit_pips}p" if ctx.use_take_profit else "TP=OFF"
+    print(_assistant_prefix(ctx) + f"Hey! I'm ready to help. Mode: {exec_status} | {sl_info} | {tp_info}. Type 'help' for commands.")
 
 
 def _maybe_run_initial_prediction(
@@ -491,6 +694,7 @@ def _maybe_run_initial_prediction(
 ) -> None:
     if csv_path:
         df = _load_df_from_csv(csv_path)
+        df = _apply_feature_engineering_if_needed(ctx, df)
         ctx.active_source = f"csv:{csv_path}"
         ctx.active_df = df
         result = _predict_one(ctx, df)
@@ -501,6 +705,7 @@ def _maybe_run_initial_prediction(
 
     if ticker:
         df = _load_df_from_ticker(ticker, period=period, interval=interval)
+        df = _apply_feature_engineering_if_needed(ctx, df)
         ctx.active_source = f"ticker:{ticker}"
         ctx.active_df = df
         result = _predict_one(ctx, df)
@@ -560,26 +765,40 @@ def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
         return False
 
     if ql in {"help", "?"}:
+        sl_status = f"{ctx.stop_loss_pips}p" if ctx.use_stop_loss else "OFF"
+        tp_status = f"{ctx.take_profit_pips}p" if ctx.use_take_profit else "OFF"
+        exec_status = "🟢 LIVE" if ctx.oanda_execute else "⏸️ DRY-RUN"
         print(
-            f"{ctx.assistant_name}: Commands:\n"
-            f"  • 'predict' - run prediction on current data source\n"
-            f"  • 'summary' - quick overview of last prediction\n"
-            f"  • 'use csv <path>' - load CSV data file\n"
-            f"  • 'use ticker <SYM>' - load from yfinance\n"
-            f"  • 'use oanda <INSTR> <GRAN> <COUNT>' - load from OANDA\n"
-            f"  • 'trade' - auto trade based on prediction (dry-run)\n"
-            f"  • 'execute on/off' - toggle real practice orders\n"
-            f"{ctx.assistant_name}: Questions I can answer:\n"
-            f"  • 'what is the risk?'\n"
-            f"  • 'what's the trend?'\n"
-            f"  • 'is it bullish or bearish?'\n"
-            f"  • 'should I buy?'"
+            f"{ctx.assistant_name}: 📋 Here's what I can do:\n\n"
+            f"📊 Analysis:\n"
+            f"  • 'predict' - run fresh prediction\n"
+            f"  • 'summary' - overview with trade readiness\n"
+            f"  • 'what's the risk?' / 'trend?' / 'bullish or bearish?'\n\n"
+            f"📈 Data Sources:\n"
+            f"  • 'use oanda <INSTR> <GRAN> <COUNT>' - OANDA data\n"
+            f"  • 'use csv <path>' / 'use ticker <SYM>'\n\n"
+            f"💰 Trading (confidence-gated):\n"
+            f"  • 'trade' - auto trade based on prediction\n"
+            f"  • 'buy' / 'sell' - manual direction\n"
+            f"  • 'trade close' - close position\n"
+            f"  • 'force buy' / 'force sell' - override confidence check\n"
+            f"  • 'execute on/off' - toggle live orders\n\n"
+            f"🛡️ Risk Management:\n"
+            f"  • 'sl <pips>' - set stop loss (e.g., 'sl 25')\n"
+            f"  • 'tp <pips>' - set take profit (e.g., 'tp 50')\n"
+            f"  • 'sl off' / 'tp off' - disable SL/TP\n"
+            f"  • 'risk' - view current risk settings\n"
+            f"  Current: SL={sl_status} | TP={tp_status} | {exec_status}\n\n"
+            f"🎯 Trade Rules:\n"
+            f"  • HIGH confidence (≥75%): ✅ Execute\n"
+            f"  • MEDIUM (55-75%) + LOW risk: ✅ Execute\n"
+            f"  • Otherwise: ⛔ Won't execute"
         )
         return True
     
     if ql in {"summary", "status", "overview"}:
         if ctx.last_result is None:
-            print(_assistant_prefix(ctx) + "No prediction yet. Run 'predict' first.")
+            print(_assistant_prefix(ctx) + "I don't have a prediction yet. Run 'predict' and I'll give you the lowdown.")
             return True
         
         result = ctx.last_result
@@ -587,14 +806,15 @@ def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
         risk = result.get("risk")
         trend = result.get("trend")
         
-        lines = [f"📊 Summary for {ctx.active_source or 'unknown'}:"]
+        lines = [f"📊 Here's what I'm seeing for {ctx.active_source or 'current data'}:"]
         
-        # State
+        # State with confidence level
         if state_probs:
             best = int(np.argmax(state_probs))
             conf = float(max(state_probs))
             labels = ["🔴 BEARISH", "🟢 BULLISH"] if len(state_probs) == 2 else [f"State {i}" for i in range(len(state_probs))]
-            lines.append(f"  State: {labels[best]} ({conf:.0%})")
+            conf_label = _confidence_bucket(conf).upper()
+            lines.append(f"  State: {labels[best]} ({conf:.0%} - {conf_label} confidence)")
         
         # Risk
         if risk is not None:
@@ -608,16 +828,74 @@ def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
             emoji = "📈" if t > 0.01 else ("📉" if t < -0.01 else "➡️")
             lines.append(f"  Trend: {emoji} {t:+.4f}")
         
+        # Trade readiness
+        can_trade, reason = _can_execute_trade(state_probs, risk)
+        trade_emoji = "✅" if can_trade else "⏸️"
+        lines.append(f"  Trade ready: {trade_emoji} {reason}")
+        
         print(_assistant_prefix(ctx) + "\n".join(lines))
         return True
 
     if ql in {"execute on", "execute true"}:
         ctx.oanda_execute = True
-        print(_assistant_prefix(ctx) + "execute mode ON (practice orders will be sent).")
+        print(_assistant_prefix(ctx) + "🟢 Execute mode ON - I'll send real orders to your practice account.")
         return True
     if ql in {"execute off", "execute false"}:
         ctx.oanda_execute = False
-        print(_assistant_prefix(ctx) + "execute mode OFF (dry-run).")
+        print(_assistant_prefix(ctx) + "⏸️ Execute mode OFF - dry-run only, no orders will be sent.")
+        return True
+
+    # Stop Loss and Take Profit commands
+    if ql.startswith("sl ") or ql.startswith("stoploss ") or ql.startswith("stop loss "):
+        parts = ql.split()
+        if len(parts) >= 2:
+            try:
+                pips = float(parts[-1])
+                ctx.stop_loss_pips = pips
+                ctx.use_stop_loss = True
+                print(_assistant_prefix(ctx) + f"🛑 Stop Loss set to {pips} pips")
+                return True
+            except ValueError:
+                if parts[-1].lower() in {"off", "false", "disable", "0"}:
+                    ctx.use_stop_loss = False
+                    print(_assistant_prefix(ctx) + "🛑 Stop Loss disabled")
+                    return True
+                elif parts[-1].lower() in {"on", "true", "enable"}:
+                    ctx.use_stop_loss = True
+                    print(_assistant_prefix(ctx) + f"🛑 Stop Loss enabled ({ctx.stop_loss_pips} pips)")
+                    return True
+    
+    if ql.startswith("tp ") or ql.startswith("takeprofit ") or ql.startswith("take profit "):
+        parts = ql.split()
+        if len(parts) >= 2:
+            try:
+                pips = float(parts[-1])
+                ctx.take_profit_pips = pips
+                ctx.use_take_profit = True
+                print(_assistant_prefix(ctx) + f"🎯 Take Profit set to {pips} pips")
+                return True
+            except ValueError:
+                if parts[-1].lower() in {"off", "false", "disable", "0"}:
+                    ctx.use_take_profit = False
+                    print(_assistant_prefix(ctx) + "🎯 Take Profit disabled")
+                    return True
+                elif parts[-1].lower() in {"on", "true", "enable"}:
+                    ctx.use_take_profit = True
+                    print(_assistant_prefix(ctx) + f"🎯 Take Profit enabled ({ctx.take_profit_pips} pips)")
+                    return True
+    
+    if ql in {"risk", "risk settings", "sl/tp", "sltp"}:
+        sl_status = f"ON ({ctx.stop_loss_pips} pips)" if ctx.use_stop_loss else "OFF"
+        tp_status = f"ON ({ctx.take_profit_pips} pips)" if ctx.use_take_profit else "OFF"
+        exec_status = "🟢 LIVE" if ctx.oanda_execute else "⏸️ DRY-RUN"
+        print(
+            _assistant_prefix(ctx) 
+            + f"📊 Risk Management Settings:\n"
+            + f"  Execute Mode: {exec_status}\n"
+            + f"  Stop Loss: {sl_status}\n"
+            + f"  Take Profit: {tp_status}\n"
+            + f"  Risk/Reward Ratio: 1:{ctx.take_profit_pips/ctx.stop_loss_pips:.1f}"
+        )
         return True
 
     return None
@@ -627,6 +905,7 @@ def _handle_use_commands(ctx: TalkContext, q: str, *, period: str, interval: str
     use_csv_arg = _extract_command_arg(q, "use csv ")
     if use_csv_arg is not None:
         df = _load_df_from_csv(use_csv_arg)
+        df = _apply_feature_engineering_if_needed(ctx, df)
         ctx.active_source = f"csv:{use_csv_arg}"
         ctx.active_df = df
         ctx.last_result = None
@@ -636,6 +915,7 @@ def _handle_use_commands(ctx: TalkContext, q: str, *, period: str, interval: str
     use_ticker_arg = _extract_command_arg(q, "use ticker ")
     if use_ticker_arg is not None:
         df = _load_df_from_ticker(use_ticker_arg, period=period, interval=interval)
+        df = _apply_feature_engineering_if_needed(ctx, df)
         ctx.active_source = f"ticker:{use_ticker_arg}"
         ctx.active_df = df
         ctx.last_result = None
@@ -675,6 +955,7 @@ def _handle_predict_commands(ctx: TalkContext, q: str, ql: str, *, period: str, 
     csv_arg = _extract_command_arg(q, "predict csv ")
     if csv_arg is not None:
         df = _load_df_from_csv(csv_arg)
+        df = _apply_feature_engineering_if_needed(ctx, df)
         result = _predict_one(ctx, df)
         ctx.active_source = f"csv:{csv_arg}"
         ctx.active_df = df
@@ -686,6 +967,7 @@ def _handle_predict_commands(ctx: TalkContext, q: str, ql: str, *, period: str, 
     ticker_arg = _extract_command_arg(q, "predict ticker ")
     if ticker_arg is not None:
         df = _load_df_from_ticker(ticker_arg, period=period, interval=interval)
+        df = _apply_feature_engineering_if_needed(ctx, df)
         result = _predict_one(ctx, df)
         ctx.active_source = f"ticker:{ticker_arg}"
         ctx.active_df = df
@@ -748,10 +1030,10 @@ def _trade_instrument(parts: list[str], *, default: str, idx: int) -> str:
 def _handle_trade_close(ctx: TalkContext, parts: list[str]) -> None:
     instrument = _trade_instrument(parts, default=ctx.oanda_instrument, idx=2)
     if not ctx.oanda_execute:
-        print(_assistant_prefix(ctx) + f"dry-run: would close position for {instrument}. (run 'execute on' to send)")
+        print(_assistant_prefix(ctx) + f"🔸 Dry-run: would close position for {instrument}. Run 'execute on' to send.")
         return
     ctx.oanda_client.close_position(instrument=instrument)
-    print(_assistant_prefix(ctx) + f"close_position sent for {instrument}.")
+    print(_assistant_prefix(ctx) + f"✅ Position closed for {instrument}.")
 
 
 def _parse_trade_units(parts: list[str]) -> int:
@@ -763,28 +1045,206 @@ def _parse_trade_units(parts: list[str]) -> int:
         raise ValueError("units must be an integer")
 
 
-def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str]) -> None:
-    units = _parse_trade_units(parts)
-    instrument = _trade_instrument(parts, default=ctx.oanda_instrument, idx=3)
+def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str], skip_confidence_check: bool = False) -> None:
+    """Handle direct buy/sell market orders.
+    
+    By default, checks confidence before executing:
+    - HIGH confidence: Always execute
+    - MEDIUM confidence + LOW risk: Execute
+    - Otherwise: Refuse to execute
+    
+    Set skip_confidence_check=True to bypass (use with caution).
+    """
+    # Get units - if not provided, use default
+    if len(parts) >= 3:
+        units = _parse_trade_units(parts)
+        instrument = _trade_instrument(parts, default=ctx.oanda_instrument, idx=3)
+    else:
+        instrument = ctx.oanda_instrument
+        units = _default_trade_units(ctx, instrument)
+    
     signed_units = abs(int(units)) * (1 if action == "buy" else -1)
+
+    # Check confidence before executing (unless explicitly skipped)
+    if not skip_confidence_check:
+        _ensure_last_prediction(ctx)
+        state_probs = (ctx.last_result or {}).get("state_probs")
+        risk = (ctx.last_result or {}).get("risk")
+        can_trade, reason = _can_execute_trade(state_probs, risk)
+        
+        if not can_trade:
+            print(
+                _assistant_prefix(ctx)
+                + f"⛔ I won't execute this trade - {reason}.\n"
+                + "Run 'summary' to see current conditions, or wait for a better setup."
+            )
+            return
 
     if not ctx.oanda_execute:
         print(
             _assistant_prefix(ctx)
-            + f"dry-run: would place MARKET order {action.upper()} {abs(signed_units)} {instrument}. "
+            + f"🔸 Dry-run: would place MARKET order {action.upper()} {abs(signed_units)} {instrument}. "
             + "Run 'execute on' to send."
         )
         return
 
-    resp = ctx.oanda_client.create_market_order(instrument=instrument, units=signed_units)
+    # Calculate stop loss and take profit prices
+    stop_loss_price, take_profit_price = _calculate_sl_tp_prices(ctx, instrument, action)
+    
+    resp = ctx.oanda_client.create_market_order(
+        instrument=instrument, 
+        units=signed_units,
+        stop_loss_price=stop_loss_price,
+        take_profit_price=take_profit_price,
+    )
     tx = (resp or {}).get("orderFillTransaction") or (resp or {}).get("orderCreateTransaction") or {}
-    print(_assistant_prefix(ctx) + f"order submitted (id={tx.get('id')}).")
+    
+    sl_tp_msg = ""
+    if stop_loss_price:
+        sl_tp_msg += f" SL={stop_loss_price:.5f}"
+    if take_profit_price:
+        sl_tp_msg += f" TP={take_profit_price:.5f}"
+    
+    print(_assistant_prefix(ctx) + f"✅ Order submitted! {action.upper()} {abs(signed_units)} {instrument}{sl_tp_msg} (id={tx.get('id')}).")
 
 
-def _default_trade_units() -> int:
-    # Keep conservative, predictable sizing for practice.
-    # Can be overridden by explicit units in the command.
-    return 1000
+def _get_pip_value(instrument: str) -> float:
+    """Get the pip value for an instrument.
+    
+    For most forex pairs, 1 pip = 0.0001
+    For JPY pairs, 1 pip = 0.01
+    """
+    instrument_upper = instrument.upper().replace("_", "")
+    if "JPY" in instrument_upper:
+        return 0.01
+    return 0.0001
+
+
+def _calculate_sl_tp_prices(
+    ctx: TalkContext, 
+    instrument: str, 
+    action: str
+) -> tuple[Optional[float], Optional[float]]:
+    """Calculate stop loss and take profit prices based on current price and pip settings."""
+    if not ctx.use_stop_loss and not ctx.use_take_profit:
+        return None, None
+    
+    # Get current price from last result or OANDA
+    current_price = None
+    if ctx.last_result and ctx.last_result.get("last_close"):
+        current_price = float(ctx.last_result["last_close"])
+    
+    if current_price is None:
+        # Fetch current price from OANDA
+        try:
+            _ensure_oanda_client(ctx)
+            resp = ctx.oanda_client.get_candles(
+                instrument, granularity="S5", count=1, price="M"
+            )
+            if resp and "candles" in resp and resp["candles"]:
+                current_price = float(resp["candles"][-1]["mid"]["c"])
+        except Exception:
+            pass
+    
+    if current_price is None:
+        print(_assistant_prefix(ctx) + "⚠️ Could not get current price for SL/TP calculation")
+        return None, None
+    
+    pip_value = _get_pip_value(instrument)
+    sl_distance = ctx.stop_loss_pips * pip_value
+    tp_distance = ctx.take_profit_pips * pip_value
+    
+    stop_loss_price = None
+    take_profit_price = None
+    
+    if action.lower() == "buy":
+        # For BUY: SL below current price, TP above
+        if ctx.use_stop_loss:
+            stop_loss_price = current_price - sl_distance
+        if ctx.use_take_profit:
+            take_profit_price = current_price + tp_distance
+    else:
+        # For SELL: SL above current price, TP below
+        if ctx.use_stop_loss:
+            stop_loss_price = current_price + sl_distance
+        if ctx.use_take_profit:
+            take_profit_price = current_price - tp_distance
+    
+    return stop_loss_price, take_profit_price
+
+
+def _get_account_equity(ctx: TalkContext) -> float:
+    """Get account equity from OANDA. Returns default if unavailable."""
+    try:
+        _ensure_oanda_client(ctx)
+        summary = ctx.oanda_client.get_account_summary()
+        account = summary.get("account", {})
+        # Try NAV first (Net Asset Value), then balance
+        nav = account.get("NAV") or account.get("nav")
+        if nav:
+            return float(nav)
+        balance = account.get("balance")
+        if balance:
+            return float(balance)
+    except Exception:
+        pass
+    return 10000.0  # Fallback default
+
+
+def _calculate_position_size(
+    ctx: TalkContext,
+    instrument: str,
+    action: str,
+    risk_pct: float = 0.02,  # 2% risk per trade default
+) -> int:
+    """Calculate position size based on account equity and risk parameters.
+    
+    Formula: units = (equity * risk_pct) / (stop_loss_pips * pip_value)
+    
+    For USD/JPY with 20 pip SL and 2% risk on $100k:
+    units = (100000 * 0.02) / (20 * 0.01) = 2000 / 0.20 = 10,000 units
+    """
+    equity = _get_account_equity(ctx)
+    risk_amount = equity * risk_pct
+    
+    # Get pip value based on instrument
+    pip_value = _get_pip_value(instrument)
+    stop_pips = ctx.stop_loss_pips if ctx.use_stop_loss else 20.0
+    
+    # Risk per pip = pip_value (for JPY pairs, 1 pip = 0.01)
+    # For standard lot (100k units), 1 pip = ~$6.45 for USD/JPY
+    # For mini lot (10k units), 1 pip = ~$0.645
+    # Simplified: pip_value_per_unit ≈ pip_value for most pairs
+    
+    # Stop loss in price terms
+    stop_distance = stop_pips * pip_value
+    
+    if stop_distance <= 0:
+        return 10000  # Safe default
+    
+    # Position size = risk_amount / stop_distance
+    # This gives us the units where losing stop_pips = risk_amount
+    units = risk_amount / stop_distance
+    
+    # Round to nearest 1000 (standard lot sizing)
+    units = int(round(units / 1000) * 1000)
+    
+    # Ensure minimum and maximum bounds
+    units = max(1000, min(units, 500000))  # Between 1k and 500k units
+    
+    return units
+
+
+def _default_trade_units(ctx: TalkContext = None, instrument: str = None) -> int:
+    """Calculate smart position size based on account equity and risk.
+    
+    Uses 2% risk per trade by default with the configured stop loss.
+    """
+    if ctx is None:
+        return 10000  # Fallback if no context
+    
+    inst = instrument or ctx.oanda_instrument
+    return _calculate_position_size(ctx, inst, "buy", risk_pct=0.02)
 
 
 def _try_parse_int(val: Any) -> Optional[int]:
@@ -829,7 +1289,7 @@ def _parse_trade_auto_units_and_instrument(ctx: TalkContext, parts: list[str]) -
             instrument = parts[2]
 
     if units is None:
-        units = _default_trade_units()
+        units = _default_trade_units(ctx, instrument)
     return int(units), instrument
 
 
@@ -839,6 +1299,9 @@ def _handle_trade_auto(ctx: TalkContext, parts: list[str]) -> None:
     _ensure_last_prediction(ctx)
     pred = (ctx.last_result or {}).get("prediction")
     last_close = (ctx.last_result or {}).get("last_close")
+    state_probs = (ctx.last_result or {}).get("state_probs")
+    risk = (ctx.last_result or {}).get("risk")
+    
     if pred is None or last_close is None:
         raise ValueError("Need a valid prediction and last close. Run 'predict' first.")
 
@@ -847,28 +1310,76 @@ def _handle_trade_auto(ctx: TalkContext, parts: list[str]) -> None:
     delta = pred_f - last_f
 
     if delta == 0:
-        print(_assistant_prefix(ctx) + "auto-trade: HOLD (prediction equals last close).")
+        print(_assistant_prefix(ctx) + "➡️ HOLD - my prediction equals the last close. No edge here.")
         return
 
     action = "buy" if delta > 0 else "sell"
     signed_units = abs(int(units)) * (1 if action == "buy" else -1)
+    
+    # Check confidence before executing
+    can_trade, reason = _can_execute_trade(state_probs, risk)
+    
+    if not can_trade:
+        action_emoji = "📈" if action == "buy" else "📉"
+        print(
+            _assistant_prefix(ctx)
+            + f"{action_emoji} I want to {action.upper()}, but I'm not confident enough.\n"
+            + f"Reason: {reason}\n"
+            + "Run 'summary' to see details, or wait for a better setup."
+        )
+        return
 
     rationale = f"pred={pred_f:.5f} last={last_f:.5f} Δ={delta:+.5f}"
 
     if not ctx.oanda_execute:
         print(
             _assistant_prefix(ctx)
-            + f"dry-run: auto-trade would {action.upper()} {abs(signed_units)} {instrument} ({rationale}). "
-            + "Run 'execute on' to send."
+            + f"🔸 Dry-run: I'd {action.upper()} {abs(signed_units)} {instrument} ({rationale}).\n"
+            + f"Confidence: {reason}\n"
+            + "Run 'execute on' to enable live trading."
         )
         return
 
-    resp = ctx.oanda_client.create_market_order(instrument=instrument, units=signed_units)
+    # Calculate stop loss and take profit prices
+    stop_loss_price, take_profit_price = _calculate_sl_tp_prices(ctx, instrument, action)
+    
+    resp = ctx.oanda_client.create_market_order(
+        instrument=instrument, 
+        units=signed_units,
+        stop_loss_price=stop_loss_price,
+        take_profit_price=take_profit_price,
+    )
     tx = (resp or {}).get("orderFillTransaction") or (resp or {}).get("orderCreateTransaction") or {}
-    print(_assistant_prefix(ctx) + f"auto-trade submitted: {action.upper()} {abs(signed_units)} {instrument} (id={tx.get('id')}).")
+    
+    sl_tp_info = ""
+    if stop_loss_price:
+        sl_tp_info += f"\n   Stop Loss: {stop_loss_price:.5f}"
+    if take_profit_price:
+        sl_tp_info += f"\n   Take Profit: {take_profit_price:.5f}"
+    
+    print(
+        _assistant_prefix(ctx) 
+        + f"✅ Auto-trade executed: {action.upper()} {abs(signed_units)} {instrument}\n"
+        + f"   Order ID: {tx.get('id')}{sl_tp_info}\n"
+        + f"   Reason: {reason}"
+    )
 
 
 def _handle_trade_commands(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    # Handle force buy/sell (bypasses confidence check)
+    if ql in {"force buy", "force sell"}:
+        _ensure_oanda_client(ctx)
+        action = ql.split()[1]  # "buy" or "sell"
+        print(_assistant_prefix(ctx) + f"⚠️ Force {action.upper()} - bypassing confidence check...")
+        _handle_trade_market(ctx, action=action, parts=[action], skip_confidence_check=True)
+        return True
+    
+    # Handle direct buy/sell commands (not just "trade buy/sell")
+    if ql in {"buy", "sell"}:
+        _ensure_oanda_client(ctx)
+        _handle_trade_market(ctx, action=ql, parts=[ql])
+        return True
+
     if not ql.startswith("trade"):
         return None
 
@@ -951,10 +1462,10 @@ def run_unified_talk(
     period: str = "5d",
     interval: str = "1h",
     oanda: bool = False,
-    oanda_instrument: str = "EUR_USD",
+    oanda_instrument: str = "USD_JPY",
     oanda_granularity: str = "M5",
     oanda_candles: int = 300,
-    oanda_execute: bool = False,
+    oanda_execute: bool = True,  # Live trading enabled by default
     verbose: bool = False,
     assistant_name: str = DEFAULT_ASSISTANT_NAME,
 ) -> None:

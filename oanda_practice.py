@@ -332,7 +332,7 @@ class OandaPracticeClient:
             "type": "MARKET",
             "instrument": instrument,
             "units": str(int(units)),
-            "timeInForce": "FOK",
+            "timeInForce": "IOC",
             "positionFill": "DEFAULT",
             "clientOrderID": client_order_id,
             "clientExtensions": {"tag": client_tag},

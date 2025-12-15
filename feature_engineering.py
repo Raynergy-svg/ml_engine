@@ -138,6 +138,90 @@ class FeatureEngineering:
         df["plus_di"] = plus_di
         df["minus_di"] = minus_di
 
+        # =====================================================================
+        # DIRECTIONAL FEATURES (Enhanced for direction prediction)
+        # =====================================================================
+        
+        # MACD Crossover Signals (+1 = bullish cross, -1 = bearish cross, 0 = no cross)
+        macd_above_signal = (df["macd"] > df["macd_signal"]).astype(int)
+        df["macd_crossover"] = macd_above_signal.diff().fillna(0)  # +1, -1, or 0
+        
+        # MACD Histogram momentum (acceleration of trend)
+        df["macd_hist_momentum"] = df["macd_hist"].diff()
+        
+        # MACD Divergence (price vs MACD disagreement)
+        price_direction = np.sign(df["close"].diff(5))
+        macd_direction = np.sign(df["macd"].diff(5))
+        df["macd_divergence"] = (price_direction != macd_direction).astype(float)
+        
+        # Trend Strength Composite (combines multiple indicators)
+        # Normalized ADX (0-1 scale, >0.5 = strong trend)
+        adx_norm = df["adx"] / 100.0
+        # RSI trend (>50 = bullish, <50 = bearish, normalized to -1 to +1)
+        rsi_trend = (df["rsi"] - 50) / 50.0
+        # MACD histogram normalized
+        macd_hist_norm = df["macd_hist"] / (df["macd_hist"].rolling(20).std() + 1e-8)
+        macd_hist_norm = macd_hist_norm.clip(-3, 3) / 3.0  # Clip to [-1, 1]
+        
+        df["trend_strength"] = (adx_norm * 0.4 + rsi_trend.abs() * 0.3 + macd_hist_norm.abs() * 0.3)
+        df["trend_direction"] = np.sign(rsi_trend) * df["trend_strength"]
+        
+        # Moving Average Crossovers
+        df["sma_5_20_cross"] = (df["sma_5"] > df["sma_20"]).astype(int).diff().fillna(0)
+        df["ema_12_26_cross"] = (ema_12 > ema_26).astype(int).diff().fillna(0)
+        
+        # Momentum Divergence (price making new highs but momentum not)
+        price_high_20 = df["close"].rolling(20).max()
+        mom_high_20 = df["momentum_10"].rolling(20).max() if "momentum_10" in df.columns else df["close"].diff(10).rolling(20).max()
+        df["momentum_divergence"] = ((df["close"] >= price_high_20 * 0.99) & 
+                                      (df.get("momentum_10", df["close"].diff(10)) < mom_high_20 * 0.9)).astype(float)
+        
+        # Stochastic Crossover
+        df["stoch_crossover"] = (df["stoch_k"] > df["stoch_d"]).astype(int).diff().fillna(0)
+        
+        # RSI Overbought/Oversold signals
+        df["rsi_signal"] = np.where(df["rsi"] > 70, -1, np.where(df["rsi"] < 30, 1, 0))
+        
+        # =====================================================================
+        # ADDITIONAL MOMENTUM FEATURES (Step 3: Feature engineering for momentum)
+        # =====================================================================
+        
+        # CCI Signal (Commodity Channel Index)
+        # Buy when CCI < -100 (oversold), Sell when CCI > 100 (overbought)
+        if "cci" in df.columns:
+            df["cci_signal"] = np.where(df["cci"] > 100, -1, np.where(df["cci"] < -100, 1, 0))
+        
+        # ADX Trend Strength (>25 = strong trend, >40 = very strong)
+        df["adx_trend_strong"] = (df["adx"] > 25).astype(float)
+        df["adx_trend_very_strong"] = (df["adx"] > 40).astype(float)
+        
+        # DI Crossover (+DI crosses above -DI = bullish, vice versa)
+        di_bullish = (df["plus_di"] > df["minus_di"]).astype(int)
+        df["di_crossover"] = di_bullish.diff().fillna(0)  # +1 = bullish cross, -1 = bearish cross
+        
+        # DI Spread (larger spread = stronger trend direction)
+        df["di_spread"] = (df["plus_di"] - df["minus_di"]) / (df["plus_di"] + df["minus_di"] + 1e-8)
+        
+        # Price Momentum (percentage change over different windows)
+        for window in [5, 10, 20]:
+            df[f"price_pct_change_{window}"] = df["close"].pct_change(window)
+        
+        # Acceleration (second derivative of price)
+        df["price_acceleration"] = df["close"].diff().diff()
+        df["momentum_acceleration"] = df["momentum_10"].diff() if "momentum_10" in df.columns else df["close"].diff(10).diff()
+        
+        # Volume-Price Confirmation (rising price + rising volume = strong)
+        if "volume" in df.columns:
+            price_rising = (df["close"].diff() > 0).astype(int)
+            volume_rising = (df["volume"].diff() > 0).astype(int)
+            df["volume_price_confirm"] = (price_rising * volume_rising - (1 - price_rising) * volume_rising).fillna(0)
+        
+        # Multi-timeframe RSI agreement
+        rsi_short = df["close"].diff(7).apply(lambda x: max(x, 0)).rolling(7).mean() / \
+                    df["close"].diff(7).abs().rolling(7).mean() * 100
+        df["rsi_7"] = rsi_short.fillna(50)
+        df["rsi_agreement"] = ((df["rsi"] > 50) == (df["rsi_7"] > 50)).astype(float)
+
         return df
 
     def add_statistical_features(self, df: pd.DataFrame) -> pd.DataFrame:

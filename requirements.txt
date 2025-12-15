@@ -7,6 +7,10 @@ pandas>=2.0.0
 scikit-learn>=1.3.0
 scipy>=1.11.0
 
+# TensorFlow (for TensorBoard visualization and TF models)
+tensorflow>=2.15.0
+tensorflow-metal>=1.0.0; sys_platform == 'darwin'  # Apple Silicon GPU support
+
 # Data Processing and Optimization
 dask[complete]>=2023.5.0
 joblib>=1.3.0

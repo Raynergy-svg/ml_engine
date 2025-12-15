@@ -1204,6 +1204,7 @@ def train_oanda_unified(
     granularity: str,
     candles: int,
     checkpoint_path: str | None = None,
+    all_features: bool = False,
 ) -> None:
     """Fetch OANDA candles into local cache and train unified model (auto-resume)."""
     from oanda_unified_training import run_oanda_unified_training_session
@@ -1214,6 +1215,7 @@ def train_oanda_unified(
         granularity=granularity,
         candles=int(candles),
         resume_path=checkpoint_path,
+        all_features=all_features,
     )
     console.print(
         f"[bold green]OANDA unified session complete[/bold green] model={result.model_path} metrics={result.metrics_path}"
@@ -1256,10 +1258,10 @@ def buddy(
     config_path: str,
     *,
     checkpoint_path: str | None = None,
-    instrument: str = "EUR_USD",
+    instrument: str = "USD_JPY",
     granularity: str = "M5",
     candles: int = 300,
-    execute: bool = False,
+    execute: bool = True,  # Live trading enabled by default
     verbose: bool = False,
 ) -> None:
     """Buddy: interactive offline REPL + OANDA demo/practice source."""
@@ -1366,8 +1368,8 @@ def main() -> None:
     parser.add_argument(
         "--instrument",
         "-I",
-        default="EUR_USD",
-        help="OANDA instrument, e.g. EUR_USD (used by fx/fx-paper)",
+        default="USD_JPY,EUR_USD,GBP_USD",
+        help="OANDA instrument(s), comma-separated e.g. EUR_USD,GBP_USD,USD_JPY (used by fx/fx-paper/train-oanda-unified)",
     )
     parser.add_argument(
         "--granularity",
@@ -1399,7 +1401,19 @@ def main() -> None:
         "--execute",
         "-x",
         action="store_true",
-        help="Actually place a PRACTICE order on OANDA (default: dry-run)",
+        default=True,
+        help="Enable live trading on OANDA practice account (default: enabled)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Disable live trading, only simulate orders",
+    )
+    parser.add_argument(
+        "--all-features",
+        "-A",
+        action="store_true",
+        help="Use all engineered features (technical indicators, statistical, time, lag, rolling) for training",
     )
     # ... add more CLI arguments as needed ...
 
@@ -1462,6 +1476,7 @@ def main() -> None:
                 granularity=args.granularity,
                 candles=args.candles,
                 checkpoint_path=args.model_path,
+                all_features=getattr(args, 'all_features', False),
             )
         elif args.command == "chat-unified":
             command_map[args.command](args.config, args.metrics)
@@ -1476,13 +1491,17 @@ def main() -> None:
                 verbose=args.verbose,
             )
         elif args.command in {"buddy", "Buddy"}:
+            # For Buddy, use only the first instrument if multiple are specified
+            buddy_instrument = args.instrument.split(",")[0].strip()
+            # Execute is True by default, but --dry-run overrides it
+            should_execute = not args.dry_run
             command_map[args.command](
                 args.config,
                 checkpoint_path=args.model_path,
-                instrument=args.instrument,
+                instrument=buddy_instrument,
                 granularity=args.granularity,
                 candles=args.candles,
-                execute=args.execute,
+                execute=should_execute,
                 verbose=args.verbose,
             )
         else:

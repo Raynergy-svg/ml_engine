@@ -38,14 +38,19 @@ def run_oanda_unified_training_session(
     *,
     instruments: str,
     granularity: str = "M5",
-    candles: int = 1500,
+    candles: int = 5000,
     resume_path: Optional[str] = None,
+    all_features: bool = False,
 ) -> OandaTrainSessionResult:
     """Run one training session using fresh OANDA candles.
 
     `instruments` may be a comma-separated string, e.g. "EUR_USD,GBP_USD".
     Training will run sequentially per instrument; the model checkpoint from each
     run is used as the resume checkpoint for the next.
+
+    Args:
+        all_features: If True, use all engineered features (technical indicators,
+                     statistical, time, lag, rolling) instead of just OHLCV.
     """
     from unified_multitask_training import train_unified_multitask
 
@@ -72,6 +77,7 @@ def run_oanda_unified_training_session(
             config_path,
             csv_path=str(csv_path),
             resume_path=last_model_path,
+            all_features=all_features,
         )
         last_model_path = str(result.get("model_path") or last_model_path or "")
         last_metrics_path = str(result.get("metrics_path") or last_metrics_path or "")

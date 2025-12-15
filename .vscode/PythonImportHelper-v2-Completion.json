@@ -113,6 +113,14 @@
         "documentation": {}
     },
     {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
         "label": "timezone",
         "importPath": "datetime",
         "description": "datetime",
@@ -788,14 +796,6 @@
         "documentation": {}
     },
     {
-        "label": "Dict",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
         "label": "Tuple",
         "importPath": "typing",
         "description": "typing",
@@ -980,7 +980,119 @@
         "documentation": {}
     },
     {
-        "label": "Iterable",
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Generator",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1012,6 +1124,14 @@
         "documentation": {}
     },
     {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -1021,6 +1141,102 @@
     },
     {
         "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Iterable",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Iterator",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1101,6 +1317,14 @@
     },
     {
         "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1423,6 +1647,46 @@
         "documentation": {}
     },
     {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
         "label": "logging",
         "kind": 6,
         "isExtraImport": true,
@@ -1473,6 +1737,14 @@
         "description": "io",
         "isExtraImport": true,
         "detail": "io",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
         "documentation": {}
     },
     {
@@ -2056,6 +2328,14 @@
     },
     {
         "label": "create_optimized_dataloader",
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "isExtraImport": true,
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "prepare_sequences",
         "importPath": "data_processing",
         "description": "data_processing",
         "isExtraImport": true,
@@ -2861,6 +3141,14 @@
         "documentation": {}
     },
     {
+        "label": "TimeSeriesSplit",
+        "importPath": "sklearn.model_selection",
+        "description": "sklearn.model_selection",
+        "isExtraImport": true,
+        "detail": "sklearn.model_selection",
+        "documentation": {}
+    },
+    {
         "label": "joblib",
         "kind": 6,
         "isExtraImport": true,
@@ -2875,6 +3163,22 @@
         "description": "joblib",
         "isExtraImport": true,
         "detail": "joblib",
+        "documentation": {}
+    },
+    {
+        "label": "FeatureEngineering",
+        "importPath": "feature_engineering",
+        "description": "feature_engineering",
+        "isExtraImport": true,
+        "detail": "feature_engineering",
+        "documentation": {}
+    },
+    {
+        "label": "FeatureEngineering",
+        "importPath": "feature_engineering",
+        "description": "feature_engineering",
+        "isExtraImport": true,
+        "detail": "feature_engineering",
         "documentation": {}
     },
     {
@@ -3056,6 +3360,30 @@
         "documentation": {}
     },
     {
+        "label": "MultitaskTargets",
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "isExtraImport": true,
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "build_multitask_targets",
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "isExtraImport": true,
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "split_time_series",
+        "importPath": "multitask_labels",
+        "description": "multitask_labels",
+        "isExtraImport": true,
+        "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
         "label": "mean_squared_error",
         "importPath": "sklearn.metrics",
         "description": "sklearn.metrics",
@@ -3149,6 +3477,22 @@
         "description": "training_utils",
         "isExtraImport": true,
         "detail": "training_utils",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
         "documentation": {}
     },
     {
@@ -3417,6 +3761,137 @@
         "documentation": {}
     },
     {
+        "label": "SummaryWriter",
+        "importPath": "torch.utils.tensorboard",
+        "description": "torch.utils.tensorboard",
+        "isExtraImport": true,
+        "detail": "torch.utils.tensorboard",
+        "documentation": {}
+    },
+    {
+        "label": "TensorBoardLogger",
+        "importPath": "tensorboard_logger",
+        "description": "tensorboard_logger",
+        "isExtraImport": true,
+        "detail": "tensorboard_logger",
+        "documentation": {}
+    },
+    {
+        "label": "TrainingCallback",
+        "importPath": "tensorboard_logger",
+        "description": "tensorboard_logger",
+        "isExtraImport": true,
+        "detail": "tensorboard_logger",
+        "documentation": {}
+    },
+    {
+        "label": "tensorflow",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "tensorflow",
+        "description": "tensorflow",
+        "detail": "tensorflow",
+        "documentation": {}
+    },
+    {
+        "label": "keras",
+        "importPath": "tensorflow",
+        "description": "tensorflow",
+        "isExtraImport": true,
+        "detail": "tensorflow",
+        "documentation": {}
+    },
+    {
+        "label": "pickle",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "pickle",
+        "description": "pickle",
+        "detail": "pickle",
+        "documentation": {}
+    },
+    {
+        "label": "callbacks",
+        "importPath": "tensorflow.keras",
+        "description": "tensorflow.keras",
+        "isExtraImport": true,
+        "detail": "tensorflow.keras",
+        "documentation": {}
+    },
+    {
+        "label": "optimizers",
+        "importPath": "tensorflow.keras",
+        "description": "tensorflow.keras",
+        "isExtraImport": true,
+        "detail": "tensorflow.keras",
+        "documentation": {}
+    },
+    {
+        "label": "losses",
+        "importPath": "tensorflow.keras",
+        "description": "tensorflow.keras",
+        "isExtraImport": true,
+        "detail": "tensorflow.keras",
+        "documentation": {}
+    },
+    {
+        "label": "metrics",
+        "importPath": "tensorflow.keras",
+        "description": "tensorflow.keras",
+        "isExtraImport": true,
+        "detail": "tensorflow.keras",
+        "documentation": {}
+    },
+    {
+        "label": "create_tensorflow_model",
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "isExtraImport": true,
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "TensorFlowEngine",
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "isExtraImport": true,
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "keras",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "keras",
+        "description": "keras",
+        "detail": "keras",
+        "documentation": {}
+    },
+    {
+        "label": "layers",
+        "importPath": "keras",
+        "description": "keras",
+        "isExtraImport": true,
+        "detail": "keras",
+        "documentation": {}
+    },
+    {
+        "label": "Model",
+        "importPath": "keras",
+        "description": "keras",
+        "isExtraImport": true,
+        "detail": "keras",
+        "documentation": {}
+    },
+    {
+        "label": "regularizers",
+        "importPath": "keras",
+        "description": "keras",
+        "isExtraImport": true,
+        "detail": "keras",
+        "documentation": {}
+    },
+    {
         "label": "math",
         "kind": 6,
         "isExtraImport": true,
@@ -3449,6 +3924,38 @@
         "description": "gymnasium",
         "isExtraImport": true,
         "detail": "gymnasium",
+        "documentation": {}
+    },
+    {
+        "label": "TensorFlowUnifiedEngine",
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "isExtraImport": true,
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "is_tensorflow_checkpoint",
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "isExtraImport": true,
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "is_pytorch_checkpoint",
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "isExtraImport": true,
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "get_default_tf_checkpoint",
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "isExtraImport": true,
+        "detail": "tensorflow_engine_unified",
         "documentation": {}
     },
     {
@@ -5002,7 +5509,7 @@
         "kind": 5,
         "importPath": "data_processing",
         "description": "data_processing",
-        "peekOfCode": "_REQUIRED_STOCK_COLS = {\"open\", \"high\", \"low\", \"close\", \"volume\"}\ndef _normalize_columns(columns) -> List[str]:\n    out = []\n    for col in columns:\n        if isinstance(col, tuple):\n            out.append(\"_\".join(map(str, col)).lower())\n        else:\ndef _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:\n    if CLOSE_COL not in df.columns and ADJ_CLOSE_COL in df.columns:\n        df[CLOSE_COL] = df[ADJ_CLOSE_COL]",
+        "peekOfCode": "_REQUIRED_STOCK_COLS = {\"open\", \"high\", \"low\", \"close\", \"volume\"}\ndef _normalize_columns(columns) -> List[str]:\n    out = []\n    for col in columns:\n        if isinstance(col, tuple):\n            out.append(\"_\".join(map(str, col)).lower())\n        else:\n            out.append(str(col).lower())\n    return out\ndef _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:",
         "detail": "data_processing",
         "documentation": {}
     },
@@ -5767,7 +6274,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def train_oanda_unified(\n    config_path: str,\n    *,\n    instruments: str,\n    granularity: str,\n    candles: int,\n    checkpoint_path: str | None = None,\n) -> None:\n    \"\"\"Fetch OANDA candles into local cache and train unified model (auto-resume).\"\"\"\n    from oanda_unified_training import run_oanda_unified_training_session",
+        "peekOfCode": "def train_oanda_unified(\n    config_path: str,\n    *,\n    instruments: str,\n    granularity: str,\n    candles: int,\n    checkpoint_path: str | None = None,\n    all_features: bool = False,\n) -> None:\n    \"\"\"Fetch OANDA candles into local cache and train unified model (auto-resume).\"\"\"",
         "detail": "main",
         "documentation": {}
     },
@@ -5794,7 +6301,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"EUR_USD\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = False,\n    verbose: bool = False,\n) -> None:",
+        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"USD_JPY\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = True,  # Live trading enabled by default\n    verbose: bool = False,\n) -> None:",
         "detail": "main",
         "documentation": {}
     },
@@ -6172,7 +6679,16 @@
         "kind": 2,
         "importPath": "oanda_candle_cache",
         "description": "oanda_candle_cache",
-        "peekOfCode": "def update_oanda_cache(\n    config_path: str,\n    *,\n    instrument: str,\n    granularity: str,\n    candles: int = 1500,\n    price: str = \"MBA\",\n) -> Path:\n    \"\"\"Fetch new candles from OANDA and update the local cache CSV.\n    - If cache exists: fetch from the latest cached timestamp (inclusive) and merge/dedupe.",
+        "peekOfCode": "def update_oanda_cache(\n    config_path: str,\n    *,\n    instrument: str,\n    granularity: str,\n    candles: int = 5000,\n    price: str = \"MBA\",\n) -> Path:\n    \"\"\"Fetch new candles from OANDA and update the local cache CSV.\n    - If cache exists: fetch from the latest cached timestamp (inclusive) and merge/dedupe.",
+        "detail": "oanda_candle_cache",
+        "documentation": {}
+    },
+    {
+        "label": "OANDA_MAX_CANDLES_PER_REQUEST",
+        "kind": 5,
+        "importPath": "oanda_candle_cache",
+        "description": "oanda_candle_cache",
+        "peekOfCode": "OANDA_MAX_CANDLES_PER_REQUEST = 5000\ndef _load_existing_cache(out_path: Path) -> tuple[Optional[pd.DataFrame], Optional[str]]:\n    \"\"\"Load existing cache and extract the latest timestamp for incremental fetch.\"\"\"\n    existing: Optional[pd.DataFrame] = None\n    from_time: Optional[str] = None\n    if not out_path.exists():\n        return existing, from_time\n    try:\n        existing = pd.read_csv(out_path)\n    except Exception:",
         "detail": "oanda_candle_cache",
         "documentation": {}
     },
@@ -6226,7 +6742,7 @@
         "kind": 2,
         "importPath": "oanda_unified_training",
         "description": "oanda_unified_training",
-        "peekOfCode": "def run_oanda_unified_training_session(\n    config_path: str,\n    *,\n    instruments: str,\n    granularity: str = \"M5\",\n    candles: int = 1500,\n    resume_path: Optional[str] = None,\n) -> OandaTrainSessionResult:\n    \"\"\"Run one training session using fresh OANDA candles.\n    `instruments` may be a comma-separated string, e.g. \"EUR_USD,GBP_USD\".",
+        "peekOfCode": "def run_oanda_unified_training_session(\n    config_path: str,\n    *,\n    instruments: str,\n    granularity: str = \"M5\",\n    candles: int = 5000,\n    resume_path: Optional[str] = None,\n    all_features: bool = False,\n) -> OandaTrainSessionResult:\n    \"\"\"Run one training session using fresh OANDA candles.",
         "detail": "oanda_unified_training",
         "documentation": {}
     },
@@ -6393,6 +6909,573 @@
         "documentation": {}
     },
     {
+        "label": "TensorBoardLogger",
+        "kind": 6,
+        "importPath": "tensorboard_logger",
+        "description": "tensorboard_logger",
+        "peekOfCode": "class TensorBoardLogger:\n    \"\"\"\n    TensorBoard logger for PyTorch training.\n    Provides easy-to-use interface for logging metrics, histograms, and graphs.\n    \"\"\"\n    def __init__(\n        self,\n        log_dir: Optional[str] = None,\n        experiment_name: Optional[str] = None,\n        flush_secs: int = 30,",
+        "detail": "tensorboard_logger",
+        "documentation": {}
+    },
+    {
+        "label": "TrainingCallback",
+        "kind": 6,
+        "importPath": "tensorboard_logger",
+        "description": "tensorboard_logger",
+        "peekOfCode": "class TrainingCallback:\n    \"\"\"\n    Callback for integrating TensorBoard with PyTorch training loops.\n    Usage:\n        callback = TrainingCallback(log_dir='runs/experiment1')\n        for epoch in range(epochs):\n            train_loss = train_one_epoch(...)\n            val_loss = validate(...)\n            callback.on_epoch_end(\n                epoch, model, train_loss, val_loss, optimizer",
+        "detail": "tensorboard_logger",
+        "documentation": {}
+    },
+    {
+        "label": "integrate_tensorboard_with_engine",
+        "kind": 2,
+        "importPath": "tensorboard_logger",
+        "description": "tensorboard_logger",
+        "peekOfCode": "def integrate_tensorboard_with_engine(engine, log_dir: Optional[str] = None):\n    \"\"\"\n    Add TensorBoard logging to an existing EnhancedMLEngine.\n    Usage:\n        from ml_engine_enhanced import EnhancedMLEngine\n        from tensorboard_logger import integrate_tensorboard_with_engine\n        engine = EnhancedMLEngine(config)\n        callback = integrate_tensorboard_with_engine(engine)\n        # Training will now log to TensorBoard\n        engine.train(X_train, y_train, X_val, y_val)",
+        "detail": "tensorboard_logger",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "tensorboard_logger",
+        "description": "tensorboard_logger",
+        "peekOfCode": "logger = TensorBoardLogger('trained_data/tensorboard/my_experiment')\nfor epoch in range(100):\n    train_loss = train_one_epoch(...)\n    val_loss = validate(...)\n    logger.log_epoch_metrics(epoch, train_loss, val_loss)\n    logger.log_model_weights(model, epoch)\nlogger.close()\n# Option 2: Callback-based\ncallback = TrainingCallback(log_dir='trained_data/tensorboard/my_experiment')\ncallback.on_train_begin(model, config)",
+        "detail": "tensorboard_logger",
+        "documentation": {}
+    },
+    {
+        "label": "callback",
+        "kind": 5,
+        "importPath": "tensorboard_logger",
+        "description": "tensorboard_logger",
+        "peekOfCode": "callback = TrainingCallback(log_dir='trained_data/tensorboard/my_experiment')\ncallback.on_train_begin(model, config)\nfor epoch in range(100):\n    train_loss = train_one_epoch(...)\n    val_loss = validate(...)\n    callback.on_epoch_end(epoch, model, train_loss, val_loss, optimizer)\ncallback.on_train_end()\n# Then launch TensorBoard:\n# tensorboard --logdir=trained_data/tensorboard\n\"\"\")",
+        "detail": "tensorboard_logger",
+        "documentation": {}
+    },
+    {
+        "label": "TensorFlowDataPipeline",
+        "kind": 6,
+        "importPath": "tensorflow_data",
+        "description": "tensorflow_data",
+        "peekOfCode": "class TensorFlowDataPipeline:\n    \"\"\"\n    High-performance data pipeline using tf.data.Dataset.\n    Advantages over PyTorch DataLoader:\n    - Automatic prefetching to GPU\n    - Parallel data loading\n    - Built-in caching\n    - Seamless integration with TensorFlow training\n    \"\"\"\n    def __init__(",
+        "detail": "tensorflow_data",
+        "documentation": {}
+    },
+    {
+        "label": "numpy_to_tensorflow_datasets",
+        "kind": 2,
+        "importPath": "tensorflow_data",
+        "description": "tensorflow_data",
+        "peekOfCode": "def numpy_to_tensorflow_datasets(\n    x_train: np.ndarray,\n    y_train: np.ndarray,\n    x_val: np.ndarray,\n    y_val: np.ndarray,\n    x_test: Optional[np.ndarray] = None,\n    y_test: Optional[np.ndarray] = None,\n    batch_size: int = 64,\n) -> Tuple[tf.data.Dataset, tf.data.Dataset, Optional[tf.data.Dataset]]:\n    \"\"\"",
+        "detail": "tensorflow_data",
+        "documentation": {}
+    },
+    {
+        "label": "create_time_series_dataset",
+        "kind": 2,
+        "importPath": "tensorflow_data",
+        "description": "tensorflow_data",
+        "peekOfCode": "def create_time_series_dataset(\n    df: pd.DataFrame,\n    target_column: str = 'close',\n    feature_columns: Optional[list] = None,\n    sequence_length: int = 60,\n    batch_size: int = 64,\n    validation_split: float = 0.1,\n    test_split: float = 0.1,\n) -> Tuple[tf.data.Dataset, tf.data.Dataset, tf.data.Dataset, Dict]:\n    \"\"\"",
+        "detail": "tensorflow_data",
+        "documentation": {}
+    },
+    {
+        "label": "inspect_dataset",
+        "kind": 2,
+        "importPath": "tensorflow_data",
+        "description": "tensorflow_data",
+        "peekOfCode": "def inspect_dataset(dataset: tf.data.Dataset, name: str = \"Dataset\"):\n    \"\"\"Print information about a tf.data.Dataset.\"\"\"\n    print(f\"\\n{name} Info:\")\n    print(\"-\" * 40)\n    # Get one batch to inspect shape\n    for x, y in dataset.take(1):\n        print(f\"  Batch X shape: {x.shape}\")\n        print(f\"  Batch y shape: {y.shape}\")\n        print(f\"  X dtype: {x.dtype}\")\n        print(f\"  y dtype: {y.dtype}\")",
+        "detail": "tensorflow_data",
+        "documentation": {}
+    },
+    {
+        "label": "TensorFlowDataPipeline",
+        "kind": 6,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "class TensorFlowDataPipeline:\n    \"\"\"\n    High-level data pipeline class for TensorFlow multi-task training.\n    This class provides a simple interface that matches the train_visual.py \n    load_real_data() function expectations.\n    Usage:\n        pipeline = TensorFlowDataPipeline(config)\n        result = pipeline.load_multitask_data(data_file='path/to/data.csv')\n        train_ds, val_ds, test_ds, metadata = result\n    \"\"\"",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "AdaptiveLossWeightCallback",
+        "kind": 6,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "class AdaptiveLossWeightCallback(tf.keras.callbacks.Callback):\n    \"\"\"\n    Callback to adaptively adjust loss weights during training.\n    Boosts weights for underperforming heads (like PyTorch _adjust_weights).\n    This helps balance multi-task learning when some heads train faster than others.\n    \"\"\"\n    def __init__(\n        self,\n        initial_weights: Dict[str, float],\n        adjustment_factor: float = 1.1,",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "load_market_dataframe",
+        "kind": 2,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "def load_market_dataframe(\n    csv_path: str,\n    *,\n    add_all_features: bool = True,\n    config: Optional[Dict[str, Any]] = None,\n) -> pd.DataFrame:\n    \"\"\"\n    Load market data from CSV and optionally add engineered features.\n    Args:\n        csv_path: Path to CSV file with OHLCV data",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "load_tensorflow_multitask_data",
+        "kind": 2,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "def load_tensorflow_multitask_data(\n    csv_path: str,\n    config: Dict[str, Any],\n    *,\n    state_classes: int = 2,\n    validation_split: float = 0.2,\n    add_all_features: bool = True,\n) -> Tuple[np.ndarray, Dict[str, np.ndarray], np.ndarray, Dict[str, np.ndarray], np.ndarray, Dict[str, np.ndarray], Dict[str, Any]]:\n    \"\"\"\n    Load real market data using same pipeline as PyTorch unified_multitask_training.",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "load_multi_instrument_data",
+        "kind": 2,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "def load_multi_instrument_data(\n    csv_paths: List[str],\n    config: Dict[str, Any],\n    *,\n    state_classes: int = 3,\n    validation_split: float = 0.2,\n    add_all_features: bool = True,\n) -> Tuple[np.ndarray, Dict[str, np.ndarray], np.ndarray, Dict[str, np.ndarray], np.ndarray, Dict[str, np.ndarray], Dict[str, Any]]:\n    \"\"\"\n    Load and combine data from multiple instruments for improved generalization.",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "create_tf_dataset",
+        "kind": 2,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "def create_tf_dataset(\n    X: np.ndarray,\n    y: Dict[str, np.ndarray],\n    batch_size: int = 64,\n    shuffle: bool = True,\n    buffer_size: int = 10000,\n) -> tf.data.Dataset:\n    \"\"\"\n    Create tf.data.Dataset from numpy arrays with multi-task targets.\n    Args:",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "save_scalers",
+        "kind": 2,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "def save_scalers(\n    meta: Dict[str, Any],\n    save_path: str,\n) -> None:\n    \"\"\"\n    Save scalers from metadata for inference consistency.\n    Args:\n        meta: Metadata dict containing feature_scaler and target_scaler\n        save_path: Path to save pickle file (if directory, saves as scalers.pkl inside)\n    \"\"\"",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "load_scalers",
+        "kind": 2,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "def load_scalers(load_path: str) -> Dict[str, Any]:\n    \"\"\"\n    Load saved scalers for inference.\n    Args:\n        load_path: Path to pickle file or directory containing scalers.pkl\n    Returns:\n        Dict with scalers and metadata\n    \"\"\"\n    load_path = Path(load_path)\n    if load_path.is_dir():",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "find_data_files",
+        "kind": 2,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "def find_data_files(\n    data_dir: str = \"market_data\",\n    pattern: str = \"*.csv\",\n) -> List[str]:\n    \"\"\"\n    Find all CSV files in data directory.\n    Args:\n        data_dir: Directory to search\n        pattern: Glob pattern\n    Returns:",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "get_default_data_file",
+        "kind": 2,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "def get_default_data_file(config: Dict[str, Any]) -> Optional[str]:\n    \"\"\"\n    Get default data file from config or find first available.\n    Args:\n        config: Configuration dict\n    Returns:\n        Path to data file or None\n    \"\"\"\n    # Check config for explicit path\n    data_path = (",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "tensorflow_data_pipeline",
+        "description": "tensorflow_data_pipeline",
+        "peekOfCode": "logger = logging.getLogger(__name__)\ndef load_market_dataframe(\n    csv_path: str,\n    *,\n    add_all_features: bool = True,\n    config: Optional[Dict[str, Any]] = None,\n) -> pd.DataFrame:\n    \"\"\"\n    Load market data from CSV and optionally add engineered features.\n    Args:",
+        "detail": "tensorflow_data_pipeline",
+        "documentation": {}
+    },
+    {
+        "label": "BinaryFocalLoss",
+        "kind": 6,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "class BinaryFocalLoss(losses.Loss):\n    \"\"\"\n    Binary Focal Loss for addressing class imbalance in binary classification.\n    Reduces loss contribution from easy examples, focusing training\n    on hard, misclassified examples. Perfect for direction prediction\n    where up/down may be imbalanced.\n    Paper: \"Focal Loss for Dense Object Detection\" (Lin et al., 2017)\n    Args:\n        gamma: Focusing parameter (default 2.0). Higher = more focus on hard examples.\n        alpha: Class weight for positive class (default 0.25). Set to None to disable.",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "TradingMetricsCallback",
+        "kind": 6,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "class TradingMetricsCallback(keras_callbacks.Callback):\n    \"\"\"\n    Custom callback to log trading-specific metrics to TensorBoard.\n    Tracks directional accuracy, profit factor, etc.\n    Supports both single-task and multi-task models.\n    \"\"\"\n    def __init__(self, validation_data: Tuple[np.ndarray, np.ndarray], log_dir: str, multi_task: bool = False):\n        super().__init__()\n        self.validation_data = validation_data\n        self.multi_task = multi_task",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "GradientLoggingCallback",
+        "kind": 6,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "class GradientLoggingCallback(keras_callbacks.Callback):\n    \"\"\"Log gradient statistics to TensorBoard for debugging.\"\"\"\n    def __init__(self, log_dir: str, log_frequency: int = 10):\n        super().__init__()\n        self.writer = tf.summary.create_file_writer(os.path.join(log_dir, 'gradients'))\n        self.log_frequency = log_frequency\n    def on_batch_end(self, batch, logs=None):\n        if batch % self.log_frequency != 0:\n            return\n        with self.writer.as_default():",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "LearningRateLoggerCallback",
+        "kind": 6,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "class LearningRateLoggerCallback(keras_callbacks.Callback):\n    \"\"\"Log learning rate to TensorBoard.\"\"\"\n    def __init__(self, log_dir: str):\n        super().__init__()\n        self.writer = tf.summary.create_file_writer(os.path.join(log_dir, 'lr'))\n    def on_epoch_end(self, epoch, logs=None):\n        lr = float(keras.backend.get_value(self.model.optimizer.learning_rate))\n        with self.writer.as_default():\n            tf.summary.scalar('learning_rate', lr, step=epoch)\nclass SavedModelExportCallback(keras_callbacks.Callback):",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "SavedModelExportCallback",
+        "kind": 6,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "class SavedModelExportCallback(keras_callbacks.Callback):\n    \"\"\"\n    Also save model in TensorFlow SavedModel format for portable inference.\n    The .keras format can have issues with custom layers across sessions.\n    SavedModel format is more portable and can be loaded without class definitions.\n    This is used by Buddy for live trading predictions.\n    \"\"\"\n    def __init__(self, saved_model_dir: str, monitor: str = 'val_loss', best_only: bool = True):\n        super().__init__()\n        self.saved_model_dir = saved_model_dir",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "AdaptiveLossWeightCallback",
+        "kind": 6,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "class AdaptiveLossWeightCallback(keras_callbacks.Callback):\n    \"\"\"\n    Adaptive loss weight adjustment for multi-task learning.\n    Monitors performance of each head and adjusts loss weights to balance\n    training. Heads with higher loss get higher weights to improve their training.\n    This helps achieve balanced training across all 4 heads (price, trend, risk, state).\n    \"\"\"\n    def __init__(\n        self,\n        log_dir: str,",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "TensorFlowEngine",
+        "kind": 6,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "class TensorFlowEngine:\n    \"\"\"\n    Complete TensorFlow training engine with TensorBoard visualization.\n    Usage:\n        engine = TensorFlowEngine(config)\n        history = engine.train(X_train, y_train, X_val, y_val)\n        # Launch TensorBoard:\n        # tensorboard --logdir=trained_data/tensorboard\n    \"\"\"\n    def __init__(self, config: Dict):",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "compute_class_weights",
+        "kind": 2,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "def compute_class_weights(y_direction: np.ndarray) -> dict:\n    \"\"\"\n    Compute class weights for imbalanced up/down distribution.\n    Args:\n        y_direction: Binary direction labels (1=up, 0=down)\n    Returns:\n        dict with 'up_weight' and 'down_weight' for loss weighting\n    \"\"\"\n    y_flat = np.array(y_direction).flatten()\n    n_up = np.sum(y_flat == 1)",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "quick_train_tensorflow",
+        "kind": 2,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "def quick_train_tensorflow(\n    x_train: np.ndarray,\n    y_train: np.ndarray,\n    x_val: np.ndarray,\n    y_val: np.ndarray,\n    model_type: str = 'attention_lstm',\n    epochs: int = 100,\n    batch_size: int = 64,\n    hidden_size: int = 64,\n    learning_rate: float = 0.001,",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "launch_tensorboard",
+        "kind": 2,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "def launch_tensorboard(log_dir: str = DEFAULT_TENSORBOARD_DIR, port: int = 6006):\n    \"\"\"\n    Launch TensorBoard in a subprocess.\n    Note: This will block. For non-blocking, run in terminal:\n        tensorboard --logdir=trained_data/tensorboard --port=6006\n    \"\"\"\n    import subprocess\n    import webbrowser\n    import time\n    print(\"\\n🚀 Launching TensorBoard...\")",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "DEFAULT_CHECKPOINT_DIR",
+        "kind": 5,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "DEFAULT_CHECKPOINT_DIR = 'trained_data/checkpoints'\nDEFAULT_TENSORBOARD_DIR = 'trained_data/tensorboard'\n# =============================================================================\n# Custom Loss Functions\n# =============================================================================\nclass BinaryFocalLoss(losses.Loss):\n    \"\"\"\n    Binary Focal Loss for addressing class imbalance in binary classification.\n    Reduces loss contribution from easy examples, focusing training\n    on hard, misclassified examples. Perfect for direction prediction",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "DEFAULT_TENSORBOARD_DIR",
+        "kind": 5,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "DEFAULT_TENSORBOARD_DIR = 'trained_data/tensorboard'\n# =============================================================================\n# Custom Loss Functions\n# =============================================================================\nclass BinaryFocalLoss(losses.Loss):\n    \"\"\"\n    Binary Focal Loss for addressing class imbalance in binary classification.\n    Reduces loss contribution from easy examples, focusing training\n    on hard, misclassified examples. Perfect for direction prediction\n    where up/down may be imbalanced.",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "engine",
+        "kind": 5,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "engine = TensorFlowEngine(config)\nengine.build_model()\n# Train with TensorBoard visualization\nhistory = engine.train(X_train, y_train, X_val, y_val)\n# View training progress:\n# tensorboard --logdir=trained_data/tensorboard\n# Evaluate\nresults = engine.evaluate(X_test, y_test)\nprint(results)\n\"\"\")",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "history",
+        "kind": 5,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "history = engine.train(X_train, y_train, X_val, y_val)\n# View training progress:\n# tensorboard --logdir=trained_data/tensorboard\n# Evaluate\nresults = engine.evaluate(X_test, y_test)\nprint(results)\n\"\"\")",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "results",
+        "kind": 5,
+        "importPath": "tensorflow_engine",
+        "description": "tensorflow_engine",
+        "peekOfCode": "results = engine.evaluate(X_test, y_test)\nprint(results)\n\"\"\")",
+        "detail": "tensorflow_engine",
+        "documentation": {}
+    },
+    {
+        "label": "TFUnifiedPrediction",
+        "kind": 6,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "class TFUnifiedPrediction:\n    \"\"\"Prediction output compatible with Buddy's expected format.\"\"\"\n    prediction: np.ndarray\n    uncertainty: float\n    trend: Optional[np.ndarray] = None\n    risk: Optional[np.ndarray] = None\n    state_probs: Optional[np.ndarray] = None\n    direction: Optional[np.ndarray] = None\nclass _SavedModelWrapper:\n    \"\"\"Wrapper to make SavedModel callable like Keras model.\"\"\"",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "_SavedModelWrapper",
+        "kind": 6,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "class _SavedModelWrapper:\n    \"\"\"Wrapper to make SavedModel callable like Keras model.\"\"\"\n    def __init__(self, saved_model):\n        self.saved_model = saved_model\n        # Get the default signature\n        self.infer = saved_model.signatures.get('serving_default')\n        if self.infer is None:\n            # Fallback: try to get any signature\n            sig_keys = list(saved_model.signatures.keys())\n            if sig_keys:",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "TensorFlowUnifiedEngine",
+        "kind": 6,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "class TensorFlowUnifiedEngine:\n    \"\"\"TensorFlow engine wrapper compatible with Buddy's UnifiedNeuralEngine interface.\n    This allows Buddy to use TensorFlow TFT models trained via train_visual.py.\n    \"\"\"\n    def __init__(self, model, config: Dict[str, Any] = None):\n        \"\"\"Initialize with a loaded Keras model.\n        Args:\n            model: Loaded Keras model\n            config: Optional configuration dict\n        \"\"\"",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "select_latest_tf_checkpoint",
+        "kind": 2,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "def select_latest_tf_checkpoint(model_dir: Path) -> Optional[Path]:\n    \"\"\"Find the newest TensorFlow checkpoint in a directory.\n    Args:\n        model_dir: Directory to search\n    Returns:\n        Path to newest .keras file, or None\n    \"\"\"\n    if not model_dir.exists() or not model_dir.is_dir():\n        return None\n    candidates = list(model_dir.glob(\"*.keras\"))",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "get_default_tf_checkpoint",
+        "kind": 2,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "def get_default_tf_checkpoint() -> str:\n    \"\"\"Get the default TensorFlow checkpoint path.\n    Returns:\n        Path to default TensorFlow checkpoint\n    \"\"\"\n    return \"trained_data/checkpoints/tensorflow/tf_model_best.keras\"\ndef is_tensorflow_checkpoint(path: str) -> bool:\n    \"\"\"Check if a path is a TensorFlow checkpoint.\n    Args:\n        path: Path to check",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "is_tensorflow_checkpoint",
+        "kind": 2,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "def is_tensorflow_checkpoint(path: str) -> bool:\n    \"\"\"Check if a path is a TensorFlow checkpoint.\n    Args:\n        path: Path to check\n    Returns:\n        True if path ends with .keras or .h5\n    \"\"\"\n    path_lower = str(path).lower()\n    return path_lower.endswith('.keras') or path_lower.endswith('.h5')\ndef is_pytorch_checkpoint(path: str) -> bool:",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "is_pytorch_checkpoint",
+        "kind": 2,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "def is_pytorch_checkpoint(path: str) -> bool:\n    \"\"\"Check if a path is a PyTorch checkpoint.\n    Args:\n        path: Path to check\n    Returns:\n        True if path ends with .pth or .pt\n    \"\"\"\n    path_lower = str(path).lower()\n    return path_lower.endswith('.pth') or path_lower.endswith('.pt')",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "_tf",
+        "kind": 5,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "_tf = None\n_keras = None\n_custom_objects = None\ndef _ensure_tensorflow():\n    \"\"\"Lazy load TensorFlow and register custom objects.\"\"\"\n    global _tf, _keras, _custom_objects\n    if _tf is None:\n        import tensorflow as tf\n        _tf = tf\n        _keras = tf.keras",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "_keras",
+        "kind": 5,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "_keras = None\n_custom_objects = None\ndef _ensure_tensorflow():\n    \"\"\"Lazy load TensorFlow and register custom objects.\"\"\"\n    global _tf, _keras, _custom_objects\n    if _tf is None:\n        import tensorflow as tf\n        _tf = tf\n        _keras = tf.keras\n        # Import custom model classes for deserialization",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "_custom_objects",
+        "kind": 5,
+        "importPath": "tensorflow_engine_unified",
+        "description": "tensorflow_engine_unified",
+        "peekOfCode": "_custom_objects = None\ndef _ensure_tensorflow():\n    \"\"\"Lazy load TensorFlow and register custom objects.\"\"\"\n    global _tf, _keras, _custom_objects\n    if _tf is None:\n        import tensorflow as tf\n        _tf = tf\n        _keras = tf.keras\n        # Import custom model classes for deserialization\n        _custom_objects = {}",
+        "detail": "tensorflow_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "Mish",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class Mish(layers.Layer):\n    \"\"\"Mish activation: x * tanh(softplus(x)) - smoother than ReLU.\"\"\"\n    def call(self, x):\n        return x * tf.math.tanh(tf.math.softplus(x))\nclass Swish(layers.Layer):\n    \"\"\"Swish activation: x * sigmoid(x) - also known as SiLU.\"\"\"\n    def call(self, x):\n        return x * tf.math.sigmoid(x)\nclass GatedLinearUnit(layers.Layer):\n    \"\"\"GLU activation for Temporal Fusion Transformer.\"\"\"",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "Swish",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class Swish(layers.Layer):\n    \"\"\"Swish activation: x * sigmoid(x) - also known as SiLU.\"\"\"\n    def call(self, x):\n        return x * tf.math.sigmoid(x)\nclass GatedLinearUnit(layers.Layer):\n    \"\"\"GLU activation for Temporal Fusion Transformer.\"\"\"\n    def __init__(self, units: int, **kwargs):\n        super().__init__(**kwargs)\n        self.units = units\n        self.linear = layers.Dense(units * 2)",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "GatedLinearUnit",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class GatedLinearUnit(layers.Layer):\n    \"\"\"GLU activation for Temporal Fusion Transformer.\"\"\"\n    def __init__(self, units: int, **kwargs):\n        super().__init__(**kwargs)\n        self.units = units\n        self.linear = layers.Dense(units * 2)\n    def call(self, x):\n        output = self.linear(x)\n        return output[..., :self.units] * tf.math.sigmoid(output[..., self.units:])\nclass GatedResidualNetwork(layers.Layer):",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "GatedResidualNetwork",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class GatedResidualNetwork(layers.Layer):\n    \"\"\"\n    Gated Residual Network (GRN) - Core building block of TFT.\n    Applies non-linear processing with skip connections and gating.\n    \"\"\"\n    def __init__(\n        self,\n        hidden_size: int,\n        output_size: Optional[int] = None,\n        dropout: float = 0.1,",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "VariableSelectionNetwork",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class VariableSelectionNetwork(layers.Layer):\n    \"\"\"\n    Variable Selection Network for TFT.\n    Learns which features are most important for prediction.\n    \"\"\"\n    def __init__(\n        self,\n        num_features: int,\n        hidden_size: int,\n        dropout: float = 0.1,",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "InterpretableMultiHeadAttention",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class InterpretableMultiHeadAttention(layers.Layer):\n    \"\"\"\n    Interpretable Multi-Head Attention for TFT.\n    Provides attention weights for interpretability.\n    \"\"\"\n    def __init__(self, num_heads: int, key_dim: int, dropout: float = 0.0, **kwargs):\n        super().__init__(**kwargs)\n        self.num_heads = num_heads\n        self.key_dim = key_dim\n        self.dropout_rate = dropout",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "PositionalEncoding",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class PositionalEncoding(layers.Layer):\n    \"\"\"Sinusoidal positional encoding for Transformer models.\"\"\"\n    def __init__(self, max_len: int = 5000, **kwargs):\n        super().__init__(**kwargs)\n        self.max_len = max_len\n    def build(self, input_shape):\n        d_model = input_shape[-1]\n        position = np.arange(self.max_len)[:, np.newaxis]\n        div_term = np.exp(np.arange(0, d_model, 2) * -(np.log(10000.0) / d_model))\n        pe = np.zeros((self.max_len, d_model))",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "TFStockPredictor",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class TFStockPredictor(Model):\n    \"\"\"\n    Enhanced LSTM-based predictor with residual connections and layer normalization.\n    TensorFlow equivalent of PyTorch StockPredictor.\n    Enhanced with:\n    - L2 kernel regularization on Dense layers\n    - RecurrentDropout for LSTM layers\n    - GaussianNoise for input augmentation\n    - SpatialDropout1D for feature dropout\n    \"\"\"",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "TFAttentiveLSTM",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class TFAttentiveLSTM(Model):\n    \"\"\"\n    LSTM with multi-head self-attention for enhanced sequence modeling.\n    TensorFlow equivalent of PyTorch AttentiveLSTM.\n    Enhanced with:\n    - L2 kernel regularization\n    - RecurrentDropout for LSTM\n    - GaussianNoise and SpatialDropout1D\n    \"\"\"\n    def __init__(",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "TFTransformerPredictor",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class TFTransformerPredictor(Model):\n    \"\"\"\n    Pure Transformer for time series prediction.\n    TensorFlow equivalent of PyTorch TransformerPredictor.\n    \"\"\"\n    def __init__(\n        self,\n        input_size: int = 7,\n        hidden_size: int = 128,\n        num_layers: int = 3,",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "TransformerEncoderLayer",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class TransformerEncoderLayer(layers.Layer):\n    \"\"\"Single Transformer encoder layer.\"\"\"\n    def __init__(\n        self,\n        d_model: int,\n        num_heads: int,\n        dff: int,\n        dropout: float = 0.1,\n        activation: str = \"gelu\",\n        **kwargs",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "TFTemporalFusionTransformer",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class TFTemporalFusionTransformer(Model):\n    \"\"\"\n    Temporal Fusion Transformer (TFT) - State-of-the-art for time series forecasting.\n    Key features:\n    - Variable Selection Networks for feature importance\n    - Gated Residual Networks for non-linear processing\n    - Interpretable Multi-Head Attention\n    - Static covariate encoders\n    - **Multi-Task Heads**: price, trend, risk, state (like UnifiedMarketNet)\n    Enhanced with:",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "TFTCNPredictor",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class TFTCNPredictor(Model):\n    \"\"\"\n    Temporal Convolutional Network (TCN) for time series prediction.\n    Advantages over LSTM:\n    - Parallelizable (faster training)\n    - Longer effective memory via dilated convolutions\n    - More stable gradients\n    Enhanced with:\n    - L2 kernel regularization\n    - GaussianNoise and SpatialDropout1D for input regularization",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "TFEnsemblePredictor",
+        "kind": 6,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "class TFEnsemblePredictor(Model):\n    \"\"\"Ensemble of multiple models for robust predictions.\"\"\"\n    def __init__(\n        self,\n        models: List[Model],\n        ensemble_method: str = \"average\",\n        **kwargs\n    ):\n        super().__init__(**kwargs)\n        self.models = models",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "create_tensorflow_model",
+        "kind": 2,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "def create_tensorflow_model(config: dict) -> Model:\n    \"\"\"\n    Factory function to create TensorFlow models based on configuration.\n    Args:\n        config: Dictionary with model configuration including:\n            - type: Model type (lstm, attention_lstm, transformer, tft, tcn)\n            - input_size: Number of input features\n            - hidden_size: Hidden layer size\n            - num_layers: Number of layers\n            - dropout: Dropout rate",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "DEFAULT_L2_REG",
+        "kind": 5,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "DEFAULT_L2_REG = 0.001\nDEFAULT_RECURRENT_DROPOUT = 0.15\n# =============================================================================\n# Custom Layers\n# =============================================================================\nclass Mish(layers.Layer):\n    \"\"\"Mish activation: x * tanh(softplus(x)) - smoother than ReLU.\"\"\"\n    def call(self, x):\n        return x * tf.math.tanh(tf.math.softplus(x))\nclass Swish(layers.Layer):",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "DEFAULT_RECURRENT_DROPOUT",
+        "kind": 5,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "DEFAULT_RECURRENT_DROPOUT = 0.15\n# =============================================================================\n# Custom Layers\n# =============================================================================\nclass Mish(layers.Layer):\n    \"\"\"Mish activation: x * tanh(softplus(x)) - smoother than ReLU.\"\"\"\n    def call(self, x):\n        return x * tf.math.tanh(tf.math.softplus(x))\nclass Swish(layers.Layer):\n    \"\"\"Swish activation: x * sigmoid(x) - also known as SiLU.\"\"\"",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
+        "label": "MODEL_COMPARISON",
+        "kind": 5,
+        "importPath": "tensorflow_models",
+        "description": "tensorflow_models",
+        "peekOfCode": "MODEL_COMPARISON = \"\"\"\n┌─────────────────────────────────────────────────────────────────────────────┐\n│                    TensorFlow Model Comparison                              │\n├─────────────────┬───────────────┬───────────────┬───────────────────────────┤\n│ Model           │ Speed         │ Memory        │ Best For                  │\n├─────────────────┼───────────────┼───────────────┼───────────────────────────┤\n│ LSTM            │ Medium        │ Medium        │ Baseline, short sequences │\n│ Attention-LSTM  │ Slower        │ Higher        │ Long-range dependencies   │\n│ Transformer     │ Fast (GPU)    │ High          │ Parallel training         │\n│ TFT             │ Medium        │ Higher        │ Multi-feature, interpret. │",
+        "detail": "tensorflow_models",
+        "documentation": {}
+    },
+    {
         "label": "TextFeatureResult",
         "kind": 6,
         "importPath": "text_features",
@@ -6519,6 +7602,114 @@
         "documentation": {}
     },
     {
+        "label": "TrainingConfig",
+        "kind": 6,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "class TrainingConfig:\n    \"\"\"Configuration for training functions to reduce parameter count.\"\"\"\n    model_type: str = 'tft'\n    epochs: int = 50\n    batch_size: int = 64\n    multi_task: bool = False\n    state_classes: int = 3\n    dropout: float = 0.3\n    learning_rate: float = 0.0003\n    patience: int = 20",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "fetch_fresh_oanda_data",
+        "kind": 2,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "def fetch_fresh_oanda_data(\n    instruments: List[str] = None,\n    granularity: str = 'M5',\n    count: int = 5000,\n    output_dir: str = DEFAULT_DATA_DIR,\n) -> List[str]:\n    \"\"\"Fetch fresh data from OANDA before training.\n    Args:\n        instruments: List of instruments to fetch (default: USD_JPY, EUR_USD, GBP_USD)\n        granularity: Candle granularity (default: M5)",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "load_config",
+        "kind": 2,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "def load_config(config_path: str = 'config.yaml') -> dict:\n    \"\"\"Load configuration from YAML file.\"\"\"\n    with open(config_path, 'r') as f:\n        return yaml.safe_load(f)\ndef _dataset_to_numpy(ds, num_samples: int, batch_size: int) -> Tuple[np.ndarray, dict]:\n    \"\"\"Convert tf.data.Dataset to numpy arrays.\"\"\"\n    x_list, y_dict_lists = [], {'price': [], 'trend': [], 'risk': [], 'state_logits': []}\n    for batch_x, batch_y in ds.take((num_samples // batch_size) + 1):\n        x_list.append(batch_x.numpy())\n        for key in y_dict_lists:",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "load_real_data",
+        "kind": 2,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "def load_real_data(\n    data_file: str = None,\n    data_dir: str = None,\n    sequence_length: int = 60,\n    state_classes: int = 3,\n    config: dict = None,\n    multi_instrument: bool = True,\n) -> Tuple[np.ndarray, dict, np.ndarray, dict, np.ndarray, dict, dict]:\n    \"\"\"Load real market data using the TensorFlow data pipeline.\n    This bridges the PyTorch data processing utilities (prepare_sequences, ",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "generate_synthetic_data",
+        "kind": 2,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "def generate_synthetic_data(\n    n_samples: int = 5000,\n    n_features: int = 104,\n    sequence_length: int = 60,\n    multi_task: bool = False,\n    state_classes: int = 3,\n) -> tuple:\n    \"\"\"Generate synthetic time series data for testing.\n    Args:\n        n_samples: Number of samples to generate",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "train_ensemble",
+        "kind": 2,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "def train_ensemble(\n    x_train, y_train, x_val, y_val,\n    training_config: TrainingConfig = None,\n    config: dict = None,\n):\n    \"\"\"\n    Train multiple models with different seeds and combine predictions.\n    Implements snapshot ensemble with optional cyclic learning rate.\n    Improves directional accuracy by +0.5-1% through prediction averaging.\n    Args:",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "train_tensorflow",
+        "kind": 2,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "def train_tensorflow(\n    x_train, y_train, x_val, y_val,\n    training_config: TrainingConfig = None,\n    config: dict = None,\n):\n    \"\"\"Train with TensorFlow and TensorBoard visualization.\n    Args:\n        x_train: Training features [samples, timesteps, features]\n        y_train: Training targets - scalar or dict for multi-task\n        x_val: Validation features",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "train_pytorch",
+        "kind": 2,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "def train_pytorch(\n    x_train, y_train, x_val, y_val,\n    model_type: str = 'attention_lstm',\n    epochs: int = 50,\n    batch_size: int = 64,\n    config: dict = None,\n):\n    \"\"\"Train with PyTorch and TensorBoard visualization.\"\"\"\n    print(\"\\n\" + \"=\"*60)\n    print(\"🔥 PyTorch Training with TensorBoard\")",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "def main():\n    parser = _create_argument_parser()\n    args = parser.parse_args()\n    # Load config if exists\n    config = {}\n    if os.path.exists(args.config):\n        config = load_config(args.config)\n    # Fetch fresh data if needed\n    _fetch_oanda_data_if_needed(args)\n    # Validate arguments",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "os.environ['TF_CPP_MIN_LOG_LEVEL']",
+        "kind": 5,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'\n# Constants\nDEFAULT_DATA_DIR = 'trained_data/data'\nDEFAULT_CHECKPOINT_PATH = 'trained_data/checkpoints/tensorflow/tf_model_best.keras'\n@dataclass\nclass TrainingConfig:\n    \"\"\"Configuration for training functions to reduce parameter count.\"\"\"\n    model_type: str = 'tft'\n    epochs: int = 50\n    batch_size: int = 64",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "DEFAULT_DATA_DIR",
+        "kind": 5,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "DEFAULT_DATA_DIR = 'trained_data/data'\nDEFAULT_CHECKPOINT_PATH = 'trained_data/checkpoints/tensorflow/tf_model_best.keras'\n@dataclass\nclass TrainingConfig:\n    \"\"\"Configuration for training functions to reduce parameter count.\"\"\"\n    model_type: str = 'tft'\n    epochs: int = 50\n    batch_size: int = 64\n    multi_task: bool = False\n    state_classes: int = 3",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
+        "label": "DEFAULT_CHECKPOINT_PATH",
+        "kind": 5,
+        "importPath": "train_visual",
+        "description": "train_visual",
+        "peekOfCode": "DEFAULT_CHECKPOINT_PATH = 'trained_data/checkpoints/tensorflow/tf_model_best.keras'\n@dataclass\nclass TrainingConfig:\n    \"\"\"Configuration for training functions to reduce parameter count.\"\"\"\n    model_type: str = 'tft'\n    epochs: int = 50\n    batch_size: int = 64\n    multi_task: bool = False\n    state_classes: int = 3\n    dropout: float = 0.3",
+        "detail": "train_visual",
+        "documentation": {}
+    },
+    {
         "label": "WarmupScheduler",
         "kind": 6,
         "importPath": "training_utils",
@@ -6573,11 +7764,56 @@
         "documentation": {}
     },
     {
+        "label": "TimeSeriesCrossValidator",
+        "kind": 6,
+        "importPath": "training_utils",
+        "description": "training_utils",
+        "peekOfCode": "class TimeSeriesCrossValidator:\n    \"\"\"\n    Time Series Cross-Validation for proper temporal validation.\n    Unlike standard K-Fold, this ensures training data always precedes\n    validation data in time, preventing data leakage.\n    Benefits for small datasets:\n    - Better estimate of generalization performance\n    - Multiple validation folds from limited data\n    - Proper temporal ordering preserved\n    \"\"\"",
+        "detail": "training_utils",
+        "documentation": {}
+    },
+    {
+        "label": "FocalLoss",
+        "kind": 6,
+        "importPath": "training_utils",
+        "description": "training_utils",
+        "peekOfCode": "class FocalLoss(nn.Module):\n    \"\"\"\n    Focal Loss for addressing class imbalance in classification.\n    Reduces loss contribution from easy examples, focusing training\n    on hard, misclassified examples.\n    Paper: \"Focal Loss for Dense Object Detection\" (Lin et al., 2017)\n    \"\"\"\n    def __init__(\n        self,\n        gamma: float = 2.0,",
+        "detail": "training_utils",
+        "documentation": {}
+    },
+    {
+        "label": "MonteCarloDropout",
+        "kind": 6,
+        "importPath": "training_utils",
+        "description": "training_utils",
+        "peekOfCode": "class MonteCarloDropout:\n    \"\"\"\n    Monte Carlo Dropout for uncertainty estimation.\n    Runs multiple forward passes with dropout enabled to estimate\n    prediction uncertainty. Useful for:\n    - Detecting out-of-distribution samples\n    - Assessing confidence in predictions\n    - Ensemble-like behavior from a single model\n    \"\"\"\n    def __init__(",
+        "detail": "training_utils",
+        "documentation": {}
+    },
+    {
+        "label": "StochasticWeightAveraging",
+        "kind": 6,
+        "importPath": "training_utils",
+        "description": "training_utils",
+        "peekOfCode": "class StochasticWeightAveraging:\n    \"\"\"\n    Stochastic Weight Averaging (SWA) for improved generalization.\n    Averages model weights over training trajectory to find flatter\n    minima, which generalize better.\n    Paper: \"Averaging Weights Leads to Wider Optima and Better Generalization\"\n    \"\"\"\n    def __init__(\n        self,\n        model: nn.Module,",
+        "detail": "training_utils",
+        "documentation": {}
+    },
+    {
         "label": "create_optimizer",
         "kind": 2,
         "importPath": "training_utils",
         "description": "training_utils",
         "peekOfCode": "def create_optimizer(\n    model: nn.Module,\n    optimizer_type: str = 'adamw',\n    learning_rate: float = 0.001,\n    weight_decay: float = 0.01,\n    **kwargs\n) -> torch.optim.Optimizer:\n    \"\"\"\n    Create optimizer with best practices (PyTorch recommendation).\n    Args:",
+        "detail": "training_utils",
+        "documentation": {}
+    },
+    {
+        "label": "create_time_series_cv_splits",
+        "kind": 2,
+        "importPath": "training_utils",
+        "description": "training_utils",
+        "peekOfCode": "def create_time_series_cv_splits(\n    n_samples: int,\n    n_splits: int = 5,\n    test_ratio: float = 0.15,\n    gap: int = 0,\n) -> List[Tuple[np.ndarray, np.ndarray]]:\n    \"\"\"\n    Create time series cross-validation splits.\n    Args:\n        n_samples: Total number of samples",
         "detail": "training_utils",
         "documentation": {}
     },
@@ -6640,7 +7876,7 @@
         "kind": 2,
         "importPath": "unified_multitask_training",
         "description": "unified_multitask_training",
-        "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n    resume_path: Optional[str] = None,\n    seed: int = 42,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    # Set seeds for reproducibility\n    import random",
+        "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n    resume_path: Optional[str] = None,\n    seed: int = 42,\n    all_features: bool = False,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    # Set seeds for reproducibility",
         "detail": "unified_multitask_training",
         "documentation": {}
     },
@@ -6658,7 +7894,7 @@
         "kind": 6,
         "importPath": "unified_talk",
         "description": "unified_talk",
-        "peekOfCode": "class TalkContext:\n    config_path: str\n    checkpoint_path: str\n    feature_columns: list[str]\n    sequence_length: int\n    target_shift: int\n    engine: UnifiedNeuralEngine\n    reasoning: ReasoningEngine\n    feature_scaler: Any = None\n    target_scaler: Any = None",
+        "peekOfCode": "class TalkContext:\n    config_path: str\n    checkpoint_path: str\n    feature_columns: list[str]\n    sequence_length: int\n    target_shift: int\n    engine: Union[UnifiedNeuralEngine, TensorFlowUnifiedEngine]  # Supports both PyTorch and TensorFlow\n    reasoning: ReasoningEngine\n    feature_scaler: Any = None\n    target_scaler: Any = None",
         "detail": "unified_talk",
         "documentation": {}
     },
@@ -6676,7 +7912,7 @@
         "kind": 2,
         "importPath": "unified_talk",
         "description": "unified_talk",
-        "peekOfCode": "def run_unified_talk(\n    config_path: str,\n    *,\n    checkpoint_path: Optional[str] = None,\n    csv_path: Optional[str] = None,\n    ticker: Optional[str] = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n    oanda: bool = False,\n    oanda_instrument: str = \"EUR_USD\",",
+        "peekOfCode": "def run_unified_talk(\n    config_path: str,\n    *,\n    checkpoint_path: Optional[str] = None,\n    csv_path: Optional[str] = None,\n    ticker: Optional[str] = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n    oanda: bool = False,\n    oanda_instrument: str = \"USD_JPY\",",
         "detail": "unified_talk",
         "documentation": {}
     },

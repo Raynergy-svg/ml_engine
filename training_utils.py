@@ -1,12 +1,19 @@
 """
 Advanced training utilities based on PyTorch best practices.
 Includes learning rate scheduling, model ensembling, and advanced optimization techniques.
+
+Enhanced with:
+- Time Series Cross-Validation for temporal data
+- Stochastic Weight Averaging (SWA) for improved generalization
+- Focal Loss for imbalanced classification
+- Monte Carlo Dropout for uncertainty estimation
 """
 
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Iterator
+from sklearn.model_selection import TimeSeriesSplit
 import logging
 
 logger = logging.getLogger(__name__)
@@ -394,3 +401,361 @@ def create_optimizer(
         )
     else:
         raise ValueError(f"Unknown optimizer type: {optimizer_type}")
+
+
+# =============================================================================
+# Time Series Cross-Validation (for temporal data with small datasets)
+# =============================================================================
+
+class TimeSeriesCrossValidator:
+    """
+    Time Series Cross-Validation for proper temporal validation.
+    
+    Unlike standard K-Fold, this ensures training data always precedes
+    validation data in time, preventing data leakage.
+    
+    Benefits for small datasets:
+    - Better estimate of generalization performance
+    - Multiple validation folds from limited data
+    - Proper temporal ordering preserved
+    """
+    
+    def __init__(
+        self,
+        n_splits: int = 5,
+        test_size: Optional[int] = None,
+        gap: int = 0,
+        expanding_window: bool = True,
+    ):
+        """
+        Initialize Time Series Cross-Validator.
+        
+        Args:
+            n_splits: Number of splits/folds
+            test_size: Size of test set in each fold (None = auto)
+            gap: Gap between train and test to avoid look-ahead bias
+            expanding_window: If True, use expanding window (more training data per fold)
+                             If False, use sliding window (fixed window size)
+        """
+        self.n_splits = n_splits
+        self.test_size = test_size
+        self.gap = gap
+        self.expanding_window = expanding_window
+        self.tscv = TimeSeriesSplit(
+            n_splits=n_splits,
+            test_size=test_size,
+            gap=gap
+        )
+    
+    def split(
+        self,
+        X: np.ndarray,
+        y: Optional[np.ndarray] = None,
+    ) -> Iterator[Tuple[np.ndarray, np.ndarray]]:
+        """
+        Generate train/test indices for time series cross-validation.
+        
+        Args:
+            X: Feature array
+            y: Target array (optional, not used but kept for sklearn compatibility)
+        
+        Yields:
+            (train_indices, test_indices) tuples
+        """
+        for train_idx, test_idx in self.tscv.split(X):
+            yield train_idx, test_idx
+    
+    def get_n_splits(self) -> int:
+        """Return number of splits."""
+        return self.n_splits
+    
+    def cross_validate(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        model_fn,
+        train_fn,
+        eval_fn,
+    ) -> Dict[str, List[float]]:
+        """
+        Perform cross-validation and return metrics for each fold.
+        
+        Args:
+            X: Features array [samples, timesteps, features]
+            y: Targets array
+            model_fn: Function that returns a new model instance
+            train_fn: Function(model, X_train, y_train) -> trained_model
+            eval_fn: Function(model, X_test, y_test) -> metrics_dict
+        
+        Returns:
+            Dictionary with lists of metrics for each fold
+        """
+        all_metrics = {}
+        
+        for fold, (train_idx, test_idx) in enumerate(self.split(X)):
+            logger.info(f"Cross-validation fold {fold + 1}/{self.n_splits}")
+            logger.info(f"  Train size: {len(train_idx)}, Test size: {len(test_idx)}")
+            
+            # Split data
+            X_train, X_test = X[train_idx], X[test_idx]
+            y_train, y_test = y[train_idx], y[test_idx]
+            
+            # Create and train model
+            model = model_fn()
+            model = train_fn(model, X_train, y_train)
+            
+            # Evaluate
+            metrics = eval_fn(model, X_test, y_test)
+            
+            # Collect metrics
+            for key, value in metrics.items():
+                if key not in all_metrics:
+                    all_metrics[key] = []
+                all_metrics[key].append(value)
+            
+            logger.info(f"  Fold {fold + 1} metrics: {metrics}")
+        
+        # Log summary statistics
+        logger.info("\nCross-validation summary:")
+        for key, values in all_metrics.items():
+            mean_val = np.mean(values)
+            std_val = np.std(values)
+            logger.info(f"  {key}: {mean_val:.4f} (+/- {std_val:.4f})")
+        
+        return all_metrics
+
+
+class FocalLoss(nn.Module):
+    """
+    Focal Loss for addressing class imbalance in classification.
+    
+    Reduces loss contribution from easy examples, focusing training
+    on hard, misclassified examples.
+    
+    Paper: "Focal Loss for Dense Object Detection" (Lin et al., 2017)
+    """
+    
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        alpha: Optional[float] = 0.25,
+        reduction: str = 'mean',
+    ):
+        """
+        Initialize Focal Loss.
+        
+        Args:
+            gamma: Focusing parameter (higher = more focus on hard examples)
+            alpha: Class weight for positive class (None = no weighting)
+            reduction: 'mean', 'sum', or 'none'
+        """
+        super().__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+        self.reduction = reduction
+    
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        targets: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Compute focal loss.
+        
+        Args:
+            inputs: Predicted logits [batch, num_classes]
+            targets: Ground truth labels [batch]
+        
+        Returns:
+            Focal loss
+        """
+        ce_loss = nn.functional.cross_entropy(inputs, targets, reduction='none')
+        pt = torch.exp(-ce_loss)  # Probability of correct class
+        
+        focal_weight = (1 - pt) ** self.gamma
+        
+        if self.alpha is not None:
+            alpha_weight = self.alpha * targets + (1 - self.alpha) * (1 - targets)
+            focal_weight = focal_weight * alpha_weight
+        
+        focal_loss = focal_weight * ce_loss
+        
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
+
+
+class MonteCarloDropout:
+    """
+    Monte Carlo Dropout for uncertainty estimation.
+    
+    Runs multiple forward passes with dropout enabled to estimate
+    prediction uncertainty. Useful for:
+    - Detecting out-of-distribution samples
+    - Assessing confidence in predictions
+    - Ensemble-like behavior from a single model
+    """
+    
+    def __init__(
+        self,
+        model: nn.Module,
+        n_iterations: int = 50,
+    ):
+        """
+        Initialize MC Dropout wrapper.
+        
+        Args:
+            model: PyTorch model with dropout layers
+            n_iterations: Number of forward passes
+        """
+        self.model = model
+        self.n_iterations = n_iterations
+    
+    def predict_with_uncertainty(
+        self,
+        x: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Make predictions with uncertainty estimation.
+        
+        Args:
+            x: Input tensor
+        
+        Returns:
+            (mean_prediction, std_prediction) - mean and standard deviation
+        """
+        self.model.train()  # Enable dropout
+        
+        predictions = []
+        with torch.no_grad():
+            for _ in range(self.n_iterations):
+                pred = self.model(x)
+                predictions.append(pred)
+        
+        predictions = torch.stack(predictions, dim=0)
+        
+        mean_pred = predictions.mean(dim=0)
+        std_pred = predictions.std(dim=0)
+        
+        return mean_pred, std_pred
+    
+    def get_confidence(
+        self,
+        x: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Get confidence score (inverse of uncertainty).
+        
+        Args:
+            x: Input tensor
+        
+        Returns:
+            Confidence scores [0, 1]
+        """
+        _, std = self.predict_with_uncertainty(x)
+        # Convert std to confidence (higher std = lower confidence)
+        confidence = 1.0 / (1.0 + std)
+        return confidence
+
+
+class StochasticWeightAveraging:
+    """
+    Stochastic Weight Averaging (SWA) for improved generalization.
+    
+    Averages model weights over training trajectory to find flatter
+    minima, which generalize better.
+    
+    Paper: "Averaging Weights Leads to Wider Optima and Better Generalization"
+    """
+    
+    def __init__(
+        self,
+        model: nn.Module,
+        swa_start_epoch: int = 10,
+        swa_freq: int = 5,
+    ):
+        """
+        Initialize SWA.
+        
+        Args:
+            model: PyTorch model
+            swa_start_epoch: Epoch to start weight averaging
+            swa_freq: Frequency of weight collection (every N epochs)
+        """
+        self.model = model
+        self.swa_start_epoch = swa_start_epoch
+        self.swa_freq = swa_freq
+        self.swa_n = 0
+        self.swa_state_dict = None
+    
+    def update(self, epoch: int):
+        """
+        Update SWA weights if conditions are met.
+        
+        Args:
+            epoch: Current training epoch
+        """
+        if epoch < self.swa_start_epoch:
+            return
+        
+        if (epoch - self.swa_start_epoch) % self.swa_freq != 0:
+            return
+        
+        if self.swa_state_dict is None:
+            # First SWA update - copy current weights
+            self.swa_state_dict = {
+                k: v.clone() for k, v in self.model.state_dict().items()
+            }
+        else:
+            # Running average update
+            current_state = self.model.state_dict()
+            for k in self.swa_state_dict:
+                self.swa_state_dict[k] = (
+                    self.swa_state_dict[k] * self.swa_n + current_state[k]
+                ) / (self.swa_n + 1)
+        
+        self.swa_n += 1
+        logger.info(f"SWA update #{self.swa_n} at epoch {epoch}")
+    
+    def apply_swa_weights(self):
+        """Apply averaged weights to the model."""
+        if self.swa_state_dict is not None:
+            self.model.load_state_dict(self.swa_state_dict)
+            logger.info("Applied SWA weights to model")
+        else:
+            logger.warning("No SWA weights collected yet")
+
+
+def create_time_series_cv_splits(
+    n_samples: int,
+    n_splits: int = 5,
+    test_ratio: float = 0.15,
+    gap: int = 0,
+) -> List[Tuple[np.ndarray, np.ndarray]]:
+    """
+    Create time series cross-validation splits.
+    
+    Args:
+        n_samples: Total number of samples
+        n_splits: Number of CV splits
+        test_ratio: Ratio of samples for test in each split
+        gap: Gap between train and test
+    
+    Returns:
+        List of (train_indices, test_indices) tuples
+    """
+    test_size = int(n_samples * test_ratio)
+    
+    cv = TimeSeriesCrossValidator(
+        n_splits=n_splits,
+        test_size=test_size,
+        gap=gap,
+    )
+    
+    indices = np.arange(n_samples)
+    splits = list(cv.split(indices))
+    
+    return splits

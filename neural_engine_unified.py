@@ -160,26 +160,37 @@ class UnifiedNeuralEngine:
             state_classes=state_classes,
         ).to(self.device)
 
+    @staticmethod
+    def _infer_model_params_from_state_dict(state_dict: Dict[str, Any], model_params: Dict[str, Any]) -> None:
+        """Infer model parameters from checkpoint state_dict shapes."""
+        if not state_dict:
+            return
+        
+        # Infer input_size and hidden_size from LSTM weight shape
+        lstm_key = "_lstm.weight_ih_l0"
+        if lstm_key in state_dict:
+            model_params["input_size"] = int(state_dict[lstm_key].shape[1])
+            model_params["hidden_size"] = int(state_dict[lstm_key].shape[0] // 4)
+        
+        # Infer state_classes from state_head
+        state_head_key = "state_head.weight"
+        if state_head_key in state_dict:
+            model_params["state_classes"] = int(state_dict[state_head_key].shape[0])
+        
+        # Infer num_layers by counting LSTM weight keys
+        num_layers = sum(1 for key in state_dict if key.startswith("_lstm.weight_ih_l"))
+        if num_layers > 0:
+            model_params["num_layers"] = num_layers
+
     @classmethod
     def from_checkpoint(cls, checkpoint_path: str, *, device: Optional[str] = None) -> "UnifiedNeuralEngine":
         ckpt = safe_torch_load(checkpoint_path, map_location="cpu")
         model_params = dict(ckpt.get("model_params") or {})
         cfg = dict(ckpt.get("config") or {})
         
-        # Infer model params from state_dict if not in checkpoint
+        # Infer model params from state_dict (more reliable than saved params)
         state_dict = ckpt.get("model_state_dict") or ckpt.get("state_dict") or {}
-        if state_dict and not model_params.get("input_size"):
-            # Infer input_size from LSTM weight shape
-            lstm_key = "_lstm.weight_ih_l0"
-            if lstm_key in state_dict:
-                model_params["input_size"] = int(state_dict[lstm_key].shape[1])
-            # Infer hidden_size
-            if lstm_key in state_dict:
-                model_params["hidden_size"] = int(state_dict[lstm_key].shape[0] // 4)
-            # Infer state_classes from state_head
-            state_head_key = "state_head.weight"
-            if state_head_key in state_dict:
-                model_params["state_classes"] = int(state_dict[state_head_key].shape[0])
+        cls._infer_model_params_from_state_dict(state_dict, model_params)
         
         if device is not None:
             cfg["device"] = device

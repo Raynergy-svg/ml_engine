@@ -330,13 +330,13 @@ def _normalize_columns(columns) -> List[str]:
         if isinstance(col, tuple):
             out.append("_".join(map(str, col)).lower())
         else:
+            out.append(str(col).lower())
+    return out
+
+
 def _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:
     if CLOSE_COL not in df.columns and ADJ_CLOSE_COL in df.columns:
         df[CLOSE_COL] = df[ADJ_CLOSE_COL]
-    return df
-def _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:
-    if "close" not in df.columns and "adj close" in df.columns:
-        df["close"] = df["adj close"]
     return df
 
 
@@ -595,6 +595,87 @@ def augment_data(
     return final_sequences, final_targets
 
 
+def _fix_columns_async(columns) -> List[str]:
+    """Normalize column names from MultiIndex or regular columns."""
+    new_cols = []
+    for col in columns:
+        if isinstance(col, tuple):
+            new_cols.append("_".join(map(str, col)).lower())
+        else:
+            new_cols.append(str(col).lower())
+    return new_cols
+
+
+def _ensure_close_column_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure close column exists, falling back to adj close."""
+    if CLOSE_COL not in df.columns and ADJ_CLOSE_COL in df.columns:
+        df[CLOSE_COL] = df[ADJ_CLOSE_COL]
+    return df
+
+
+def _load_from_cache(cache_file: Path, required_cols: set) -> Optional[pd.DataFrame]:
+    """Try to load data from cache file."""
+    if not cache_file.exists():
+        return None
+    
+    try:
+        df = pd.read_parquet(cache_file, engine="pyarrow")
+        df.columns = _fix_columns_async(df.columns)
+        df = _ensure_close_column_data(df)
+        
+        missing_cols = required_cols - set(df.columns)
+        if missing_cols:
+            logger.error(
+                "Cached data missing required columns: %s. Deleting cache file.",
+                missing_cols
+            )
+            cache_file.unlink()
+            return None
+        return df
+    except Exception as e:
+        logger.warning("Failed to load cache: %s", e)
+        cache_file.unlink(missing_ok=True)
+        return None
+
+
+async def _download_data(ticker: str, start: str, end: str, required_cols: set) -> Optional[pd.DataFrame]:
+    """Download data using yf.download or yf.Ticker().history as fallback."""
+    data = None
+    
+    try:
+        loop = asyncio.get_event_loop()
+        download_fn = partial(yf.download, ticker, start=start, end=end, progress=False)
+        data = await loop.run_in_executor(None, download_fn)
+    except Exception as e:
+        logger.warning("yf.download failed: %s", e)
+    
+    # Check if download succeeded with required columns
+    has_required = (
+        data is not None
+        and not data.empty
+        and required_cols.issubset(set(_fix_columns_async(data.columns)))
+    )
+    
+    if not has_required:
+        logger.warning("yf.download did not return valid data; trying yf.Ticker().history")
+        data = yf.Ticker(ticker).history(start=start, end=end)
+    
+    return data
+
+
+def _normalize_downloaded_data(data: pd.DataFrame, required_cols: set) -> Optional[pd.DataFrame]:
+    """Normalize column names and validate required columns exist."""
+    data.columns = _fix_columns_async(data.columns)
+    data = _ensure_close_column_data(data)
+    
+    if not required_cols.issubset(set(data.columns)):
+        missing = required_cols - set(data.columns)
+        logger.error("Downloaded data missing required columns: %s", missing)
+        return None
+    
+    return data
+
+
 @lru_cache(maxsize=32)
 async def async_cached_download(
     ticker: str, start: str, end: str
@@ -604,73 +685,22 @@ async def async_cached_download(
     to avoid repeated API calls.
     """
     cache_file = CACHE_DIR / f"{ticker}_{start}_{end}.parquet"
-    required_cols = {"open", "high", "low", "close", "volume"}
-
-    def fix_columns(columns):
-        """Normalize column names from MultiIndex or regular columns"""
-        new_cols = []
-        for col in columns:
-            if isinstance(col, tuple):
-                new_cols.append("_".join(map(str, col)).lower())
+    required_cols = {"open", "high", "low", CLOSE_COL, "volume"}
+    
     # Try to load from cache
-    if cache_file.exists():
-        try:
-            df = pd.read_parquet(cache_file, engine="pyarrow")
-            df.columns = fix_columns(df.columns)
-            if CLOSE_COL not in df.columns and ADJ_CLOSE_COL in df.columns:
-                df[CLOSE_COL] = df[ADJ_CLOSE_COL]
-            missing_cols = required_cols - set(df.columns)
-            df.columns = fix_columns(df.columns)
-            if "close" not in df.columns and "adj close" in df.columns:
-                df["close"] = df["adj close"]
-            missing_cols = required_cols - set(df.columns)
-            if missing_cols:
-                msg = (
-                    f"Cached data missing required columns: {missing_cols}. "
-                    f"Deleting cache file."
-                )
-                logger.error(msg)
-                cache_file.unlink()
-            else:
-                return df
-        except Exception as e:
-            logger.warning(f"Failed to load cache: {e}")
-            cache_file.unlink(missing_ok=True)
-
-    # Download using yf.download
-    try:
-        loop = asyncio.get_event_loop()
-        download_fn = partial(yf.download, ticker, start=start, end=end, progress=False)
-        data = await loop.run_in_executor(None, download_fn)
-    except Exception as e:
-        logger.warning(f"yf.download failed: {e}")
-        data = None
-
-    # If download failed or the data is missing columns,
-    # try yf.Ticker().history
-    has_required = (
-        data is not None
-        and not data.empty
-        and required_cols.issubset(set(fix_columns(data.columns)))
-    )
-    if not has_required:
-        msg = "yf.download did not return valid data; trying yf.Ticker().history"
-        logger.warning(msg)
-        data = yf.Ticker(ticker).history(start=start, end=end)
-
-    data.columns = fix_columns(data.columns)
-    if CLOSE_COL not in data.columns and ADJ_CLOSE_COL in data.columns:
-        data[CLOSE_COL] = data[ADJ_CLOSE_COL]
-
-    if not required_cols.issubset(set(data.columns)):
-    if "close" not in data.columns and "adj close" in data.columns:
-        data["close"] = data["adj close"]
-
-    if not required_cols.issubset(set(data.columns)):
-        missing = required_cols - set(data.columns)
-        msg = f"Downloaded data missing required columns: {missing}"
-        logger.error(msg)
+    cached_df = _load_from_cache(cache_file, required_cols)
+    if cached_df is not None:
+        return cached_df
+    
+    # Download data
+    data = await _download_data(ticker, start, end, required_cols)
+    if data is None or data.empty:
         return None
-
-    data.to_parquet(cache_file)
-    return data
+    
+    # Normalize and validate
+    normalized_data = _normalize_downloaded_data(data, required_cols)
+    if normalized_data is None:
+        return None
+    
+    normalized_data.to_parquet(cache_file)
+    return normalized_data
