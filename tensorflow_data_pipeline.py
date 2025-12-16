@@ -143,10 +143,10 @@ def load_tensorflow_multitask_data(
     def create_target_dict(indices: np.ndarray) -> Dict[str, np.ndarray]:
         """Create target dictionary with one-hot encoded state."""
         return {
-            'price': y_price[indices].astype(np.float32),
-            'trend': targets.trend[indices].astype(np.float32),
-            'direction': targets.direction[indices].astype(np.float32),
-            'risk': targets.risk[indices].astype(np.float32),
+            'price': y_price[indices].astype(np.float32).reshape(-1, 1),
+            'trend': targets.trend[indices].astype(np.float32).reshape(-1, 1),
+            'direction': targets.direction[indices].astype(np.float32).reshape(-1, 1),
+            'risk': targets.risk[indices].astype(np.float32).reshape(-1, 1),
             'state_logits': np.eye(state_classes, dtype=np.float32)[targets.state[indices]],  # One-hot
         }
     
@@ -235,11 +235,8 @@ def load_multi_instrument_data(
                 add_all_features=add_all_features,
             )
             
-            # Add direction labels (binary: 1 = price went up, 0 = down)
-            # Direction is based on trend sign: positive return = up
-            for y_dict, _ in [(y_train, 'train'), (y_val, 'val'), (y_test, 'test')]:
-                direction = (y_dict['trend'] > 0).astype(np.float32)
-                y_dict['direction'] = direction
+            # Direction labels are already provided by build_multitask_targets
+            # (aligned to the same prediction horizon as the price target).
             
             # Accumulate data
             all_x_train.append(x_train)
@@ -267,6 +264,9 @@ def load_multi_instrument_data(
             
         except Exception as e:
             logger.error(f"   Failed to load {csv_path}: {e}")
+            print(f"❌ Error loading {csv_path}: {e}")  # Ensure user sees this
+            import traceback
+            traceback.print_exc()
             continue
     
     if not all_x_train:

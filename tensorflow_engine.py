@@ -12,6 +12,7 @@ Features:
 
 import os
 import datetime
+import time
 import numpy as np
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
@@ -23,6 +24,8 @@ from tensorflow.keras import optimizers, losses, metrics
 
 from tensorflow_models import create_tensorflow_model
 
+
+from tensorflow.keras.saving import register_keras_serializable
 
 # =============================================================================
 # Constants
@@ -36,6 +39,7 @@ DEFAULT_TENSORBOARD_DIR = 'trained_data/tensorboard'
 # Custom Loss Functions
 # =============================================================================
 
+@register_keras_serializable()
 class BinaryFocalLoss(losses.Loss):
     """
     Binary Focal Loss for addressing class imbalance in binary classification.
@@ -131,6 +135,15 @@ def compute_class_weights(y_direction: np.ndarray) -> dict:
     return {'up_weight': up_weight, 'down_weight': down_weight, 'alpha': alpha}
 
 
+def _direction_is_balanced(y_direction: np.ndarray, tolerance: float = 0.05) -> bool:
+    """True when up-rate is within tolerance of 50%."""
+    y_flat = np.array(y_direction).flatten()
+    if y_flat.size == 0:
+        return True
+    up_rate = float(np.mean(y_flat == 1))
+    return abs(up_rate - 0.5) <= float(tolerance)
+
+
 # =============================================================================
 # Custom Callbacks
 # =============================================================================
@@ -165,23 +178,26 @@ class TradingMetricsCallback(keras_callbacks.Callback):
     def on_epoch_end(self, epoch, logs=None):
         x_val, y_val = self.validation_data
         predictions = self.model.predict(x_val, verbose=0)
+
+        # Always extract price series for histograms (even if we compute direction-head accuracy).
+        pred_price = self._extract_price_from_predictions(predictions)
+        true_price = self._extract_price_from_targets(y_val)
         
-        # Handle multi-task vs single-task predictions
-        if self.multi_task:
-            pred_price = self._extract_price_from_predictions(predictions)
-            true_price = self._extract_price_from_targets(y_val)
-        else:
-            pred_price = predictions
-            true_price = y_val
-        
-        # Flatten arrays
-        pred_price = np.array(pred_price).flatten()
-        true_price = np.array(true_price).flatten()
-        
-        # Directional accuracy (did we predict the right direction?)
-        pred_direction = np.sign(pred_price)
-        true_direction = np.sign(true_price)
-        directional_accuracy = float(np.mean(pred_direction == true_direction))
+        # Prefer true direction-head accuracy when available (multi-task).
+        directional_accuracy = None
+        if self.multi_task and isinstance(predictions, dict) and isinstance(y_val, dict):
+            if 'direction' in predictions and 'direction' in y_val:
+                pred_dir = (np.array(predictions['direction']).reshape(-1) >= 0.5).astype(np.int32)
+                true_dir = (np.array(y_val['direction']).reshape(-1) >= 0.5).astype(np.int32)
+                directional_accuracy = float(np.mean(pred_dir == true_dir))
+
+        # Fallback (single-task only): keep legacy sign-based metric.
+        if directional_accuracy is None:
+            pred_price = np.array(pred_price).flatten()
+            true_price = np.array(true_price).flatten()
+            pred_direction = np.sign(pred_price)
+            true_direction = np.sign(true_price)
+            directional_accuracy = float(np.mean(pred_direction == true_direction))
         
         # Log to TensorBoard
         with self.writer.as_default():
@@ -234,6 +250,33 @@ class LearningRateLoggerCallback(keras_callbacks.Callback):
         lr = float(keras.backend.get_value(self.model.optimizer.learning_rate))
         with self.writer.as_default():
             tf.summary.scalar('learning_rate', lr, step=epoch)
+
+
+class BatchProgressCallback(keras_callbacks.Callback):
+    """Print periodic batch progress so long CPU epochs don't look hung."""
+
+    def __init__(self, every_n_batches: int = 50):
+        super().__init__()
+        self.every_n_batches = int(every_n_batches)
+        self._t0 = None
+        self._epoch_t0 = None
+
+    def on_train_begin(self, logs=None):
+        self._t0 = time.time()
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self._epoch_t0 = time.time()
+
+    def on_train_batch_end(self, batch, logs=None):
+        if self.every_n_batches <= 0:
+            return
+        if batch == 0 or (batch + 1) % self.every_n_batches == 0:
+            elapsed = time.time() - (self._epoch_t0 or time.time())
+            loss = None if logs is None else logs.get('loss')
+            if loss is not None:
+                print(f"  [batch {batch+1}] loss={float(loss):.4f} elapsed={elapsed:.1f}s")
+            else:
+                print(f"  [batch {batch+1}] elapsed={elapsed:.1f}s")
 
 
 class SavedModelExportCallback(keras_callbacks.Callback):
@@ -320,6 +363,7 @@ class AdaptiveLossWeightCallback(keras_callbacks.Callback):
         self.initial_weights = initial_weights or {
             'price': 1.0,
             'trend': 0.5,
+            'direction': 10.0,
             'risk': 5.0,
             'state_logits': 7.0,
         }
@@ -482,6 +526,18 @@ class TensorFlowEngine:
         """Build and compile the model."""
         model_config = self.config.get('model', {})
         multi_task = model_config.get('multi_task', True)
+
+        training_cfg = self.config.get('training', {})
+        model_type = (model_config.get('type', '') or '').lower()
+        has_gpu = len(tf.config.list_physical_devices('GPU')) > 0
+        run_eagerly_cfg = training_cfg.get('run_eagerly', self.config.get('run_eagerly', None))
+        if run_eagerly_cfg is None:
+            # TFT can take a long time to trace/compile the first train step on CPU.
+            # Eager mode avoids the "stuck at model.fit" experience.
+            run_eagerly = (not has_gpu) and (model_type in ['tft', 'temporal_fusion_transformer'])
+        else:
+            run_eagerly = bool(run_eagerly_cfg)
+        jit_compile = bool(training_cfg.get('jit_compile', self.config.get('jit_compile', False)))
         
         with self.strategy.scope():
             # Create model
@@ -505,15 +561,21 @@ class TensorFlowEngine:
                 # Get alpha from config or use default (0.5 = balanced)
                 focal_alpha = self.config.get('focal_alpha', 0.5)
                 focal_gamma = self.config.get('focal_gamma', 2.0)
+
+                direction_loss_type = (self.config.get('direction_loss', 'focal') or 'focal').lower()
+                if direction_loss_type in ('bce', 'binary_crossentropy'):
+                    direction_loss = losses.BinaryCrossentropy(from_logits=False, label_smoothing=0.0)
+                else:
+                    direction_loss = BinaryFocalLoss(gamma=focal_gamma, alpha=focal_alpha, label_smoothing=0.0)
                 
                 self.model.compile(
                     optimizer=optimizer,
                     loss={
                         'price': losses.Huber(delta=self.config.get('huber_delta', 1.0)),
                         'trend': losses.Huber(delta=0.5),  # Smaller delta for finer predictions
-                        'direction': BinaryFocalLoss(gamma=focal_gamma, alpha=focal_alpha, label_smoothing=0.1),
+                        'direction': direction_loss,
                         'risk': losses.MeanSquaredError(),  # Risk is continuous [0,1] regression
-                        'state_logits': losses.CategoricalCrossentropy(label_smoothing=0.1),
+                        'state_logits': losses.CategoricalCrossentropy(label_smoothing=0.0),
                     },
                     loss_weights=loss_weights,
                     metrics={
@@ -522,11 +584,15 @@ class TensorFlowEngine:
                         'direction': [metrics.BinaryAccuracy(name='dir_acc')],  # Directional accuracy!
                         'risk': [metrics.MeanAbsoluteError(name='risk_mae')],  # Risk is continuous [0,1], not binary
                         'state_logits': [metrics.CategoricalAccuracy(name='state_acc')],
-                    }
+                    },
+                    run_eagerly=run_eagerly,
+                    jit_compile=jit_compile,
                 )
                 print("✓ Multi-task model compiled with 5 heads: price, trend, direction, risk, state")
-                print("  Direction head: BinaryFocalLoss with label_smoothing=0.1")
-                print("  Direction weight: 20.0 (highest priority)")
+                print(f"  Direction head loss: {direction_loss_type}")
+                print(f"  Direction weight: {loss_weights.get('direction', 20.0)} (highest priority)")
+                if run_eagerly:
+                    print("  Note: run_eagerly=True to avoid long CPU tracing")
             else:
                 # Single task (price only)
                 loss = self._create_loss()
@@ -536,7 +602,9 @@ class TensorFlowEngine:
                     metrics=[
                         metrics.MeanAbsoluteError(name='mae'),
                         metrics.RootMeanSquaredError(name='rmse'),
-                    ]
+                    ],
+                    run_eagerly=run_eagerly,
+                    jit_compile=jit_compile,
                 )
         
         return self.model
@@ -656,6 +724,11 @@ class TensorFlowEngine:
         
         # Learning rate logger
         callback_list.append(LearningRateLoggerCallback(self.tensorboard_dir))
+
+        # Batch progress heartbeat (helps on CPU / first-step tracing stalls)
+        every_n = int(self.training_config.get('batch_progress_every', self.config.get('batch_progress_every', 0)) or 0)
+        if every_n > 0:
+            callback_list.append(BatchProgressCallback(every_n_batches=every_n))
         
         # Trading metrics (if validation data provided)
         multi_task = self.config.get('model', {}).get('multi_task', False)
@@ -711,7 +784,17 @@ class TensorFlowEngine:
         To visualize training:
             tensorboard --logdir=trained_data/tensorboard
         """
+        # If multi-task, auto-tune focal-loss alpha from train direction balance
+        # BEFORE compiling the model.
         if self.model is None:
+            multi_task = self.config.get('model', {}).get('multi_task', False)
+            if multi_task and isinstance(y_train, dict) and 'direction' in y_train:
+                if 'direction_loss' not in self.config:
+                    is_balanced = _direction_is_balanced(y_train['direction'], tolerance=0.05)
+                    self.config['direction_loss'] = 'bce' if is_balanced else 'focal'
+                if self.config.get('auto_focal_alpha', True) and 'focal_alpha' not in self.config:
+                    cw = compute_class_weights(y_train['direction'])
+                    self.config['focal_alpha'] = float(cw.get('alpha', 0.5))
             self.build_model()
         
         # Prepare validation data
@@ -738,7 +821,7 @@ class TensorFlowEngine:
         print(f"   Run: tensorboard --logdir={self.tensorboard_dir}")
         print("="*60 + "\n")
         
-        # Train
+        print("Starting model.fit()… (first batch can be slow on CPU)")
         self.history = self.model.fit(
             x_train, y_train,
             batch_size=self.batch_size,

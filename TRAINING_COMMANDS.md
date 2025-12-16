@@ -6,14 +6,16 @@ This guide provides optimized training commands for the ML Engine's TensorFlow m
 
 ## 🚀 Quick Start
 
+**Defaults (so you can omit flags):** `train_visual.py` defaults to `--framework tensorflow` and `--model tft`.
+
 ### Basic Multi-Task Training (Synthetic Data)
 ```bash
-python3 train_visual.py --framework tensorflow --model tft --multi-task
+python3 train_visual.py --multi-task
 ```
 
 ### Multi-Task Training with Real Data (Recommended)
 ```bash
-python3 train_visual.py --framework tensorflow --model tft --multi-task \
+python3 train_visual.py --multi-task \
     --data-dir trained_data/data --state-classes 3
 ```
 
@@ -23,7 +25,7 @@ python3 train_visual.py --framework tensorflow --model tft --multi-task \
 
 ### Standard Optimized Training
 ```bash
-python3 train_visual.py --framework tensorflow --model tft --multi-task \
+python3 train_visual.py --multi-task \
     --data-dir trained_data/data \
     --state-classes 3 \
     --epochs 100 \
@@ -33,6 +35,8 @@ python3 train_visual.py --framework tensorflow --model tft --multi-task \
     --patience 25 \
     --tensorboard
 ```
+
+Note: For better direction learning (avoid ~0.50 coin-flip), tune `unified_head_loss_weights` in `config.yaml` to give **direction** the highest weight.
 
 ### 🔄 Resume Training from Best Checkpoint (RECOMMENDED)
 ```bash
@@ -177,9 +181,12 @@ Then open: http://localhost:6006
 ### Key Metrics to Watch
 - **loss**: Overall training loss
 - **val_loss**: Validation loss (watch for overfitting)
-- **direction_accuracy**: Binary up/down prediction accuracy
+- **direction_dir_acc** (and **val_direction_dir_acc**): Binary up/down direction-head accuracy
 - **state_accuracy**: Market regime classification accuracy
 - **price_mae**: Price prediction error
+
+Note: Direction is a hard target on noisy FX data. It’s normal to see **~0.50** in the first few epochs.
+For balanced labels (~50/50 up/down), the engine now auto-uses **BCE** (instead of focal loss) so the model moves off 0.5 predictions faster.
 
 ---
 
@@ -292,4 +299,4 @@ With optimal settings, expect:
 - **Risk Correlation**: 0.7+ with actual volatility
 
 
-python train_visual.py --framework tensorflow --model tft --multi-task --fetch-data --ensemble-size 3 --epochs 100
+python3 train_visual.py --framework tensorflow --model tft --multi-task --fetch-data --ensemble-size 3 --epochs 50

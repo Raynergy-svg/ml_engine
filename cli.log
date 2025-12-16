@@ -2235,3 +2235,6 @@ Traceback (most recent call last):
   File "/Users/mirelacertan/Documents/ml_engine/main.py", line 1272, in buddy
     run_unified_talk(
 TypeError: run_unified_talk() got an unexpected keyword argument 'oanda_instrument'
+2025-12-16 02:07:44 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:55] - NeuralNetworkIntegrator initialized on cpu
+2025-12-16 02:07:44 - reasoning_enhanced - INFO - [reasoning_enhanced.py:101] - ReasoningEngine initialized
+2025-12-16 02:07:44 - neural_network_integrator_enhanced - INFO - [neural_network_integrator_enhanced.py:118] - Unified engine set for integration

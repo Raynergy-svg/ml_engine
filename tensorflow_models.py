@@ -12,8 +12,9 @@ Models:
 """
 
 import tensorflow as tf
-import keras
-from keras import layers, Model, regularizers
+from tensorflow import keras
+from tensorflow.keras import layers, Model, regularizers
+from tensorflow.keras.saving import register_keras_serializable
 import numpy as np
 from typing import List, Optional
 
@@ -26,6 +27,7 @@ DEFAULT_RECURRENT_DROPOUT = 0.15
 # Custom Layers
 # =============================================================================
 
+@register_keras_serializable()
 class Mish(layers.Layer):
     """Mish activation: x * tanh(softplus(x)) - smoother than ReLU."""
     
@@ -33,6 +35,7 @@ class Mish(layers.Layer):
         return x * tf.math.tanh(tf.math.softplus(x))
 
 
+@register_keras_serializable()
 class Swish(layers.Layer):
     """Swish activation: x * sigmoid(x) - also known as SiLU."""
     
@@ -40,6 +43,7 @@ class Swish(layers.Layer):
         return x * tf.math.sigmoid(x)
 
 
+@register_keras_serializable()
 class GatedLinearUnit(layers.Layer):
     """GLU activation for Temporal Fusion Transformer."""
     
@@ -53,6 +57,7 @@ class GatedLinearUnit(layers.Layer):
         return output[..., :self.units] * tf.math.sigmoid(output[..., self.units:])
 
 
+@register_keras_serializable()
 class GatedResidualNetwork(layers.Layer):
     """
     Gated Residual Network (GRN) - Core building block of TFT.
@@ -79,6 +84,7 @@ class GatedResidualNetwork(layers.Layer):
         self.dropout = layers.Dropout(self.dropout_rate)
         self.glu = GatedLinearUnit(self.output_size)
         self.layer_norm = layers.LayerNormalization()
+        self.context_proj = layers.Dense(self.hidden_size)
         
         # Skip connection projection if needed
         input_dim = input_shape[-1]
@@ -96,7 +102,7 @@ class GatedResidualNetwork(layers.Layer):
         # Non-linear processing
         hidden = self.dense1(x)
         if context is not None:
-            hidden = hidden + layers.Dense(self.hidden_size)(context)
+            hidden = hidden + self.context_proj(context)
         hidden = self.dense2(hidden)
         hidden = self.dropout(hidden, training=training)
         
@@ -105,6 +111,7 @@ class GatedResidualNetwork(layers.Layer):
         return self.layer_norm(skip + gated)
 
 
+@register_keras_serializable()
 class VariableSelectionNetwork(layers.Layer):
     """
     Variable Selection Network for TFT.
@@ -180,6 +187,7 @@ class VariableSelectionNetwork(layers.Layer):
         return selected, weights
 
 
+@register_keras_serializable()
 class InterpretableMultiHeadAttention(layers.Layer):
     """
     Interpretable Multi-Head Attention for TFT.
@@ -217,6 +225,7 @@ class InterpretableMultiHeadAttention(layers.Layer):
         return self.mha(query, value, key, training=training)
 
 
+@register_keras_serializable()
 class PositionalEncoding(layers.Layer):
     """Sinusoidal positional encoding for Transformer models."""
     
@@ -246,6 +255,7 @@ class PositionalEncoding(layers.Layer):
 # Model Implementations
 # =============================================================================
 
+@register_keras_serializable()
 class TFStockPredictor(Model):
     """
     Enhanced LSTM-based predictor with residual connections and layer normalization.
@@ -372,6 +382,7 @@ class TFStockPredictor(Model):
         return out + skip_out
 
 
+@register_keras_serializable()
 class TFAttentiveLSTM(Model):
     """
     LSTM with multi-head self-attention for enhanced sequence modeling.
@@ -545,6 +556,7 @@ class TFAttentiveLSTM(Model):
             return self.fc(lstm_out, training=training)
 
 
+@register_keras_serializable()
 class TFTransformerPredictor(Model):
     """
     Pure Transformer for time series prediction.
@@ -629,6 +641,7 @@ class TFTransformerPredictor(Model):
         return self.fc(x, training=training)
 
 
+@register_keras_serializable()
 class TransformerEncoderLayer(layers.Layer):
     """Single Transformer encoder layer."""
     
@@ -673,6 +686,7 @@ class TransformerEncoderLayer(layers.Layer):
         return x
 
 
+@register_keras_serializable()
 class TFTemporalFusionTransformer(Model):
     """
     Temporal Fusion Transformer (TFT) - State-of-the-art for time series forecasting.
@@ -853,7 +867,7 @@ class TFTemporalFusionTransformer(Model):
         temporal_output = self.layer_norm1(skip + attention_output)
         
         # Post-attention processing
-        temporal_output = self.post_attention_grn(temporal_output, training=training)
+        temporal_output = self.post_attention_grn(temporal_output, context=static_context, training=training)
         temporal_output = self.layer_norm2(temporal_output + encoder_output)
         
         # Take final timestep for single-step prediction
@@ -876,6 +890,24 @@ class TFTemporalFusionTransformer(Model):
             }
         else:
             return self.output_projection(final_output, training=training)
+
+    def build(self, input_shape):
+        """Build sublayers by running a dummy forward pass.
+
+        Keras may otherwise mark this model as built even when some sublayers
+        remain unbuilt (common with subclassed Models), which can lead to
+        warnings and brittle save/load behavior.
+        """
+        try:
+            # input_shape: (batch, time, features)
+            time_steps = input_shape[1] if len(input_shape) > 1 and input_shape[1] is not None else self.num_encoder_steps
+            n_features = input_shape[2] if len(input_shape) > 2 and input_shape[2] is not None else self.input_size
+            dummy = tf.zeros((1, int(time_steps), int(n_features)), dtype=tf.float32)
+            _ = self.call(dummy, training=False)
+        except Exception:
+            # Fall back to letting Keras build lazily on first real call.
+            pass
+        super().build(input_shape)
     
     def get_attention_weights(self, x):
         """Get attention weights for interpretability."""
@@ -892,6 +924,10 @@ class TFTemporalFusionTransformer(Model):
         return attention_weights
 
 
+        return attention_weights
+
+
+@register_keras_serializable()
 class TFTCNPredictor(Model):
     """
     Temporal Convolutional Network (TCN) for time series prediction.
@@ -1085,6 +1121,7 @@ class TFTCNPredictor(Model):
             return self.fc(x, training=training)
 
 
+@register_keras_serializable()
 class TFEnsemblePredictor(Model):
     """Ensemble of multiple models for robust predictions."""
     

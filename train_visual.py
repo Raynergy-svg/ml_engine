@@ -3,9 +3,10 @@
 Visual Training Demo with TensorBoard (Multi-Task Support).
 Demonstrates TensorFlow training with real-time visualization.
 
-Supports multi-task training with 4 heads:
+Supports multi-task training with 5 heads:
 - price_head: Next price prediction
 - trend_head: Market direction/return
+- direction_head: Binary up/down for prediction horizon
 - risk_head: Volatility/risk level
 - state_head: Market regime classification
 
@@ -23,10 +24,17 @@ import argparse
 import numpy as np
 import pandas as pd
 import yaml
+import logging
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Tuple, List
+
+# Configure logging to show info
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(message)s'
+)
 
 # Suppress TensorFlow warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -133,7 +141,7 @@ def load_config(config_path: str = 'config.yaml') -> dict:
 
 def _dataset_to_numpy(ds, num_samples: int, batch_size: int) -> Tuple[np.ndarray, dict]:
     """Convert tf.data.Dataset to numpy arrays."""
-    x_list, y_dict_lists = [], {'price': [], 'trend': [], 'risk': [], 'state_logits': []}
+    x_list, y_dict_lists = [], {'price': [], 'trend': [], 'direction': [], 'risk': [], 'state_logits': []}
     
     for batch_x, batch_y in ds.take((num_samples // batch_size) + 1):
         x_list.append(batch_x.numpy())
@@ -637,7 +645,7 @@ def train_tensorflow(
     print("\n" + "="*60)
     print("🧠 TensorFlow Training with TensorBoard")
     if training_config.multi_task:
-        print("   Mode: Multi-Task (4 heads: price, trend, risk, state)")
+        print("   Mode: Multi-Task (5 heads: price, trend, direction, risk, state)")
     print("="*60)
     
     import tensorflow as tf
@@ -652,6 +660,20 @@ def train_tensorflow(
     
     # Prepare config
     tf_config = _build_tf_config(x_train, training_config, config)
+
+    # IMPORTANT: train_visual builds the model before calling engine.train().
+    # So any auto-tuning that depends on y_train must happen here, before build_model().
+    if training_config.multi_task and isinstance(y_train, dict) and 'direction' in y_train:
+        try:
+            y_dir = np.array(y_train['direction']).reshape(-1)
+            if y_dir.size > 0:
+                up_rate = float(np.mean(y_dir >= 0.5))
+                is_balanced = abs(up_rate - 0.5) <= 0.05
+                tf_config.setdefault('direction_loss', 'bce' if is_balanced else 'focal')
+                # Match tensorflow_engine.compute_class_weights(): alpha = n_down / total = 1 - up_rate
+                tf_config.setdefault('focal_alpha', float(1.0 - up_rate))
+        except Exception:
+            pass
     
     # Create engine and train
     engine = TensorFlowEngine(tf_config)
@@ -668,7 +690,7 @@ def train_tensorflow(
     print(f"Parameters: {engine.model.count_params():,}")
     
     if training_config.multi_task:
-        print("\nOutput heads: price, trend, risk, state_logits")
+        print("\nOutput heads: price, trend, direction, risk, state_logits")
     
     history = engine.train(x_train, y_train, x_val, y_val)
     
@@ -699,6 +721,12 @@ def _build_tf_config(x_train, training_config: TrainingConfig, config: dict) -> 
         'training': {
             'epochs': training_config.epochs,
             'early_stopping_patience': training_config.patience,
+            # Print a heartbeat every N batches so CPU runs don't look frozen.
+            # (Set to 0 to disable.)
+            'batch_progress_every': 50,
+            # TFT can take a long time to trace/compile the first train step on CPU.
+            # Eager mode avoids looking stuck at "Starting model.fit()".
+            'run_eagerly': False,
         },
         'batch_size': training_config.batch_size,
         'loss_type': config.get('loss_type', 'huber') if config else 'huber',
@@ -712,6 +740,16 @@ def _build_tf_config(x_train, training_config: TrainingConfig, config: dict) -> 
             'write_graph': True,
         },
     }
+
+    # Default to eager mode for CPU+TFT unless user overrides it elsewhere.
+    try:
+        import tensorflow as tf
+        has_gpu = len(tf.config.list_physical_devices('GPU')) > 0
+        model_type = (training_config.model_type or '').lower()
+        if (not has_gpu) and model_type in ['tft', 'temporal_fusion_transformer']:
+            tf_config['training']['run_eagerly'] = True
+    except Exception:
+        pass
     
     if training_config.multi_task:
         _add_multitask_loss_weights(tf_config, config)
@@ -723,11 +761,11 @@ def _add_multitask_loss_weights(tf_config: dict, config: dict):
     """Add loss weights for multi-task learning."""
     loss_weights = config.get('unified_head_loss_weights', {}) if config else {}
     tf_config['unified_head_loss_weights'] = {
-        'price': loss_weights.get('price', 1.0),
+        'price': loss_weights.get('price', 5.0),
         'trend': loss_weights.get('trend', 1.0),
-        'direction': loss_weights.get('direction', 10.0),
-        'risk': loss_weights.get('risk', 5.0),
-        'state_logits': loss_weights.get('state', 7.0),
+        'direction': loss_weights.get('direction', 1.0),
+        'risk': loss_weights.get('risk', 1.0),
+        'state_logits': loss_weights.get('state', 1.0),
     }
     print(f"  Loss weights: {tf_config['unified_head_loss_weights']}")
 
@@ -924,7 +962,7 @@ def _add_training_args(parser):
     parser.add_argument(
         '--multi-task', '--mt',
         action='store_true',
-        help='Enable multi-task learning with 4 heads (price, trend, risk, state)'
+        help='Enable multi-task learning with 5 heads (price, trend, direction, risk, state)'
     )
     parser.add_argument(
         '--state-classes',
@@ -1190,9 +1228,10 @@ def _print_completion_message(args):
     print("✓ Training Complete!")
     print("="*60)
     if args.multi_task:
-        print("\n📊 Multi-task model trained with 4 heads:")
+        print("\n📊 Multi-task model trained with 5 heads:")
         print("   - price_head: Price prediction")
-        print("   - trend_head: Market direction")
+        print("   - trend_head: Horizon return")
+        print("   - direction_head: Up/Down classification")
         print("   - risk_head: Volatility/risk")
         print(f"   - state_head: Market regime ({args.state_classes} classes)")
     print("\n📊 View training visualization:")
@@ -1210,8 +1249,9 @@ def _launch_tensorboard_if_requested(args):
     import webbrowser
     import time
     
+    import sys
     process = subprocess.Popen(
-        ['tensorboard', '--logdir', 'trained_data/tensorboard', '--port', '6006'],
+        [sys.executable, '-m', 'tensorboard', '--logdir', 'trained_data/tensorboard', '--port', '6006'],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )

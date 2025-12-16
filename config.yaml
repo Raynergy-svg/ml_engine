@@ -98,8 +98,9 @@ state_classes: 2
 unified_head_loss_weights:
   price: 1.0
   trend: 0.5
-  risk: 5.0
-  state: 7.0
+  direction: 20.0
+  risk: 2.0
+  state: 5.0
 early_stop_patience: 15
 min_epochs: 50
 monitoring:

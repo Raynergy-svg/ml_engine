@@ -91,9 +91,19 @@ def build_multitask_targets(
     if n <= 0:
         raise ValueError("Not enough rows for sequence_length/target_shift")
 
-    target_indices = np.arange(n, dtype=int) + sequence_length + target_shift - 1
-    trend_aligned = returns[target_indices]
-    direction_aligned = (trend_aligned > 0).astype(np.float32)
+    # Each sequence i ends at base index t0 = i + sequence_length - 1
+    # and predicts at horizon t1 = t0 + target_shift.
+    base_indices = np.arange(n, dtype=int) + sequence_length - 1
+    target_indices = base_indices + target_shift
+
+    # Trend/direction are defined over the prediction horizon (t0 -> t1),
+    # not the one-step return at t1. This makes the direction head learnable
+    # for the same horizon as the price target.
+    horizon_return = (close[target_indices] / np.clip(close[base_indices], 1e-12, None)) - 1.0
+    trend_aligned = horizon_return
+    direction_aligned = (horizon_return > 0).astype(np.float32)
+
+    # Risk/state remain aligned to the prediction time t1 (they are targets).
     risk_aligned = risk[target_indices]
     state_aligned = state[target_indices]
 
