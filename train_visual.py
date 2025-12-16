@@ -25,9 +25,11 @@ import numpy as np
 import pandas as pd
 import yaml
 import logging
+import platform
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass
+from typing import Optional
 from typing import Tuple, List
 
 # Configure logging to show info
@@ -38,6 +40,36 @@ logging.basicConfig(
 
 # Suppress TensorFlow warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+
+def _suppress_irrelevant_tf_warnings_on_macos() -> None:
+    """Hide TensorFlow warnings that are expected/irrelevant on Apple Metal."""
+    if platform.system() != 'Darwin':
+        return
+
+    suppressed_substrings = (
+        'will not use cuDNN kernels',
+        'optimizer `tf.keras.optimizers.AdamW` runs slowly on M1/M2 Macs',
+        'optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs',
+        'Mixed precision compatibility check (mixed_float16): WARNING',
+        'compute capability of at least 7.0',
+        'METAL, no compute capability',
+    )
+
+    class _SubstringFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:  # type: ignore[override]
+            try:
+                msg = record.getMessage()
+            except Exception:
+                return True
+            return not any(s in msg for s in suppressed_substrings)
+
+    filt = _SubstringFilter()
+    for logger_name in ('', 'tensorflow', 'absl', 'absl.logging'):
+        logging.getLogger(logger_name).addFilter(filt)
+
+
+_suppress_irrelevant_tf_warnings_on_macos()
 
 # Constants
 DEFAULT_DATA_DIR = 'trained_data/data'
@@ -58,6 +90,7 @@ class TrainingConfig:
     ensemble_size: int = 5
     base_seed: int = 42
     cyclic_lr: bool = True
+    run_eagerly: Optional[bool] = None
     resume: bool = False
     checkpoint_path: str = DEFAULT_CHECKPOINT_PATH
 
@@ -624,7 +657,7 @@ def train_ensemble(
     return engines, histories, ensemble_preds
 
 
-def train_tensorflow(
+def train_tensorflow(  # noqa: C901
     x_train, y_train, x_val, y_val,
     training_config: TrainingConfig = None,
     config: dict = None,
@@ -650,54 +683,114 @@ def train_tensorflow(
     
     import tensorflow as tf
     from tensorflow_engine import TensorFlowEngine
-    
-    # GPU check
-    gpus = tf.config.list_physical_devices('GPU')
-    if gpus:
-        print(f"✓ GPU detected: {gpus[0].name}")
-    else:
-        print("⚠ No GPU detected, using CPU")
-    
-    # Prepare config
-    tf_config = _build_tf_config(x_train, training_config, config)
 
-    # IMPORTANT: train_visual builds the model before calling engine.train().
-    # So any auto-tuning that depends on y_train must happen here, before build_model().
-    if training_config.multi_task and isinstance(y_train, dict) and 'direction' in y_train:
-        try:
-            y_dir = np.array(y_train['direction']).reshape(-1)
-            if y_dir.size > 0:
-                up_rate = float(np.mean(y_dir >= 0.5))
-                is_balanced = abs(up_rate - 0.5) <= 0.05
-                tf_config.setdefault('direction_loss', 'bce' if is_balanced else 'focal')
-                # Match tensorflow_engine.compute_class_weights(): alpha = n_down / total = 1 - up_rate
-                tf_config.setdefault('focal_alpha', float(1.0 - up_rate))
-        except Exception:
-            pass
-    
-    # Create engine and train
-    engine = TensorFlowEngine(tf_config)
-    engine.build_model()
-    
-    # Build the model with a sample input to get parameter count
-    sample_input = tf.zeros((1, x_train.shape[1], x_train.shape[2]))
-    _ = engine.model(sample_input)  # This builds the model
-    
-    # Resume from checkpoint if requested
-    _handle_checkpoint_resume(engine, x_val, y_val, training_config)
-    
-    print(f"\nModel: {type(engine.model).__name__}")
-    print(f"Parameters: {engine.model.count_params():,}")
-    
-    if training_config.multi_task:
-        print("\nOutput heads: price, trend, direction, risk, state_logits")
-    
-    history = engine.train(x_train, y_train, x_val, y_val)
-    
-    # Evaluate
-    _print_validation_results(engine, x_val, y_val)
-    
-    return engine, history
+    # Optional tracing (OpenTelemetry). Safe no-op unless ML_ENGINE_TRACING=1.
+    try:
+        from tracing_setup import setup_tracing, span, gpu_probe_attributes, add_event
+
+        tracing_active = setup_tracing()
+    except Exception:
+        tracing_active = False
+        span = None  # type: ignore
+        add_event = None  # type: ignore
+
+        def gpu_probe_attributes():  # type: ignore
+            return {}
+
+    root_span_cm = None
+    if tracing_active and span is not None:
+        root_span_cm = span(
+            "train_visual.train_tensorflow",
+            attributes={
+                "multi_task": bool(getattr(training_config, "multi_task", False)),
+                "epochs": int(getattr(training_config, "epochs", 0) or 0),
+                "batch_size": int(getattr(training_config, "batch_size", 0) or 0),
+            },
+        )
+
+    from contextlib import nullcontext
+
+    root_ctx = root_span_cm if root_span_cm is not None else nullcontext()
+
+    with root_ctx:
+        # GPU/Metal check (must happen before creating/compiling the model)
+        gpus = tf.config.list_physical_devices('GPU')
+        if gpus:
+            print(f"✓ GPU detected: {gpus[0].name}")
+            for gpu in gpus:
+                try:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                except Exception:
+                    pass
+        else:
+            print("⚠ No GPU detected, using CPU")
+
+        if tracing_active and span is not None:
+            with span("tensorflow.gpu_probe", attributes=gpu_probe_attributes()):
+                if add_event is not None:
+                    add_event("tensorflow.gpu_probe.complete")
+        
+        # Prepare config
+        tf_config = _build_tf_config(x_train, training_config, config)
+
+        # Default to mixed precision when a GPU is available.
+        # On macOS/Apple Metal, Keras emits a CUDA-centric compatibility warning for mixed_float16.
+        # So we keep mixed precision opt-in on Darwin to avoid confusing users.
+        if gpus and not bool(tf_config.get('mixed_precision', False)):
+            if platform.system() != 'Darwin':
+                tf_config['mixed_precision'] = True
+
+        # IMPORTANT: train_visual builds the model before calling engine.train().
+        # So any auto-tuning that depends on y_train must happen here, before build_model().
+        if training_config.multi_task and isinstance(y_train, dict) and 'direction' in y_train:
+            try:
+                y_dir = np.array(y_train['direction']).reshape(-1)
+                if y_dir.size > 0:
+                    up_rate = float(np.mean(y_dir >= 0.5))
+                    is_balanced = abs(up_rate - 0.5) <= 0.05
+                    tf_config.setdefault('direction_loss', 'bce' if is_balanced else 'focal')
+                    # Match tensorflow_engine.compute_class_weights(): alpha = n_down / total = 1 - up_rate
+                    tf_config.setdefault('focal_alpha', float(1.0 - up_rate))
+            except Exception:
+                pass
+        
+        # Create engine and train
+        if tracing_active and span is not None:
+            with span("engine.init"):
+                engine = TensorFlowEngine(tf_config)
+            with span("engine.build_model"):
+                engine.build_model()
+        else:
+            engine = TensorFlowEngine(tf_config)
+            engine.build_model()
+        
+        # Build the model with a sample input to get parameter count
+        sample_input = tf.zeros((1, x_train.shape[1], x_train.shape[2]))
+        _ = engine.model(sample_input)  # This builds the model
+        
+        # Resume from checkpoint if requested
+        _handle_checkpoint_resume(engine, x_val, y_val, training_config)
+
+        print(f"\nModel: {type(engine.model).__name__}")
+        print(f"Parameters: {engine.model.count_params():,}")
+        
+        if training_config.multi_task:
+            print("\nOutput heads: price, trend, direction, risk, state_logits")
+        
+        if tracing_active and span is not None:
+            with span("engine.train"):
+                history = engine.train(x_train, y_train, x_val, y_val)
+        else:
+            history = engine.train(x_train, y_train, x_val, y_val)
+        
+        # Evaluate
+        if tracing_active and span is not None:
+            with span("engine.evaluate"):
+                _print_validation_results(engine, x_val, y_val)
+        else:
+            _print_validation_results(engine, x_val, y_val)
+        
+        return engine, history
 
 
 def _build_tf_config(x_train, training_config: TrainingConfig, config: dict) -> dict:
@@ -726,7 +819,7 @@ def _build_tf_config(x_train, training_config: TrainingConfig, config: dict) -> 
             'batch_progress_every': 50,
             # TFT can take a long time to trace/compile the first train step on CPU.
             # Eager mode avoids looking stuck at "Starting model.fit()".
-            'run_eagerly': False,
+            'run_eagerly': bool(training_config.run_eagerly) if training_config.run_eagerly is not None else False,
         },
         'batch_size': training_config.batch_size,
         'loss_type': config.get('loss_type', 'huber') if config else 'huber',
@@ -741,13 +834,14 @@ def _build_tf_config(x_train, training_config: TrainingConfig, config: dict) -> 
         },
     }
 
-    # Default to eager mode for CPU+TFT unless user overrides it elsewhere.
+    # Default to eager mode for CPU+TFT unless explicitly overridden.
     try:
         import tensorflow as tf
-        has_gpu = len(tf.config.list_physical_devices('GPU')) > 0
-        model_type = (training_config.model_type or '').lower()
-        if (not has_gpu) and model_type in ['tft', 'temporal_fusion_transformer']:
-            tf_config['training']['run_eagerly'] = True
+        if training_config.run_eagerly is None:
+            has_gpu = len(tf.config.list_physical_devices('GPU')) > 0
+            model_type = (training_config.model_type or '').lower()
+            if (not has_gpu) and model_type in ['tft', 'temporal_fusion_transformer']:
+                tf_config['training']['run_eagerly'] = True
     except Exception:
         pass
     
@@ -1006,6 +1100,21 @@ def _add_training_args(parser):
         default='config.yaml',
         help='Path to config file (default: config.yaml)'
     )
+
+    eager_group = parser.add_mutually_exclusive_group()
+    eager_group.add_argument(
+        '--run-eagerly',
+        dest='run_eagerly',
+        action='store_true',
+        help='Force eager execution (can avoid long first-step tracing/compilation)'
+    )
+    eager_group.add_argument(
+        '--no-run-eagerly',
+        dest='run_eagerly',
+        action='store_false',
+        help='Force graph execution (disable eager execution)'
+    )
+    parser.set_defaults(run_eagerly=None)
     parser.add_argument(
         '--tensorboard', '-t',
         action='store_true',
@@ -1089,6 +1198,11 @@ def _add_oanda_args(parser):
         help='Fetch fresh data from OANDA before training (recommended for up-to-date models)'
     )
     parser.add_argument(
+        '--fetch-only',
+        action='store_true',
+        help='Fetch fresh OANDA data and exit (no training)'
+    )
+    parser.add_argument(
         '--instruments',
         type=str,
         default='USD_JPY,EUR_USD,GBP_USD',
@@ -1104,7 +1218,7 @@ def _add_oanda_args(parser):
 
 def _fetch_oanda_data_if_needed(args):
     """Fetch fresh OANDA data if requested."""
-    should_fetch = args.fetch_data or (args.data_dir and not args.data_file)
+    should_fetch = args.fetch_data or getattr(args, 'fetch_only', False) or (args.data_dir and not args.data_file)
     if not should_fetch:
         return
     
@@ -1171,6 +1285,7 @@ def _train_tensorflow_model(args, x_train, y_train, x_val, y_val, config):
             ensemble_size=args.ensemble_size,
             base_seed=args.seed,
             cyclic_lr=args.cyclic_lr,
+            run_eagerly=args.run_eagerly,
         )
         train_ensemble(x_train, y_train, x_val, y_val, training_config, config)
     else:
@@ -1184,6 +1299,7 @@ def _train_tensorflow_model(args, x_train, y_train, x_val, y_val, config):
             dropout=args.dropout,
             learning_rate=effective_lr,
             patience=args.patience,
+            run_eagerly=args.run_eagerly,
             resume=args.resume,
             checkpoint_path=args.checkpoint,
         )
@@ -1277,6 +1393,10 @@ def main():
     
     # Fetch fresh data if needed
     _fetch_oanda_data_if_needed(args)
+
+    if getattr(args, 'fetch_only', False):
+        print("\n✓ Fetch complete (--fetch-only). Exiting without training.")
+        return
     
     # Validate arguments
     _validate_args(args)

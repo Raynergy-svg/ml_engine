@@ -14,6 +14,7 @@ import os
 import datetime
 import time
 import numpy as np
+import platform
 from pathlib import Path
 from typing import Dict, Optional, Tuple, List
 
@@ -492,8 +493,24 @@ class TensorFlowEngine:
             tf.keras.mixed_precision.set_global_policy(policy)
             print("✓ Mixed precision training enabled (float16)")
         
+        # GPU runtime tuning (Metal included)
+        self._configure_gpu_runtime()
+        
         # Setup strategy for multi-GPU if available
         self.strategy = self._setup_strategy()
+
+    def _configure_gpu_runtime(self) -> None:
+        """Best-effort GPU configuration for TensorFlow (incl. Apple Metal plugin)."""
+        try:
+            gpus = tf.config.list_physical_devices('GPU')
+            for gpu in gpus:
+                try:
+                    tf.config.experimental.set_memory_growth(gpu, True)
+                except Exception:
+                    # Some runtimes/devices may not support memory growth.
+                    pass
+        except Exception:
+            pass
     
     def _setup_tensorboard_dir(self) -> str:
         """Create timestamped TensorBoard log directory."""
@@ -618,8 +635,33 @@ class TensorFlowEngine:
         
         # Gradient clipping (matches PyTorch's clip_grad_norm_ for stability)
         clipnorm = opt_config.get('clipnorm', self.config.get('gradient_clip', 1.0))
-        
+
+        is_darwin = platform.system() == 'Darwin'
+        legacy = getattr(optimizers, 'legacy', None) if is_darwin else None
+
+        def _pick_legacy(name: str, fallback):
+            if legacy is not None and hasattr(legacy, name):
+                return getattr(legacy, name)
+            return fallback
+
         if opt_type == 'adamw':
+            # On Apple Silicon / Metal, the v2.11+ non-legacy AdamW can be very slow.
+            # Prefer the legacy implementation when available.
+            if legacy is not None and hasattr(legacy, 'AdamW'):
+                adamw_cls = legacy.AdamW
+                return adamw_cls(
+                    learning_rate=lr,
+                    weight_decay=weight_decay,
+                    beta_1=opt_config.get('betas', [0.9, 0.999])[0],
+                    beta_2=opt_config.get('betas', [0.9, 0.999])[1],
+                    clipnorm=clipnorm,
+                )
+
+            if is_darwin:
+                adam_cls = _pick_legacy('Adam', optimizers.Adam)
+                print('Note: legacy.AdamW unavailable on this macOS build; using Adam (weight_decay ignored).')
+                return adam_cls(learning_rate=lr, clipnorm=clipnorm)
+
             return optimizers.AdamW(
                 learning_rate=lr,
                 weight_decay=weight_decay,
@@ -627,18 +669,25 @@ class TensorFlowEngine:
                 beta_2=opt_config.get('betas', [0.9, 0.999])[1],
                 clipnorm=clipnorm,
             )
-        elif opt_type == 'adam':
-            return optimizers.Adam(learning_rate=lr, clipnorm=clipnorm)
-        elif opt_type == 'sgd':
-            return optimizers.SGD(
+
+        if opt_type == 'adam':
+            adam_cls = _pick_legacy('Adam', optimizers.Adam)
+            return adam_cls(learning_rate=lr, clipnorm=clipnorm)
+
+        if opt_type == 'sgd':
+            sgd_cls = _pick_legacy('SGD', optimizers.SGD)
+            return sgd_cls(
                 learning_rate=lr,
                 momentum=opt_config.get('momentum', 0.9),
                 clipnorm=clipnorm,
             )
-        elif opt_type == 'rmsprop':
-            return optimizers.RMSprop(learning_rate=lr, clipnorm=clipnorm)
-        else:
-            return optimizers.Adam(learning_rate=lr, clipnorm=clipnorm)
+
+        if opt_type == 'rmsprop':
+            rmsprop_cls = _pick_legacy('RMSprop', optimizers.RMSprop)
+            return rmsprop_cls(learning_rate=lr, clipnorm=clipnorm)
+
+        adam_cls = _pick_legacy('Adam', optimizers.Adam)
+        return adam_cls(learning_rate=lr, clipnorm=clipnorm)
     
     def _create_loss(self) -> losses.Loss:
         """Create loss function from config."""
@@ -760,7 +809,7 @@ class TensorFlowEngine:
         
         return callback_list
     
-    def train(
+    def train(  # noqa: C901
         self,
         x_train: np.ndarray,
         y_train: np.ndarray,
@@ -786,6 +835,16 @@ class TensorFlowEngine:
         """
         # If multi-task, auto-tune focal-loss alpha from train direction balance
         # BEFORE compiling the model.
+        if self.model is None:
+            multi_task = self.config.get('model', {}).get('multi_task', False)
+            if multi_task and isinstance(y_train, dict) and 'direction' in y_train:
+                if 'direction_loss' not in self.config:
+                    is_balanced = _direction_is_balanced(y_train['direction'], tolerance=0.05)
+                    self.config['direction_loss'] = 'bce' if is_balanced else 'focal'
+                if self.config.get('auto_focal_alpha', True) and 'focal_alpha' not in self.config:
+                    cw = compute_class_weights(y_train['direction'])
+                    self.config['focal_alpha'] = float(cw.get('alpha', 0.5))
+            self.build_model()
         if self.model is None:
             multi_task = self.config.get('model', {}).get('multi_task', False)
             if multi_task and isinstance(y_train, dict) and 'direction' in y_train:

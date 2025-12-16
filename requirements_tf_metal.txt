@@ -1,0 +1,37 @@
+# Minimal deps for TensorFlow training on Apple Silicon (Metal)
+# Intentionally excludes heavy/optional stacks (torch, RL, ta-lib) to keep install reliable.
+
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+scipy>=1.11.0
+
+# TensorFlow + Apple Silicon GPU plugin
+# Pin versions to keep the Metal plugin compatible.
+tensorflow==2.15.1
+tensorflow-metal==1.1.0; sys_platform == 'darwin'
+
+# Project runtime
+pyyaml>=6.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+aiohttp>=3.8.0
+psutil>=5.9.0
+
+# Tracing (OpenTelemetry) - pinned to keep installs fast/stable
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+opentelemetry-exporter-otlp-proto-http==1.27.0
+
+# Visualization / logging
+matplotlib>=3.7.0
+plotly>=5.14.0
+rich>=13.4.0
+tqdm>=4.65.0
+tensorboard>=2.13.0
+
+# Jupyter kernel (VS Code)
+ipykernel
+
+# Testing (optional)
+pytest>=7.4.0

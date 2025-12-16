@@ -11,6 +11,8 @@ Historically there were separate legacy and optimized variants. Those have been
 merged here to avoid duplication.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import os
@@ -20,9 +22,22 @@ from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-import torch
-from torch.utils.data import DataLoader, Dataset
-import yfinance as yf
+
+# Torch is optional: TensorFlow-only workflows should not require it.
+try:  # pragma: no cover
+    import torch  # type: ignore
+    from torch.utils.data import DataLoader, Dataset  # type: ignore
+except Exception:  # pragma: no cover
+    torch = None  # type: ignore
+    DataLoader = None  # type: ignore
+
+    class Dataset:  # type: ignore
+        pass
+
+try:  # pragma: no cover
+    import yfinance as yf  # type: ignore
+except Exception:  # pragma: no cover
+    yf = None  # type: ignore
 
 try:
     import dask.array as da  # type: ignore
@@ -66,7 +81,7 @@ class StockDataset(Dataset):
             return x
         if isinstance(x, list):
             return np.asarray(x)
-        if isinstance(x, torch.Tensor):
+        if torch is not None and isinstance(x, torch.Tensor):
             return x.detach().cpu().numpy()
         return x  # type: ignore[return-value]
 
@@ -104,6 +119,8 @@ class StockDataset(Dataset):
         device: Optional[torch.device],
         length: int,
     ) -> Tuple[Any, Any, bool]:
+        if torch is None:
+            return features, targets, False
         if device is None or cls._is_dask_array(features):
             return features, targets, False
         if int(length) >= 10_000:
@@ -140,9 +157,18 @@ class StockDataset(Dataset):
     def __len__(self) -> int:
         return int(self._length)
 
-    def __getitem__(self, idx: int) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+    def __getitem__(self, idx: int) -> Tuple[Any, Any]:
         if idx < 0 or idx >= len(self):
             raise IndexError(f"Index {idx} out of bounds for dataset of size {len(self)}")
+
+        if torch is None:
+            if da is not None and isinstance(self.features, da.Array):
+                seq_np = self.features[idx].compute()
+                tgt_val = float(self.targets[idx].compute())
+            else:
+                seq_np = self.features[idx]
+                tgt_val = float(self.targets[idx])
+            return np.asarray(seq_np, dtype=np.float32), np.asarray([tgt_val], dtype=np.float32)
 
         if self.preloaded:
             seq = self.features[idx]
@@ -294,6 +320,10 @@ def create_optimized_dataloader(
     persistent_workers: Optional[bool] = None,
 ) -> DataLoader:
     """Create a DataLoader configured for the available hardware."""
+    if torch is None or DataLoader is None:
+        raise ImportError(
+            "PyTorch is required for create_optimized_dataloader(); install 'torch' or use the TensorFlow pipeline."
+        )
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -352,6 +382,8 @@ def _normalize_and_validate_stock_df(df: Optional[pd.DataFrame]) -> Optional[pd.
 
 
 async def _download_ticker_no_cache(ticker: str, start: str, end: str) -> Optional[pd.DataFrame]:
+    if yf is None:
+        raise ImportError("yfinance is not installed. Install it to use ticker download helpers.")
     try:
         loop = asyncio.get_running_loop()
         data = await loop.run_in_executor(
@@ -640,6 +672,8 @@ def _load_from_cache(cache_file: Path, required_cols: set) -> Optional[pd.DataFr
 
 async def _download_data(ticker: str, start: str, end: str, required_cols: set) -> Optional[pd.DataFrame]:
     """Download data using yf.download or yf.Ticker().history as fallback."""
+    if yf is None:
+        raise ImportError("yfinance is not installed. Install it to use ticker download helpers.")
     data = None
     
     try:

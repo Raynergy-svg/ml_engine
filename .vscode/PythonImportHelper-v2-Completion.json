@@ -1,224 +1,5 @@
 [
     {
-        "label": "datetime",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "datetime",
-        "description": "datetime",
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "time",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timedelta",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timezone",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "datetime",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "timezone",
-        "importPath": "datetime",
-        "description": "datetime",
-        "isExtraImport": true,
-        "detail": "datetime",
-        "documentation": {}
-    },
-    {
-        "label": "os",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "os",
-        "description": "os",
-        "detail": "os",
-        "documentation": {}
-    },
-    {
-        "label": "sys",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "sys",
-        "description": "sys",
-        "detail": "sys",
-        "documentation": {}
-    },
-    {
-        "label": "getpass",
-        "importPath": "getpass",
-        "description": "getpass",
-        "isExtraImport": true,
-        "detail": "getpass",
-        "documentation": {}
-    },
-    {
-        "label": "OptionParser",
-        "importPath": "optparse",
-        "description": "optparse",
-        "isExtraImport": true,
-        "detail": "optparse",
-        "documentation": {}
-    },
-    {
-        "label": "*",
-        "importPath": "peewee",
-        "description": "peewee",
-        "isExtraImport": true,
-        "detail": "peewee",
-        "documentation": {}
-    },
-    {
-        "label": "print_",
-        "importPath": "peewee",
-        "description": "peewee",
-        "isExtraImport": true,
-        "detail": "peewee",
-        "documentation": {}
-    },
-    {
-        "label": "__version__",
-        "importPath": "peewee",
-        "description": "peewee",
-        "isExtraImport": true,
-        "detail": "peewee",
-        "documentation": {}
-    },
-    {
-        "label": "CockroachDatabase",
-        "importPath": "playhouse.cockroachdb",
-        "description": "playhouse.cockroachdb",
-        "isExtraImport": true,
-        "detail": "playhouse.cockroachdb",
-        "documentation": {}
-    },
-    {
-        "label": "*",
-        "importPath": "playhouse.reflection",
-        "description": "playhouse.reflection",
-        "isExtraImport": true,
-        "detail": "playhouse.reflection",
-        "documentation": {}
-    },
-    {
         "label": "csv",
         "kind": 6,
         "isExtraImport": true,
@@ -1180,7 +961,47 @@
         "documentation": {}
     },
     {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Iterator",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1696,6 +1517,24 @@
         "documentation": {}
     },
     {
+        "label": "os",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "os",
+        "description": "os",
+        "detail": "os",
+        "documentation": {}
+    },
+    {
+        "label": "sys",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "sys",
+        "description": "sys",
+        "detail": "sys",
+        "documentation": {}
+    },
+    {
         "label": "json",
         "kind": 6,
         "isExtraImport": true,
@@ -1723,6 +1562,151 @@
         "documentation": {}
     },
     {
+        "label": "datetime",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "datetime",
+        "description": "datetime",
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "time",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timezone",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timezone",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
         "label": "requests",
         "kind": 6,
         "isExtraImport": true,
@@ -1737,6 +1721,22 @@
         "description": "io",
         "isExtraImport": true,
         "detail": "io",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
         "documentation": {}
     },
     {
@@ -3295,22 +3295,6 @@
         "documentation": {}
     },
     {
-        "label": "Dataset",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "DataLoader",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
         "label": "TensorDataset",
         "importPath": "torch.utils.data",
         "description": "torch.utils.data",
@@ -3372,15 +3356,6 @@
         "description": "torch.utils.data",
         "isExtraImport": true,
         "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "yfinance",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "yfinance",
-        "description": "yfinance",
-        "detail": "yfinance",
         "documentation": {}
     },
     {
@@ -3659,6 +3634,14 @@
         "documentation": {}
     },
     {
+        "label": "contextmanager",
+        "importPath": "contextlib",
+        "description": "contextlib",
+        "isExtraImport": true,
+        "detail": "contextlib",
+        "documentation": {}
+    },
+    {
         "label": "torch.optim",
         "kind": 6,
         "isExtraImport": true,
@@ -3827,6 +3810,15 @@
         "documentation": {}
     },
     {
+        "label": "platform",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "platform",
+        "description": "platform",
+        "detail": "platform",
+        "documentation": {}
+    },
+    {
         "label": "callbacks",
         "importPath": "tensorflow.keras",
         "description": "tensorflow.keras",
@@ -3933,6 +3925,15 @@
         "documentation": {}
     },
     {
+        "label": "threading",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "threading",
+        "description": "threading",
+        "detail": "threading",
+        "documentation": {}
+    },
+    {
         "label": "gymnasium",
         "kind": 6,
         "isExtraImport": true,
@@ -3947,15 +3948,6 @@
         "description": "gymnasium",
         "isExtraImport": true,
         "detail": "gymnasium",
-        "documentation": {}
-    },
-    {
-        "label": "threading",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "threading",
-        "description": "threading",
-        "detail": "threading",
         "documentation": {}
     },
     {
@@ -4005,132 +3997,6 @@
         "description": "scipy.signal",
         "isExtraImport": true,
         "detail": "scipy.signal",
-        "documentation": {}
-    },
-    {
-        "label": "BaseModel",
-        "kind": 6,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "class BaseModel(Model):\n    class Meta:\n        database = database\n\"\"\"\nUNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):\n    def __init__(self, *_, **__): pass\n\"\"\"\nDATABASE_ALIASES = {\n    CockroachDatabase: ['cockroach', 'cockroachdb', 'crdb'],",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "UnknownField",
-        "kind": 6,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "class UnknownField(object):\n    def __init__(self, *_, **__): pass\n\"\"\"\nDATABASE_ALIASES = {\n    CockroachDatabase: ['cockroach', 'cockroachdb', 'crdb'],\n    MySQLDatabase: ['mysql', 'mysqldb'],\n    PostgresqlDatabase: ['postgres', 'postgresql'],\n    SqliteDatabase: ['sqlite', 'sqlite3'],\n}\nDATABASE_MAP = dict((value, key)",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "make_introspector",
-        "kind": 2,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "def make_introspector(database_type, database_name, **kwargs):\n    if database_type not in DATABASE_MAP:\n        err('Unrecognized database, must be one of: %s' %\n            ', '.join(DATABASE_MAP.keys()))\n        sys.exit(1)\n    schema = kwargs.pop('schema', None)\n    DatabaseClass = DATABASE_MAP[database_type]\n    db = DatabaseClass(database_name, **kwargs)\n    return Introspector.from_database(db, schema=schema)\ndef print_models(introspector, tables=None, preserve_order=False,",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "print_models",
-        "kind": 2,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "def print_models(introspector, tables=None, preserve_order=False,\n                 include_views=False, ignore_unknown=False, snake_case=True):\n    database = introspector.introspect(table_names=tables,\n                                       include_views=include_views,\n                                       snake_case=snake_case)\n    db_kwargs = introspector.get_database_kwargs()\n    header = HEADER % (\n        introspector.get_additional_imports(),\n        introspector.get_database_class().__name__,\n        introspector.get_database_name().replace('\\\\', '\\\\\\\\'),",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "print_header",
-        "kind": 2,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "def print_header(cmd_line, introspector):\n    timestamp = datetime.datetime.now()\n    print_('# Code generated by:')\n    print_('# python -m pwiz %s' % cmd_line)\n    print_('# Date: %s' % timestamp.strftime('%B %d, %Y %I:%M%p'))\n    print_('# Database: %s' % introspector.get_database_name())\n    print_('# Peewee version: %s' % peewee_version)\n    print_('')\ndef err(msg):\n    sys.stderr.write('\\033[91m%s\\033[0m\\n' % msg)",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "err",
-        "kind": 2,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "def err(msg):\n    sys.stderr.write('\\033[91m%s\\033[0m\\n' % msg)\n    sys.stderr.flush()\ndef get_option_parser():\n    parser = OptionParser(usage='usage: %prog [options] database_name')\n    ao = parser.add_option\n    ao('-H', '--host', dest='host')\n    ao('-p', '--port', dest='port', type='int')\n    ao('-u', '--user', dest='user')\n    ao('-P', '--password', dest='password', action='store_true')",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "get_option_parser",
-        "kind": 2,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "def get_option_parser():\n    parser = OptionParser(usage='usage: %prog [options] database_name')\n    ao = parser.add_option\n    ao('-H', '--host', dest='host')\n    ao('-p', '--port', dest='port', type='int')\n    ao('-u', '--user', dest='user')\n    ao('-P', '--password', dest='password', action='store_true')\n    engines = sorted(DATABASE_MAP)\n    ao('-e', '--engine', dest='engine', choices=engines,\n       help=('Database type, e.g. sqlite, mysql, postgresql or cockroachdb. '",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "get_connect_kwargs",
-        "kind": 2,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "def get_connect_kwargs(options):\n    ops = ('host', 'port', 'user', 'schema')\n    kwargs = dict((o, getattr(options, o)) for o in ops if getattr(options, o))\n    if options.password:\n        kwargs['password'] = getpass()\n    return kwargs\nif __name__ == '__main__':\n    raw_argv = sys.argv\n    parser = get_option_parser()\n    options, args = parser.parse_args()",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "HEADER",
-        "kind": 5,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "HEADER = \"\"\"from peewee import *%s\ndatabase = %s('%s'%s)\n\"\"\"\nBASE_MODEL = \"\"\"\\\nclass BaseModel(Model):\n    class Meta:\n        database = database\n\"\"\"\nUNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "database",
-        "kind": 5,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "database = %s('%s'%s)\n\"\"\"\nBASE_MODEL = \"\"\"\\\nclass BaseModel(Model):\n    class Meta:\n        database = database\n\"\"\"\nUNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):\n    def __init__(self, *_, **__): pass",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "BASE_MODEL",
-        "kind": 5,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "BASE_MODEL = \"\"\"\\\nclass BaseModel(Model):\n    class Meta:\n        database = database\n\"\"\"\nUNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):\n    def __init__(self, *_, **__): pass\n\"\"\"\nDATABASE_ALIASES = {",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "UNKNOWN_FIELD",
-        "kind": 5,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "UNKNOWN_FIELD = \"\"\"\\\nclass UnknownField(object):\n    def __init__(self, *_, **__): pass\n\"\"\"\nDATABASE_ALIASES = {\n    CockroachDatabase: ['cockroach', 'cockroachdb', 'crdb'],\n    MySQLDatabase: ['mysql', 'mysqldb'],\n    PostgresqlDatabase: ['postgres', 'postgresql'],\n    SqliteDatabase: ['sqlite', 'sqlite3'],\n}",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "DATABASE_ALIASES",
-        "kind": 5,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "DATABASE_ALIASES = {\n    CockroachDatabase: ['cockroach', 'cockroachdb', 'crdb'],\n    MySQLDatabase: ['mysql', 'mysqldb'],\n    PostgresqlDatabase: ['postgres', 'postgresql'],\n    SqliteDatabase: ['sqlite', 'sqlite3'],\n}\nDATABASE_MAP = dict((value, key)\n                    for key in DATABASE_ALIASES\n                    for value in DATABASE_ALIASES[key])\ndef make_introspector(database_type, database_name, **kwargs):",
-        "detail": ".venv.bin.pwiz",
-        "documentation": {}
-    },
-    {
-        "label": "DATABASE_MAP",
-        "kind": 5,
-        "importPath": ".venv.bin.pwiz",
-        "description": ".venv.bin.pwiz",
-        "peekOfCode": "DATABASE_MAP = dict((value, key)\n                    for key in DATABASE_ALIASES\n                    for value in DATABASE_ALIASES[key])\ndef make_introspector(database_type, database_name, **kwargs):\n    if database_type not in DATABASE_MAP:\n        err('Unrecognized database, must be one of: %s' %\n            ', '.join(DATABASE_MAP.keys()))\n        sys.exit(1)\n    schema = kwargs.pop('schema', None)\n    DatabaseClass = DATABASE_MAP[database_type]",
-        "detail": ".venv.bin.pwiz",
         "documentation": {}
     },
     {
@@ -7590,6 +7456,96 @@
         "documentation": {}
     },
     {
+        "label": "tracing_enabled",
+        "kind": 2,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "def tracing_enabled() -> bool:\n    return _env_truthy(os.getenv(\"ML_ENGINE_TRACING\"))\ndef setup_tracing(\n    *,\n    enabled: Optional[bool] = None,\n    service_name: Optional[str] = None,\n    exporter_endpoint: Optional[str] = None,\n) -> bool:\n    \"\"\"Configure OpenTelemetry SDK + OTLP exporter.\n    Returns True if tracing is active, else False.",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "setup_tracing",
+        "kind": 2,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "def setup_tracing(\n    *,\n    enabled: Optional[bool] = None,\n    service_name: Optional[str] = None,\n    exporter_endpoint: Optional[str] = None,\n) -> bool:\n    \"\"\"Configure OpenTelemetry SDK + OTLP exporter.\n    Returns True if tracing is active, else False.\n    \"\"\"\n    global _tracing_initialized",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "get_tracer",
+        "kind": 2,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "def get_tracer(name: str = \"ml_engine\"):\n    try:\n        from opentelemetry import trace\n        return trace.get_tracer(name)\n    except Exception:\n        return None\n@contextmanager\ndef span(\n    name: str,\n    *,",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "span",
+        "kind": 2,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "def span(\n    name: str,\n    *,\n    attributes: Optional[Dict[str, Any]] = None,\n) -> Iterator[None]:\n    \"\"\"Context manager creating a span when tracing is enabled.\"\"\"\n    tracer = get_tracer(\"ml_engine\")\n    if tracer is None:\n        yield\n        return",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "add_event",
+        "kind": 2,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "def add_event(name: str, attributes: Optional[Dict[str, Any]] = None) -> None:\n    try:\n        from opentelemetry import trace\n        sp = trace.get_current_span()\n        if sp is None:\n            return\n        sp.add_event(name, attributes=attributes)\n    except Exception:\n        return\ndef record_exception(exc: BaseException) -> None:",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "record_exception",
+        "kind": 2,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "def record_exception(exc: BaseException) -> None:\n    try:\n        from opentelemetry import trace\n        sp = trace.get_current_span()\n        if sp is None:\n            return\n        sp.record_exception(exc)\n    except Exception:\n        return\ndef set_status_error(message: str) -> None:",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "set_status_error",
+        "kind": 2,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "def set_status_error(message: str) -> None:\n    try:\n        from opentelemetry import trace\n        from opentelemetry.trace.status import Status, StatusCode\n        sp = trace.get_current_span()\n        if sp is None:\n            return\n        sp.set_status(Status(StatusCode.ERROR, message))\n    except Exception:\n        return",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "gpu_probe_attributes",
+        "kind": 2,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "def gpu_probe_attributes() -> Dict[str, Any]:\n    \"\"\"Best-effort attributes for TF/Metal runtime visibility.\"\"\"\n    attrs: Dict[str, Any] = {}\n    try:\n        import tensorflow as tf\n        attrs[\"tf.version\"] = tf.__version__\n        gpus = tf.config.list_physical_devices(\"GPU\")\n        attrs[\"tf.gpu.count\"] = len(gpus)\n        if gpus:\n            attrs[\"tf.gpu.name\"] = getattr(gpus[0], \"name\", \"\")",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "_lock",
+        "kind": 5,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "_lock = threading.Lock()\n_tracing_initialized = False\ndef _env_truthy(value: Optional[str]) -> bool:\n    if value is None:\n        return False\n    return value.strip().lower() in {\"1\", \"true\", \"yes\", \"y\", \"on\"}\ndef tracing_enabled() -> bool:\n    return _env_truthy(os.getenv(\"ML_ENGINE_TRACING\"))\ndef setup_tracing(\n    *,",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "_tracing_initialized",
+        "kind": 5,
+        "importPath": "tracing_setup",
+        "description": "tracing_setup",
+        "peekOfCode": "_tracing_initialized = False\ndef _env_truthy(value: Optional[str]) -> bool:\n    if value is None:\n        return False\n    return value.strip().lower() in {\"1\", \"true\", \"yes\", \"y\", \"on\"}\ndef tracing_enabled() -> bool:\n    return _env_truthy(os.getenv(\"ML_ENGINE_TRACING\"))\ndef setup_tracing(\n    *,\n    enabled: Optional[bool] = None,",
+        "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
         "label": "TradingEnv",
         "kind": 6,
         "importPath": "trading_env",
@@ -7702,7 +7658,7 @@
         "kind": 2,
         "importPath": "train_visual",
         "description": "train_visual",
-        "peekOfCode": "def train_tensorflow(\n    x_train, y_train, x_val, y_val,\n    training_config: TrainingConfig = None,\n    config: dict = None,\n):\n    \"\"\"Train with TensorFlow and TensorBoard visualization.\n    Args:\n        x_train: Training features [samples, timesteps, features]\n        y_train: Training targets - scalar or dict for multi-task\n        x_val: Validation features",
+        "peekOfCode": "def train_tensorflow(  # noqa: C901\n    x_train, y_train, x_val, y_val,\n    training_config: TrainingConfig = None,\n    config: dict = None,\n):\n    \"\"\"Train with TensorFlow and TensorBoard visualization.\n    Args:\n        x_train: Training features [samples, timesteps, features]\n        y_train: Training targets - scalar or dict for multi-task\n        x_val: Validation features",
         "detail": "train_visual",
         "documentation": {}
     },
@@ -7720,7 +7676,7 @@
         "kind": 2,
         "importPath": "train_visual",
         "description": "train_visual",
-        "peekOfCode": "def main():\n    parser = _create_argument_parser()\n    args = parser.parse_args()\n    # Load config if exists\n    config = {}\n    if os.path.exists(args.config):\n        config = load_config(args.config)\n    # Fetch fresh data if needed\n    _fetch_oanda_data_if_needed(args)\n    # Validate arguments",
+        "peekOfCode": "def main():\n    parser = _create_argument_parser()\n    args = parser.parse_args()\n    # Load config if exists\n    config = {}\n    if os.path.exists(args.config):\n        config = load_config(args.config)\n    # Fetch fresh data if needed\n    _fetch_oanda_data_if_needed(args)\n    if getattr(args, 'fetch_only', False):",
         "detail": "train_visual",
         "documentation": {}
     },
@@ -7729,7 +7685,7 @@
         "kind": 5,
         "importPath": "train_visual",
         "description": "train_visual",
-        "peekOfCode": "os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'\n# Constants\nDEFAULT_DATA_DIR = 'trained_data/data'\nDEFAULT_CHECKPOINT_PATH = 'trained_data/checkpoints/tensorflow/tf_model_best.keras'\n@dataclass\nclass TrainingConfig:\n    \"\"\"Configuration for training functions to reduce parameter count.\"\"\"\n    model_type: str = 'tft'\n    epochs: int = 50\n    batch_size: int = 64",
+        "peekOfCode": "os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'\ndef _suppress_irrelevant_tf_warnings_on_macos() -> None:\n    \"\"\"Hide TensorFlow warnings that are expected/irrelevant on Apple Metal.\"\"\"\n    if platform.system() != 'Darwin':\n        return\n    suppressed_substrings = (\n        'will not use cuDNN kernels',\n        'optimizer `tf.keras.optimizers.AdamW` runs slowly on M1/M2 Macs',\n        'optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs',\n        'Mixed precision compatibility check (mixed_float16): WARNING',",
         "detail": "train_visual",
         "documentation": {}
     },
