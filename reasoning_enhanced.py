@@ -21,6 +21,7 @@ def fx_confidence_v1(
     atr: float,
     spread_pips: float,
     max_spread_pips: float,
+    params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Compute a conservative scalar confidence for FX Tier-1 gating.
 
@@ -28,14 +29,22 @@ def fx_confidence_v1(
     invalid, returns confidence=0.0.
 
     Until an FX-specific model head is wired in, this function combines:
-    - setup direction (buy/sell vs hold)
+    - actionable direction (buy/sell vs hold)
     - execution quality (spread vs configured max)
     - regime volatility proxy (ATR / price)
+
+    `params` optionally tunes the mapping without code changes:
+    - base_confidence: float
+    - spread_soft_start_ratio: float in (0,1)
+    - spread_penalty_max: float
+    - atr_soft_start_pct: float (e.g., 0.001 = 0.10%)
+    - atr_penalty_max: float
 
     Returns a dict: {confidence: float in [0,1], reasons: [str]}
     """
     reasons: list[str] = []
     try:
+        params = params or {}
         sig = str(signal).strip().lower()
         if sig not in {"buy", "sell"}:
             return {"confidence": 0.0, "reasons": ["signal is not actionable"]}
@@ -53,19 +62,36 @@ def fx_confidence_v1(
         if not np.isfinite(msp) or msp <= 0:
             return {"confidence": 0.0, "reasons": ["invalid max_spread_pips"]}
 
-        # Base: mildly optimistic for an actionable setup.
-        conf = 0.72
+        base_conf = float(params.get("base_confidence", 0.85))
+        spread_soft_start = float(params.get("spread_soft_start_ratio", 0.60))
+        spread_penalty_max = float(params.get("spread_penalty_max", 0.20))
+        atr_soft_start_pct = float(params.get("atr_soft_start_pct", 0.001))
+        atr_penalty_max = float(params.get("atr_penalty_max", 0.15))
+
+        # Base confidence for an actionable setup.
+        conf = float(max(0.0, min(1.0, base_conf)))
         reasons.append(f"setup={sig}")
 
-        # Penalize if spread is a large fraction of the cap.
-        spread_ratio = min(2.0, sp / msp)
-        conf -= 0.25 * spread_ratio
-        reasons.append(f"spread_ratio={spread_ratio:.2f}")
+        # Spread penalty: only starts when spread approaches the cap.
+        spread_ratio = float(max(0.0, sp / msp))
+        if spread_ratio >= spread_soft_start:
+            denom = max(1e-9, (1.0 - spread_soft_start))
+            scaled = min(2.0, (spread_ratio - spread_soft_start) / denom)  # 0..2
+            penalty = min(spread_penalty_max, spread_penalty_max * scaled)
+            conf -= float(penalty)
+            reasons.append(f"spread_ratio={spread_ratio:.2f}")
+        else:
+            reasons.append(f"spread_ok={spread_ratio:.2f}")
 
-        # Penalize very high volatility regimes (ATR as a % of price).
-        vol_pct = a / p
-        conf -= min(0.25, max(0.0, (vol_pct - 0.001)) * 50.0)  # kicks in above ~0.1%
-        reasons.append(f"atr_pct={vol_pct:.3%}")
+        # Volatility penalty: only kicks in above atr_soft_start_pct of price.
+        vol_pct = float(a / p)
+        if vol_pct > atr_soft_start_pct:
+            scaled = min(2.0, (vol_pct - atr_soft_start_pct) / max(1e-9, atr_soft_start_pct))
+            penalty = min(atr_penalty_max, 0.5 * atr_penalty_max * scaled)
+            conf -= float(penalty)
+            reasons.append(f"atr_pct={vol_pct:.3%}")
+        else:
+            reasons.append(f"atr_ok={vol_pct:.3%}")
 
         conf = float(max(0.0, min(1.0, conf)))
         return {"confidence": conf, "reasons": reasons}

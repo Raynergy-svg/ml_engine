@@ -823,6 +823,7 @@ def _build_tf_config(x_train, training_config: TrainingConfig, config: dict) -> 
         },
         'batch_size': training_config.batch_size,
         'loss_type': config.get('loss_type', 'huber') if config else 'huber',
+        # Default set below based on GPU availability + config.
         'mixed_precision': False,
         'paths': {
             'tensorboard_dir': 'trained_data/tensorboard',
@@ -834,6 +835,12 @@ def _build_tf_config(x_train, training_config: TrainingConfig, config: dict) -> 
         },
     }
 
+    # Apply TF performance toggles from config.
+    tf_section = (config or {}).get('tensorflow', {}) or {}
+    requested_mixed_precision = bool(tf_section.get('mixed_precision', (config or {}).get('mixed_precision', False)))
+    requested_xla = bool(tf_section.get('xla_compile', False))
+    tf_config['training']['jit_compile'] = requested_xla
+
     # Default to eager mode for CPU+TFT unless explicitly overridden.
     try:
         import tensorflow as tf
@@ -842,6 +849,11 @@ def _build_tf_config(x_train, training_config: TrainingConfig, config: dict) -> 
             model_type = (training_config.model_type or '').lower()
             if (not has_gpu) and model_type in ['tft', 'temporal_fusion_transformer']:
                 tf_config['training']['run_eagerly'] = True
+        else:
+            has_gpu = len(tf.config.list_physical_devices('GPU')) > 0
+
+        # Only enable mixed precision when a GPU is available.
+        tf_config['mixed_precision'] = bool(has_gpu and requested_mixed_precision)
     except Exception:
         pass
     

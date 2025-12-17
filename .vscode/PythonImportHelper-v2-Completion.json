@@ -4526,7 +4526,7 @@
         "kind": 2,
         "importPath": "tests.test_buddy_trade_commands",
         "description": "tests.test_buddy_trade_commands",
-        "peekOfCode": "def test_trade_auto_dry_run_uses_last_prediction(capsys):\n    ctx = _ctx()\n    # Provide state_probs + risk so confidence gating can evaluate.\n    ctx.last_result = {\n        \"prediction\": 1.2000,\n        \"last_close\": 1.1000,\n        \"state_probs\": [0.05, 0.05, 0.90],\n        \"risk\": 0.10,\n    }\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True",
+        "peekOfCode": "def test_trade_auto_dry_run_uses_last_prediction(capsys):\n    ctx = _prime_fx_context(_ctx())\n    # Provide state_probs + risk so confidence gating can evaluate.\n    ctx.last_result = {\n        \"prediction\": 1.2000,\n        \"last_close\": 1.1000,\n        \"state_probs\": [0.05, 0.05, 0.90],\n        \"risk\": 0.10,\n    }\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True",
         "detail": "tests.test_buddy_trade_commands",
         "documentation": {}
     },
@@ -4535,7 +4535,7 @@
         "kind": 2,
         "importPath": "tests.test_buddy_trade_commands",
         "description": "tests.test_buddy_trade_commands",
-        "peekOfCode": "def test_trade_auto_execute_places_order(capsys):\n    ctx = _ctx()\n    ctx.oanda_execute = True\n    ctx.last_result = {\n        \"prediction\": 1.0000,\n        \"last_close\": 1.1000,\n        \"state_probs\": [0.05, 0.05, 0.90],\n        \"risk\": 0.10,\n    }\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True",
+        "peekOfCode": "def test_trade_auto_execute_places_order(capsys):\n    ctx = _prime_fx_context(_ctx())\n    ctx.oanda_execute = True\n    ctx.last_result = {\n        \"prediction\": 1.0000,\n        \"last_close\": 1.1000,\n        \"state_probs\": [0.05, 0.05, 0.90],\n        \"risk\": 0.10,\n    }\n    assert unified_talk._handle_talk_command(ctx, \"trade\", period=\"5d\", interval=\"1h\") is True",
         "detail": "tests.test_buddy_trade_commands",
         "documentation": {}
     },
@@ -4544,7 +4544,7 @@
         "kind": 2,
         "importPath": "tests.test_buddy_trade_commands",
         "description": "tests.test_buddy_trade_commands",
-        "peekOfCode": "def test_manual_trade_buy_dry_run(capsys):\n    ctx = _ctx()\n    # Manual trades also require a last prediction (for confidence checks).\n    ctx.last_result = {\n        \"prediction\": 1.2000,\n        \"last_close\": 1.1000,\n        \"state_probs\": [0.05, 0.05, 0.90],\n        \"risk\": 0.10,\n    }\n    assert unified_talk._handle_talk_command(ctx, \"trade buy 2000 EUR_USD\", period=\"5d\", interval=\"1h\") is True",
+        "peekOfCode": "def test_manual_trade_buy_dry_run(capsys):\n    ctx = _prime_fx_context(_ctx())\n    # Manual trades also require a last prediction (for confidence checks).\n    ctx.last_result = {\n        \"prediction\": 1.2000,\n        \"last_close\": 1.1000,\n        \"state_probs\": [0.05, 0.05, 0.90],\n        \"risk\": 0.10,\n    }\n    assert unified_talk._handle_talk_command(ctx, \"trade buy 2000 EUR_USD\", period=\"5d\", interval=\"1h\") is True",
         "detail": "tests.test_buddy_trade_commands",
         "documentation": {}
     },
@@ -4553,7 +4553,7 @@
         "kind": 2,
         "importPath": "tests.test_buddy_trade_commands",
         "description": "tests.test_buddy_trade_commands",
-        "peekOfCode": "def test_manual_trade_close_dry_run(capsys):\n    ctx = _ctx()\n    assert unified_talk._handle_talk_command(ctx, \"trade close EUR_USD\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"dry-run\" in out.lower()\n    assert \"close\" in out.lower()\n    assert ctx.oanda_client.closes == []",
+        "peekOfCode": "def test_manual_trade_close_dry_run(capsys):\n    ctx = _prime_fx_context(_ctx())\n    assert unified_talk._handle_talk_command(ctx, \"trade close EUR_USD\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"dry-run\" in out.lower()\n    assert \"close\" in out.lower()\n    assert ctx.oanda_client.closes == []",
         "detail": "tests.test_buddy_trade_commands",
         "documentation": {}
     },
@@ -6794,7 +6794,7 @@
         "kind": 2,
         "importPath": "reasoning_enhanced",
         "description": "reasoning_enhanced",
-        "peekOfCode": "def fx_confidence_v1(\n    *,\n    signal: str,\n    price: float,\n    atr: float,\n    spread_pips: float,\n    max_spread_pips: float,\n) -> Dict[str, Any]:\n    \"\"\"Compute a conservative scalar confidence for FX Tier-1 gating.\n    This is intentionally *fail-closed*: if any required inputs are missing or",
+        "peekOfCode": "def fx_confidence_v1(\n    *,\n    signal: str,\n    price: float,\n    atr: float,\n    spread_pips: float,\n    max_spread_pips: float,\n    params: Optional[Dict[str, Any]] = None,\n) -> Dict[str, Any]:\n    \"\"\"Compute a conservative scalar confidence for FX Tier-1 gating.",
         "detail": "reasoning_enhanced",
         "documentation": {}
     },
@@ -6803,7 +6803,7 @@
         "kind": 5,
         "importPath": "reasoning_enhanced",
         "description": "reasoning_enhanced",
-        "peekOfCode": "logger = logging.getLogger(__name__)\ndef fx_confidence_v1(\n    *,\n    signal: str,\n    price: float,\n    atr: float,\n    spread_pips: float,\n    max_spread_pips: float,\n) -> Dict[str, Any]:\n    \"\"\"Compute a conservative scalar confidence for FX Tier-1 gating.",
+        "peekOfCode": "logger = logging.getLogger(__name__)\ndef fx_confidence_v1(\n    *,\n    signal: str,\n    price: float,\n    atr: float,\n    spread_pips: float,\n    max_spread_pips: float,\n    params: Optional[Dict[str, Any]] = None,\n) -> Dict[str, Any]:",
         "detail": "reasoning_enhanced",
         "documentation": {}
     },

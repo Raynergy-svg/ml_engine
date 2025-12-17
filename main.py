@@ -119,7 +119,7 @@ def _fx_refresh_fx_state(cfg: Dict[str, Any], policy: Any, state: Any, client: A
     if stop_hit and stop_reason:
         state.disabled_reason = stop_reason
         state.disabled_kind = stop_kind
-        fxg.save_state(cfg, policy, state)
+        fxg.save_state(cfg, state)
         console.print(f"[bold red]Trading disabled[/bold red]: {stop_reason}")
 
     # Band is computed later; keep placeholder here for display.
@@ -252,6 +252,7 @@ def _fx_build_risk_rules(
 
 
 def _fx_compute_confidence_and_band(
+    cfg: Dict[str, Any],
     policy: Any,
     *,
     instrument: str,
@@ -260,38 +261,26 @@ def _fx_compute_confidence_and_band(
     atr_value: float,
     spread_pips: float,
 ) -> tuple[float, str, list[str]]:
-    """Heuristic confidence score for guardrails (not ML-based)."""
+    """Confidence score for Tier-1 gating (current source: fx_confidence_v1)."""
     import fx_guardrails as fxg
-
-    reasons: list[str] = []
-    confidence = 0.70
-
-    if signal not in {"buy", "sell"}:
-        confidence = 0.0
-        reasons.append("no actionable signal")
-        return confidence, "low", reasons
+    from reasoning_enhanced import fx_confidence_v1
 
     max_spread = float(getattr(policy.costs, "max_spread_pips", {}).get(instrument, 0.0) or 0.0)
-    if max_spread > 0:
-        ratio = float(spread_pips) / max_spread
-        if ratio >= 0.9:
-            confidence -= 0.15
-            reasons.append("spread near max")
-        elif ratio >= 0.75:
-            confidence -= 0.08
-            reasons.append("spread elevated")
+    msp = max_spread if max_spread > 0 else max(1e-9, float(spread_pips))
+    params = dict((cfg.get("fx", {}) or {}).get("confidence_model") or {})
 
-    import math
-
-    if float(atr_value) <= 0 or not math.isfinite(float(atr_value)):
-        confidence -= 0.20
-        reasons.append("invalid ATR")
-
-    confidence = float(max(0.0, min(1.0, confidence)))
+    payload = fx_confidence_v1(
+        signal=str(signal),
+        price=float(_price),
+        atr=float(atr_value),
+        spread_pips=float(spread_pips),
+        max_spread_pips=float(msp),
+        params=params,
+    )
+    confidence = float(payload.get("confidence") or 0.0)
+    reasons = [str(x) for x in (payload.get("reasons") or [])]
     band = fxg.confidence_band(policy, confidence)
-    if not reasons:
-        reasons.append("baseline")
-    return confidence, str(band), reasons
+    return float(confidence), str(band), reasons
 
 
 def _fx_apply_daily_stops(cfg: Dict[str, Any], policy: Any, state: Any, pnl: Dict[str, Any], *, band: str) -> bool:
@@ -309,7 +298,7 @@ def _fx_apply_daily_stops(cfg: Dict[str, Any], policy: Any, state: Any, pnl: Dic
     if stop_reason:
         state.disabled_reason = stop_reason
         state.disabled_kind = stop_kind
-        fxg.save_state(cfg, policy, state)
+        fxg.save_state(cfg, state)
         console.print(f"[bold red]Trading disabled[/bold red]: {stop_reason}")
     return True
 
@@ -758,6 +747,7 @@ def fx_paper_trade(
     rules = _fx_build_risk_rules(policy, pnl, equity=equity, risk_per_trade_pct=risk_per_trade_pct)
 
     confidence, band, conf_reasons = _fx_compute_confidence_and_band(
+        cfg,
         policy,
         instrument=instrument,
         signal=signal,
@@ -808,7 +798,7 @@ def fx_paper_trade(
         price_bound=price_bound,
     )
     state.entries_today += 1
-    fxg.save_state(cfg, policy, state)
+    fxg.save_state(cfg, state)
     console.print("[bold green]Order submitted (PRACTICE).[/bold green]")
     console.print(result)
 

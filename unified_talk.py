@@ -503,6 +503,84 @@ def _can_execute_trade(state_probs: Any, risk: Any) -> tuple[bool, str]:
         return False, f"low confidence ({confidence:.0%}) - not trading"
 
 
+def _fx_now_override(ctx: Any):
+    return getattr(ctx, "fx_now", None) or getattr(ctx, "_fx_now", None)
+
+
+def _fx_min_confidence(cfg: Dict[str, Any], policy: Any) -> float:
+    rm = dict((cfg or {}).get("risk_management") or {})
+    mc = rm.get("min_confidence")
+    try:
+        mc_f = float(mc) if mc is not None else float(getattr(policy.confidence, "low_lt", 0.70))
+    except Exception:
+        mc_f = float(getattr(policy.confidence, "low_lt", 0.70))
+    try:
+        low_lt = float(getattr(policy.confidence, "low_lt", mc_f))
+    except Exception:
+        low_lt = mc_f
+    return float(max(mc_f, low_lt))
+
+
+def _fx_trade_gate(ctx: "TalkContext", *, instrument: str, action: str) -> tuple[bool, str, float]:
+    """Tier-1 FX gate used by Buddy trade commands.
+
+    Keeps the trading decision consistent with:
+    - `fx_guardrails` (session, entry limits)
+    - `fx_paper` costs (spread)
+    - `fx_confidence_v1` (confidence mapping)
+
+    Returns: (ok, human_reason, confidence)
+    """
+    import fx_guardrails as fxg
+    from fx_paper import atr as fx_atr
+    from fx_paper import spread_pips_from_df
+    from reasoning_enhanced import fx_confidence_v1
+
+    cfg = load_config(ctx.config_path)
+    policy = fxg.load_fx_policy(cfg)
+    state = fxg.load_state(cfg, policy, now=_fx_now_override(ctx))
+
+    ok, why = fxg.can_open_new_trade(policy, state, now=_fx_now_override(ctx))
+    if not ok:
+        return False, f"Tier-1 blocked: {why}", 0.0
+
+    if ctx.active_df is None:
+        return False, "No active candles loaded; run 'use oanda ...' then 'predict' first.", 0.0
+
+    df = ctx.active_df
+    spread_pips = spread_pips_from_df(df, instrument)
+    if spread_pips is None:
+        spread_pips = float(getattr(policy.costs, "spread_fallback_pips", {}).get(instrument, 0.0) or 0.0)
+
+    max_spread = float(getattr(policy.costs, "max_spread_pips", {}).get(instrument, 0.0) or 0.0)
+    if max_spread > 0 and float(spread_pips) > max_spread:
+        return False, f"Tier-1 blocked: spread too wide ({float(spread_pips):.2f}p > {max_spread:.2f}p)", 0.0
+
+    price = float(df["close"].iloc[-1])
+    atr_value = float(fx_atr(df, period=14))
+
+    params = dict((cfg.get("fx", {}) or {}).get("confidence_model") or {})
+    msp = max_spread if max_spread > 0 else max(1e-9, float(spread_pips))
+
+    payload = fx_confidence_v1(
+        signal=str(action),
+        price=float(price),
+        atr=float(atr_value),
+        spread_pips=float(spread_pips),
+        max_spread_pips=float(msp),
+        params=params,
+    )
+    conf = float(payload.get("confidence") or 0.0)
+    reasons = ", ".join([str(x) for x in (payload.get("reasons") or [])])
+
+    threshold = _fx_min_confidence(cfg, policy)
+    if conf < threshold:
+        return False, f"confidence {conf:.2f} < {threshold:.2f} ({reasons})", float(conf)
+
+    band = fxg.confidence_band(policy, conf)
+    return True, f"confidence {conf:.2f} band={band} ({reasons})", float(conf)
+
+
 def _summary_line(pred: Any, last_close: Any) -> Optional[str]:
     if pred is None or last_close is None:
         return None
@@ -1208,19 +1286,12 @@ def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str], ski
     
     signed_units = abs(int(units)) * (1 if action == "buy" else -1)
 
-    # Check confidence before executing (unless explicitly skipped)
+    # Tier-1 gating before executing (unless explicitly skipped)
     if not skip_confidence_check:
         _ensure_last_prediction(ctx)
-        state_probs = (ctx.last_result or {}).get("state_probs")
-        risk = (ctx.last_result or {}).get("risk")
-        can_trade, reason = _can_execute_trade(state_probs, risk)
-        
+        can_trade, reason, _ = _fx_trade_gate(ctx, instrument=instrument, action=action)
         if not can_trade:
-            print(
-                _assistant_prefix(ctx)
-                + f"⛔ I won't execute this trade - {reason}.\n"
-                + "Run 'summary' to see current conditions, or wait for a better setup."
-            )
+            print(_assistant_prefix(ctx) + f"⛔ I won't execute this trade - {reason}.")
             return
 
     if not ctx.oanda_execute:
@@ -1470,8 +1541,6 @@ def _handle_trade_auto(ctx: TalkContext, parts: list[str]) -> None:
     result = ctx.last_result or {}
     pred = result.get("prediction")
     last_close = result.get("last_close")
-    state_probs = result.get("state_probs")
-    risk = result.get("risk")
     
     if pred is None or last_close is None:
         raise ValueError("Need a valid prediction and last close. Run 'predict' first.")
@@ -1485,7 +1554,7 @@ def _handle_trade_auto(ctx: TalkContext, parts: list[str]) -> None:
 
     action = "buy" if delta > 0 else "sell"
     signed_units = abs(int(units)) * (1 if action == "buy" else -1)
-    can_trade, reason = _can_execute_trade(state_probs, risk)
+    can_trade, reason, _ = _fx_trade_gate(ctx, instrument=instrument, action=action)
     
     if not can_trade:
         emoji = _trend_emoji(delta)

@@ -73,6 +73,7 @@ class BinaryFocalLoss(losses.Loss):
     def call(self, y_true, y_pred):
         # Apply label smoothing
         y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
         if self.label_smoothing > 0:
             y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
         

@@ -288,8 +288,19 @@ class FeatureEngineering:
                     break
             
             if date_col:
-                df[date_col] = pd.to_datetime(df[date_col])
+                # Force a real DatetimeIndex even if the source strings have mixed/explicit timezones.
+                # Using utc=True avoids pandas returning an object Index (which lacks .dayofweek).
+                dt = pd.to_datetime(df[date_col], errors='coerce', utc=True)
+                if getattr(dt, 'isna', lambda: False)().all():
+                    logger.debug("Date column could not be parsed - skipping time features")
+                    return df
+                # Drop timezone to keep downstream features consistent.
+                df[date_col] = dt.dt.tz_convert(None)
                 df.set_index(date_col, inplace=True)
+
+                if not isinstance(df.index, pd.DatetimeIndex):
+                    logger.debug("Parsed date index is not a DatetimeIndex - skipping time features")
+                    return df
             else:
                 logger.debug("No datetime index or date column found - skipping time features")
                 return df
