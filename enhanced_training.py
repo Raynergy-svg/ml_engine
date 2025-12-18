@@ -5,15 +5,21 @@
 4. Ensemble of models
 """
 
+raise SystemExit(
+    "Retired: Buddy training/inference/trading is only supported via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 import json
 import random
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
+# PyTorch retired (TensorFlow-only migration)
+# import torch
+# import torch.nn as nn
+# from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 
 from data_processing import prepare_sequences
 from multitask_labels import build_multitask_targets, split_time_series

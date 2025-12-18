@@ -18,9 +18,17 @@ from typing import Any, Dict, Optional, Union
 import numpy as np
 import pandas as pd
 import threading
-import torch
 
-from neural_engine_unified import UnifiedNeuralEngine, safe_torch_load
+# PyTorch was removed from this repository. Unified talk supports
+# TensorFlow-only checkpoints.
+torch = None  # type: ignore
+
+
+def safe_torch_load(*args: Any, **kwargs: Any):
+    raise ImportError("PyTorch was removed; load a TensorFlow checkpoint instead.")
+
+
+UnifiedNeuralEngine = None  # type: ignore
 from reasoning_enhanced import ReasoningEngine
 from utils import load_config
 

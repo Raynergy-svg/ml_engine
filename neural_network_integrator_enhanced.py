@@ -8,9 +8,18 @@ import os
 from typing import Any, Dict, Tuple
 
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+
+# PyTorch was removed from this repository. This legacy integrator is retired.
+torch = None  # type: ignore
+
+
+class _NN:
+    class Module:  # pragma: no cover
+        pass
+
+
+nn = _NN()  # type: ignore
+F = None  # type: ignore
 
 # Configure logging
 logger = logging.getLogger(__name__)

@@ -10,6 +10,11 @@ Features:
 - Custom callbacks for trading-specific metrics
 """
 
+raise SystemExit(
+    "Retired: standalone TF training engine disabled. Buddy training runs only via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 import os
 import datetime
 import time

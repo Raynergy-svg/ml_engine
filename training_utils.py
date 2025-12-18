@@ -9,8 +9,14 @@ Enhanced with:
 - Monte Carlo Dropout for uncertainty estimation
 """
 
-import torch
-import torch.nn as nn
+raise SystemExit(
+    "Retired: training utilities are disabled to avoid alternate training paths. "
+    "Use: python main.py train-buddy"
+)
+
+#+ PyTorch retired (TensorFlow-only migration)
+# import torch
+# import torch.nn as nn
 import numpy as np
 from typing import List, Dict, Optional, Tuple, Iterator
 from sklearn.model_selection import TimeSeriesSplit

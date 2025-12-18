@@ -23,16 +23,13 @@ from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-# Torch is optional: TensorFlow-only workflows should not require it.
-try:  # pragma: no cover
-    import torch  # type: ignore
-    from torch.utils.data import DataLoader, Dataset  # type: ignore
-except Exception:  # pragma: no cover
-    torch = None  # type: ignore
-    DataLoader = None  # type: ignore
+# PyTorch retired (TensorFlow-only migration)
+torch = None  # type: ignore
+DataLoader = None  # type: ignore
 
-    class Dataset:  # type: ignore
-        pass
+
+class Dataset:  # type: ignore
+    pass
 
 try:  # pragma: no cover
     import yfinance as yf  # type: ignore

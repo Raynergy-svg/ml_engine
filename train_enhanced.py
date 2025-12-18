@@ -3,6 +3,11 @@ Enhanced training script with comprehensive features.
 Demonstrates best practices for ML model training.
 """
 
+raise SystemExit(
+    "Retired: Buddy training/inference/trading is only supported via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 import os
 import argparse
 import copy
@@ -10,9 +15,30 @@ import contextlib
 from pathlib import Path
 from typing import Tuple
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+
+# PyTorch was removed from this repository. This legacy training script is not supported.
+torch = None  # type: ignore
+
+
+class _NN:
+    class Module:  # pragma: no cover
+        pass
+
+    class MSELoss:  # pragma: no cover
+        def __init__(self, *args, **kwargs):
+            pass
+
+
+nn = _NN()  # type: ignore
+
+
+class DataLoader:  # pragma: no cover
+    pass
+
+
+class TensorDataset:  # pragma: no cover
+    def __init__(self, *args, **kwargs):
+        raise RuntimeError("TensorDataset is unavailable because PyTorch was removed.")
 
 # Import our enhanced modules
 from data_loader import MarketDataLoader

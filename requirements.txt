@@ -1,7 +1,6 @@
 # ML Engine Trading Bot - Requirements
 
 # Core ML and Data Science
-torch>=2.0.0
 numpy>=1.24.0
 pandas>=2.0.0
 scikit-learn>=1.3.0
@@ -61,7 +60,6 @@ mypy>=1.3.0
 
 # Reinforcement Learning (Optional)
 gymnasium>=0.28.0
-stable-baselines3>=2.0.0
 
 # File Watching
 watchdog>=3.0.0

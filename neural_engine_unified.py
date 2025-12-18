@@ -14,8 +14,17 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
-import torch
-import torch.nn as nn
+
+# PyTorch was removed from this repository. The unified PyTorch engine is retired.
+torch = None  # type: ignore
+
+
+class _NN:
+    class Module:  # pragma: no cover
+        pass
+
+
+nn = _NN()  # type: ignore
 
 
 def safe_torch_load(checkpoint_path: str, *, map_location: str):
@@ -26,57 +35,10 @@ def safe_torch_load(checkpoint_path: str, *, map_location: str):
     metadata; we allowlist the known scaler classes used by this project.
     """
 
-    import inspect
-
-    def _torch_load(*, weights_only: Optional[bool]):
-        kwargs: Dict[str, Any] = {"map_location": map_location}
-        try:
-            if weights_only is not None and "weights_only" in inspect.signature(torch.load).parameters:
-                kwargs["weights_only"] = bool(weights_only)
-        except Exception:
-            pass
-        return torch.load(checkpoint_path, **kwargs)
-
-    try:
-        repo_root = Path(__file__).resolve().parent
-        ckpt_resolved = Path(checkpoint_path).resolve()
-        in_repo = repo_root == ckpt_resolved or repo_root in ckpt_resolved.parents
-    except Exception:
-        in_repo = False
-
-    # For trusted, repo-local checkpoints (trained by this project), load with
-    # full pickle support to avoid PyTorch 2.6+ `weights_only=True` restrictions.
-    if in_repo:
-        return _torch_load(weights_only=False)
-
-    try:
-        from torch.serialization import safe_globals  # type: ignore
-    except Exception:
-        # Older torch versions without safe globals.
-        return _torch_load(weights_only=False)
-
-    allow: list[object] = []
-    try:
-        from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler  # type: ignore
-
-        allow.extend([RobustScaler, StandardScaler, MinMaxScaler])
-    except Exception:
-        allow = []
-
-    try:
-        if allow:
-            with safe_globals(allow):
-                return _torch_load(weights_only=True)
-        return _torch_load(weights_only=True)
-    except Exception as e:
-        # If restricted loading still fails, fall back to full pickle loading
-        # only for checkpoints that live inside this repo directory.
-        # NOTE: `weights_only=False` can execute arbitrary code during unpickling.
-        # Use only for trusted checkpoints.
-        if in_repo:
-            return _torch_load(weights_only=False)
-
-        raise e
+    raise RuntimeError(
+        "safe_torch_load is unavailable because PyTorch was removed. "
+        "Use TensorFlow checkpoints via the TensorFlow-only pipeline."
+    )
 
 
 class UnifiedMarketNet(nn.Module):

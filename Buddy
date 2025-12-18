@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Repo-local launcher for Buddy.
-# Usage: ./Buddy --config ./config.yaml [--instrument EUR_USD --granularity M5 --candles 300 --execute]
+# Usage: ./Buddy --config ./config.yaml [--instrument USD_JPY --granularity M5 --candles 300 --execute]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

@@ -41,23 +41,15 @@
         "documentation": {}
     },
     {
-        "label": "Any",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
         "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -314,6 +306,14 @@
     },
     {
         "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -465,6 +465,14 @@
         "documentation": {}
     },
     {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -513,15 +521,7 @@
         "documentation": {}
     },
     {
-        "label": "List",
-        "importPath": "typing",
-        "description": "typing",
-        "isExtraImport": true,
-        "detail": "typing",
-        "documentation": {}
-    },
-    {
-        "label": "Tuple",
+        "label": "Any",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -530,6 +530,22 @@
     },
     {
         "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -545,7 +561,7 @@
         "documentation": {}
     },
     {
-        "label": "TYPE_CHECKING",
+        "label": "Dict",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -553,7 +569,15 @@
         "documentation": {}
     },
     {
-        "label": "Tuple",
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -569,7 +593,31 @@
         "documentation": {}
     },
     {
-        "label": "Union",
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -578,6 +626,30 @@
     },
     {
         "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -1492,22 +1564,6 @@
         "documentation": {}
     },
     {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
-        "label": "Path",
-        "importPath": "pathlib",
-        "description": "pathlib",
-        "isExtraImport": true,
-        "detail": "pathlib",
-        "documentation": {}
-    },
-    {
         "label": "logging",
         "kind": 6,
         "isExtraImport": true,
@@ -1884,30 +1940,76 @@
         "documentation": {}
     },
     {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
         "label": "argparse",
         "kind": 6,
         "isExtraImport": true,
         "importPath": "argparse",
         "description": "argparse",
         "detail": "argparse",
-        "documentation": {}
-    },
-    {
-        "label": "torch",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "torch",
-        "description": "torch",
-        "detail": "torch",
-        "documentation": {}
-    },
-    {
-        "label": "torch.nn",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "torch.nn",
-        "description": "torch.nn",
-        "detail": "torch.nn",
         "documentation": {}
     },
     {
@@ -1960,46 +2062,6 @@
     },
     {
         "label": "Swish",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "StockPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "AttentiveLSTM",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "GRUPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "TransformerPredictor",
-        "importPath": "models_enhanced",
-        "description": "models_enhanced",
-        "isExtraImport": true,
-        "detail": "models_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "EnsemblePredictor",
         "importPath": "models_enhanced",
         "description": "models_enhanced",
         "isExtraImport": true,
@@ -2271,55 +2333,7 @@
         "documentation": {}
     },
     {
-        "label": "StockDataset",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "create_optimized_dataloader",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "load_stock_data_efficient",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
         "label": "prepare_sequences",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "prepare_sequences",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "prepare_sequences",
-        "importPath": "data_processing",
-        "description": "data_processing",
-        "isExtraImport": true,
-        "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "augment_data",
         "importPath": "data_processing",
         "description": "data_processing",
         "isExtraImport": true,
@@ -2392,14 +2406,6 @@
     },
     {
         "label": "merge_config",
-        "importPath": "utils",
-        "description": "utils",
-        "isExtraImport": true,
-        "detail": "utils",
-        "documentation": {}
-    },
-    {
-        "label": "load_config",
         "importPath": "utils",
         "description": "utils",
         "isExtraImport": true,
@@ -2519,63 +2525,135 @@
         "documentation": {}
     },
     {
-        "label": "unified_talk",
+        "label": "atr",
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "isExtraImport": true,
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "setup_signal",
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "isExtraImport": true,
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "spread_pips_from_df",
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "isExtraImport": true,
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "pip_size",
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "isExtraImport": true,
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "conservative_slippage_pips",
+        "importPath": "fx_paper",
+        "description": "fx_paper",
+        "isExtraImport": true,
+        "detail": "fx_paper",
+        "documentation": {}
+    },
+    {
+        "label": "yaml",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "unified_talk",
-        "description": "unified_talk",
-        "detail": "unified_talk",
+        "importPath": "yaml",
+        "description": "yaml",
+        "detail": "yaml",
         "documentation": {}
     },
     {
-        "label": "select_latest_checkpoint",
-        "importPath": "unified_talk",
-        "description": "unified_talk",
-        "isExtraImport": true,
-        "detail": "unified_talk",
-        "documentation": {}
-    },
-    {
-        "label": "tempfile",
+        "label": "math",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "tempfile",
-        "description": "tempfile",
-        "detail": "tempfile",
+        "importPath": "math",
+        "description": "math",
+        "detail": "math",
         "documentation": {}
     },
     {
-        "label": "TemporaryDirectory",
-        "importPath": "tempfile",
-        "description": "tempfile",
-        "isExtraImport": true,
-        "detail": "tempfile",
-        "documentation": {}
-    },
-    {
-        "label": "time",
+        "label": "collections",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "time",
-        "description": "time",
-        "detail": "time",
+        "importPath": "collections",
+        "description": "collections",
+        "detail": "collections",
         "documentation": {}
     },
     {
-        "label": "unittest",
+        "label": "defaultdict",
+        "importPath": "collections",
+        "description": "collections",
+        "isExtraImport": true,
+        "detail": "collections",
+        "documentation": {}
+    },
+    {
+        "label": "fx_confidence_v1",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "UncertaintyEstimator",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "reasoning_enhanced",
+        "description": "reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "reasoning_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "fx_guardrails",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "unittest",
-        "description": "unittest",
-        "detail": "unittest",
-        "documentation": {}
-    },
-    {
-        "label": "mock",
-        "importPath": "unittest",
-        "description": "unittest",
-        "isExtraImport": true,
-        "detail": "unittest",
+        "importPath": "fx_guardrails",
+        "description": "fx_guardrails",
+        "detail": "fx_guardrails",
         "documentation": {}
     },
     {
@@ -2651,6 +2729,66 @@
         "documentation": {}
     },
     {
+        "label": "unified_talk",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "select_latest_checkpoint",
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "isExtraImport": true,
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "tempfile",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "tempfile",
+        "description": "tempfile",
+        "detail": "tempfile",
+        "documentation": {}
+    },
+    {
+        "label": "TemporaryDirectory",
+        "importPath": "tempfile",
+        "description": "tempfile",
+        "isExtraImport": true,
+        "detail": "tempfile",
+        "documentation": {}
+    },
+    {
+        "label": "time",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "time",
+        "description": "time",
+        "detail": "time",
+        "documentation": {}
+    },
+    {
+        "label": "unittest",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "unittest",
+        "description": "unittest",
+        "detail": "unittest",
+        "documentation": {}
+    },
+    {
+        "label": "mock",
+        "importPath": "unittest",
+        "description": "unittest",
+        "isExtraImport": true,
+        "detail": "unittest",
+        "documentation": {}
+    },
+    {
         "label": "candles_to_ohlcv_df",
         "importPath": "ml_engine.fx_paper",
         "description": "ml_engine.fx_paper",
@@ -2708,38 +2846,6 @@
         "documentation": {}
     },
     {
-        "label": "EnhancedMLEngine",
-        "importPath": "ml_engine_enhanced",
-        "description": "ml_engine_enhanced",
-        "isExtraImport": true,
-        "detail": "ml_engine_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "EnhancedMLEngine",
-        "importPath": "ml_engine_enhanced",
-        "description": "ml_engine_enhanced",
-        "isExtraImport": true,
-        "detail": "ml_engine_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "EnhancedMLEngine",
-        "importPath": "ml_engine_enhanced",
-        "description": "ml_engine_enhanced",
-        "isExtraImport": true,
-        "detail": "ml_engine_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "MemoryManager",
-        "importPath": "memory_manager_enhanced",
-        "description": "memory_manager_enhanced",
-        "isExtraImport": true,
-        "detail": "memory_manager_enhanced",
-        "documentation": {}
-    },
-    {
         "label": "MemoryManager",
         "importPath": "memory_manager_enhanced",
         "description": "memory_manager_enhanced",
@@ -2780,78 +2886,6 @@
         "documentation": {}
     },
     {
-        "label": "ReasoningEngine",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "UncertaintyEstimator",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "ReasoningEngine",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "UncertaintyEstimator",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "ReasoningEngine",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "ReasoningEngine",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "ReasoningEngine",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "NeuralNetworkIntegrator",
-        "importPath": "neural_network_integrator",
-        "description": "neural_network_integrator",
-        "isExtraImport": true,
-        "detail": "neural_network_integrator",
-        "documentation": {}
-    },
-    {
-        "label": "ModelSynchronizer",
-        "importPath": "neural_network_integrator",
-        "description": "neural_network_integrator",
-        "isExtraImport": true,
-        "detail": "neural_network_integrator",
-        "documentation": {}
-    },
-    {
         "label": "NeuralNetworkIntegrator",
         "importPath": "neural_network_integrator",
         "description": "neural_network_integrator",
@@ -2882,14 +2916,6 @@
         "importPath": "pytest",
         "description": "pytest",
         "detail": "pytest",
-        "documentation": {}
-    },
-    {
-        "label": "StockPredictor",
-        "importPath": "models",
-        "description": "models",
-        "isExtraImport": true,
-        "detail": "models",
         "documentation": {}
     },
     {
@@ -3038,42 +3064,6 @@
         "documentation": {}
     },
     {
-        "label": "yaml",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "yaml",
-        "description": "yaml",
-        "detail": "yaml",
-        "documentation": {}
-    },
-    {
-        "label": "ast",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "ast",
-        "description": "ast",
-        "detail": "ast",
-        "documentation": {}
-    },
-    {
-        "label": "subprocess",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "subprocess",
-        "description": "subprocess",
-        "detail": "subprocess",
-        "documentation": {}
-    },
-    {
-        "label": "shutil",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "shutil",
-        "description": "shutil",
-        "detail": "shutil",
-        "documentation": {}
-    },
-    {
         "label": "copy",
         "kind": 6,
         "isExtraImport": true,
@@ -3110,22 +3100,6 @@
     },
     {
         "label": "UnifiedNeuralEngine",
-        "importPath": "neural_engine_unified",
-        "description": "neural_engine_unified",
-        "isExtraImport": true,
-        "detail": "neural_engine_unified",
-        "documentation": {}
-    },
-    {
-        "label": "UnifiedNeuralEngine",
-        "importPath": "neural_engine_unified",
-        "description": "neural_engine_unified",
-        "isExtraImport": true,
-        "detail": "neural_engine_unified",
-        "documentation": {}
-    },
-    {
-        "label": "safe_torch_load",
         "importPath": "neural_engine_unified",
         "description": "neural_engine_unified",
         "isExtraImport": true,
@@ -3287,78 +3261,6 @@
         "documentation": {}
     },
     {
-        "label": "DataLoader",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "TensorDataset",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "WeightedRandomSampler",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "DataLoader",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "TensorDataset",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "DataLoader",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "TensorDataset",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "DataLoader",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
-        "label": "TensorDataset",
-        "importPath": "torch.utils.data",
-        "description": "torch.utils.data",
-        "isExtraImport": true,
-        "detail": "torch.utils.data",
-        "documentation": {}
-    },
-    {
         "label": "mean_squared_error",
         "importPath": "sklearn.metrics",
         "description": "sklearn.metrics",
@@ -3447,11 +3349,43 @@
         "documentation": {}
     },
     {
-        "label": "ModelEnsemble",
-        "importPath": "training_utils",
-        "description": "training_utils",
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
         "isExtraImport": true,
-        "detail": "training_utils",
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
         "documentation": {}
     },
     {
@@ -3608,15 +3542,6 @@
         "documentation": {}
     },
     {
-        "label": "psutil",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "psutil",
-        "description": "psutil",
-        "detail": "psutil",
-        "documentation": {}
-    },
-    {
         "label": "contextlib",
         "kind": 6,
         "isExtraImport": true,
@@ -3642,70 +3567,37 @@
         "documentation": {}
     },
     {
-        "label": "torch.optim",
+        "label": "psutil",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "torch.optim",
-        "description": "torch.optim",
-        "detail": "torch.optim",
+        "importPath": "psutil",
+        "description": "psutil",
+        "detail": "psutil",
         "documentation": {}
     },
     {
-        "label": "GradScaler",
-        "importPath": "torch.cuda.amp",
-        "description": "torch.cuda.amp",
-        "isExtraImport": true,
-        "detail": "torch.cuda.amp",
-        "documentation": {}
-    },
-    {
-        "label": "ReduceLROnPlateau",
-        "importPath": "torch.optim.lr_scheduler",
-        "description": "torch.optim.lr_scheduler",
-        "isExtraImport": true,
-        "detail": "torch.optim.lr_scheduler",
-        "documentation": {}
-    },
-    {
-        "label": "CosineAnnealingWarmRestarts",
-        "importPath": "torch.optim.lr_scheduler",
-        "description": "torch.optim.lr_scheduler",
-        "isExtraImport": true,
-        "detail": "torch.optim.lr_scheduler",
-        "documentation": {}
-    },
-    {
-        "label": "torch.nn.functional",
+        "label": "tensorflow",
         "kind": 6,
         "isExtraImport": true,
-        "importPath": "torch.nn.functional",
-        "description": "torch.nn.functional",
-        "detail": "torch.nn.functional",
+        "importPath": "tensorflow",
+        "description": "tensorflow",
+        "detail": "tensorflow",
         "documentation": {}
     },
     {
-        "label": "Enum",
-        "importPath": "enum",
-        "description": "enum",
+        "label": "keras",
+        "importPath": "tensorflow",
+        "description": "tensorflow",
         "isExtraImport": true,
-        "detail": "enum",
+        "detail": "tensorflow",
         "documentation": {}
     },
     {
-        "label": "Enum",
-        "importPath": "enum",
-        "description": "enum",
+        "label": "keras",
+        "importPath": "tensorflow",
+        "description": "tensorflow",
         "isExtraImport": true,
-        "detail": "enum",
-        "documentation": {}
-    },
-    {
-        "label": "xarray",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "xarray",
-        "description": "xarray",
-        "detail": "xarray",
+        "detail": "tensorflow",
         "documentation": {}
     },
     {
@@ -3752,14 +3644,6 @@
         "documentation": {}
     },
     {
-        "label": "SummaryWriter",
-        "importPath": "torch.utils.tensorboard",
-        "description": "torch.utils.tensorboard",
-        "isExtraImport": true,
-        "detail": "torch.utils.tensorboard",
-        "documentation": {}
-    },
-    {
         "label": "TensorBoardLogger",
         "importPath": "tensorboard_logger",
         "description": "tensorboard_logger",
@@ -3773,31 +3657,6 @@
         "description": "tensorboard_logger",
         "isExtraImport": true,
         "detail": "tensorboard_logger",
-        "documentation": {}
-    },
-    {
-        "label": "tensorflow",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "tensorflow",
-        "description": "tensorflow",
-        "detail": "tensorflow",
-        "documentation": {}
-    },
-    {
-        "label": "keras",
-        "importPath": "tensorflow",
-        "description": "tensorflow",
-        "isExtraImport": true,
-        "detail": "tensorflow",
-        "documentation": {}
-    },
-    {
-        "label": "keras",
-        "importPath": "tensorflow",
-        "description": "tensorflow",
-        "isExtraImport": true,
-        "detail": "tensorflow",
         "documentation": {}
     },
     {
@@ -3907,15 +3766,6 @@
         "documentation": {}
     },
     {
-        "label": "math",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "math",
-        "description": "math",
-        "detail": "math",
-        "documentation": {}
-    },
-    {
         "label": "hashlib",
         "kind": 6,
         "isExtraImport": true,
@@ -3980,15 +3830,6 @@
         "description": "matplotlib.animation",
         "isExtraImport": true,
         "detail": "matplotlib.animation",
-        "documentation": {}
-    },
-    {
-        "label": "collections",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "collections",
-        "description": "collections",
-        "detail": "collections",
         "documentation": {}
     },
     {
@@ -4463,7 +4304,7 @@
         "kind": 2,
         "importPath": "demo.validate_improvements",
         "description": "demo.validate_improvements",
-        "peekOfCode": "def test_improved_augmentation():\n    \"\"\"Test improved data augmentation strategies.\"\"\"\n    print(\"\\nTesting improved data augmentation...\")\n    sequences = RNG.standard_normal((50, 30, 7))\n    targets = RNG.standard_normal(50)\n    # Test augmentation with mixup\n    aug_seq, aug_tgt = augment_data(\n    # Test augmentation with mixup\n    aug_seq, aug_tgt = augment_data(\n        sequences, targets,",
+        "peekOfCode": "def test_improved_augmentation():\n    \"\"\"Test improved data augmentation strategies.\"\"\"\n    print(\"\\nTesting improved data augmentation...\")\n    sequences = RNG.standard_normal((50, 30, 7))\n    targets = RNG.standard_normal(50)\n    # Test augmentation with mixup\n    aug_seq, aug_tgt = augment_data(\n        sequences, targets,\n        noise_level=0.01,\n        augmentation_factor=3,",
         "detail": "demo.validate_improvements",
         "documentation": {}
     },
@@ -4495,6 +4336,24 @@
         "documentation": {}
     },
     {
+        "label": "torch",
+        "kind": 5,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "torch = None  # type: ignore\nnn = None  # type: ignore\nimport numpy as np\nRNG = np.random.default_rng(0)\nfrom models_enhanced import (\n    StockPredictor, AttentiveLSTM, GRUPredictor, \n    TransformerPredictor, TCNPredictor, Mish, Swish\n)\nfrom evaluation import smooth_predictions, ensemble_predictions\nfrom data_processing import augment_data",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
+        "label": "nn",
+        "kind": 5,
+        "importPath": "demo.validate_improvements",
+        "description": "demo.validate_improvements",
+        "peekOfCode": "nn = None  # type: ignore\nimport numpy as np\nRNG = np.random.default_rng(0)\nfrom models_enhanced import (\n    StockPredictor, AttentiveLSTM, GRUPredictor, \n    TransformerPredictor, TCNPredictor, Mish, Swish\n)\nfrom evaluation import smooth_predictions, ensemble_predictions\nfrom data_processing import augment_data\ndef test_activation_functions():",
+        "detail": "demo.validate_improvements",
+        "documentation": {}
+    },
+    {
         "label": "RNG",
         "kind": 5,
         "importPath": "demo.validate_improvements",
@@ -4510,6 +4369,96 @@
         "description": "examples.basic_usage",
         "peekOfCode": "def main():\n    print(\"ML Engine - Basic Usage Example\")\n    print(\"=\" * 60)\n    # Simple example configuration\n    config = {\n        \"device\": \"cpu\",\n        \"model\": {\"type\": \"lstm\", \"input_size\": 7, \"hidden_size\": 64, \"num_layers\": 2, \"dropout\": 0.2},\n        \"optimizer\": {\"type\": \"adam\", \"learning_rate\": 0.001},\n        \"training\": {\"epochs\": 3},\n        \"batch_size\": 32,",
         "detail": "examples.basic_usage",
+        "documentation": {}
+    },
+    {
+        "label": "load_yaml",
+        "kind": 2,
+        "importPath": "scripts.apply_confidence_tuning",
+        "description": "scripts.apply_confidence_tuning",
+        "peekOfCode": "def load_yaml(path: Path):\n    with path.open(\"r\", encoding=\"utf-8\") as f:\n        return yaml.safe_load(f)\ndef write_yaml(obj, path: Path):\n    with path.open(\"w\", encoding=\"utf-8\") as f:\n        yaml.safe_dump(obj, f, sort_keys=False)\ndef parse_set_items(items):\n    out = {}\n    for it in items:\n        if \"=\" not in it:",
+        "detail": "scripts.apply_confidence_tuning",
+        "documentation": {}
+    },
+    {
+        "label": "write_yaml",
+        "kind": 2,
+        "importPath": "scripts.apply_confidence_tuning",
+        "description": "scripts.apply_confidence_tuning",
+        "peekOfCode": "def write_yaml(obj, path: Path):\n    with path.open(\"w\", encoding=\"utf-8\") as f:\n        yaml.safe_dump(obj, f, sort_keys=False)\ndef parse_set_items(items):\n    out = {}\n    for it in items:\n        if \"=\" not in it:\n            raise SystemExit(f\"Invalid set argument: {it}. Expect key=value\")\n        k, v = it.split(\"=\", 1)\n        try:",
+        "detail": "scripts.apply_confidence_tuning",
+        "documentation": {}
+    },
+    {
+        "label": "parse_set_items",
+        "kind": 2,
+        "importPath": "scripts.apply_confidence_tuning",
+        "description": "scripts.apply_confidence_tuning",
+        "peekOfCode": "def parse_set_items(items):\n    out = {}\n    for it in items:\n        if \"=\" not in it:\n            raise SystemExit(f\"Invalid set argument: {it}. Expect key=value\")\n        k, v = it.split(\"=\", 1)\n        try:\n            # try numeric\n            if \".\" in v:\n                val = float(v)",
+        "detail": "scripts.apply_confidence_tuning",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "scripts.apply_confidence_tuning",
+        "description": "scripts.apply_confidence_tuning",
+        "peekOfCode": "def main():\n    p = argparse.ArgumentParser()\n    p.add_argument(\"--in\", dest=\"infile\", default=\"config.yaml\")\n    p.add_argument(\"--out\", dest=\"outfile\", default=\"config_tuned.yaml\")\n    p.add_argument(\"--set\", dest=\"set\", nargs=\"*\", default=[], help=\"Override specific tuning params key=value\")\n    args = p.parse_args()\n    in_path = Path(args.infile)\n    out_path = Path(args.outfile)\n    if not in_path.exists():\n        raise SystemExit(f\"Input config not found: {in_path}\")",
+        "detail": "scripts.apply_confidence_tuning",
+        "documentation": {}
+    },
+    {
+        "label": "DEFAULTS",
+        "kind": 5,
+        "importPath": "scripts.apply_confidence_tuning",
+        "description": "scripts.apply_confidence_tuning",
+        "peekOfCode": "DEFAULTS = {\n    \"base_confidence\": 0.75,\n    \"spread_soft_start_ratio\": 0.5,\n    \"spread_penalty_max\": 0.0,\n    \"atr_soft_start_pct\": 0.0005,\n    \"atr_penalty_max\": 0.0,\n}\ndef load_yaml(path: Path):\n    with path.open(\"r\", encoding=\"utf-8\") as f:\n        return yaml.safe_load(f)",
+        "detail": "scripts.apply_confidence_tuning",
+        "documentation": {}
+    },
+    {
+        "label": "load_market_csv",
+        "kind": 2,
+        "importPath": "scripts.calibrate_fx_confidence",
+        "description": "scripts.calibrate_fx_confidence",
+        "peekOfCode": "def load_market_csv(path: str) -> pd.DataFrame:\n    df = pd.read_csv(path)\n    # Expect typical OANDA export columns: time, open, high, low, close, volume, bid_close, ask_close\n    return df.reset_index(drop=True)\ndef simulate_trade_row(\n    df: pd.DataFrame,\n    idx: int,\n    signal: str,\n    policy: fxg.FxPolicy,\n    cfg: Dict,",
+        "detail": "scripts.calibrate_fx_confidence",
+        "documentation": {}
+    },
+    {
+        "label": "simulate_trade_row",
+        "kind": 2,
+        "importPath": "scripts.calibrate_fx_confidence",
+        "description": "scripts.calibrate_fx_confidence",
+        "peekOfCode": "def simulate_trade_row(\n    df: pd.DataFrame,\n    idx: int,\n    signal: str,\n    policy: fxg.FxPolicy,\n    cfg: Dict,\n    apply_costs: bool = True,\n) -> Optional[Dict]:\n    \"\"\"Simulate a single rule-based trade starting at index `idx`.\n    Returns dict with realized return in quote units and metadata, or None if no trade.",
+        "detail": "scripts.calibrate_fx_confidence",
+        "documentation": {}
+    },
+    {
+        "label": "walk_forward_eval",
+        "kind": 2,
+        "importPath": "scripts.calibrate_fx_confidence",
+        "description": "scripts.calibrate_fx_confidence",
+        "peekOfCode": "def walk_forward_eval(df: pd.DataFrame, policy: fxg.FxPolicy, cfg: Dict, instrument: str, n_splits: int = 5):\n    N = len(df)\n    if N < 100:\n        raise ValueError(\"Not enough data for walk-forward evaluation\")\n    fold_size = max(1, N // (n_splits + 1))\n    results = []\n    for k in range(n_splits):\n        train_end = fold_size * (k + 1)\n        test_start = train_end\n        test_end = min(N, test_start + fold_size)",
+        "detail": "scripts.calibrate_fx_confidence",
+        "documentation": {}
+    },
+    {
+        "label": "summarize_sweep",
+        "kind": 2,
+        "importPath": "scripts.calibrate_fx_confidence",
+        "description": "scripts.calibrate_fx_confidence",
+        "peekOfCode": "def summarize_sweep(results: List[List], thresholds: List[float]):\n    # results: list of folds, each is list of tuples (real, model)\n    out = []\n    for thr in thresholds:\n        stats = {\"thr\": thr, \"trades\": 0, \"trades_model\": 0, \"wins\": 0, \"wins_model\": 0, \"net_ret\": 0.0, \"net_ret_model\": 0.0}\n        for fold in results:\n            for real, model in fold:\n                if real[\"confidence\"] >= thr:\n                    stats[\"trades\"] += 1\n                    stats[\"net_ret\"] += real[\"net_ret\"]",
+        "detail": "scripts.calibrate_fx_confidence",
+        "documentation": {}
+    },
+    {
+        "label": "main",
+        "kind": 2,
+        "importPath": "scripts.calibrate_fx_confidence",
+        "description": "scripts.calibrate_fx_confidence",
+        "peekOfCode": "def main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument(\"--instrument\", default=\"EUR_USD\")\n    parser.add_argument(\"--data\", default=\"market_data/oanda_EUR_USD_M5.csv\")\n    parser.add_argument(\"--splits\", type=int, default=5)\n    parser.add_argument(\"--grid\", action=\"store_true\", help=\"Run grid-search over confidence_model params\")\n    parser.add_argument(\"--min-trades\", type=int, default=5, help=\"Minimum trades required to consider a threshold/config\")\n    parser.add_argument(\"--top-n\", type=int, default=5, help=\"Print top-N configurations from grid-search\")\n    args = parser.parse_args()\n    import yaml",
+        "detail": "scripts.calibrate_fx_confidence",
         "documentation": {}
     },
     {
@@ -4783,24 +4732,6 @@
         "documentation": {}
     },
     {
-        "label": "TestStockPredictorValidation",
-        "kind": 6,
-        "importPath": "tests.test_models_improved",
-        "description": "tests.test_models_improved",
-        "peekOfCode": "class TestStockPredictorValidation(unittest.TestCase):\n    \"\"\"Test StockPredictor validation improvements\"\"\"\n    def test_valid_initialization(self):\n        \"\"\"Test model initializes with valid parameters\"\"\"\n        model = StockPredictor(\n            input_size=7,\n            hidden_size=128,\n            num_layers=3,\n            dropout=0.2\n        )",
-        "detail": "tests.test_models_improved",
-        "documentation": {}
-    },
-    {
-        "label": "TestModelRobustness",
-        "kind": 6,
-        "importPath": "tests.test_models_improved",
-        "description": "tests.test_models_improved",
-        "peekOfCode": "class TestModelRobustness(unittest.TestCase):\n    \"\"\"Test model robustness to edge cases\"\"\"\n    def test_single_sample_batch(self):\n        \"\"\"Test model works with single sample\"\"\"\n        model = StockPredictor(input_size=5, hidden_size=32, num_layers=2)\n        x = torch.randn(1, 20, 5)\n        output = model(x)\n        self.assertEqual(output.shape, (1, 1))\n    def test_large_batch(self):\n        \"\"\"Test model works with large batch\"\"\"",
-        "detail": "tests.test_models_improved",
-        "documentation": {}
-    },
-    {
         "label": "test_direction_uses_horizon_move_target_shift",
         "kind": 2,
         "importPath": "tests.test_multitask_labels_alignment",
@@ -4834,51 +4765,6 @@
         "description": "tests.test_oanda_practice",
         "peekOfCode": "PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), \"..\"))\nif PROJECT_ROOT not in sys.path:\n    sys.path.insert(0, PROJECT_ROOT)\nimport oanda_practice\nclass TestOandaPracticeClient(unittest.TestCase):\n    def test_from_env_missing_vars_raises(self):\n        with mock.patch.dict(\"os.environ\", {}, clear=True):\n            with self.assertRaises(EnvironmentError):\n                oanda_practice.OandaPracticeClient.from_env()\n    def test_get_candles_calls_expected_endpoint(self):",
         "detail": "tests.test_oanda_practice",
-        "documentation": {}
-    },
-    {
-        "label": "TestDataProcessing",
-        "kind": 6,
-        "importPath": "tests.test_optimized_model",
-        "description": "tests.test_optimized_model",
-        "peekOfCode": "class TestDataProcessing(unittest.TestCase):\n    \"\"\"Test data processing functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.test_dir = Path(\"test_data\")\n        self.test_dir.mkdir(exist_ok=True)\n        # Create sample data\n        self.sample_data = pd.DataFrame({\n            'date': pd.date_range(start='2020-01-01', periods=100),\n            'ticker': ['AAPL'] * 100,",
-        "detail": "tests.test_optimized_model",
-        "documentation": {}
-    },
-    {
-        "label": "TestModels",
-        "kind": 6,
-        "importPath": "tests.test_optimized_model",
-        "description": "tests.test_optimized_model",
-        "peekOfCode": "class TestModels(unittest.TestCase):\n    \"\"\"Test model functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n        # Create sample data\n        self.batch_size = 8\n        self.seq_length = 10\n        self.input_size = 5\n        self.hidden_size = 32",
-        "detail": "tests.test_optimized_model",
-        "documentation": {}
-    },
-    {
-        "label": "TestMLEngine",
-        "kind": 6,
-        "importPath": "tests.test_optimized_model",
-        "description": "tests.test_optimized_model",
-        "peekOfCode": "class TestMLEngine(unittest.TestCase):\n    \"\"\"Test ML engine functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.test_dir = Path(\"test_models\")\n        self.test_dir.mkdir(exist_ok=True)\n        # Create sample data\n        self.sample_data = pd.DataFrame({\n            'date': pd.date_range(start='2020-01-01', periods=100),\n            'ticker': ['AAPL'] * 100,",
-        "detail": "tests.test_optimized_model",
-        "documentation": {}
-    },
-    {
-        "label": "TestNeuralNetworkIntegrator",
-        "kind": 6,
-        "importPath": "tests.test_optimized_model",
-        "description": "tests.test_optimized_model",
-        "peekOfCode": "class TestNeuralNetworkIntegrator(unittest.TestCase):\n    \"\"\"Test neural network integrator functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        self.device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n        # Create sample data\n        self.batch_size = 4\n        self.input_dim = 64\n        # Create dummy engine outputs\n        self.ml_output = torch.randn(self.batch_size, self.input_dim)",
-        "detail": "tests.test_optimized_model",
-        "documentation": {}
-    },
-    {
-        "label": "logger",
-        "kind": 5,
-        "importPath": "tests.test_optimized_model",
-        "description": "tests.test_optimized_model",
-        "peekOfCode": "logger = logging.getLogger(__name__)\n# Add project directory to path\nsys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n# Import optimized modules\nfrom data_processing import load_stock_data_efficient, prepare_sequences, StockDataset, create_optimized_dataloader\nfrom ml_engine_enhanced import EnhancedMLEngine\nfrom memory_manager_enhanced import MemoryManager\nfrom models_enhanced import StockPredictor, AttentiveLSTM, GRUPredictor, TransformerPredictor, EnsemblePredictor\nfrom reasoning_enhanced import ReasoningEngine, UncertaintyEstimator\nfrom neural_network_integrator import NeuralNetworkIntegrator, ModelSynchronizer",
-        "detail": "tests.test_optimized_model",
         "documentation": {}
     },
     {
@@ -4936,47 +4822,11 @@
         "documentation": {}
     },
     {
-        "label": "DataError",
-        "kind": 6,
-        "importPath": "ai_assistant",
-        "description": "ai_assistant",
-        "peekOfCode": "class DataError(Exception):\n    \"\"\"Raised when there are issues with data loading or processing.\"\"\"\n    pass\nclass ModelError(Exception):\n    \"\"\"Raised when there are issues with model operations.\"\"\"\n    pass\nclass ai_assistant:\n    \"\"\"Provides AI-based code explanations and improvement suggestions.\"\"\"\n    def __init__(self, config: Dict[str, Any]) -> None:\n        self.config = config",
-        "detail": "ai_assistant",
-        "documentation": {}
-    },
-    {
-        "label": "ModelError",
-        "kind": 6,
-        "importPath": "ai_assistant",
-        "description": "ai_assistant",
-        "peekOfCode": "class ModelError(Exception):\n    \"\"\"Raised when there are issues with model operations.\"\"\"\n    pass\nclass ai_assistant:\n    \"\"\"Provides AI-based code explanations and improvement suggestions.\"\"\"\n    def __init__(self, config: Dict[str, Any]) -> None:\n        self.config = config\n        self.openai_enabled = False\n        self.anthropic_client = None\n        self.memory: List[str] = []",
-        "detail": "ai_assistant",
-        "documentation": {}
-    },
-    {
         "label": "ai_assistant",
-        "kind": 6,
-        "importPath": "ai_assistant",
-        "description": "ai_assistant",
-        "peekOfCode": "class ai_assistant:\n    \"\"\"Provides AI-based code explanations and improvement suggestions.\"\"\"\n    def __init__(self, config: Dict[str, Any]) -> None:\n        self.config = config\n        self.openai_enabled = False\n        self.anthropic_client = None\n        self.memory: List[str] = []\n        self.suggestion_cache: Dict[str, str] = {}\n        self.active_model = None\n        self.training_data = None",
-        "detail": "ai_assistant",
-        "documentation": {}
-    },
-    {
-        "label": "run_tests",
         "kind": 2,
         "importPath": "ai_assistant",
         "description": "ai_assistant",
-        "peekOfCode": "def run_tests():\n    \"\"\"Test the AI assistant with proper data processing.\"\"\"\n    assistant = ai_assistant({})\n    # Test 1: Simulate scenario\n    sim_result = assistant.process_query(\"simulate\")\n    assert \"Simulation functionality is currently disabled.\" in sim_result\n    # Test 2: Load model file - tests DataError handling\n    try:\n        assistant.load_training_data(\"./trained_data/models/best_model.pth\")\n        assert False, \"Should have raised DataError\"",
-        "detail": "ai_assistant",
-        "documentation": {}
-    },
-    {
-        "label": "USER_PROMPT",
-        "kind": 5,
-        "importPath": "ai_assistant",
-        "description": "ai_assistant",
-        "peekOfCode": "USER_PROMPT = \"User: \"\ntry:\n    import openai  # type: ignore[import-not-found]\n    openai_available = True\nexcept ImportError:\n    openai_available = False\ntry:\n    from anthropic import Client  # type: ignore[import-not-found]\n    anthropic_available = True\nexcept ImportError:",
+        "peekOfCode": "def ai_assistant(*_args, **_kwargs):\n    raise RuntimeError(\"Retired: use Buddy TensorFlow pipeline in main.py\")",
         "detail": "ai_assistant",
         "documentation": {}
     },
@@ -5206,6 +5056,15 @@
         "documentation": {}
     },
     {
+        "label": "torch",
+        "kind": 5,
+        "importPath": "cli_enhanced",
+        "description": "cli_enhanced",
+        "peekOfCode": "torch = None  # type: ignore\n# Import optimized modules\nfrom data_processing import load_stock_data_efficient, prepare_sequences\nfrom memory_manager_enhanced import MemoryManager, memory_efficient\nfrom reasoning_enhanced import ReasoningEngine\nfrom neural_network_integrator_enhanced import NeuralNetworkIntegrator\nfrom neural_engine_unified import UnifiedNeuralEngine\n# Configure logging\nlogging.basicConfig(\n    level=logging.INFO,",
+        "detail": "cli_enhanced",
+        "documentation": {}
+    },
+    {
         "label": "logger",
         "kind": 5,
         "importPath": "cli_enhanced",
@@ -5275,6 +5134,15 @@
         "description": "data_loader",
         "peekOfCode": "PreprocessResult = Tuple[\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n    np.ndarray,\n]\nclass DataLoader:\n    \"\"\"Enhanced data loader with comprehensive preprocessing.\"\"\"",
         "detail": "data_loader",
+        "documentation": {}
+    },
+    {
+        "label": "Dataset",
+        "kind": 6,
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "class Dataset:  # type: ignore\n    pass\ntry:  # pragma: no cover\n    import yfinance as yf  # type: ignore\nexcept Exception:  # pragma: no cover\n    yf = None  # type: ignore\ntry:\n    import dask.array as da  # type: ignore\nexcept Exception:  # pragma: no cover\n    da = None",
+        "detail": "data_processing",
         "documentation": {}
     },
     {
@@ -5368,6 +5236,24 @@
         "documentation": {}
     },
     {
+        "label": "torch",
+        "kind": 5,
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "torch = None  # type: ignore\nDataLoader = None  # type: ignore\nclass Dataset:  # type: ignore\n    pass\ntry:  # pragma: no cover\n    import yfinance as yf  # type: ignore\nexcept Exception:  # pragma: no cover\n    yf = None  # type: ignore\ntry:\n    import dask.array as da  # type: ignore",
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "kind": 5,
+        "importPath": "data_processing",
+        "description": "data_processing",
+        "peekOfCode": "DataLoader = None  # type: ignore\nclass Dataset:  # type: ignore\n    pass\ntry:  # pragma: no cover\n    import yfinance as yf  # type: ignore\nexcept Exception:  # pragma: no cover\n    yf = None  # type: ignore\ntry:\n    import dask.array as da  # type: ignore\nexcept Exception:  # pragma: no cover",
+        "detail": "data_processing",
+        "documentation": {}
+    },
+    {
         "label": "logger",
         "kind": 5,
         "importPath": "data_processing",
@@ -5410,105 +5296,6 @@
         "description": "data_processing",
         "peekOfCode": "_REQUIRED_STOCK_COLS = {\"open\", \"high\", \"low\", \"close\", \"volume\"}\ndef _normalize_columns(columns) -> List[str]:\n    out = []\n    for col in columns:\n        if isinstance(col, tuple):\n            out.append(\"_\".join(map(str, col)).lower())\n        else:\n            out.append(str(col).lower())\n    return out\ndef _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:",
         "detail": "data_processing",
-        "documentation": {}
-    },
-    {
-        "label": "config",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "config = load_config(\"config.yaml\")\nconfig[\"epochs\"] = 5  # Short runs for demo\nconfig[\"batch_size\"] = 32\nconfig[\"auto_resume\"] = True  # Enable auto-resume (now default)\nprint(\"Configuration:\")\nprint(f\"  • auto_resume: {config['auto_resume']}\")\nprint(f\"  • epochs per run: {config['epochs']}\")\nprint(f\"  • early_stopping_patience: {config.get('early_stopping_patience', 10)}\")\nprint()\n# Create dummy data for demo",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "config[\"epochs\"]",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "config[\"epochs\"] = 5  # Short runs for demo\nconfig[\"batch_size\"] = 32\nconfig[\"auto_resume\"] = True  # Enable auto-resume (now default)\nprint(\"Configuration:\")\nprint(f\"  • auto_resume: {config['auto_resume']}\")\nprint(f\"  • epochs per run: {config['epochs']}\")\nprint(f\"  • early_stopping_patience: {config.get('early_stopping_patience', 10)}\")\nprint()\n# Create dummy data for demo\nprint(\"Creating dummy training data...\")",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "config[\"batch_size\"]",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "config[\"batch_size\"] = 32\nconfig[\"auto_resume\"] = True  # Enable auto-resume (now default)\nprint(\"Configuration:\")\nprint(f\"  • auto_resume: {config['auto_resume']}\")\nprint(f\"  • epochs per run: {config['epochs']}\")\nprint(f\"  • early_stopping_patience: {config.get('early_stopping_patience', 10)}\")\nprint()\n# Create dummy data for demo\nprint(\"Creating dummy training data...\")\nnp.random.seed(42)",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "config[\"auto_resume\"]",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "config[\"auto_resume\"] = True  # Enable auto-resume (now default)\nprint(\"Configuration:\")\nprint(f\"  • auto_resume: {config['auto_resume']}\")\nprint(f\"  • epochs per run: {config['epochs']}\")\nprint(f\"  • early_stopping_patience: {config.get('early_stopping_patience', 10)}\")\nprint()\n# Create dummy data for demo\nprint(\"Creating dummy training data...\")\nnp.random.seed(42)\nn_samples = 200",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "n_samples",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "n_samples = 200\nseq_len = 60\nn_features = config.get(\"model\", {}).get(\"input_size\", 7)\nX_train = torch.randn(n_samples, seq_len, n_features)\ny_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "seq_len",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "seq_len = 60\nn_features = config.get(\"model\", {}).get(\"input_size\", 7)\nX_train = torch.randn(n_samples, seq_len, n_features)\ny_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "n_features",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "n_features = config.get(\"model\", {}).get(\"input_size\", 7)\nX_train = torch.randn(n_samples, seq_len, n_features)\ny_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "X_train",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "X_train = torch.randn(n_samples, seq_len, n_features)\ny_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)\nprint(\"SIMULATING MULTIPLE TRAINING SESSIONS\")",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "y_train",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "y_train = torch.randn(n_samples)\nX_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)\nprint(\"SIMULATING MULTIPLE TRAINING SESSIONS\")\nprint(\"=\" * 70)",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "X_val",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "X_val = torch.randn(50, seq_len, n_features)\ny_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)\nprint(\"SIMULATING MULTIPLE TRAINING SESSIONS\")\nprint(\"=\" * 70)\nprint()",
-        "detail": "demo_auto_continuity",
-        "documentation": {}
-    },
-    {
-        "label": "y_val",
-        "kind": 5,
-        "importPath": "demo_auto_continuity",
-        "description": "demo_auto_continuity",
-        "peekOfCode": "y_val = torch.randn(50)\nprint(f\"  • Training samples: {n_samples}\")\nprint(f\"  • Validation samples: {len(y_val)}\")\nprint()\n# Simulate multiple training sessions\nprint(\"=\" * 70)\nprint(\"SIMULATING MULTIPLE TRAINING SESSIONS\")\nprint(\"=\" * 70)\nprint()\nfor session in range(1, 4):",
-        "detail": "demo_auto_continuity",
         "documentation": {}
     },
     {
@@ -5660,7 +5447,7 @@
         "kind": 2,
         "importPath": "evaluation",
         "description": "evaluation",
-        "peekOfCode": "def predict_with_uncertainty(\n    model: torch.nn.Module,\n    X: torch.Tensor,\n    n_iterations: int = 30,\n    device: str = \"cpu\"\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"\n    Make predictions with uncertainty estimation using Monte Carlo Dropout.\n    Args:\n        model: PyTorch model with dropout layers",
+        "peekOfCode": "def predict_with_uncertainty(\n    model: Any,\n    X: Any,\n    n_iterations: int = 30,\n    device: str = \"cpu\"\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"\n    Make predictions with uncertainty estimation using Monte Carlo Dropout.\n    Args:\n        model: PyTorch model with dropout layers",
         "detail": "evaluation",
         "documentation": {}
     },
@@ -5705,35 +5492,8 @@
         "kind": 5,
         "importPath": "evaluation",
         "description": "evaluation",
-        "peekOfCode": "logger = logging.getLogger(__name__)\ndef predict_with_uncertainty(\n    model: torch.nn.Module,\n    X: torch.Tensor,\n    n_iterations: int = 30,\n    device: str = \"cpu\"\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"\n    Make predictions with uncertainty estimation using Monte Carlo Dropout.\n    Args:",
+        "peekOfCode": "logger = logging.getLogger(__name__)\ndef predict_with_uncertainty(\n    model: Any,\n    X: Any,\n    n_iterations: int = 30,\n    device: str = \"cpu\"\n) -> Tuple[np.ndarray, np.ndarray]:\n    \"\"\"\n    Make predictions with uncertainty estimation using Monte Carlo Dropout.\n    Args:",
         "detail": "evaluation",
-        "documentation": {}
-    },
-    {
-        "label": "create_sample_data",
-        "kind": 2,
-        "importPath": "example_improved_training",
-        "description": "example_improved_training",
-        "peekOfCode": "def create_sample_data(n_samples=1000, n_features=7, rng=None, seed=42):\n    \"\"\"Create sample time series data for demonstration.\"\"\"\n    rng = rng if rng is not None else np.random.default_rng(seed)\n    # Generate synthetic stock data\n    time = np.arange(n_samples)\n    trend = 0.01 * time\n    seasonality = 10 * np.sin(2 * np.pi * time / 252)  # Annual cycle\n    noise = rng.normal(0, 2, n_samples)\n    prices = 100 + trend + seasonality + noise\n    # Create OHLCV-like features",
-        "detail": "example_improved_training",
-        "documentation": {}
-    },
-    {
-        "label": "main",
-        "kind": 2,
-        "importPath": "example_improved_training",
-        "description": "example_improved_training",
-        "peekOfCode": "def main():\n    \"\"\"Main training example with all improvements.\"\"\"\n    print(\"=\" * 80)\n    print(\"Enhanced ML Engine Training Example\")\n    print(\"Using PyTorch Best Practices\")\n    print(\"=\" * 80)\n    # 1. Configuration with optimized settings\n    config = {\n        \"model\": {\n            \"type\": \"attention_lstm\",  # or \"transformer\", \"lstm\", \"gru\"",
-        "detail": "example_improved_training",
-        "documentation": {}
-    },
-    {
-        "label": "rng",
-        "kind": 5,
-        "importPath": "example_improved_training",
-        "description": "example_improved_training",
-        "peekOfCode": "rng = np.random.default_rng(42)\nif torch.cuda.is_available():\n    torch.cuda.manual_seed(42)\ndef create_sample_data(n_samples=1000, n_features=7, rng=None, seed=42):\n    \"\"\"Create sample time series data for demonstration.\"\"\"\n    rng = rng if rng is not None else np.random.default_rng(seed)\n    # Generate synthetic stock data\n    time = np.arange(n_samples)\n    trend = 0.01 * time\n    seasonality = 10 * np.sin(2 * np.pi * time / 252)  # Annual cycle",
-        "detail": "example_improved_training",
         "documentation": {}
     },
     {
@@ -6016,11 +5776,20 @@
         "documentation": {}
     },
     {
+        "label": "train_buddy",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def train_buddy(\n    config_path: str,\n    csv_path: str | None = None,\n    *,\n    pca_components: int | None = None,\n    seq_len: int = 50,\n    epochs: int = 300,\n    batch_size: int = 32,\n    lr: float = 0.001,\n    all_features: bool = True,",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
         "label": "integrated_predict_once",
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def integrated_predict_once(config: Dict[str, Any]) -> Dict[str, Any]:\n    \"\"\"Smoke: run one integrated prediction across ML/MT/MR.\"\"\"\n    integrator = _build_integrated_engines(config)\n    ml_features = torch.zeros((2, 5, int(config.get(\"model\", {}).get(\"input_size\", 7))), dtype=torch.float32)\n    mt_features = torch.zeros((2, 5, 11), dtype=torch.float32)\n    mr_features = torch.zeros((2, 5, 11), dtype=torch.float32)\n    return integrator.predict(\n        {\"ml_features\": ml_features, \"mt_features\": mt_features, \"mr_features\": mr_features}\n    )\ndef compute_slm_indicators(market_data_df):",
+        "peekOfCode": "def integrated_predict_once(config: Dict[str, Any]) -> Dict[str, Any]:\n    raise RuntimeError(\"Retired: integrated prediction is no longer supported. Use `train-buddy`/`buddy`.\")\ndef compute_slm_indicators(market_data_df):\n    \"\"\"Compute a small subset of SLM technical indicators without network calls.\"\"\"\n    try:\n        from SLM.stock_slm import (\n            calculate_sma,\n            calculate_ema,\n            calculate_rsi,\n            calculate_macd,",
         "detail": "main",
         "documentation": {}
     },
@@ -6038,7 +5807,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def build_integrated_feature_tensors(\n    market_data_df, config: Dict[str, Any], *, allow_pad: bool = False\n) -> Dict[str, Any]:\n    \"\"\"Build feature tensors for ML/MT/MR using OHLCV + SLM indicators.\"\"\"\n    import pandas as pd\n    import numpy as np\n    df = _normalize_market_dataframe(market_data_df)\n    seq_len = int(\n        config.get(\"data\", {}).get(\"sequence_length\")\n        or config.get(\"sequence_length\")",
+        "peekOfCode": "def build_integrated_feature_tensors(\n    market_data_df, config: Dict[str, Any], *, allow_pad: bool = False\n) -> Dict[str, Any]:\n    raise RuntimeError(\"Retired: integrated feature tensors are no longer supported.\")\ndef integrated_predict(config_path: str, csv_path: str | None = None) -> None:\n    raise RuntimeError(\"Retired: integrated predict is no longer supported. Use `train-buddy`/`buddy`.\")\ndef _fetch_live_market_data(ticker: str, period: str, interval: str):\n    try:\n        import yfinance as yf  # type: ignore\n    except Exception as e:  # pragma: no cover",
         "detail": "main",
         "documentation": {}
     },
@@ -6047,7 +5816,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def integrated_predict(config_path: str, csv_path: str | None = None) -> None:\n    \"\"\"Run a unified prediction: CSV -> SLM indicators -> ML/MT/MR -> integrator -> reasoning.\"\"\"\n    import pandas as pd\n    config = load_config(config_path)\n    if csv_path is None:\n        csv_path = _pick_default_market_csv(config)\n    df = pd.read_csv(csv_path)\n    features = build_integrated_feature_tensors(df, config)\n    integrator = _build_integrated_engines(config)\n    result = integrator.predict(features)",
+        "peekOfCode": "def integrated_predict(config_path: str, csv_path: str | None = None) -> None:\n    raise RuntimeError(\"Retired: integrated predict is no longer supported. Use `train-buddy`/`buddy`.\")\ndef _fetch_live_market_data(ticker: str, period: str, interval: str):\n    try:\n        import yfinance as yf  # type: ignore\n    except Exception as e:  # pragma: no cover\n        raise ImportError(\"Live data fetch requires `yfinance`.\") from e\n    data = yf.Ticker(ticker).history(period=period, interval=interval)\n    if data is None or data.empty:\n        raise RuntimeError(f\"No live data returned for {ticker} ({period}, {interval})\")",
         "detail": "main",
         "documentation": {}
     },
@@ -6164,7 +5933,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_path: str | None = None) -> None:\n    \"\"\"Train the unified multi-head model and print head-health insights.\"\"\"\n    from unified_multitask_training import train_unified_multitask\n    result = train_unified_multitask(config_path, csv_path=csv_path, resume_path=checkpoint_path)\n    console.print(\n        f\"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}\"\n    )\ndef train_oanda_unified(\n    config_path: str,\n    *,",
+        "peekOfCode": "def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_path: str | None = None) -> None:\n    \"\"\"Legacy alias: train Buddy TF model from main.py only.\"\"\"\n    _ = checkpoint_path\n    train_buddy(config_path, csv_path)\ndef train_oanda_unified(\n    config_path: str,\n    *,\n    instruments: str,\n    granularity: str,\n    candles: int,",
         "detail": "main",
         "documentation": {}
     },
@@ -6173,7 +5942,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def train_oanda_unified(\n    config_path: str,\n    *,\n    instruments: str,\n    granularity: str,\n    candles: int,\n    checkpoint_path: str | None = None,\n    all_features: bool = False,\n) -> None:\n    \"\"\"Fetch OANDA candles into local cache and train unified model (auto-resume).\"\"\"",
+        "peekOfCode": "def train_oanda_unified(\n    config_path: str,\n    *,\n    instruments: str,\n    granularity: str,\n    candles: int,\n    checkpoint_path: str | None = None,\n    all_features: bool = False,\n) -> None:\n    \"\"\"Legacy alias: uses repo-local USDJPY CSV unless --csv is provided.\"\"\"",
         "detail": "main",
         "documentation": {}
     },
@@ -6200,7 +5969,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"USD_JPY\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = True,  # Live trading enabled by default\n    all_features: bool = False,\n    verbose: bool = False,",
+        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"USD_JPY\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = False,  # Live trading must be explicitly enabled\n    all_features: bool = False,\n    verbose: bool = False,",
         "detail": "main",
         "documentation": {}
     },
@@ -6209,7 +5978,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def main() -> None:\n    \"\"\"Main CLI entry point.\"\"\"\n    parser = argparse.ArgumentParser(description=\"ML Engine Trading Bot CLI\")\n    parser.add_argument(\n        \"command\",\n        nargs=\"?\",\n        default=\"predict\",\n        choices=[\n            \"train-model\",\n            \"evaluate-model\",",
+        "peekOfCode": "def main() -> None:\n    \"\"\"Main CLI entry point.\"\"\"\n    parser = argparse.ArgumentParser(description=\"ML Engine Trading Bot CLI\")\n    parser.add_argument(\n        \"command\",\n        nargs=\"?\",\n        default=\"buddy\",\n        choices=[\n            \"train-buddy\",\n            \"buddy\",",
         "detail": "main",
         "documentation": {}
     },
@@ -6227,7 +5996,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "TIMESTAMP_FORMAT = \"%H:%M:%S\"\nTABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    import warnings",
+        "peekOfCode": "TIMESTAMP_FORMAT = \"%H:%M:%S\"\nTABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    # Keep CLI output clean by muting INFO logs from internal modules.",
         "detail": "main",
         "documentation": {}
     },
@@ -6236,7 +6005,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "TABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    import warnings\n    # Silence torch GradScaler deprecation warning during prediction.",
+        "peekOfCode": "TABLE_HEADER_STYLE = \"bold magenta\"\n# Initialize console and logging\nconsole = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    # Keep CLI output clean by muting INFO logs from internal modules.\n    logging.getLogger().setLevel(logging.WARNING)",
         "detail": "main",
         "documentation": {}
     },
@@ -6245,7 +6014,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "console = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    import warnings\n    # Silence torch GradScaler deprecation warning during prediction.\n    warnings.filterwarnings(\n        \"ignore\",",
+        "peekOfCode": "console = Console()\nlogger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    # Keep CLI output clean by muting INFO logs from internal modules.\n    logging.getLogger().setLevel(logging.WARNING)\n    for name in (\n        \"utils\",",
         "detail": "main",
         "documentation": {}
     },
@@ -6254,7 +6023,7 @@
         "kind": 5,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "logger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    import warnings\n    # Silence torch GradScaler deprecation warning during prediction.\n    warnings.filterwarnings(\n        \"ignore\",\n        category=FutureWarning,",
+        "peekOfCode": "logger = setup_logging(log_file=\"cli.log\")\ndef _configure_predict_output(verbose: bool) -> None:\n    \"\"\"Reduce log/warning noise for interactive predict runs.\"\"\"\n    if verbose:\n        return\n    # Keep CLI output clean by muting INFO logs from internal modules.\n    logging.getLogger().setLevel(logging.WARNING)\n    for name in (\n        \"utils\",\n        \"neural_network_integrator_enhanced\",",
         "detail": "main",
         "documentation": {}
     },
@@ -6263,7 +6032,7 @@
         "kind": 6,
         "importPath": "memory_manager_enhanced",
         "description": "memory_manager_enhanced",
-        "peekOfCode": "class MemoryManager:\n    \"\"\"Enhanced memory manager for both CPU and GPU operations.\"\"\"\n    def __init__(\n        self,\n        device: str = None,\n        threshold_mb: int = 1000,\n        log_level: str = \"INFO\",\n        cleanup_interval: int = 10,\n        proactive_cleanup: bool = True,\n    ):",
+        "peekOfCode": "class MemoryManager:\n    \"\"\"Lightweight CPU memory manager with optional TF GPU awareness.\"\"\"\n    def __init__(\n        self,\n        device: Optional[str] = None,\n        threshold_mb: int = 1000,\n        log_level: str = \"INFO\",\n        cleanup_interval: int = 10,\n        proactive_cleanup: bool = True,\n    ):",
         "detail": "memory_manager_enhanced",
         "documentation": {}
     },
@@ -6272,7 +6041,7 @@
         "kind": 2,
         "importPath": "memory_manager_enhanced",
         "description": "memory_manager_enhanced",
-        "peekOfCode": "def memory_efficient(func: Callable) -> Callable:\n    \"\"\"Decorator for memory-efficient function execution.\"\"\"\n    @wraps(func)\n    def wrapper(*args, **kwargs):\n        # Clear cache before execution\n        if torch.cuda.is_available():\n            torch.cuda.empty_cache()\n        gc.collect()\n        try:\n            result = func(*args, **kwargs)",
+        "peekOfCode": "def memory_efficient(func: Callable) -> Callable:\n    @wraps(func)\n    def wrapper(*args, **kwargs):\n        gc.collect()\n        try:\n            return func(*args, **kwargs)\n        finally:\n            gc.collect()\n    return wrapper\n@contextmanager",
         "detail": "memory_manager_enhanced",
         "documentation": {}
     },
@@ -6281,25 +6050,7 @@
         "kind": 2,
         "importPath": "memory_manager_enhanced",
         "description": "memory_manager_enhanced",
-        "peekOfCode": "def mixed_precision_context(enabled: bool = True):\n    \"\"\"Context manager for mixed precision training.\"\"\"\n    if enabled and torch.cuda.is_available():\n        with torch.cuda.amp.autocast():\n            yield\n    else:\n        yield\ndef optimize_memory_allocation(model: torch.nn.Module, device: str = None):\n    \"\"\"Optimize memory allocation for a model.\"\"\"\n    if device is None:",
-        "detail": "memory_manager_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "optimize_memory_allocation",
-        "kind": 2,
-        "importPath": "memory_manager_enhanced",
-        "description": "memory_manager_enhanced",
-        "peekOfCode": "def optimize_memory_allocation(model: torch.nn.Module, device: str = None):\n    \"\"\"Optimize memory allocation for a model.\"\"\"\n    if device is None:\n        device = \"cuda\" if torch.cuda.is_available() else \"cpu\"\n    model = model.to(device)\n    # Enable cudnn benchmarking for optimal performance\n    if device.startswith(\"cuda\"):\n        torch.backends.cudnn.benchmark = True\n    return model\ndef get_optimal_batch_size(",
-        "detail": "memory_manager_enhanced",
-        "documentation": {}
-    },
-    {
-        "label": "get_optimal_batch_size",
-        "kind": 2,
-        "importPath": "memory_manager_enhanced",
-        "description": "memory_manager_enhanced",
-        "peekOfCode": "def get_optimal_batch_size(\n    model: torch.nn.Module,\n    input_shape: tuple,\n    device: str = None,\n    max_memory_fraction: float = 0.8,\n) -> int:\n    \"\"\"Estimate optimal batch size based on available memory.\"\"\"\n    if device is None:\n        device = \"cuda\" if torch.cuda.is_available() else \"cpu\"\n    model = model.to(device)",
+        "peekOfCode": "def mixed_precision_context(enabled: bool = True):\n    \"\"\"No-op compatibility shim.\n    Mixed precision in TensorFlow is typically enabled via:\n    `tf.keras.mixed_precision.set_global_policy('mixed_float16')`.\n    \"\"\"\n    _ = enabled\n    yield\ndef profile_memory(func: Callable) -> Callable:\n    @wraps(func)\n    def wrapper(*args, **kwargs):",
         "detail": "memory_manager_enhanced",
         "documentation": {}
     },
@@ -6308,7 +6059,7 @@
         "kind": 2,
         "importPath": "memory_manager_enhanced",
         "description": "memory_manager_enhanced",
-        "peekOfCode": "def profile_memory(func: Callable) -> Callable:\n    \"\"\"Decorator to profile memory usage of a function.\"\"\"\n    @wraps(func)\n    def wrapper(*args, **kwargs):\n        if torch.cuda.is_available():\n            torch.cuda.reset_peak_memory_stats()\n            start_memory = torch.cuda.memory_allocated()\n        else:\n            start_memory = psutil.Process().memory_info().rss\n        result = func(*args, **kwargs)",
+        "peekOfCode": "def profile_memory(func: Callable) -> Callable:\n    @wraps(func)\n    def wrapper(*args, **kwargs):\n        start = psutil.Process().memory_info().rss\n        result = func(*args, **kwargs)\n        end = psutil.Process().memory_info().rss\n        logger.info(\n            \"%s - Memory: start=%.2fMB end=%.2fMB\",\n            getattr(func, \"__name__\", \"<fn>\"),\n            start / 1024**2,",
         "detail": "memory_manager_enhanced",
         "documentation": {}
     },
@@ -6317,8 +6068,17 @@
         "kind": 5,
         "importPath": "memory_manager_enhanced",
         "description": "memory_manager_enhanced",
-        "peekOfCode": "logger = logging.getLogger(__name__)\nclass MemoryManager:\n    \"\"\"Enhanced memory manager for both CPU and GPU operations.\"\"\"\n    def __init__(\n        self,\n        device: str = None,\n        threshold_mb: int = 1000,\n        log_level: str = \"INFO\",\n        cleanup_interval: int = 10,\n        proactive_cleanup: bool = True,",
+        "peekOfCode": "logger = logging.getLogger(__name__)\ndef _has_gpu() -> bool:\n    try:\n        import tensorflow as tf\n        return bool(tf.config.list_physical_devices(\"GPU\"))\n    except Exception:\n        return False\nclass MemoryManager:\n    \"\"\"Lightweight CPU memory manager with optional TF GPU awareness.\"\"\"\n    def __init__(",
         "detail": "memory_manager_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "_NN",
+        "kind": 6,
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "peekOfCode": "class _NN:\n    class Module:  # Minimal base class placeholder\n        pass\nnn = _NN()  # type: ignore\noptim = None  # type: ignore\nDataLoader = TensorDataset = GradScaler = None  # type: ignore\nReduceLROnPlateau = CosineAnnealingWarmRestarts = None  # type: ignore\nfrom sklearn.metrics import r2_score, mean_squared_error\n# Import optimized modules\nfrom memory_manager_enhanced import MemoryManager, mixed_precision_context",
+        "detail": "ml_engine_enhanced",
         "documentation": {}
     },
     {
@@ -6331,12 +6091,75 @@
         "documentation": {}
     },
     {
+        "label": "torch",
+        "kind": 5,
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "peekOfCode": "torch = None  # type: ignore\nclass _NN:\n    class Module:  # Minimal base class placeholder\n        pass\nnn = _NN()  # type: ignore\noptim = None  # type: ignore\nDataLoader = TensorDataset = GradScaler = None  # type: ignore\nReduceLROnPlateau = CosineAnnealingWarmRestarts = None  # type: ignore\nfrom sklearn.metrics import r2_score, mean_squared_error\n# Import optimized modules",
+        "detail": "ml_engine_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "nn",
+        "kind": 5,
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "peekOfCode": "nn = _NN()  # type: ignore\noptim = None  # type: ignore\nDataLoader = TensorDataset = GradScaler = None  # type: ignore\nReduceLROnPlateau = CosineAnnealingWarmRestarts = None  # type: ignore\nfrom sklearn.metrics import r2_score, mean_squared_error\n# Import optimized modules\nfrom memory_manager_enhanced import MemoryManager, mixed_precision_context\nfrom data_processing import create_optimized_dataloader\nfrom models_enhanced import (\n    StockPredictor,",
+        "detail": "ml_engine_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "optim",
+        "kind": 5,
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "peekOfCode": "optim = None  # type: ignore\nDataLoader = TensorDataset = GradScaler = None  # type: ignore\nReduceLROnPlateau = CosineAnnealingWarmRestarts = None  # type: ignore\nfrom sklearn.metrics import r2_score, mean_squared_error\n# Import optimized modules\nfrom memory_manager_enhanced import MemoryManager, mixed_precision_context\nfrom data_processing import create_optimized_dataloader\nfrom models_enhanced import (\n    StockPredictor,\n    AttentiveLSTM,",
+        "detail": "ml_engine_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "kind": 5,
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "peekOfCode": "DataLoader = TensorDataset = GradScaler = None  # type: ignore\nReduceLROnPlateau = CosineAnnealingWarmRestarts = None  # type: ignore\nfrom sklearn.metrics import r2_score, mean_squared_error\n# Import optimized modules\nfrom memory_manager_enhanced import MemoryManager, mixed_precision_context\nfrom data_processing import create_optimized_dataloader\nfrom models_enhanced import (\n    StockPredictor,\n    AttentiveLSTM,\n    GRUPredictor,",
+        "detail": "ml_engine_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "ReduceLROnPlateau",
+        "kind": 5,
+        "importPath": "ml_engine_enhanced",
+        "description": "ml_engine_enhanced",
+        "peekOfCode": "ReduceLROnPlateau = CosineAnnealingWarmRestarts = None  # type: ignore\nfrom sklearn.metrics import r2_score, mean_squared_error\n# Import optimized modules\nfrom memory_manager_enhanced import MemoryManager, mixed_precision_context\nfrom data_processing import create_optimized_dataloader\nfrom models_enhanced import (\n    StockPredictor,\n    AttentiveLSTM,\n    GRUPredictor,\n    TransformerPredictor",
+        "detail": "ml_engine_enhanced",
+        "documentation": {}
+    },
+    {
         "label": "logger",
         "kind": 5,
         "importPath": "ml_engine_enhanced",
         "description": "ml_engine_enhanced",
         "peekOfCode": "logger = logging.getLogger(__name__)\nclass EnhancedMLEngine:\n    \"\"\"\n    Enhanced ML Engine for stock market prediction with optimized CPU/GPU performance.\n    Features:\n    - Automatic mixed precision training\n    - Dynamic batch sizing\n    - Memory-efficient operations\n    - Gradient accumulation\n    - Advanced learning rate scheduling",
         "detail": "ml_engine_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "MLEngineHeadConfig",
+        "kind": 6,
+        "importPath": "ml_head_engine",
+        "description": "ml_head_engine",
+        "peekOfCode": "class MLEngineHeadConfig:\n    hidden_size: int = 64\n    num_layers: int = 2\n    dropout: float = 0.1\n    projection_dim: Optional[int] = None\n@tf.keras.utils.register_keras_serializable(package=\"buddy\")\nclass MLEngineHead(tf.keras.Model):\n    def __init__(\n        self,\n        *,",
+        "detail": "ml_head_engine",
+        "documentation": {}
+    },
+    {
+        "label": "MLEngineHead",
+        "kind": 6,
+        "importPath": "ml_head_engine",
+        "description": "ml_head_engine",
+        "peekOfCode": "class MLEngineHead(tf.keras.Model):\n    def __init__(\n        self,\n        *,\n        hidden_size: int = 64,\n        num_layers: int = 2,\n        dropout: float = 0.1,\n        projection_dim: Optional[int] = None,\n        name: str = \"ml_head\",\n        **kwargs: Any,",
+        "detail": "ml_head_engine",
         "documentation": {}
     },
     {
@@ -6412,38 +6235,56 @@
         "documentation": {}
     },
     {
-        "label": "ActivationType",
+        "label": "MREngineHeadConfig",
         "kind": 6,
         "importPath": "mr_engine",
         "description": "mr_engine",
-        "peekOfCode": "class ActivationType(Enum):\n    RELU = \"relu\"\n    GELU = \"gelu\"\n    SELU = \"selu\"\n    TANH = \"tanh\"\nclass MREngine(nn.Module):\n    \"\"\"\n    MREngine: Multi-branch regression model for price prediction, explanation, and risk estimation.\n    This model uses a bidirectional LSTM to encode sequential market data, an attention mechanism\n    (optionally multi-head) to weigh timesteps, and separate fully-connected heads for predicting",
+        "peekOfCode": "class MREngineHeadConfig:\n    hidden_size: int = 64\n    num_layers: int = 2\n    dropout: float = 0.1\n    projection_dim: Optional[int] = None\n@tf.keras.utils.register_keras_serializable(package=\"buddy\")\nclass MREngineHead(tf.keras.Model):\n    \"\"\"LSTM head that produces a hidden embedding.\"\"\"\n    def __init__(\n        self,",
         "detail": "mr_engine",
         "documentation": {}
     },
     {
-        "label": "MREngine",
+        "label": "MREngineHead",
         "kind": 6,
         "importPath": "mr_engine",
         "description": "mr_engine",
-        "peekOfCode": "class MREngine(nn.Module):\n    \"\"\"\n    MREngine: Multi-branch regression model for price prediction, explanation, and risk estimation.\n    This model uses a bidirectional LSTM to encode sequential market data, an attention mechanism\n    (optionally multi-head) to weigh timesteps, and separate fully-connected heads for predicting\n    price (regression), explanation factors, and risk/volatility.\n    \"\"\"\n    def __init__(\n        self,\n        input_size: int = 11,",
+        "peekOfCode": "class MREngineHead(tf.keras.Model):\n    \"\"\"LSTM head that produces a hidden embedding.\"\"\"\n    def __init__(\n        self,\n        *,\n        hidden_size: int = 64,\n        num_layers: int = 2,\n        dropout: float = 0.1,\n        projection_dim: Optional[int] = None,\n        name: str = \"mr_head\",",
         "detail": "mr_engine",
         "documentation": {}
     },
     {
-        "label": "ActivationType",
+        "label": "MSEngineHeadConfig",
+        "kind": 6,
+        "importPath": "ms_head_engine",
+        "description": "ms_head_engine",
+        "peekOfCode": "class MSEngineHeadConfig:\n    hidden_size: int = 64\n    num_layers: int = 2\n    dropout: float = 0.1\n    projection_dim: Optional[int] = None\n@tf.keras.utils.register_keras_serializable(package=\"buddy\")\nclass MSEngineHead(tf.keras.Model):\n    def __init__(\n        self,\n        *,",
+        "detail": "ms_head_engine",
+        "documentation": {}
+    },
+    {
+        "label": "MSEngineHead",
+        "kind": 6,
+        "importPath": "ms_head_engine",
+        "description": "ms_head_engine",
+        "peekOfCode": "class MSEngineHead(tf.keras.Model):\n    def __init__(\n        self,\n        *,\n        hidden_size: int = 64,\n        num_layers: int = 2,\n        dropout: float = 0.1,\n        projection_dim: Optional[int] = None,\n        name: str = \"ms_head\",\n        **kwargs: Any,",
+        "detail": "ms_head_engine",
+        "documentation": {}
+    },
+    {
+        "label": "MTEngineHeadConfig",
         "kind": 6,
         "importPath": "mt_engine",
         "description": "mt_engine",
-        "peekOfCode": "class ActivationType(Enum):\n    RELU = \"relu\"\n    GELU = \"gelu\"\n    SELU = \"selu\"\n    TANH = \"tanh\"\nclass MultiTaskModel(nn.Module):\n    def __init__(\n        self,\n        input_size: int = 11,\n        hidden_size: int = 128,",
+        "peekOfCode": "class MTEngineHeadConfig:\n    hidden_size: int = 64\n    num_layers: int = 2\n    dropout: float = 0.1\n    projection_dim: Optional[int] = None\n@tf.keras.utils.register_keras_serializable(package=\"buddy\")\nclass MTEngineHead(tf.keras.Model):\n    \"\"\"LSTM head that produces a hidden embedding.\"\"\"\n    def __init__(\n        self,",
         "detail": "mt_engine",
         "documentation": {}
     },
     {
-        "label": "MultiTaskModel",
+        "label": "MTEngineHead",
         "kind": 6,
         "importPath": "mt_engine",
         "description": "mt_engine",
-        "peekOfCode": "class MultiTaskModel(nn.Module):\n    def __init__(\n        self,\n        input_size: int = 11,\n        hidden_size: int = 128,\n        num_layers: int = 3,\n        dropout: float = 0.2,\n        explanation_dim: int = 3,\n        activation: Union[str, ActivationType] = ActivationType.RELU,\n    ):",
+        "peekOfCode": "class MTEngineHead(tf.keras.Model):\n    \"\"\"LSTM head that produces a hidden embedding.\"\"\"\n    def __init__(\n        self,\n        *,\n        hidden_size: int = 64,\n        num_layers: int = 2,\n        dropout: float = 0.1,\n        projection_dim: Optional[int] = None,\n        name: str = \"mt_head\",",
         "detail": "mt_engine",
         "documentation": {}
     },
@@ -6472,6 +6313,33 @@
         "description": "multitask_labels",
         "peekOfCode": "def split_time_series(\n    n: int, *, val_fraction: float = 0.2\n) -> Tuple[np.ndarray, np.ndarray]:\n    if n <= 1:\n        raise ValueError(\"n must be > 1\")\n    if not (0.0 < val_fraction < 1.0):\n        raise ValueError(\"val_fraction must be in (0,1)\")\n    split = int(round(n * (1.0 - val_fraction)))\n    split = max(1, min(n - 1, split))\n    train_idx = np.arange(0, split, dtype=int)",
         "detail": "multitask_labels",
+        "documentation": {}
+    },
+    {
+        "label": "MXEngineHeadConfig",
+        "kind": 6,
+        "importPath": "mx_head_engine",
+        "description": "mx_head_engine",
+        "peekOfCode": "class MXEngineHeadConfig:\n    hidden_size: int = 64\n    num_layers: int = 2\n    dropout: float = 0.1\n    projection_dim: Optional[int] = None\n@tf.keras.utils.register_keras_serializable(package=\"buddy\")\nclass MXEngineHead(tf.keras.Model):\n    def __init__(\n        self,\n        *,",
+        "detail": "mx_head_engine",
+        "documentation": {}
+    },
+    {
+        "label": "MXEngineHead",
+        "kind": 6,
+        "importPath": "mx_head_engine",
+        "description": "mx_head_engine",
+        "peekOfCode": "class MXEngineHead(tf.keras.Model):\n    def __init__(\n        self,\n        *,\n        hidden_size: int = 64,\n        num_layers: int = 2,\n        dropout: float = 0.1,\n        projection_dim: Optional[int] = None,\n        name: str = \"mx_head\",\n        **kwargs: Any,",
+        "detail": "mx_head_engine",
+        "documentation": {}
+    },
+    {
+        "label": "_NN",
+        "kind": 6,
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "peekOfCode": "class _NN:\n    class Module:  # pragma: no cover\n        pass\nnn = _NN()  # type: ignore\ndef safe_torch_load(checkpoint_path: str, *, map_location: str):\n    \"\"\"Load project checkpoints safely on PyTorch>=2.6.\n    PyTorch changed `torch.load()` default `weights_only=True`, which uses a\n    restricted unpickler. Our checkpoints may include sklearn scalers inside\n    metadata; we allowlist the known scaler classes used by this project.\n    \"\"\"",
+        "detail": "neural_engine_unified",
         "documentation": {}
     },
     {
@@ -6506,8 +6374,35 @@
         "kind": 2,
         "importPath": "neural_engine_unified",
         "description": "neural_engine_unified",
-        "peekOfCode": "def safe_torch_load(checkpoint_path: str, *, map_location: str):\n    \"\"\"Load project checkpoints safely on PyTorch>=2.6.\n    PyTorch changed `torch.load()` default `weights_only=True`, which uses a\n    restricted unpickler. Our checkpoints may include sklearn scalers inside\n    metadata; we allowlist the known scaler classes used by this project.\n    \"\"\"\n    import inspect\n    def _torch_load(*, weights_only: Optional[bool]):\n        kwargs: Dict[str, Any] = {\"map_location\": map_location}\n        try:",
+        "peekOfCode": "def safe_torch_load(checkpoint_path: str, *, map_location: str):\n    \"\"\"Load project checkpoints safely on PyTorch>=2.6.\n    PyTorch changed `torch.load()` default `weights_only=True`, which uses a\n    restricted unpickler. Our checkpoints may include sklearn scalers inside\n    metadata; we allowlist the known scaler classes used by this project.\n    \"\"\"\n    raise RuntimeError(\n        \"safe_torch_load is unavailable because PyTorch was removed. \"\n        \"Use TensorFlow checkpoints via the TensorFlow-only pipeline.\"\n    )",
         "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "torch",
+        "kind": 5,
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "peekOfCode": "torch = None  # type: ignore\nclass _NN:\n    class Module:  # pragma: no cover\n        pass\nnn = _NN()  # type: ignore\ndef safe_torch_load(checkpoint_path: str, *, map_location: str):\n    \"\"\"Load project checkpoints safely on PyTorch>=2.6.\n    PyTorch changed `torch.load()` default `weights_only=True`, which uses a\n    restricted unpickler. Our checkpoints may include sklearn scalers inside\n    metadata; we allowlist the known scaler classes used by this project.",
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "nn",
+        "kind": 5,
+        "importPath": "neural_engine_unified",
+        "description": "neural_engine_unified",
+        "peekOfCode": "nn = _NN()  # type: ignore\ndef safe_torch_load(checkpoint_path: str, *, map_location: str):\n    \"\"\"Load project checkpoints safely on PyTorch>=2.6.\n    PyTorch changed `torch.load()` default `weights_only=True`, which uses a\n    restricted unpickler. Our checkpoints may include sklearn scalers inside\n    metadata; we allowlist the known scaler classes used by this project.\n    \"\"\"\n    raise RuntimeError(\n        \"safe_torch_load is unavailable because PyTorch was removed. \"\n        \"Use TensorFlow checkpoints via the TensorFlow-only pipeline.\"",
+        "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "_NN",
+        "kind": 6,
+        "importPath": "neural_network_integrator_enhanced",
+        "description": "neural_network_integrator_enhanced",
+        "peekOfCode": "class _NN:\n    class Module:  # pragma: no cover\n        pass\nnn = _NN()  # type: ignore\nF = None  # type: ignore\n# Configure logging\nlogger = logging.getLogger(__name__)\nclass NeuralNetworkIntegrator:\n    \"\"\"\n    Neural Network Integrator for connecting ML (Machine Learning), MT (Market Trends),",
+        "detail": "neural_network_integrator_enhanced",
         "documentation": {}
     },
     {
@@ -6534,6 +6429,33 @@
         "importPath": "neural_network_integrator_enhanced",
         "description": "neural_network_integrator_enhanced",
         "peekOfCode": "class AttentionIntegrationModel(nn.Module):\n    \"\"\"Attention-based neural network for integrating predictions from multiple engines.\"\"\"\n    def __init__(\n        self,\n        input_dim: int,\n        hidden_dim: int,\n        num_heads: int = 4,\n        dropout: float = 0.2,\n    ):\n        \"\"\"",
+        "detail": "neural_network_integrator_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "torch",
+        "kind": 5,
+        "importPath": "neural_network_integrator_enhanced",
+        "description": "neural_network_integrator_enhanced",
+        "peekOfCode": "torch = None  # type: ignore\nclass _NN:\n    class Module:  # pragma: no cover\n        pass\nnn = _NN()  # type: ignore\nF = None  # type: ignore\n# Configure logging\nlogger = logging.getLogger(__name__)\nclass NeuralNetworkIntegrator:\n    \"\"\"",
+        "detail": "neural_network_integrator_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "nn",
+        "kind": 5,
+        "importPath": "neural_network_integrator_enhanced",
+        "description": "neural_network_integrator_enhanced",
+        "peekOfCode": "nn = _NN()  # type: ignore\nF = None  # type: ignore\n# Configure logging\nlogger = logging.getLogger(__name__)\nclass NeuralNetworkIntegrator:\n    \"\"\"\n    Neural Network Integrator for connecting ML (Machine Learning), MT (Market Trends),\n    and MR (Market Reasoning) engines with the reasoning head for synchronized predictions.\n    \"\"\"\n    def __init__(self, config: Dict[str, Any] = None):",
+        "detail": "neural_network_integrator_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "F",
+        "kind": 5,
+        "importPath": "neural_network_integrator_enhanced",
+        "description": "neural_network_integrator_enhanced",
+        "peekOfCode": "F = None  # type: ignore\n# Configure logging\nlogger = logging.getLogger(__name__)\nclass NeuralNetworkIntegrator:\n    \"\"\"\n    Neural Network Integrator for connecting ML (Machine Learning), MT (Market Trends),\n    and MR (Market Reasoning) engines with the reasoning head for synchronized predictions.\n    \"\"\"\n    def __init__(self, config: Dict[str, Any] = None):\n        \"\"\"",
         "detail": "neural_network_integrator_enhanced",
         "documentation": {}
     },
@@ -7564,6 +7486,33 @@
         "documentation": {}
     },
     {
+        "label": "_NN",
+        "kind": 6,
+        "importPath": "train_enhanced",
+        "description": "train_enhanced",
+        "peekOfCode": "class _NN:\n    class Module:  # pragma: no cover\n        pass\n    class MSELoss:  # pragma: no cover\n        def __init__(self, *args, **kwargs):\n            pass\nnn = _NN()  # type: ignore\nclass DataLoader:  # pragma: no cover\n    pass\nclass TensorDataset:  # pragma: no cover",
+        "detail": "train_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "kind": 6,
+        "importPath": "train_enhanced",
+        "description": "train_enhanced",
+        "peekOfCode": "class DataLoader:  # pragma: no cover\n    pass\nclass TensorDataset:  # pragma: no cover\n    def __init__(self, *args, **kwargs):\n        raise RuntimeError(\"TensorDataset is unavailable because PyTorch was removed.\")\n# Import our enhanced modules\nfrom data_loader import MarketDataLoader\nfrom models_enhanced import (\n    StockPredictor,\n    AttentiveLSTM,",
+        "detail": "train_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "TensorDataset",
+        "kind": 6,
+        "importPath": "train_enhanced",
+        "description": "train_enhanced",
+        "peekOfCode": "class TensorDataset:  # pragma: no cover\n    def __init__(self, *args, **kwargs):\n        raise RuntimeError(\"TensorDataset is unavailable because PyTorch was removed.\")\n# Import our enhanced modules\nfrom data_loader import MarketDataLoader\nfrom models_enhanced import (\n    StockPredictor,\n    AttentiveLSTM,\n    GRUPredictor,\n    TransformerPredictor,",
+        "detail": "train_enhanced",
+        "documentation": {}
+    },
+    {
         "label": "LabelSmoothingLoss",
         "kind": 6,
         "importPath": "train_enhanced",
@@ -7587,6 +7536,24 @@
         "importPath": "train_enhanced",
         "description": "train_enhanced",
         "peekOfCode": "def main():\n    \"\"\"Main training function.\"\"\"\n    parser = argparse.ArgumentParser(description=\"Train stock prediction model\")\n    parser.add_argument(\n        \"--config\", type=str, default=\"config.yaml\", help=\"Path to config file\"\n    )\n    parser.add_argument(\n        \"--data\",\n        type=str,\n        default=\"market_data/TSLA_data.csv\",",
+        "detail": "train_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "torch",
+        "kind": 5,
+        "importPath": "train_enhanced",
+        "description": "train_enhanced",
+        "peekOfCode": "torch = None  # type: ignore\nclass _NN:\n    class Module:  # pragma: no cover\n        pass\n    class MSELoss:  # pragma: no cover\n        def __init__(self, *args, **kwargs):\n            pass\nnn = _NN()  # type: ignore\nclass DataLoader:  # pragma: no cover\n    pass",
+        "detail": "train_enhanced",
+        "documentation": {}
+    },
+    {
+        "label": "nn",
+        "kind": 5,
+        "importPath": "train_enhanced",
+        "description": "train_enhanced",
+        "peekOfCode": "nn = _NN()  # type: ignore\nclass DataLoader:  # pragma: no cover\n    pass\nclass TensorDataset:  # pragma: no cover\n    def __init__(self, *args, **kwargs):\n        raise RuntimeError(\"TensorDataset is unavailable because PyTorch was removed.\")\n# Import our enhanced modules\nfrom data_loader import MarketDataLoader\nfrom models_enhanced import (\n    StockPredictor,",
         "detail": "train_enhanced",
         "documentation": {}
     },
@@ -7852,6 +7819,33 @@
         "documentation": {}
     },
     {
+        "label": "_NN",
+        "kind": 6,
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
+        "peekOfCode": "class _NN:\n    class Module:  # pragma: no cover\n        pass\nnn = _NN()  # type: ignore\nclass DataLoader:  # pragma: no cover\n    pass\nclass TensorDataset:  # pragma: no cover\n    def __init__(self, *args: Any, **kwargs: Any) -> None:\n        raise RuntimeError(\"TensorDataset is unavailable because PyTorch was removed.\")\nfrom data_processing import prepare_sequences",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
+        "label": "DataLoader",
+        "kind": 6,
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
+        "peekOfCode": "class DataLoader:  # pragma: no cover\n    pass\nclass TensorDataset:  # pragma: no cover\n    def __init__(self, *args: Any, **kwargs: Any) -> None:\n        raise RuntimeError(\"TensorDataset is unavailable because PyTorch was removed.\")\nfrom data_processing import prepare_sequences\nfrom feature_engineering import FeatureEngineering\nfrom multitask_labels import build_multitask_targets, split_time_series\nfrom neural_engine_unified import UnifiedNeuralEngine, safe_torch_load\nfrom utils import load_config, setup_logging",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
+        "label": "TensorDataset",
+        "kind": 6,
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
+        "peekOfCode": "class TensorDataset:  # pragma: no cover\n    def __init__(self, *args: Any, **kwargs: Any) -> None:\n        raise RuntimeError(\"TensorDataset is unavailable because PyTorch was removed.\")\nfrom data_processing import prepare_sequences\nfrom feature_engineering import FeatureEngineering\nfrom multitask_labels import build_multitask_targets, split_time_series\nfrom neural_engine_unified import UnifiedNeuralEngine, safe_torch_load\nfrom utils import load_config, setup_logging\nlogger = setup_logging(log_file=\"unified_multitask_training.log\")\n@dataclass",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
         "label": "HeadMetrics",
         "kind": 6,
         "importPath": "unified_multitask_training",
@@ -7875,6 +7869,24 @@
         "importPath": "unified_multitask_training",
         "description": "unified_multitask_training",
         "peekOfCode": "def train_unified_multitask(\n    config_path: str,\n    *,\n    csv_path: Optional[str] = None,\n    resume_path: Optional[str] = None,\n    seed: int = 42,\n    all_features: bool = False,\n) -> Dict[str, Any]:\n    \"\"\"Train the unified multi-head model and print per-head status via reasoning.\"\"\"\n    _seed_everything(seed)",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
+        "label": "torch",
+        "kind": 5,
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
+        "peekOfCode": "torch = None  # type: ignore\nclass _NN:\n    class Module:  # pragma: no cover\n        pass\nnn = _NN()  # type: ignore\nclass DataLoader:  # pragma: no cover\n    pass\nclass TensorDataset:  # pragma: no cover\n    def __init__(self, *args: Any, **kwargs: Any) -> None:\n        raise RuntimeError(\"TensorDataset is unavailable because PyTorch was removed.\")",
+        "detail": "unified_multitask_training",
+        "documentation": {}
+    },
+    {
+        "label": "nn",
+        "kind": 5,
+        "importPath": "unified_multitask_training",
+        "description": "unified_multitask_training",
+        "peekOfCode": "nn = _NN()  # type: ignore\nclass DataLoader:  # pragma: no cover\n    pass\nclass TensorDataset:  # pragma: no cover\n    def __init__(self, *args: Any, **kwargs: Any) -> None:\n        raise RuntimeError(\"TensorDataset is unavailable because PyTorch was removed.\")\nfrom data_processing import prepare_sequences\nfrom feature_engineering import FeatureEngineering\nfrom multitask_labels import build_multitask_targets, split_time_series\nfrom neural_engine_unified import UnifiedNeuralEngine, safe_torch_load",
         "detail": "unified_multitask_training",
         "documentation": {}
     },
@@ -7906,6 +7918,15 @@
         "documentation": {}
     },
     {
+        "label": "safe_torch_load",
+        "kind": 2,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "def safe_torch_load(*args: Any, **kwargs: Any):\n    raise ImportError(\"PyTorch was removed; load a TensorFlow checkpoint instead.\")\nUnifiedNeuralEngine = None  # type: ignore\nfrom reasoning_enhanced import ReasoningEngine\nfrom utils import load_config\n# TensorFlow support (lazy import)\nfrom tensorflow_engine_unified import (\n    TensorFlowUnifiedEngine,\n    is_tensorflow_checkpoint,\n    get_default_tf_checkpoint,",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
         "label": "select_latest_checkpoint",
         "kind": 2,
         "importPath": "unified_talk",
@@ -7920,6 +7941,24 @@
         "importPath": "unified_talk",
         "description": "unified_talk",
         "peekOfCode": "def run_unified_talk(\n    config_path: str,\n    *,\n    checkpoint_path: Optional[str] = None,\n    csv_path: Optional[str] = None,\n    ticker: Optional[str] = None,\n    period: str = \"5d\",\n    interval: str = \"1h\",\n    oanda: bool = False,\n    oanda_settings: Optional[OandaSettings] = None,",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "torch",
+        "kind": 5,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "torch = None  # type: ignore\ndef safe_torch_load(*args: Any, **kwargs: Any):\n    raise ImportError(\"PyTorch was removed; load a TensorFlow checkpoint instead.\")\nUnifiedNeuralEngine = None  # type: ignore\nfrom reasoning_enhanced import ReasoningEngine\nfrom utils import load_config\n# TensorFlow support (lazy import)\nfrom tensorflow_engine_unified import (\n    TensorFlowUnifiedEngine,\n    is_tensorflow_checkpoint,",
+        "detail": "unified_talk",
+        "documentation": {}
+    },
+    {
+        "label": "UnifiedNeuralEngine",
+        "kind": 5,
+        "importPath": "unified_talk",
+        "description": "unified_talk",
+        "peekOfCode": "UnifiedNeuralEngine = None  # type: ignore\nfrom reasoning_enhanced import ReasoningEngine\nfrom utils import load_config\n# TensorFlow support (lazy import)\nfrom tensorflow_engine_unified import (\n    TensorFlowUnifiedEngine,\n    is_tensorflow_checkpoint,\n    get_default_tf_checkpoint,\n)\ntry:  # Optional dependency (listed in requirements.txt)",
         "detail": "unified_talk",
         "documentation": {}
     },

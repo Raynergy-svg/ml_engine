@@ -8,8 +8,10 @@ import sys
 # Allow running this file directly (adds repo root to sys.path).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import torch
-import torch.nn as nn
+raise SystemExit("demo/validate_improvements.py is retired (PyTorch removed).")
+
+torch = None  # type: ignore
+nn = None  # type: ignore
 import numpy as np
 
 RNG = np.random.default_rng(0)
@@ -204,15 +206,14 @@ def test_ensemble_predictions():
     # Test weighted ensemble
     weights = [0.5, 0.3, 0.2]
     ensemble_weighted = ensemble_predictions(predictions_list, method="weighted", weights=weights)
+
+
 def test_improved_augmentation():
     """Test improved data augmentation strategies."""
     print("\nTesting improved data augmentation...")
     
     sequences = RNG.standard_normal((50, 30, 7))
     targets = RNG.standard_normal(50)
-    
-    # Test augmentation with mixup
-    aug_seq, aug_tgt = augment_data(
     
     # Test augmentation with mixup
     aug_seq, aug_tgt = augment_data(

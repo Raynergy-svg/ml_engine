@@ -8,6 +8,11 @@ This is the main loop you described:
 This module is intentionally conservative and synchronous.
 """
 
+raise SystemExit(
+    "Retired: OANDA training loops are disabled. Buddy training runs only via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 from __future__ import annotations
 
 from dataclasses import dataclass

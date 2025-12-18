@@ -13,7 +13,9 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any
 import asyncio
-import torch
+
+# PyTorch was removed from this repository.
+torch = None  # type: ignore
 
 # Import optimized modules
 from data_processing import load_stock_data_efficient, prepare_sequences

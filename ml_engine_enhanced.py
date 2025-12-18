@@ -3,17 +3,29 @@ Optimized ML Engine with improved CPU and GPU performance.
 Includes enhanced training loops, mixed precision, and memory optimization.
 """
 
+raise SystemExit(
+    "Retired: legacy engine disabled. Buddy training/inference/trading runs only via main.py."
+)
+
 import logging
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional, Union, List
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader, TensorDataset
-from torch.cuda.amp import GradScaler
-from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmRestarts
+# NOTE: PyTorch was removed from this repository. This legacy module remains
+# only to avoid breaking imports from older scripts, but it is not supported.
+torch = None  # type: ignore
+
+
+class _NN:
+    class Module:  # Minimal base class placeholder
+        pass
+
+
+nn = _NN()  # type: ignore
+optim = None  # type: ignore
+DataLoader = TensorDataset = GradScaler = None  # type: ignore
+ReduceLROnPlateau = CosineAnnealingWarmRestarts = None  # type: ignore
 from sklearn.metrics import r2_score, mean_squared_error
 
 # Import optimized modules

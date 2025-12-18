@@ -9,6 +9,11 @@ This script demonstrates how to:
 4. Evaluate performance
 """
 
+raise SystemExit(
+    "Retired: example training disabled. Buddy training runs only via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))

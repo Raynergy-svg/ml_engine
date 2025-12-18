@@ -7,6 +7,11 @@ This provides a minimal, runnable path to make the unified heads truly represent
 Defaults are intentionally conservative and based on OHLCV CSVs.
 """
 
+raise SystemExit(
+    "Retired: Buddy training/inference/trading is only supported via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,9 +22,26 @@ import json
 from datetime import datetime, timezone
 
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+
+# PyTorch was removed from this repository. This legacy training path is not supported.
+torch = None  # type: ignore
+
+
+class _NN:
+    class Module:  # pragma: no cover
+        pass
+
+
+nn = _NN()  # type: ignore
+
+
+class DataLoader:  # pragma: no cover
+    pass
+
+
+class TensorDataset:  # pragma: no cover
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("TensorDataset is unavailable because PyTorch was removed.")
 
 from data_processing import prepare_sequences
 from feature_engineering import FeatureEngineering

@@ -5,9 +5,10 @@ Includes advanced models with better performance and numerical
 stability.
 """
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+# PyTorch retired (TensorFlow-only migration)
+# import torch
+# import torch.nn as nn
+# import torch.nn.functional as F
 from typing import List
 
 

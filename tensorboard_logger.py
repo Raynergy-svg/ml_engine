@@ -17,14 +17,20 @@ Usage:
     # tensorboard --logdir=trained_data/tensorboard
 """
 
+raise SystemExit(
+    "Retired: TensorBoard logger disabled (legacy training). Buddy training runs only via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, Union
 import numpy as np
 
-import torch
-import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
+# PyTorch retired (TensorFlow-only migration)
+# import torch
+# import torch.nn as nn
+# from torch.utils.tensorboard import SummaryWriter
 
 
 class TensorBoardLogger:

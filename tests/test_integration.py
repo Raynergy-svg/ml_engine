@@ -8,8 +8,9 @@ import sys
 import logging
 import unittest
 import numpy as np
-import pandas as pd
-import torch
+import unittest
+
+raise unittest.SkipTest("Retired: depended on PyTorch (removed from repo).")
 import asyncio
 from pathlib import Path
 import matplotlib

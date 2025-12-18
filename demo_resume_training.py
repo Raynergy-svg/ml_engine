@@ -7,6 +7,11 @@ This script shows how to:
 2. Resume training from a checkpoint
 """
 
+raise SystemExit(
+    "Retired: resume-training demo disabled. Buddy training runs only via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 print("=" * 60)
 print("Resume Training Feature Demonstration")
 print("=" * 60)

@@ -13,6 +13,11 @@ Usage:
 
 from __future__ import annotations
 
+raise SystemExit(
+    "Retired: hyperparameter tuning scripts are disabled. Buddy training runs only via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 import argparse
 import copy
 import itertools

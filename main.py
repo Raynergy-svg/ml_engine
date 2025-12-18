@@ -20,18 +20,6 @@ from typing import Dict, Any, TYPE_CHECKING
 
 from pathlib import Path
 
-try:
-    import torch  # type: ignore
-except ModuleNotFoundError:  # pragma: no cover
-    class _TorchStub:  # minimal surface for type hints
-        _IS_STUB = True
-
-        class Tensor:  # noqa: D401
-            """Stub type for torch.Tensor when torch isn't installed."""
-
-        float32 = "float32"
-
-    torch = _TorchStub()  # type: ignore
 from rich.console import Console
 from rich.live import Live
 from rich.layout import Layout
@@ -57,15 +45,6 @@ def _configure_predict_output(verbose: bool) -> None:
     if verbose:
         return
 
-    import warnings
-
-    # Silence torch GradScaler deprecation warning during prediction.
-    warnings.filterwarnings(
-        "ignore",
-        category=FutureWarning,
-        message=r".*GradScaler\(args\.\.\.\) is deprecated\..*",
-    )
-
     # Keep CLI output clean by muting INFO logs from internal modules.
     logging.getLogger().setLevel(logging.WARNING)
     for name in (
@@ -76,6 +55,291 @@ def _configure_predict_output(verbose: bool) -> None:
         "reasoning_enhanced",
     ):
         logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def _configure_tf_metal() -> None:
+    """Enable TensorFlow Metal GPU on Apple Silicon when available."""
+    import os
+
+    # Reduce TF log noise.
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+
+    import tensorflow as tf
+
+    gpus = tf.config.list_physical_devices("GPU")
+    if not gpus:
+        console.print("[yellow]TensorFlow GPU not detected[/yellow] (CPU mode).")
+        return
+
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        console.print(f"[green]TensorFlow GPU enabled[/green]: {gpus}")
+    except Exception as e:
+        console.print(f"[yellow]GPU detected but could not enable memory growth[/yellow]: {e}")
+
+
+def _build_buddy_model(
+    *,
+    feature_dim: int,
+    seq_len: int,
+    head_hidden: int = 64,
+    head_layers: int = 2,
+    head_dropout: float = 0.1,
+    dense_hidden: int = 128,
+    dense_dropout: float = 0.2,
+):
+    """Create the Buddy model: 5 parallel LSTM heads + shared dense + 2 sigmoids."""
+    import tensorflow as tf
+
+    from ml_head_engine import MLEngineHead
+    from mr_engine import MREngineHead
+    from mt_engine import MTEngineHead
+    from ms_head_engine import MSEngineHead
+    from mx_head_engine import MXEngineHead
+
+    inp = tf.keras.Input(shape=(int(seq_len), int(feature_dim)), name="features")
+    h1 = MLEngineHead(hidden_size=head_hidden, num_layers=head_layers, dropout=head_dropout, name="ml")(inp)
+    h2 = MREngineHead(hidden_size=head_hidden, num_layers=head_layers, dropout=head_dropout, name="mr")(inp)
+    h3 = MTEngineHead(hidden_size=head_hidden, num_layers=head_layers, dropout=head_dropout, name="mt")(inp)
+    h4 = MSEngineHead(hidden_size=head_hidden, num_layers=head_layers, dropout=head_dropout, name="ms")(inp)
+    h5 = MXEngineHead(hidden_size=head_hidden, num_layers=head_layers, dropout=head_dropout, name="mx")(inp)
+
+    merged = tf.keras.layers.Concatenate(name="concat")([h1, h2, h3, h4, h5])
+    x = tf.keras.layers.Dense(int(dense_hidden), activation="relu", name="dense_0")(merged)
+    x = tf.keras.layers.Dropout(float(dense_dropout), name="dense_dropout")(x)
+    x = tf.keras.layers.Dense(int(dense_hidden // 2), activation="relu", name="dense_1")(x)
+
+    direction = tf.keras.layers.Dense(1, activation="sigmoid", name="direction")(x)
+    confidence = tf.keras.layers.Dense(1, activation="sigmoid", name="confidence")(x)
+
+    return tf.keras.Model(inputs=inp, outputs={"direction": direction, "confidence": confidence}, name="buddy_model")
+
+
+def train_buddy(
+    config_path: str,
+    csv_path: str | None = None,
+    *,
+    pca_components: int | None = None,
+    seq_len: int = 50,
+    epochs: int = 300,
+    batch_size: int = 32,
+    lr: float = 0.001,
+    all_features: bool = True,
+) -> None:
+    """Train Buddy (TensorFlow-only) from USDJPY historical data."""
+    _configure_tf_metal()
+    cfg = load_config(config_path)
+
+    import json
+    import numpy as np
+    import pandas as pd
+    import tensorflow as tf
+
+    from feature_engineering import FeatureEngineering
+
+    if csv_path is None:
+        # Default to repo-local clean USDJPY M5 data.
+        csv_path = str(Path("market_data") / "oanda_USD_JPY_M5.csv")
+
+    df = pd.read_csv(csv_path)
+    if "time" in df.columns:
+        df["time"] = pd.to_datetime(df["time"], errors="coerce")
+        df = df.sort_values("time")
+
+    # Ensure expected OHLCV columns exist.
+    required = ["open", "high", "low", "close", "volume"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"CSV missing required columns: {missing}")
+
+    # Feature engineering (numeric only).
+    if all_features:
+        fe = FeatureEngineering(cfg.get("feature_engineering", {}))
+        df = fe.create_features(df, include_all=True)
+
+    numeric_df = df.select_dtypes(include=["number"]).copy()
+    if numeric_df.empty:
+        raise ValueError("No numeric features found after preprocessing")
+
+    # Drop rows with NaNs created by rolling indicators.
+    numeric_df = numeric_df.replace([np.inf, -np.inf], np.nan).dropna(axis=0)
+
+    closes = df.loc[numeric_df.index, "close"].to_numpy(dtype=np.float32)
+    feats = numeric_df.to_numpy(dtype=np.float32)
+    feature_columns = list(numeric_df.columns)
+
+    if feats.shape[1] < 6:
+        console.print(f"[yellow]Warning[/yellow]: only {feats.shape[1]} numeric features detected.")
+    else:
+        console.print(f"Features: {feats.shape[1]} numeric columns")
+
+    # Build supervised targets.
+    # Direction: next-close up/down.
+    next_close = closes[1:]
+    cur_close = closes[:-1]
+    direction_y_all = (next_close > cur_close).astype(np.float32)
+
+    # Confidence target: normalized absolute next-return magnitude.
+    ret = (next_close - cur_close) / np.maximum(cur_close, 1e-8)
+    abs_ret = np.abs(ret).astype(np.float32)
+
+    # Align features to targets (targets are for t->t+1, so drop last feature row).
+    feats = feats[:-1]
+
+    n = feats.shape[0]
+    if n <= seq_len + 10:
+        raise ValueError(f"Not enough rows ({n}) for seq_len={seq_len}")
+
+    # Time-ordered split: last 20% as holdout.
+    split = int(n * 0.8)
+    train_feats_raw = feats[:split]
+    val_feats_raw = feats[split:]
+    train_dir_raw = direction_y_all[:split]
+    val_dir_raw = direction_y_all[split:]
+    train_abs_ret = abs_ret[:split]
+
+    # Standardize features (train-only stats).
+    mu = train_feats_raw.mean(axis=0, keepdims=True)
+    sigma = train_feats_raw.std(axis=0, keepdims=True)
+    sigma = np.where(sigma < 1e-6, 1.0, sigma)
+    train_feats = (train_feats_raw - mu) / sigma
+    val_feats = (val_feats_raw - mu) / sigma
+
+    # Optional PCA (fit on train timesteps).
+    pca_components_eff: int | None = None
+    pca_model = None
+    if pca_components is not None:
+        pca_components_eff = int(pca_components)
+        if pca_components_eff <= 0:
+            pca_components_eff = None
+
+    if pca_components_eff is not None and pca_components_eff < train_feats.shape[1]:
+        from sklearn.decomposition import PCA
+
+        pca_model = PCA(n_components=pca_components_eff, svd_solver="auto", random_state=42)
+        pca_model.fit(train_feats)
+        train_feats = pca_model.transform(train_feats)
+        val_feats = pca_model.transform(val_feats)
+        console.print(f"PCA enabled: {train_feats_raw.shape[1]} -> {train_feats.shape[1]}")
+
+    # Confidence label scale from train only.
+    scale = float(np.quantile(train_abs_ret, 0.95))
+    if scale <= 0:
+        scale = float(train_abs_ret.mean() + 1e-6)
+
+    conf_y_all = np.clip(abs_ret / scale, 0.0, 1.0).astype(np.float32)
+    train_conf_raw = conf_y_all[:split]
+    val_conf_raw = conf_y_all[split:]
+
+    def make_sequences(x2d: np.ndarray, y_dir: np.ndarray, y_conf: np.ndarray):
+        xs: list[np.ndarray] = []
+        ys_dir: list[float] = []
+        ys_conf: list[float] = []
+        for end in range(seq_len, len(x2d)):
+            start = end - seq_len
+            xs.append(x2d[start:end])
+            ys_dir.append(float(y_dir[end]))
+            ys_conf.append(float(y_conf[end]))
+        x_out = np.stack(xs, axis=0).astype(np.float32)
+        y_dir_out = np.asarray(ys_dir, dtype=np.float32).reshape(-1, 1)
+        y_conf_out = np.asarray(ys_conf, dtype=np.float32).reshape(-1, 1)
+        return x_out, y_dir_out, y_conf_out
+
+    x_train, y_dir_train, y_conf_train = make_sequences(train_feats, train_dir_raw, train_conf_raw)
+    x_val, y_dir_val, y_conf_val = make_sequences(val_feats, val_dir_raw, val_conf_raw)
+
+    model = _build_buddy_model(
+        feature_dim=x_train.shape[-1],
+        seq_len=seq_len,
+        head_hidden=int(cfg.get("buddy", {}).get("head_hidden", 64)),
+        head_layers=int(cfg.get("buddy", {}).get("head_layers", 2)),
+        head_dropout=float(cfg.get("buddy", {}).get("head_dropout", 0.1)),
+        dense_hidden=int(cfg.get("buddy", {}).get("dense_hidden", 128)),
+        dense_dropout=float(cfg.get("buddy", {}).get("dense_dropout", 0.2)),
+    )
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=float(lr)),
+        loss={"direction": "binary_crossentropy", "confidence": "binary_crossentropy"},
+        metrics={"direction": [tf.keras.metrics.BinaryAccuracy(name="accuracy")]},
+    )
+
+    es = tf.keras.callbacks.EarlyStopping(
+        monitor="val_direction_accuracy",
+        mode="max",
+        patience=10,
+        restore_best_weights=True,
+        verbose=1,
+    )
+
+    history = model.fit(
+        x_train,
+        {"direction": y_dir_train, "confidence": y_conf_train},
+        validation_data=(x_val, {"direction": y_dir_val, "confidence": y_conf_val}),
+        epochs=int(epochs),
+        batch_size=int(batch_size),
+        callbacks=[es],
+        verbose=1,
+    )
+
+    pred = model.predict(x_val, batch_size=int(batch_size))
+    dir_pred = (pred["direction"].reshape(-1) >= 0.5).astype(np.float32)
+    dir_true = y_dir_val.reshape(-1)
+    val_acc = float((dir_pred == dir_true).mean())
+    avg_conf = float(np.mean(pred["confidence"].reshape(-1)))
+
+    console.print(f"Validation directional accuracy: [bold]{val_acc*100:.2f}%[/bold]")
+    console.print(f"Validation average confidence: [bold]{avg_conf*100:.2f}%[/bold]")
+
+    model_dir = Path("trained_data") / "models"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    model_path = model_dir / "buddy_tf.keras"
+    meta_path = model_dir / "buddy_tf.meta.json"
+
+    # Save model and metadata for inference/trading.
+    model.save(model_path)
+    meta = {
+        "model_path": str(model_path),
+        "csv_path": str(csv_path),
+        "seq_len": int(seq_len),
+        "feature_columns": feature_columns,
+        "standardize": {"mean": mu.reshape(-1).tolist(), "std": sigma.reshape(-1).tolist()},
+        "pca_components": int(pca_components_eff) if pca_components_eff is not None else None,
+        "pca": (
+            {
+                "mean": pca_model.mean_.reshape(-1).tolist(),
+                "components": pca_model.components_.tolist(),
+                "explained_variance_ratio": pca_model.explained_variance_ratio_.tolist(),
+            }
+            if pca_model is not None
+            else None
+        ),
+        "confidence_scale_q95": scale,
+        "val_direction_accuracy": val_acc,
+        "val_avg_confidence": avg_conf,
+        "trained_epochs": int(len(history.history.get("loss", []))),
+        "early_stopped": bool(len(history.history.get("loss", [])) < int(epochs)),
+        "live_enabled": bool(val_acc >= 0.62 and avg_conf >= 0.70),
+        "live_confidence_threshold": 0.75,
+    }
+    meta_path.write_text(json.dumps(meta, indent=2))
+    console.print(f"Saved: {model_path}")
+    console.print(f"Saved: {meta_path}")
+
+
+def _buddy_live_enabled_from_meta() -> tuple[bool, float]:
+    """Return (live_enabled, confidence_threshold) from last Buddy training."""
+    import json
+
+    meta_path = Path("trained_data") / "models" / "buddy_tf.meta.json"
+    if not meta_path.exists():
+        return False, 0.75
+    try:
+        meta = json.loads(meta_path.read_text())
+        return bool(meta.get("live_enabled", False)), float(meta.get("live_confidence_threshold", 0.75))
+    except Exception:
+        return False, 0.75
 
 
 def _fx_confirm(prompt: str) -> bool:
@@ -366,49 +630,17 @@ def _fx_execution_guard_price_bound(_policy: Any, client: Any, *, instrument: st
 
 
 def _build_integrated_engines(config: Dict[str, Any]) -> NeuralNetworkIntegrator:
-    """Create and wire the unified neural engine into the integrator."""
-    from neural_network_integrator_enhanced import NeuralNetworkIntegrator
-    from neural_engine_unified import UnifiedNeuralEngine
-    from reasoning_enhanced import ReasoningEngine
+    """Retired.
 
-    integrator_config = {
-        "device": config.get("device", "cpu"),
-        "use_attention": False,
-        "use_dynamic_weights": True,
-    }
-    integrator = NeuralNetworkIntegrator(integrator_config)
-    reasoning_engine = ReasoningEngine(config.get("reasoning", {}))
+    Legacy integrated ML/MT/MR pipeline has been retired as part of the
+    TensorFlow-only Buddy migration.
+    """
 
-    base_input = int(config.get("model", {}).get("input_size", 7))
-    unified_input = base_input + 11 + 11
-    unified_engine = UnifiedNeuralEngine(
-        {
-            "device": integrator.device,
-            "model": {
-                "input_size": unified_input,
-                "hidden_size": int(config.get("model", {}).get("hidden_size", 64)),
-                "num_layers": int(config.get("model", {}).get("num_layers", 2)),
-                "dropout": float(config.get("model", {}).get("dropout", 0.1)),
-                "bidirectional": bool(config.get("model", {}).get("bidirectional", False)),
-            },
-        }
-    )
-
-    integrator.set_unified_engine(unified_engine=unified_engine, reasoning_engine=reasoning_engine)
-    return integrator
+    raise RuntimeError("Retired: integrated engines are no longer supported. Use `train-buddy`/`buddy`.")
 
 
 def integrated_predict_once(config: Dict[str, Any]) -> Dict[str, Any]:
-    """Smoke: run one integrated prediction across ML/MT/MR."""
-    integrator = _build_integrated_engines(config)
-
-    ml_features = torch.zeros((2, 5, int(config.get("model", {}).get("input_size", 7))), dtype=torch.float32)
-    mt_features = torch.zeros((2, 5, 11), dtype=torch.float32)
-    mr_features = torch.zeros((2, 5, 11), dtype=torch.float32)
-
-    return integrator.predict(
-        {"ml_features": ml_features, "mt_features": mt_features, "mr_features": mr_features}
-    )
+    raise RuntimeError("Retired: integrated prediction is no longer supported. Use `train-buddy`/`buddy`.")
 
 
 def compute_slm_indicators(market_data_df):
@@ -508,98 +740,11 @@ def _normalize_market_dataframe(df):
 def build_integrated_feature_tensors(
     market_data_df, config: Dict[str, Any], *, allow_pad: bool = False
 ) -> Dict[str, Any]:
-    """Build feature tensors for ML/MT/MR using OHLCV + SLM indicators."""
-    import pandas as pd
-    import numpy as np
-
-    df = _normalize_market_dataframe(market_data_df)
-
-    seq_len = int(
-        config.get("data", {}).get("sequence_length")
-        or config.get("sequence_length")
-        or 60
-    )
-    if len(df) < seq_len:
-        if not allow_pad:
-            raise ValueError(f"Need at least {seq_len} rows; got {len(df)}")
-        pad_rows = seq_len - len(df)
-        first_row = df.iloc[[0]].copy()
-        df = pd.concat([pd.concat([first_row] * pad_rows, ignore_index=True), df], ignore_index=True)
-
-    indicators = compute_slm_indicators(df)
-    feature_frame = df[["open", "high", "low", "close", "volume"]].copy()
-    feature_frame["sma_20"] = indicators["sma_20"]
-    feature_frame["ema_20"] = indicators["ema_20"]
-    feature_frame["rsi_14"] = indicators["rsi_14"]
-    feature_frame["macd_line"] = indicators["macd_line"]
-    feature_frame["bb_upper"] = indicators["bb_upper"]
-    feature_frame["bb_lower"] = indicators["bb_lower"]
-
-    feature_frame = feature_frame.replace([np.inf, -np.inf], np.nan)
-    feature_frame = feature_frame.ffill().bfill().fillna(0.0)
-    window = feature_frame.tail(seq_len)
-
-    ml_input_size = int(
-        config.get("model", {}).get("input_size")
-        or config.get("input_features")
-        or config.get("input_size")
-        or 7
-    )
-
-    base_cols = ["open", "high", "low", "close", "volume"]
-    extra_cols = ["rsi_14", "sma_20", "ema_20", "macd_line", "bb_upper", "bb_lower"]
-    ml_cols = (base_cols + extra_cols)[:ml_input_size]
-    if len(ml_cols) < ml_input_size:
-        for i in range(ml_input_size - len(ml_cols)):
-            pad_name = f"ml_pad_{i}"
-            window[pad_name] = 0.0
-            ml_cols.append(pad_name)
-
-    mt_mr_cols = base_cols + ["sma_20", "ema_20", "rsi_14", "macd_line", "bb_upper", "bb_lower"]
-
-    ml_arr = window[ml_cols].to_numpy(dtype=np.float32, copy=True)
-    mt_mr_arr = window[mt_mr_cols].to_numpy(dtype=np.float32, copy=True)
-
-    def _as_tensor(arr):
-        # Fall back to NumPy arrays if torch isn't available.
-        if getattr(torch, "_IS_STUB", False):
-            return arr[None, :, :]
-        return torch.tensor(arr, dtype=torch.float32).unsqueeze(0)
-
-    ml_tensor = _as_tensor(ml_arr)
-    mt_tensor = _as_tensor(mt_mr_arr)
-    mr_tensor = _as_tensor(mt_mr_arr)
-
-    return {"ml_features": ml_tensor, "mt_features": mt_tensor, "mr_features": mr_tensor}
+    raise RuntimeError("Retired: integrated feature tensors are no longer supported.")
 
 
 def integrated_predict(config_path: str, csv_path: str | None = None) -> None:
-    """Run a unified prediction: CSV -> SLM indicators -> ML/MT/MR -> integrator -> reasoning."""
-    import pandas as pd
-
-    config = load_config(config_path)
-    if csv_path is None:
-        csv_path = _pick_default_market_csv(config)
-
-    df = pd.read_csv(csv_path)
-    features = build_integrated_feature_tensors(df, config)
-    integrator = _build_integrated_engines(config)
-    result = integrator.predict(features)
-
-    pred = result.get("prediction")
-    uncertainty = result.get("uncertainty")
-    weights = result.get("weights")
-    reasoning = result.get("reasoning")
-
-    console.print(f"[bold blue]Integrated predict[/bold blue] CSV={csv_path}")
-    console.print(f"[bold yellow]Prediction:[/bold yellow] {pred}")
-    console.print(f"[bold yellow]Uncertainty:[/bold yellow] {uncertainty}")
-    if weights is not None:
-        console.print(f"[cyan]Weights (ML/MT/MR):[/cyan] {weights}")
-    if isinstance(reasoning, dict) and reasoning.get("insights"):
-        console.print("[bold green]Reasoning insights:[/bold green]")
-        for insight in reasoning["insights"]:
-            console.print(f"- {insight}")
+    raise RuntimeError("Retired: integrated predict is no longer supported. Use `train-buddy`/`buddy`.")
 
 
 def _fetch_live_market_data(ticker: str, period: str, interval: str):
@@ -1179,13 +1324,9 @@ def run_ai_assistant(config_path: str) -> None:
 
 
 def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_path: str | None = None) -> None:
-    """Train the unified multi-head model and print head-health insights."""
-    from unified_multitask_training import train_unified_multitask
-
-    result = train_unified_multitask(config_path, csv_path=csv_path, resume_path=checkpoint_path)
-    console.print(
-        f"[bold green]Unified training complete[/bold green] model={result.get('model_path')} metrics={result.get('metrics_path')}"
-    )
+    """Legacy alias: train Buddy TF model from main.py only."""
+    _ = checkpoint_path
+    train_buddy(config_path, csv_path)
 
 
 def train_oanda_unified(
@@ -1197,20 +1338,9 @@ def train_oanda_unified(
     checkpoint_path: str | None = None,
     all_features: bool = False,
 ) -> None:
-    """Fetch OANDA candles into local cache and train unified model (auto-resume)."""
-    from oanda_unified_training import run_oanda_unified_training_session
-
-    result = run_oanda_unified_training_session(
-        config_path,
-        instruments=instruments,
-        granularity=granularity,
-        candles=int(candles),
-        resume_path=checkpoint_path,
-        all_features=all_features,
-    )
-    console.print(
-        f"[bold green]OANDA unified session complete[/bold green] model={result.model_path} metrics={result.metrics_path}"
-    )
+    """Legacy alias: uses repo-local USDJPY CSV unless --csv is provided."""
+    _ = (instruments, granularity, candles, checkpoint_path)
+    train_buddy(config_path, None, all_features=all_features)
 
 
 def chat_unified(config_path: str, metrics_path: str | None = None) -> None:
@@ -1230,19 +1360,7 @@ def talk_unified(
     interval: str = "1h",
     verbose: bool = False,
 ) -> None:
-    """Interactive REPL that runs the unified neural engine on-demand."""
-    _configure_predict_output(verbose)
-    from unified_talk import run_unified_talk
-
-    run_unified_talk(
-        config_path,
-        checkpoint_path=checkpoint_path,
-        csv_path=csv_path,
-        ticker=ticker,
-        period=period,
-        interval=interval,
-        verbose=verbose,
-    )
+    raise RuntimeError("Retired: unified talk has been replaced by TF-only Buddy.")
 
 
 def buddy(
@@ -1252,29 +1370,144 @@ def buddy(
     instrument: str = "USD_JPY",
     granularity: str = "M5",
     candles: int = 300,
-    execute: bool = True,  # Live trading enabled by default
+    execute: bool = False,  # Live trading must be explicitly enabled
     all_features: bool = False,
     verbose: bool = False,
 ) -> None:
-    """Buddy: interactive offline REPL + OANDA demo/practice source."""
+    """Buddy: run one TF-only inference on fresh OANDA candles; optionally place a trade."""
     _configure_predict_output(verbose)
-    from unified_talk import run_unified_talk, OandaSettings
+    _configure_tf_metal()
 
-    oanda_settings = OandaSettings(
+    import json
+    import numpy as np
+    import tensorflow as tf
+
+    from feature_engineering import FeatureEngineering
+    from fx_paper import candles_to_ohlcv_df, pip_size, position_size_units
+    from oanda_practice import OandaPracticeClient
+
+    cfg = load_config(config_path)
+
+    # Load model + preprocessing metadata.
+    meta_path = Path("trained_data") / "models" / "buddy_tf.meta.json"
+    if not meta_path.exists():
+        raise FileNotFoundError("Missing Buddy metadata. Run: python main.py train-buddy")
+    meta = json.loads(meta_path.read_text())
+
+    model_path = checkpoint_path or meta.get("model_path")
+    if not model_path:
+        raise ValueError("Missing model path in metadata")
+
+    model = tf.keras.models.load_model(model_path)
+    seq_len_eff = int(meta.get("seq_len") or 64)
+    feature_columns: list[str] = list(meta.get("feature_columns") or [])
+    if not feature_columns:
+        raise ValueError("Missing feature_columns in Buddy metadata")
+
+    std = meta.get("standardize") or {}
+    mu = np.asarray(std.get("mean") or [], dtype=np.float32).reshape(1, -1)
+    sigma = np.asarray(std.get("std") or [], dtype=np.float32).reshape(1, -1)
+    if mu.size != len(feature_columns) or sigma.size != len(feature_columns):
+        raise ValueError("Standardization stats do not match feature_columns")
+
+    pca_info = meta.get("pca")
+    pca_components = int(meta.get("pca_components") or 0)
+    pca_mean = None
+    pca_components_mat = None
+    if pca_info and pca_components > 0:
+        pca_mean = np.asarray(pca_info.get("mean") or [], dtype=np.float32).reshape(1, -1)
+        pca_components_mat = np.asarray(pca_info.get("components") or [], dtype=np.float32)
+        if pca_components_mat.ndim != 2:
+            raise ValueError("Invalid PCA components in metadata")
+
+    # Trading gate.
+    threshold = float(meta.get("live_confidence_threshold", 0.75))
+    if execute:
+        enabled, _ = _buddy_live_enabled_from_meta()
+        if not enabled:
+            console.print(
+                "[yellow]Live trading disabled[/yellow]: train Buddy and reach >=62% direction accuracy and >=70% avg confidence."
+            )
+            execute = False
+        else:
+            console.print(f"[green]Live trading enabled[/green] (confidence threshold {threshold*100:.0f}%).")
+
+    # Fetch candles.
+    client = OandaPracticeClient.from_env()
+    resp = client.get_candles(instrument, granularity=granularity, count=int(candles), price="MBA")
+    df = candles_to_ohlcv_df(resp)
+
+    # Feature engineering to match training.
+    if all_features:
+        fe = FeatureEngineering(cfg.get("feature_engineering", {}))
+        df = fe.create_features(df, include_all=True)
+
+    numeric_df = df.select_dtypes(include=["number"]).replace([np.inf, -np.inf], np.nan)
+    numeric_df = numeric_df.ffill().bfill().fillna(0.0)
+
+    # Build the exact feature matrix expected by the model.
+    for col in feature_columns:
+        if col not in numeric_df.columns:
+            numeric_df[col] = 0.0
+    x2d = numeric_df[feature_columns].to_numpy(dtype=np.float32, copy=True)
+    if len(x2d) < seq_len_eff:
+        raise ValueError(f"Need at least {seq_len_eff} rows after preprocessing; got {len(x2d)}")
+    x2d = x2d[-seq_len_eff:]
+
+    # Standardize and optional PCA.
+    x_std = (x2d - mu) / np.where(sigma < 1e-6, 1.0, sigma)
+    if pca_components_mat is not None and pca_mean is not None:
+        x_std = (x_std - pca_mean) @ pca_components_mat.T
+
+    x = x_std.reshape(1, seq_len_eff, -1)
+    pred = model.predict(x, verbose=0)
+    p_dir = float(np.asarray(pred["direction"]).reshape(-1)[0])
+    p_conf = float(np.asarray(pred["confidence"]).reshape(-1)[0])
+
+    side = "buy" if p_dir >= 0.5 else "sell"
+    console.print(f"Buddy prediction: direction={p_dir:.3f} ({side}), confidence={p_conf:.3f}")
+
+    if p_conf < threshold:
+        console.print(f"[yellow]No trade[/yellow]: confidence below {threshold:.2f}")
+        return
+
+    if not execute:
+        console.print("[cyan]DRY-RUN[/cyan]: would place a market order.")
+        return
+
+    # Place a conservative market order with SL/TP derived from pips.
+    last_close = float(df["close"].iloc[-1])
+    ps = float(pip_size(instrument))
+    stop_loss_pips = float(cfg.get("buddy", {}).get("stop_loss_pips", 20.0))
+    take_profit_pips = float(cfg.get("buddy", {}).get("take_profit_pips", 40.0))
+    stop_distance = stop_loss_pips * ps
+
+    units = position_size_units(
         instrument=instrument,
-        granularity=granularity,
-        candles=candles,
-        execute=execute,
+        equity=float(cfg.get("buddy", {}).get("equity", 10_000.0)),
+        risk_per_trade_pct=float(cfg.get("buddy", {}).get("risk_per_trade_pct", 0.005)),
+        stop_distance_price=stop_distance,
+        price=last_close,
     )
-    run_unified_talk(
-        config_path,
-        checkpoint_path=checkpoint_path,
-        oanda=True,
-        oanda_settings=oanda_settings,
-        all_features=all_features,
-        verbose=verbose,
-        assistant_name="Buddy",
+    if side == "sell":
+        units = -abs(int(units))
+    else:
+        units = abs(int(units))
+
+    stop_price = last_close - stop_distance if units > 0 else last_close + stop_distance
+    tp_distance = take_profit_pips * ps
+    tp_price = last_close + tp_distance if units > 0 else last_close - tp_distance
+
+    price_bound = _fx_execution_guard_price_bound(None, client, instrument=instrument, units=units)
+    result = client.create_market_order(
+        instrument=instrument,
+        units=int(units),
+        stop_loss_price=float(stop_price),
+        take_profit_price=float(tp_price),
+        price_bound=price_bound,
+        client_tag="buddy_tf",
     )
+    console.print(f"[green]Order submitted[/green]: {result}")
 
 
 def main() -> None:
@@ -1283,27 +1516,11 @@ def main() -> None:
     parser.add_argument(
         "command",
         nargs="?",
-        default="predict",
+        default="buddy",
         choices=[
-            "train-model",
-            "evaluate-model",
-            "predict-price",
-            "realtime-loop",
-            "tune-model",
-            "profile-pipeline",
-            "visualize",  # New command
-            "openai-tune",  # New command
-            "ai-assistant",  # New sub-command
-            "train-unified",
-            "train-oanda-unified",
-            "chat-unified",
-            "talk-unified",
+            "train-buddy",
             "buddy",
             "Buddy",
-            "integrated-predict",
-            "predict",
-            "fx",
-            "fx-paper",
         ],
         help="Command to execute",
     )
@@ -1317,42 +1534,25 @@ def main() -> None:
         "--csv",
         "-f",
         default=None,
-        help="Path to market CSV file (used by integrated-predict)",
-    )
-    parser.add_argument(
-        "--metrics",
-        default=None,
-        help="Path to unified training metrics JSON (used by chat-unified)",
+        help="Path to market CSV file (used by train-buddy)",
     )
     parser.add_argument(
         "--model-path",
         default=None,
-        help="Path to unified checkpoint .pth (used by talk-unified)",
+        help="Optional Buddy model path override (defaults to trained_data/models/buddy_tf.keras)",
     )
+
     parser.add_argument(
-        "--ticker",
-        "-t",
-        default=None,
-        help="Ticker symbol to fetch live-ish data via yfinance (used by predict/integrated-predict)",
-    )
-    parser.add_argument(
-        "--period",
-        "-p",
-        default="5d",
-        help="yfinance period (used with --ticker), e.g. 1d,5d,1mo",
-    )
-    parser.add_argument(
-        "--interval",
-        "-i",
-        default="1h",
-        help="yfinance interval (used with --ticker), e.g. 1m,5m,1h,1d",
-    )
-    parser.add_argument(
-        "--watch-seconds",
-        "-w",
-        default=None,
+        "--pca-components",
         type=int,
-        help="If set with --ticker, rerun live predict every N seconds",
+        default=None,
+        help="Optional PCA components (e.g. 20-30) for Buddy training",
+    )
+    parser.add_argument(
+        "--seq-len",
+        type=int,
+        default=50,
+        help="Sequence length for Buddy training (default 50)",
     )
     parser.add_argument(
         "--verbose",
@@ -1364,8 +1564,8 @@ def main() -> None:
     parser.add_argument(
         "--instrument",
         "-I",
-        default="USD_JPY,EUR_USD,GBP_USD",
-        help="OANDA instrument(s), comma-separated e.g. EUR_USD,GBP_USD,USD_JPY (used by fx/fx-paper/train-oanda-unified)",
+        default="USD_JPY",
+        help="OANDA instrument e.g. USD_JPY,EUR_USD,GBP_USD (used by buddy)",
     )
     parser.add_argument(
         "--granularity",
@@ -1397,8 +1597,8 @@ def main() -> None:
         "--execute",
         "-x",
         action="store_true",
-        default=True,
-        help="Enable live trading on OANDA practice account (default: enabled)",
+        default=False,
+        help="Enable live trading on OANDA practice account (default: disabled)",
     )
     parser.add_argument(
         "--dry-run",
@@ -1420,81 +1620,29 @@ def main() -> None:
     args = parser.parse_args()
 
     command_map = {
-        "train-model": train_model,
-        "evaluate-model": evaluate_model,
-        "predict-price": predict_price,  # New
-        "realtime-loop": realtime_loop,  # New
-        "tune-model": tune_model,  # New
-        "profile-pipeline": profile_pipeline,  # New
-        "visualize": visualize_dashboard,  # New mapping
-        "openai-tune": openai_tune,  # New mapping
-        "ai-assistant": run_ai_assistant,  # updated mapping
-        "train-unified": train_unified,
-        "train-oanda-unified": train_oanda_unified,
-        "chat-unified": chat_unified,
-        "talk-unified": talk_unified,
+        "train-buddy": train_buddy,
         "buddy": buddy,
         "Buddy": buddy,
     }
 
     try:
-        if args.command in {"integrated-predict", "predict"}:
-            _configure_predict_output(args.verbose)
-            if args.ticker:
-                integrated_predict_live(
-                    args.config,
-                    ticker=args.ticker,
-                    period=args.period,
-                    interval=args.interval,
-                    watch_seconds=args.watch_seconds,
-                )
-            else:
-                integrated_predict(args.config, args.csv)
-            return
-
-        if args.command in {"fx", "fx-paper"}:
-            fx_paper_trade(
-                args.config,
-                instrument=args.instrument,
-                granularity=args.granularity,
-                candles=args.candles,
-                execute=args.execute,
-                equity=args.equity,
-                risk_per_trade_pct=args.risk,
-            )
-            return
-        if args.command == "train-unified":
-            command_map[args.command](args.config, args.csv, checkpoint_path=args.model_path)
-        elif args.command == "train-oanda-unified":
+        if args.command == "train-buddy":
             command_map[args.command](
                 args.config,
-                instruments=args.instrument,
-                granularity=args.granularity,
-                candles=args.candles,
-                checkpoint_path=args.model_path,
-                all_features=getattr(args, 'all_features', False),
-            )
-        elif args.command == "chat-unified":
-            command_map[args.command](args.config, args.metrics)
-        elif args.command == "talk-unified":
-            command_map[args.command](
-                args.config,
-                checkpoint_path=args.model_path,
-                csv_path=args.csv,
-                ticker=args.ticker,
-                period=args.period,
-                interval=args.interval,
-                verbose=args.verbose,
+                args.csv,
+                pca_components=args.pca_components,
+                seq_len=args.seq_len,
+                epochs=300,
+                batch_size=32,
+                lr=0.001,
+                all_features=True,
             )
         elif args.command in {"buddy", "Buddy"}:
-            # For Buddy, use only the first instrument if multiple are specified
-            buddy_instrument = args.instrument.split(",")[0].strip()
-            # Execute is True by default, but --dry-run overrides it
-            should_execute = not args.dry_run
+            should_execute = bool(args.execute) and (not args.dry_run)
             command_map[args.command](
                 args.config,
                 checkpoint_path=args.model_path,
-                instrument=buddy_instrument,
+                instrument=args.instrument,
                 granularity=args.granularity,
                 candles=args.candles,
                 execute=should_execute,

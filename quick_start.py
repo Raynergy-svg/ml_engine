@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+raise SystemExit(
+    "Retired: quick-start training disabled. Buddy training runs only via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 """
 Quick Start Example - Train a Model with Enhanced Features
 

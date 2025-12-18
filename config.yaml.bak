@@ -184,9 +184,12 @@ fx:
     profit_stop_pct_by_band:
       medium: 0.3
       high: 0.3
+
+  # Optional tuning for fx_confidence_v1 (calibrate via walk-forward eval)
   confidence_model:
+    # Tuned via walk-forward calibration (recommended)
     base_confidence: 0.75
-    spread_soft_start_ratio: 0.5
+    spread_soft_start_ratio: 0.50
     spread_penalty_max: 0.0
     atr_soft_start_pct: 0.0005
     atr_penalty_max: 0.0
@@ -208,18 +211,31 @@ dropout: 0.35
 recurrent_dropout: 0.15
 kernel_regularizer: 0.001
 augmentation_factor: 3
-framework: pytorch
+
+# =============================================================================
+# Framework Selection (pytorch or tensorflow)
+# =============================================================================
+framework: pytorch  # Options: pytorch, tensorflow
+
+# =============================================================================
+# TensorFlow-specific settings
+# =============================================================================
 tensorflow:
   enabled: true
-  model_type: tft
-  mixed_precision: true
-  xla_compile: false
+  # Model types: lstm, attention_lstm, transformer, tft, tcn
+  model_type: tft  # Temporal Fusion Transformer (recommended for multi-feature)
+  mixed_precision: true  # Use float16 for faster training
+  xla_compile: false  # XLA JIT compilation (experimental)
+
+# =============================================================================
+# TensorBoard Configuration
+# =============================================================================
 tensorboard:
   enabled: true
   log_dir: trained_data/tensorboard
-  histogram_freq: 1
-  write_graph: true
-  write_images: false
-  profile_batch: 0
-  update_freq: epoch
-  embeddings_freq: 0
+  histogram_freq: 1  # Log weight histograms every N epochs
+  write_graph: true  # Visualize model architecture
+  write_images: false  # Log images (not needed for time series)
+  profile_batch: 0  # Profile batches for performance (0 = disabled)
+  update_freq: epoch  # Log metrics every epoch
+  embeddings_freq: 0  # Log embeddings (0 = disabled)

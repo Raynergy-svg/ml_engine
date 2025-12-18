@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+raise SystemExit(
+    "Retired: Buddy training/inference/trading is only supported via main.py. "
+    "Use: python main.py train-buddy"
+)
+
 """
 Visual Training Demo with TensorBoard (Multi-Task Support).
 Demonstrates TensorFlow training with real-time visualization.
@@ -931,87 +936,10 @@ def train_pytorch(
     print("\n" + "="*60)
     print("🔥 PyTorch Training with TensorBoard")
     print("="*60)
-    
-    import torch
-    from ml_engine_enhanced import EnhancedMLEngine
-    from tensorboard_logger import TrainingCallback
-    
-    # Device check
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif torch.backends.mps.is_available():
-        device = "mps"
-    else:
-        device = "cpu"
-    print(f"Using device: {device}")
-    
-    # Prepare config
-    pt_config = {
-        'device': device,
-        'model': {
-            'type': model_type,
-            'input_size': x_train.shape[-1],
-            'hidden_size': config.get('hidden_size', 64) if config else 64,
-            'num_layers': config.get('num_layers', 3) if config else 3,
-            'dropout': config.get('dropout', 0.2) if config else 0.2,
-            'num_heads': 4,
-        },
-        'optimizer': {
-            'type': 'adamw',
-            'learning_rate': config.get('learning_rate', 0.001) if config else 0.001,
-        },
-        'epochs': epochs,
-        'batch_size': batch_size,
-        'early_stopping_patience': 15,
-        'mixed_precision': device == 'cuda',
-        'model_dir': 'trained_data/checkpoints/pytorch',
-        'loss_type': config.get('loss_type', 'huber') if config else 'huber',
-    }
-    
-    # Create engine
-    engine = EnhancedMLEngine(pt_config)
-    
-    # Setup TensorBoard callback
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    callback = TrainingCallback(
-        log_dir=f'trained_data/tensorboard/pytorch_{model_type}_{timestamp}',
-        log_weights=True,
-        log_weights_freq=5,
+    raise RuntimeError(
+        "train_pytorch is retired because PyTorch was removed. Use the TensorFlow-only Buddy pipeline via main.py."
     )
-    
-    # Log initial setup
-    sample_input = torch.randn(1, x_train.shape[1], x_train.shape[2]).to(device)
-    callback.on_train_begin(engine.model, pt_config, sample_input)
-    
-    print(f"\nModel: {engine.model.__class__.__name__}")
-    total_params = sum(p.numel() for p in engine.model.parameters())
-    print(f"Parameters: {total_params:,}")
-    
-    # Train with callback integration
-    # Note: For full integration, the engine's train method should call the callback
-    # This is a simplified version
-    history = engine.train(
-        x_train, y_train,
-        x_val, y_val,
-        epochs=epochs
-    )
-    
-    # Log training history to TensorBoard
-    for epoch, (train_loss, val_loss) in enumerate(zip(
-        history.get('train_losses', []),
-        history.get('val_losses', [])
-    )):
-        callback.on_epoch_end(
-            epoch=epoch,
-            model=engine.model,
-            train_loss=train_loss,
-            val_loss=val_loss,
-            optimizer=engine.optimizer,
-        )
-    
-    callback.on_train_end({'best_val_loss': history.get('best_val_loss', 0)})
-    
-    return engine, history
+
 
 
 def _create_argument_parser():

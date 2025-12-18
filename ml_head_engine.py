@@ -1,7 +1,7 @@
-"""MT head (pure TensorFlow).
+"""ML head (pure TensorFlow).
 
-This file previously contained a PyTorch multi-task model. Buddy now uses a
-TensorFlow-only architecture.
+A reusable LSTM head that maps the shared (sequence_len, feature_dim) input into
+an embedding vector.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import tensorflow as tf
 
 
 @dataclass(frozen=True)
-class MTEngineHeadConfig:
+class MLEngineHeadConfig:
     hidden_size: int = 64
     num_layers: int = 2
     dropout: float = 0.1
@@ -21,9 +21,7 @@ class MTEngineHeadConfig:
 
 
 @tf.keras.utils.register_keras_serializable(package="buddy")
-class MTEngineHead(tf.keras.Model):
-    """LSTM head that produces a hidden embedding."""
-
+class MLEngineHead(tf.keras.Model):
     def __init__(
         self,
         *,
@@ -31,7 +29,7 @@ class MTEngineHead(tf.keras.Model):
         num_layers: int = 2,
         dropout: float = 0.1,
         projection_dim: Optional[int] = None,
-        name: str = "mt_head",
+        name: str = "ml_head",
         **kwargs: Any,
     ) -> None:
         super().__init__(name=name, **kwargs)

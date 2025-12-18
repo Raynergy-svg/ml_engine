@@ -96,7 +96,8 @@ def test_trade_auto_execute_places_order(capsys):
     assert unified_talk._handle_talk_command(ctx, "trade", period="5d", interval="1h") is True
     out = capsys.readouterr().out
     assert "auto-trade executed" in out.lower()
-    assert ctx.oanda_client.orders == [("EUR_USD", -100000)]
+    expected_units = -unified_talk._default_trade_units(ctx, "EUR_USD")
+    assert ctx.oanda_client.orders == [("EUR_USD", expected_units)]
 
 
 def test_manual_trade_buy_dry_run(capsys):

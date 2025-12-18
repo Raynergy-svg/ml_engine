@@ -186,9 +186,9 @@ fx:
       high: 0.3
   confidence_model:
     base_confidence: 0.75
-    spread_soft_start_ratio: 0.5
+    spread_soft_start_ratio: 0.6
     spread_penalty_max: 0.0
-    atr_soft_start_pct: 0.0005
+    atr_soft_start_pct: 0.001
     atr_penalty_max: 0.0
   rolling_windows:
   - 3

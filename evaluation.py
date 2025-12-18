@@ -2,10 +2,11 @@
 Model evaluation and backtesting framework for trading strategies.
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
-import torch
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 import logging
 from sklearn.metrics import (
     mean_squared_error,
@@ -19,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 def predict_with_uncertainty(
-    model: torch.nn.Module,
-    X: torch.Tensor,
+    model: Any,
+    X: Any,
     n_iterations: int = 30,
     device: str = "cpu"
 ) -> Tuple[np.ndarray, np.ndarray]:
@@ -36,24 +37,10 @@ def predict_with_uncertainty(
     Returns:
         Tuple of (mean_predictions, std_predictions)
     """
-    # Enable training mode to activate dropout for Monte Carlo sampling
-    # Note: This also affects batch norm and other training-specific layers
-    model.train()
-    predictions = []
-    
-    with torch.no_grad():
-        for _ in range(n_iterations):
-            x_batch = X.to(device)
-            pred = model(x_batch).cpu().numpy()
-            predictions.append(pred)
-    
-    predictions = np.array(predictions)
-    mean_pred = predictions.mean(axis=0).flatten()
-    std_pred = predictions.std(axis=0).flatten()
-    
-    logger.info(f"Uncertainty estimation: mean std={std_pred.mean():.4f}")
-    
-    return mean_pred, std_pred
+    raise RuntimeError(
+        "predict_with_uncertainty is retired because PyTorch was removed. "
+        "Use the TensorFlow-only Buddy pipeline via main.py."
+    )
 
 
 def calibrate_predictions(

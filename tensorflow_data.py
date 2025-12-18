@@ -9,6 +9,11 @@ Features:
 - Compatible with existing DataLoader preprocessing
 """
 
+raise SystemExit(
+    "Retired: standalone TF data pipeline disabled to avoid alternate training paths. "
+    "Use: python main.py train-buddy"
+)
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
