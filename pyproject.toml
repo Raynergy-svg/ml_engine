@@ -1,2 +1,5 @@
 [tool.ruff.lint]
 select = ["NPY201"]
+
+[project.scripts]
+buddy = "cli_entry:main"
