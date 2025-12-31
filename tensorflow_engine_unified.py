@@ -48,11 +48,13 @@ def _ensure_tensorflow():
         except ImportError as e:
             print(f"⚠ Could not import some TensorFlow models: {e}")
             
-        # Import custom loss functions
+        # Import custom loss functions (optional).
+        # NOTE: `tensorflow_engine.py` may intentionally raise SystemExit in some
+        # configurations; never let that break inference/REPL startup.
         try:
             from tensorflow_engine import BinaryFocalLoss
             _custom_objects['BinaryFocalLoss'] = BinaryFocalLoss
-        except ImportError:
+        except BaseException:
             pass
             
     return _tf, _keras
@@ -641,14 +643,22 @@ class TensorFlowUnifiedEngine:
         """Run model inference and return outputs."""
         tf, _ = _ensure_tensorflow()
         
+        model_inputs = x_np
+        try:
+            input_names = list(getattr(self.model, "input_names", []) or [])
+            if len(input_names) == 1 and input_names[0] == "features":
+                model_inputs = {"features": x_np}
+        except Exception:
+            model_inputs = x_np
+        
         # Prefer direct call for single-batch inference to avoid overhead/hanging
         # associated with model.predict() in some environments.
         try:
-            return self.model(x_np, training=False)
+            return self.model(model_inputs, training=False)
         except Exception:
             # Fallback to predict() if direct call fails (e.g. for some SavedModels)
             if hasattr(self.model, 'predict'):
-                return self.model.predict(x_np, verbose=0)
+                return self.model.predict(model_inputs, verbose=0)
             raise
         if isinstance(outputs, (list, tuple)):
             return [o.numpy() if hasattr(o, 'numpy') else o for o in outputs]
