@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from text_features import simple_sentiment_score
+from candle_smoothing import resample_5min_ohlcv_and_ema_close
 
 logger = logging.getLogger(__name__)
 
@@ -480,15 +481,46 @@ class FeatureEngineering:
         return df
 
     def create_features(
-        self, df: pd.DataFrame, include_all: bool = True
+        self,
+        df: pd.DataFrame,
+        include_all: bool = True,
+        *,
+        apply_candle_smoothing: bool = True,
+        median_window: int | None = None,
     ) -> pd.DataFrame:
         """Create all features."""
         logger.info("Starting feature engineering...")
 
         original_shape = df.shape
+        original_len = int(original_shape[0])
+
+        # Candle smoothing for time-based OHLCV (FX-style `time` column).
+        # Resample to 5-minute bars and EMA(14) the close before computing indicators.
+        if apply_candle_smoothing and isinstance(df, pd.DataFrame) and "time" in [str(c).strip().lower() for c in df.columns]:
+            try:
+                df = resample_5min_ohlcv_and_ema_close(
+                    df,
+                    ema_span=14,
+                    median_window=median_window,
+                    time_col="time",
+                )
+            except Exception as e:
+                logger.debug("Candle smoothing skipped (%s)", e)
 
         # Optional text-derived features (sentiment/rolling/lags)
         df = self.add_text_features(df)
+
+        # If smoothing produced an EMA close feature, compute indicators on it while
+        # keeping the raw close column intact for labels and downstream OHLC logic.
+        close_raw = None
+        if "close_ema_14" in df.columns and "close" in df.columns:
+            try:
+                # Store raw close by position (not index) because downstream time features
+                # may replace the index (assignment would otherwise align and become NaN).
+                close_raw = df["close"].to_numpy(copy=True)
+                df["close"] = df["close_ema_14"].to_numpy(dtype=float, copy=False)
+            except Exception:
+                close_raw = None
 
         # Add all feature sets
         if include_all:
@@ -498,14 +530,38 @@ class FeatureEngineering:
             df = self.add_lag_features(df)
             df = self.add_rolling_features(df)
 
+        # Restore raw close (labels should be based on raw close, not smoothed close).
+        if close_raw is not None:
+            try:
+                df["close"] = close_raw
+            except Exception:
+                pass
+
         # Remove infinite values
         df = df.replace([np.inf, -np.inf], np.nan)
 
-        # Forward fill then backward fill NaN values
-        df = df.ffill().bfill()
+        # Forward-fill only (never backward-fill; bfill leaks future).
+        df = df.ffill()
 
-        # If still NaN, fill with 0
-        df = df.fillna(0)
+        # Drop columns that are entirely NaN (otherwise dropna(axis=0) would drop all rows).
+        df = df.dropna(axis=1, how="all")
+
+        # Drop leading rows until all columns have a valid value.
+        try:
+            first_valids = [col.first_valid_index() for _, col in df.items()]
+            first_valids = [ix for ix in first_valids if ix is not None]
+            first_valid = max(first_valids) if first_valids else None
+        except Exception:
+            first_valid = None
+        if first_valid is not None:
+            df = df.loc[first_valid:]
+
+        # If any NaNs remain (e.g., all-NaN columns), drop affected rows.
+        df = df.dropna(axis=0)
+
+        dropped = int(original_len - len(df))
+        if dropped > 0:
+            logger.info("Dropped %s rows with NaN after forward-fill", dropped)
 
         new_shape = df.shape
         logger.info(

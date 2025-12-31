@@ -17,4 +17,4 @@ if [[ -z "${CONDA_BIN}" ]]; then
   exit 1
 fi
 
-exec "${CONDA_BIN}" run -n tf-metal --no-capture-output python "${ROOT_DIR}/train_visual.py" "$@"
+exec "${CONDA_BIN}" run -n tf-metal --no-capture-output python "${ROOT_DIR}/main.py" train-buddy "$@"

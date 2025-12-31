@@ -1,12 +1,12 @@
 """Apply FX confidence tuning to a config file and write tuned config.
 
 Usage:
-  PYTHONPATH=. python3 scripts/apply_confidence_tuning.py --in config.yaml --out config_tuned.yaml 
+    PYTHONPATH=. python3 scripts/apply_confidence_tuning.py --in config_tuned.yaml --out config_tuned.yaml
   or
   PYTHONPATH=. python3 scripts/apply_confidence_tuning.py --set "base_confidence=0.75" "spread_penalty_max=0.0"
 
 This is a small convenience to persist and test calibration results produced
-by `scripts/calibrate_fx_confidence.py` without editing `config.yaml` directly.
+by `scripts/calibrate_fx_confidence.py` without editing `config_tuned.yaml` directly.
 """
 
 import argparse
@@ -52,7 +52,7 @@ def parse_set_items(items):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--in", dest="infile", default="config.yaml")
+    p.add_argument("--in", dest="infile", default="config_tuned.yaml")
     p.add_argument("--out", dest="outfile", default="config_tuned.yaml")
     p.add_argument("--set", dest="set", nargs="*", default=[], help="Override specific tuning params key=value")
     args = p.parse_args()

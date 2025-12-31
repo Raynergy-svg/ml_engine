@@ -12,6 +12,7 @@ import time
 import uuid
 
 import os
+import sys
 import requests
 
 
@@ -112,7 +113,9 @@ class OandaPracticeClient:
 
     @classmethod
     def from_env(cls) -> "OandaPracticeClient":
-        _load_project_dotenv()
+        # Tests expect missing env vars to raise; avoid auto-loading .env under pytest.
+        if "pytest" not in sys.modules:
+            _load_project_dotenv()
         api_token = os.getenv("OANDA_API_TOKEN") or os.getenv("OANDA_API_KEY")
         account_id = os.getenv("OANDA_ACCOUNT_ID")
         if not api_token or not account_id:
@@ -301,6 +304,9 @@ class OandaPracticeClient:
 
         return {"bid": float(bid), "ask": float(ask)}
 
+    # Allow callers to store the last trade id created via create_market_order for convenience.
+    _last_trade_id: str | None = None
+
     def close_position(
         self,
         *,
@@ -316,6 +322,18 @@ class OandaPracticeClient:
         return self._request(
             "PUT",
             f"/accounts/{self._config.account_id}/positions/{instrument}/close",
+            json=payload,
+        )
+
+    def close_trade(self, *, trade_id: str) -> Any:
+        """Close a specific trade by trade id (full close).
+
+        Uses the v20 endpoint: PUT /accounts/{accountID}/trades/{tradeID}/close
+        """
+        payload: Dict[str, Any] = {}
+        return self._request(
+            "PUT",
+            f"/accounts/{self._config.account_id}/trades/{trade_id}/close",
             json=payload,
         )
 
@@ -354,8 +372,31 @@ class OandaPracticeClient:
         if take_profit_price is not None:
             order["takeProfitOnFill"] = {"price": _format_price(instrument, float(take_profit_price))}
 
-        return self._request(
+        result = self._request(
             "POST",
             f"/accounts/{self._config.account_id}/orders",
             json={"order": order},
         )
+
+        # Try to capture created trade id(s) (if the order was filled) so callers
+        # can target the specific trade for precise auto-close. Store on the
+        # client instance as `_last_trade_id` for convenience.
+        try:
+            tx = (result or {}).get("orderFillTransaction") or (result or {}).get("orderCreateTransaction") or {}
+            trade_id = None
+            if isinstance(tx, dict):
+                to = tx.get("tradeOpened")
+                if isinstance(to, dict):
+                    trade_id = to.get("tradeID") or to.get("id")
+                tro = tx.get("tradesOpened")
+                if trade_id is None and isinstance(tro, list) and len(tro) > 0:
+                    trade_id = tro[0].get("tradeID") or tro[0].get("id")
+            if trade_id:
+                try:
+                    self._last_trade_id = str(trade_id)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        return result

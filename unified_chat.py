@@ -156,9 +156,9 @@ def _load_metrics(path: Path, *, cfg: Optional[Dict[str, Any]] = None) -> Dict[s
     if not path.exists():
         raise FileNotFoundError(
             "Metrics file not found. Run unified training once to generate it:\n"
-            "  python main.py train-unified --config ./config.yaml --csv <file.csv>\n"
+            "  python main.py train-unified --config ./config_tuned.yaml --csv <file.csv>\n"
             "Then run:\n"
-            "  python main.py chat-unified --config ./config.yaml"
+            "  python main.py chat-unified --config ./config_tuned.yaml"
         )
 
     payload = json.loads(path.read_text())

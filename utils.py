@@ -10,9 +10,13 @@ This module provides common utilities including:
 
 import time
 import logging
+import sys
 from pathlib import Path
 from typing import Any, Dict, Callable
-import yaml
+try:
+    import yaml  # type: ignore
+except Exception:  # pragma: no cover
+    yaml = None
 from joblib import Memory
 import functools
 import copy
@@ -101,7 +105,9 @@ def setup_logging(
         datefmt="%Y-%m-%d %H:%M:%S"
     )
     if enable_logging:
-        ch = logging.StreamHandler()
+        # Use stdout so `conda run` doesn't buffer console logs until process exit.
+        # (Default StreamHandler uses stderr, which can appear "after" training finishes.)
+        ch = logging.StreamHandler(stream=sys.stdout)
         ch.setLevel(level)
         ch.setFormatter(formatter)
         logger.addHandler(ch)
@@ -156,6 +162,11 @@ def load_config(config_path: str) -> Dict[str, Any]:
         if not config_path_obj.exists():
             logger.error(f"Configuration file not found: {config_path}")
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+        if yaml is None:
+            raise ModuleNotFoundError(
+                "PyYAML is required to load YAML configs. Install it with: pip install PyYAML"
+            )
         
         # Load YAML
         with open(config_path, "r") as f:
@@ -176,10 +187,10 @@ def load_config(config_path: str) -> Dict[str, Any]:
         
     except FileNotFoundError:
         raise
-    except yaml.YAMLError as e:
-        logger.error(f"Error parsing YAML file: {e}")
-        raise
     except Exception as e:
+        if yaml is not None and isinstance(e, getattr(yaml, "YAMLError", Exception)):
+            logger.error(f"Error parsing YAML file: {e}")
+            raise
         logger.error(f"Unexpected error loading configuration: {e}")
         raise
 
@@ -285,7 +296,7 @@ def validate_config(config: Dict[str, Any]) -> bool:
     return is_valid
 
 
-def get_config(config_path="config.yaml", default_config=None, validate=True):
+def get_config(config_path="config_tuned.yaml", default_config=None, validate=True):
     """Load and optionally validate configuration.
     
     Args:
@@ -321,7 +332,7 @@ if __name__ == "__main__":
         "epochs": 100,
     }
     try:
-        config = get_config("config.yaml", default_config=default_cfg)
+        config = get_config("config_tuned.yaml", default_config=default_cfg)
         logger.info(f"Config loaded and merged: {config}")
     except FileNotFoundError as e:
         logger.warning(e)

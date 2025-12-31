@@ -24,7 +24,7 @@ def test_launch_buddy_repl_calls_unified_talk(monkeypatch):
     importlib.reload(main)
 
     main.launch_buddy_repl_from_wizard(
-        'config.yaml',
+        'config_tuned.yaml',
         checkpoint_path='ckpt',
         instrument='EUR_USD',
         granularity='M15',

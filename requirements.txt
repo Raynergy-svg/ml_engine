@@ -1,3 +1,5 @@
+rich>=13
+PyYAML>=6
 # ML Engine Trading Bot - Requirements
 
 # Core ML and Data Science

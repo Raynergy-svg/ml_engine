@@ -9,7 +9,7 @@ from scipy.signal import savgol_filter  # For data smoothing
 
 
 class MLVisualizer:
-    def __init__(self, ml_engine, config_path="config.yaml"):
+    def __init__(self, ml_engine, config_path="config_tuned.yaml"):
         self.ml_engine = ml_engine
         self.paused = False  # For pausing/resuming animation
         self.data_queue = collections.deque(

@@ -19,6 +19,8 @@ import argparse
 from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from typing import Dict, Any, TYPE_CHECKING
+
+import numpy as np
 from rich.console import Console
 from rich.live import Live
 from rich.layout import Layout
@@ -69,7 +71,8 @@ class BuddyTrainingAdvancedOptions:
 class BuddyTrainingOptions:
     oanda_fetch: OandaFetchOptions | None = None
     advanced: BuddyTrainingAdvancedOptions | None = None
-    feature_curriculum: bool = False
+    # None => use config (buddy.feature_curriculum)
+    feature_curriculum: bool | None = None
     curriculum_ks: str | None = None
     pca_components: int | None = None
     seq_len: int = 50
@@ -81,6 +84,8 @@ class BuddyTrainingOptions:
     run_tag: str | None = None
     all_features: bool = True
     device: str = "auto"  # auto|cpu|gpu
+    ignore_input_mismatches: bool = False
+    disable_tier2_on_mismatch: bool = False
     mixed_precision: bool = False
     steps_per_execution: int = 1
     jit_compile: bool = False
@@ -153,12 +158,79 @@ def _tier2_interpolate_points(pts: list[tuple[float, float]], score: float) -> f
     return float((1.0 - t) * y0 + t * y1)
 
 
+def _tier2_clip_prob(p: float, *, eps: float = 1e-7) -> float:
+    try:
+        pf = float(p)
+    except Exception:
+        return 0.5
+    if np.isnan(pf):
+        return 0.5
+    return float(max(eps, min(1.0 - eps, pf)))
+
+
+def _tier2_logit(p: float, *, eps: float = 1e-7) -> float:
+    pp = _tier2_clip_prob(p, eps=eps)
+    return float(np.log(pp / (1.0 - pp)))
+
+
+def _tier2_sigmoid(x: float) -> float:
+    xf = float(x)
+    if xf >= 0:
+        ex = float(np.exp(-xf))
+        return float(1.0 / (1.0 + ex))
+    ex = float(np.exp(xf))
+    return float(ex / (1.0 + ex))
+
+
+def _tier2_temperature_scale_prob(p: float, temperature: float, *, eps: float = 1e-7) -> float:
+    try:
+        temperature_f = float(temperature)
+    except Exception:
+        return float(max(0.0, min(1.0, float(p))))
+    if not np.isfinite(temperature_f) or temperature_f <= 0:
+        return float(max(0.0, min(1.0, float(p))))
+    z = _tier2_logit(p, eps=eps)
+    return float(_tier2_sigmoid(z / temperature_f))
+
+
+def _tier2_nll(y_true: np.ndarray, p_pred: np.ndarray, *, eps: float = 1e-15) -> float:
+    p = np.clip(p_pred.astype(np.float64, copy=False), eps, 1.0 - eps)
+    y = y_true.astype(np.float64, copy=False)
+    return float(-np.mean((y * np.log(p)) + ((1.0 - y) * np.log(1.0 - p))))
+
+
+def _tier2_spearman(a: np.ndarray, b: np.ndarray) -> float:
+    # Simple Spearman via rank correlation (stable enough for diagnostics).
+    aa = np.asarray(a, dtype=np.float64).reshape(-1)
+    bb = np.asarray(b, dtype=np.float64).reshape(-1)
+    if aa.size == 0 or aa.size != bb.size:
+        return float("nan")
+    ra = aa.argsort(kind="mergesort").argsort(kind="mergesort").astype(np.float64)
+    rb = bb.argsort(kind="mergesort").argsort(kind="mergesort").astype(np.float64)
+    try:
+        return float(np.corrcoef(ra, rb)[0, 1])
+    except Exception:
+        return float("nan")
+
+
 def _tier2_apply_calibration(meta: dict[str, Any], score: float) -> float | None:
-    """Map a model score in [0,1] to calibrated P(win) via saved bins."""
+    """Map a model score in [0,1] to calibrated P(win).
+
+    Prefers temperature scaling when available; falls back to saved bin interpolation.
+    """
     try:
         calib = _tier2_get_calibration_dict(meta)
         if calib is None:
             return None
+
+        # Primary: temperature scaling
+        ts = calib.get("temperature_scaling") if isinstance(calib, dict) else None
+        if isinstance(ts, dict) and bool(ts.get("enabled", False)):
+            T = ts.get("T")
+            if T is not None:
+                return _tier2_temperature_scale_prob(float(score), float(T))
+
+        # Fallback: bin interpolation
         pts = _tier2_points_from_bins(calib)
         return _tier2_interpolate_points(pts, score)
     except Exception:
@@ -174,13 +246,76 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     from oanda_practice import OandaPracticeClient
 
     client = OandaPracticeClient.from_env()
-    resp = client.get_candles(
-        opts.instrument,
-        granularity=str(opts.granularity),
-        count=int(opts.candles),
-        price=str(opts.price),
-    )
-    oanda_df = candles_to_ohlcv_df(resp)
+
+    # OANDA v20 candles endpoint typically caps `count` at 5000.
+    # If the user requests more, page forward using `from_time`.
+    max_per_request = 5000
+    total = max(1, int(opts.candles))
+    if total <= max_per_request:
+        resp = client.get_candles(
+            opts.instrument,
+            granularity=str(opts.granularity),
+            count=int(total),
+            price=str(opts.price),
+        )
+        oanda_df = candles_to_ohlcv_df(resp)
+    else:
+        # Page *backwards* using `to_time`.
+        # Paging forwards using `from_time` can easily land on the current (incomplete)
+        # candle and return only incomplete candles.
+        dfs: list[pd.DataFrame] = []
+        to_time: str | None = None
+        last_min_ts = None
+        remaining = int(total)
+        # Safety: cap number of API calls.
+        max_pages = max(1, int((total + max_per_request - 1) // max_per_request) + 2)
+        for _ in range(max_pages):
+            if remaining <= 0:
+                break
+            count = int(min(max_per_request, remaining))
+            resp = client.get_candles(
+                opts.instrument,
+                granularity=str(opts.granularity),
+                count=int(count),
+                price=str(opts.price),
+                to_time=to_time,
+            )
+            df_page = candles_to_ohlcv_df(resp)
+            if df_page is None or len(df_page) == 0:
+                break
+            dfs.append(df_page)
+            remaining -= int(len(df_page))
+
+            # Move the cursor to the earliest candle in this page.
+            try:
+                t = pd.to_datetime(df_page["time"], utc=True, errors="coerce")
+                if t.isna().all():
+                    break
+                min_ts = t.min()
+                if last_min_ts is not None and min_ts >= last_min_ts:
+                    break
+                last_min_ts = min_ts
+                # OANDA accepts RFC3339; keep full precision.
+                to_time = str(min_ts.to_pydatetime().isoformat().replace(UTC_OFFSET_SUFFIX, "Z"))
+            except Exception:
+                break
+
+        if dfs:
+            oanda_df = pd.concat(dfs, axis=0, ignore_index=True)
+            try:
+                if "time" in oanda_df.columns:
+                    oanda_df = oanda_df.drop_duplicates(subset=["time"], keep="last")
+                    oanda_df = oanda_df.sort_values("time").reset_index(drop=True)
+            except Exception:
+                pass
+            # Keep the most recent `total` candles.
+            try:
+                if len(oanda_df) > total:
+                    oanda_df = oanda_df.iloc[-int(total) :].reset_index(drop=True)
+            except Exception:
+                pass
+        else:
+            oanda_df = pd.DataFrame()
 
     # Helpful "recency" logging so it's obvious we pulled live data now.
     try:
@@ -266,11 +401,12 @@ def _meta_path_for_checkpoint(model_path: str) -> Path | None:
 
 
 # Constants
-DEFAULT_CONFIG_PATH = "./config.yaml"
+DEFAULT_CONFIG_PATH = "./config_tuned.yaml"
 DEFAULT_MESSAGE_FORMAT = "Epoch {epoch} completed"
 TIMESTAMP_FORMAT = "%H:%M:%S"
 TABLE_HEADER_STYLE = "bold magenta"
 DEFAULT_CURRICULUM_KS = "32,64,128,0"
+UTC_OFFSET_SUFFIX = "+00:00"
 
 # Initialize console and logging
 console = Console()
@@ -330,7 +466,6 @@ def launch_buddy_repl_from_wizard(
     granularity: str = "M5",
     candles: int = 2000,
     execute: bool = True,
-    force_execute: bool = False,
     all_features: bool = False,
     verbose: bool = False,
     assistant_name: str = "Buddy",
@@ -378,58 +513,76 @@ def launch_buddy_repl_from_wizard(
     )
 
 
-def _buddy_interactive_wizard(*, default_config: str = DEFAULT_CONFIG_PATH) -> None:
-    def _ask(prompt: str) -> str:
-        try:
-            return str(console.input(prompt) or "")
-        except EOFError:
-            return ""
+def _buddy_wizard_ask(prompt: str) -> str:
+    try:
+        return str(console.input(prompt) or "")
+    except EOFError:
+        return ""
 
-    console.print("[bold]Buddy interactive[/bold] (press Enter for defaults)")
 
-    cfg_path = (_ask(f"Config path [{default_config}]: ") or "").strip() or default_config
-    instrument = _normalize_instrument(_ask("Instrument [USD_JPY]: ") or "USD_JPY")
-    granularity = (_ask("Granularity [M5]: ") or "M5").strip() or "M5"
+def _buddy_wizard_collect_settings(*, default_config: str) -> dict[str, Any]:
+    cfg_path = (_buddy_wizard_ask(f"Config path [{default_config}]: ") or "").strip() or default_config
+    instrument = _normalize_instrument(_buddy_wizard_ask("Instrument [USD_JPY]: ") or "USD_JPY")
+    granularity = (_buddy_wizard_ask("Granularity [M5]: ") or "M5").strip() or "M5"
 
     candles = _parse_int_answer(
-        _ask("Candles lookback [2000]: "),
+        _buddy_wizard_ask("Candles lookback [2000]: "),
         default=2000,
     )
     if int(candles) < 300:
         candles = 300
 
-    equity = _parse_float_answer(_ask("Equity for sizing (PRACTICE NAV fallback) [10000]: "), default=10_000.0)
+    equity = _parse_float_answer(
+        _buddy_wizard_ask("Equity for sizing (PRACTICE NAV fallback) [10000]: "),
+        default=10_000.0,
+    )
 
     # Risk is used as a fraction internally (0.005 = 0.5%). Ask as percent for humans.
-    risk_pct = _parse_float_answer(_ask("Risk per trade (%) [0.5]: "), default=0.5)
+    risk_pct = _parse_float_answer(_buddy_wizard_ask("Risk per trade (%) [0.5]: "), default=0.5)
     risk_frac = max(0.0, float(risk_pct) / 100.0)
 
-    execute = _parse_bool_answer(_ask("Place PRACTICE orders? (Y/n): "), default=True)
-    dry_run = False
-    if not execute:
-        dry_run = True
+    execute = _parse_bool_answer(_buddy_wizard_ask("Place PRACTICE orders? (Y/n): "), default=True)
 
     force_execute = False
     if execute:
         force_execute = _parse_bool_answer(
-            _ask("Bypass training gate (>=62% dir acc)? (Y/n): "),
+            _buddy_wizard_ask("Bypass training gate (>=62% dir acc)? (Y/n): "),
             default=True,
         )
 
-    loop = _parse_bool_answer(_ask("Run continuously (loop)? (y/N): "), default=False)
+    loop = _parse_bool_answer(_buddy_wizard_ask("Run continuously (loop)? (y/N): "), default=False)
     max_trades = 1
     if loop:
-        max_trades = _parse_int_answer(_ask("Max executed trades (0 = unlimited) [1]: "), default=1)
+        max_trades = _parse_int_answer(_buddy_wizard_ask("Max executed trades (0 = unlimited) [1]: "), default=1)
         max_trades = max(0, int(max_trades))
 
-    console.print(
-        f"\n[dim]Summary[/dim]: instrument={instrument} granularity={granularity} candles={int(candles)} "
-        f"equity={float(equity):.2f} risk={risk_frac*100:.3f}% execute={bool(execute)} force_execute={bool(force_execute)} loop={bool(loop)}"
-    )
-    if not _parse_bool_answer(_ask("Proceed? (Y/n): "), default=True):
-        console.print("[dim]Cancelled.[/dim]")
-        return
+    return {
+        "cfg_path": cfg_path,
+        "instrument": instrument,
+        "granularity": granularity,
+        "candles": int(candles),
+        "equity": float(equity),
+        "risk_frac": float(risk_frac),
+        "execute": bool(execute),
+        "force_execute": bool(force_execute),
+        "loop": bool(loop),
+        "max_trades": int(max_trades),
+    }
 
+
+def _buddy_wizard_confirm_settings(s: dict[str, Any]) -> bool:
+    console.print(
+        f"\n[dim]Summary[/dim]: instrument={s['instrument']} granularity={s['granularity']} candles={int(s['candles'])} "
+        f"equity={float(s['equity']):.2f} risk={float(s['risk_frac'])*100:.3f}% execute={bool(s['execute'])} "
+        f"force_execute={bool(s['force_execute'])} loop={bool(s['loop'])}"
+    )
+    if _parse_bool_answer(_buddy_wizard_ask("Proceed? (Y/n): "), default=True):
+        return True
+    console.print("[dim]Cancelled.[/dim]")
+    return False
+
+
+def _buddy_wizard_select_mode() -> int:
     # Offer a short mode menu to make intentions explicit.
     console.print(
         "\nChoose mode:\n 1) Single-shot inference: run one prediction and exit\n"
@@ -437,22 +590,23 @@ def _buddy_interactive_wizard(*, default_config: str = DEFAULT_CONFIG_PATH) -> N
         " 3) Launch Buddy REPL: interactive trading commands (buy/sell/close/etc.)\n"
         " 4) Train Buddy: run training workflow"
     )
-    choice = (_ask("Mode [1]: ") or "1").strip() or "1"
+    choice = (_buddy_wizard_ask("Mode [1]: ") or "1").strip() or "1"
     try:
-        mode = int(choice)
+        return int(choice)
     except Exception:
-        mode = 1
+        return 1
 
+
+def _buddy_wizard_dispatch_mode(mode: int, s: dict[str, Any]) -> None:
     if mode == 3:
         # Launch the interactive REPL that exposes Buddy's trade commands.
         launch_buddy_repl_from_wizard(
-            cfg_path,
+            s["cfg_path"],
             checkpoint_path=None,
-            instrument=instrument,
-            granularity=granularity,
-            candles=int(candles),
-            execute=bool(execute),
-            force_execute=bool(force_execute),
+            instrument=s["instrument"],
+            granularity=s["granularity"],
+            candles=int(s["candles"]),
+            execute=bool(s["execute"]),
             all_features=False,
             verbose=False,
             assistant_name="Buddy",
@@ -461,38 +615,46 @@ def _buddy_interactive_wizard(*, default_config: str = DEFAULT_CONFIG_PATH) -> N
 
     if mode == 4:
         # Kick off training flow
-        train_buddy(cfg_path)
+        train_buddy(s["cfg_path"])
         return
 
     # Mode 2 = loop, else single-shot
-    if mode == 2 or loop:
+    if mode == 2 or bool(s["loop"]):
         buddy_loop(
-            cfg_path,
-            instrument=instrument,
-            granularity=granularity,
-            candles=int(candles),
-            execute=True,
-            force_execute=bool(force_execute),
-            equity=float(equity),
-            risk_per_trade_pct=float(risk_frac),
+            s["cfg_path"],
+            instrument=s["instrument"],
+            granularity=s["granularity"],
+            candles=int(s["candles"]),
+            execute=bool(s["execute"]),
+            force_execute=bool(s["force_execute"]),
+            equity=float(s["equity"]),
+            risk_per_trade_pct=float(s["risk_frac"]),
             all_features=False,
             verbose=False,
-            max_trades=int(max_trades),
+            max_trades=int(s["max_trades"]),
         )
         return
 
     buddy(
-        cfg_path,
-        instrument=instrument,
-        granularity=granularity,
-        candles=int(candles),
-        execute=True,
-        force_execute=bool(force_execute),
-        equity=float(equity),
-        risk_per_trade_pct=float(risk_frac),
+        s["cfg_path"],
+        instrument=s["instrument"],
+        granularity=s["granularity"],
+        candles=int(s["candles"]),
+        execute=bool(s["execute"]),
+        force_execute=bool(s["force_execute"]),
+        equity=float(s["equity"]),
+        risk_per_trade_pct=float(s["risk_frac"]),
         all_features=False,
         verbose=False,
     )
+
+
+def _buddy_interactive_wizard(*, default_config: str = DEFAULT_CONFIG_PATH) -> None:
+    console.print("[bold]Buddy interactive[/bold] (press Enter for defaults)")
+    settings = _buddy_wizard_collect_settings(default_config=default_config)
+    if not _buddy_wizard_confirm_settings(settings):
+        return
+    _buddy_wizard_dispatch_mode(_buddy_wizard_select_mode(), settings)
 
 
 def _configure_predict_output(verbose: bool) -> None:
@@ -752,8 +914,8 @@ def _train_buddy_impl(
 
     oanda_fetch = options.oanda_fetch
     advanced = options.advanced
-    feature_curriculum = options.feature_curriculum
-    curriculum_ks = options.curriculum_ks
+    feature_curriculum_opt = options.feature_curriculum
+    curriculum_ks_opt = options.curriculum_ks
     pca_components = options.pca_components
     seq_len = options.seq_len
     epochs = options.epochs
@@ -764,6 +926,8 @@ def _train_buddy_impl(
     run_tag = options.run_tag
     all_features = options.all_features
     device = options.device
+    ignore_input_mismatches = bool(options.ignore_input_mismatches)
+    disable_tier2_on_mismatch = bool(options.disable_tier2_on_mismatch)
     mixed_precision = options.mixed_precision
     steps_per_execution = options.steps_per_execution
     jit_compile = options.jit_compile
@@ -777,15 +941,23 @@ def _train_buddy_impl(
 
     dev = str(device or "auto").strip().lower()
     force_cpu = dev == "cpu"
-    _configure_tf_metal(verbose=False, force_cpu=force_cpu)
 
     try:
         from tracing_setup import setup_tracing as _setup_tracing
-
-        _setup_tracing()
     except Exception:
-        # tracing should never break runtime
-        pass
+        _setup_tracing = None
+
+    from buddy_training_helpers import _buddy_setup_training_environment
+
+    # When debugging perf, show whether Metal GPU is actually visible.
+    mp_enabled = _buddy_setup_training_environment(
+        timing=bool(timing),
+        force_cpu=bool(force_cpu),
+        mixed_precision=bool(mixed_precision),
+        configure_tf_metal=_configure_tf_metal,
+        console=console,
+        setup_tracing=_setup_tracing,
+    )
     import json
     import os
     import numpy as np
@@ -796,15 +968,46 @@ def _train_buddy_impl(
 
     buddy_cfg = (cfg.get("buddy") or {}) if isinstance(cfg, dict) else {}
 
-    # Optional mixed precision (behind a flag). Some TF-Metal builds benefit, some don't.
-    mp_enabled = bool(mixed_precision)
-    if mp_enabled:
+    # Optional: out-of-sample (OOS) evaluation controls (env vars).
+    # If we're training from live OANDA (no --csv), prefer a single fetch and split the tail as OOS.
+    try:
+        _oos_env = os.environ.get("BUDDY_OOS_EVAL", "").strip().lower()
+        oos_enabled_env = _oos_env in {"1", "true", "yes", "y", "on"}
+    except Exception:
+        oos_enabled_env = False
+    try:
+        oos_candles_env = int(float(os.environ.get("BUDDY_OOS_CANDLES", "5000")))
+    except Exception:
+        oos_candles_env = 5000
+    oos_candles_env = max(300, min(int(oos_candles_env), 20000))
+
+    oos_holdout_csv: str | None = None
+    oos_holdout_rows: int | None = None
+    oos_live_split = bool(oos_enabled_env) and (csv_path is None) and (oanda_fetch is not None)
+    base_oanda_fetch = oanda_fetch
+    if oos_live_split and oanda_fetch is not None:
         try:
-            tf.keras.mixed_precision.set_global_policy("mixed_float16")
-            console.print("Mixed precision enabled: mixed_float16")
-        except Exception as e:
-            console.print(f"[yellow]Mixed precision enable failed; continuing in float32[/yellow]: {e}")
-            mp_enabled = False
+            train_candles_req = int(getattr(oanda_fetch, "candles", 5000) or 5000)
+        except Exception:
+            train_candles_req = 5000
+        total_candles_req = int(train_candles_req) + int(oos_candles_env)
+        try:
+            oanda_fetch = replace(oanda_fetch, candles=int(total_candles_req))
+        except Exception:
+            pass
+
+    # Config defaults + CLI overrides.
+    if feature_curriculum_opt is None:
+        feature_curriculum = bool(buddy_cfg.get("feature_curriculum", False))
+    else:
+        feature_curriculum = bool(feature_curriculum_opt)
+
+    if curriculum_ks_opt is None:
+        curriculum_ks = str(buddy_cfg.get("curriculum_ks", DEFAULT_CURRICULUM_KS))
+    else:
+        curriculum_ks = str(curriculum_ks_opt)
+
+    # mp_enabled is set by _buddy_setup_training_environment()
 
     init_from = advanced.init_from if advanced else None
     es_monitor = (advanced.es_monitor if advanced else "direction")
@@ -860,76 +1063,50 @@ def _train_buddy_impl(
     except Exception:
         pass
 
-    if oanda_fetch is not None:
-        # Fetch fresh candles from OANDA PRACTICE and train from that dataset.
-        csv_path = _oanda_fetch_to_csv(oanda_fetch)
-    elif csv_path is None:
-        # Default to repo-local clean USDJPY M5 data.
-        csv_path = str(Path("market_data") / "oanda_USD_JPY_M5.csv")
+    from buddy_training_helpers import _buddy_load_and_validate_csv
 
-    # If the default local CSV doesn't exist, try the most recent live fetch.
-    csv_p = Path(str(csv_path))
-    if not csv_p.exists():
+    # Load data (optionally fetching fresh candles from OANDA) + apply basic quality filters.
+    df = _buddy_load_and_validate_csv(
+        csv_path=csv_path,
+        oanda_fetch=oanda_fetch,
+        min_volume=min_volume,
+        spread_filter=bool(spread_filter),
+        spread_pctl=float(spread_pctl),
+        spread_mult=float(spread_mult),
+        oanda_fetch_to_csv=_oanda_fetch_to_csv,
+        console=console,
+    )
+
+    # If we fetched a larger live window for OOS, hold out the most recent tail and train on the earlier slice.
+    if oos_live_split and base_oanda_fetch is not None:
         try:
-            md = Path("market_data")
-            candidates = sorted(md.glob("oanda_USD_JPY_M5_live_*.csv"), key=lambda p: p.stat().st_mtime)
-            if candidates:
-                csv_p = candidates[-1]
-                csv_path = str(csv_p)
-                console.print(f"Default CSV missing; using latest live dataset: {csv_path}")
+            holdout_n = int(oos_candles_env)
+            # Ensure we still have enough rows for training.
+            if int(len(df)) > int(holdout_n) + int(seq_len) + 50:
+                oos_df_raw = df.tail(int(holdout_n)).copy()
+                df = df.iloc[: int(len(df)) - int(holdout_n)].copy()
+
+                out_dir = Path("market_data")
+                out_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    inst = str(getattr(base_oanda_fetch, "instrument", "USD_JPY"))
+                except Exception:
+                    inst = "USD_JPY"
+                try:
+                    gran = str(getattr(base_oanda_fetch, "granularity", "M5"))
+                except Exception:
+                    gran = "M5"
+                ts_tag = time.strftime("%Y%m%d_%H%M%S")
+                oos_path = out_dir / f"oanda_{inst}_{gran}_oos_{ts_tag}.csv"
+                oos_df_raw.to_csv(oos_path, index=False)
+                oos_holdout_csv = str(oos_path)
+                oos_holdout_rows = int(len(oos_df_raw))
+                console.print(
+                    f"Prepared OOS holdout from live tail: rows={int(oos_holdout_rows)} -> {oos_path} (training rows={int(len(df))})"
+                )
         except Exception:
-            pass
-
-    if not Path(str(csv_path)).exists():
-        raise FileNotFoundError(
-            f"Training CSV not found: {csv_path}. Use --oanda-live to fetch, or pass --csv <path>."
-        )
-
-    df = pd.read_csv(csv_path)
-
-    if "time" in df.columns:
-        df["time"] = pd.to_datetime(df["time"], errors="coerce")
-        df = df.sort_values("time")
-
-    # Ensure expected OHLCV columns exist.
-    required = ["open", "high", "low", "close", "volume"]
-    missing = [c for c in required if c not in df.columns]
-    if missing:
-        raise ValueError(f"CSV missing required columns: {missing}")
-
-    # Optional data-quality filters.
-    if min_volume is not None:
-        try:
-            before = int(len(df))
-            df = df.loc[df["volume"].astype(float) >= float(min_volume)].copy()
-            removed = before - int(len(df))
-            if removed > 0:
-                console.print(f"Filtered low-volume candles: removed {removed} rows (min_volume={min_volume})")
-        except Exception as e:
-            console.print(f"[yellow]Min-volume filter skipped[/yellow]: {e}")
-
-    if spread_filter:
-        # OANDA candles may include bid/ask close columns when price includes B/A.
-        if "bid_close" in df.columns and "ask_close" in df.columns:
-            try:
-                before = int(len(df))
-                spread = (df["ask_close"].astype(float) - df["bid_close"].astype(float)).abs()
-                spread = spread.replace([np.inf, -np.inf], np.nan).dropna()
-                if not spread.empty:
-                    pctl_thr = float(np.quantile(spread.to_numpy(), float(spread_pctl)))
-                    med = float(np.median(spread.to_numpy()))
-                    thr = max(pctl_thr, float(spread_mult) * med) if med > 0 else pctl_thr
-                    keep_mask = (df["ask_close"].astype(float) - df["bid_close"].astype(float)).abs() <= thr
-                    df = df.loc[keep_mask].copy()
-                    removed = before - int(len(df))
-                    if removed > 0:
-                        console.print(
-                            f"Filtered wide-spread candles: removed {removed} rows (pctl={spread_pctl}, mult={spread_mult}, thr={thr:.10g})"
-                        )
-            except Exception as e:
-                console.print(f"[yellow]Spread filter skipped[/yellow]: {e}")
-        else:
-            console.print("[yellow]Spread filter requested but bid/ask columns missing; skipping[/yellow]")
+            oos_holdout_csv = None
+            oos_holdout_rows = None
 
     # Training-time noise reduction:
     # - If we are running full feature engineering, let FeatureEngineering apply it (so it happens exactly once).
@@ -940,12 +1117,19 @@ def _train_buddy_impl(
 
     # Feature engineering (numeric only).
     if all_features:
+        t_fe = time.perf_counter()
+        console.print(
+            f"Feature engineering: start (all_features=True, train_smoothing={bool(train_smoothing)}, median_window={median_window})"
+        )
         fe = FeatureEngineering(cfg.get("feature_engineering", {}))
         df = fe.create_features(
             df,
             include_all=True,
             apply_candle_smoothing=train_smoothing,
             median_window=median_window,
+        )
+        console.print(
+            f"Feature engineering: done rows={int(len(df))} cols={int(df.shape[1])} in {time.perf_counter() - t_fe:.2f}s"
         )
     elif train_smoothing:
         try:
@@ -1104,87 +1288,83 @@ def _train_buddy_impl(
             label_stride = max(1, int(float(label_stride_env)))
         except Exception:
             label_stride = max(1, int(tier2_calibration_stride))
+    if not tier2_calibrate:
+        console.print("Tier-2 labeling disabled (--no-tier2-calibrate): confidence targets set to zeros")
+    else:
+        try:
+            t_tier2_label = time.perf_counter()
+            from fx_paper import pip_size, simulate_tp_sl_outcome
 
-    try:
-        from fx_paper import pip_size, simulate_tp_sl_outcome
+            # Best-effort instrument inference.
+            instrument_guess = None
+            if oanda_fetch is not None:
+                try:
+                    instrument_guess = str(getattr(oanda_fetch, "instrument", None) or None)
+                except Exception:
+                    instrument_guess = None
+            if not instrument_guess:
+                cp = str(csv_path or "")
+                up = cp.upper()
+                if "EUR_USD" in up:
+                    instrument_guess = "EUR_USD"
+                elif "GBP_USD" in up:
+                    instrument_guess = "GBP_USD"
+                elif "USD_JPY" in up or "USDJPY" in up or "_JPY_" in up or up.endswith("JPY.CSV"):
+                    instrument_guess = "USD_JPY"
+                else:
+                    instrument_guess = "USD_JPY"
+            conf_instrument_guess = str(instrument_guess)
 
-        # Best-effort instrument inference.
-        instrument_guess = None
-        if oanda_fetch is not None:
-            try:
-                instrument_guess = str(getattr(oanda_fetch, "instrument", None) or None)
-            except Exception:
-                instrument_guess = None
-        if not instrument_guess:
-            cp = str(csv_path or "")
-            up = cp.upper()
-            if "EUR_USD" in up:
-                instrument_guess = "EUR_USD"
-            elif "GBP_USD" in up:
-                instrument_guess = "GBP_USD"
-            elif "USD_JPY" in up or "USDJPY" in up or "_JPY_" in up or up.endswith("JPY.CSV"):
-                instrument_guess = "USD_JPY"
-            else:
-                instrument_guess = "USD_JPY"
-        conf_instrument_guess = str(instrument_guess)
+            pip = float(pip_size(str(instrument_guess)))
+            max_signal = min(int(n) - 1, int(len(ohlc_df)) - 3)
+            if max_signal < 0:
+                raise ValueError("Insufficient OHLC rows for TP/SL labeling")
 
-        pip = float(pip_size(str(instrument_guess)))
-        max_signal = min(int(n) - 1, int(len(ohlc_df)) - 3)
-        if max_signal < 0:
-            raise ValueError("Insufficient OHLC rows for TP/SL labeling")
-
-        def _spread_pips_at_entry(gi: int) -> float:
-            sp = float(tier2_spread_fallback_pips)
-            try:
-                if "bid_close" in ohlc_df.columns and "ask_close" in ohlc_df.columns:
-                    bid = float(ohlc_df["bid_close"].iloc[int(gi) + 1])
-                    ask = float(ohlc_df["ask_close"].iloc[int(gi) + 1])
-                    if np.isfinite(bid) and np.isfinite(ask) and bid > 0 and ask > 0 and ask >= bid:
-                        sp = float((ask - bid) / max(pip, 1e-9))
-            except Exception:
+            def _spread_pips_at_entry(gi: int) -> float:
                 sp = float(tier2_spread_fallback_pips)
-            return float(sp)
+                try:
+                    if "bid_close" in ohlc_df.columns and "ask_close" in ohlc_df.columns:
+                        bid = float(ohlc_df["bid_close"].iloc[int(gi) + 1])
+                        ask = float(ohlc_df["ask_close"].iloc[int(gi) + 1])
+                        if np.isfinite(bid) and np.isfinite(ask) and bid > 0 and ask > 0 and ask >= bid:
+                            sp = float((ask - bid) / max(pip, 1e-9))
+                except Exception:
+                    sp = float(tier2_spread_fallback_pips)
+                return float(sp)
 
-        start_gi = max(0, int(seq_len) - 1)
-        for gi in range(int(start_gi), int(max_signal) + 1, int(label_stride)):
-            spread_pips = _spread_pips_at_entry(int(gi))
-            res_long = simulate_tp_sl_outcome(
-                ohlc_df,
-                instrument=str(instrument_guess),
-                signal_index=int(gi),
-                direction="long",
-                stop_loss_pips=float(tier2_stop_loss_pips),
-                take_profit_pips=float(tier2_take_profit_pips),
-                spread_pips=float(spread_pips),
-                max_horizon_candles=int(tier2_horizon_candles),
-                tie_break=str(tier2_tie_break),
+            start_gi = max(0, int(seq_len) - 1)
+            n_sim = 0
+            for gi in range(int(start_gi), int(max_signal) + 1, int(label_stride)):
+                spread_pips = _spread_pips_at_entry(int(gi))
+                true_dir = "long" if float(direction_y_all[int(gi)]) >= 0.5 else "short"
+                res = simulate_tp_sl_outcome(
+                    ohlc_df,
+                    instrument=str(instrument_guess),
+                    signal_index=int(gi),
+                    direction=str(true_dir),
+                    stop_loss_pips=float(tier2_stop_loss_pips),
+                    take_profit_pips=float(tier2_take_profit_pips),
+                    spread_pips=float(spread_pips),
+                    max_horizon_candles=int(tier2_horizon_candles),
+                    tie_break=str(tier2_tie_break),
+                )
+
+                conf_y_all[int(gi)] = float(int(res.to_label()))
+                conf_w_all[int(gi)] = 1.0
+                n_sim += 1
+
+            console.print(
+                "Confidence targets: Tier-2 TP/SL v1 "
+                f"(instrument={str(instrument_guess)}, SL={float(tier2_stop_loss_pips):g}, TP={float(tier2_take_profit_pips):g}, "
+                f"horizon={int(tier2_horizon_candles)}, label_stride={int(label_stride)})"
             )
-            res_short = simulate_tp_sl_outcome(
-                ohlc_df,
-                instrument=str(instrument_guess),
-                signal_index=int(gi),
-                direction="short",
-                stop_loss_pips=float(tier2_stop_loss_pips),
-                take_profit_pips=float(tier2_take_profit_pips),
-                spread_pips=float(spread_pips),
-                max_horizon_candles=int(tier2_horizon_candles),
-                tie_break=str(tier2_tie_break),
+            console.print(
+                f"Tier-2 labeling runtime: simulate_calls={int(n_sim)} elapsed={time.perf_counter() - t_tier2_label:.2f}s"
             )
-
-            win_long = int(res_long.to_label())
-            win_short = int(res_short.to_label())
-            conf_y_all[int(gi)] = float(win_long) if float(direction_y_all[int(gi)]) >= 0.5 else float(win_short)
-            conf_w_all[int(gi)] = 1.0
-
-        console.print(
-            "Confidence targets: Tier-2 TP/SL v1 "
-            f"(instrument={str(instrument_guess)}, SL={float(tier2_stop_loss_pips):g}, TP={float(tier2_take_profit_pips):g}, "
-            f"horizon={int(tier2_horizon_candles)}, label_stride={int(label_stride)})"
-        )
-    except Exception as e:
-        console.print(f"[yellow]Tier-2 confidence labeling failed[/yellow]: {e}")
-        conf_y_all = np.zeros((int(n),), dtype=np.float32)
-        conf_w_all = np.zeros((int(n),), dtype=np.float32)
+        except Exception as e:
+            console.print(f"[yellow]Tier-2 confidence labeling failed[/yellow]: {e}")
+            conf_y_all = np.zeros((int(n),), dtype=np.float32)
+            conf_w_all = np.zeros((int(n),), dtype=np.float32)
 
     # Standardize features (train-only stats).
     # Keep everything float32 and standardize IN-PLACE to reduce peak memory usage.
@@ -1218,6 +1398,30 @@ def _train_buddy_impl(
         val_feats = pca_model.transform(val_feats).astype(np.float32)
         console.print(f"PCA enabled: {orig_feature_dim} -> {train_feats.shape[1]}")
 
+    meta_warnings: list[str] = []
+
+    # NOTE: PCA changes feature space; curriculum ranks original columns.
+    if feature_curriculum and pca_components_eff is not None:
+        msg = "PCA + feature curriculum are incompatible (curriculum ranks original features, PCA changes dimensions)."
+        if ignore_input_mismatches:
+            console.print(f"[yellow]Warning[/yellow]: {msg} Disabling curriculum due to --ignore-input-mismatches.")
+            meta_warnings.append(f"{msg} Curriculum disabled due to --ignore-input-mismatches.")
+            feature_curriculum = False
+        else:
+            raise ValueError(msg)
+
+    # Build the model-space features array used for Tier-2 calibration window slicing.
+    # - If PCA enabled, train_feats/val_feats are already transformed.
+    # - If PCA disabled, feats is standardized in-place.
+    feats_model: np.ndarray
+    try:
+        if pca_components_eff is not None and pca_model is not None:
+            feats_model = np.concatenate([train_feats, val_feats], axis=0).astype(np.float32, copy=False)
+        else:
+            feats_model = feats.astype(np.float32, copy=False)
+    except Exception:
+        feats_model = feats.astype(np.float32, copy=False)
+
     train_conf_raw = conf_y_all[:split]
     val_conf_raw = conf_y_all[split:]
     train_conf_w_raw = conf_w_all[:split]
@@ -1241,6 +1445,8 @@ def _train_buddy_impl(
         f"Confidence target mean (train/val): {train_conf_target_mean*100:.2f}% / {val_conf_target_mean*100:.2f}% "
         f"(weighted; Tier-2 TP/SL)"
     )
+
+    has_conf_labels = bool(tier2_calibrate) and bool(val_mask.any())
 
     def make_sequence_dataset(
         x2d: np.ndarray,
@@ -1550,7 +1756,38 @@ def _train_buddy_impl(
     train_ds_fit = train_ds.repeat()
     val_ds_fit = val_ds.repeat()
 
+    # Perf diagnostics: long epochs are usually (a) very large steps_per_epoch or
+    # (b) an unusually slow step. On TF-Metal, the very first step often includes
+    # graph tracing + kernel compilation and can take 5-30s, inflating the ETA.
+    try:
+        console.print(
+            f"Dataset windows: train={int(n_train_windows)} val={int(n_val_windows)} | "
+            f"steps_per_epoch={int(steps_per_epoch)} validation_steps={int(validation_steps)} | "
+            f"seq_len={int(seq_len)} batch_size={int(batch_size)}"
+        )
+        if int(steps_per_epoch) >= 2000 and int(steps_per_execution) <= 1:
+            console.print(
+                "[yellow]Perf hint[/yellow]: very large steps_per_epoch with steps_per_execution=1 can look extremely slow. "
+                "Try --steps-per-execution 10 (or 20) to reduce Python/dispatch overhead."
+            )
+        if not bool(timing):
+            console.print(
+                "[dim]Note[/dim]: on Apple Silicon/TF-Metal the first training batch is often much slower (graph+kernel warmup), "
+                "which can wildly exaggerate the initial ETA. Use --timing to confirm steady-state step time."
+            )
+    except Exception:
+        pass
+
     feature_dim = int(train_feats.shape[1])
+
+    model_dir = Path("trained_data") / "models"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    suffix = f"_{run_tag}" if run_tag else ""
+    final_model_path = model_dir / f"buddy_tf{suffix}.keras"
+    final_meta_path = model_dir / f"buddy_tf{suffix}.meta.json"
+    candidate_model_path = model_dir / f"buddy_tf{suffix}_candidate.keras"
+    candidate_meta_path = model_dir / f"buddy_tf{suffix}_candidate.meta.json"
+
     if shared_encoder and init_from:
         raise ValueError("--shared-encoder cannot be used with --warm-start/--init-from")
     if init_from:
@@ -1588,8 +1825,9 @@ def _train_buddy_impl(
     # Losses:
     # - direction: binary classification (sigmoid)
     # - confidence: TP-before-SL (Tier-2) probability label (sigmoid)
+    #   This is a probability regression target in [0,1], so use a regression loss.
     bce_dir = tf.keras.losses.BinaryCrossentropy(from_logits=False)
-    bce_conf = tf.keras.losses.BinaryCrossentropy(from_logits=False)
+    conf_loss = tf.keras.losses.MeanSquaredError()
     optimizer_name = None
     optimizer = None
     try:
@@ -1646,13 +1884,18 @@ def _train_buddy_impl(
         return model_obj.compile(**filtered)
 
     spe = max(1, int(steps_per_execution))
+    conf_loss_weight = 1.0 if has_conf_labels else 0.0
     _compile_with_optional_args(
         model,
         optimizer=optimizer,
-        loss={"direction": bce_dir, "confidence": bce_conf},
+        loss={"direction": bce_dir, "confidence": conf_loss},
+        loss_weights={"direction": 1.0, "confidence": float(conf_loss_weight)},
         metrics={
             "direction": [tf.keras.metrics.BinaryAccuracy(name="accuracy")],
-            "confidence": [tf.keras.metrics.BinaryAccuracy(name="accuracy")],
+            "confidence": [tf.keras.metrics.MeanAbsoluteError(name="mae")] if has_conf_labels else [],
+        },
+        weighted_metrics={
+            "confidence": [tf.keras.metrics.MeanAbsoluteError(name="mae")] if has_conf_labels else [],
         },
         steps_per_execution=int(spe),
         jit_compile=bool(jit_compile),
@@ -1678,6 +1921,7 @@ def _train_buddy_impl(
             w_dir: float,
             w_conf: float,
             use_predict: bool,
+            has_conf_labels: bool,
         ):
             super().__init__()
             self._val_ds_fit = val_ds_fit
@@ -1685,9 +1929,18 @@ def _train_buddy_impl(
             self._w_dir = float(w_dir)
             self._w_conf = float(w_conf)
             self._use_predict = bool(use_predict)
+            self._has_conf_labels = bool(has_conf_labels)
 
         def on_epoch_end(self, epoch, logs=None):
             logs = logs if isinstance(logs, dict) else {}
+
+            # If confidence labels are absent (e.g., --no-tier2-calibrate),
+            # confidence predictions are untrained and should not affect combined.
+            if not self._has_conf_labels:
+                val_dir_acc = float(logs.get("val_direction_accuracy", 0.0) or 0.0)
+                logs["val_avg_confidence"] = float("nan")
+                logs["val_combined_score"] = float(val_dir_acc)
+                return
 
             if self._use_predict:
                 try:
@@ -1695,24 +1948,242 @@ def _train_buddy_impl(
                     conf = np.asarray(pred["confidence"]).reshape(-1)
                     conf = np.clip(conf, 0.0, 1.0)
                     avg_conf = float(np.mean(conf))
+
+                    # Compute confidence MAE against the true Tier-2 probability labels.
+                    # This penalizes overconfidence and underconfidence symmetrically.
+                    val_ds_eval = self._val_ds_fit.take(int(self._validation_steps))
+                    conf_true_batches = []
+                    conf_w_batches = []
+                    for batch in val_ds_eval:
+                        if isinstance(batch, (tuple, list)) and len(batch) == 3:
+                            _, yb, sw = batch
+                        else:
+                            _, yb = batch
+                            sw = None
+                        conf_true_batches.append(np.asarray(yb["confidence"]).reshape(-1))
+                        try:
+                            if isinstance(sw, dict) and "confidence" in sw:
+                                conf_w_batches.append(np.asarray(sw["confidence"]).reshape(-1))
+                        except Exception:
+                            pass
+                    conf_true = np.concatenate(conf_true_batches, axis=0).astype(np.float32).reshape(-1)
+                    n_cmp = int(min(int(conf.shape[0]), int(conf_true.shape[0])))
+                    if n_cmp <= 0:
+                        conf_mae = None
+                    else:
+                        if conf_w_batches:
+                            w = np.concatenate(conf_w_batches, axis=0).astype(np.float32).reshape(-1)[:n_cmp]
+                            m = w > 0
+                            if bool(np.any(m)):
+                                conf_mae = float(
+                                    np.sum(np.abs(conf[:n_cmp][m] - conf_true[:n_cmp][m]) * w[m]) / np.sum(w[m])
+                                )
+                            else:
+                                conf_mae = None
+                        else:
+                            conf_mae = float(np.mean(np.abs(conf[:n_cmp] - conf_true[:n_cmp])))
                 except Exception:
                     return
             else:
-                # Fast path: avoid an extra predict() pass by using a proxy metric.
-                # This is not identical to mean predicted confidence, but is sufficient
-                # for a throughput-focused early-stopping signal.
-                try:
-                    avg_conf = float(logs.get("val_confidence_accuracy", 0.0) or 0.0)
-                except Exception:
-                    avg_conf = 0.0
+                # Fast path: avoid extra predict() work by using the logged confidence MAE.
+                avg_conf = float("nan")
+                conf_mae = None
+                for k in (
+                    "val_confidence_mae",
+                    "val_weighted_confidence_mae",
+                    "val_confidence_mean_absolute_error",
+                    "val_weighted_confidence_mean_absolute_error",
+                ):
+                    v = logs.get(k)
+                    try:
+                        if v is not None and np.isfinite(float(v)):
+                            conf_mae = float(v)
+                            break
+                    except Exception:
+                        continue
 
-            logs["val_avg_confidence"] = avg_conf
+            logs["val_avg_confidence"] = float(avg_conf)
             val_dir_acc = float(logs.get("val_direction_accuracy", 0.0) or 0.0)
-            logs["val_combined_score"] = (self._w_dir * val_dir_acc) + (self._w_conf * avg_conf)
+            if conf_mae is None or not np.isfinite(float(conf_mae)):
+                return
+            conf_score = float(np.clip(1.0 - float(conf_mae), 0.0, 1.0))
+            logs["val_combined_score"] = (self._w_dir * val_dir_acc) + (self._w_conf * conf_score)
 
     monitor = str(es_monitor or "direction").strip().lower()
     if monitor not in {"direction", "combined", "val_loss", "loss"}:
         raise ValueError("es_monitor must be one of: direction, combined, val_loss, loss")
+
+    if monitor == "combined" and not has_conf_labels:
+        console.print(
+            "[yellow]Warning[/yellow]: --es-monitor combined requested but confidence labels are absent "
+            "(--no-tier2-calibrate or no labeled samples). Falling back to --es-monitor direction."
+        )
+        monitor = "direction"
+
+    def _as_1d_float(a):
+        try:
+            return np.asarray(a).astype(np.float32).reshape(-1)
+        except Exception:
+            return None
+
+    def _direction_pred_to_labels(a):
+        arr = np.asarray(a)
+        # Common cases:
+        # - sigmoid binary: (N,) or (N,1)
+        # - softmax binary/multi-class: (N,C)
+        if arr.ndim == 0:
+            return None
+        if arr.ndim == 1:
+            return (arr >= 0.5).astype(np.float32)
+        if arr.shape[-1] == 1:
+            return (arr.reshape(-1) >= 0.5).astype(np.float32)
+        try:
+            return np.argmax(arr, axis=-1).astype(np.float32).reshape(-1)
+        except Exception:
+            return None
+
+    def _compute_validation_metrics(model_obj):
+        pred_obj = model_obj.predict(val_ds_fit, steps=int(validation_steps), verbose=0)
+        if isinstance(pred_obj, dict):
+            pred_dir_obj = pred_obj.get("direction")
+            pred_conf_obj = pred_obj.get("confidence")
+        elif isinstance(pred_obj, (tuple, list)):
+            pred_dir_obj = pred_obj[0] if len(pred_obj) >= 1 else None
+            pred_conf_obj = pred_obj[1] if len(pred_obj) >= 2 else None
+        else:
+            pred_dir_obj = None
+            pred_conf_obj = None
+
+        dir_pred = _direction_pred_to_labels(pred_dir_obj)
+
+        # Pull true labels (and confidence sample weights) from exactly the same number of validation batches.
+        val_ds_eval = val_ds.take(int(validation_steps))
+        try:
+            dir_true_batches = []
+            conf_true_batches = []
+            conf_w_batches = []
+            for batch in val_ds_eval:
+                if isinstance(batch, (tuple, list)) and len(batch) == 3:
+                    _, yb, sw = batch
+                else:
+                    _, yb = batch
+                    sw = None
+                dir_true_batches.append(np.asarray(yb["direction"]).reshape(-1))
+                conf_true_batches.append(np.asarray(yb["confidence"]).reshape(-1))
+                try:
+                    if isinstance(sw, dict) and "confidence" in sw:
+                        conf_w_batches.append(np.asarray(sw["confidence"]).reshape(-1))
+                except Exception:
+                    pass
+            dir_true = np.concatenate(dir_true_batches, axis=0).astype(np.float32).reshape(-1)
+            conf_true = np.concatenate(conf_true_batches, axis=0).astype(np.float32).reshape(-1)
+            conf_w = (
+                np.concatenate(conf_w_batches, axis=0).astype(np.float32).reshape(-1)
+                if conf_w_batches
+                else None
+            )
+        except Exception:
+            dir_true = None
+            conf_true = None
+            conf_w = None
+
+        if dir_pred is None or dir_true is None:
+            val_acc = float("nan")
+        else:
+            n_cmp = int(min(int(dir_pred.shape[0]), int(dir_true.shape[0])))
+            if n_cmp <= 0:
+                val_acc = float("nan")
+            else:
+                val_acc = float(np.mean(dir_pred[:n_cmp] == dir_true[:n_cmp]))
+
+        conf_preds = _as_1d_float(pred_conf_obj)
+        if conf_preds is None:
+            conf_preds = np.asarray([]).astype(np.float32)
+        conf_preds = np.clip(conf_preds, 0.0, 1.0)
+        avg_conf = float(np.mean(conf_preds)) if conf_preds.size else float("nan")
+
+        if conf_true is None or conf_preds.size == 0:
+            val_conf_mae = None
+        else:
+            try:
+                n_cmp = int(min(int(conf_preds.shape[0]), int(conf_true.shape[0])))
+                if n_cmp <= 0:
+                    val_conf_mae = None
+                else:
+                    if conf_w is not None:
+                        w = np.asarray(conf_w[:n_cmp], dtype=np.float32).reshape(-1)
+                        m = w > 0
+                        if bool(np.any(m)):
+                            val_conf_mae = float(
+                                np.sum(np.abs(conf_preds[:n_cmp][m] - conf_true[:n_cmp][m]) * w[m]) / np.sum(w[m])
+                            )
+                        else:
+                            val_conf_mae = None
+                    else:
+                        val_conf_mae = float(np.mean(np.abs(conf_preds[:n_cmp] - conf_true[:n_cmp])))
+            except Exception:
+                val_conf_mae = None
+
+        try:
+            val_conf_p80 = float(np.quantile(conf_preds, 0.80)) if conf_preds.size else None
+            val_conf_p90 = float(np.quantile(conf_preds, 0.90)) if conf_preds.size else None
+        except Exception:
+            val_conf_p80 = None
+            val_conf_p90 = None
+
+        conf_score = None
+        if val_conf_mae is not None:
+            try:
+                conf_score = float(np.clip(1.0 - float(val_conf_mae), 0.0, 1.0))
+            except Exception:
+                conf_score = None
+
+        if has_conf_labels and conf_score is not None and np.isfinite(float(conf_score)):
+            combined_score = (float(combined_w_dir) * float(val_acc)) + (float(combined_w_conf) * float(conf_score))
+        else:
+            combined_score = float(val_acc)
+
+        return {
+            "val_acc": float(val_acc),
+            "avg_conf": float(avg_conf),
+            "val_conf_mae": val_conf_mae,
+            "val_conf_p80": val_conf_p80,
+            "val_conf_p90": val_conf_p90,
+            "combined_score": float(combined_score),
+        }
+
+    baseline_metrics = None
+    baseline_model = None
+    baseline_meta = None
+    baseline_expected = bool(run_tag is None and final_model_path.exists())
+    baseline_load_failed = False
+    if baseline_expected:
+        try:
+            baseline_model = _load_buddy_checkpoint(
+                model_path=str(final_model_path),
+                seq_len=int(seq_len),
+                feature_dim=int(feature_dim),
+            )
+            baseline_metrics = _compute_validation_metrics(baseline_model)
+            try:
+                base_meta_p = _meta_path_for_checkpoint(str(final_model_path))
+                if base_meta_p is not None and base_meta_p.exists():
+                    baseline_meta = json.loads(base_meta_p.read_text())
+            except Exception:
+                baseline_meta = None
+            try:
+                console.print(
+                    f"Existing model baseline: dir_acc={baseline_metrics['val_acc']*100:.2f}% "
+                    f"combined={baseline_metrics['combined_score']*100:.2f}%"
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            baseline_load_failed = True
+            try:
+                console.print(f"[yellow]Skipping baseline gating[/yellow]: {e}")
+            except Exception:
+                pass
 
     callbacks: list[tf.keras.callbacks.Callback] = []
 
@@ -1780,6 +2251,7 @@ def _train_buddy_impl(
                 w_dir=float(combined_w_dir),
                 w_conf=float(combined_w_conf),
                 use_predict=bool(combined_use_predict),
+                has_conf_labels=bool(has_conf_labels),
             )
         )
 
@@ -1836,61 +2308,372 @@ def _train_buddy_impl(
     except Exception:
         pass
 
-    # Use the repeated validation dataset with explicit steps to avoid Keras
-    # "input ran out of data" warnings when dataset cardinality is unknown.
-    pred = model.predict(val_ds_fit, steps=int(validation_steps), verbose=0)
-    dir_pred = (np.asarray(pred["direction"]).reshape(-1) >= 0.5).astype(np.float32)
-    # Pull true labels from exactly the same number of validation batches.
-    val_ds_eval = val_ds.take(int(validation_steps))
-    try:
-        dir_true_batches = []
-        conf_true_batches = []
-        for batch in val_ds_eval:
-            if isinstance(batch, (tuple, list)) and len(batch) == 3:
-                _, yb, _ = batch
-            else:
-                _, yb = batch
-            dir_true_batches.append(np.asarray(yb["direction"]).reshape(-1))
-            conf_true_batches.append(np.asarray(yb["confidence"]).reshape(-1))
-        dir_true = np.concatenate(dir_true_batches, axis=0).astype(np.float32)
-        conf_true = np.concatenate(conf_true_batches, axis=0).astype(np.float32)
-    except Exception:
-        dir_true = None
-        conf_true = None
-
-    val_acc = float((dir_pred == dir_true).mean()) if dir_true is not None else float("nan")
-    conf_preds = np.asarray(pred["confidence"]).reshape(-1)
-    conf_preds = np.clip(conf_preds, 0.0, 1.0)
-    avg_conf = float(np.mean(conf_preds))
-
-    try:
-        val_conf_mae = float(np.mean(np.abs(conf_preds - conf_true.reshape(-1)))) if conf_true is not None else None
-    except Exception:
-        val_conf_mae = None
-
-    # Confidence distribution (helps set realistic live thresholds).
-    try:
-        val_conf_p80 = float(np.quantile(conf_preds, 0.80))
-        val_conf_p90 = float(np.quantile(conf_preds, 0.90))
-    except Exception:
-        val_conf_p80 = None
-        val_conf_p90 = None
-
-    combined_score = (float(combined_w_dir) * val_acc) + (float(combined_w_conf) * avg_conf)
+    metrics = _compute_validation_metrics(model)
+    val_acc = float(metrics["val_acc"])
+    avg_conf = float(metrics["avg_conf"])
+    val_conf_mae = metrics["val_conf_mae"]
+    val_conf_p80 = metrics["val_conf_p80"]
+    val_conf_p90 = metrics["val_conf_p90"]
+    combined_score = float(metrics["combined_score"])
 
     console.print(f"Validation directional accuracy: [bold]{val_acc*100:.2f}%[/bold]")
-    console.print(f"Validation average confidence: [bold]{avg_conf*100:.2f}%[/bold]")
-    console.print(f"Validation target mean confidence: [bold]{val_conf_target_mean*100:.2f}%[/bold]")
+    if has_conf_labels:
+        console.print(f"Validation average confidence: [bold]{avg_conf*100:.2f}%[/bold]")
+        console.print(f"Validation target mean confidence: [bold]{val_conf_target_mean*100:.2f}%[/bold]")
+        try:
+            if val_conf_mae is not None and np.isfinite(float(val_conf_mae)):
+                console.print(f"Validation confidence MAE: [bold]{float(val_conf_mae)*100:.2f}%[/bold]")
+                console.print(
+                    f"Validation confidence score (1-MAE): [bold]{(1.0 - float(val_conf_mae))*100:.2f}%[/bold]"
+                )
+        except Exception:
+            pass
+    else:
+        console.print("Validation average confidence: [dim]N/A (Tier-2 disabled / no labels)[/dim]")
+        console.print("Validation target mean confidence: [dim]N/A (Tier-2 disabled / no labels)[/dim]")
     console.print(f"Validation combined score: [bold]{combined_score*100:.2f}%[/bold]")
 
-    model_dir = Path("trained_data") / "models"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    suffix = f"_{run_tag}" if run_tag else ""
-    model_path = model_dir / f"buddy_tf{suffix}.keras"
-    meta_path = model_dir / f"buddy_tf{suffix}.meta.json"
+    # Optional: out-of-sample (OOS) replay evaluation.
+    # Opt-in via env var to avoid adding CLI surface area.
+    # - BUDDY_OOS_EVAL=1 enables it
+    # - BUDDY_OOS_CANDLES (default 5000) controls fetch size
+    # If we trained from live OANDA and prepared a held-out tail, reuse it instead of refetching.
+    try:
+        oos_env = os.environ.get("BUDDY_OOS_EVAL", "").strip().lower()
+        oos_enabled = oos_env in {"1", "true", "yes", "y", "on"}
+    except Exception:
+        oos_enabled = False
 
-    # Save model and metadata for inference/trading.
-    model.save(model_path)
+    oos_block: dict[str, Any] | None = None
+    baseline_oos_block: dict[str, Any] | None = None
+    oos_csv: str | None = None
+
+    # Cache OOS preprocessing so we don't redo feature engineering for the baseline model.
+    # Keyed by (csv_path, smoothing, median_window).
+    oos_preproc_cache: dict[tuple[str, bool, int | None], dict[str, Any]] = {}
+
+    def _buddy_oos_replay_eval(
+        *,
+        model_obj: Any,
+        csv_path_eval: str,
+        feature_columns_eval: list[str],
+        mu_eval: np.ndarray,
+        sigma_eval: np.ndarray,
+        seq_len_eval: int,
+        train_smoothing_eval: bool,
+        median_window_eval: int | None,
+        label_stride_eval: int,
+        combined_w_dir_eval: float,
+        combined_w_conf_eval: float,
+    ) -> dict[str, float]:
+        # Rebuild features, align columns, standardize using training stats, then evaluate.
+        key = (str(csv_path_eval), bool(train_smoothing_eval), int(median_window_eval) if median_window_eval is not None else None)
+        cached = oos_preproc_cache.get(key)
+        if cached is None:
+            df_oos = pd.read_csv(str(csv_path_eval))
+            try:
+                if "time" in df_oos.columns:
+                    df_oos["time"] = pd.to_datetime(df_oos["time"], errors="coerce")
+                    df_oos = df_oos.sort_values("time")
+            except Exception:
+                pass
+
+            fe_oos = FeatureEngineering(cfg.get("feature_engineering", {}))
+            df_oos = fe_oos.create_features(
+                df_oos,
+                include_all=True,
+                apply_candle_smoothing=bool(train_smoothing_eval),
+                median_window=median_window_eval,
+            )
+
+            numeric_all = df_oos.select_dtypes(include=["number"]).replace([np.inf, -np.inf], np.nan).dropna(axis=0)
+            if numeric_all.empty:
+                raise ValueError("OOS replay: no numeric features after preprocessing")
+            ohlc_oos = df_oos.loc[numeric_all.index].reset_index(drop=True)
+            cached = {"numeric_all": numeric_all, "ohlc_oos": ohlc_oos}
+            oos_preproc_cache[key] = cached
+
+        numeric_all = cached["numeric_all"]
+        ohlc_oos = cached["ohlc_oos"]
+
+        numeric_oos = numeric_all.reindex(columns=feature_columns_eval).fillna(0.0)
+        closes_oos = ohlc_oos["close"].to_numpy(dtype=np.float32)
+        y_dir_oos = (closes_oos[1:] > closes_oos[:-1]).astype(np.float32)
+
+        x2d_oos = numeric_oos.to_numpy(dtype=np.float32)
+        x2d_oos = x2d_oos[:-1]
+        n_oos = int(x2d_oos.shape[0])
+        if n_oos <= int(seq_len_eval) + 10:
+            raise ValueError("OOS replay: not enough rows")
+
+        # Confidence targets for OOS: Tier-2 TP-before-SL (same semantics as training), with sparse labeling.
+        conf_y_oos = np.zeros((int(n_oos),), dtype=np.float32)
+        conf_w_oos = np.zeros((int(n_oos),), dtype=np.float32)
+        try:
+            from fx_paper import pip_size, simulate_tp_sl_outcome
+
+            pip = float(pip_size("USD_JPY"))
+
+            def _spread_pips_at_entry(gi: int) -> float:
+                sp = float(tier2_spread_fallback_pips)
+                try:
+                    if "bid_close" in ohlc_oos.columns and "ask_close" in ohlc_oos.columns:
+                        bid = float(ohlc_oos["bid_close"].iloc[int(gi) + 1])
+                        ask = float(ohlc_oos["ask_close"].iloc[int(gi) + 1])
+                        if np.isfinite(bid) and np.isfinite(ask) and bid > 0 and ask > 0 and ask >= bid:
+                            sp = float((ask - bid) / max(pip, 1e-9))
+                except Exception:
+                    sp = float(tier2_spread_fallback_pips)
+                return float(sp)
+
+            max_signal = min(int(n_oos) - 1, int(len(ohlc_oos)) - 3)
+            start_gi = max(0, int(seq_len_eval) - 1)
+            stride = max(1, int(label_stride_eval))
+            for gi in range(int(start_gi), int(max_signal) + 1, int(stride)):
+                spread_pips = _spread_pips_at_entry(int(gi))
+                true_dir = "long" if float(y_dir_oos[int(gi)]) >= 0.5 else "short"
+                res = simulate_tp_sl_outcome(
+                    ohlc_oos,
+                    instrument="USD_JPY",
+                    signal_index=int(gi),
+                    direction=str(true_dir),
+                    stop_loss_pips=float(tier2_stop_loss_pips),
+                    take_profit_pips=float(tier2_take_profit_pips),
+                    spread_pips=float(spread_pips),
+                    max_horizon_candles=int(tier2_horizon_candles),
+                    tie_break=str(tier2_tie_break),
+                )
+                conf_y_oos[int(gi)] = float(int(res.to_label()))
+                conf_w_oos[int(gi)] = 1.0
+        except Exception:
+            conf_y_oos = np.zeros((int(n_oos),), dtype=np.float32)
+            conf_w_oos = np.zeros((int(n_oos),), dtype=np.float32)
+
+        # Use the same split rule as training (time-ordered 80/20) so the metric is stable.
+        split_oos = int(n_oos * 0.8)
+        x_val_oos = x2d_oos[split_oos:]
+        y_val_oos = y_dir_oos[split_oos:]
+
+        # Standardize using the model's saved train stats.
+        x_val_oos = x_val_oos.astype(np.float32, copy=False)
+        x_val_oos = (x_val_oos - mu_eval) / np.where(sigma_eval < 1e-6, np.float32(1.0), sigma_eval)
+
+        # Match make_sequence_dataset semantics: drop last timestep before windowing.
+        x_val_oos_2d = x_val_oos[:-1]
+        y_val_oos_1d = y_val_oos[:-1]
+        n_windows_oos = int(len(x_val_oos_2d) - int(seq_len_eval) + 1)
+        if n_windows_oos <= 0:
+            raise ValueError("OOS replay: not enough windows")
+
+        # Vectorized window construction and a single predict() call to avoid retracing.
+        try:
+            xb_all = np.lib.stride_tricks.sliding_window_view(
+                x_val_oos_2d,
+                window_shape=int(seq_len_eval),
+                axis=0,
+            )
+            # sliding_window_view inserts the window axis at the end, yielding
+            # (n_windows, feature_dim, seq_len). Transpose to (n_windows, seq_len, feature_dim).
+            if xb_all.ndim == 3:
+                xb_all = np.transpose(xb_all, (0, 2, 1))
+        except Exception:
+            xb_all = np.stack(
+                [x_val_oos_2d[k : k + int(seq_len_eval)] for k in range(0, n_windows_oos)],
+                axis=0,
+            ).astype(np.float32)
+        xb_all = np.asarray(xb_all, dtype=np.float32)
+        yb_all = y_val_oos_1d[int(seq_len_eval) - 1 :]
+
+        pred_all = model_obj.predict(xb_all, batch_size=256, verbose=0)
+        p_dir = np.asarray(pred_all["direction"]).reshape(-1)
+        p_conf = np.asarray(pred_all["confidence"]).reshape(-1)
+        p_conf = np.clip(p_conf, 0.0, 1.0)
+        y_hat = (p_dir >= 0.5).astype(np.float32)
+
+        n_cmp = int(min(int(len(y_hat)), int(len(yb_all))))
+        val_acc_oos = float(np.mean(y_hat[:n_cmp] == yb_all[:n_cmp])) if n_cmp > 0 else float("nan")
+        avg_conf_oos = float(np.mean(p_conf[:n_cmp])) if n_cmp > 0 else float("nan")
+
+        conf_abs_err_sum = 0.0
+        conf_w_sum = 0.0
+        try:
+            end_gi_all = split_oos + (np.arange(0, n_cmp, dtype=np.int64) + int(seq_len_eval) - 1)
+            w_all = np.asarray(conf_w_oos[end_gi_all], dtype=np.float32).reshape(-1)
+            m = w_all > 0
+            if bool(np.any(m)):
+                t_all = np.asarray(conf_y_oos[end_gi_all], dtype=np.float32).reshape(-1)
+                conf_abs_err_sum = float(np.sum(np.abs(p_conf[:n_cmp][m] - t_all[m]) * w_all[m]))
+                conf_w_sum = float(np.sum(w_all[m]))
+        except Exception:
+            conf_abs_err_sum = 0.0
+            conf_w_sum = 0.0
+        conf_mae_oos = float(conf_abs_err_sum / conf_w_sum) if conf_w_sum > 0 else float("nan")
+        conf_score_oos = float(np.clip(1.0 - float(conf_mae_oos), 0.0, 1.0)) if np.isfinite(conf_mae_oos) else 0.0
+        combined_oos = float((combined_w_dir_eval * val_acc_oos) + (combined_w_conf_eval * conf_score_oos))
+        return {
+            "val_direction_accuracy": val_acc_oos,
+            "val_avg_confidence": avg_conf_oos,
+            "val_conf_mae": conf_mae_oos,
+            "val_combined_score": combined_oos,
+        }
+
+    if oos_enabled:
+        try:
+            oos_candles = 5000
+            try:
+                oos_candles = int(float(os.environ.get("BUDDY_OOS_CANDLES", "5000")))
+            except Exception:
+                oos_candles = 5000
+            oos_candles = max(300, min(int(oos_candles), 20000))
+
+            if oos_holdout_csv is not None and Path(str(oos_holdout_csv)).exists():
+                oos_csv = str(oos_holdout_csv)
+                if oos_holdout_rows is not None:
+                    oos_candles = int(oos_holdout_rows)
+            else:
+                oos_csv = _oanda_fetch_to_csv(
+                    OandaFetchOptions(
+                        instrument="USD_JPY",
+                        granularity="M5",
+                        candles=int(oos_candles),
+                        price="MBA",
+                        save_csv=None,
+                    )
+                )
+
+            oos_metrics = _buddy_oos_replay_eval(
+                model_obj=model,
+                csv_path_eval=str(oos_csv),
+                feature_columns_eval=list(feature_columns),
+                mu_eval=mu,
+                sigma_eval=sigma,
+                seq_len_eval=int(seq_len),
+                train_smoothing_eval=bool(train_smoothing),
+                median_window_eval=median_window,
+                label_stride_eval=int(label_stride),
+                combined_w_dir_eval=float(combined_w_dir),
+                combined_w_conf_eval=float(combined_w_conf),
+            )
+            oos_block = {
+                "csv_path": str(oos_csv),
+                "candles": int(oos_candles),
+                **oos_metrics,
+            }
+
+            # Baseline OOS replay on the SAME OOS CSV, when we can load compatible baseline metadata.
+            if baseline_model is not None and isinstance(baseline_meta, dict):
+                try:
+                    base_cols = baseline_meta.get("feature_columns")
+                    base_std = baseline_meta.get("standardize")
+                    base_seq = baseline_meta.get("seq_len")
+                    if isinstance(base_cols, list) and isinstance(base_std, dict) and base_seq is not None:
+                        bmu = np.asarray(base_std.get("mean", []), dtype=np.float32).reshape(1, -1)
+                        bsd = np.asarray(base_std.get("std", []), dtype=np.float32).reshape(1, -1)
+                        if int(base_seq) == int(seq_len) and int(bmu.shape[1]) == int(feature_dim) and int(bsd.shape[1]) == int(feature_dim):
+                            base_oos_metrics = _buddy_oos_replay_eval(
+                                model_obj=baseline_model,
+                                csv_path_eval=str(oos_csv),
+                                feature_columns_eval=[str(c) for c in base_cols],
+                                mu_eval=bmu,
+                                sigma_eval=bsd,
+                                seq_len_eval=int(seq_len),
+                                train_smoothing_eval=bool(baseline_meta.get("train_smoothing", train_smoothing)),
+                                median_window_eval=(
+                                    int(baseline_meta.get("median_window"))
+                                    if baseline_meta.get("median_window") is not None
+                                    else None
+                                ),
+                                label_stride_eval=int(label_stride),
+                                combined_w_dir_eval=float(baseline_meta.get("combined_w_dir", combined_w_dir)),
+                                combined_w_conf_eval=float(baseline_meta.get("combined_w_conf", combined_w_conf)),
+                            )
+                            baseline_oos_block = {
+                                "model_path": str(final_model_path),
+                                "csv_path": str(oos_csv),
+                                **base_oos_metrics,
+                            }
+                except Exception:
+                    baseline_oos_block = None
+
+            try:
+                console.print(
+                    "OOS replay: "
+                    f"dir_acc={float(oos_block['val_direction_accuracy'])*100:.2f}% "
+                    f"avg_conf={float(oos_block['val_avg_confidence'])*100:.2f}% "
+                    f"conf_mae={float(oos_block.get('val_conf_mae', float('nan')))*100:.2f}% "
+                    f"combined={float(oos_block['val_combined_score'])*100:.2f}%"
+                )
+                if baseline_oos_block is not None:
+                    console.print(
+                        "OOS baseline: "
+                        f"dir_acc={float(baseline_oos_block['val_direction_accuracy'])*100:.2f}% "
+                        f"avg_conf={float(baseline_oos_block['val_avg_confidence'])*100:.2f}% "
+                        f"conf_mae={float(baseline_oos_block.get('val_conf_mae', float('nan')))*100:.2f}% "
+                        f"combined={float(baseline_oos_block['val_combined_score'])*100:.2f}%"
+                    )
+            except Exception:
+                pass
+        except Exception as e:
+            oos_block = None
+            baseline_oos_block = None
+            try:
+                console.print(f"[yellow]OOS replay skipped[/yellow]: {e}")
+            except Exception:
+                pass
+
+    # Save gating: don't overwrite the default checkpoint unless it improved.
+    save_model_path = final_model_path
+    save_meta_path = final_meta_path
+
+    # Safety: if a baseline exists but we couldn't load/evaluate it, avoid overwriting the default.
+    # This prevents accidental regressions when deserialization/input-shape mismatch blocks gating.
+    if baseline_expected and baseline_metrics is None:
+        allow_env = str(os.environ.get("BUDDY_ALLOW_OVERWRITE_WITHOUT_BASELINE", "")).strip().lower()
+        allow_overwrite_without_baseline = allow_env in {"1", "true", "yes", "y", "on"}
+        if not allow_overwrite_without_baseline:
+            save_model_path = candidate_model_path
+            save_meta_path = candidate_meta_path
+            try:
+                why = "baseline load failed" if baseline_load_failed else "baseline metrics unavailable"
+                console.print(
+                    "[yellow]Baseline gating unavailable[/yellow]: "
+                    f"{why} -> saving as {candidate_model_path.name} (set BUDDY_ALLOW_OVERWRITE_WITHOUT_BASELINE=1 to override)"
+                )
+            except Exception:
+                pass
+    if baseline_metrics is not None:
+        try:
+            baseline_score = float(baseline_metrics.get("combined_score", float("nan")))
+            gate_metric_name = "val_combined_score"
+            gate_new = float(combined_score)
+            gate_old = float(baseline_score)
+
+            # Best practice: prefer OOS replay for gating when available and comparable.
+            if oos_block is not None and baseline_oos_block is not None:
+                try:
+                    gate_metric_name = "oos_replay.val_combined_score"
+                    gate_new = float(oos_block.get("val_combined_score", gate_new))
+                    gate_old = float(baseline_oos_block.get("val_combined_score", gate_old))
+                except Exception:
+                    gate_metric_name = "val_combined_score"
+                    gate_new = float(combined_score)
+                    gate_old = float(baseline_score)
+
+            # If the new model is strictly worse under the chosen gate metric, keep the previous default.
+            if gate_new < (gate_old - 1e-9):
+                save_model_path = candidate_model_path
+                save_meta_path = candidate_meta_path
+                console.print(
+                    "[yellow]New model did not beat existing baseline[/yellow]: "
+                    f"metric={gate_metric_name} new={gate_new*100:.2f}% vs old={gate_old*100:.2f}% -> keeping existing {final_model_path.name}"
+                )
+        except Exception:
+            pass
+
+    # Save model and metadata.
+    model.save(save_model_path)
+    model_path = save_model_path
+    meta_path = save_meta_path
     # Compute best epoch according to the chosen early-stopping monitor.
     best_epoch = None
     best_metric_name = None
@@ -1910,8 +2693,11 @@ def _train_buddy_impl(
 
     # --- Tier-2 calibration (TP-before-SL) ---
     tier2_calibration: dict[str, Any] | None = None
+    tier2_warnings: list[str] = []
+    tier2_best_effort = False
     try:
         if tier2_calibrate:
+            t_tier2_cal = time.perf_counter()
             from fx_paper import pip_size, simulate_tp_sl_outcome
 
             # Best-effort instrument inference.
@@ -1941,6 +2727,33 @@ def _train_buddy_impl(
             tier2_calibration_bins = max(5, int(tier2_calibration_bins))
             stride = max(1, int(tier2_calibration_stride))
 
+            # If curriculum was used, apply the FINAL mask for calibration.
+            feature_mask_np: np.ndarray | None = None
+            if feature_mask_var is not None:
+                try:
+                    feature_mask_np = np.asarray(feature_mask_var.numpy(), dtype=np.float32).reshape(-1)
+                except Exception:
+                    feature_mask_np = None
+
+            if feature_mask_np is not None and int(feature_mask_np.size) != int(feats_model.shape[1]):
+                msg = (
+                    "Tier-2 calibration feature mask dimension mismatch: "
+                    f"mask={int(feature_mask_np.size)} feats={int(feats_model.shape[1])}."
+                )
+                if disable_tier2_on_mismatch:
+                    tier2_warnings.append(msg)
+                    tier2_warnings.append("Tier-2 calibration disabled due to --disable-tier2-on-mismatch.")
+                    console.print(f"[yellow]Tier-2 calibration skipped[/yellow]: {msg}")
+                    raise RuntimeError("tier2_disabled_on_mismatch")
+                if ignore_input_mismatches:
+                    tier2_best_effort = True
+                    tier2_warnings.append(msg)
+                    tier2_warnings.append("Proceeding without feature mask due to --ignore-input-mismatches.")
+                    console.print(f"[yellow]Warning[/yellow]: {msg} Proceeding without feature mask.")
+                    feature_mask_np = None
+                else:
+                    raise ValueError(msg)
+
             # Iterate over validation window endpoints and simulate TP/SL outcome.
             scores: list[float] = []
             wins: list[int] = []
@@ -1957,6 +2770,8 @@ def _train_buddy_impl(
                 if not batch_x:
                     return
                 x = np.stack(batch_x, axis=0).astype(np.float32, copy=False)
+                if feature_mask_np is not None:
+                    x = x * feature_mask_np.reshape(1, 1, -1)
                 _inputs_struct = getattr(model, "_inputs_struct", None)
                 _expects_features_dict = isinstance(_inputs_struct, dict) and "features" in _inputs_struct
                 pred_in = {"features": x} if _expects_features_dict else x
@@ -2006,7 +2821,7 @@ def _train_buddy_impl(
                 batch_idx.clear()
 
             for gi in range(global_start, global_end_max + 1, stride):
-                w = feats[int(gi) - int(seq_len) + 1 : int(gi) + 1]
+                w = feats_model[int(gi) - int(seq_len) + 1 : int(gi) + 1]
                 if w.shape[0] != int(seq_len):
                     continue
                 batch_x.append(np.asarray(w, dtype=np.float32))
@@ -2015,9 +2830,104 @@ def _train_buddy_impl(
                     _flush_batch()
             _flush_batch()
 
+            try:
+                console.print(
+                    f"Tier-2 calibration simulation runtime: n={len(scores)} stride={int(stride)} elapsed={time.perf_counter() - t_tier2_cal:.2f}s"
+                )
+            except Exception:
+                pass
+
             if len(scores) >= 50:
                 s = np.asarray(scores, dtype=np.float64)
                 y = np.asarray(wins, dtype=np.float64)
+
+                # --- Temperature scaling (primary calibrator) ---
+                # Calibrate score -> P(win) by applying a temperature to the logit(score).
+                # This is data-efficient (single parameter) and stable for n~O(1k).
+                ts_enabled = False
+                ts_temperature = None
+                ts_nll_pre = None
+                ts_nll_post = None
+                ts_spearman_pre = None
+                ts_spearman_post = None
+                ts_grid_coarse = [0.5, 0.7, 1.0, 1.5, 2.0, 3.0]
+                ts_grid_fine = None
+
+                try:
+                    # Pre-calibration diagnostics.
+                    ts_nll_pre = _tier2_nll(y, np.clip(s, 0.0, 1.0))
+                    ts_spearman_pre = _tier2_spearman(s, y)
+
+                    def _apply_temperature_vec(temperature: float) -> np.ndarray:
+                        ss = np.clip(s, 1e-7, 1.0 - 1e-7)
+                        logits = np.log(ss / (1.0 - ss))
+                        z = logits / float(temperature)
+                        # Stable sigmoid
+                        out = np.empty_like(z, dtype=np.float64)
+                        pos = z >= 0
+                        out[pos] = 1.0 / (1.0 + np.exp(-z[pos]))
+                        ez = np.exp(z[~pos])
+                        out[~pos] = ez / (1.0 + ez)
+                        return out
+
+                    best_temperature = None
+                    best_nll = float("inf")
+                    for temperature in ts_grid_coarse:
+                        p = _apply_temperature_vec(float(temperature))
+                        nll = _tier2_nll(y, p)
+                        if nll < best_nll:
+                            best_nll = float(nll)
+                            best_temperature = float(temperature)
+
+                    if best_temperature is not None and np.isfinite(best_temperature):
+                        # Single zoom pass around the best coarse T.
+                        if best_temperature <= min(ts_grid_coarse) + 1e-12 or best_temperature >= max(ts_grid_coarse) - 1e-12:
+                            lo = max(0.05, best_temperature - 0.5)
+                            hi = best_temperature + 0.5
+                        else:
+                            lo = max(0.05, best_temperature - 0.3)
+                            hi = best_temperature + 0.3
+                        fine = np.round(np.arange(lo, hi + 1e-12, 0.1), 3).tolist()
+                        ts_grid_fine = [float(x) for x in fine if float(x) > 0]
+
+                        for temperature in ts_grid_fine:
+                            p = _apply_temperature_vec(float(temperature))
+                            nll = _tier2_nll(y, p)
+                            if nll < best_nll:
+                                best_nll = float(nll)
+                                best_temperature = float(temperature)
+
+                    if best_temperature is not None and np.isfinite(best_temperature) and best_temperature > 0:
+                        p_post = _apply_temperature_vec(float(best_temperature))
+                        ts_temperature = float(best_temperature)
+                        ts_nll_post = float(_tier2_nll(y, p_post))
+                        ts_spearman_post = float(_tier2_spearman(p_post, y))
+
+                        # Validation checks:
+                        # - NLL must improve.
+                        # - If Spearman remains negative (and doesn't improve), disable and keep bins-only fallback.
+                        nll_ok = (
+                            ts_nll_pre is not None
+                            and ts_nll_post is not None
+                            and np.isfinite(ts_nll_pre)
+                            and np.isfinite(ts_nll_post)
+                            and (ts_nll_post < ts_nll_pre - 1e-9)
+                        )
+                        spearman_ok = True
+                        if ts_spearman_post is not None and np.isfinite(ts_spearman_post) and ts_spearman_post < 0.0:
+                            sp0 = float(ts_spearman_pre) if ts_spearman_pre is not None and np.isfinite(ts_spearman_pre) else float("nan")
+                            if not np.isfinite(sp0) or ts_spearman_post <= sp0 + 1e-6:
+                                spearman_ok = False
+
+                        ts_enabled = bool(nll_ok and spearman_ok)
+                        if not ts_enabled:
+                            tier2_warnings.append(
+                                "Temperature scaling disabled by validation checks "
+                                f"(nll_pre={ts_nll_pre}, nll_post={ts_nll_post}, spearman_pre={ts_spearman_pre}, spearman_post={ts_spearman_post})."
+                            )
+                except Exception as _e:
+                    ts_enabled = False
+                    tier2_warnings.append(f"Temperature scaling fit failed: {_e}")
 
                 # Quantile bins (more stable than uniform bins when scores are clustered).
                 qs = np.linspace(0.0, 1.0, int(tier2_calibration_bins) + 1)
@@ -2053,18 +2963,47 @@ def _train_buddy_impl(
                             "stride": int(stride),
                             "n": int(len(scores)),
                             "win_rate": float(np.mean(y)),
+                            "temperature_scaling": {
+                                "enabled": bool(ts_enabled),
+                                "T": float(ts_temperature) if ts_temperature is not None else None,
+                                "nll_pre": float(ts_nll_pre) if ts_nll_pre is not None else None,
+                                "nll_post": float(ts_nll_post) if ts_nll_post is not None else None,
+                                "spearman_pre": float(ts_spearman_pre) if ts_spearman_pre is not None else None,
+                                "spearman_post": float(ts_spearman_post) if ts_spearman_post is not None else None,
+                                "grid_coarse": list(ts_grid_coarse),
+                                "grid_fine": list(ts_grid_fine) if ts_grid_fine is not None else None,
+                                "notes": "Primary calibrator: sigmoid(logit(score)/T). Bins retained as fallback.",
+                            },
                             "bins": bins_out,
                         }
                         console.print(
                             f"Tier-2 calibration: n={int(tier2_calibration['n'])} win_rate={float(tier2_calibration['win_rate'])*100:.2f}% bins={len(bins_out)}"
                         )
+                        try:
+                            ts_meta = (tier2_calibration.get("temperature_scaling") or {})
+                            if bool(ts_meta.get("enabled", False)) and ts_meta.get("T") is not None:
+                                console.print(
+                                    f"Tier-2 temperature scaling enabled: T={float(ts_meta['T']):.3g} "
+                                    f"NLL {float(ts_meta.get('nll_pre', float('nan'))):.4g} -> {float(ts_meta.get('nll_post', float('nan'))):.4g}"
+                                )
+                            else:
+                                console.print("[dim]Tier-2 temperature scaling not enabled (using bins fallback).[/dim]")
+                        except Exception:
+                            pass
             else:
                 console.print(
                     f"[yellow]Tier-2 calibration skipped[/yellow]: insufficient labeled samples (n={len(scores)})"
                 )
     except Exception as e:
-        console.print(f"[yellow]Tier-2 calibration failed[/yellow]: {e}")
-        tier2_calibration = None
+        if str(e) == "tier2_disabled_on_mismatch":
+            tier2_calibration = None
+        else:
+            console.print(f"[yellow]Tier-2 calibration failed[/yellow]: {e}")
+            tier2_calibration = None
+            tier2_warnings.append(f"Tier-2 calibration failed: {e}")
+
+    if tier2_warnings:
+        meta_warnings.extend([f"Tier-2: {w}" for w in tier2_warnings])
 
     meta = {
         "model_path": str(model_path),
@@ -2125,6 +3064,8 @@ def _train_buddy_impl(
         "val_conf_p80": float(val_conf_p80) if val_conf_p80 is not None else None,
         "val_conf_p90": float(val_conf_p90) if val_conf_p90 is not None else None,
         "val_combined_score": combined_score,
+        "oos_replay": oos_block,
+        "oos_baseline": baseline_oos_block,
         "trained_epochs": int(len(history.history.get("loss", []))),
         "early_stopped": bool(len(history.history.get("loss", [])) < int(epochs)),
         # Live-enabled should depend on directional skill. Trading confidence is handled by FX Tier-1 gating.
@@ -2137,14 +3078,14 @@ def _train_buddy_impl(
         # - confidence: quantile by default (robust to a few saturated windows)
         "inference_confidence_agg": "quantile",
         "inference_confidence_quantile": 0.90,
-        "tier2": (
-            {
-                "enabled": bool(tier2_calibrate and tier2_calibration is not None),
-                "calibration": tier2_calibration,
-            }
-            if tier2_calibration is not None
-            else {"enabled": False, "calibration": None}
-        ),
+        "tier2": (lambda: {
+            "enabled": bool(tier2_calibrate and tier2_calibration is not None),
+            "calibration": tier2_calibration,
+            "best_effort": bool(tier2_best_effort),
+            "warning": str(tier2_warnings[0]) if len(tier2_warnings) == 1 else None,
+            "warnings": list(tier2_warnings) if len(tier2_warnings) > 1 else None,
+        })(),
+        "warnings": list(meta_warnings) if meta_warnings else None,
     }
     meta_path.write_text(json.dumps(meta, indent=2))
     console.print(f"Saved: {model_path}")
@@ -2440,8 +3381,6 @@ def _fx_execution_guard_price_bound(_policy: Any, client: Any, *, instrument: st
 
     bid = float(q["bid"])
     ask = float(q["ask"])
-    mid = (bid + ask) / 2.0
-    half_spread = max(0.0, ask - mid)
     # Determine buffer in pips. Prefer policy-level override `costs.price_bound_buffer_pips` if available.
     buffer_pips = None
     try:
@@ -2789,50 +3728,72 @@ def integrated_predict_live(
         )
 
 
-def fx_paper_trade(
-    config_path: str,
-    instrument: str,
-    granularity: str = "M5",
-    candles: int = 300,
-    execute: bool = False,
-    equity: float = 10_000.0,
-    risk_per_trade_pct: float = 0.005,
-) -> None:
-    """Paper trade forex on OANDA PRACTICE using a simple setup rule.
+@dataclass(frozen=True)
+class _FxPaperTradePlan:
+    instrument: str
+    granularity: str
+    signal: str
+    last_close: float
+    atr_value: float
+    units: int
+    stop_price: float
+    tp_price: float
+    spread_pips: float
+    slippage_pips: float
+    slippage_price: float
+    confidence: float
+    band: str
+    conf_reasons: list[str]
 
-    This is intentionally conservative and defaults to DRY-RUN (no order placed).
-    """
-    cfg = load_config(config_path)
 
+def _fx_setup_paper_trade(cfg: Dict[str, Any], *, instrument: str, granularity: str, execute: bool):
     from oanda_practice import OandaPracticeClient
     import fx_guardrails as fxg
 
     policy = _fx_enforce_fx_policy(cfg, instrument=instrument, granularity=granularity)
     if policy is None:
-        return
+        return None
 
     client = OandaPracticeClient.from_env()
     state = fxg.load_state(cfg, policy)
 
     pnl, _ = _fx_refresh_fx_state(cfg, policy, state, client)
     if _fx_maybe_force_flat(policy, state, client, execute=execute):
-        return
+        return None
 
     if not _fx_require_account_metrics(pnl):
-        return
+        return None
 
     if not _fx_gate_fx_entry(policy, state, client):
-        return
+        return None
+
+    return policy, client, state, pnl
+
+
+def _fx_build_paper_trade_plan(
+    cfg: Dict[str, Any],
+    policy: Any,
+    client: Any,
+    state: Any,
+    pnl: Dict[str, Any],
+    *,
+    instrument: str,
+    granularity: str,
+    candles: int,
+    equity: float,
+    risk_per_trade_pct: float,
+) -> tuple["_FxPaperTradePlan", Any] | None:
+    import fx_guardrails as fxg  # noqa: F401  (kept for symmetry; state saved elsewhere)
 
     df = _fx_load_fx_df(client, instrument=instrument, granularity=granularity, candles=candles)
     ok_spread, spread_pips, slippage_pips, slippage_price = _fx_spread_and_slippage(policy, df, instrument=instrument)
     if not ok_spread:
-        return
+        return None
 
     signal, last_close, atr_value = _fx_get_signal_context(df)
     if signal == "hold":
         console.print(f"FX setup: HOLD  {instrument} {granularity}  close={last_close:.5f}  ATR14={atr_value:.5f}")
-        return
+        return None
 
     rules = _fx_build_risk_rules(policy, pnl, equity=equity, risk_per_trade_pct=risk_per_trade_pct)
 
@@ -2848,10 +3809,10 @@ def fx_paper_trade(
     if band == "low":
         console.print(f"[bold red]Blocked[/bold red]: low confidence ({confidence:.2f}) => no trades.")
         console.print(f"[dim]Reasons: {', '.join(conf_reasons)}[/dim]")
-        return
+        return None
 
     if _fx_apply_daily_stops(cfg, policy, state, pnl, band=band):
-        return
+        return None
 
     units, stop_price, tp_price, _, _ = _fx_build_order_units_and_prices(
         policy,
@@ -2863,10 +3824,37 @@ def fx_paper_trade(
         slippage_price=float(slippage_price),
     )
 
-    console.print(
-        f"FX setup: {signal.upper()}  {instrument} {granularity}  close={last_close:.5f}  units={units}  SL={stop_price:.5f}  TP={tp_price:.5f}"
-        f"  spread={spread_pips:.2f}p  slip={slippage_pips:.2f}p  conf={confidence:.2f}  band={band}"
+    plan = _FxPaperTradePlan(
+        instrument=str(instrument),
+        granularity=str(granularity),
+        signal=str(signal),
+        last_close=float(last_close),
+        atr_value=float(atr_value),
+        units=int(units),
+        stop_price=float(stop_price),
+        tp_price=float(tp_price),
+        spread_pips=float(spread_pips),
+        slippage_pips=float(slippage_pips),
+        slippage_price=float(slippage_price),
+        confidence=float(confidence),
+        band=str(band),
+        conf_reasons=[str(x) for x in (conf_reasons or [])],
     )
+    return plan, rules
+
+
+def _fx_execute_paper_trade_plan(
+    cfg: Dict[str, Any],
+    policy: Any,
+    client: Any,
+    state: Any,
+    plan: _FxPaperTradePlan,
+    rules: Any,
+    *,
+    execute: bool,
+    verbose: bool,
+) -> None:
+    import fx_guardrails as fxg
 
     if not execute:
         console.print("[dim]Dry-run (no order). Pass --execute to place a PRACTICE order.[/dim]")
@@ -2875,6 +3863,8 @@ def fx_paper_trade(
     if policy.require_confirmation and not _fx_confirm("Confirm PLACE ORDER? (y/N): "):
         console.print("[dim]Order cancelled.[/dim]")
         return
+
+    units = int(plan.units)
 
     # Apply any programmatic override (rules.force_units) before guard and submission.
     try:
@@ -2894,21 +3884,22 @@ def fx_paper_trade(
     if verbose:
         console.print(f"[dim]Order sizing[/dim]: computed_units={units} final_submitted_units={units_final}")
 
-    price_bound = _fx_execution_guard_price_bound(policy, client, instrument=instrument, units=units_final)
+    price_bound = _fx_execution_guard_price_bound(policy, client, instrument=plan.instrument, units=units_final)
     if price_bound is None:
         return
 
     result = client.create_market_order(
-        instrument=instrument,
+        instrument=plan.instrument,
         units=units_final,
-        stop_loss_price=stop_price,
-        take_profit_price=tp_price,
+        stop_loss_price=float(plan.stop_price),
+        take_profit_price=float(plan.tp_price),
         price_bound=price_bound,
     )
     state.entries_today += 1
     fxg.save_state(cfg, state)
     console.print("[bold green]Order submitted (PRACTICE).[/bold green]")
     console.print(result)
+
     # Parse returned transaction to capture trade id(s) for precise auto-close.
     try:
         tx = (result or {}).get("orderFillTransaction") or (result or {}).get("orderCreateTransaction") or {}
@@ -2918,7 +3909,7 @@ def fx_paper_trade(
             to = tx.get("tradeOpened")
             if isinstance(to, dict):
                 trade_id = to.get("tradeID") or to.get("id")
-            tro = tx.get("tradesOpened") or tx.get("tradesOpened")
+            tro = tx.get("tradesOpened")
             if trade_id is None and isinstance(tro, list) and len(tro) > 0:
                 trade_id = tro[0].get("tradeID") or tro[0].get("id")
         if trade_id:
@@ -2929,15 +3920,71 @@ def fx_paper_trade(
                 pass
     except Exception:
         pass
+
     # Schedule auto-close if `buddy.max_hold_minutes` is set in config (PRACTICE only).
     try:
         m_cfg = cfg.get("buddy", {}).get("max_hold_minutes", None)
         if m_cfg is not None:
             m = float(m_cfg)
             if m > 0:
-                _schedule_auto_close(client, instrument, delay_s=m * 60.0, verbose=bool(verbose))
+                _schedule_auto_close(client, plan.instrument, delay_s=m * 60.0, verbose=bool(verbose))
     except Exception:
         pass
+
+
+def fx_paper_trade(
+    config_path: str,
+    instrument: str,
+    granularity: str = "M5",
+    candles: int = 300,
+    execute: bool = False,
+    verbose: bool = False,
+    equity: float = 10_000.0,
+    risk_per_trade_pct: float = 0.005,
+) -> None:
+    """Paper trade forex on OANDA PRACTICE using a simple setup rule.
+
+    This is intentionally conservative and defaults to DRY-RUN (no order placed).
+    """
+    cfg = load_config(config_path)
+
+    setup = _fx_setup_paper_trade(cfg, instrument=instrument, granularity=granularity, execute=execute)
+    if setup is None:
+        return
+    policy, client, state, pnl = setup
+
+    planned = _fx_build_paper_trade_plan(
+        cfg,
+        policy,
+        client,
+        state,
+        pnl,
+        instrument=instrument,
+        granularity=granularity,
+        candles=candles,
+        equity=equity,
+        risk_per_trade_pct=risk_per_trade_pct,
+    )
+    if planned is None:
+        return
+    plan, rules = planned
+
+    console.print(
+        f"FX setup: {plan.signal.upper()}  {plan.instrument} {plan.granularity}  close={plan.last_close:.5f}  "
+        f"units={plan.units}  SL={plan.stop_price:.5f}  TP={plan.tp_price:.5f}"
+        f"  spread={plan.spread_pips:.2f}p  slip={plan.slippage_pips:.2f}p  conf={plan.confidence:.2f}  band={plan.band}"
+    )
+
+    _fx_execute_paper_trade_plan(
+        cfg,
+        policy,
+        client,
+        state,
+        plan,
+        rules,
+        execute=execute,
+        verbose=verbose,
+    )
 
 
 def generate_dashboard(
@@ -3214,9 +4261,9 @@ def openai_tune(config_path: str) -> None:
     result = openai_integration.query_for_auto_configuration(metrics, current_config)
 
     if result:
-        _ = openai_integration.report_config_changes(current_config, result)
+        _ = openai_integration.report_config_changes(current_config, result, config_path=config_path)
         console.print(
-            "[bold green]Configuration updated successfully and written to config.yaml[/bold green]"
+            f"[bold green]Configuration updated successfully and written to {config_path}[/bold green]"
         )
         console.print(f"[cyan]Updates Applied:[/cyan] {result}")
     else:
@@ -3964,12 +5011,21 @@ def buddy_loop(
     force_units: int | None = None,
     equity: float | None = None,
     risk_per_trade_pct: float | None = None,
-    all_features: bool = True,
     verbose: bool = False,
     max_trades: int = 1,
+    **kwargs: Any,
 ) -> None:
     """Buddy loop: keep TF+model warm; trade once per new candle (practice only)."""
     _configure_predict_output(verbose)
+
+    max_hold_minutes = None
+    try:
+        m = kwargs.get("max_hold_minutes", None)
+        max_hold_minutes = float(m) if m is not None else None
+    except Exception:
+        max_hold_minutes = None
+
+    all_features = bool(kwargs.get("all_features", True))
 
     from collections import deque
     import json
@@ -3997,7 +5053,7 @@ def buddy_loop(
         next_boundary = (math.floor(now / interval_s) + 1) * interval_s
         sleep_s = max(0.0, (next_boundary + float(lag_s)) - now)
         if verbose:
-            eta = datetime.fromtimestamp(next_boundary, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+            eta = datetime.fromtimestamp(next_boundary, tz=timezone.utc).isoformat().replace(UTC_OFFSET_SUFFIX, "Z")
             console.print(f"[dim]Loop[/dim]: waiting {sleep_s:.1f}s for next {granularity} boundary @ {eta}")
         time.sleep(sleep_s)
 
@@ -4113,7 +5169,7 @@ def buddy_loop(
             ts = ts.tz_localize("UTC")
         else:
             ts = ts.tz_convert("UTC")
-        return ts.isoformat().replace("+00:00", "Z")
+        return ts.isoformat().replace(UTC_OFFSET_SUFFIX, "Z")
 
     def _normalize_candle_df(df_in: "pd.DataFrame") -> "pd.DataFrame":
         out = df_in
@@ -4501,6 +5557,226 @@ def buddy_loop(
             return
 
 
+def _normalize_command_args(args: Any) -> None:
+    if getattr(args, "command", None) == "Buddy":
+        console.print("[yellow]Deprecation: use lowercase 'buddy' instead of 'Buddy'[/yellow]")
+        args.command = "buddy"
+
+
+def _maybe_run_buddy_interactive_wizard(*, default_config: str) -> bool:
+    if len(sys.argv) == 2 and sys.argv[1] in {"buddy", "Buddy"} and sys.stdin.isatty():
+        if sys.argv[1] == "Buddy":
+            console.print("[yellow]Deprecation: please use lowercase 'buddy' instead of 'Buddy'[/yellow]")
+        try:
+            _buddy_interactive_wizard(default_config=default_config)
+            return True
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Cancelled.[/yellow]")
+            return True
+    return False
+
+
+def _maybe_launch_buddy_repl(args: Any) -> bool:
+    if getattr(args, "command", None) == "buddy" and bool(getattr(args, "repl", False)):
+        launch_buddy_repl_from_wizard(
+            args.config,
+            checkpoint_path=getattr(args, "model_path", None),
+            instrument=str(getattr(args, "instrument", "USD_JPY")),
+            granularity=str(getattr(args, "granularity", "M5")),
+            candles=int(getattr(args, "candles", 300)),
+            execute=bool(getattr(args, "execute", True)),
+            all_features=bool(getattr(args, "all_features", False)),
+            verbose=bool(getattr(args, "verbose", False)),
+            assistant_name="Buddy",
+        )
+        return True
+    return False
+
+
+def _compute_force_units(*, force_units_raw: Any, force_margin_raw: Any) -> int | None:
+    if force_units_raw is not None:
+        return int(force_units_raw)
+    if force_margin_raw is not None:
+        return int(round(float(force_margin_raw) / 0.05))
+    return None
+
+
+def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
+    should_execute = bool(args.execute) and (not bool(getattr(args, "dry_run", False)))
+
+    force_units_eff = _compute_force_units(
+        force_units_raw=getattr(args, "force_units", None),
+        force_margin_raw=getattr(args, "force_margin", None),
+    )
+    max_hold_raw = getattr(args, "max_hold_minutes", None)
+    max_hold_eff = float(max_hold_raw) if max_hold_raw is not None else None
+
+    if bool(getattr(args, "loop", False)):
+        buddy_loop(
+            args.config,
+            checkpoint_path=args.model_path,
+            instrument=args.instrument,
+            granularity=args.granularity,
+            candles=args.candles,
+            execute=should_execute,
+            force_execute=bool(getattr(args, "force_execute", False)),
+            force_units=force_units_eff,
+            max_hold_minutes=max_hold_eff,
+            equity=float(getattr(args, "equity", 10_000.0)),
+            risk_per_trade_pct=float(getattr(args, "risk", 0.005)),
+            all_features=getattr(args, "all_features", False),
+            verbose=args.verbose,
+            max_trades=int(getattr(args, "max_trades", 1)),
+        )
+        return
+
+    command_map["buddy"](
+        args.config,
+        checkpoint_path=args.model_path,
+        instrument=args.instrument,
+        granularity=args.granularity,
+        candles=args.candles,
+        execute=should_execute,
+        force_execute=bool(getattr(args, "force_execute", False)),
+        force_units=force_units_eff,
+        max_hold_minutes=max_hold_eff,
+        equity=float(getattr(args, "equity", 10_000.0)),
+        risk_per_trade_pct=float(getattr(args, "risk", 0.005)),
+        all_features=getattr(args, "all_features", False),
+        verbose=args.verbose,
+    )
+
+
+def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
+    cfg = load_config(args.config)
+    buddy_cfg = (cfg.get("buddy") or {}) if isinstance(cfg, dict) else {}
+    buddy_train_cfg = (buddy_cfg.get("train_defaults") or buddy_cfg.get("train") or {}) if isinstance(buddy_cfg, dict) else {}
+
+    def _cfg_get(name: str, default_val):
+        try:
+            v = buddy_train_cfg.get(name, default_val) if isinstance(buddy_train_cfg, dict) else default_val
+        except Exception:
+            v = default_val
+        return v
+
+    # CLI overrides config; if CLI arg is None, fall back to config then hard default.
+    seq_len_eff = int(args.seq_len) if getattr(args, "seq_len", None) is not None else int(_cfg_get("seq_len", 50))
+    epochs_eff = int(args.epochs) if getattr(args, "epochs", None) is not None else int(_cfg_get("epochs", 300))
+    batch_size_eff = int(args.batch_size) if getattr(args, "batch_size", None) is not None else int(_cfg_get("batch_size", 32))
+    lr_eff = float(args.lr) if getattr(args, "lr", None) is not None else float(_cfg_get("lr", 0.001))
+    patience_eff = int(args.patience) if getattr(args, "patience", None) is not None else int(_cfg_get("patience", 10))
+    es_monitor_eff = str(args.es_monitor) if getattr(args, "es_monitor", None) is not None else str(_cfg_get("es_monitor", "direction"))
+    combined_w_dir_eff = float(args.combined_w_dir) if getattr(args, "combined_w_dir", None) is not None else float(_cfg_get("combined_w_dir", 0.7))
+    combined_w_conf_eff = float(args.combined_w_conf) if getattr(args, "combined_w_conf", None) is not None else float(_cfg_get("combined_w_conf", 0.3))
+    steps_per_execution_eff = int(args.steps_per_execution) if getattr(args, "steps_per_execution", None) is not None else int(_cfg_get("steps_per_execution", 1))
+    fit_verbose_eff = int(args.fit_verbose) if getattr(args, "fit_verbose", None) is not None else int(_cfg_get("fit_verbose", 1))
+    shared_encoder_eff = (
+        bool(args.shared_encoder)
+        if getattr(args, "shared_encoder", None) is not None
+        else bool(_cfg_get("shared_encoder", False))
+    )
+    tier2_stride_eff = (
+        int(getattr(args, "tier2_calibration_stride", 0))
+        if getattr(args, "tier2_calibration_stride", None) is not None
+        else int(_cfg_get("tier2_calibration_stride", 5))
+    )
+    tier2_horizon_eff = (
+        int(getattr(args, "tier2_horizon_candles", 0))
+        if getattr(args, "tier2_horizon_candles", None) is not None
+        else int(_cfg_get("tier2_horizon_candles", 0))
+    )
+    if int(tier2_horizon_eff) <= 0:
+        tier2_horizon_eff = None
+
+    # Default to fetching fresh OANDA candles for training unless the user
+    # explicitly provides a local CSV.
+    oanda_live_eff = bool(getattr(args, "oanda_live", False)) or (getattr(args, "csv", None) is None)
+
+    # If user didn't override --candles, use a larger default for training fetch.
+    train_candles = int(args.candles)
+    if bool(oanda_live_eff) and train_candles == 300:
+        train_candles = 5000
+
+    oanda_fetch = None
+    if bool(oanda_live_eff):
+        oanda_fetch = OandaFetchOptions(
+            instrument=str(args.instrument),
+            granularity=str(args.granularity),
+            candles=int(train_candles),
+            price=str(getattr(args, "oanda_price", "MBA")),
+            save_csv=getattr(args, "oanda_save_csv", None),
+        )
+
+    init_from = getattr(args, "init_from", None)
+    if not init_from and bool(getattr(args, "warm_start", False)):
+        init_from = str(Path("trained_data") / "models" / "buddy_tf.keras")
+
+    advanced = BuddyTrainingAdvancedOptions(
+        init_from=init_from,
+        es_monitor=str(es_monitor_eff),
+        combined_w_dir=float(combined_w_dir_eff),
+        combined_w_conf=float(combined_w_conf_eff),
+        train_smoothing=not bool(getattr(args, "no_train_smoothing", False)),
+        top_features=(
+            int(getattr(args, "top_features", 0))
+            if getattr(args, "top_features", None) is not None
+            else None
+        ),
+        median_window=(
+            int(getattr(args, "median_window", 0))
+            if getattr(args, "median_window", None) is not None
+            else None
+        ),
+        vol_norm_window=(
+            int(getattr(args, "vol_norm_window", 0))
+            if getattr(args, "vol_norm_window", None) is not None
+            else None
+        ),
+        min_volume=(
+            int(getattr(args, "min_volume", 0))
+            if getattr(args, "min_volume", None) is not None
+            else None
+        ),
+        spread_filter=bool(getattr(args, "spread_filter", False)),
+        spread_pctl=float(getattr(args, "spread_pctl", 0.99)),
+        spread_mult=float(getattr(args, "spread_mult", 3.0)),
+        tier2_calibrate=bool(getattr(args, "tier2_calibrate", True)),
+        tier2_horizon_candles=(int(tier2_horizon_eff) if tier2_horizon_eff is not None else None),
+        tier2_calibration_stride=int(tier2_stride_eff),
+    )
+
+    command_map["train-buddy"](
+        args.config,
+        None if bool(oanda_live_eff) else args.csv,
+        oanda_fetch=oanda_fetch,
+        advanced=advanced,
+        feature_curriculum=getattr(args, "feature_curriculum", None),
+        curriculum_ks=getattr(args, "curriculum_ks", None),
+        pca_components=args.pca_components,
+        seq_len=int(seq_len_eff),
+        epochs=int(epochs_eff),
+        batch_size=int(batch_size_eff),
+        lr=float(lr_eff),
+        patience=int(patience_eff),
+        seed=int(args.seed),
+        run_tag=args.run_tag,
+        all_features=True,
+        device=str(getattr(args, "device", "auto")),
+        ignore_input_mismatches=bool(getattr(args, "ignore_input_mismatches", False)),
+        disable_tier2_on_mismatch=bool(getattr(args, "disable_tier2_on_mismatch", False)),
+        mixed_precision=bool(getattr(args, "mixed_precision", False)),
+        steps_per_execution=int(steps_per_execution_eff),
+        jit_compile=bool(getattr(args, "jit_compile", False)),
+        shuffle_buffer=getattr(args, "shuffle_buffer", None),
+        prefetch=getattr(args, "prefetch", None),
+        cache_val=bool(getattr(args, "cache_val", False)),
+        combined_use_predict=bool(getattr(args, "combined_use_predict", True)),
+        shared_encoder=bool(shared_encoder_eff),
+        timing=bool(getattr(args, "timing", False)),
+        fit_verbose=int(fit_verbose_eff),
+    )
+
+
 def main() -> None:
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(description="ML Engine Trading Bot CLI")
@@ -4542,26 +5818,26 @@ def main() -> None:
     parser.add_argument(
         "--seq-len",
         type=int,
-        default=50,
-        help="Sequence length for Buddy training (default 50)",
+        default=None,
+        help="Sequence length for Buddy training (default: config buddy.train_defaults.seq_len or 50)",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        default=300,
-        help="Epochs for Buddy training (default 300)",
+        default=None,
+        help="Epochs for Buddy training (default: config buddy.train_defaults.epochs or 300)",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=32,
-        help="Batch size for Buddy training (default 32)",
+        default=None,
+        help="Batch size for Buddy training (default: config buddy.train_defaults.batch_size or 32)",
     )
     parser.add_argument(
         "--lr",
         type=float,
-        default=0.001,
-        help="Learning rate for Buddy training (default 0.001)",
+        default=None,
+        help="Learning rate for Buddy training (default: config buddy.train_defaults.lr or 0.001)",
     )
     parser.add_argument(
         "--warm-start",
@@ -4576,26 +5852,26 @@ def main() -> None:
     parser.add_argument(
         "--patience",
         type=int,
-        default=10,
-        help="EarlyStopping patience for Buddy training (applies to --es-monitor) (default 10)",
+        default=None,
+        help="EarlyStopping patience for Buddy training (applies to --es-monitor) (default: config buddy.train_defaults.patience or 10)",
     )
     parser.add_argument(
         "--es-monitor",
-        default="direction",
+        default=None,
         choices=["direction", "combined", "val_loss", "loss"],
-        help="EarlyStopping monitor for train-buddy: direction|combined|val_loss|loss (default direction)",
+        help="EarlyStopping monitor for train-buddy: direction|combined|val_loss|loss (default: config buddy.train_defaults.es_monitor or direction)",
     )
     parser.add_argument(
         "--combined-w-dir",
         type=float,
-        default=0.7,
-        help="Weight for direction accuracy in combined early-stopping objective (default 0.7)",
+        default=None,
+        help="Weight for direction accuracy in combined early-stopping objective (default: config buddy.train_defaults.combined_w_dir or 0.7)",
     )
     parser.add_argument(
         "--combined-w-conf",
         type=float,
-        default=0.3,
-        help="Weight for avg confidence in combined early-stopping objective (default 0.3)",
+        default=None,
+        help="Weight for confidence score (1 - MAE) in combined early-stopping objective (default: config buddy.train_defaults.combined_w_conf or 0.3)",
     )
     parser.add_argument(
         "--top-features",
@@ -4605,19 +5881,53 @@ def main() -> None:
     )
     parser.add_argument(
         "--feature-curriculum",
-        action="store_true",
-        help="For train-buddy: start with top-K features and automatically unlock more as accuracy improves (cannot be used with --top-features)",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="For train-buddy: enable/disable feature curriculum (CLI overrides config). Cannot be used with --top-features.",
     )
     parser.add_argument(
         "--curriculum-ks",
-        default=DEFAULT_CURRICULUM_KS,
-        help=f"For train-buddy --feature-curriculum: comma-separated K schedule (0 = all). Default: {DEFAULT_CURRICULUM_KS}",
+        default=None,
+        help=(
+            "For train-buddy --feature-curriculum: comma-separated K schedule (0 = all). "
+            f"If unset, uses config buddy.curriculum_ks or default {DEFAULT_CURRICULUM_KS}."
+        ),
+    )
+    parser.add_argument(
+        "--ignore-input-mismatches",
+        action="store_true",
+        help="Best-effort mode: downgrade some input/PCA/curriculum mismatches to warnings.",
+    )
+    parser.add_argument(
+        "--disable-tier2-on-mismatch",
+        action="store_true",
+        help="If Tier-2 calibration encounters input mismatches, skip Tier-2 instead of best-effort.",
     )
     parser.add_argument(
         "--median-window",
         type=int,
         default=None,
         help="For train-buddy: apply rolling median to close before EMA smoothing (e.g. 3,5)",
+    )
+
+    # Tier-2 calibration controls (TP-before-SL simulation). This can be the dominant runtime cost.
+    parser.add_argument(
+        "--tier2-calibrate",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="For train-buddy: enable/disable Tier-2 TP/SL calibration + labeling (default enabled)",
+    )
+    parser.add_argument(
+        "--tier2-calibration-stride",
+        type=int,
+        default=None,
+        help="For train-buddy: stride for Tier-2 labeling/calibration simulation (higher = faster, default: config buddy.train_defaults.tier2_calibration_stride or 5)",
+    )
+    parser.add_argument(
+        "--tier2-horizon-candles",
+        type=int,
+        default=None,
+        help="For train-buddy: Tier-2 TP/SL max horizon in candles (lower = faster). Default uses config.",
     )
     parser.add_argument(
         "--vol-norm-window",
@@ -4782,8 +6092,8 @@ def main() -> None:
     parser.add_argument(
         "--steps-per-execution",
         type=int,
-        default=1,
-        help="Keras steps_per_execution to reduce per-step overhead (default 1)",
+        default=None,
+        help="Keras steps_per_execution to reduce per-step overhead (default: config buddy.train_defaults.steps_per_execution or 1)",
     )
     parser.add_argument(
         "--jit-compile",
@@ -4811,12 +6121,13 @@ def main() -> None:
         "--combined-use-predict",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="For --es-monitor combined: use an extra predict() pass per epoch to compute mean confidence (default: enabled; disable for speed)",
+        help="For --es-monitor combined: use an extra predict()+label pass per epoch to compute confidence MAE (best for calibration; disable for speed)",
     )
     parser.add_argument(
         "--shared-encoder",
-        action="store_true",
-        help="Use a single shared LSTM encoder instead of 5 parallel heads (much faster, may change accuracy; incompatible with warm-start)",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Use a single shared LSTM encoder instead of 5 parallel heads (default: config buddy.train_defaults.shared_encoder or false)",
     )
     parser.add_argument(
         "--timing",
@@ -4827,8 +6138,8 @@ def main() -> None:
         "--fit-verbose",
         type=int,
         choices=[0, 1, 2],
-        default=1,
-        help="Keras fit verbosity for train-buddy: 0=silent, 1=progress bar, 2=one line per epoch (best for live monitoring)",
+        default=None,
+        help="Keras fit verbosity for train-buddy: 0=silent, 1=progress bar, 2=one line per epoch (default: config buddy.train_defaults.fit_verbose or 1)",
     )
     parser.add_argument(
         "--max-hold-minutes",
@@ -4846,15 +6157,8 @@ def main() -> None:
 
     # If invoked as `buddy` with no extra args, run the interactive wizard.
     # (The installed `buddy` launcher calls: python main.py buddy ...)
-    if len(sys.argv) == 2 and sys.argv[1] in {"buddy", "Buddy"} and sys.stdin.isatty():
-        if sys.argv[1] == "Buddy":
-            console.print("[yellow]Deprecation: please use lowercase 'buddy' instead of 'Buddy'[/yellow]")
-        try:
-            _buddy_interactive_wizard(default_config="./config.yaml")
-            return
-        except KeyboardInterrupt:
-            console.print("\n[yellow]Cancelled.[/yellow]")
-            return
+    if _maybe_run_buddy_interactive_wizard(default_config=DEFAULT_CONFIG_PATH):
+        return
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -4862,25 +6166,10 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Normalize command name and warn on deprecated casing.
-    if getattr(args, "command", None) == "Buddy":
-        console.print("[yellow]Deprecation: use lowercase 'buddy' instead of 'Buddy'[/yellow]")
-        args.command = "buddy"
+    _normalize_command_args(args)
 
     # If user requested direct REPL, handle it immediately (before heavy dispatch).
-    if getattr(args, "command", None) == "buddy" and bool(getattr(args, "repl", False)):
-        launch_buddy_repl_from_wizard(
-            args.config,
-            checkpoint_path=getattr(args, "model_path", None),
-            instrument=str(getattr(args, "instrument", "USD_JPY")),
-            granularity=str(getattr(args, "granularity", "M5")),
-            candles=int(getattr(args, "candles", 300)),
-            execute=bool(getattr(args, "execute", True)),
-            force_execute=bool(getattr(args, "force_execute", True)),
-            all_features=bool(getattr(args, "all_features", False)),
-            verbose=bool(getattr(args, "verbose", False)),
-            assistant_name="Buddy",
-        )
+    if _maybe_launch_buddy_repl(args):
         return
 
     command_map = {
@@ -4891,123 +6180,9 @@ def main() -> None:
 
     try:
         if args.command == "train-buddy":
-            # If user didn't override --candles, use a larger default for training fetch.
-            train_candles = int(args.candles)
-            if bool(getattr(args, "oanda_live", False)) and train_candles == 300:
-                train_candles = 5000
-
-            oanda_fetch = None
-            if bool(getattr(args, "oanda_live", False)):
-                oanda_fetch = OandaFetchOptions(
-                    instrument=str(args.instrument),
-                    granularity=str(args.granularity),
-                    candles=int(train_candles),
-                    price=str(getattr(args, "oanda_price", "MBA")),
-                    save_csv=getattr(args, "oanda_save_csv", None),
-                )
-
-            init_from = getattr(args, "init_from", None)
-            if not init_from and bool(getattr(args, "warm_start", False)):
-                init_from = str(Path("trained_data") / "models" / "buddy_tf.keras")
-
-            advanced = BuddyTrainingAdvancedOptions(
-                init_from=init_from,
-                es_monitor=str(getattr(args, "es_monitor", "direction")),
-                combined_w_dir=float(getattr(args, "combined_w_dir", 0.7)),
-                combined_w_conf=float(getattr(args, "combined_w_conf", 0.3)),
-                train_smoothing=not bool(getattr(args, "no_train_smoothing", False)),
-                top_features=(
-                    int(getattr(args, "top_features", 0))
-                    if getattr(args, "top_features", None) is not None
-                    else None
-                ),
-                median_window=(
-                    int(getattr(args, "median_window", 0))
-                    if getattr(args, "median_window", None) is not None
-                    else None
-                ),
-                vol_norm_window=(
-                    int(getattr(args, "vol_norm_window", 0))
-                    if getattr(args, "vol_norm_window", None) is not None
-                    else None
-                ),
-                min_volume=(
-                    int(getattr(args, "min_volume", 0))
-                    if getattr(args, "min_volume", None) is not None
-                    else None
-                ),
-                spread_filter=bool(getattr(args, "spread_filter", False)),
-                spread_pctl=float(getattr(args, "spread_pctl", 0.99)),
-                spread_mult=float(getattr(args, "spread_mult", 3.0)),
-            )
-
-            command_map[args.command](
-                args.config,
-                None if bool(getattr(args, "oanda_live", False)) else args.csv,
-                oanda_fetch=oanda_fetch,
-                advanced=advanced,
-                feature_curriculum=bool(getattr(args, "feature_curriculum", False)),
-                curriculum_ks=str(getattr(args, "curriculum_ks", DEFAULT_CURRICULUM_KS)),
-                pca_components=args.pca_components,
-                seq_len=args.seq_len,
-                epochs=int(args.epochs),
-                batch_size=int(args.batch_size),
-                lr=float(args.lr),
-                patience=int(args.patience),
-                seed=int(args.seed),
-                run_tag=args.run_tag,
-                all_features=True,
-                device=str(getattr(args, "device", "auto")),
-                mixed_precision=bool(getattr(args, "mixed_precision", False)),
-                steps_per_execution=int(getattr(args, "steps_per_execution", 1)),
-                jit_compile=bool(getattr(args, "jit_compile", False)),
-                shuffle_buffer=getattr(args, "shuffle_buffer", None),
-                prefetch=getattr(args, "prefetch", None),
-                cache_val=bool(getattr(args, "cache_val", False)),
-                combined_use_predict=bool(getattr(args, "combined_use_predict", True)),
-                shared_encoder=bool(getattr(args, "shared_encoder", False)),
-                timing=bool(getattr(args, "timing", False)),
-                fit_verbose=int(getattr(args, "fit_verbose", 1)),
-            )
+            _dispatch_train_buddy(args, command_map)
         elif args.command in {"buddy", "Buddy"}:
-            should_execute = bool(args.execute) and (not args.dry_run)
-            if bool(getattr(args, "loop", False)):
-                buddy_loop(
-                    args.config,
-                    checkpoint_path=args.model_path,
-                    instrument=args.instrument,
-                    granularity=args.granularity,
-                    candles=args.candles,
-                    execute=should_execute,
-                    force_execute=bool(getattr(args, "force_execute", False)),
-                    force_units=int(getattr(args, "force_units", None)) if getattr(args, "force_units", None) is not None else (
-                        int(round(float(getattr(args, "force_margin", 0.0)) / 0.05)) if getattr(args, "force_margin", None) is not None else None
-                    ),
-                    max_hold_minutes=float(getattr(args, "max_hold_minutes", None)),
-                    equity=float(getattr(args, "equity", 10_000.0)),
-                    risk_per_trade_pct=float(getattr(args, "risk", 0.005)),
-                    all_features=getattr(args, "all_features", False),
-                    verbose=args.verbose,
-                    max_trades=int(getattr(args, "max_trades", 1)),
-                )
-            else:
-                command_map[args.command](
-                    args.config,
-                    checkpoint_path=args.model_path,
-                    instrument=args.instrument,
-                    granularity=args.granularity,
-                    candles=args.candles,
-                    execute=should_execute,
-                    force_execute=bool(getattr(args, "force_execute", False)),
-                    force_units=int(getattr(args, "force_units", None)) if getattr(args, "force_units", None) is not None else (
-                        int(round(float(getattr(args, "force_margin", 0.0)) / 0.05)) if getattr(args, "force_margin", None) is not None else None
-                    ),
-                    max_hold_minutes=float(getattr(args, "max_hold_minutes", None)),
-                    equity=float(getattr(args, "equity", 10_000.0)),
-                    risk_per_trade_pct=float(getattr(args, "risk", 0.005)),
-                    all_features=getattr(args, "all_features", False),
-                    verbose=args.verbose,
-                )
+            _dispatch_buddy(args, command_map)
         else:
             command_map[args.command](args.config)
     except KeyboardInterrupt:

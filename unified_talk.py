@@ -116,6 +116,11 @@ class TalkContext:
 
     # Prevent concurrent model inference (TensorFlow is not reliably thread-safe).
     inference_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    
+    # New confidence system components
+    confidence_calibrator: Any = None  # ConfidenceCalibrator instance
+    position_sizer: Any = None  # DynamicPositionSizer instance
+    risk_manager: Any = None  # ConfidenceBasedRiskManager instance
 
 
 def select_latest_checkpoint(model_dir: Path) -> Optional[Path]:
@@ -804,6 +809,15 @@ def _load_context(config_path: str, *, checkpoint_path: Optional[str] = None) ->
 
     reasoning = ReasoningEngine(cfg.get("reasoning", {}))
 
+    # Initialize confidence system components
+    from confidence_calibration import create_default_calibrator
+    from position_sizing import create_default_position_sizer
+    from risk_management import create_default_risk_manager
+    
+    confidence_calibrator = create_default_calibrator()
+    position_sizer = create_default_position_sizer()
+    risk_manager = create_default_risk_manager()
+    
     return TalkContext(
         config_path=config_path,
         checkpoint_path=ckpt_path,
@@ -816,6 +830,9 @@ def _load_context(config_path: str, *, checkpoint_path: Optional[str] = None) ->
         target_scaler=meta["target_scaler"],
         apply_feature_engineering=meta["apply_feature_engineering"],
         is_tensorflow=is_tf_model,
+        confidence_calibrator=confidence_calibrator,
+        position_sizer=position_sizer,
+        risk_manager=risk_manager,
     )
 
 
@@ -1310,11 +1327,33 @@ def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str], ski
         )
         return
 
+    # Use new confidence-based risk management
+    if ctx.risk_manager and ctx.last_result:
+        risk_result = ctx.risk_manager.calculate_risk_levels(
+            entry_price=ctx.last_result.get("last_close", 0.0),
+            calibrated_confidence=None,  # Will use raw confidence
+            raw_confidence=float(max(ctx.last_result.get("state_probs", [0.0]))),
+            base_stop_loss_pips=ctx.stop_loss_pips if ctx.use_stop_loss else None,
+            base_take_profit_pips=ctx.take_profit_pips if ctx.use_take_profit else None,
+            instrument=instrument
+        )
+        
+        if risk_result.is_valid:
+            stop_loss_pips = risk_result.stop_loss_pips
+            take_profit_pips = risk_result.take_profit_pips
+            print(_assistant_prefix(ctx) + f"🎯 Confidence-based risk management: SL={stop_loss_pips:.1f}p, TP={take_profit_pips:.1f}p, R:R={risk_result.risk_reward_ratio:.2f}")
+        else:
+            stop_loss_pips = ctx.stop_loss_pips if ctx.use_stop_loss else None
+            take_profit_pips = ctx.take_profit_pips if ctx.use_take_profit else None
+    else:
+        stop_loss_pips = ctx.stop_loss_pips if ctx.use_stop_loss else None
+        take_profit_pips = ctx.take_profit_pips if ctx.use_take_profit else None
+
     # Calculate stop loss and take profit prices
-    stop_loss_price, take_profit_price = _calculate_sl_tp_prices(ctx, instrument, action)
+    stop_loss_price, take_profit_price = _calculate_sl_tp_prices(ctx, instrument, action, stop_loss_pips, take_profit_pips)
     
     resp = ctx.oanda_client.create_market_order(
-        instrument=instrument, 
+        instrument=instrument,
         units=signed_units,
         stop_loss_price=stop_loss_price,
         take_profit_price=take_profit_price,
@@ -1386,13 +1425,19 @@ def _calculate_sl_tp_for_action(
 
 
 def _calculate_sl_tp_prices(
-    ctx: TalkContext, 
-    instrument: str, 
-    action: str
+    ctx: TalkContext,
+    instrument: str,
+    action: str,
+    stop_loss_pips: Optional[float] = None,
+    take_profit_pips: Optional[float] = None
 ) -> tuple[Optional[float], Optional[float]]:
     """Calculate stop loss and take profit prices based on current price and pip settings."""
     if not ctx.use_stop_loss and not ctx.use_take_profit:
         return None, None
+    
+    # Use provided pips or fall back to context defaults
+    sl_pips = stop_loss_pips if stop_loss_pips is not None else ctx.stop_loss_pips
+    tp_pips = take_profit_pips if take_profit_pips is not None else ctx.take_profit_pips
     
     current_price = _get_current_price(ctx, instrument)
     if current_price is None:
@@ -1400,8 +1445,8 @@ def _calculate_sl_tp_prices(
         return None, None
     
     pip_value = _get_pip_value(instrument)
-    sl_distance = ctx.stop_loss_pips * pip_value
-    tp_distance = ctx.take_profit_pips * pip_value
+    sl_distance = sl_pips * pip_value
+    tp_distance = tp_pips * pip_value
     
     return _calculate_sl_tp_for_action(
         current_price, action, sl_distance, tp_distance,

@@ -1,4 +1,6 @@
 {
+    "python.defaultInterpreterPath": "/Users/mirelacertan/miniforge3/envs/tf-metal/bin/python",
+    "python.terminal.activateEnvironment": true,
     "python.testing.unittestArgs": [
         "-v",
         "-s",
@@ -7,5 +9,6 @@
         "test_*.py"
     ],
     "python.testing.pytestEnabled": false,
-    "python.testing.unittestEnabled": true
+    "python.testing.unittestEnabled": true,
+    "DockerRun.DisableDockerrc": true
 }

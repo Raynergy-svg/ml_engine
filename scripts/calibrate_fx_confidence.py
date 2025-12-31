@@ -218,7 +218,7 @@ def main():
     args = parser.parse_args()
 
     import yaml
-    cfg = yaml.safe_load(open("config.yaml", "r"))
+    cfg = yaml.safe_load(open("config_tuned.yaml", "r"))
     policy = fxg.load_fx_policy(cfg)
 
     df = load_market_csv(args.data)

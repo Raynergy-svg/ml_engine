@@ -14,9 +14,11 @@ merged here to avoid duplication.
 from __future__ import annotations
 
 import asyncio
+import gc
 import logging
 import os
-from functools import lru_cache, partial
+from datetime import timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
@@ -30,6 +32,7 @@ DataLoader = None  # type: ignore
 
 class Dataset:  # type: ignore
     pass
+
 
 try:  # pragma: no cover
     import yfinance as yf  # type: ignore
@@ -348,59 +351,60 @@ def create_optimized_dataloader(
     )
 
 
-_REQUIRED_STOCK_COLS = {"open", "high", "low", "close", "volume"}
+def _iter_weekly_ranges(start: str, end: str, *, days: int = 7) -> List[tuple[str, str]]:
+    """Split a [start, end) date range into ~weekly chunks.
 
-
-def _normalize_columns(columns) -> List[str]:
-    out = []
-    for col in columns:
-        if isinstance(col, tuple):
-            out.append("_".join(map(str, col)).lower())
-        else:
-            out.append(str(col).lower())
-    return out
-
-
-def _ensure_close_column(df: pd.DataFrame) -> pd.DataFrame:
-    if CLOSE_COL not in df.columns and ADJ_CLOSE_COL in df.columns:
-        df[CLOSE_COL] = df[ADJ_CLOSE_COL]
-    return df
-
-
-def _normalize_and_validate_stock_df(df: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
-    if df is None or df.empty:
-        return None
-    out = df.copy()
-    out.columns = _normalize_columns(out.columns)
-    out = _ensure_close_column(out)
-    if not _REQUIRED_STOCK_COLS.issubset(set(out.columns)):
-        return None
-    return out
-
-
-async def _download_ticker_no_cache(ticker: str, start: str, end: str) -> Optional[pd.DataFrame]:
-    if yf is None:
-        raise ImportError("yfinance is not installed. Install it to use ticker download helpers.")
+    Notes:
+    - We preserve the caller's semantics by passing the same start/end strings
+      format back into yfinance. Chunking is purely to keep each HTTP response
+      small and allow per-chunk cleanup.
+    """
     try:
-        loop = asyncio.get_running_loop()
-        data = await loop.run_in_executor(
-            None, partial(yf.download, ticker, start=start, end=end, progress=False)
-        )
-    except Exception as e:
-        logger.warning("yf.download failed: %s", e)
-        data = None
+        start_ts = pd.to_datetime(start)
+        end_ts = pd.to_datetime(end)
+    except Exception:
+        return [(start, end)]
 
-    normalized = _normalize_and_validate_stock_df(data)
-    if normalized is not None:
-        return normalized
+    if pd.isna(start_ts) or pd.isna(end_ts) or end_ts <= start_ts:
+        return [(start, end)]
 
-    try:
-        data2 = yf.Ticker(ticker).history(start=start, end=end)
-    except Exception as e:
-        logger.error("yf.Ticker().history failed: %s", e)
+    step = max(1, int(days))
+    ranges: List[tuple[str, str]] = []
+    cur = start_ts
+    while cur < end_ts:
+        nxt = min(cur + timedelta(days=step), end_ts)
+        ranges.append((str(cur.date()), str(nxt.date())))
+        cur = nxt
+    return ranges
+
+
+async def _download_ticker(
+    ticker: str,
+    start: str,
+    end: str,
+    *,
+    use_cache: bool,
+) -> Optional[pd.DataFrame]:
+    """Single canonical download path for stock tickers.
+
+    - Optional disk cache (parquet) when use_cache=True
+    - Weekly chunking + explicit per-chunk cleanup to cap memory
+    """
+    required_cols = {"open", "high", "low", CLOSE_COL, "volume"}
+    cache_file = CACHE_DIR / f"{ticker}_{start}_{end}.parquet"
+
+    if use_cache:
+        cached_df = _load_from_cache(cache_file, required_cols)
+        if cached_df is not None:
+            return cached_df
+
+    normalized = await _download_data(ticker, start, end, required_cols)
+    if normalized is None or normalized.empty:
         return None
 
-    return _normalize_and_validate_stock_df(data2)
+    if use_cache:
+        normalized.to_parquet(cache_file)
+    return normalized
 
 
 async def _load_all_tickers_async(
@@ -410,7 +414,7 @@ async def _load_all_tickers_async(
     use_cache: bool,
 ) -> Dict[str, pd.DataFrame]:
     coros = [
-        async_cached_download(ticker, start_date, end_date) if use_cache else _download_ticker_no_cache(ticker, start_date, end_date)
+        _download_ticker(ticker, start_date, end_date, use_cache=use_cache)
         for ticker in tickers
     ]
     results = await asyncio.gather(*coros, return_exceptions=True)
@@ -667,31 +671,93 @@ def _load_from_cache(cache_file: Path, required_cols: set) -> Optional[pd.DataFr
         return None
 
 
+async def _try_yf_download(
+    loop: asyncio.AbstractEventLoop,
+    *,
+    ticker: str,
+    start: str,
+    end: str,
+) -> Optional[pd.DataFrame]:
+    if yf is None:
+        return None
+    try:
+        download_fn = partial(yf.download, ticker, start=start, end=end, progress=False)
+        return await loop.run_in_executor(None, download_fn)
+    except Exception as e:
+        logger.warning("yf.download failed (%s..%s): %s", start, end, e)
+        return None
+
+
+def _try_yf_history(*, ticker: str, start: str, end: str) -> Optional[pd.DataFrame]:
+    if yf is None:
+        return None
+    try:
+        return yf.Ticker(ticker).history(start=start, end=end)
+    except Exception as e:
+        logger.warning("yf.Ticker().history failed (%s..%s): %s", start, end, e)
+        return None
+
+
+async def _download_week_chunk(
+    loop: asyncio.AbstractEventLoop,
+    *,
+    ticker: str,
+    start: str,
+    end: str,
+    required_cols: set,
+) -> Optional[pd.DataFrame]:
+    data = None
+    data2 = None
+    normalized = None
+    try:
+        data = await _try_yf_download(loop, ticker=ticker, start=start, end=end)
+        if data is not None and not data.empty:
+            normalized = _normalize_downloaded_data(data, required_cols)
+
+        if normalized is None:
+            data2 = _try_yf_history(ticker=ticker, start=start, end=end)
+            if data2 is not None and not data2.empty:
+                normalized = _normalize_downloaded_data(data2, required_cols)
+
+        return normalized
+    finally:
+        # Explicit per-batch cleanup.
+        try:
+            del data
+            del data2
+            del normalized
+        except Exception:
+            pass
+        gc.collect()
+
+
 async def _download_data(ticker: str, start: str, end: str, required_cols: set) -> Optional[pd.DataFrame]:
-    """Download data using yf.download or yf.Ticker().history as fallback."""
+    """Download data in ~weekly chunks and return a normalized DataFrame."""
     if yf is None:
         raise ImportError("yfinance is not installed. Install it to use ticker download helpers.")
-    data = None
-    
-    try:
-        loop = asyncio.get_event_loop()
-        download_fn = partial(yf.download, ticker, start=start, end=end, progress=False)
-        data = await loop.run_in_executor(None, download_fn)
-    except Exception as e:
-        logger.warning("yf.download failed: %s", e)
-    
-    # Check if download succeeded with required columns
-    has_required = (
-        data is not None
-        and not data.empty
-        and required_cols.issubset(set(_fix_columns_async(data.columns)))
-    )
-    
-    if not has_required:
-        logger.warning("yf.download did not return valid data; trying yf.Ticker().history")
-        data = yf.Ticker(ticker).history(start=start, end=end)
-    
-    return data
+
+    loop = asyncio.get_running_loop()
+    chunks: List[pd.DataFrame] = []
+
+    for chunk_start, chunk_end in _iter_weekly_ranges(start, end, days=7):
+        chunk_df = await _download_week_chunk(
+            loop,
+            ticker=ticker,
+            start=chunk_start,
+            end=chunk_end,
+            required_cols=required_cols,
+        )
+        if chunk_df is not None and not chunk_df.empty:
+            chunks.append(chunk_df)
+        await asyncio.sleep(0)
+
+    if not chunks:
+        return None
+    if len(chunks) == 1:
+        return chunks[0]
+    out = pd.concat(chunks, axis=0)
+    out = out[~out.index.duplicated(keep="last")]
+    return out
 
 
 def _normalize_downloaded_data(data: pd.DataFrame, required_cols: set) -> Optional[pd.DataFrame]:
@@ -705,33 +771,3 @@ def _normalize_downloaded_data(data: pd.DataFrame, required_cols: set) -> Option
         return None
     
     return data
-
-
-@lru_cache(maxsize=32)
-async def async_cached_download(
-    ticker: str, start: str, end: str
-) -> Optional[pd.DataFrame]:
-    """
-    Asynchronously download and cache stock data
-    to avoid repeated API calls.
-    """
-    cache_file = CACHE_DIR / f"{ticker}_{start}_{end}.parquet"
-    required_cols = {"open", "high", "low", CLOSE_COL, "volume"}
-    
-    # Try to load from cache
-    cached_df = _load_from_cache(cache_file, required_cols)
-    if cached_df is not None:
-        return cached_df
-    
-    # Download data
-    data = await _download_data(ticker, start, end, required_cols)
-    if data is None or data.empty:
-        return None
-    
-    # Normalize and validate
-    normalized_data = _normalize_downloaded_data(data, required_cols)
-    if normalized_data is None:
-        return None
-    
-    normalized_data.to_parquet(cache_file)
-    return normalized_data

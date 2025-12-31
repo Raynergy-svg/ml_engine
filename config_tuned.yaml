@@ -18,7 +18,7 @@ checkpoint_dir: trained_data/checkpoints
 log_dir: trained_data/logs
 cache_dir: trained_data/cache
 viz_dir: trained_data/visualizations
-device: cpu
+device: gpu
 data:
   data_dir: market_data/
   cache_dir: trained_data/cache
@@ -76,22 +76,22 @@ model:
     weight_decay: 0.001
 optimizer:
   type: adamw
-  learning_rate: 0.0003
+  learning_rate: 0.001
   weight_decay: 0.001
   betas:
   - 0.9
   - 0.999
 scheduler: {}
-learning_rate: 0.0005
-batch_size: 64
+learning_rate: 0.001
+batch_size: 32
 epochs: 200
-early_stopping_patience: 15
+early_stopping_patience: 20
 auto_resume: true
 mixed_precision: true
 enable_data_scaling: true
 training:
   epochs: 200
-  early_stopping_patience: 15
+  early_stopping_patience: 20
 loss_type: huber
 huber_delta: 1.0
 state_classes: 2
@@ -101,7 +101,7 @@ unified_head_loss_weights:
   direction: 20.0
   risk: 2.0
   state: 5.0
-early_stop_patience: 15
+early_stop_patience: 20
 min_epochs: 50
 monitoring:
   enable_memory_monitoring: true
@@ -147,6 +147,7 @@ fx:
   timezone: America/New_York
   granularity: M5
   horizon_bars: 1
+  equity: 10000.0
   instruments:
   - EUR_USD
   - GBP_USD
@@ -223,3 +224,46 @@ tensorboard:
   profile_batch: 0
   update_freq: epoch
   embeddings_freq: 0
+
+buddy:
+  # Tier-2 parameters: calibrated P(TP-before-SL) gating + fractional Kelly sizing.
+  # Explicit model architecture knobs (avoid hardcoded defaults in main.py)
+  head_hidden: 64
+  head_layers: 2
+  head_dropout: 0.1
+  dense_hidden: 128
+  dense_dropout: 0.2
+
+  # Defaults for `python main.py train-buddy` when CLI flags are not provided.
+  # CLI flags always override these values.
+  train_defaults:
+    # Keep Tier-2 enabled (required), but make calibration tractable on Mac.
+    tier2_calibration_stride: 10
+    tier2_horizon_candles: 60
+    # Training ergonomics
+    seq_len: 50
+    epochs: 80
+    batch_size: 128
+    lr: 0.001
+    patience: 10
+    es_monitor: direction
+    combined_w_dir: 0.7
+    combined_w_conf: 0.3
+    steps_per_execution: 20
+    shared_encoder: true
+    fit_verbose: 2
+  stop_loss_pips: 20.0
+  take_profit_pips: 40.0
+  tier2_horizon_candles: 288
+  tier2_spread_fallback_pips: 2.0
+  tier2_tie_break: "sl"
+  risk_per_trade_pct: 0.005
+  tier2:
+    enabled: true
+    p_win_threshold: 0.60
+    use_model_confidence_for_gate: true
+    remove_confidence_gate: true
+    model_conf_threshold: 0.70
+    require_both: false
+    kelly_fraction: 0.50
+    max_risk_per_trade_pct: 0.02

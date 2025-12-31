@@ -293,7 +293,25 @@ def load_state(cfg: Dict[str, Any], policy: FxPolicy, *, now: Optional[datetime]
     return st
 
 
-def save_state(cfg: Dict[str, Any], state: FxDailyState) -> Path:
+def save_state(cfg: Dict[str, Any], *args) -> Path:
+    """Persist daily FX state.
+
+    Backward compatible with both:
+    - save_state(cfg, state)
+    - save_state(cfg, policy, state)  (policy is ignored; path is derived from cfg+state.date)
+    """
+
+    if len(args) == 1:
+        state = args[0]
+    elif len(args) == 2:
+        # Historical signature included policy; ignore it.
+        state = args[1]
+    else:
+        raise TypeError("save_state expects (cfg, state) or (cfg, policy, state)")
+
+    if not isinstance(state, FxDailyState):
+        raise TypeError("save_state: state must be FxDailyState")
+
     path = state_path(cfg, date_str=state.date)
     payload = {
         "date": state.date,

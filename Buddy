@@ -2,22 +2,38 @@
 set -euo pipefail
 
 # Repo-local launcher for Buddy.
-# Usage: ./Buddy --config ./config.yaml [--instrument USD_JPY --granularity M5 --candles 300 --execute]
+# Usage: ./Buddy [buddy args]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-CONDA_BIN=""
-if command -v conda >/dev/null 2>&1; then
-	CONDA_BIN="conda"
-elif [[ -x "${HOME}/miniforge3/bin/conda" ]]; then
+# Prefer the explicit Miniforge conda binary when present (more reliable
+# in non-interactive shells than the "conda" shell function).
+if [[ -x "${HOME}/miniforge3/bin/conda" ]]; then
 	CONDA_BIN="${HOME}/miniforge3/bin/conda"
 elif [[ -x "${HOME}/miniconda3/bin/conda" ]]; then
 	CONDA_BIN="${HOME}/miniconda3/bin/conda"
-fi
-
-if [[ -z "${CONDA_BIN}" ]]; then
-	echo "Conda not found. Install Miniforge/Miniconda and create the 'tf-metal' env (see environment_tf_metal.yml)." >&2
+elif command -v conda >/dev/null 2>&1; then
+	CONDA_BIN="$(command -v conda)"
+else
+	echo "Conda not found. Install Miniforge/Miniconda and create the required env." >&2
 	exit 1
 fi
 
-exec "${CONDA_BIN}" run -n tf-metal --no-capture-output python "${SCRIPT_DIR}/main.py" buddy "$@"
+ENV_NAME="${BUDDY_CONDA_ENV:-ml_engine}"
+FALLBACK_ENV="${BUDDY_CONDA_ENV_FALLBACK:-tf-metal}"
+
+# Use the conda binary directly; --no-capture-output keeps output flowing.
+set +e
+"${CONDA_BIN}" run -n "${ENV_NAME}" --no-capture-output python "${SCRIPT_DIR}/main.py" buddy "$@"
+code=$?
+set -e
+
+if [[ ${code} -eq 0 ]]; then
+	exit 0
+fi
+
+if [[ "${FALLBACK_ENV}" != "${ENV_NAME}" ]]; then
+	exec "${CONDA_BIN}" run -n "${FALLBACK_ENV}" --no-capture-output python "${SCRIPT_DIR}/main.py" buddy "$@"
+fi
+
+exit ${code}

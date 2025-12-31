@@ -88,10 +88,10 @@ This version includes significant enhancements to code quality, reliability, and
    pip install -r requirements.txt
    ```
 
-4. Configure the engine by editing the `config.yaml` file:
+4. Configure the engine by editing the `config_tuned.yaml` file:
    ```bash
    cp .env.example .env  # Create environment file
-   # Edit config.yaml with your settings
+   # Edit config_tuned.yaml with your settings
    ```
 
 5. Verify installation:
@@ -104,6 +104,8 @@ This version includes significant enhancements to code quality, reliability, and
 Run the CLI with:
 ```bash
 python main.py <command> [--config path/to/config.yaml]
+
+Default config: `./config_tuned.yaml`.
 ```
 
 ### Available Commands
@@ -120,7 +122,7 @@ python main.py <command> [--config path/to/config.yaml]
 
 ## Configuration
 
-Customize the engine settings in the `config.yaml` file. Adjust parameters such as learning rate, batch size, model architecture, hardware settings, and more.
+Customize the engine settings in the `config_tuned.yaml` file. Adjust parameters such as learning rate, batch size, model architecture, hardware settings, and more.
 
 ## Contributing
 
@@ -150,7 +152,7 @@ This project is licensed under the MIT License.
 - Save checkpoints regularly during long training runs
 
 ### Configuration
-- Review and validate your `config.yaml` before training
+- Review and validate your `config_tuned.yaml` before training
 - Start with conservative learning rates (e.g., 0.001)
 - Use learning rate scheduling for better convergence
 - Adjust batch size based on your available memory
@@ -160,6 +162,33 @@ This project is licensed under the MIT License.
 - Use the validation functions before starting long training runs
 - Keep backups of successful model configurations
 - Monitor system resources during training
+## Quick start
+
+### Install the `buddy` shell command
+
+If `buddy` on your machine points to an old/broken script (e.g. wrong repo path), install a launcher that runs this repo’s CLI:
+
+```bash
+bash scripts/install_buddy_cli.sh
+```
+
+Then run (interactive prompts by default):
+
+```bash
+buddy
+```
+
+Dry-run (no orders):
+
+```bash
+buddy --dry-run --instrument USD_JPY --granularity M5 --candles 300
+```
+
+If you don’t want to install a launcher, this always works:
+
+```bash
+/Users/mirelacertan/miniforge3/bin/conda run -n ml_engine python main.py buddy
+```
 
 ## Testing
 

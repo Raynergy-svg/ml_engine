@@ -16,8 +16,169 @@ from typing import Any, Literal, Optional
 import numpy as np
 import pandas as pd
 
+from candle_smoothing import resample_5min_ohlcv_and_ema_close
+
 
 Signal = Literal["buy", "sell", "hold"]
+
+
+TpSlHitType = Literal["tp", "sl", "timeout"]
+
+
+@dataclass(frozen=True)
+class TpSlResult:
+    """Result from TP/SL simulation with next-candle entry.
+
+    - outcome: 1 for TP hit, 0 for SL/timeout
+    - hit_type: which event occurred (tp/sl/timeout)
+    - exit_price: realized exit price (tp/sl level or timeout close)
+    - bars_held: candles between entry candle and exit candle
+    - entry_price: spread-adjusted entry price
+    """
+
+    outcome: int
+    hit_type: TpSlHitType
+    exit_price: float
+    bars_held: int
+    entry_price: float
+
+    def to_label(self) -> int:
+        return int(self.outcome)
+
+    @property
+    def is_win(self) -> bool:
+        return bool(int(self.outcome) == 1)
+
+    def __repr__(self) -> str:
+        status = "WIN" if self.is_win else "LOSS"
+        return f"TpSlResult({status}, {self.hit_type}, exit={self.exit_price:.5f}, held={int(self.bars_held)})"
+
+
+def simulate_tp_sl_outcome(
+    df: pd.DataFrame,
+    *,
+    instrument: str,
+    signal_index: int,
+    direction: Literal["long", "short"],
+    stop_loss_pips: float,
+    take_profit_pips: float,
+    spread_pips: float = 0.0,
+    max_horizon_candles: int | None = None,
+    tie_break: Literal["sl", "tp"] = "sl",
+) -> TpSlResult:
+    """Simulate TP-before-SL with next-candle entry, returning a conservative outcome.
+
+    This is designed for calibration/backtesting when only candle OHLC is available.
+
+        Timeline:
+            - signal_index: signal fires at close of this candle
+            - signal_index+1: enter at open of next candle (spread-adjusted)
+            - signal_index+2+: first candle that can hit TP/SL
+
+        - Entry price is adjusted against you by `spread_pips` (conservative):
+            - long: entry += spread
+            - short: entry -= spread
+    - Intrabar ambiguity (both TP and SL inside same candle): resolved by `tie_break`.
+      For Tier-2 calibration we default to worst-case: `tie_break='sl'`.
+    """
+    if "open" not in df.columns:
+        raise ValueError("simulate_tp_sl_outcome requires 'open' column for next-candle entry")
+
+    if signal_index < 0 or signal_index >= len(df):
+        raise IndexError("signal_index out of range")
+
+    # Need entry candle (signal_index+1) and at least one scan candle (signal_index+2).
+    if int(signal_index) + 2 >= len(df):
+        raise ValueError(
+            f"Insufficient data: need signal_index+2 < len(df)={len(df)}, got signal_index={int(signal_index)}"
+        )
+
+    pip = float(pip_size(instrument))
+    if stop_loss_pips <= 0 or take_profit_pips <= 0:
+        raise ValueError("stop_loss_pips and take_profit_pips must be positive")
+
+    try:
+        spread_pips_f = float(spread_pips)
+    except Exception:
+        raise ValueError("Invalid spread_pips")
+    if not np.isfinite(spread_pips_f) or spread_pips_f < 0:
+        raise ValueError(f"Invalid spread_pips={spread_pips_f}")
+    # Clamp tiny positive spreads up to 0.5 pips; reject extreme outliers.
+    if 0.0 < spread_pips_f < 0.5:
+        spread_pips_f = 0.5
+    if spread_pips_f > 20.0:
+        raise ValueError(f"Invalid spread_pips={spread_pips_f} (expect <= 20)")
+
+    entry_open = float(df["open"].iloc[int(signal_index) + 1])
+    if not np.isfinite(entry_open) or entry_open <= 0:
+        raise ValueError(f"Invalid entry open price at index {int(signal_index)+1}")
+
+    spread_px = float(spread_pips_f) * pip
+    if direction == "long":
+        entry_price = entry_open + spread_px
+        stop_price = entry_price - (float(stop_loss_pips) * pip)
+        take_profit_price = entry_price + (float(take_profit_pips) * pip)
+    else:
+        entry_price = entry_open - spread_px
+        stop_price = entry_price + (float(stop_loss_pips) * pip)
+        take_profit_price = entry_price - (float(take_profit_pips) * pip)
+
+    start = int(signal_index) + 2
+    if max_horizon_candles is None:
+        end = len(df) - 1
+    else:
+        end = min(len(df) - 1, int(signal_index) + 1 + int(max_horizon_candles))
+
+    if start > end:
+        # No full candle after entry to test; treat as no-op timeout.
+        return TpSlResult(
+            outcome=0,
+            hit_type="timeout",
+            exit_price=float(entry_price),
+            bars_held=0,
+            entry_price=float(entry_price),
+        )
+
+    tie_break = "sl" if str(tie_break).lower().strip() != "tp" else "tp"
+
+    for i in range(start, end + 1):
+        high = float(df["high"].iloc[i])
+        low = float(df["low"].iloc[i])
+
+        if direction == "long":
+            hit_tp = np.isfinite(high) and high >= take_profit_price
+            hit_sl = np.isfinite(low) and low <= stop_price
+        else:
+            hit_tp = np.isfinite(low) and low <= take_profit_price
+            hit_sl = np.isfinite(high) and high >= stop_price
+
+        if hit_tp and hit_sl:
+            hit_type: TpSlHitType = "sl" if tie_break == "sl" else "tp"
+        elif hit_sl:
+            hit_type = "sl"
+        elif hit_tp:
+            hit_type = "tp"
+        else:
+            continue
+
+        exit_price = float(stop_price) if hit_type == "sl" else float(take_profit_price)
+        outcome = 1 if hit_type == "tp" else 0
+        return TpSlResult(
+            outcome=int(outcome),
+            hit_type=hit_type,
+            exit_price=float(exit_price),
+            bars_held=int(i - (int(signal_index) + 1)),
+            entry_price=float(entry_price),
+        )
+
+    exit_price = float(df["close"].iloc[int(end)])
+    return TpSlResult(
+        outcome=0,
+        hit_type="timeout",
+        exit_price=float(exit_price),
+        bars_held=int(end - (int(signal_index) + 1)),
+        entry_price=float(entry_price),
+    )
 
 
 def _safe_float(value: Any) -> Optional[float]:
@@ -113,7 +274,9 @@ def candles_to_ohlcv_df(oanda_candles_response: Any) -> pd.DataFrame:
         if col in df.columns and df[col].isna().all():
             df = df.drop(columns=[col])
 
-    return df
+    # Smooth candles: resample to 5-minute bars and EMA(14) the close.
+    # This ensures downstream models don't see raw close series.
+    return resample_5min_ohlcv_and_ema_close(df, ema_span=14, time_col="time")
 
 
 def atr(df: pd.DataFrame, period: int = 14) -> float:

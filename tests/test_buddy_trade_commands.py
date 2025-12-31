@@ -40,7 +40,7 @@ class _StubOandaClient:
 def _ctx():
     # We avoid loading checkpoints by constructing a minimal TalkContext.
     return unified_talk.TalkContext(
-        config_path="config.yaml",
+        config_path="config_tuned.yaml",
         checkpoint_path="/dev/null",
         feature_columns=["open", "high", "low", "close", "volume"],
         sequence_length=60,

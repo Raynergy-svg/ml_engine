@@ -193,8 +193,8 @@ def query_for_auto_configuration(metrics, current_config):
     return config_updates
 
 
-def report_config_changes(current_config, config_updates):
-    """Merge config with updates and write to config.yaml."""
+def report_config_changes(current_config, config_updates, config_path: str = "config_tuned.yaml"):
+    """Merge config with updates and write to the given config_path."""
     import yaml
 
     updated_config = current_config.copy()
@@ -211,7 +211,7 @@ def report_config_changes(current_config, config_updates):
 
     logging.debug(f"Updated Config before writing to file:\n{updated_config}")
 
-    with open("config.yaml", "w") as f:
+    with open(str(config_path), "w") as f:
         yaml.dump(updated_config, f)
     return updated_config
 
