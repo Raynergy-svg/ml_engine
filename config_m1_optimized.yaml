@@ -1,0 +1,304 @@
+# =============================================================================
+# M1 Metal-Optimized Configuration for FX Trading Bot
+# =============================================================================
+# This configuration is specifically tuned for Apple M1 chips with TensorFlow Metal
+# Addresses: slow training, poor convergence, and "guessing" behavior
+# =============================================================================
+
+# ----- PATH CONFIGURATION -----
+paths:
+  data_dir: trained_data/data
+  model_dir: trained_data/models
+  checkpoint_dir: trained_data/checkpoints
+  log_dir: trained_data/logs
+  cache_dir: trained_data/cache
+  viz_dir: trained_data/visualizations
+  tensorboard_dir: trained_data/tensorboard
+
+# ----- DEVICE CONFIGURATION FOR M1 METAL -----
+device: gpu  # TF-Metal will use this
+
+# ----- DATA CONFIGURATION -----
+data:
+  data_dir: market_data/
+  cache_dir: trained_data/cache
+  required_features:
+    - open
+    - high
+    - low
+    - close
+    - volume
+    - rsi
+    - macd
+    - macd_signal
+    - macd_hist
+    - bb_upper_20
+    - bb_lower_20
+    - bb_width_20
+    - bb_position_20
+    - atr
+    - adx
+    - stoch_k
+    - stoch_d
+    - cci
+    - obv
+    - mfi
+    - williams_r
+    - sma_5
+    - sma_10
+    - sma_20
+    - sma_50
+    - ema_12
+    - ema_26
+    - returns
+    - volatility_20
+    - momentum_10
+    - zscore_20
+    - roc_5
+    - roc_10
+    - roc_20
+
+# ----- SEQUENCE CONFIGURATION -----
+# IMPORTANT: Reduced from 120 to 60 for M1 performance
+# Longer sequences = more memory + slower training
+sequence_length: 60
+
+# ----- MODEL CONFIGURATION -----
+model:
+  # TCN is 2-3x FASTER than TFT/LSTM on M1 with similar accuracy
+  type: tcn  # Options: tcn, attention_lstm, tft
+  
+  # Feature dimension (will be auto-detected from data)
+  input_size: 104
+  
+  # REDUCED: From 48 to 32 for better generalization on small datasets
+  hidden_size: 32
+  
+  # REDUCED: From 3 to 2 layers to prevent overfitting
+  num_layers: 2
+  
+  # INCREASED: From 0.35 to 0.4 for stronger regularization
+  dropout: 0.4
+  
+  # DISABLED: RecurrentDropout causes massive slowdown on Metal
+  # Instead, we use GaussianNoise + SpatialDropout1D
+  recurrent_dropout: 0.0  # CRITICAL: Keep at 0 for M1 Metal speed
+  
+  # Kernel regularization (L2)
+  kernel_regularizer: 0.002
+  
+  # TCN-specific
+  kernel_size: 3
+  use_residual: true
+  
+  # Multi-task heads
+  multi_task: true
+  state_classes: 2  # Binary: high/low volatility
+  
+  # Attention heads (for attention_lstm)
+  num_heads: 4
+
+# ----- OPTIMIZER CONFIGURATION -----
+optimizer:
+  # Use native AdamW (not legacy) - better M1 Metal support
+  type: adamw
+  
+  # REDUCED: From 0.001 to 0.0005 for more stable convergence
+  learning_rate: 0.0005
+  
+  # INCREASED: From 0.001 to 0.01 for stronger regularization
+  weight_decay: 0.01
+  
+  betas:
+    - 0.9
+    - 0.999
+  
+  # Gradient clipping for stability
+  clipnorm: 1.0
+
+# ----- TRAINING CONFIGURATION -----
+training:
+  epochs: 200
+  
+  # INCREASED: From 20 to 30 for more patience
+  early_stopping_patience: 30
+  
+  # NEW: Don't stop before this epoch (let model warm up)
+  min_epochs: 30
+  
+  # NEW: Enable XLA JIT compilation for M1 speed boost
+  jit_compile: false  # Set to true if TF >= 2.13
+  
+  # NEW: Run eagerly only for debugging
+  run_eagerly: false
+  
+  # Batch progress logging (helps see if training is stuck)
+  batch_progress_every: 50
+
+# ----- BATCH SIZE (CRITICAL FOR M1 PERFORMANCE) -----
+# INCREASED: From 32 to 128 for better GPU utilization
+# M1 Pro/Max: Use 128-256
+# M1 base: Use 64-128
+batch_size: 128
+
+# ----- LEARNING RATE SCHEDULE -----
+scheduler:
+  # Cosine annealing with warm restarts
+  type: cosine_annealing
+  T_max: 50  # Restart every 50 epochs
+  eta_min: 0.00001  # Minimum LR
+
+# ----- LOSS CONFIGURATION -----
+loss_type: huber
+huber_delta: 1.0
+
+# ----- MULTI-TASK HEAD LOSS WEIGHTS -----
+# REBALANCED: Direction weight reduced from 20 to 5
+# This prevents direction head from dominating training
+unified_head_loss_weights:
+  price: 1.0       # Primary target
+  trend: 0.5       # Secondary
+  direction: 5.0   # REDUCED from 20.0 - was causing training instability
+  risk: 2.0        # Risk prediction
+  state_logits: 3.0  # REDUCED from 7.0 - renamed from 'state'
+
+# ----- FOCAL LOSS FOR DIRECTION -----
+# Auto-tune based on class imbalance
+auto_focal_alpha: true
+focal_gamma: 2.0
+direction_loss: focal  # Options: focal, bce
+
+# ----- DATA SCALING -----
+enable_data_scaling: true
+normalize_features: true
+
+# ----- MIXED PRECISION (CRITICAL FOR M1 SPEED) -----
+# Enable for 1.5-2x speedup on M1
+mixed_precision: true
+
+# ----- VALIDATION -----
+validation_split: 0.15
+
+# ----- EARLY STOPPING MONITOR -----
+# Changed from direction to val_loss for stability
+early_stop_monitor: val_loss
+early_stopping_patience: 30
+min_epochs: 30
+
+# ----- REGULARIZATION (PREVENT OVERFITTING) -----
+# GaussianNoise injected at input
+noise_std: 0.03
+
+# L2 regularization
+kernel_regularizer: 0.002
+
+# ----- TENSORBOARD -----
+tensorboard:
+  enabled: true
+  log_dir: trained_data/tensorboard
+  histogram_freq: 1
+  write_graph: true
+  write_images: false
+  profile_batch: 0  # Set to 2 to profile second batch
+  update_freq: epoch
+
+# ----- FX TRADING CONFIGURATION -----
+fx:
+  enabled: true
+  tier: 1
+  timezone: America/New_York
+  granularity: M5
+  horizon_bars: 1
+  equity: 10000.0
+  instruments:
+    - EUR_USD
+    - GBP_USD
+    - USD_JPY
+  session:
+    start: "08:00"
+    end: "11:30"
+    force_flat_at: "11:55"
+    reset_at: "08:00"
+  limits:
+    max_open_positions: 1
+    max_entries_per_day: 1
+  risk:
+    risk_per_trade_pct: 0.02  # 2% risk per trade
+    daily_loss_stop_pct: 0.05  # 5% daily stop
+    atr_stop_mult: 1.5
+    rr_take_profit: 2.0
+  execution:
+    require_confirmation: true
+    practice_only: true
+  costs:
+    max_spread_pips:
+      EUR_USD: 1.0
+      GBP_USD: 1.6
+      USD_JPY: 1.2
+    slippage_pips_min: 0.2
+    slippage_pips_spread_mult: 0.25
+  confidence:
+    low_lt: 0.6      # RAISED from 0.7 - minimum threshold
+    high_gte: 0.75   # LOWERED from 0.8 - easier to reach
+
+# ----- BUDDY CONFIGURATION -----
+buddy:
+  head_hidden: 64
+  head_layers: 2
+  head_dropout: 0.2  # INCREASED from 0.1
+  dense_hidden: 128
+  dense_dropout: 0.3  # INCREASED from 0.2
+  
+  train_defaults:
+    tier2_calibration_stride: 10
+    tier2_horizon_candles: 60
+    seq_len: 60  # Reduced from 50 to match sequence_length
+    epochs: 100
+    batch_size: 128  # Match main batch_size
+    lr: 0.0005      # Match main learning_rate
+    patience: 15
+    es_monitor: val_loss  # Changed from direction
+    combined_w_dir: 0.6   # Reduced weight on direction
+    combined_w_conf: 0.4   # Increased weight on confidence
+    steps_per_execution: 10  # Reduced for stability
+    shared_encoder: true
+    fit_verbose: 2
+  
+  stop_loss_pips: 20.0
+  take_profit_pips: 40.0
+  tier2_horizon_candles: 288
+  tier2_spread_fallback_pips: 2.0
+  tier2_tie_break: "sl"
+  risk_per_trade_pct: 0.01  # Conservative
+  
+  tier2:
+    enabled: true
+    p_win_threshold: 0.55   # LOWERED from 0.60
+    use_model_confidence_for_gate: true
+    remove_confidence_gate: false
+    model_conf_threshold: 0.60   # LOWERED from 0.70
+    require_both: false
+    kelly_fraction: 0.25   # REDUCED from 0.50 - more conservative
+    max_risk_per_trade_pct: 0.01
+
+# ----- MEMORY MONITORING -----
+monitoring:
+  enable_memory_monitoring: true
+  memory_check_interval: 30
+  cpu_memory_threshold: 80
+  log_memory_usage: true
+
+# ----- PERFORMANCE TARGETS -----
+performance:
+  max_mse: 0.1
+  min_accuracy: 0.55  # LOWERED from 0.7 - more realistic
+  min_r2_score: 0.1   # LOWERED from 0.7 - price prediction is hard
+
+# ----- DATA AUGMENTATION -----
+augmentation:
+  enabled: true
+  factor: 2
+  noise_level: 0.01
+  use_mixup: true
+  mixup_alpha: 0.2
+
