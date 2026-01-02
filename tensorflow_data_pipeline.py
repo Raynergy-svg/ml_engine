@@ -90,8 +90,12 @@ def load_tensorflow_multitask_data(
     
     # Get configuration values
     seq_len = int(config.get('sequence_length', config.get('model', {}).get('sequence_length', 60)))
-    target_shift = int(config.get('target_shift', 1))
+    # FIX: Use direction_lookahead as target_shift for better predictability
+    # Default to 12 (12 hours on H1 data) instead of 1 (1 hour - too noisy)
+    target_shift = int(config.get('target_shift', config.get('direction_lookahead', 12)))
     risk_window = int(config.get('risk_window', 14))
+    
+    logger.info(f"Target prediction horizon: {target_shift} candles ahead")
     
     # Get feature columns (exclude non-numeric)
     exclude_cols = {'ticker', 'date', 'timestamp', 'datetime', 'time'}
@@ -100,6 +104,9 @@ def load_tensorflow_multitask_data(
     logger.info(f"Using {len(feature_cols)} features for training")
     
     # Prepare sequences using existing function
+    # Pass train_split_fraction to prevent scaler leakage
+    # Scaler will be fit only on training data (first 80% by default)
+    train_fraction = 1.0 - validation_split  # e.g., 0.8 if val_split=0.2
     x, y_price, meta = prepare_sequences(
         df=df,
         sequence_length=seq_len,
@@ -108,6 +115,7 @@ def load_tensorflow_multitask_data(
         target_shift=target_shift,
         scale_features=bool(config.get("enable_data_scaling", True)),
         scale_target=bool(config.get("enable_data_scaling", True)),
+        train_split_fraction=train_fraction,  # FIX: Prevent scaler leakage
     )
     
     # Handle NaN/Inf in feature data for numerical stability
@@ -118,6 +126,7 @@ def load_tensorflow_multitask_data(
         x = np.nan_to_num(x, nan=0.0, posinf=1e6, neginf=-1e6)
     
     # Build multi-task targets using existing function
+    # Pass train_split_fraction to prevent risk quantile leakage
     targets: MultitaskTargets = build_multitask_targets(
         df,
         sequence_length=seq_len,
@@ -125,14 +134,19 @@ def load_tensorflow_multitask_data(
         close_col="close",
         risk_window=risk_window,
         state_classes=state_classes,
+        train_split_fraction=train_fraction,  # FIX: Prevent risk quantile leakage
     )
     
     # Validate alignment
     if len(x) != len(y_price) or len(x) != len(targets.trend):
         raise RuntimeError(f"Target alignment mismatch: x={len(x)}, y_price={len(y_price)}, trend={len(targets.trend)}")
     
-    # Chronological train/val split (same as PyTorch)
-    train_idx, val_idx = split_time_series(len(x), val_fraction=validation_split)
+    # Chronological train/val split with purge gap to prevent temporal leakage
+    # The purge gap removes samples between train and val that could leak information
+    # through rolling features. Default gap = sequence_length to be safe.
+    purge_gap = int(config.get('purge_gap', seq_len))  # Default: sequence_length
+    train_idx, val_idx = split_time_series(len(x), val_fraction=validation_split, purge_gap=purge_gap)
+    logger.info(f"Train/val split with purge_gap={purge_gap} samples")
     
     # Further split val into val and test (50/50)
     val_split_point = len(val_idx) // 2

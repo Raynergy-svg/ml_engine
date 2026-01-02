@@ -1,0 +1,162 @@
+{
+  "model_type": "modular_ensemble",
+  "direction_model_type": "transformer",
+  "direction_config": {
+    "threshold": 0.005,
+    "lookahead": 12,
+    "use_transformer": true
+  },
+  "models": {
+    "direction": {
+      "path": "trained_data/models/transformer_direction.keras",
+      "type": "transformer",
+      "purpose": "direction_prediction",
+      "output": "binary (0=short, 1=long)",
+      "metrics": {
+        "train_accuracy": 0.9108433723449707,
+        "val_accuracy": 0.6144814090019569,
+        "val_balanced_accuracy": 0.5779072299651569,
+        "val_up_accuracy": 0.8745644599303136,
+        "val_down_accuracy": 0.28125,
+        "epochs_trained": 42,
+        "n_train_samples": 2075,
+        "n_val_samples": 511
+      },
+      "features": [
+        "adx",
+        "trend_strength",
+        "macd",
+        "macd_signal",
+        "macd_hist",
+        "sma_5",
+        "sma_10",
+        "sma_20",
+        "sma_50",
+        "ema_12",
+        "ema_26",
+        "rsi",
+        "rsi_momentum",
+        "stoch_k",
+        "stoch_d",
+        "returns",
+        "momentum_10",
+        "roc_5",
+        "roc_10",
+        "atr",
+        "volatility_20",
+        "bb_position_20",
+        "sma_cross_5_20",
+        "macd_cross",
+        "higher_high_count",
+        "lower_low_count",
+        "volume_direction",
+        "trend_direction"
+      ],
+      "label_stats": {
+        "n_clear_up": 1370,
+        "n_clear_down": 1390,
+        "n_unclear": 12028,
+        "clear_rate": 0.1866378144441439,
+        "up_rate": 0.4963768115942029,
+        "threshold": 0.005,
+        "lookahead": 12
+      }
+    },
+    "xgboost": {
+      "path": "trained_data/models/xgb_momentum.pkl",
+      "purpose": "momentum_analysis",
+      "output": "momentum_score (0-1), acceleration (bool)",
+      "metrics": {
+        "momentum_mae": 0.14980117976665497,
+        "acceleration_accuracy": 0.631717399473882
+      },
+      "features": [
+        "close_lag_1",
+        "close_lag_2",
+        "close_lag_3",
+        "close_lag_5",
+        "close_lag_10",
+        "returns",
+        "roc_5",
+        "roc_10",
+        "roc_20",
+        "high_low_ratio",
+        "volume",
+        "obv",
+        "mfi",
+        "momentum_10",
+        "macd",
+        "macd_hist",
+        "stoch_k",
+        "stoch_d"
+      ]
+    },
+    "rf": {
+      "path": "trained_data/models/rf_risk.pkl",
+      "purpose": "risk_assessment",
+      "output": "expected_drawdown_pips, streak_prob",
+      "metrics": {
+        "drawdown_mae_pips": 17.630190797014347,
+        "streak_prob_mae": 0.1508231855503594
+      },
+      "features": [
+        "atr",
+        "volatility_5",
+        "volatility_10",
+        "volatility_20",
+        "close_min_5",
+        "close_max_5",
+        "close_min_10",
+        "close_max_10",
+        "close_min_20",
+        "close_max_20",
+        "high_low_ratio",
+        "bb_width_20",
+        "returns",
+        "cum_returns",
+        "momentum_10",
+        "volume",
+        "obv"
+      ]
+    },
+    "ridge": {
+      "path": "trained_data/models/ridge_confidence.pkl",
+      "purpose": "confidence_scoring",
+      "output": "confidence (0-100)",
+      "metrics": {
+        "confidence_mae": 4.963902950286865,
+        "r2_score": 0.46703338623046875
+      },
+      "features": [
+        "volatility_5",
+        "volatility_10",
+        "volatility_20",
+        "volatility_log_5",
+        "volatility_log_10",
+        "volume",
+        "obv",
+        "mfi",
+        "atr",
+        "bb_width_20",
+        "bb_position_20",
+        "kurt_20",
+        "adx",
+        "returns"
+      ]
+    }
+  },
+  "inference_gates": {
+    "min_confidence": 75,
+    "min_momentum_or_accel": true,
+    "max_drawdown_pips": 30,
+    "max_streak_prob": 0.3,
+    "risk_per_trade_pct": 0.02
+  },
+  "data_split": {
+    "train_frac": 0.7200000000000001,
+    "val_frac": 0.18000000000000002,
+    "test_frac": 0.1,
+    "total_samples": 14800
+  },
+  "trained_at": "2026-01-02T03:47:20.551454"
+}

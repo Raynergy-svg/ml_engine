@@ -512,8 +512,29 @@ def prepare_sequences(
     target_shift: int = 1,
     scale_features: bool = True,
     scale_target: bool = True,
+    train_split_fraction: Optional[float] = None,
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
-    """Prepare sequences for time-series prediction."""
+    """Prepare sequences for time-series prediction.
+    
+    Args:
+        df: DataFrame with features and target
+        sequence_length: Length of input sequences
+        target_column: Name of target column
+        feature_columns: List of feature column names
+        target_shift: How many steps ahead to predict
+        scale_features: Whether to scale features
+        scale_target: Whether to scale target
+        train_split_fraction: If provided, fit scaler only on first N% of data
+                             to prevent data leakage. E.g., 0.8 means fit on first 80%.
+    
+    Returns:
+        Tuple of (sequences, targets, metadata)
+    
+    Note:
+        When train_split_fraction is provided, the scaler is fit ONLY on the
+        training portion of the data to prevent data leakage. This is critical
+        for proper time-series cross-validation.
+    """
     if df is None or df.empty:
         raise DataValidationError("df is None or empty")
     if sequence_length <= 0:
@@ -534,28 +555,42 @@ def prepare_sequences(
 
     feature_scaler = None
     target_scaler = None
+    
+    # Calculate train split index for scaler fitting
+    n_rows = len(feature_data)
+    if train_split_fraction is not None:
+        train_end_idx = int(n_rows * train_split_fraction)
+        logger.info(f"Fitting scaler on first {train_end_idx}/{n_rows} rows ({train_split_fraction*100:.0f}%) to prevent leakage")
+    else:
+        train_end_idx = n_rows  # Fit on all data (legacy behavior)
 
     if scale_features:
         from sklearn.preprocessing import RobustScaler, StandardScaler
 
         try:
             feature_scaler = RobustScaler()
-            feature_data = feature_scaler.fit_transform(feature_data)
+            # FIT only on training data, TRANSFORM all data
+            feature_scaler.fit(feature_data[:train_end_idx])
+            feature_data = feature_scaler.transform(feature_data)
         except Exception as e:
             logger.warning("RobustScaler failed, falling back to StandardScaler: %s", e)
             feature_scaler = StandardScaler()
-            feature_data = feature_scaler.fit_transform(feature_data)
+            feature_scaler.fit(feature_data[:train_end_idx])
+            feature_data = feature_scaler.transform(feature_data)
 
     if scale_target:
         from sklearn.preprocessing import RobustScaler, StandardScaler
 
         try:
             target_scaler = RobustScaler()
-            target_data = target_scaler.fit_transform(target_data.reshape(-1, 1)).flatten()
+            # FIT only on training data, TRANSFORM all data
+            target_scaler.fit(target_data[:train_end_idx].reshape(-1, 1))
+            target_data = target_scaler.transform(target_data.reshape(-1, 1)).flatten()
         except Exception as e:
             logger.warning("RobustScaler failed for target, falling back to StandardScaler: %s", e)
             target_scaler = StandardScaler()
-            target_data = target_scaler.fit_transform(target_data.reshape(-1, 1)).flatten()
+            target_scaler.fit(target_data[:train_end_idx].reshape(-1, 1))
+            target_data = target_scaler.transform(target_data.reshape(-1, 1)).flatten()
 
     sequences: List[np.ndarray] = []
     targets: List[float] = []
@@ -576,6 +611,7 @@ def prepare_sequences(
         "n_sequences": int(len(x)),
         "feature_shape": tuple(x.shape),
         "target_shape": tuple(y.shape),
+        "train_split_fraction": train_split_fraction,
     }
     return x, y, metadata
 

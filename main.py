@@ -465,12 +465,55 @@ def _parse_int_answer(s: str | None, *, default: int) -> int:
         return int(default)
 
 
+# Valid OANDA FX instruments (major, minor, and exotic pairs)
+VALID_OANDA_INSTRUMENTS = {
+    # Major pairs
+    "EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD",
+    # Cross pairs
+    "EUR_GBP", "EUR_JPY", "EUR_CHF", "EUR_AUD", "EUR_CAD", "EUR_NZD",
+    "GBP_JPY", "GBP_CHF", "GBP_AUD", "GBP_CAD", "GBP_NZD",
+    "AUD_JPY", "AUD_CHF", "AUD_CAD", "AUD_NZD",
+    "CAD_JPY", "CAD_CHF", "CHF_JPY", "NZD_JPY", "NZD_CHF", "NZD_CAD",
+    # Exotic pairs
+    "USD_SGD", "USD_HKD", "USD_MXN", "USD_ZAR", "USD_TRY", "USD_SEK", "USD_NOK", "USD_DKK",
+    "USD_PLN", "USD_HUF", "USD_CZK", "USD_THB", "USD_INR", "USD_CNH",
+    "EUR_SEK", "EUR_NOK", "EUR_DKK", "EUR_PLN", "EUR_HUF", "EUR_CZK", "EUR_TRY", "EUR_ZAR",
+    "GBP_SGD", "GBP_PLN", "GBP_ZAR",
+    "AUD_SGD", "AUD_HKD",
+    "SGD_JPY", "SGD_CHF", "HKD_JPY", "TRY_JPY", "ZAR_JPY", "MXN_JPY",
+}
+
+
 def _normalize_instrument(s: str) -> str:
     v = (s or "").strip().upper().replace("-", "_").replace("/", "_")
     v = "_".join([p for p in v.split("_") if p])
     if "_" not in v and len(v) == 6:
         v = v[:3] + "_" + v[3:]
     return v
+
+
+def _validate_instrument(instrument: str) -> str:
+    """Validate and normalize an instrument name. Raises ValueError if invalid."""
+    normalized = _normalize_instrument(instrument)
+    
+    if normalized in VALID_OANDA_INSTRUMENTS:
+        return normalized
+    
+    # Try to suggest a correction for common typos
+    suggestions = []
+    for valid in VALID_OANDA_INSTRUMENTS:
+        # Check if it's a simple character swap or typo
+        if len(normalized) == len(valid):
+            diff = sum(1 for a, b in zip(normalized, valid) if a != b)
+            if diff <= 2:
+                suggestions.append(valid)
+    
+    error_msg = f"Invalid instrument: '{instrument}' (normalized: '{normalized}')"
+    if suggestions:
+        error_msg += f"\n  Did you mean: {', '.join(sorted(suggestions))}?"
+    error_msg += f"\n  Valid examples: EUR_USD, GBP_USD, USD_JPY, AUD_USD, EUR_GBP"
+    
+    raise ValueError(error_msg)
 
 
 def launch_buddy_repl_from_wizard(
@@ -1996,237 +2039,366 @@ def _train_buddy_impl(
         # Determine effective model type
         effective_model_type = model_type.lower().strip() if model_type else "lstm"
         
-        # ENSEMBLE model - combines TCN + XGBoost + Random Forest + Ridge
+        # MODULAR ENSEMBLE - 4 independent specialist models
+        # Each model trains on DIFFERENT features from the SAME candles
+        # No shared gradients, no joint loss, each model blind to others
         if effective_model_type == "ensemble":
             import json
             from datetime import datetime
-            console.print("[bold magenta]Model: 4-Model Ensemble (TCN + XGBoost + RF + Ridge)[/bold magenta]")
-            console.print("Training diverse models for maximum accuracy...")
             
-            from ensemble_model import EnsembleModel, EnsembleConfig, train_ensemble
+            console.print("\n[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
+            console.print("[bold magenta]  MODULAR ENSEMBLE TRAINING[/bold magenta]")
+            console.print("[bold magenta]  4 Independent Specialist Models[/bold magenta]")
+            console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
+            console.print("")
             
-            # First, train TCN as one of the base models
-            console.print("\n[cyan]Step 1/3: Training TCN base model...[/cyan]")
-            tcn_model = _build_buddy_model_for_type(
-                model_type="tcn",
-                feature_dim=int(feature_dim),
-                seq_len=seq_len,
-                head_hidden=int(head_hidden),
-                head_layers=int(head_layers),
-                head_dropout=float(head_dropout),
-                dense_hidden=int(dense_hidden),
-                dense_dropout=float(dense_dropout),
-                kernel_regularizer=float(kernel_regularizer),
-                noise_std=float(noise_std),
+            # Import modular components
+            from modular_data_loaders import load_all_modular_data
+            from modular_trainers import (
+                TrainerConfig,
+                TCNTrainer,
+                TransformerDirectionTrainer,
+                XGBoostTrainer,
+                RandomForestTrainer,
+                RidgeTrainer,
             )
             
-            # Compile TCN
-            import tensorflow as tf
-            from tensorflow import keras
+            # Get direction model configuration from config
+            transformer_cfg = cfg.get("transformer", {})
+            use_transformer = transformer_cfg.get("use_transformer", True)  # Default to Transformer
+            direction_threshold = cfg.get("direction_threshold", 0.005)  # 0.5% min move
+            direction_lookahead = cfg.get("direction_lookahead", 12)  # 12 hours lookahead
             
-            direction_loss = keras.losses.BinaryCrossentropy(from_logits=False, label_smoothing=0.05)
-            confidence_loss = keras.losses.BinaryCrossentropy(from_logits=False)
+            # Print architecture with configuration
+            dir_model_name = "Transformer" if use_transformer else "TCN"
+            console.print("Architecture:")
+            console.print(f"  • {dir_model_name:11s} → Direction (long/short) | threshold={direction_threshold:.2%}")
+            console.print("  • XGBoost    → Momentum (fresh? accelerating?)")
+            console.print("  • RF         → Risk (expected drawdown, streak probability)")
+            console.print("  • Ridge      → Confidence (0-100 from variance/volume)")
+            console.print("")
+            console.print("[dim]Each model sees DIFFERENT features. No shared gradients.[/dim]")
+            console.print("")
             
-            dir_w = float(cfg.get("unified_head_loss_weights", {}).get("direction", 1.0))
-            conf_w = float(cfg.get("unified_head_loss_weights", {}).get("confidence", 1.0))
+            # Reconstruct DataFrame from features for modular loaders
+            # CRITICAL: Use RAW (unscaled) features because modular loaders
+            # have their own scalers that will be used during inference
+            console.print("[cyan]Preparing data for modular training...[/cyan]")
             
-            # Use standard Adam optimizer (compatible with both Keras 2 and 3)
-            try:
-                tcn_optimizer = keras.optimizers.Adam(learning_rate=float(lr))
-            except Exception:
-                tcn_optimizer = keras.optimizers.legacy.Adam(learning_rate=float(lr))
-            
-            tcn_model.compile(
-                optimizer=tcn_optimizer,
-                loss={"direction": direction_loss, "confidence": confidence_loss},
-                loss_weights={"direction": dir_w, "confidence": conf_w},
-                metrics={"direction": "accuracy"},
-            )
-            
-            # Create datasets for TCN
-            tcn_train_ds = make_sequence_dataset(
-                train_feats, train_dir_raw, train_conf_raw, train_conf_w_raw,
-                shuffle=True, batch_size=int(batch_size), seed=int(seed),
-            )
-            tcn_val_ds = make_sequence_dataset(
-                val_feats, val_dir_raw, val_conf_raw, val_conf_w_raw,
-                shuffle=False, batch_size=int(batch_size), seed=int(seed),
-            )
-            
-            n_train_windows = int(len(train_feats) - int(seq_len))
-            n_val_windows = int(len(val_feats) - int(seq_len))
-            tcn_steps_per_epoch = int((n_train_windows + int(batch_size) - 1) // int(batch_size))
-            tcn_val_steps = int((n_val_windows + int(batch_size) - 1) // int(batch_size))
-            
-            # Train TCN with early stopping
-            tcn_callbacks = [
-                keras.callbacks.EarlyStopping(
-                    monitor="val_direction_accuracy",
-                    patience=int(patience // 2),  # Shorter patience for ensemble
-                    mode="max",
-                    restore_best_weights=True,
-                ),
-            ]
-            
-            tcn_model.fit(
-                tcn_train_ds.repeat(),
-                validation_data=tcn_val_ds.repeat(),
-                epochs=int(epochs // 2),  # Fewer epochs for ensemble
-                steps_per_epoch=tcn_steps_per_epoch,
-                validation_steps=tcn_val_steps,
-                callbacks=tcn_callbacks,
-                verbose=fit_verbose,
-            )
-            
-            # Evaluate TCN - need to create sequences for prediction
-            # Create windowed validation data for TCN evaluation
-            from typing import Generator
-            
-            def create_sequences_for_prediction(features: np.ndarray, seq_len: int) -> np.ndarray:
-                """Create overlapping sequences for prediction."""
-                n_samples = len(features) - seq_len + 1
-                if n_samples <= 0:
-                    return features[np.newaxis, :, :]  # Return single sequence
+            # Check if we have the original raw dataframe from training
+            # We need raw OHLCV data for feature engineering
+            if 'df' in dir() and df is not None and 'close' in df.columns:
+                # Use the original df which has all raw data before feature selection
+                # Take first n_samples rows to match train+val
+                n_samples = len(train_feats) + len(val_feats)
+                feature_df = df.iloc[:n_samples].copy()
+                console.print(f"  Using RAW data for modular training (n={len(feature_df)})")
+            elif 'ohlc_df' in dir() and ohlc_df is not None:
+                # Fallback to ohlc_df which has OHLCV columns
+                feature_df = ohlc_df.copy()
+                n_samples = len(train_feats) + len(val_feats)
+                if len(feature_df) > n_samples:
+                    feature_df = feature_df.iloc[:n_samples].copy()
                 
-                sequences = np.zeros((n_samples, seq_len, features.shape[1]), dtype=np.float32)
-                for i in range(n_samples):
-                    sequences[i] = features[i:i + seq_len]
-                return sequences
+                # Re-run feature engineering if needed
+                if len(feature_df.columns) < 20:  # Only OHLCV columns
+                    from feature_engineering import FeatureEngineering
+                    fe_modular = FeatureEngineering(cfg.get("feature_engineering", {}))
+                    feature_df = fe_modular.create_features(feature_df, include_all=True)
+                
+                console.print(f"  Using ohlc_df for modular training (n={len(feature_df)})")
+            else:
+                # Last resort: use standardized features (not ideal but functional)
+                console.print("[yellow]Warning: Using pre-standardized features - may cause scale mismatch![/yellow]")
+                all_feats = np.vstack([train_feats, val_feats])
+                feature_df = pd.DataFrame(all_feats, columns=feature_columns)
+                
+            # Ensure we have OHLCV columns for target calculations
+            if 'ohlc_df' in dir() and ohlc_df is not None:
+                for col in ['open', 'high', 'low', 'close', 'volume']:
+                    if col not in feature_df.columns and col in ohlc_df.columns:
+                        vals = ohlc_df[col].values
+                        if len(vals) >= len(feature_df):
+                            feature_df[col] = vals[:len(feature_df)]
             
-            val_sequences = create_sequences_for_prediction(val_feats, seq_len)
-            tcn_val_preds = tcn_model.predict(val_sequences, verbose=0, batch_size=128)
-            tcn_dir_preds = np.asarray(tcn_val_preds["direction"]).flatten()
+            # Ensure we have close column for target calculation
+            if 'close' not in feature_df.columns:
+                # Use the last price-like column
+                for col in feature_df.columns:
+                    if 'close' in col.lower():
+                        feature_df['close'] = feature_df[col].values
+                        break
             
-            # Align with validation labels (use last label for each sequence)
-            val_dir_aligned = val_dir_raw[seq_len - 1:][:len(tcn_dir_preds)]
-            tcn_acc = float(np.mean((tcn_dir_preds > 0.5) == (val_dir_aligned > 0.5)))
-            console.print(f"TCN validation accuracy: {tcn_acc:.1%}")
+            if 'close' not in feature_df.columns:
+                raise ValueError("No 'close' column found for direction labels")
             
-            # Now train the full ensemble
-            console.print("\n[cyan]Step 2/3: Training ensemble (XGBoost + RF + Ridge)...[/cyan]")
+            # Add high/low if missing (needed for RF drawdown calculation)
+            if 'high' not in feature_df.columns:
+                feature_df['high'] = feature_df['close'] * 1.001  # Approximate
+            if 'low' not in feature_df.columns:
+                feature_df['low'] = feature_df['close'] * 0.999  # Approximate
+            if 'volume' not in feature_df.columns:
+                feature_df['volume'] = 1000  # Default volume
             
-            # Create sequences for ensemble training
-            train_sequences = create_sequences_for_prediction(train_feats, seq_len)
-            val_sequences_ensemble = create_sequences_for_prediction(val_feats, seq_len)
+            console.print(f"Data prepared: {len(feature_df)} rows, {len(feature_df.columns)} columns")
             
-            # Align labels with sequences
-            train_dir_aligned = train_dir_raw[seq_len - 1:][:len(train_sequences)]
-            val_dir_aligned_ensemble = val_dir_raw[seq_len - 1:][:len(val_sequences_ensemble)]
+            # Load data for each model (same temporal split, different features)
+            console.print("\n[cyan]Loading specialized data for each model...[/cyan]")
             
-            console.print(f"Ensemble training: {len(train_sequences)} train / {len(val_sequences_ensemble)} val sequences")
+            # Calculate split ratio from train/val sizes
+            n_total = len(train_feats) + len(val_feats)
+            train_frac = len(train_feats) / n_total
+            val_frac = len(val_feats) / n_total
+            test_frac = 0.0  # Test is kept separate
             
-            ensemble_config = {
-                "use_tcn": True,
-                "use_xgboost": True,
-                "use_random_forest": True,
-                "use_ridge": True,
-                "xgb_n_estimators": int(cfg.get("xgboost", {}).get("n_estimators", 300)),
-                "xgb_max_depth": int(cfg.get("xgboost", {}).get("max_depth", 5)),
-                "xgb_learning_rate": float(cfg.get("xgboost", {}).get("learning_rate", 0.05)),
-                "stack_method": "xgboost",
-            }
+            # Normalize to sum to 1
+            sum_frac = train_frac + val_frac
+            train_frac = train_frac / sum_frac * 0.9  # Reserve 10% for internal test
+            val_frac = val_frac / sum_frac * 0.9
+            test_frac = 0.1
             
-            ensemble, ensemble_metrics = train_ensemble(
-                X_train=train_sequences,
-                y_train=train_dir_aligned,
-                X_val=val_sequences_ensemble,
-                y_val=val_dir_aligned_ensemble,
-                tcn_model=tcn_model,
-                config=ensemble_config,
-                verbose=True,
+            all_data = load_all_modular_data(
+                feature_df, 
+                split=(train_frac, val_frac, test_frac),
+                direction_threshold=direction_threshold,
+                direction_lookahead=direction_lookahead,
             )
             
-            val_dir_acc = ensemble_metrics["val_accuracy"]
-            console.print(f"\n[bold green]Ensemble validation accuracy: {val_dir_acc:.1%}[/bold green]")
+            for name, data in all_data.items():
+                n_features = len(data['feature_names'])
+                # Show label stats for direction model
+                if name == 'direction' and 'label_stats' in data:
+                    stats = data['label_stats']
+                    console.print(f"  {name:8s}: train={len(data['X_train']):,} val={len(data['X_val']):,} features={n_features}")
+                    console.print(f"            labels: {stats['clear_rate']:.1%} clear, {stats['up_rate']:.1%} up rate, threshold={stats['threshold']:.2%}")
+                else:
+                    console.print(f"  {name:8s}: train={len(data['X_train']):,} val={len(data['X_val']):,} features={n_features}")
             
-            # Save ensemble
-            ensemble_path = model_dir / f"buddy_ensemble{suffix}.pkl"
-            ensemble.save(ensemble_path)
-            console.print(f"Saved: {ensemble_path}")
+            # Configure trainers with Transformer settings
+            trainer_config = TrainerConfig(
+                epochs=int(epochs),
+                batch_size=int(batch_size),
+                learning_rate=float(lr),
+                patience=int(patience),
+                verbose=int(fit_verbose),
+                # Transformer settings from config
+                transformer_d_model=int(transformer_cfg.get("d_model", 32)),
+                transformer_num_heads=int(transformer_cfg.get("num_heads", 4)),
+                transformer_num_layers=int(transformer_cfg.get("num_layers", 2)),
+                transformer_dff=int(transformer_cfg.get("dff", 64)),
+                transformer_dropout=float(transformer_cfg.get("dropout", 0.2)),
+                # XGBoost settings from config
+                xgb_n_estimators=int(cfg.get("xgboost", {}).get("n_estimators", 200)),
+                xgb_max_depth=int(cfg.get("xgboost", {}).get("max_depth", 5)),
+                xgb_learning_rate=float(cfg.get("xgboost", {}).get("learning_rate", 0.05)),
+            )
             
-            # Save TCN separately (for loading ensemble later)
-            tcn_path = model_dir / f"buddy_tcn{suffix}.keras"
-            tcn_model.save(tcn_path)
-            console.print(f"Saved: {tcn_path}")
+            all_metrics = {}
+            direction_model_name = "Transformer" if use_transformer else "TCN"
             
-            # Meta-labeling on ensemble
-            console.print("\n[cyan]Step 3/3: Training meta-labeler (trade filter)...[/cyan]")
-            meta_labeling_enabled = bool(cfg.get("buddy", {}).get("meta_labeling", {}).get("enabled", False))
-            meta_labeler_path = None
-            meta_labeling_metrics = None
+            # ============================================================
+            # TRAIN DIRECTION MODEL (Transformer or TCN)
+            # ============================================================
+            console.print("\n[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+            console.print(f"[bold cyan]  Step 1/4: Training {direction_model_name} (Direction Predictor)[/bold cyan]")
+            console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+            console.print("[dim]Features: directional indicators (ADX, MACD, SMA crosses, market structure)[/dim]")
+            console.print(f"[dim]Output: Binary direction (0=short, 1=long) | threshold={direction_threshold:.2%}, lookahead={direction_lookahead}[/dim]")
             
-            if meta_labeling_enabled:
-                try:
-                    from meta_labeling import MetaLabeler, MetaLabelingConfig
-                    
-                    # Get ensemble predictions (using sequences)
-                    ensemble_train_preds = ensemble.predict_proba(train_sequences)
-                    ensemble_val_preds = ensemble.predict_proba(val_sequences_ensemble)
-                    
-                    meta_cfg = MetaLabelingConfig(
-                        use_xgboost=True,
-                        n_estimators=int(cfg.get("buddy", {}).get("meta_labeling", {}).get("n_estimators", 200)),
-                        max_depth=int(cfg.get("buddy", {}).get("meta_labeling", {}).get("max_depth", 4)),
-                        learning_rate=float(cfg.get("buddy", {}).get("meta_labeling", {}).get("learning_rate", 0.1)),
-                        min_confidence_threshold=float(cfg.get("buddy", {}).get("meta_labeling", {}).get("threshold", 0.55)),
-                    )
-                    
-                    labeler = MetaLabeler(meta_cfg)
-                    meta_labeling_metrics = labeler.fit(
-                        train_sequences,
-                        ensemble_train_preds,
-                        train_dir_aligned,
-                        features_val=val_sequences_ensemble,
-                        predictions_val=ensemble_val_preds,
-                        outcomes_val=val_dir_aligned_ensemble,
-                        verbose=True,
-                    )
-                    
-                    meta_labeler_path = model_dir / f"buddy_ensemble_meta{suffix}.pkl"
-                    labeler.save(meta_labeler_path)
-                    
-                    train_meta_acc = meta_labeling_metrics.get("meta_train_accuracy", 0)
-                    val_meta_acc = meta_labeling_metrics.get("meta_val_accuracy", 0)
-                    console.print(f"Meta-labeler: train_acc={train_meta_acc:.1%} val_acc={val_meta_acc:.1%}")
-                    console.print(f"Saved: {meta_labeler_path}")
-                    
-                except Exception as e:
-                    console.print(f"[yellow]Meta-labeling failed[/yellow]: {e}")
+            # Get direction data (new key 'direction' or fallback to 'tcn')
+            dir_data = all_data.get('direction', all_data.get('tcn'))
             
-            # Save metadata
+            if use_transformer:
+                dir_trainer = TransformerDirectionTrainer(trainer_config)
+                dir_metrics = dir_trainer.train(
+                    dir_data['X_train'], dir_data['y_train'],
+                    dir_data['X_val'], dir_data['y_val'],
+                    feature_names=dir_data['feature_names'],
+                    w_train=dir_data.get('w_train'),  # Sample weights for threshold filtering
+                    w_val=dir_data.get('w_val'),
+                )
+                dir_trainer.save(str(model_dir / "transformer_direction.keras"))
+                dir_model_path = str(model_dir / "transformer_direction.keras")
+            else:
+                dir_trainer = TCNTrainer(trainer_config)
+                dir_metrics = dir_trainer.train(
+                    dir_data['X_train'], dir_data['y_train'],
+                    dir_data['X_val'], dir_data['y_val'],
+                    feature_names=dir_data['feature_names']
+            )
+                dir_trainer.save(str(model_dir / "tcn_direction.keras"))
+                dir_model_path = str(model_dir / "tcn_direction.keras")
+            
+            all_metrics['direction'] = dir_metrics
+            
+            # Show balanced accuracy if available
+            if 'val_balanced_accuracy' in dir_metrics:
+                console.print(f"[green]✓ {direction_model_name} complete: val_accuracy={dir_metrics['val_accuracy']:.1%}, balanced={dir_metrics['val_balanced_accuracy']:.1%}[/green]")
+                console.print(f"   (up_acc={dir_metrics.get('val_up_accuracy', 0):.1%}, down_acc={dir_metrics.get('val_down_accuracy', 0):.1%})")
+            else:
+                console.print(f"[green]✓ {direction_model_name} complete: val_accuracy={dir_metrics['val_accuracy']:.1%}[/green]")
+            
+            # ============================================================
+            # TRAIN XGBOOST (Momentum Analyzer)
+            # ============================================================
+            console.print("\n[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+            console.print("[bold cyan]  Step 2/4: Training XGBoost (Momentum Analyzer)[/bold cyan]")
+            console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+            console.print("[dim]Features: lagged returns, spread dynamics[/dim]")
+            console.print("[dim]Output: momentum_score (0-1), acceleration (bool)[/dim]")
+            
+            xgb_data = all_data['xgboost']
+            xgb_trainer = XGBoostTrainer(trainer_config)
+            xgb_metrics = xgb_trainer.train(
+                xgb_data['X_train'], xgb_data['y_train'],
+                xgb_data['X_val'], xgb_data['y_val'],
+                feature_names=xgb_data['feature_names'],
+                momentum_norm_factor=xgb_data.get('momentum_norm_factor'),
+            )
+            xgb_trainer.save(str(model_dir / "xgb_momentum.pkl"))
+            all_metrics['xgboost'] = xgb_metrics
+            
+            console.print(f"[green]✓ XGBoost complete: momentum_mae={xgb_metrics['momentum_mae']:.4f}, accel_acc={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
+            
+            # ============================================================
+            # TRAIN RANDOM FOREST (Risk Assessor)
+            # ============================================================
+            console.print("\n[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+            console.print("[bold cyan]  Step 3/4: Training Random Forest (Risk Assessor)[/bold cyan]")
+            console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+            console.print("[dim]Features: ATR, historical drawdowns, streak patterns[/dim]")
+            console.print("[dim]Output: expected_drawdown_pips, streak_probability[/dim]")
+            
+            rf_data = all_data['rf']
+            rf_trainer = RandomForestTrainer(trainer_config)
+            rf_metrics = rf_trainer.train(
+                rf_data['X_train'], rf_data['y_train'],
+                rf_data['X_val'], rf_data['y_val'],
+                feature_names=rf_data['feature_names']
+            )
+            rf_trainer.save(str(model_dir / "rf_risk.pkl"))
+            all_metrics['rf'] = rf_metrics
+            
+            console.print(f"[green]✓ RF complete: drawdown_mae={rf_metrics['drawdown_mae_pips']:.2f} pips, streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
+            
+            # ============================================================
+            # TRAIN RIDGE (Confidence Scorer)
+            # ============================================================
+            console.print("\n[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+            console.print("[bold cyan]  Step 4/4: Training Ridge (Confidence Scorer)[/bold cyan]")
+            console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+            console.print("[dim]Features: rolling variance, volume dynamics[/dim]")
+            console.print("[dim]Output: confidence score (0-100)[/dim]")
+            
+            ridge_data = all_data['ridge']
+            ridge_trainer = RidgeTrainer(trainer_config)
+            ridge_metrics = ridge_trainer.train(
+                ridge_data['X_train'], ridge_data['y_train'],
+                ridge_data['X_val'], ridge_data['y_val'],
+                feature_names=ridge_data['feature_names']
+            )
+            ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
+            all_metrics['ridge'] = ridge_metrics
+            
+            console.print(f"[green]✓ Ridge complete: confidence_mae={ridge_metrics['confidence_mae']:.2f}, r2={ridge_metrics['r2_score']:.4f}[/green]")
+            
+            # ============================================================
+            # SAVE METADATA
+            # ============================================================
             meta = {
-                "model_type": "ensemble",
-                "ensemble_path": str(ensemble_path),
-                "tcn_path": str(tcn_path),
-                "base_models": ensemble_metrics.get("base_models", []),
-                "base_model_metrics": {k: {kk: float(vv) if vv is not None else None for kk, vv in v.items()} 
-                                       for k, v in ensemble_metrics.get("base_model_metrics", {}).items()},
-                "seq_len": seq_len,
-                "feature_columns": feature_columns,
-                "val_direction_accuracy": float(val_dir_acc),
-                "tcn_val_accuracy": float(tcn_acc),
-                "standardize": {
-                    "mean": [float(x) for x in np.asarray(mu).flatten()],
-                    "std": [float(x) for x in np.asarray(sigma).flatten()],
+                "model_type": "modular_ensemble",
+                "direction_model_type": direction_model_name.lower(),
+                "direction_config": {
+                    "threshold": direction_threshold,
+                    "lookahead": direction_lookahead,
+                    "use_transformer": use_transformer,
                 },
-                "meta_labeling": {
-                    "enabled": meta_labeler_path is not None,
-                    "path": str(meta_labeler_path) if meta_labeler_path else None,
-                    "metrics": meta_labeling_metrics,
-                } if meta_labeling_enabled else None,
+                "models": {
+                    "direction": {
+                        "path": dir_model_path,
+                        "type": direction_model_name.lower(),
+                        "purpose": "direction_prediction",
+                        "output": "binary (0=short, 1=long)",
+                        "metrics": dir_metrics,
+                        "features": dir_data['feature_names'],
+                        "label_stats": dir_data.get('label_stats', {}),
+                    },
+                    "xgboost": {
+                        "path": str(model_dir / "xgb_momentum.pkl"),
+                        "purpose": "momentum_analysis",
+                        "output": "momentum_score (0-1), acceleration (bool)",
+                        "metrics": xgb_metrics,
+                        "features": xgb_data['feature_names'],
+                    },
+                    "rf": {
+                        "path": str(model_dir / "rf_risk.pkl"),
+                        "purpose": "risk_assessment",
+                        "output": "expected_drawdown_pips, streak_prob",
+                        "metrics": rf_metrics,
+                        "features": rf_data['feature_names'],
+                    },
+                    "ridge": {
+                        "path": str(model_dir / "ridge_confidence.pkl"),
+                        "purpose": "confidence_scoring",
+                        "output": "confidence (0-100)",
+                        "metrics": ridge_metrics,
+                        "features": ridge_data['feature_names'],
+                    },
+                },
+                "inference_gates": {
+                    "min_confidence": 75,
+                    "min_momentum_or_accel": True,
+                    "max_drawdown_pips": 30,
+                    "max_streak_prob": 0.3,
+                    "risk_per_trade_pct": 0.02,
+                },
+                "data_split": {
+                    "train_frac": train_frac,
+                    "val_frac": val_frac,
+                    "test_frac": test_frac,
+                    "total_samples": len(feature_df),
+                },
                 "trained_at": datetime.now().isoformat(),
             }
             
-            ensemble_meta_path = model_dir / f"buddy_ensemble{suffix}.meta.json"
-            with open(ensemble_meta_path, "w") as f:
-                json.dump(meta, f, indent=2)
-            console.print(f"Saved: {ensemble_meta_path}")
+            meta_path = model_dir / "modular_ensemble.meta.json"
+            with open(meta_path, "w") as f:
+                json.dump(meta, f, indent=2, default=lambda x: float(x) if isinstance(x, (np.floating, np.integer)) else str(x))
             
-            console.print("\n[bold green]═══════════════════════════════════════════════════════════[/bold green]")
-            console.print("[bold green]  ENSEMBLE TRAINING COMPLETE![/bold green]")
-            console.print(f"[bold green]  Final Accuracy: {val_dir_acc:.1%} (vs ~50% random)[/bold green]")
-            console.print(f"[bold green]  Models: {', '.join(ensemble_metrics.get('base_models', []))}[/bold green]")
-            console.print("[bold green]═══════════════════════════════════════════════════════════[/bold green]")
+            # ============================================================
+            # SUMMARY
+            # ============================================================
+            console.print("\n[bold green]════════════════════════════════════════════════════════════[/bold green]")
+            console.print("[bold green]  MODULAR ENSEMBLE TRAINING COMPLETE![/bold green]")
+            console.print("[bold green]════════════════════════════════════════════════════════════[/bold green]")
+            console.print("")
+            console.print("Model Performance:")
+            dir_acc = dir_metrics['val_accuracy']
+            bal_acc = dir_metrics.get('val_balanced_accuracy', dir_acc)
+            console.print(f"  • {direction_model_name} (Direction): val_accuracy = {dir_acc:.1%} (balanced: {bal_acc:.1%})")
+            console.print(f"  • XGBoost (Momentum):  accel_accuracy = {xgb_metrics['acceleration_accuracy']:.1%}")
+            console.print(f"  • RF (Risk):           drawdown_mae = {rf_metrics['drawdown_mae_pips']:.1f} pips")
+            console.print(f"  • Ridge (Confidence):  r2_score = {ridge_metrics['r2_score']:.3f}")
+            console.print("")
+            console.print("Direction Model Config:")
+            console.print(f"  • Model: {direction_model_name}")
+            console.print(f"  • Threshold: {direction_threshold:.2%} (filters noise)")
+            console.print(f"  • Lookahead: {direction_lookahead} bars")
+            if 'label_stats' in dir_data:
+                stats = dir_data['label_stats']
+                console.print(f"  • Clear labels: {stats['clear_rate']:.1%} of samples")
+            console.print("")
+            console.print("Saved Models:")
+            console.print(f"  • {dir_model_path}")
+            console.print(f"  • {model_dir / 'xgb_momentum.pkl'}")
+            console.print(f"  • {model_dir / 'rf_risk.pkl'}")
+            console.print(f"  • {model_dir / 'ridge_confidence.pkl'}")
+            console.print(f"  • {meta_path}")
+            console.print("")
+            console.print("Inference Logic:")
+            console.print(f"  IF {direction_model_name}=direction AND Ridge>75 AND (XGB_momentum>0.5 OR XGB_accel)")
+            console.print("     AND RF_drawdown<30pips THEN trade with 2% risk")
+            console.print("[bold green]════════════════════════════════════════════════════════════[/bold green]")
             return
         
         # XGBoost model - handles training separately
@@ -2477,6 +2649,7 @@ def _train_buddy_impl(
             "confidence": [tf.keras.metrics.MeanAbsoluteError(name="mae")] if has_conf_labels else [],
         },
         weighted_metrics={
+            "direction": [tf.keras.metrics.BinaryAccuracy(name="accuracy")],
             "confidence": [tf.keras.metrics.MeanAbsoluteError(name="mae")] if has_conf_labels else [],
         },
         steps_per_execution=int(spe),
@@ -5131,6 +5304,83 @@ def buddy(
     cfg = load_config(config_path)
     _lap("load_config")
 
+    # =========================================================================
+    # CHECK FOR MODULAR ENSEMBLE FIRST
+    # =========================================================================
+    modular_ensemble_meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
+    
+    if modular_ensemble_meta_path.exists() and not checkpoint_path:
+        # Use modular ensemble inference
+        console.print("\n[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
+        console.print("[bold magenta]  MODULAR ENSEMBLE INFERENCE[/bold magenta]")
+        console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
+        
+        from modular_inference import ModularEnsembleInference, InferenceConfig
+        
+        # Load modular ensemble
+        ensemble = ModularEnsembleInference()
+        ensemble.load_models()
+        
+        # Fetch candles for inference
+        from fx_paper import candles_to_ohlcv_df
+        from oanda_practice import OandaPracticeClient
+        
+        client = OandaPracticeClient.from_env()
+        resp = client.get_candles(instrument, granularity=granularity, count=int(candles), price="MBA")
+        df = candles_to_ohlcv_df(resp)
+        _lap("oanda_fetch")
+        
+        # Feature engineering
+        from feature_engineering import FeatureEngineering
+        fe = FeatureEngineering(cfg.get("feature_engineering", {}))
+        df = fe.create_features(df, include_all=True)
+        _lap("feature_engineering")
+        
+        # Clean up data
+        df = df.replace([np.inf, -np.inf], np.nan)
+        df = df.ffill().bfill().fillna(0.0)
+        
+        # Run modular ensemble inference
+        result = ensemble.predict_verbose(df)
+        _lap("modular_inference")
+        
+        # Display results
+        console.print("")
+        for check in result['gate_checks']:
+            console.print(f"  {check}")
+        console.print("")
+        console.print(f"[bold]{result['decision']}[/bold]")
+        console.print("")
+        
+        signal = result['raw_signal']
+        
+        # Execute trade if gates pass
+        if signal.trade and execute:
+            from fx_paper import OandaPracticeTrader
+            trader = OandaPracticeTrader.from_env()
+            
+            units = int(signal.size * 100000)  # Convert lots to units
+            if signal.direction == 'short':
+                units = -units
+            
+            console.print(f"[bold yellow]Executing: {signal.direction.upper()} {abs(units)} units[/bold yellow]")
+            
+            try:
+                order_result = trader.market_order(instrument, units)
+                console.print(f"[green]Order placed: {order_result}[/green]")
+            except Exception as e:
+                console.print(f"[red]Order failed: {e}[/red]")
+        
+        elif not signal.trade:
+            console.print("[yellow]No trade: gates failed[/yellow]")
+        
+        console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
+        return
+    
+    # =========================================================================
+    # FALLBACK TO STANDARD MODEL INFERENCE
+    # =========================================================================
+
     # Load model + preprocessing metadata.
     # Priority: checkpoint_path > buddy_tf_candidate.meta.json (newer) > buddy_tf.meta.json (production)
     meta_path = Path("trained_data") / "models" / BUDDY_META_FILENAME
@@ -6450,6 +6700,13 @@ def _compute_force_units(*, force_units_raw: Any, force_margin_raw: Any) -> int 
 def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
     should_execute = bool(args.execute) and (not bool(getattr(args, "dry_run", False)))
 
+    # Validate and normalize instrument name
+    try:
+        instrument_validated = _validate_instrument(str(args.instrument))
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1)
+
     force_units_eff = _compute_force_units(
         force_units_raw=getattr(args, "force_units", None),
         force_margin_raw=getattr(args, "force_margin", None),
@@ -6461,7 +6718,7 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
         buddy_loop(
             args.config,
             checkpoint_path=args.model_path,
-            instrument=args.instrument,
+            instrument=instrument_validated,
             granularity=args.granularity,
             candles=args.candles,
             execute=should_execute,
@@ -6479,7 +6736,7 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
     command_map["buddy"](
         args.config,
         checkpoint_path=args.model_path,
-        instrument=args.instrument,
+        instrument=instrument_validated,
         granularity=args.granularity,
         candles=args.candles,
         execute=should_execute,
@@ -6595,8 +6852,21 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
 
     oanda_fetch = None
     if bool(oanda_live_eff):
+        # Validate and normalize instrument name
+        instrument_raw = str(getattr(args, "instrument", "USD_JPY"))
+        try:
+            instrument_validated = _validate_instrument(instrument_raw)
+        except ValueError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise SystemExit(1)
+        
+        if instrument_raw.upper().replace("/", "_").replace("-", "_") != instrument_validated:
+            console.print(f"[yellow]Normalized instrument: {instrument_raw} -> {instrument_validated}[/yellow]")
+        
+        console.print(f"[cyan]OANDA fetch: instrument={instrument_validated}, granularity={args.granularity}, candles={train_candles}[/cyan]")
+        
         oanda_fetch = OandaFetchOptions(
-            instrument=str(args.instrument),
+            instrument=instrument_validated,
             granularity=str(args.granularity),
             candles=int(train_candles),
             price=str(getattr(args, "oanda_price", "MBA")),
@@ -6612,11 +6882,11 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
         es_monitor=str(es_monitor_eff),
         combined_w_dir=float(combined_w_dir_eff),
         combined_w_conf=float(combined_w_conf_eff),
-        train_smoothing=not bool(getattr(args, "no_train_smoothing", False)),
+        train_smoothing=not bool(getattr(args, "no_train_smoothing", None) or _cfg_get("no_train_smoothing", False)),
         top_features=(
             int(getattr(args, "top_features", 0))
             if getattr(args, "top_features", None) is not None
-            else None
+            else (int(_cfg_get("top_features", 0)) if _cfg_get("top_features", None) is not None else None)
         ),
         median_window=(
             int(getattr(args, "median_window", 0))
@@ -7107,6 +7377,261 @@ def buddy_analyze(
     console.print("\n" + "=" * 70)
 
 
+def _buddy_test_modular_ensemble(
+    config_path: str,
+    instrument: str,
+    granularity: str,
+    test_candles: int,
+    verbose: bool = False,
+) -> None:
+    """
+    Hindcast test using the modular ensemble (4 independent models with gates).
+    Shows BOTH gated results (production) and raw TCN results (evaluation).
+    """
+    import json
+    import numpy as np
+    
+    console.print("[bold magenta]Using MODULAR ENSEMBLE (4 models with gates)[/bold magenta]")
+    console.print("-" * 60)
+    
+    cfg = load_config(config_path)
+    
+    # Fetch candles
+    fetch_count = test_candles + 300  # Buffer for feature engineering NaN rows
+    console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
+    
+    from fx_paper import candles_to_ohlcv_df
+    from oanda_practice import OandaPracticeClient
+    
+    client = OandaPracticeClient.from_env()
+    resp = client.get_candles(instrument, granularity=granularity, count=fetch_count, price="MBA")
+    df_raw = candles_to_ohlcv_df(resp)
+    
+    # Feature engineering
+    from feature_engineering import FeatureEngineering
+    fe = FeatureEngineering()
+    df = fe.create_features(df_raw.copy(), include_all=True)
+    
+    # Load modular ensemble
+    _configure_tf_metal(verbose=verbose)
+    
+    from modular_inference import ModularEnsembleInference, InferenceConfig
+    
+    ensemble = ModularEnsembleInference()
+    ensemble.load_models()
+    
+    # Run hindcast
+    console.print(f"\n[bold]Testing predictions with modular ensemble...[/bold]\n")
+    
+    closes = df["close"].values
+    pip_size = 0.01 if "JPY" in instrument else 0.0001
+    
+    # Test window
+    test_start = len(df) - test_candles - 1
+    test_end = len(df) - 1
+    
+    # Metrics for GATED trades (production mode)
+    gated_correct = 0
+    gated_wrong = 0
+    gated_wins_pips = []
+    gated_losses_pips = []
+    trades_taken = 0
+    trades_skipped = 0
+    
+    # Metrics for RAW TCN direction (evaluation mode - no gates)
+    raw_correct = 0
+    raw_wrong = 0
+    raw_wins_pips = []
+    raw_losses_pips = []
+    
+    # Track gate failures
+    gate_failures = {"confidence": 0, "momentum": 0, "risk": 0, "no_direction": 0}
+    
+    # Track actual XGBoost outputs for debugging
+    all_momentum_values = []
+    all_acceleration_values = []
+    all_rf_drawdowns = []
+    all_rf_streaks = []
+    
+    for i in range(test_start, test_end):
+        if i < 60:  # Need at least 60 bars of history
+            continue
+        
+        # Get features up to this point (no lookahead)
+        df_slice = df.iloc[:i+1].copy()
+        
+        # Run modular inference
+        try:
+            signal = ensemble.predict(df_slice)
+        except Exception as e:
+            if verbose:
+                console.print(f"[dim]Prediction failed at {i}: {e}[/dim]")
+            continue
+        
+        # Track XGBoost outputs for debugging
+        all_momentum_values.append(signal.xgb_momentum)
+        all_acceleration_values.append(signal.xgb_acceleration)
+        all_rf_drawdowns.append(signal.rf_drawdown_pips)
+        all_rf_streaks.append(signal.rf_streak_prob)
+        
+        # Get timestamp
+        try:
+            ts = df.index[i]
+            ts_str = ts.strftime("%Y-%m-%d %H:%M") if hasattr(ts, "strftime") else str(ts)[:16]
+        except Exception:
+            ts_str = f"candle_{i}"
+        
+        # Actual movement
+        entry_price = closes[i]
+        exit_price = closes[i + 1]
+        actual_pips = (exit_price - entry_price) / pip_size
+        actual_direction = "↑" if actual_pips > 0 else "↓"
+        
+        # RAW TCN evaluation (ignore gates - just evaluate direction prediction)
+        if signal.tcn_direction is not None:
+            raw_is_correct = (
+                (signal.tcn_direction == 1 and actual_pips > 0) or 
+                (signal.tcn_direction == 0 and actual_pips < 0)
+            )
+            if raw_is_correct:
+                raw_correct += 1
+                raw_wins_pips.append(abs(actual_pips))
+            else:
+                raw_wrong += 1
+                raw_losses_pips.append(abs(actual_pips))
+        
+        # GATED production evaluation
+        if signal.trade:
+            trades_taken += 1
+            predicted_side = "BUY" if signal.direction == "long" else "SELL"
+            
+            is_correct = (
+                (signal.direction == "long" and actual_pips > 0) or 
+                (signal.direction == "short" and actual_pips < 0)
+            )
+            
+            if is_correct:
+                gated_correct += 1
+                gated_wins_pips.append(abs(actual_pips))
+                status = "[green]✅[/green]"
+            else:
+                gated_wrong += 1
+                gated_losses_pips.append(abs(actual_pips))
+                status = "[red]❌[/red]"
+            
+            # Gate status
+            gates = []
+            gates.append(f"conf={signal.ridge_confidence:.0f}{'✓' if signal.confidence_gate_passed else '✗'}")
+            gates.append(f"mom={signal.xgb_momentum:.2f}{'✓' if signal.momentum_gate_passed else '✗'}")
+            gates.append(f"dd={signal.rf_drawdown_pips:.0f}{'✓' if signal.risk_gate_passed else '✗'}")
+            
+            console.print(
+                f"{ts_str} | {predicted_side:4} [{', '.join(gates)}] | "
+                f"Actual: {actual_direction} {actual_pips:+.1f} pips | {status}"
+            )
+        else:
+            trades_skipped += 1
+            # Track why gate failed
+            if signal.tcn_direction is None:
+                gate_failures["no_direction"] += 1
+            if not signal.confidence_gate_passed:
+                gate_failures["confidence"] += 1
+            if not signal.momentum_gate_passed:
+                gate_failures["momentum"] += 1
+            if not signal.risk_gate_passed:
+                gate_failures["risk"] += 1
+            
+            if verbose:
+                tcn_dir = "LONG" if signal.tcn_direction == 1 else "SHORT" if signal.tcn_direction == 0 else "NONE"
+                console.print(
+                    f"[dim]{ts_str} | TCN:{tcn_dir} conf={signal.ridge_confidence:.0f} "
+                    f"mom={signal.xgb_momentum:.2f} dd={signal.rf_drawdown_pips:.0f} | "
+                    f"Actual: {actual_direction} {actual_pips:+.1f} pips | SKIP[/dim]"
+                )
+    
+    # Calculate metrics
+    gated_total = gated_correct + gated_wrong
+    gated_accuracy = gated_correct / gated_total * 100 if gated_total > 0 else 0
+    gated_avg_win = np.mean(gated_wins_pips) if gated_wins_pips else 0
+    gated_avg_loss = np.mean(gated_losses_pips) if gated_losses_pips else 0
+    
+    raw_total = raw_correct + raw_wrong
+    raw_accuracy = raw_correct / raw_total * 100 if raw_total > 0 else 0
+    raw_avg_win = np.mean(raw_wins_pips) if raw_wins_pips else 0
+    raw_avg_loss = np.mean(raw_losses_pips) if raw_losses_pips else 0
+    
+    # Print results
+    console.print("\n" + "=" * 70)
+    console.print(f"[bold]📊 MODULAR ENSEMBLE HINDCAST RESULTS[/bold]")
+    console.print("=" * 70)
+    
+    # Raw TCN performance (evaluation)
+    console.print(f"\n[bold cyan]TCN Direction (Raw - No Gates):[/bold cyan]")
+    console.print(f"  Predictions:        {raw_total}")
+    console.print(f"  Correct:            {raw_correct} ({raw_accuracy:.1f}%)")
+    console.print(f"  Wrong:              {raw_wrong} ({100-raw_accuracy:.1f}%)")
+    console.print(f"  Avg Win:            +{raw_avg_win:.1f} pips")
+    console.print(f"  Avg Loss:           -{raw_avg_loss:.1f} pips")
+    if raw_total > 0:
+        raw_ev = (raw_correct / raw_total) * raw_avg_win - (raw_wrong / raw_total) * raw_avg_loss
+        console.print(f"  Expected Value:     {raw_ev:+.2f} pips/trade")
+    
+    # Gated performance (production)
+    console.print(f"\n[bold yellow]Gated Trades (Production Mode):[/bold yellow]")
+    console.print(f"  Trades Taken:       {trades_taken}")
+    console.print(f"  Trades Skipped:     {trades_skipped}")
+    if gated_total > 0:
+        console.print(f"  Correct:            {gated_correct} ({gated_accuracy:.1f}%)")
+        console.print(f"  Wrong:              {gated_wrong} ({100-gated_accuracy:.1f}%)")
+        console.print(f"  Avg Win:            +{gated_avg_win:.1f} pips")
+        console.print(f"  Avg Loss:           -{gated_avg_loss:.1f} pips")
+        gated_ev = (gated_correct / gated_total) * gated_avg_win - (gated_wrong / gated_total) * gated_avg_loss
+        console.print(f"  Expected Value:     {gated_ev:+.2f} pips/trade")
+    else:
+        console.print(f"  [dim]No trades passed gates[/dim]")
+    
+    # Gate filter breakdown
+    console.print(f"\n[bold]Gate Filter Breakdown:[/bold]")
+    console.print(f"  Momentum gate fail: {gate_failures['momentum']} ({gate_failures['momentum']/max(trades_skipped,1)*100:.0f}%)")
+    console.print(f"  Confidence gate fail: {gate_failures['confidence']} ({gate_failures['confidence']/max(trades_skipped,1)*100:.0f}%)")
+    console.print(f"  Risk gate fail:     {gate_failures['risk']} ({gate_failures['risk']/max(trades_skipped,1)*100:.0f}%)")
+    console.print(f"  No TCN direction:   {gate_failures['no_direction']}")
+    
+    # XGBoost momentum statistics (for debugging)
+    if all_momentum_values:
+        import numpy as np
+        mom_arr = np.array(all_momentum_values)
+        accel_arr = np.array(all_acceleration_values)
+        console.print(f"\n[bold]XGBoost Momentum Debug:[/bold]")
+        console.print(f"  Min:  {mom_arr.min():.4f}")
+        console.print(f"  Max:  {mom_arr.max():.4f}")
+        console.print(f"  Mean: {mom_arr.mean():.4f}")
+        console.print(f"  >= 0.5: {(mom_arr >= 0.5).sum()} / {len(mom_arr)} ({100*(mom_arr >= 0.5).mean():.1f}%)")
+        console.print(f"  Acceleration True: {accel_arr.sum()} / {len(accel_arr)} ({100*accel_arr.mean():.1f}%)")
+    
+    # RF Risk statistics (for debugging)
+    if all_rf_drawdowns:
+        rf_dd_arr = np.array(all_rf_drawdowns)
+        rf_streak_arr = np.array(all_rf_streaks)
+        console.print(f"\n[bold]RF Risk Debug:[/bold]")
+        console.print(f"  Drawdown - Min: {rf_dd_arr.min():.1f}, Max: {rf_dd_arr.max():.1f}, Mean: {rf_dd_arr.mean():.1f} pips")
+        console.print(f"  Streak Prob - Min: {rf_streak_arr.min():.3f}, Max: {rf_streak_arr.max():.3f}, Mean: {rf_streak_arr.mean():.3f}")
+        console.print(f"  Drawdown < 30 pips: {(rf_dd_arr < 30).sum()} / {len(rf_dd_arr)} ({100*(rf_dd_arr < 30).mean():.1f}%)")
+        console.print(f"  Streak prob < 0.3: {(rf_streak_arr < 0.3).sum()} / {len(rf_streak_arr)} ({100*(rf_streak_arr < 0.3).mean():.1f}%)")
+    
+    console.print("-" * 70)
+    if raw_accuracy >= 52:
+        console.print(f"[green]✓ TCN direction: {raw_accuracy:.1f}% (above 50% random)[/green]")
+    else:
+        console.print(f"[yellow]⚠ TCN direction: {raw_accuracy:.1f}% (near random)[/yellow]")
+    
+    if trades_taken > 0 and gated_accuracy >= 55:
+        console.print(f"[green]✓ Gated trades: {gated_accuracy:.1f}% accuracy with {trades_taken} trades[/green]")
+    elif trades_taken == 0:
+        console.print(f"[yellow]⚠ Gates too strict - try training with more data or adjust thresholds[/yellow]")
+    console.print("=" * 70)
+
+
 def buddy_test(
     config_path: str = DEFAULT_CONFIG_PATH,
     *,
@@ -7132,6 +7657,26 @@ def buddy_test(
     console.print("-" * 60)
     
     cfg = load_config(config_path)
+    
+    # =========================================================================
+    # CHECK FOR MODULAR ENSEMBLE FIRST
+    # =========================================================================
+    modular_ensemble_meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
+    
+    if modular_ensemble_meta_path.exists():
+        # Use modular ensemble for hindcast test
+        _buddy_test_modular_ensemble(
+            config_path=config_path,
+            instrument=instrument,
+            granularity=granularity,
+            test_candles=test_candles,
+            verbose=verbose,
+        )
+        return
+    
+    # =========================================================================
+    # FALLBACK TO STANDARD MODEL
+    # =========================================================================
     
     # Load model metadata - prefer candidate if it exists (newer model)
     meta_path = Path("trained_data") / "models" / BUDDY_META_FILENAME

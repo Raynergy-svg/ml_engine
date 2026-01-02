@@ -8,7 +8,7 @@ while [[ -L "$SOURCE" ]]; do
     [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-CONFIG_FILE="${SCRIPT_DIR}/config_m1_optimized.yaml"
+CONFIG_FILE="${SCRIPT_DIR}/config_improved_H1.yaml"
 ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
 
 get_conda() {
@@ -21,49 +21,53 @@ get_conda() {
 run_py() { "$(get_conda)" run -n "${ENV_NAME}" --no-capture-output python "$@"; }
 
 cmd_predict() {
+    local granularity="H1"  # Default to H1 to match config_improved_H1.yaml
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -c|--candles) args+=(--candles "$2"); shift 2 ;;
             -i|--instrument) args+=(--instrument "$2"); shift 2 ;;
-            -g|--granularity) args+=(--granularity "$2"); shift 2 ;;
+            -g|--granularity) granularity="$2"; shift 2 ;;
             -x|--execute) args+=(--execute); shift ;;
             -f|--force) args+=(--force-execute); shift ;;
             -v|--verbose) args+=(--verbose); shift ;;
             *) shift ;;
         esac
     done
-    run_py "${SCRIPT_DIR}/main.py" buddy --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+    run_py "${SCRIPT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_train() {
+    local granularity="H1"  # Default to H1 to match config_improved_H1.yaml
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -c|--candles) args+=(--candles "$2"); shift 2 ;;
-            -g|--granularity) args+=(--granularity "$2"); shift 2 ;;
+            -i|--instrument) args+=(--instrument "$2"); shift 2 ;;
+            -g|--granularity) granularity="$2"; shift 2 ;;
             -m|--model) args+=(--model-type "$2"); shift 2 ;;
             --oanda-live) args+=(--oanda-live); shift ;;
             *) shift ;;
         esac
     done
     echo "Training Buddy..."
-    run_py "${SCRIPT_DIR}/main.py" train-buddy --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+    run_py "${SCRIPT_DIR}/main.py" train-buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_scan() {
+    local granularity="H1"  # Default to H1 to match config_improved_H1.yaml
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --pairs) args+=(--pairs "$2"); shift 2 ;;
-            -g|--granularity) args+=(--granularity "$2"); shift 2 ;;
+            -g|--granularity) granularity="$2"; shift 2 ;;
             --top) args+=(--top "$2"); shift 2 ;;
             -v|--verbose) args+=(--verbose); shift ;;
             *) shift ;;
         esac
     done
     echo "Scanning FX pairs..."
-    run_py "${SCRIPT_DIR}/main.py" scan --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+    run_py "${SCRIPT_DIR}/main.py" scan --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_analyze() {
@@ -81,16 +85,17 @@ cmd_analyze() {
 }
 
 cmd_test() {
+    local granularity="H1"  # Default to H1 to match config_improved_H1.yaml
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -c|--candles) args+=(--candles "$2"); shift 2 ;;
             -i|--instrument) args+=(--instrument "$2"); shift 2 ;;
-            -g|--granularity) args+=(--granularity "$2"); shift 2 ;;
+            -g|--granularity) granularity="$2"; shift 2 ;;
             *) shift ;;
         esac
     done
-    run_py "${SCRIPT_DIR}/main.py" test --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+    run_py "${SCRIPT_DIR}/main.py" test --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_status() { run_py "${SCRIPT_DIR}/main.py" model-status --config "${CONFIG_FILE}"; }

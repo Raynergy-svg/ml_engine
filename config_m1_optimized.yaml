@@ -68,10 +68,15 @@ sequence_length: 60
 direction_lookahead: 12  # Look 12 bars ahead (2 days on H4, 12 hours on H1)
 direction_threshold: 0.002  # Min 0.2% move to count as directional (filters noise)
 
+# ----- TARGET PREDICTION HORIZON -----
+# CRITICAL: Predicting 1 candle ahead is essentially noise prediction
+# Increase to 12-24 for H1 data (12-24 hours ahead) for learnable signals
+target_shift: 12  # Predict 12 candles ahead - aligns with direction_lookahead
+
 # ----- MODEL CONFIGURATION -----
 model:
   # TCN is 2-3x FASTER than TFT/LSTM on M1 with similar accuracy
-  type: tcn  # Options: tcn, attention_lstm, tft
+  type: ensemble   # Options: tcn, attention_lstm, tft
   
   # Feature dimension (will be auto-detected from data)
   input_size: 104
@@ -182,6 +187,12 @@ mixed_precision: true
 
 # ----- VALIDATION -----
 validation_split: 0.15
+
+# ----- PURGE GAP (PREVENT TEMPORAL LEAKAGE) -----
+# Number of samples to skip between train and validation sets
+# This prevents information leakage through rolling features
+# Recommended: at least sequence_length (60 by default)
+purge_gap: 60
 
 # ----- EARLY STOPPING MONITOR -----
 # Changed from direction to val_loss for stability

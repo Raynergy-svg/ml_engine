@@ -251,7 +251,7 @@ class TestTpSlSimulation(unittest.TestCase):
                 direction="long",
                 stop_loss_pips=20,
                 take_profit_pips=60,
-                spread_pips=50.0,
+                spread_pips=100.0,  # Exceeds 50 pip limit
                 max_horizon_candles=1,
                 tie_break="sl",
             )

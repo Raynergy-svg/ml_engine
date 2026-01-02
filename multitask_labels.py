@@ -16,7 +16,7 @@ product-specific definitions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -47,11 +47,28 @@ def build_multitask_targets(
     close_col: str = "close",
     risk_window: int = 14,
     state_classes: int = 3,
+    train_split_fraction: Optional[float] = None,
 ) -> MultitaskTargets:
     """Build aligned targets for trend/risk/state.
 
     Returns arrays aligned to the sequences produced by `prepare_sequences`:
     index i corresponds to target time t = i + sequence_length + target_shift - 1.
+    
+    Args:
+        df: DataFrame with price data
+        sequence_length: Length of input sequences
+        target_shift: How many steps ahead to predict
+        close_col: Name of close price column
+        risk_window: Window for rolling volatility calculation
+        state_classes: Number of volatility regime classes
+        train_split_fraction: If provided, compute risk quantiles only on first N%
+                             of data to prevent data leakage. E.g., 0.8 means use
+                             first 80% for quantile computation.
+    
+    Note:
+        When train_split_fraction is provided, risk quantile edges are computed
+        ONLY on the training portion to prevent leaking validation distribution
+        into training. This is critical for proper time-series cross-validation.
     """
     if df is None or df.empty:
         raise ValueError("df is None or empty")
@@ -76,14 +93,22 @@ def build_multitask_targets(
         risk[i] = float(np.std(window))
 
     # Vol regime bins based on quantiles.
+    # FIX: Compute quantiles only on training data to prevent leakage
+    if train_split_fraction is not None:
+        train_end_idx = int(len(risk) * train_split_fraction)
+        risk_for_quantiles = risk[:train_end_idx]
+    else:
+        risk_for_quantiles = risk  # Legacy behavior: use all data
+    
     qs = np.linspace(0.0, 1.0, state_classes + 1)
-    edges = np.quantile(risk, qs)
+    edges = np.quantile(risk_for_quantiles, qs)
     edges = np.unique(edges)
     if len(edges) < 3:
         # Degenerate case: all same risk -> single bin
         state = np.zeros_like(risk, dtype=np.int64)
     else:
         # np.digitize returns 1..k; convert to 0..k-1
+        # Apply quantile edges (computed on train) to ALL data
         state = np.digitize(risk, edges[1:-1], right=False).astype(np.int64)
 
     # Align to sequence targets.
@@ -108,10 +133,21 @@ def build_multitask_targets(
     state_aligned = state[target_indices]
 
     # Normalize risk to [0,1] for sigmoid head compatibility.
-    r_min = float(np.min(risk_aligned))
-    r_max = float(np.max(risk_aligned))
+    # FIX: Use training data statistics for normalization to prevent leakage
+    if train_split_fraction is not None:
+        # Compute normalization stats from training portion only
+        train_n = int(n * train_split_fraction)
+        train_risk = risk_aligned[:train_n]
+        r_min = float(np.min(train_risk))
+        r_max = float(np.max(train_risk))
+    else:
+        r_min = float(np.min(risk_aligned))
+        r_max = float(np.max(risk_aligned))
+    
     if r_max > r_min:
         risk_norm = (risk_aligned - r_min) / (r_max - r_min)
+        # Clip to [0, 1] in case validation data has values outside training range
+        risk_norm = np.clip(risk_norm, 0.0, 1.0)
     else:
         risk_norm = np.zeros_like(risk_aligned, dtype=float)
 
@@ -124,15 +160,56 @@ def build_multitask_targets(
 
 
 def split_time_series(
-    n: int, *, val_fraction: float = 0.2
+    n: int, 
+    *, 
+    val_fraction: float = 0.2,
+    purge_gap: int = 0,
 ) -> Tuple[np.ndarray, np.ndarray]:
+    """Split time series data into train and validation sets.
+    
+    Args:
+        n: Total number of samples
+        val_fraction: Fraction of data for validation (default 0.2 = 20%)
+        purge_gap: Number of samples to skip between train and val to prevent
+                   temporal leakage. This creates a "buffer zone" where no
+                   training or validation samples exist.
+    
+    Returns:
+        Tuple of (train_indices, val_indices)
+    
+    Example with purge_gap=10:
+        Data: [0, 1, 2, ..., 79, 80, 81, ..., 89, 90, 91, ..., 99]
+                   TRAIN          PURGE GAP       VALIDATION
+        
+        train_idx: [0, 1, ..., 79]
+        val_idx: [90, 91, ..., 99]
+        (samples 80-89 are excluded to prevent leakage)
+    
+    Note:
+        The purge gap is critical for time-series cross-validation because
+        features computed with rolling windows can "see" into the future
+        if there's no gap between train and validation.
+    """
     if n <= 1:
         raise ValueError("n must be > 1")
     if not (0.0 < val_fraction < 1.0):
         raise ValueError("val_fraction must be in (0,1)")
+    if purge_gap < 0:
+        raise ValueError("purge_gap must be >= 0")
 
+    # Calculate split point
     split = int(round(n * (1.0 - val_fraction)))
-    split = max(1, min(n - 1, split))
+    split = max(1, min(n - 1 - purge_gap, split))
+    
+    # Train indices: from 0 to split
     train_idx = np.arange(0, split, dtype=int)
-    val_idx = np.arange(split, n, dtype=int)
+    
+    # Validation indices: start after purge gap
+    val_start = split + purge_gap
+    if val_start >= n:
+        # If purge gap is too large, reduce it
+        val_start = split + max(0, (n - split) // 2)
+    
+    val_idx = np.arange(val_start, n, dtype=int)
+    
     return train_idx, val_idx

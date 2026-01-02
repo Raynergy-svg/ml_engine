@@ -106,8 +106,9 @@ def simulate_tp_sl_outcome(
     # Clamp tiny positive spreads up to 0.5 pips; reject extreme outliers.
     if 0.0 < spread_pips_f < 0.5:
         spread_pips_f = 0.5
-    if spread_pips_f > 20.0:
-        raise ValueError(f"Invalid spread_pips={spread_pips_f} (expect <= 20)")
+    # Allow wider spreads for exotic pairs or volatile conditions (up to 50 pips)
+    if spread_pips_f > 50.0:
+        raise ValueError(f"Invalid spread_pips={spread_pips_f} (expect <= 50)")
 
     entry_open = float(df["open"].iloc[int(signal_index) + 1])
     if not np.isfinite(entry_open) or entry_open <= 0:

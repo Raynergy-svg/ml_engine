@@ -728,12 +728,17 @@ class TensorFlowEngine:
         )
         callback_list.append(tensorboard_callback)
         
-        # Early stopping
+        # Early stopping with min_epochs support
+        min_epochs = self.config.get('min_epochs', 0)
+        if min_epochs is None:
+            min_epochs = 0
+        
         early_stopping = keras_callbacks.EarlyStopping(
             monitor='val_loss',
             patience=self.early_stopping_patience,
             restore_best_weights=True,
             verbose=1,
+            start_from_epoch=min_epochs,  # Don't stop before min_epochs
         )
         callback_list.append(early_stopping)
         
