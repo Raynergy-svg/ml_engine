@@ -1,58 +1,30 @@
 #!/usr/bin/env bash
+#===============================================================================
+# Install Buddy CLI to PATH
+# Creates a symlink in ~/.local/bin for global access
+#===============================================================================
 set -euo pipefail
 
-# Installs a `buddy` launcher into ~/.local/bin that runs this repo's Buddy CLI.
-# This is useful when you previously had a stale/broken `buddy` script on PATH.
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TARGET_DIR="${HOME}/.local/bin"
+TARGET="${TARGET_DIR}/buddy"
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-target="${HOME}/.local/bin/buddy"
+# Create directory if needed
+mkdir -p "${TARGET_DIR}"
 
-mkdir -p "$(dirname "$target")"
+# Remove old version if exists
+rm -f "${TARGET}"
 
-cat >"$target" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
+# Create symlink to repo's buddy script
+ln -s "${REPO_ROOT}/buddy" "${TARGET}"
 
-REPO_ROOT="__REPO_ROOT__"
-
-# Prefer running via conda env if available so dependencies resolve.
-ENV_NAME="${BUDDY_CONDA_ENV:-ml_engine}"
-
-# IMPORTANT: Use `--no-capture-output` so stdin/stdout stay TTY.
-# Otherwise `conda run` captures streams and Buddy's interactive wizard
-# won't trigger (it checks isatty()).
-
-
-# Prefer explicit Miniforge binary when available (reliable in non-interactive shells)
-if [[ -x "$HOME/miniforge3/bin/conda" ]]; then
-  "$HOME/miniforge3/bin/conda" run -n "$ENV_NAME" --no-capture-output python "$REPO_ROOT/main.py" buddy "$@"
-  exit $?
-fi
-
-if [[ -n "${CONDA_EXE:-}" && -x "${CONDA_EXE}" ]]; then
-  "${CONDA_EXE}" run -n "$ENV_NAME" --no-capture-output python "$REPO_ROOT/main.py" buddy "$@"
-  exit $?
-fi
-
-if command -v conda >/dev/null 2>&1; then
-  conda run -n "$ENV_NAME" --no-capture-output python "$REPO_ROOT/main.py" buddy "$@"
-  exit $?
-fi
-
-# Fall back to current python (requires you to be in the right env already).
-python "$REPO_ROOT/main.py" buddy "$@"
-EOF
-
-# Replace placeholder safely.
-python - <<PY
-import pathlib
-target = pathlib.Path(r"$target")
-text = target.read_text()
-text = text.replace("__REPO_ROOT__", r"$repo_root")
-target.write_text(text)
-PY
-
-chmod +x "$target"
-
-echo "Installed: $target"
-echo "If you still hit the old script, ensure ~/.local/bin is early in PATH, or run: hash -r"
+echo "✓ Installed: ${TARGET}"
+echo ""
+echo "Make sure ~/.local/bin is in your PATH:"
+echo '  export PATH="$HOME/.local/bin:$PATH"'
+echo ""
+echo "Then you can run:"
+echo "  buddy help"
+echo "  buddy status"
+echo "  buddy predict"
+echo "  buddy train --oanda-live"

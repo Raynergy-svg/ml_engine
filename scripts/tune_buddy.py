@@ -79,6 +79,11 @@ def main() -> None:
     p.add_argument("--csv", default=None, help="Optional CSV override")
     p.add_argument("--seq-len", type=int, default=50)
     p.add_argument("--epochs", type=int, default=200)
+    
+    # OANDA live data options
+    p.add_argument("--oanda-live", action="store_true", help="Fetch data from OANDA")
+    p.add_argument("--candles", type=int, default=15000, help="Number of candles to fetch (OANDA)")
+    p.add_argument("--granularity", type=str, default="H1", help="OANDA granularity (M5, H1, etc.)")
 
     p.add_argument("--lrs", type=float, nargs="+", default=[0.001, 0.0003, 0.0001])
     p.add_argument("--batch-sizes", type=int, nargs="+", default=[32])
@@ -122,9 +127,24 @@ def main() -> None:
                 results.append(meta)
                 print("(skip) Found existing meta, not retraining")
             else:
-                train_buddy(
-                    args.config,
-                    args.csv,
+                # Prepare options for OANDA live or CSV
+                csv_path = None if args.oanda_live else args.csv
+                
+                # Import BuddyTrainingOptions and OandaFetchOptions
+                from main import BuddyTrainingOptions, OandaFetchOptions
+                
+                # Set up OANDA fetch options if using live data
+                oanda_fetch = None
+                if args.oanda_live:
+                    oanda_fetch = OandaFetchOptions(
+                        instrument="USD_JPY",
+                        granularity=str(args.granularity),
+                        candles=int(args.candles),
+                        price="MBA",
+                        save_csv=None,
+                    )
+                
+                options = BuddyTrainingOptions(
                     seq_len=int(args.seq_len),
                     epochs=int(args.epochs),
                     batch_size=int(rc.batch_size),
@@ -133,6 +153,13 @@ def main() -> None:
                     seed=int(rc.seed),
                     run_tag=tag,
                     all_features=True,
+                    oanda_fetch=oanda_fetch,
+                )
+                
+                train_buddy(
+                    args.config,
+                    csv_path,
+                    options=options,
                 )
                 meta = _read_json(meta_path)
                 results.append(meta)

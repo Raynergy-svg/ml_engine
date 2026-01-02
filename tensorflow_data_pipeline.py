@@ -110,6 +110,13 @@ def load_tensorflow_multitask_data(
         scale_target=bool(config.get("enable_data_scaling", True)),
     )
     
+    # Handle NaN/Inf in feature data for numerical stability
+    nan_count = np.isnan(x).sum()
+    inf_count = np.isinf(x).sum()
+    if nan_count > 0 or inf_count > 0:
+        logger.warning(f"Found {nan_count} NaN and {inf_count} Inf values in features, replacing...")
+        x = np.nan_to_num(x, nan=0.0, posinf=1e6, neginf=-1e6)
+    
     # Build multi-task targets using existing function
     targets: MultitaskTargets = build_multitask_targets(
         df,
@@ -140,13 +147,26 @@ def load_tensorflow_multitask_data(
     logger.info(f"[State distribution] Train: {dict(zip(unique_train, counts_train))}")
     logger.info(f"[State distribution] Val: {dict(zip(unique_val, counts_val))}")
     
+    # Scale risk values to [0, 1] range for numerical stability
+    # Risk is rolling std of returns, typically in range [0, 0.01]
+    risk_values = targets.risk.astype(np.float32)
+    risk_max = np.nanmax(risk_values)
+    if risk_max > 0:
+        risk_scaled = risk_values / risk_max
+    else:
+        risk_scaled = np.zeros_like(risk_values)
+    # Handle any NaN values
+    risk_scaled = np.nan_to_num(risk_scaled, nan=0.5, posinf=1.0, neginf=0.0)
+    meta['risk_scale'] = float(risk_max) if risk_max > 0 else 1.0
+    logger.info(f"Risk scaling: max={risk_max:.6f}, scaled to [0, 1]")
+    
     def create_target_dict(indices: np.ndarray) -> Dict[str, np.ndarray]:
         """Create target dictionary with one-hot encoded state."""
         return {
             'price': y_price[indices].astype(np.float32).reshape(-1, 1),
             'trend': targets.trend[indices].astype(np.float32).reshape(-1, 1),
             'direction': targets.direction[indices].astype(np.float32).reshape(-1, 1),
-            'risk': targets.risk[indices].astype(np.float32).reshape(-1, 1),
+            'risk': risk_scaled[indices].astype(np.float32).reshape(-1, 1),
             'state_logits': np.eye(state_classes, dtype=np.float32)[targets.state[indices]],  # One-hot
         }
     

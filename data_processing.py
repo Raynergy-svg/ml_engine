@@ -284,7 +284,12 @@ def create_sequences(
     sequence_length: int,
     target_column: int = -1,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Create rolling window sequences and next-step targets."""
+    """Create rolling window sequences and next-step targets.
+    
+    M1 Metal Optimization:
+    - Uses float32 dtype for better GPU compatibility
+    - Uses stride_tricks for memory-efficient view creation when possible
+    """
     if data is None:
         raise DataValidationError("data cannot be None")
 
@@ -299,12 +304,26 @@ def create_sequences(
         raise DataValidationError("data is too short for the requested sequence_length")
 
     n_samples = len(arr) - sequence_length
-    sequences = np.empty((n_samples, sequence_length, arr.shape[1]), dtype=float)
-    targets = np.empty((n_samples,), dtype=float)
-
-    for i in range(n_samples):
-        sequences[i] = arr[i : i + sequence_length]
-        targets[i] = arr[i + sequence_length, target_column]
+    
+    # M1 Metal: Use float32 for better TensorFlow Metal performance
+    # float64 works but float32 is 2x faster on M1 GPU
+    arr = arr.astype(np.float32, copy=False)
+    
+    # Use sliding window view for memory efficiency (NumPy 1.20+)
+    try:
+        from numpy.lib.stride_tricks import sliding_window_view
+        # sliding_window_view creates a view, not a copy (saves memory)
+        window_view = sliding_window_view(arr, (sequence_length, arr.shape[1]))
+        # Shape: (n_samples, 1, seq_len, features) -> squeeze middle dim
+        sequences = window_view[:n_samples, 0, :, :].copy()  # Need copy for contiguous array
+        targets = arr[sequence_length:, target_column].copy()
+    except (ImportError, AttributeError):
+        # Fallback for older NumPy
+        sequences = np.empty((n_samples, sequence_length, arr.shape[1]), dtype=np.float32)
+        targets = np.empty((n_samples,), dtype=np.float32)
+        for i in range(n_samples):
+            sequences[i] = arr[i : i + sequence_length]
+            targets[i] = arr[i + sequence_length, target_column]
 
     return sequences, targets
 

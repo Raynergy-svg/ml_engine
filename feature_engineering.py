@@ -1,6 +1,12 @@
 """
 Advanced feature engineering for financial time series.
 Includes technical indicators, statistical features, and derived metrics.
+
+M1 Metal Performance Notes:
+- All operations are pandas/numpy based (CPU)
+- Feature engineering runs once before training (not a bottleneck)
+- For >100k rows, consider using numba or vectorized operations
+- Output arrays are float32 for TensorFlow Metal compatibility
 """
 
 import logging
@@ -227,6 +233,60 @@ class FeatureEngineering:
         df["rsi_7"] = rsi_short.fillna(50)
         df["rsi_agreement"] = ((df["rsi"] > 50) == (df["rsi_7"] > 50)).astype(float)
 
+        # =====================================================================
+        # MARKET REGIME DETECTION (2025 Best Practice)
+        # =====================================================================
+        
+        # Trending vs Ranging Regime
+        # High ADX + clear DI separation = trending
+        # Low ADX = ranging/consolidating
+        df["is_trending"] = (df["adx"] > 25).astype(float)
+        df["is_strong_trend"] = (df["adx"] > 40).astype(float)
+        df["is_ranging"] = (df["adx"] < 20).astype(float)
+        
+        # Volatility Regime (based on ATR percentile)
+        atr_pct = df["atr"].rolling(100).apply(
+            lambda x: pd.Series(x).rank(pct=True).iloc[-1] if len(x) > 0 else 0.5,
+            raw=False
+        )
+        df["volatility_regime"] = atr_pct.fillna(0.5)
+        df["is_high_volatility"] = (df["volatility_regime"] > 0.7).astype(float)
+        df["is_low_volatility"] = (df["volatility_regime"] < 0.3).astype(float)
+        
+        # Trend Quality Score (combining ADX, DI spread, and MA alignment)
+        ma_aligned_up = ((df["sma_5"] > df["sma_20"]) & (df["sma_20"] > df["sma_50"])).astype(float)
+        ma_aligned_down = ((df["sma_5"] < df["sma_20"]) & (df["sma_20"] < df["sma_50"])).astype(float)
+        df["ma_alignment"] = ma_aligned_up - ma_aligned_down  # +1 = bullish aligned, -1 = bearish aligned
+        
+        # Squeeze Detection (low BB width = potential breakout)
+        bb_width_pct = df["bb_width_20"].rolling(50).apply(
+            lambda x: pd.Series(x).rank(pct=True).iloc[-1] if len(x) > 0 else 0.5,
+            raw=False
+        )
+        df["bb_squeeze"] = (bb_width_pct < 0.2).astype(float).fillna(0)
+        
+        # =====================================================================
+        # FEATURE INTERACTIONS (2025 Best Practice)
+        # =====================================================================
+        
+        # RSI × ATR (strong signal in high volatility)
+        df["rsi_x_atr_norm"] = ((df["rsi"] - 50) / 50) * (df["atr"] / df["atr"].rolling(20).mean())
+        
+        # MACD × ADX (trend momentum strength)
+        df["macd_x_adx"] = (df["macd_hist"] / (df["macd_hist"].rolling(20).std() + 1e-8)) * (df["adx"] / 50)
+        
+        # Volume × Price Movement (confirmation)
+        if "volume" in df.columns:
+            vol_norm = df["volume"] / df["volume"].rolling(20).mean()
+            price_move = df["close"].pct_change().abs() * 100
+            df["volume_price_strength"] = vol_norm * price_move
+        
+        # Overbought/Oversold with trend confirmation
+        df["rsi_trend_confirm"] = (
+            ((df["rsi"] > 70) & (df["trend_direction"] > 0)).astype(float) * -1 +  # Overbought in uptrend
+            ((df["rsi"] < 30) & (df["trend_direction"] < 0)).astype(float) * 1     # Oversold in downtrend
+        )
+
         return df
 
     def add_statistical_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -326,6 +386,41 @@ class FeatureEngineering:
         df["is_quarter_start"] = df.index.is_quarter_start.astype(int)
         df["is_quarter_end"] = df.index.is_quarter_end.astype(int)
 
+        # =====================================================================
+        # FX SESSION FEATURES (Critical for Forex - 2025 Best Practice)
+        # =====================================================================
+        
+        # Hour of day (critical for intraday trading)
+        df["hour"] = df.index.hour
+        df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
+        df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
+        
+        # FX Trading Sessions (times in UTC)
+        # Asian Session: 00:00 - 09:00 UTC (Tokyo 09:00-18:00 JST)
+        # London Session: 07:00 - 16:00 UTC
+        # NY Session: 13:00 - 22:00 UTC
+        df["is_asian_session"] = ((df["hour"] >= 0) & (df["hour"] < 9)).astype(int)
+        df["is_london_session"] = ((df["hour"] >= 7) & (df["hour"] < 16)).astype(int)
+        df["is_ny_session"] = ((df["hour"] >= 13) & (df["hour"] < 22)).astype(int)
+        
+        # Session Overlaps (highest volatility periods)
+        df["is_london_ny_overlap"] = ((df["hour"] >= 13) & (df["hour"] < 16)).astype(int)
+        df["is_asian_london_overlap"] = ((df["hour"] >= 7) & (df["hour"] < 9)).astype(int)
+        
+        # Weekend proximity (Friday afternoon = risk-off, Sunday evening = gaps)
+        df["is_friday"] = (df["day_of_week"] == 4).astype(int)
+        df["is_monday"] = (df["day_of_week"] == 0).astype(int)
+        df["friday_afternoon"] = ((df["day_of_week"] == 4) & (df["hour"] >= 18)).astype(int)
+        
+        # Market regime time features
+        # First/last hour of major sessions often have higher volatility
+        df["is_session_open"] = (
+            ((df["hour"] == 0) | (df["hour"] == 7) | (df["hour"] == 13))
+        ).astype(int)
+        df["is_session_close"] = (
+            ((df["hour"] == 8) | (df["hour"] == 15) | (df["hour"] == 21))
+        ).astype(int)
+
         return df
 
     def add_lag_features(
@@ -380,6 +475,225 @@ class FeatureEngineering:
 
         return df
 
+    def add_regime_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add market regime detection features (2025 best practice).
+        
+        Identifies:
+        1. Trend vs range-bound (using ADX)
+        2. Volatility regime (high/low/normal)
+        3. Momentum regime
+        4. Mean-reversion potential
+        """
+        df = df.copy()
+        
+        # --- Trend Regime (ADX-based) ---
+        if 'adx' in df.columns:
+            # Strong trend: ADX > 40
+            # Trending: ADX > 25
+            # Range-bound: ADX < 20
+            df['is_strong_trend'] = (df['adx'] > 40).astype(float)
+            df['is_trending'] = (df['adx'] > 25).astype(float)
+            df['is_ranging'] = (df['adx'] < 20).astype(float)
+            
+            # Trend strength (normalized ADX)
+            df['trend_strength'] = df['adx'].clip(0, 100) / 100.0
+        
+        # --- Volatility Regime ---
+        if 'atr' in df.columns:
+            # Use rolling percentile of ATR
+            atr_pctl = df['atr'].rolling(window=100, min_periods=20).apply(
+                lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False
+            )
+            df['volatility_regime'] = atr_pctl.fillna(0.5)
+            df['is_high_volatility'] = (atr_pctl > 0.75).astype(float)
+            df['is_low_volatility'] = (atr_pctl < 0.25).astype(float)
+        
+        # --- Momentum Regime ---
+        if 'rsi' in df.columns:
+            # Overbought/Oversold
+            df['is_overbought'] = (df['rsi'] > 70).astype(float)
+            df['is_oversold'] = (df['rsi'] < 30).astype(float)
+            df['rsi_extreme'] = ((df['rsi'] > 70) | (df['rsi'] < 30)).astype(float)
+            
+            # RSI momentum (rate of change)
+            df['rsi_momentum'] = df['rsi'].diff(5) / 5.0
+        
+        # --- Moving Average Alignment ---
+        if all(col in df.columns for col in ['sma_5', 'sma_20', 'sma_50']):
+            # Bullish alignment: 5 > 20 > 50
+            # Bearish alignment: 5 < 20 < 50
+            bull_align = ((df['sma_5'] > df['sma_20']) & (df['sma_20'] > df['sma_50'])).astype(float)
+            bear_align = ((df['sma_5'] < df['sma_20']) & (df['sma_20'] < df['sma_50'])).astype(float)
+            df['ma_bullish_alignment'] = bull_align
+            df['ma_bearish_alignment'] = bear_align
+            df['ma_alignment_strength'] = bull_align - bear_align
+        
+        # --- Bollinger Band Regime ---
+        if 'bb_width_20' in df.columns:
+            bb_pctl = df['bb_width_20'].rolling(window=100, min_periods=20).apply(
+                lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=False
+            )
+            df['bb_squeeze'] = (bb_pctl < 0.2).astype(float)  # Potential breakout
+            df['bb_expansion'] = (bb_pctl > 0.8).astype(float)
+        
+        if 'bb_position_20' in df.columns:
+            # Position within bands (0-1)
+            df['bb_upper_touch'] = (df['bb_position_20'] > 0.95).astype(float)
+            df['bb_lower_touch'] = (df['bb_position_20'] < 0.05).astype(float)
+        
+        # --- Session Features (FX-specific) ---
+        if hasattr(df.index, 'hour'):
+            hour = df.index.hour
+            df['hour_sin'] = np.sin(2 * np.pi * hour / 24)
+            df['hour_cos'] = np.cos(2 * np.pi * hour / 24)
+            
+            # Major FX sessions (UTC)
+            df['is_asian_session'] = ((hour >= 0) & (hour < 9)).astype(float)
+            df['is_london_session'] = ((hour >= 7) & (hour < 16)).astype(float)
+            df['is_ny_session'] = ((hour >= 13) & (hour < 22)).astype(float)
+            
+            # High volatility overlaps
+            df['is_london_ny_overlap'] = ((hour >= 13) & (hour < 16)).astype(float)
+            df['is_asian_london_overlap'] = ((hour >= 7) & (hour < 9)).astype(float)
+        
+        # --- Day of Week Features ---
+        if hasattr(df.index, 'dayofweek'):
+            dow = df.index.dayofweek
+            df['is_monday'] = (dow == 0).astype(float)
+            df['is_friday'] = (dow == 4).astype(float)
+            df['is_mid_week'] = ((dow >= 1) & (dow <= 3)).astype(float)
+            
+            # Weekend gap risk (Friday afternoon)
+            if hasattr(df.index, 'hour'):
+                df['friday_afternoon'] = ((dow == 4) & (df.index.hour >= 17)).astype(float)
+        
+        return df
+
+    def add_intermarket_features(
+        self, 
+        df: pd.DataFrame, 
+        correlates: dict = None
+    ) -> pd.DataFrame:
+        """Add intermarket correlation features (2025 enhancement).
+        
+        For FX, relevant correlates include:
+        - DXY (Dollar Index) for USD pairs
+        - VIX (volatility index)
+        - Gold (safe haven)
+        - Oil (commodity currencies)
+        - Bond yields (rate differentials)
+        
+        Args:
+            df: Main price DataFrame
+            correlates: Dict of {name: DataFrame} with correlated asset prices
+                       Each DataFrame should have 'close' column and same index
+        
+        Note: This method adds placeholder features if correlates not provided,
+              allowing the model architecture to remain consistent.
+        """
+        df = df.copy()
+        
+        if correlates is None:
+            # Add placeholder features (will be 0.5 or neutral)
+            # This maintains feature consistency when external data unavailable
+            df['dxy_corr_20'] = 0.0
+            df['vix_level'] = 0.5
+            df['gold_momentum'] = 0.0
+            df['yield_diff_momentum'] = 0.0
+            df['risk_on_score'] = 0.5
+            return df
+        
+        # --- DXY (Dollar Index) Correlation ---
+        if 'dxy' in correlates and 'close' in correlates['dxy'].columns:
+            dxy = correlates['dxy']['close'].reindex(df.index, method='ffill')
+            
+            # Rolling correlation with USD
+            df['dxy_corr_20'] = df['close'].rolling(20).corr(dxy).fillna(0)
+            df['dxy_momentum'] = dxy.pct_change(5).fillna(0)
+            df['dxy_zscore'] = ((dxy - dxy.rolling(50).mean()) / dxy.rolling(50).std()).fillna(0)
+        
+        # --- VIX (Volatility Index) ---
+        if 'vix' in correlates and 'close' in correlates['vix'].columns:
+            vix = correlates['vix']['close'].reindex(df.index, method='ffill')
+            
+            df['vix_level'] = (vix.clip(10, 80) - 10) / 70.0  # Normalize to 0-1
+            df['vix_spike'] = (vix.diff() > vix.rolling(20).std() * 2).astype(float)
+            df['vix_high'] = (vix > 25).astype(float)
+        
+        # --- Gold (Safe Haven) ---
+        if 'gold' in correlates and 'close' in correlates['gold'].columns:
+            gold = correlates['gold']['close'].reindex(df.index, method='ffill')
+            
+            df['gold_momentum'] = gold.pct_change(10).fillna(0).clip(-0.1, 0.1)
+            df['gold_corr_20'] = df['close'].rolling(20).corr(gold).fillna(0)
+        
+        # --- Yield Spread (Rate Differential) ---
+        if 'us_10y' in correlates and 'jp_10y' in correlates:
+            us_yield = correlates['us_10y']['close'].reindex(df.index, method='ffill')
+            jp_yield = correlates['jp_10y']['close'].reindex(df.index, method='ffill')
+            
+            # Yield differential (important for carry trades)
+            yield_diff = us_yield - jp_yield
+            df['yield_diff'] = yield_diff.fillna(yield_diff.mean())
+            df['yield_diff_momentum'] = yield_diff.diff(5).fillna(0)
+        
+        # --- Composite Risk Score ---
+        # Combines multiple factors into a risk-on/risk-off indicator
+        risk_factors = []
+        if 'vix_level' in df.columns:
+            risk_factors.append(1 - df['vix_level'])  # Lower VIX = risk-on
+        if 'gold_momentum' in df.columns:
+            risk_factors.append(-df['gold_momentum'] * 5)  # Gold selling = risk-on
+        
+        if risk_factors:
+            df['risk_on_score'] = np.mean(risk_factors, axis=0).clip(0, 1)
+        else:
+            df['risk_on_score'] = 0.5
+        
+        return df
+
+    def add_momentum_divergence_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add momentum divergence features (classic technical patterns).
+        
+        Divergences between price and momentum indicators often precede reversals.
+        """
+        df = df.copy()
+        
+        # Price highs/lows over window
+        window = 14
+        price_high = df['close'].rolling(window).max()
+        price_low = df['close'].rolling(window).min()
+        
+        # Check if RSI diverges from price
+        if 'rsi' in df.columns:
+            rsi_high = df['rsi'].rolling(window).max()
+            rsi_low = df['rsi'].rolling(window).min()
+            
+            # Bearish divergence: price makes new high but RSI doesn't
+            new_price_high = (df['close'] >= price_high * 0.999)
+            rsi_lower_high = (df['rsi'] < rsi_high - 5)
+            df['bearish_divergence'] = (new_price_high & rsi_lower_high).astype(float)
+            
+            # Bullish divergence: price makes new low but RSI doesn't
+            new_price_low = (df['close'] <= price_low * 1.001)
+            rsi_higher_low = (df['rsi'] > rsi_low + 5)
+            df['bullish_divergence'] = (new_price_low & rsi_higher_low).astype(float)
+        
+        # MACD divergence
+        if 'macd' in df.columns:
+            macd_high = df['macd'].rolling(window).max()
+            macd_low = df['macd'].rolling(window).min()
+            
+            new_price_high = (df['close'] >= price_high * 0.999)
+            macd_lower = (df['macd'] < macd_high * 0.9)
+            df['macd_bearish_div'] = (new_price_high & macd_lower).astype(float)
+            
+            new_price_low = (df['close'] <= price_low * 1.001)
+            macd_higher = (df['macd'] > macd_low * 1.1) if (df['macd'] < 0).any() else (df['macd'] > macd_low + 0.0001)
+            df['macd_bullish_div'] = (new_price_low & macd_higher.fillna(False)).astype(float)
+        
+        return df
+
     def _parse_int_list(self, values, default, min_value: int) -> List[int]:
         raw = values if isinstance(values, list) else default
         parsed: List[int] = []
@@ -391,6 +705,65 @@ class FeatureEngineering:
             if int_item >= min_value:
                 parsed.append(int_item)
         return parsed
+
+    def normalize_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize features to prevent scale issues (2025 Best Practice).
+        
+        This method:
+        1. Clips extreme values to prevent outliers from dominating
+        2. Normalizes price-derived features to [-1, 1] or [0, 1] ranges
+        3. Handles inf/nan values
+        """
+        df = df.copy()
+        
+        # Features that should be in [0, 100] range (oscillators)
+        oscillator_cols = ['rsi', 'rsi_7', 'stoch_k', 'stoch_d', 'mfi', 'adx']
+        for col in oscillator_cols:
+            if col in df.columns:
+                df[col] = df[col].clip(0, 100)
+        
+        # Features that should be in [-100, 100] range
+        bounded_cols = ['williams_r', 'cci']
+        for col in bounded_cols:
+            if col in df.columns:
+                if col == 'williams_r':
+                    df[col] = df[col].clip(-100, 0)
+                elif col == 'cci':
+                    df[col] = df[col].clip(-200, 200)
+        
+        # Percentage features should be clipped
+        pct_cols = [c for c in df.columns if 'pct_change' in c or 'roc_' in c]
+        for col in pct_cols:
+            if col in df.columns:
+                df[col] = df[col].clip(-0.5, 0.5)  # ±50% max
+        
+        # Normalize volume ratio (often spikes)
+        if 'volume_ratio' in df.columns:
+            df['volume_ratio'] = df['volume_ratio'].clip(0, 5)
+        
+        # Z-scores should be bounded
+        zscore_cols = [c for c in df.columns if 'zscore' in c]
+        for col in zscore_cols:
+            if col in df.columns:
+                df[col] = df[col].clip(-4, 4)
+        
+        # Handle inf/nan
+        df = df.replace([np.inf, -np.inf], np.nan)
+        
+        # Log transform skewed features (volatility, ATR)
+        # This helps with the long-tail distribution
+        if 'atr' in df.columns:
+            atr_mean = df['atr'].mean()
+            if atr_mean > 0:
+                df['atr_log'] = np.log1p(df['atr'] / atr_mean)
+        
+        for col in ['volatility_5', 'volatility_10', 'volatility_20']:
+            if col in df.columns:
+                col_mean = df[col].mean()
+                if col_mean > 0:
+                    df[f'{col}_log'] = np.log1p(df[col] / col_mean)
+        
+        return df
 
     def _ensure_text_sentiment(
         self, df: pd.DataFrame, text_col: str
@@ -486,7 +859,7 @@ class FeatureEngineering:
         include_all: bool = True,
         *,
         apply_candle_smoothing: bool = True,
-        median_window: int | None = None,
+        median_window: Optional[int] = None,
     ) -> pd.DataFrame:
         """Create all features."""
         logger.info("Starting feature engineering...")
@@ -529,6 +902,24 @@ class FeatureEngineering:
             df = self.add_time_features(df)
             df = self.add_lag_features(df)
             df = self.add_rolling_features(df)
+            
+            # Enhanced features (2025 improvements)
+            # Market regime detection
+            df = self.add_regime_features(df)
+            # Momentum divergences (classic patterns)
+            df = self.add_momentum_divergence_features(df)
+            # Intermarket correlations (if external data available)
+            correlates = self.config.get("intermarket_data")
+            if correlates:
+                df = self.add_intermarket_features(df, correlates)
+            else:
+                # Add placeholder features for consistent model architecture
+                df = self.add_intermarket_features(df, None)
+            
+            # Normalize features (2025 Best Practice)
+            # Prevents scale issues and clips extreme values
+            if self.config.get("normalize_features", True):
+                df = self.normalize_features(df)
 
         # Restore raw close (labels should be based on raw close, not smoothed close).
         if close_raw is not None:

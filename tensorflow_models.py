@@ -9,6 +9,13 @@ Models:
 - TFTemporalFusionTransformer: State-of-the-art for multi-feature forecasting
 - TFTCNPredictor: Temporal Convolutional Network (faster than LSTM)
 - TFEnsemblePredictor: Ensemble of multiple models
+
+M1 Metal Optimizations:
+- All models support mixed precision (float16 compute, float32 output)
+- Prefer TCN over LSTM (parallelizable, better Metal utilization)
+- Use BatchNormalization over LayerNormalization where possible (faster on Metal)
+- Avoid recurrent_dropout > 0.2 on Metal (can cause slowdowns)
+- Use jit_compile=True in model.compile() for XLA acceleration
 """
 
 import tensorflow as tf
@@ -17,10 +24,35 @@ from tensorflow.keras import layers, Model, regularizers
 from tensorflow.keras.saving import register_keras_serializable
 import numpy as np
 from typing import List, Optional
+import platform
+
+# =============================================================================
+# M1 Metal Optimization Utilities
+# =============================================================================
+
+def is_apple_silicon() -> bool:
+    """Check if running on Apple Silicon."""
+    return platform.system() == "Darwin" and platform.machine() == "arm64"
+
+def get_compute_dtype():
+    """Get optimal compute dtype for current hardware."""
+    # On M1 Metal with mixed precision, compute in float16 but keep outputs float32
+    policy = tf.keras.mixed_precision.global_policy()
+    return policy.compute_dtype if policy.compute_dtype else "float32"
+
+# M1 Metal best practices:
+# 1. Avoid excessive recurrent_dropout (can slow down Metal GPU)
+# 2. Prefer Conv1D (TCN) over LSTM when possible (better parallelization)
+# 3. Use batch sizes of 64-256 (optimal for Metal unified memory)
+# 4. Use jit_compile=True for XLA optimization
 
 # Default regularization strength for overfitting prevention
 DEFAULT_L2_REG = 0.001
-DEFAULT_RECURRENT_DROPOUT = 0.15
+# M1 Metal: Keep recurrent_dropout low (≤0.15) to avoid GPU slowdowns
+DEFAULT_RECURRENT_DROPOUT = 0.1 if is_apple_silicon() else 0.15
+
+# M1 Metal optimal batch sizes (for unified memory architecture)
+M1_OPTIMAL_BATCH_SIZES = [64, 128, 256]  # Powers of 2 work best
 
 
 # =============================================================================
@@ -1175,8 +1207,21 @@ def create_tensorflow_model(config: dict) -> Model:
     
     Returns:
         Configured TensorFlow model
+    
+    M1 Metal Recommendations:
+        - Use 'tcn' for fastest training (parallelizable convolutions)
+        - Use 'tft' for best accuracy with interpretability
+        - Avoid deep LSTM (>3 layers) on Metal
+        - Set jit_compile=True when compiling model
     """
     model_type = config.get('type', 'lstm').lower()
+    
+    # M1 Metal: Warn if using suboptimal model type
+    if is_apple_silicon() and model_type in ['lstm', 'stock_predictor']:
+        import logging
+        logging.getLogger(__name__).info(
+            "M1 Metal tip: Consider 'tcn' for 2-3x faster training than LSTM"
+        )
     
     # Common parameters for all models
     common_params = {

@@ -223,14 +223,14 @@ def compile_model(
     # Loss weights
     loss_weights = config.get('unified_head_loss_weights', DEFAULT_CONFIG['unified_head_loss_weights'])
     
-    # Compile
+    # Compile - Use Huber for risk to handle small values better than MSE
     model.compile(
         optimizer=optimizer,
         loss={
             'price': keras.losses.Huber(delta=1.0),
             'trend': keras.losses.Huber(delta=0.5),
             'direction': keras.losses.BinaryCrossentropy(label_smoothing=0.05),
-            'risk': keras.losses.MeanSquaredError(),
+            'risk': keras.losses.Huber(delta=0.01),  # Use Huber for stability with small values
             'state_logits': keras.losses.CategoricalCrossentropy(label_smoothing=0.05),
         },
         loss_weights=loss_weights,

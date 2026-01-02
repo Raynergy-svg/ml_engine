@@ -63,6 +63,11 @@ data:
 # Longer sequences = more memory + slower training
 sequence_length: 60
 
+# ----- DIRECTION LABELING -----
+# H4 Strategy: Look further ahead for cleaner signals
+direction_lookahead: 12  # Look 12 bars ahead (2 days on H4, 12 hours on H1)
+direction_threshold: 0.002  # Min 0.2% move to count as directional (filters noise)
+
 # ----- MODEL CONFIGURATION -----
 model:
   # TCN is 2-3x FASTER than TFT/LSTM on M1 with similar accuracy
@@ -103,8 +108,8 @@ optimizer:
   # Use native AdamW (not legacy) - better M1 Metal support
   type: adamw
   
-  # REDUCED: From 0.001 to 0.0005 for more stable convergence
-  learning_rate: 0.0005
+  # AUTO-TUNED: Best from hyperparameter search (52.34% accuracy)
+  learning_rate: 0.0001
   
   # INCREASED: From 0.001 to 0.01 for stronger regularization
   weight_decay: 0.01
@@ -120,8 +125,8 @@ optimizer:
 training:
   epochs: 200
   
-  # INCREASED: From 20 to 30 for more patience
-  early_stopping_patience: 30
+  # AUTO-TUNED: Best from hyperparameter search (52.34% accuracy)
+  early_stopping_patience: 15
   
   # NEW: Don't stop before this epoch (let model warm up)
   min_epochs: 30
@@ -136,10 +141,10 @@ training:
   batch_progress_every: 50
 
 # ----- BATCH SIZE (CRITICAL FOR M1 PERFORMANCE) -----
-# INCREASED: From 32 to 128 for better GPU utilization
+# AUTO-TUNED: Best from hyperparameter search (52.34% accuracy)
 # M1 Pro/Max: Use 128-256
 # M1 base: Use 64-128
-batch_size: 128
+batch_size: 64
 
 # ----- LEARNING RATE SCHEDULE -----
 scheduler:
@@ -153,14 +158,13 @@ loss_type: huber
 huber_delta: 1.0
 
 # ----- MULTI-TASK HEAD LOSS WEIGHTS -----
-# REBALANCED: Direction weight reduced from 20 to 5
-# This prevents direction head from dominating training
+# INCREASED: Direction weight to force the model to learn it
 unified_head_loss_weights:
   price: 1.0       # Primary target
   trend: 0.5       # Secondary
-  direction: 5.0   # REDUCED from 20.0 - was causing training instability
+  direction: 15.0  # INCREASED from 5.0 - force direction learning
   risk: 2.0        # Risk prediction
-  state_logits: 3.0  # REDUCED from 7.0 - renamed from 'state'
+  state_logits: 3.0  # renamed from 'state'
 
 # ----- FOCAL LOSS FOR DIRECTION -----
 # Auto-tune based on class imbalance
@@ -244,7 +248,7 @@ fx:
 # ----- BUDDY CONFIGURATION -----
 buddy:
   head_hidden: 64
-  head_layers: 2
+  head_layers: 3  # INCREASED from 2 for TCN (more layers = larger receptive field)
   head_dropout: 0.2  # INCREASED from 0.1
   dense_hidden: 128
   dense_dropout: 0.3  # INCREASED from 0.2
@@ -254,32 +258,78 @@ buddy:
     tier2_horizon_candles: 60
     seq_len: 60  # Reduced from 50 to match sequence_length
     epochs: 100
-    batch_size: 128  # Match main batch_size
-    lr: 0.0005      # Match main learning_rate
-    patience: 15
-    es_monitor: val_loss  # Changed from direction
-    combined_w_dir: 0.6   # Reduced weight on direction
-    combined_w_conf: 0.4   # Increased weight on confidence
+    batch_size: 64  # AUTO-TUNED: Best from hyperparameter search
+    lr: 0.0001      # AUTO-TUNED: Best from hyperparameter search
+    patience: 15    # AUTO-TUNED: Best from hyperparameter search
+    es_monitor: combined  # CHANGED: Optimize for combined score (direction + confidence)
+    combined_w_dir: 0.5   # BALANCED - both matter
+    combined_w_conf: 0.5  # BALANCED - confidence is critical for risk management
     steps_per_execution: 10  # Reduced for stability
-    shared_encoder: true
+    shared_encoder: false  # Set to false when using model.type: tcn
     fit_verbose: 2
+    # M1 METAL CRITICAL SETTINGS
+    mixed_precision: true   # 1.5-2x speedup on M1
+    jit_compile: false      # Keep false for stability
+    cache_val: true         # Cache validation data in memory
   
-  stop_loss_pips: 20.0
-  take_profit_pips: 40.0
-  tier2_horizon_candles: 288
+  # H4 Strategy: Wider stops for larger timeframe moves
+  # SL=30, TP=60 = 2:1 RR, need 33.3% win rate to break even
+  stop_loss_pips: 30.0   # Wider stop for H4 (reduced noise)
+  take_profit_pips: 60.0 # 2:1 RR maintained
+  tier2_horizon_candles: 30  # 30 H4 candles = 5 days (enough time for TP/SL)
   tier2_spread_fallback_pips: 2.0
   tier2_tie_break: "sl"
   risk_per_trade_pct: 0.01  # Conservative
   
   tier2:
     enabled: true
-    p_win_threshold: 0.55   # LOWERED from 0.60
+    # STRICT GATING - only trade high-confidence setups
+    p_win_threshold: 0.45   # Accept trades with 45%+ calibrated win probability
     use_model_confidence_for_gate: true
     remove_confidence_gate: false
-    model_conf_threshold: 0.60   # LOWERED from 0.70
-    require_both: false
-    kelly_fraction: 0.25   # REDUCED from 0.50 - more conservative
+    model_conf_threshold: 0.55   # Model must be 55%+ confident
+    require_both: true    # CHANGED: Require BOTH conditions (stricter)
+    kelly_fraction: 0.15   # REDUCED - more conservative sizing
     max_risk_per_trade_pct: 0.01
+    force_temperature_scaling: true  # Force-enable temperature scaling
+    
+    # NEW: Regime filters (only trade in favorable conditions)
+    require_trending: true     # Only trade when ADX > 25
+    min_atr_percentile: 0.3    # Avoid low-volatility periods
+
+  # ----- TRIPLE BARRIER LABELING -----
+  # Enhanced labeling based on actual trade outcomes (Lopez de Prado method)
+  triple_barrier:
+    enabled: true
+    use_for_direction: true      # Use triple barrier outcomes for direction labels
+    exclude_timeouts: false      # Keep timeout samples but downweight them
+    timeout_weight: 0.3          # Weight for timeout samples (unclear signal)
+    use_best_direction: true     # At each point, pick direction with best outcome
+  
+  # ----- META-LABELING -----
+  # Secondary model that predicts when to trust primary model's signals
+  # Key insight: Don't try to predict direction better, learn WHEN to trade
+  meta_labeling:
+    enabled: true
+    n_estimators: 200
+    max_depth: 4
+    learning_rate: 0.1
+    threshold: 0.55              # Only trade when meta-confidence >= threshold
+
+# ----- XGBOOST CONFIGURATION -----
+# Alternative model type: gradient boosting often outperforms DL on tabular data
+xgboost:
+  enabled: true
+  n_estimators: 500
+  max_depth: 6
+  learning_rate: 0.05
+  min_child_weight: 3
+  gamma: 0.1
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0.1    # L1 regularization
+  reg_lambda: 1.0   # L2 regularization
+  early_stopping_rounds: 50
 
 # ----- MEMORY MONITORING -----
 monitoring:

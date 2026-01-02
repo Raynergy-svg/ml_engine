@@ -91,7 +91,7 @@ model.compile(
         'price': tf.keras.losses.Huber(delta=1.0),
         'trend': tf.keras.losses.Huber(delta=0.5),
         'direction': tf.keras.losses.BinaryCrossentropy(label_smoothing=0.05),
-        'risk': tf.keras.losses.MeanSquaredError(),
+        'risk': tf.keras.losses.Huber(delta=0.01),  # Huber for stability with scaled values
         'state_logits': tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.05),
     },
     loss_weights={'price': 1.0, 'trend': 0.5, 'direction': 5.0, 'risk': 2.0, 'state_logits': 3.0},
