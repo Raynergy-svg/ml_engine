@@ -2,7 +2,7 @@
 
 ## ⚠️ **WARNING: DISCLAIMER**
 
-**WARNING: This is experimental code. Not financial advice. Trading Forex involves substantial risk of loss. Use only money you can afford to lose. Test on demo first. I am not responsible for any losses.**
+**WARNING: This is experimental code. Not financial advice. Trading Forex involves substantial risk of loss. Use only money you can afford to lose. Test on demo first. I am not responsible for any outcomes.**
 
 **"It works for me. Might work for you. Probably won't make you rich. But it might teach you something."**
 
@@ -10,7 +10,14 @@
 
 ## What Is This?
 
-Python-based ML engine with TCN/Transformer + XGBoost + RandomForest + Ridge modular ensemble (separate roles for direction, momentum, risk, confidence), gated decision logic, daily pair scanning, and end-to-end Oanda integration.
+A Python-based H1 modular ensemble Forex trading bot. The system employs specialized machine learning models for:
+
+- **Direction**: TCN/Transformer network to predict movement.
+- **Momentum**: XGBoost for strength measurement.
+- **Risk/Drawdown**: RandomForest.
+- **Confidence**: Ridge regression.
+
+It uses gated decision logic to ensure all components align before trades are made. Features include daily instrument scanning and adaptive retraining for individual Forex pairs. The bot integrates with Oanda for end-to-end trade execution.
 
 ---
 
@@ -48,12 +55,24 @@ Python-based ML engine with TCN/Transformer + XGBoost + RandomForest + Ridge mod
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Usage
 
-### Train the Model
+### Train the Models
 
 ```bash
-python main.py train-buddy --csv path/to/market_data.csv
+python main.py buddy train
+```
+
+### Scan for Pairs
+
+```bash
+python main.py buddy scan
+```
+
+### Check Bot Status
+
+```bash
+python main.py buddy status
 ```
 
 ### Run the Bot
@@ -62,21 +81,25 @@ python main.py train-buddy --csv path/to/market_data.csv
 python main.py buddy --config config_tuned.yaml
 ```
 
-### Configuration
+---
 
-Edit `config_tuned.yaml` to customize:
-- Trading pairs
-- Risk parameters
-- Model settings
-- Oanda API credentials
+## 🔧 Configuration
+
+The provided `config_tuned.yaml` file is the central configuration for:
+- **Trading Pairs**: Define which Forex pairs to trade.
+- **Risk Parameters**: Set risk levels for trades.
+- **Model Settings**: Adjust H1-specific tuning parameters.
+- **Oanda API Credentials**: Add your account details here.
+
+Customize this file to optimize the bot for your needs. Each section is well-commented for clarity.
 
 ---
 
 ## 📚 Learn More
 
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development guidelines
-- **[CONFIDENCE_SYSTEM_DOCUMENTATION.md](CONFIDENCE_SYSTEM_DOCUMENTATION.md)** - How the confidence system works
-- **[FX_TIER1_GUARDRAILS_PLAN.md](FX_TIER1_GUARDRAILS_PLAN.md)** - Risk management details
+Useful documentation to get started or delve deeper:
+- **[CONFIDENCE_SYSTEM_DOCUMENTATION.md](CONFIDENCE_SYSTEM_DOCUMENTATION.md)** - Learn how direction, momentum, and confidence systems interact.
+- **[risk_management/](risk_management)** - Risk and drawdown handling mechanisms.
 
 ---
 
