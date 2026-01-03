@@ -251,3 +251,4 @@ def run_unified_chat(config_path: str, *, metrics_path: Optional[str] = None) ->
             print(f"Assistant: latest val -> {_format_latest_val(latest_val)}")
 
         _print_insights(summary)
+# — Raynergy-svg —

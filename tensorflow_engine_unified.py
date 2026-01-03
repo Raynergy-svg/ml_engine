@@ -891,3 +891,4 @@ def is_pytorch_checkpoint(path: str) -> bool:
     """
     path_lower = str(path).lower()
     return path_lower.endswith('.pth') or path_lower.endswith('.pt')
+# — Raynergy-svg —

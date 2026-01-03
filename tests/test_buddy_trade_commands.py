@@ -126,3 +126,4 @@ def test_manual_trade_close_dry_run(capsys):
     assert "dry-run" in out.lower()
     assert "close" in out.lower()
     assert ctx.oanda_client.closes == []
+# — Raynergy-svg —

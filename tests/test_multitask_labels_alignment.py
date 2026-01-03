@@ -31,3 +31,4 @@ def test_direction_uses_horizon_move_target_shift():
     assert targets.direction.shape == (n,)
     assert np.allclose(targets.trend, expected_return.astype(np.float32))
     assert np.array_equal(targets.direction, expected_dir)
+# — Raynergy-svg —

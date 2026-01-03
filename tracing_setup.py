@@ -194,3 +194,4 @@ def gpu_probe_attributes() -> Dict[str, Any]:
     except Exception:
         pass
     return attrs
+# — Raynergy-svg —

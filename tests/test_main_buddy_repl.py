@@ -40,3 +40,4 @@ def test_launch_buddy_repl_calls_unified_talk(monkeypatch):
     assert called['kwargs'].get('oanda') is True
     assert hasattr(called['kwargs']['oanda_settings'], 'instrument')
     assert called['kwargs'].get('assistant_name') == 'Buddy'
+# — Raynergy-svg —

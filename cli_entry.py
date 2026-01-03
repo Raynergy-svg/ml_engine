@@ -15,3 +15,4 @@ def main() -> None:
     script = repo_root / "main.py"
     # Execute the script as __main__ so its top-level CLI logic runs unchanged.
     runpy.run_path(str(script), run_name="__main__")
+# — Raynergy-svg —

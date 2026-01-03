@@ -37,3 +37,4 @@ class TestCheckpointSync(unittest.TestCase):
             picked = select_latest_checkpoint(model_dir)
             self.assertIsNotNone(picked)
             self.assertEqual(picked.name, unified_new.name)
+# — Raynergy-svg —

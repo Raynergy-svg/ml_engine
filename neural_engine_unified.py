@@ -245,3 +245,4 @@ class UnifiedNeuralEngine:
             "risk": risk,
             "state_probs": state_probs,
         }
+# — Raynergy-svg —

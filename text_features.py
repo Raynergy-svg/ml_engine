@@ -258,3 +258,4 @@ def hashed_ngram_features(
     joined = " ".join([t for t in texts if t])
     tokens = _tokenize(joined)
     return _hashed_ngrams(tokens=tokens, dim=dim, min_n=min_n, max_n=max_n)
+# — Raynergy-svg —

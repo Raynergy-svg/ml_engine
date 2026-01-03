@@ -1868,3 +1868,4 @@ def run_unified_talk(
         oanda=oanda,
     )
     _run_repl(ctx, period=period, interval=interval)
+# — Raynergy-svg —

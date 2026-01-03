@@ -370,3 +370,4 @@ def create_conservative_risk_manager() -> ConfidenceBasedRiskManager:
         min_take_profit_pips=10.0
     )
     return ConfidenceBasedRiskManager(config)
+# — Raynergy-svg —

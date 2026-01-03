@@ -878,3 +878,4 @@ class EnhancedMLEngine:
         self.start_epoch = checkpoint.get('start_epoch', 0)
         
         logger.info(f"Model loaded from {load_path}")
+# — Raynergy-svg —
