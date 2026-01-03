@@ -243,6 +243,36 @@ buddy predict -i [TOP_PAIR_3] -g H1 -v
 - Focus on consistent top features
 - Remove very low importance features
 
+### Model promotion decision
+- Not recommended when improvement < 1%
+- Modular ensemble vs single model requires separate evaluation
+- Marginal gains (0.2%) don't justify architecture switch
+- Wait for > 2% improvement before promoting
+
+### Gate issues (momentum/risk blocking trades)
+- Momentum gate too restrictive: `buddy test --candles 200` shows < 5% pass rate
+- Review momentum threshold if too many signals blocked
+- Risk gate streak failures: Check `streak_risk` in predict output
+- Normal for risk gates to block 10-20% of trades
+
+### Import/module errors
+- `OandaPracticeTrader` import fails: Check conda environment is active
+- Run: `conda activate tf-metal` before using buddy
+- Missing dependencies: `pip install -r requirements.txt`
+- Environment issues: `buddy --version` should show version
+
+### Training issues
+- NaN loss: Check data has no missing values, run `buddy test --candles 200`
+- Memory errors on M1: Reduce batch size in config (try 64 or 32)
+- Slow training: Verify Metal GPU detected in training output
+- Early stopping too aggressive: Increase patience in config
+
+### Data quality issues
+- OANDA connection fails: Check API credentials in environment
+- Insufficient candles: Weekend/holiday gaps are normal
+- Stale data: Use `--oanda-live` flag for fresh data
+- Verify data: Check downloaded CSV in `market_data/` folder
+
 ---
 
 ## Notes Section

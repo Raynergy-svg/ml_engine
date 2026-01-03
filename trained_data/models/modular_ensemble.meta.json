@@ -15,14 +15,14 @@
       "purpose": "direction_prediction",
       "output": "binary (0=short, 1=long)",
       "metrics": {
-        "train_accuracy": 0.6902952790260315,
-        "val_accuracy": 0.5432098765432098,
-        "val_balanced_accuracy": 0.5394563138635448,
-        "val_up_accuracy": 0.7396768402154399,
-        "val_down_accuracy": 0.33923578751164957,
-        "epochs_trained": 10,
-        "n_train_samples": 8027,
-        "n_val_samples": 2187
+        "train_accuracy": 0.7094841599464417,
+        "val_accuracy": 0.4889287851585877,
+        "val_balanced_accuracy": 0.4888314342605019,
+        "val_up_accuracy": 0.48951781970649894,
+        "val_down_accuracy": 0.4881450488145049,
+        "epochs_trained": 58,
+        "n_train_samples": 6843,
+        "n_val_samples": 1671
       },
       "features": [
         "returns_1",
@@ -51,11 +51,11 @@
         "lower_low_ratio"
       ],
       "label_stats": {
-        "n_clear_up": 6115,
-        "n_clear_down": 5252,
-        "n_unclear": 8409,
-        "clear_rate": 0.5747876213592233,
-        "up_rate": 0.5379607636139703,
+        "n_clear_up": 4915,
+        "n_clear_down": 4414,
+        "n_unclear": 10447,
+        "clear_rate": 0.4717334142394822,
+        "up_rate": 0.5268517525994212,
         "threshold": 0.003,
         "lookahead": 24
       }
@@ -65,8 +65,8 @@
       "purpose": "momentum_analysis",
       "output": "momentum_score (0-1), acceleration (bool)",
       "metrics": {
-        "momentum_mae": 0.036381784826517105,
-        "acceleration_accuracy": 0.8211176635776467
+        "momentum_mae": 0.03128773346543312,
+        "acceleration_accuracy": 0.8727885425442291
       },
       "features": [
         "returns_1",
@@ -95,8 +95,9 @@
       "purpose": "risk_assessment",
       "output": "expected_drawdown_pips, streak_prob",
       "metrics": {
-        "drawdown_mae_pips": 0.0010886448884974012,
-        "streak_prob_mae": 0.13406458834282264
+        "drawdown_mae_pct": 0.0007597317425571145,
+        "drawdown_mae_bps": 7.597317425571145,
+        "streak_prob_mae": 0.11854013200234535
       },
       "features": [
         "atr_pct_5",
@@ -124,8 +125,8 @@
       "purpose": "confidence_scoring",
       "output": "confidence (0-100)",
       "metrics": {
-        "confidence_mae": 6.0886430740356445,
-        "r2_score": 0.4117826819419861
+        "confidence_mae": 3.2262420654296875,
+        "r2_score": 0.349972128868103
       },
       "features": [
         "atr_pct_10",
@@ -158,5 +159,5 @@
     "test_frac": 0.1,
     "total_samples": 19800
   },
-  "trained_at": "2026-01-03T01:30:16.063674"
+  "trained_at": "2026-01-03T11:07:27.671845"
 }

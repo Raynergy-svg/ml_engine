@@ -45,12 +45,12 @@ class TrainerConfig:
     tcn_kernel_size: int = 3
     tcn_dropout: float = 0.3
     
-    # Transformer specific (for direction prediction)
-    transformer_d_model: int = 32  # Model dimension
-    transformer_num_heads: int = 4  # Number of attention heads
-    transformer_num_layers: int = 2  # Number of encoder layers
-    transformer_dff: int = 64  # Feedforward network dimension
-    transformer_dropout: float = 0.2  # Dropout rate
+    # Transformer specific (for direction prediction) - reduced capacity to prevent overfitting
+    transformer_d_model: int = 16  # Model dimension (reduced from 32)
+    transformer_num_heads: int = 2  # Number of attention heads (reduced from 4)
+    transformer_num_layers: int = 1  # Number of encoder layers (reduced from 2)
+    transformer_dff: int = 32  # Feedforward network dimension (reduced from 64)
+    transformer_dropout: float = 0.4  # Dropout rate (increased to reduce overfitting)
     
     # XGBoost specific
     xgb_n_estimators: int = 200
@@ -207,21 +207,21 @@ class TCNTrainer(BaseTrainer):
         # Build model
         self.model = self._build_model((seq_len, X_train.shape[-1]))
         
-        # Callbacks - aggressive early stopping to prevent overfitting
+        # Callbacks - use config patience values
         callbacks = [
             # Primary: Stop when validation loss stops improving
             keras.callbacks.EarlyStopping(
                 monitor='val_loss',
-                patience=8,
+                patience=self.config.patience,
                 mode='min',
                 restore_best_weights=True,
                 verbose=1,
             ),
-            # Aggressive LR reduction
+            # LR reduction (less aggressive: factor=0.5, patience=1/4 of early stopping)
             keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss',
-                factor=0.3,
-                patience=4,
+                factor=0.5,
+                patience=max(4, self.config.patience // 4),
                 min_lr=1e-6,
                 verbose=1,
             ),
@@ -352,17 +352,27 @@ class TransformerDirectionTrainer(BaseTrainer):
         self.transformer_dropout = getattr(config, 'transformer_dropout', 0.2) if config else 0.2
     
     def _build_model(self, input_shape: Tuple[int, int]) -> Any:
-        """Build Transformer model architecture."""
+        """Build Transformer model architecture with strong regularization."""
         import tensorflow as tf
         from tensorflow import keras
         
         seq_len, n_features = input_shape
         
+        # L2 regularization to prevent overfitting
+        l2_reg = keras.regularizers.l2(0.01)
+        
         # Input
         inp = keras.Input(shape=(seq_len, n_features), name="features")
         
-        # Project features to d_model dimension
-        x = keras.layers.Dense(self.transformer_d_model, name='input_projection')(inp)
+        # Add input noise for regularization
+        x = keras.layers.GaussianNoise(0.1)(inp)
+        
+        # Project features to d_model dimension (with L2)
+        x = keras.layers.Dense(
+            self.transformer_d_model, 
+            kernel_regularizer=l2_reg,
+            name='input_projection'
+        )(x)
         
         # Add positional encoding
         x = self._add_positional_encoding(x, seq_len, self.transformer_d_model)
@@ -375,22 +385,24 @@ class TransformerDirectionTrainer(BaseTrainer):
                 self.transformer_num_heads,
                 self.transformer_dff,
                 self.transformer_dropout,
+                l2_reg,
                 name_prefix=f'transformer_{i}'
             )
         
         # Global pooling and output
         x = keras.layers.GlobalAveragePooling1D()(x)
-        x = keras.layers.Dense(32, activation='relu')(x)
-        x = keras.layers.Dropout(self.transformer_dropout)(x)
+        x = keras.layers.Dense(16, activation='relu', kernel_regularizer=l2_reg)(x)  # Reduced from 32
+        x = keras.layers.Dropout(0.5)(x)  # Higher dropout before output
         
         # Binary direction output
         direction = keras.layers.Dense(1, activation='sigmoid', name='direction', dtype='float32')(x)
         
         model = keras.Model(inputs=inp, outputs=direction, name='transformer_direction')
         
+        # Use label smoothing to prevent overconfident predictions
         model.compile(
             optimizer=keras.optimizers.Adam(learning_rate=self.config.learning_rate),
-            loss='binary_crossentropy',
+            loss=keras.losses.BinaryCrossentropy(label_smoothing=0.1),
             metrics=['accuracy'],
         )
         
@@ -418,7 +430,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         return x + tf.constant(pos_encoding)
     
     def _transformer_encoder_layer(self, x, d_model: int, num_heads: int, dff: int, 
-                                    dropout: float, name_prefix: str):
+                                    dropout: float, l2_reg, name_prefix: str):
         """Single transformer encoder layer with multi-head attention and feedforward."""
         from tensorflow import keras
         
@@ -431,9 +443,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         attn_output = keras.layers.Dropout(dropout)(attn_output)
         x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'{name_prefix}_ln1')(x + attn_output)
         
-        # Feedforward network
-        ffn = keras.layers.Dense(dff, activation='relu', name=f'{name_prefix}_ffn1')(x)
-        ffn = keras.layers.Dense(d_model, name=f'{name_prefix}_ffn2')(ffn)
+        # Feedforward network with L2 regularization
+        ffn = keras.layers.Dense(dff, activation='relu', kernel_regularizer=l2_reg, name=f'{name_prefix}_ffn1')(x)
+        ffn = keras.layers.Dense(d_model, kernel_regularizer=l2_reg, name=f'{name_prefix}_ffn2')(ffn)
         ffn = keras.layers.Dropout(dropout)(ffn)
         x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'{name_prefix}_ln2')(x + ffn)
         
@@ -534,23 +546,23 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Print model summary
         self.model.summary(print_fn=logger.info)
         
-        # Callbacks - aggressive early stopping to prevent overfitting
+        # Callbacks - use config patience values
         # Key insight: val_loss is the most reliable metric for detecting overfitting
         # If val_loss increases while train_loss decreases, we're overfitting
         callbacks = [
             # Primary: Stop when validation loss stops improving (best for overfitting)
             keras.callbacks.EarlyStopping(
                 monitor='val_loss',
-                patience=8,  # Stop after 8 epochs of no improvement
+                patience=self.config.patience,
                 mode='min',
                 restore_best_weights=True,  # Restore weights from best epoch
                 verbose=1,
             ),
-            # Aggressive LR reduction to help escape local minima
+            # LR reduction (less aggressive: factor=0.5, patience=1/4 of early stopping)
             keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss',
-                factor=0.3,  # Reduce by 70% (more aggressive than 0.5)
-                patience=4,  # Reduce LR after just 4 epochs of stagnation
+                factor=0.5,
+                patience=max(4, self.config.patience // 4),
                 min_lr=1e-6,
                 verbose=1,
             ),
@@ -852,19 +864,19 @@ class TransformerRegimeTrainer(BaseTrainer):
         self.model = self._build_model((seq_len, self.n_features))
         self.model.summary(print_fn=logger.info)
         
-        # Callbacks - aggressive early stopping
+        # Callbacks - use config patience values
         callbacks = [
             keras.callbacks.EarlyStopping(
                 monitor='val_loss',
-                patience=8,
+                patience=self.config.patience,
                 mode='min',
                 restore_best_weights=True,
                 verbose=1,
             ),
             keras.callbacks.ReduceLROnPlateau(
                 monitor='val_loss',
-                factor=0.3,
-                patience=4,
+                factor=0.5,
+                patience=max(4, self.config.patience // 4),
                 min_lr=1e-6,
                 verbose=1,
             ),
@@ -1255,12 +1267,16 @@ class RandomForestTrainer(BaseTrainer):
         drawdown_mae = float(np.mean(np.abs(drawdown_pred - y_val_drawdown)))
         streak_mae = float(np.mean(np.abs(streak_pred - y_val_streak)))
         
+        # Convert to basis points for meaningful display (0.001 = 10 bps)
+        drawdown_mae_bps = drawdown_mae * 10000
+        
         self.metrics = {
-            'drawdown_mae_pips': drawdown_mae,
+            'drawdown_mae_pct': drawdown_mae,  # Raw percentage (0-1)
+            'drawdown_mae_bps': drawdown_mae_bps,  # Basis points for display
             'streak_prob_mae': streak_mae,
         }
         
-        logger.info(f"RF trained: drawdown_mae={drawdown_mae:.2f} pips, streak_mae={streak_mae:.4f}")
+        logger.info(f"RF trained: drawdown_mae={drawdown_mae_bps:.1f} bps ({drawdown_mae*100:.3f}%), streak_mae={streak_mae:.4f}")
         return self.metrics
     
     def predict(self, X: np.ndarray) -> Dict[str, Any]:

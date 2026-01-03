@@ -2335,7 +2335,7 @@ def _train_buddy_impl(
             rf_trainer.save(str(model_dir / "rf_risk.pkl"))
             all_metrics['rf'] = rf_metrics
             
-            console.print(f"[green]✓ RF complete: drawdown_mae={rf_metrics['drawdown_mae_pips']:.2f} pips, streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
+            console.print(f"[green]✓ RF complete: drawdown_mae={rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps, streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
             
             # ============================================================
             # TRAIN RIDGE (Confidence Scorer)
@@ -2464,7 +2464,7 @@ def _train_buddy_impl(
                 bal_acc = dir_metrics.get('val_balanced_accuracy', dir_acc)
                 console.print(f"  • {direction_model_name} (Direction): val_accuracy = {dir_acc:.1%} (balanced: {bal_acc:.1%})")
             console.print(f"  • XGBoost (Momentum):  accel_accuracy = {xgb_metrics['acceleration_accuracy']:.1%}")
-            console.print(f"  • RF (Risk):           drawdown_mae = {rf_metrics['drawdown_mae_pips']:.1f} pips")
+            console.print(f"  • RF (Risk):           drawdown_mae = {rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps")
             console.print(f"  • Ridge (Confidence):  r2_score = {ridge_metrics['r2_score']:.3f}")
             console.print("")
             if use_regime:
