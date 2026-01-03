@@ -43,11 +43,8 @@ Python-based ML engine with TCN/Transformer + XGBoost + RandomForest + Ridge mod
     ```bash
     pip install -r requirements.txt
     ```
-
-4. **For M1 Mac users** (optional - GPU acceleration):
-    ```bash
-    pip install tensorflow-metal
-    ```
+    
+    *Note: On macOS (M1/M2), `tensorflow-metal` is automatically installed for GPU acceleration.*
 
 ---
 
