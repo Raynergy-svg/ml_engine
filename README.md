@@ -1,84 +1,83 @@
-# ML Engine Setup and Usage Guide
+# ML Engine - Forex Trading Bot
 
-Welcome to the **ML Engine** repository! This tool is designed to simplify training and testing of various machine learning models. Dive into the setup instructions and commands below to get started in your M1 Mac environment.
+## ⚠️ **WARNING: DISCLAIMER**
 
----
+**WARNING: This is experimental code. Not financial advice. Trading Forex involves substantial risk of loss. Use only money you can afford to lose. Test on demo first. I am not responsible for any losses.**
 
-## 🌟 Supported Models
-Our ML Engine supports the following models:
-
-1. **Temporal Convolutional Networks (TCN)**
-2. **XGBoost**
-3. **Gradient Boosting**
-4. **Ridge Regression**
-5. **Ensemble Techniques**
+**"It works for me. Might work for you. Probably won't make you rich. But it might teach you something."**
 
 ---
 
-## 🛠️ Setting Up the Environment (Optimized for M1 Mac using Conda)
+## What Is This?
+
+Python-based ML engine with TCN/Transformer + XGBoost + RandomForest + Ridge modular ensemble (separate roles for direction, momentum, risk, confidence), gated decision logic, daily pair scanning, and end-to-end Oanda integration.
+
+---
+
+## 🛠️ Installation
 
 ### Prerequisites
-- macOS with an Apple M1 chip (or later).
-- Conda installed. We recommend **Miniforge**, as it simplifies installation and supports TensorFlow-metal for Apple Silicon optimization.
+- Python 3.9 or later
+- Conda (recommended: **Miniforge** for M1 Mac)
 
 ### Steps
 
-1. **Install Miniforge**:
+1. **Clone the repository**:
     ```bash
-    curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh
-    bash Miniforge3-MacOSX-arm64.sh
-    source ~/miniforge3/bin/activate
+    git clone https://github.com/Raynergy-svg/ml_engine.git
+    cd ml_engine
     ```
 
-2. **Create a new Conda environment**:
+2. **Create a virtual environment**:
     ```bash
+    # Using Conda (recommended for M1 Mac):
     conda create -n ml_env python=3.9
     conda activate ml_env
+    
+    # Or using venv:
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
     ```
 
-3. **Install Required Packages**:
+3. **Install dependencies**:
     ```bash
-    pip install tensorflow tensorflow-metal xgboost scikit-learn
+    pip install -r requirements.txt
     ```
-
-4. **Verify TensorFlow-metal Integration**:
-    Run the following Python code to ensure `tensorflow-metal` is leveraging the GPU:
-    ```python
-    import tensorflow as tf
-    print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
-    ```
-    This should output at least one GPU device.
+    
+    *Note: On macOS (M1/M2), `tensorflow-metal` is automatically installed for GPU acceleration.*
 
 ---
 
-## ⚙️ Commands
+## 🚀 Getting Started
 
-### Training a Model
-To train a supported model, use the `buddy train` subcommand. Example:
-
-```bash
-buddy train --model TCN --data path/to/training_data.csv
-```
-
-Replace `TCN` with any of the other supported models (`XGBoost`, `GradientBoosting`, `RidgeRegression`, `Ensemble`).
-
-### Testing a Model
-To test a trained model, use the `buddy test` subcommand. Example:
+### Train the Model
 
 ```bash
-buddy test --model TCN --data path/to/testing_data.csv --model-path path/to/saved/model
+python main.py train-buddy --csv path/to/market_data.csv
 ```
 
-### Additional Commands
-- **Scan buddy compatibility**:
-    ```bash
-    buddy scan
-    ```
-- **Check buddy status**:
-    ```bash
-    buddy status
-    ```
+### Run the Bot
+
+```bash
+python main.py buddy --config config_tuned.yaml
+```
+
+### Configuration
+
+Edit `config_tuned.yaml` to customize:
+- Trading pairs
+- Risk parameters
+- Model settings
+- Oanda API credentials
 
 ---
 
-Stay productive and enjoy building intelligent models with ML Engine! 🚀
+## 📚 Learn More
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development guidelines
+- **[CONFIDENCE_SYSTEM_DOCUMENTATION.md](CONFIDENCE_SYSTEM_DOCUMENTATION.md)** - How the confidence system works
+- **[FX_TIER1_GUARDRAILS_PLAN.md](FX_TIER1_GUARDRAILS_PLAN.md)** - Risk management details
+
+---
+
+**Use at your own risk. Always test on demo accounts first.**
