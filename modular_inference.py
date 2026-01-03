@@ -1,16 +1,22 @@
 """
 Modular Ensemble Inference Pipeline.
 
-Combines predictions from 4 independent models using gated logic:
-1. TCN/Transformer gives direction (long/short)
-2. Ridge provides confidence score (0-100)
-3. XGBoost checks momentum (fresh or accelerating?)
-4. Random Forest assesses risk (expected drawdown)
+Supports TWO modes:
 
-Trade only if ALL gates pass:
+1. DIRECTION MODE (legacy):
+   - Transformer/TCN gives direction (long/short)
+   - Trade only if all gates pass
+
+2. REGIME MODE (new):
+   - Transformer classifies market regime (trend/chop/mean_revert)
+   - TREND: Let XGBoost/Ridge/RF decide direction via momentum
+   - CHOP: Skip trading entirely
+   - MEAN_REVERT: Fade 2-bar momentum
+   
+Gates (both modes):
 - Ridge confidence > 75
 - XGBoost momentum fresh OR accelerating
-- RF expected drawdown < stop loss
+- RF expected drawdown < threshold
 
 Position sized for 2% max risk.
 
@@ -71,22 +77,27 @@ class TradeSignal:
     size: float  # Position size (lots or units)
     confidence: float
     
+    # Regime results (new)
+    regime: Optional[str] = None  # 'trend', 'chop', 'mean_revert', or None
+    regime_confidence: float = 0.0
+    
     # Gate results
-    tcn_direction: Optional[int]
-    tcn_probability: float
-    ridge_confidence: float
-    xgb_momentum: float
-    xgb_acceleration: bool
-    rf_drawdown_pips: float
-    rf_streak_prob: float
+    tcn_direction: Optional[int] = None
+    tcn_probability: float = 0.5
+    ridge_confidence: float = 0.0
+    xgb_momentum: float = 0.0
+    xgb_acceleration: bool = False
+    rf_drawdown_pips: float = 0.0
+    rf_streak_prob: float = 0.0
     
     # Gate status
-    confidence_gate_passed: bool
-    momentum_gate_passed: bool
-    risk_gate_passed: bool
+    confidence_gate_passed: bool = False
+    momentum_gate_passed: bool = False
+    risk_gate_passed: bool = False
+    regime_gate_passed: bool = True  # True if not in CHOP regime
     
     # Rejection reason if no trade
-    reason: Optional[str]
+    reason: Optional[str] = None
 
 
 class ModularEnsembleInference:
@@ -95,6 +106,10 @@ class ModularEnsembleInference:
     
     Loads 4 independent models and combines their predictions using gated logic.
     No shared processing - each model sees its own feature subset.
+    
+    Supports two modes:
+    - DIRECTION MODE: Transformer/TCN predicts direction directly
+    - REGIME MODE: Transformer classifies regime, direction derived from momentum
     """
     
     def __init__(
@@ -105,33 +120,49 @@ class ModularEnsembleInference:
         self.model_dir = Path(model_dir)
         self.config = config or InferenceConfig()
         
-        self.tcn = None
+        self.tcn = None  # Direction model (legacy)
+        self.regime_model = None  # Regime classifier (new)
         self.xgb = None
         self.rf = None
         self.ridge = None
         
+        self.use_regime = False  # Will be set during load_models
         self._loaded = False
     
     def load_models(self) -> None:
         """Load all 4 models from disk."""
-        from modular_trainers import TCNTrainer, TransformerDirectionTrainer, XGBoostTrainer, RandomForestTrainer, RidgeTrainer
+        from modular_trainers import (
+            TCNTrainer, TransformerDirectionTrainer, TransformerRegimeTrainer,
+            XGBoostTrainer, RandomForestTrainer, RidgeTrainer
+        )
         
         logger.info("Loading modular ensemble models...")
         
-        # Direction model (try Transformer first, fall back to TCN)
+        # Check for regime model first (new mode)
+        regime_path = self.model_dir / "transformer_regime.keras"
         transformer_path = self.model_dir / "transformer_direction.keras"
         tcn_path = self.model_dir / "tcn_direction.keras"
         
-        if transformer_path.exists():
+        if regime_path.exists():
+            # REGIME MODE
+            self.regime_model = TransformerRegimeTrainer()
+            self.regime_model.load(str(regime_path))
+            self.use_regime = True
+            logger.info("✓ Transformer REGIME model loaded (3-class: trend/chop/mean_revert)")
+        elif transformer_path.exists():
+            # DIRECTION MODE (Transformer)
             self.tcn = TransformerDirectionTrainer()
             self.tcn.load(str(transformer_path))
+            self.use_regime = False
             logger.info("✓ Transformer direction model loaded")
         elif tcn_path.exists():
+            # DIRECTION MODE (TCN legacy)
             self.tcn = TCNTrainer()
             self.tcn.load(str(tcn_path))
+            self.use_regime = False
             logger.info("✓ TCN direction model loaded (legacy)")
         else:
-            logger.warning(f"Direction model not found at {transformer_path} or {tcn_path}")
+            logger.warning(f"No direction/regime model found at {regime_path}, {transformer_path}, or {tcn_path}")
         
         # XGBoost
         xgb_path = self.model_dir / "xgb_momentum.pkl"
@@ -289,6 +320,31 @@ class ModularEnsembleInference:
         
         return df
     
+    def _extract_regime_features(self, df: pd.DataFrame) -> np.ndarray:
+        """Extract features for regime classification model."""
+        # Features that describe market state (regime indicators)
+        regime_features = [
+            # Trend strength
+            'adx', 'trend_strength',
+            # Volatility state
+            'atr_pct_14', 'atr_pct_20', 'volatility_10', 'volatility_20',
+            # Mean reversion signals
+            'zscore_20', 'zscore_50', 'rsi', 'rsi_norm',
+            'bb_position_20', 'pct_rank_20', 'pct_rank_50',
+            # Momentum consistency
+            'returns_1', 'returns_5', 'returns_10', 'returns_20',
+            # Crossover state
+            'sma_cross_5_20', 'macd_cross',
+            # Volume context
+            'volume_ratio_10', 'volume_zscore',
+        ]
+        
+        fallback_patterns = ['adx', 'rsi', 'zscore', 'returns', 'volatility', 'atr_pct', 'pct_rank']
+        
+        # Use saved feature names from training if available
+        feature_names = getattr(self.regime_model, 'feature_names', None) if self.regime_model else None
+        return self._extract_features_by_names(df, feature_names, regime_features, fallback_patterns)
+    
     def _extract_tcn_features(self, df: pd.DataFrame) -> np.ndarray:
         """Extract features for direction model (TCN or Transformer) using saved feature names."""
         # NORMALIZED features for instrument-agnostic inference
@@ -399,10 +455,18 @@ class ModularEnsembleInference:
         equity: Optional[float] = None,
     ) -> TradeSignal:
         """
-        Run inference through all 4 models and apply gates.
+        Run inference through all models and apply gates.
+        
+        REGIME MODE:
+        - Transformer classifies regime (trend/chop/mean_revert)
+        - TREND: Direction from XGBoost momentum sign
+        - CHOP: Skip trading entirely
+        - MEAN_REVERT: Fade 2-bar momentum
+        
+        DIRECTION MODE (legacy):
+        - Transformer/TCN predicts direction directly
         
         IMPORTANT: Computes normalized features first for instrument-agnostic inference.
-        Models trained on GBP_USD will work on USD_JPY, EUR_USD, etc.
         
         Args:
             df: DataFrame with features (must have all required columns)
@@ -415,29 +479,45 @@ class ModularEnsembleInference:
             self.load_models()
         
         # FIRST: Compute normalized features for instrument-agnostic inference
-        # This is the key to making models work across different currency pairs
         if 'returns_1' not in df.columns:
             df = compute_normalized_features(df)
         
         # Initialize with defaults
+        regime = None
+        regime_confidence = 0.0
         tcn_direction = None
         tcn_probability = 0.5
         ridge_confidence = 0.0
         xgb_momentum = 0.0
         xgb_acceleration = False
         rf_drawdown_pips = 100.0
+        rf_drawdown_pct = 1.0
         rf_streak_prob = 1.0
         
-        # Get predictions from each model
-        try:
-            if self.tcn is not None:
-                tcn_features = self._extract_tcn_features(df)
-                tcn_pred = self.tcn.predict(tcn_features)
-                tcn_direction = tcn_pred['direction']
-                tcn_probability = tcn_pred['probability']
-        except Exception as e:
-            logger.warning(f"TCN prediction failed: {e}")
+        # === GET REGIME OR DIRECTION ===
+        if self.use_regime and self.regime_model is not None:
+            # REGIME MODE
+            try:
+                regime_features = self._extract_regime_features(df)
+                regime_pred = self.regime_model.predict(regime_features)
+                regime = regime_pred['regime_name']  # 'trend', 'chop', 'mean_revert'
+                regime_confidence = regime_pred['confidence']
+                logger.debug(f"Regime: {regime} (confidence={regime_confidence:.2f})")
+            except Exception as e:
+                logger.warning(f"Regime prediction failed: {e}")
+                regime = 'chop'  # Default to skip on error
+        else:
+            # DIRECTION MODE (legacy)
+            try:
+                if self.tcn is not None:
+                    tcn_features = self._extract_tcn_features(df)
+                    tcn_pred = self.tcn.predict(tcn_features)
+                    tcn_direction = tcn_pred['direction']
+                    tcn_probability = tcn_pred['probability']
+            except Exception as e:
+                logger.warning(f"TCN prediction failed: {e}")
         
+        # === GET SUPPORTING MODEL PREDICTIONS ===
         try:
             if self.ridge is not None:
                 ridge_features = self._extract_ridge_features(df)
@@ -449,12 +529,6 @@ class ModularEnsembleInference:
         try:
             if self.xgb is not None:
                 xgb_features = self._extract_xgb_features(df)
-                # DEBUG: Log feature stats on first prediction
-                if not hasattr(self, '_xgb_debug_logged'):
-                    logger.info(f"XGBoost features shape: {xgb_features.shape}")
-                    if len(xgb_features) > 0:
-                        logger.info(f"XGBoost feature stats - min:{xgb_features.min():.2f} max:{xgb_features.max():.2f} mean:{xgb_features.mean():.2f}")
-                    self._xgb_debug_logged = True
                 xgb_pred = self.xgb.predict(xgb_features)
                 xgb_momentum = xgb_pred['momentum']
                 xgb_acceleration = xgb_pred['acceleration']
@@ -465,66 +539,121 @@ class ModularEnsembleInference:
             if self.rf is not None:
                 rf_features = self._extract_rf_features(df)
                 rf_pred = self.rf.predict(rf_features)
-                # Use percentage-based drawdown (instrument-agnostic)
                 rf_drawdown_pct = rf_pred.get('expected_drawdown_pct', rf_pred.get('expected_drawdown_pips', 0) / 10000)
-                rf_drawdown_pips = rf_pred.get('expected_drawdown_pips', rf_drawdown_pct * 10000)  # For display
+                rf_drawdown_pips = rf_pred.get('expected_drawdown_pips', rf_drawdown_pct * 10000)
                 rf_streak_prob = rf_pred['streak_prob']
         except Exception as e:
             logger.warning(f"Random Forest prediction failed: {e}")
-            rf_drawdown_pct = 1.0  # Default to high risk on error
         
-        # Apply gates
+        # === APPLY GATES ===
         confidence_gate_passed = ridge_confidence >= self.config.min_confidence
-        
         momentum_fresh = xgb_momentum >= self.config.min_momentum
         momentum_gate_passed = momentum_fresh or xgb_acceleration
-        
-        # Use percentage-based risk gate (instrument-agnostic)
         risk_gate_passed = (
             rf_drawdown_pct <= self.config.max_drawdown_pct and
             rf_streak_prob <= self.config.max_streak_prob
         )
         
-        # Determine if we trade
-        all_gates_passed = (
-            tcn_direction is not None and
-            confidence_gate_passed and
-            momentum_gate_passed and
-            risk_gate_passed
-        )
+        # === DETERMINE DIRECTION AND TRADE DECISION ===
+        direction_str = None
+        regime_gate_passed = True
         
-        # Build rejection reason
+        if self.use_regime:
+            # REGIME-BASED DIRECTION LOGIC
+            if regime == 'chop':
+                # CHOP: Skip trading entirely
+                regime_gate_passed = False
+                direction_str = None
+            elif regime == 'trend':
+                # TREND: Direction from recent momentum sign
+                # Use 2-bar return to determine trend direction
+                if 'returns_2' in df.columns:
+                    recent_return = df['returns_2'].iloc[-1]
+                elif 'returns_1' in df.columns:
+                    recent_return = df['returns_1'].iloc[-1]
+                else:
+                    recent_return = 0
+                
+                # Follow the trend
+                if recent_return > 0:
+                    direction_str = 'long'
+                    tcn_direction = 1
+                else:
+                    direction_str = 'short'
+                    tcn_direction = 0
+                tcn_probability = regime_confidence
+            elif regime == 'mean_revert':
+                # MEAN REVERT: Fade 2-bar momentum
+                if 'returns_2' in df.columns:
+                    recent_return = df['returns_2'].iloc[-1]
+                elif 'returns_1' in df.columns:
+                    recent_return = df['returns_1'].iloc[-1]
+                else:
+                    recent_return = 0
+                
+                # Fade (opposite of recent move)
+                if recent_return > 0:
+                    direction_str = 'short'  # Fade the up move
+                    tcn_direction = 0
+                else:
+                    direction_str = 'long'  # Fade the down move
+                    tcn_direction = 1
+                tcn_probability = regime_confidence
+            
+            # All gates for regime mode
+            all_gates_passed = (
+                regime_gate_passed and
+                direction_str is not None and
+                confidence_gate_passed and
+                momentum_gate_passed and
+                risk_gate_passed
+            )
+        else:
+            # DIRECTION MODE (legacy)
+            all_gates_passed = (
+                tcn_direction is not None and
+                confidence_gate_passed and
+                momentum_gate_passed and
+                risk_gate_passed
+            )
+            if all_gates_passed and tcn_direction is not None:
+                direction_str = 'long' if tcn_direction == 1 else 'short'
+        
+        # === BUILD REJECTION REASON ===
         reason = None
         if not all_gates_passed:
             reasons = []
-            if tcn_direction is None:
-                reasons.append("no_direction")
+            if self.use_regime:
+                if not regime_gate_passed:
+                    reasons.append(f"regime=CHOP (skip)")
+                if direction_str is None and regime != 'chop':
+                    reasons.append("no_direction")
+            else:
+                if tcn_direction is None:
+                    reasons.append("no_direction")
             if not confidence_gate_passed:
                 reasons.append(f"low_confidence({ridge_confidence:.0f}<{self.config.min_confidence})")
             if not momentum_gate_passed:
                 reasons.append(f"dead_momentum({xgb_momentum:.2f})")
             if not risk_gate_passed:
                 if rf_drawdown_pct > self.config.max_drawdown_pct:
-                    reasons.append(f"high_drawdown({rf_drawdown_pct:.2%}>{self.config.max_drawdown_pct:.2%})")
+                    reasons.append(f"high_drawdown({rf_drawdown_pct:.2%})")
                 if rf_streak_prob > self.config.max_streak_prob:
-                    reasons.append(f"streak_risk({rf_streak_prob:.2f}>{self.config.max_streak_prob})")
+                    reasons.append(f"streak_risk({rf_streak_prob:.2f})")
             reason = ", ".join(reasons)
         
-        # Calculate position size
+        # === CALCULATE POSITION SIZE ===
         size = 0.0
         if all_gates_passed:
             size = self._calculate_position_size(rf_drawdown_pips, equity)
-        
-        # Determine direction string
-        direction_str = None
-        if all_gates_passed and tcn_direction is not None:
-            direction_str = 'long' if tcn_direction == 1 else 'short'
         
         return TradeSignal(
             trade=all_gates_passed,
             direction=direction_str,
             size=size,
             confidence=ridge_confidence,
+            regime=regime,
+            regime_confidence=regime_confidence,
             tcn_direction=tcn_direction,
             tcn_probability=tcn_probability,
             ridge_confidence=ridge_confidence,
@@ -535,6 +664,7 @@ class ModularEnsembleInference:
             confidence_gate_passed=confidence_gate_passed,
             momentum_gate_passed=momentum_gate_passed,
             risk_gate_passed=risk_gate_passed,
+            regime_gate_passed=regime_gate_passed,
             reason=reason,
         )
     

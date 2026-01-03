@@ -61,10 +61,10 @@ data:
 sequence_length: 60
 
 # ----- H1 DIRECTION LABELING -----
-# Look 12 bars ahead (12 hours) for cleaner signals on H1
-# Increased threshold filters out noise - only labels clear moves
-direction_lookahead: 12
-direction_threshold: 0.005  # Min 0.5% move for clear signal (filters ~30-40% noise)
+# Look 24 bars ahead (24 hours = 1 day) for cleaner signals on H1
+# Lower threshold (0.3%) + longer lookahead = more clear labels for training
+direction_lookahead: 24
+direction_threshold: 0.003  # Min 0.3% move for clear signal (more training data)
 
 # ----- MODEL CONFIGURATION -----
 model:
@@ -266,10 +266,14 @@ buddy:
     no_train_smoothing: true  # CRITICAL: Disable M5 resampling for H1 data
     top_features: 20  # Use only top 20 most important features (prevents overfitting)
     
-    # DIRECTION MODEL SETTINGS
-    use_transformer: true      # Use Transformer instead of TCN for direction
-    direction_threshold: 0.005 # Min 0.5% move for clear signal
-    direction_lookahead: 12    # 12 hours lookahead
+    # REGIME MODEL SETTINGS (replaces direction prediction)
+    use_transformer: true      # Use Transformer architecture
+    use_regime: true           # NEW: Classify market regime instead of direction
+    regime_lookback: 20        # 20 bars to analyze regime
+    regime_lookahead: 12       # 12 bars to confirm regime
+    # Legacy direction settings (only used if use_regime: false)
+    direction_threshold: 0.003 # Min 0.3% move for clear signal
+    direction_lookahead: 24    # 24 hours lookahead
   
   # H1 TIMEFRAME TP/SL - WIDER STOPS for hourly candles
   stop_loss_pips: 30.0    # 30 pips SL - appropriate for H1

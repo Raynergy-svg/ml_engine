@@ -2058,24 +2058,40 @@ def _train_buddy_impl(
                 TrainerConfig,
                 TCNTrainer,
                 TransformerDirectionTrainer,
+                TransformerRegimeTrainer,
                 XGBoostTrainer,
                 RandomForestTrainer,
                 RidgeTrainer,
             )
             
-            # Get direction model configuration from config
+            # Get model configuration from config
             transformer_cfg = cfg.get("transformer", {})
             use_transformer = transformer_cfg.get("use_transformer", True)  # Default to Transformer
+            use_regime = transformer_cfg.get("use_regime", False)  # NEW: Use regime classification
             direction_threshold = cfg.get("direction_threshold", 0.005)  # 0.5% min move
             direction_lookahead = cfg.get("direction_lookahead", 12)  # 12 hours lookahead
+            regime_lookback = transformer_cfg.get("regime_lookback", 20)  # 20 bars lookback
+            regime_lookahead = transformer_cfg.get("regime_lookahead", 12)  # 12 bars lookahead
             
             # Print architecture with configuration
-            dir_model_name = "Transformer" if use_transformer else "TCN"
-            console.print("Architecture:")
-            console.print(f"  • {dir_model_name:11s} → Direction (long/short) | threshold={direction_threshold:.2%}")
-            console.print("  • XGBoost    → Momentum (fresh? accelerating?)")
-            console.print("  • RF         → Risk (expected drawdown, streak probability)")
-            console.print("  • Ridge      → Confidence (0-100 from variance/volume)")
+            if use_regime:
+                console.print("Architecture: [bold yellow]REGIME MODE[/bold yellow]")
+                console.print("  • Transformer → [yellow]REGIME (trend/chop/mean_revert)[/yellow]")
+                console.print("  • XGBoost    → Momentum (fresh? accelerating?)")
+                console.print("  • RF         → Risk (expected drawdown, streak probability)")
+                console.print("  • Ridge      → Confidence (0-100 from variance/volume)")
+                console.print("")
+                console.print("[dim]Regime = bouncer. Tells you WHAT market you're in, not direction.[/dim]")
+                console.print("[dim]  TREND → let gates decide direction[/dim]")
+                console.print("[dim]  CHOP → skip trading[/dim]")
+                console.print("[dim]  MEAN_REVERT → fade 2-bar momentum[/dim]")
+            else:
+                dir_model_name = "Transformer" if use_transformer else "TCN"
+                console.print("Architecture:")
+                console.print(f"  • {dir_model_name:11s} → Direction (long/short) | threshold={direction_threshold:.2%}")
+                console.print("  • XGBoost    → Momentum (fresh? accelerating?)")
+                console.print("  • RF         → Risk (expected drawdown, streak probability)")
+                console.print("  • Ridge      → Confidence (0-100 from variance/volume)")
             console.print("")
             console.print("[dim]Each model sees DIFFERENT features. No shared gradients.[/dim]")
             console.print("")
@@ -2162,6 +2178,9 @@ def _train_buddy_impl(
                 split=(train_frac, val_frac, test_frac),
                 direction_threshold=direction_threshold,
                 direction_lookahead=direction_lookahead,
+                use_regime=use_regime,
+                regime_lookback=regime_lookback,
+                regime_lookahead=regime_lookahead,
             )
             
             for name, data in all_data.items():
@@ -2171,6 +2190,10 @@ def _train_buddy_impl(
                     stats = data['label_stats']
                     console.print(f"  {name:8s}: train={len(data['X_train']):,} val={len(data['X_val']):,} features={n_features}")
                     console.print(f"            labels: {stats['clear_rate']:.1%} clear, {stats['up_rate']:.1%} up rate, threshold={stats['threshold']:.2%}")
+                elif name == 'regime' and 'label_stats' in data:
+                    stats = data['label_stats']
+                    console.print(f"  {name:8s}: train={len(data['X_train']):,} val={len(data['X_val']):,} features={n_features}")
+                    console.print(f"            classes: {stats['trend_rate']:.1%} trend, {stats['chop_rate']:.1%} chop, {stats['mean_revert_rate']:.1%} mean_revert")
                 else:
                     console.print(f"  {name:8s}: train={len(data['X_train']):,} val={len(data['X_val']):,} features={n_features}")
             
@@ -2197,46 +2220,79 @@ def _train_buddy_impl(
             direction_model_name = "Transformer" if use_transformer else "TCN"
             
             # ============================================================
-            # TRAIN DIRECTION MODEL (Transformer or TCN)
+            # TRAIN REGIME OR DIRECTION MODEL
             # ============================================================
-            console.print("\n[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
-            console.print(f"[bold cyan]  Step 1/4: Training {direction_model_name} (Direction Predictor)[/bold cyan]")
-            console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
-            console.print("[dim]Features: directional indicators (ADX, MACD, SMA crosses, market structure)[/dim]")
-            console.print(f"[dim]Output: Binary direction (0=short, 1=long) | threshold={direction_threshold:.2%}, lookahead={direction_lookahead}[/dim]")
-            
-            # Get direction data (new key 'direction' or fallback to 'tcn')
-            dir_data = all_data.get('direction', all_data.get('tcn'))
-            
-            if use_transformer:
-                dir_trainer = TransformerDirectionTrainer(trainer_config)
-                dir_metrics = dir_trainer.train(
-                    dir_data['X_train'], dir_data['y_train'],
-                    dir_data['X_val'], dir_data['y_val'],
-                    feature_names=dir_data['feature_names'],
-                    w_train=dir_data.get('w_train'),  # Sample weights for threshold filtering
-                    w_val=dir_data.get('w_val'),
+            if use_regime:
+                # REGIME MODE: 3-class classification
+                console.print("\n[bold yellow]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold yellow]")
+                console.print("[bold yellow]  Step 1/4: Training Transformer (REGIME Classifier)[/bold yellow]")
+                console.print("[bold yellow]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold yellow]")
+                console.print("[dim]Features: ADX, RSI, volatility, z-scores, momentum consistency[/dim]")
+                console.print(f"[dim]Output: 3-class regime (trend/chop/mean_revert) | lookback={regime_lookback}, lookahead={regime_lookahead}[/dim]")
+                
+                regime_data = all_data.get('regime')
+                if regime_data is None:
+                    raise ValueError("No regime data found. Check use_regime setting.")
+                
+                regime_trainer = TransformerRegimeTrainer(trainer_config)
+                regime_metrics = regime_trainer.train(
+                    regime_data['X_train'], regime_data['y_train'],
+                    regime_data['X_val'], regime_data['y_val'],
+                    feature_names=regime_data['feature_names'],
+                    class_names=regime_data.get('class_names'),
                 )
-                dir_trainer.save(str(model_dir / "transformer_direction.keras"))
-                dir_model_path = str(model_dir / "transformer_direction.keras")
+                regime_trainer.save(str(model_dir / "transformer_regime.keras"))
+                regime_model_path = str(model_dir / "transformer_regime.keras")
+                
+                all_metrics['regime'] = regime_metrics
+                
+                # Show F1 scores
+                console.print(f"[green]✓ Regime Transformer complete: val_accuracy={regime_metrics['val_accuracy']:.1%}, F1_macro={regime_metrics['f1_macro']:.3f}[/green]")
+                console.print(f"   F1 per class: trend={regime_metrics['f1_trend']:.3f}, chop={regime_metrics['f1_chop']:.3f}, mean_revert={regime_metrics['f1_mean_revert']:.3f}")
+                
+                dir_model_path = regime_model_path  # For metadata
+                dir_data = regime_data  # For metadata
+                dir_metrics = regime_metrics  # For metadata
             else:
-                dir_trainer = TCNTrainer(trainer_config)
-                dir_metrics = dir_trainer.train(
-                    dir_data['X_train'], dir_data['y_train'],
-                    dir_data['X_val'], dir_data['y_val'],
-                    feature_names=dir_data['feature_names']
-            )
-                dir_trainer.save(str(model_dir / "tcn_direction.keras"))
-                dir_model_path = str(model_dir / "tcn_direction.keras")
-            
-            all_metrics['direction'] = dir_metrics
-            
-            # Show balanced accuracy if available
-            if 'val_balanced_accuracy' in dir_metrics:
-                console.print(f"[green]✓ {direction_model_name} complete: val_accuracy={dir_metrics['val_accuracy']:.1%}, balanced={dir_metrics['val_balanced_accuracy']:.1%}[/green]")
-                console.print(f"   (up_acc={dir_metrics.get('val_up_accuracy', 0):.1%}, down_acc={dir_metrics.get('val_down_accuracy', 0):.1%})")
-            else:
-                console.print(f"[green]✓ {direction_model_name} complete: val_accuracy={dir_metrics['val_accuracy']:.1%}[/green]")
+                # DIRECTION MODE: Binary classification (legacy)
+                console.print("\n[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+                console.print(f"[bold cyan]  Step 1/4: Training {direction_model_name} (Direction Predictor)[/bold cyan]")
+                console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold cyan]")
+                console.print("[dim]Features: directional indicators (ADX, MACD, SMA crosses, market structure)[/dim]")
+                console.print(f"[dim]Output: Binary direction (0=short, 1=long) | threshold={direction_threshold:.2%}, lookahead={direction_lookahead}[/dim]")
+                
+                # Get direction data (new key 'direction' or fallback to 'tcn')
+                dir_data = all_data.get('direction', all_data.get('tcn'))
+                
+                if use_transformer:
+                    dir_trainer = TransformerDirectionTrainer(trainer_config)
+                    dir_metrics = dir_trainer.train(
+                        dir_data['X_train'], dir_data['y_train'],
+                        dir_data['X_val'], dir_data['y_val'],
+                        feature_names=dir_data['feature_names'],
+                        w_train=dir_data.get('w_train'),  # Sample weights for threshold filtering
+                        w_val=dir_data.get('w_val'),
+                    )
+                    dir_trainer.save(str(model_dir / "transformer_direction.keras"))
+                    dir_model_path = str(model_dir / "transformer_direction.keras")
+                else:
+                    dir_trainer = TCNTrainer(trainer_config)
+                    dir_metrics = dir_trainer.train(
+                        dir_data['X_train'], dir_data['y_train'],
+                        dir_data['X_val'], dir_data['y_val'],
+                        feature_names=dir_data['feature_names']
+                    )
+                    dir_trainer.save(str(model_dir / "tcn_direction.keras"))
+                    dir_model_path = str(model_dir / "tcn_direction.keras")
+                
+                all_metrics['direction'] = dir_metrics
+                
+                # Show balanced accuracy if available
+                if 'val_balanced_accuracy' in dir_metrics:
+                    console.print(f"[green]✓ {direction_model_name} complete: val_accuracy={dir_metrics['val_accuracy']:.1%}, balanced={dir_metrics['val_balanced_accuracy']:.1%}[/green]")
+                    console.print(f"   (up_acc={dir_metrics.get('val_up_accuracy', 0):.1%}, down_acc={dir_metrics.get('val_down_accuracy', 0):.1%})")
+                else:
+                    console.print(f"[green]✓ {direction_model_name} complete: val_accuracy={dir_metrics['val_accuracy']:.1%}[/green]")
             
             # ============================================================
             # TRAIN XGBOOST (Momentum Analyzer)
@@ -2305,15 +2361,26 @@ def _train_buddy_impl(
             # ============================================================
             # SAVE METADATA
             # ============================================================
-            meta = {
-                "model_type": "modular_ensemble",
-                "direction_model_type": direction_model_name.lower(),
-                "direction_config": {
-                    "threshold": direction_threshold,
-                    "lookahead": direction_lookahead,
-                    "use_transformer": use_transformer,
-                },
-                "models": {
+            if use_regime:
+                primary_model_meta = {
+                    "regime": {
+                        "path": dir_model_path,
+                        "type": "transformer_regime",
+                        "purpose": "regime_classification",
+                        "output": "3-class (0=trend, 1=chop, 2=mean_revert)",
+                        "metrics": dir_metrics,
+                        "features": dir_data['feature_names'],
+                        "label_stats": dir_data.get('label_stats', {}),
+                        "class_names": dir_data.get('class_names', ['trend', 'chop', 'mean_revert']),
+                    },
+                }
+                primary_config = {
+                    "use_regime": True,
+                    "regime_lookback": regime_lookback,
+                    "regime_lookahead": regime_lookahead,
+                }
+            else:
+                primary_model_meta = {
                     "direction": {
                         "path": dir_model_path,
                         "type": direction_model_name.lower(),
@@ -2323,6 +2390,21 @@ def _train_buddy_impl(
                         "features": dir_data['feature_names'],
                         "label_stats": dir_data.get('label_stats', {}),
                     },
+                }
+                primary_config = {
+                    "use_regime": False,
+                    "threshold": direction_threshold,
+                    "lookahead": direction_lookahead,
+                    "use_transformer": use_transformer,
+                }
+            
+            meta = {
+                "model_type": "modular_ensemble",
+                "use_regime": use_regime,
+                "primary_model_type": "regime" if use_regime else direction_model_name.lower(),
+                "primary_config": primary_config,
+                "models": {
+                    **primary_model_meta,
                     "xgboost": {
                         "path": str(model_dir / "xgb_momentum.pkl"),
                         "purpose": "momentum_analysis",
@@ -2373,14 +2455,22 @@ def _train_buddy_impl(
             console.print("[bold green]════════════════════════════════════════════════════════════[/bold green]")
             console.print("")
             console.print("Model Performance:")
-            dir_acc = dir_metrics['val_accuracy']
-            bal_acc = dir_metrics.get('val_balanced_accuracy', dir_acc)
-            console.print(f"  • {direction_model_name} (Direction): val_accuracy = {dir_acc:.1%} (balanced: {bal_acc:.1%})")
+            if use_regime:
+                f1_macro = dir_metrics.get('f1_macro', 0)
+                console.print(f"  • Transformer (REGIME): F1_macro = {f1_macro:.3f}")
+                console.print(f"      F1: trend={dir_metrics.get('f1_trend', 0):.3f}, chop={dir_metrics.get('f1_chop', 0):.3f}, mean_revert={dir_metrics.get('f1_mean_revert', 0):.3f}")
+            else:
+                dir_acc = dir_metrics['val_accuracy']
+                bal_acc = dir_metrics.get('val_balanced_accuracy', dir_acc)
+                console.print(f"  • {direction_model_name} (Direction): val_accuracy = {dir_acc:.1%} (balanced: {bal_acc:.1%})")
             console.print(f"  • XGBoost (Momentum):  accel_accuracy = {xgb_metrics['acceleration_accuracy']:.1%}")
             console.print(f"  • RF (Risk):           drawdown_mae = {rf_metrics['drawdown_mae_pips']:.1f} pips")
             console.print(f"  • Ridge (Confidence):  r2_score = {ridge_metrics['r2_score']:.3f}")
             console.print("")
-            console.print("Direction Model Config:")
+            if use_regime:
+                console.print("Regime Model Config:")
+            else:
+                console.print("Direction Model Config:")
             console.print(f"  • Model: {direction_model_name}")
             console.print(f"  • Threshold: {direction_threshold:.2%} (filters noise)")
             console.print(f"  • Lookahead: {direction_lookahead} bars")
@@ -7650,6 +7740,10 @@ def buddy_test(
     import numpy as np
     from datetime import datetime, timezone
     
+    # Normalize instrument name (GBP/USD -> GBP_USD)
+    instrument = _normalize_instrument(instrument)
+    _validate_instrument(instrument)
+    
     console.print("\n" + "=" * 60)
     console.print(f"[bold]🧪 BUDDY HINDCAST TEST[/bold]")
     console.print("=" * 60)
@@ -7910,13 +8004,87 @@ def model_status(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None:
     console.print("=" * 60)
     
     models_dir = Path("trained_data") / "models"
+    has_any_model = False
     
-    # Check production model
+    # =========================================================================
+    # CHECK FOR MODULAR ENSEMBLE (new architecture)
+    # =========================================================================
+    modular_meta_path = models_dir / "modular_ensemble.meta.json"
+    modular_candidate_path = models_dir / "modular_ensemble_candidate.meta.json"
+    
+    if modular_meta_path.exists():
+        has_any_model = True
+        try:
+            meta = json.loads(modular_meta_path.read_text())
+            console.print("\n[green]✓ Modular Ensemble (Production)[/green]")
+            console.print(f"  Model Type:         {meta.get('model_type', 'modular_ensemble')}")
+            console.print(f"  Primary Model:      {meta.get('primary_model_type', 'transformer')}")
+            
+            # Direction model metrics
+            direction = meta.get('models', {}).get('direction', {})
+            dir_metrics = direction.get('metrics', {})
+            val_acc = dir_metrics.get('val_accuracy')
+            if val_acc is not None:
+                console.print(f"  Direction Accuracy: {val_acc:.1%}")
+                balanced = dir_metrics.get('val_balanced_accuracy')
+                if balanced:
+                    console.print(f"  Balanced Accuracy:  {balanced:.1%}")
+            
+            # XGBoost momentum
+            xgb = meta.get('models', {}).get('xgboost', {})
+            xgb_metrics = xgb.get('metrics', {})
+            accel_acc = xgb_metrics.get('acceleration_accuracy')
+            if accel_acc is not None:
+                console.print(f"  Momentum Accel Acc: {accel_acc:.1%}")
+            
+            # Ridge confidence
+            ridge = meta.get('models', {}).get('ridge', {})
+            ridge_metrics = ridge.get('metrics', {})
+            r2 = ridge_metrics.get('r2_score')
+            if r2 is not None:
+                console.print(f"  Confidence R²:      {r2:.3f}")
+            
+            # Training info
+            if meta.get('trained_at'):
+                console.print(f"  Trained:            {meta.get('trained_at')}")
+            
+            # Component models
+            console.print(f"\n  [dim]Components:[/dim]")
+            for name, model_info in meta.get('models', {}).items():
+                path = Path(model_info.get('path', ''))
+                exists = "✓" if path.exists() else "✗"
+                console.print(f"    {exists} {name}: {path.name}")
+                
+        except Exception as e:
+            console.print(f"[yellow]⚠ Error reading modular ensemble meta: {e}[/yellow]")
+    
+    if modular_candidate_path.exists():
+        has_any_model = True
+        try:
+            meta = json.loads(modular_candidate_path.read_text())
+            console.print("\n[cyan]● Modular Ensemble (Candidate)[/cyan]")
+            console.print(f"  Model Type:         {meta.get('model_type', 'modular_ensemble')}")
+            
+            direction = meta.get('models', {}).get('direction', {})
+            dir_metrics = direction.get('metrics', {})
+            val_acc = dir_metrics.get('val_accuracy')
+            if val_acc is not None:
+                console.print(f"  Direction Accuracy: {val_acc:.1%}")
+            
+            if meta.get('trained_at'):
+                console.print(f"  Trained:            {meta.get('trained_at')}")
+        except Exception as e:
+            console.print(f"[yellow]⚠ Error reading modular candidate meta: {e}[/yellow]")
+    
+    # =========================================================================
+    # CHECK FOR LEGACY SINGLE MODEL
+    # =========================================================================
     prod_meta = models_dir / "buddy_tf.meta.json"
     if prod_meta.exists():
+        has_any_model = True
         try:
             meta = json.loads(prod_meta.read_text())
-            console.print("\n[green]✓ Production Model: buddy_tf.keras[/green]")
+            console.print("\n[green]✓ Legacy Model: buddy_tf.keras[/green]")
             console.print(f"  Direction Accuracy: {meta.get('val_direction_accuracy', 'N/A'):.1%}" if isinstance(meta.get('val_direction_accuracy'), (int, float)) else f"  Direction Accuracy: {meta.get('val_direction_accuracy', 'N/A')}")
             console.print(f"  Model Type:         {meta.get('model_type', 'unknown')}")
             console.print(f"  Seq Length:         {meta.get('seq_len', 'N/A')}")
@@ -7925,15 +8093,14 @@ def model_status(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None:
                 console.print(f"  Trained:            {meta.get('trained_at')}")
         except Exception as e:
             console.print(f"[yellow]⚠ Error reading production meta: {e}[/yellow]")
-    else:
-        console.print("\n[yellow]✗ No production model found[/yellow]")
     
-    # Check candidate model
+    # Check candidate model (legacy)
     cand_meta = models_dir / "buddy_tf_candidate.meta.json"
     if cand_meta.exists():
+        has_any_model = True
         try:
             meta = json.loads(cand_meta.read_text())
-            console.print("\n[cyan]● Candidate Model: buddy_tf_candidate.keras[/cyan]")
+            console.print("\n[cyan]● Legacy Candidate: buddy_tf_candidate.keras[/cyan]")
             val_acc = meta.get('val_direction_accuracy')
             if isinstance(val_acc, (int, float)):
                 console.print(f"  Direction Accuracy: {val_acc:.1%}")
@@ -7954,14 +8121,16 @@ def model_status(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None:
                     console.print(f"  Temperature:        {ts.get('temperature', 'N/A'):.2f}")
         except Exception as e:
             console.print(f"[yellow]⚠ Error reading candidate meta: {e}[/yellow]")
-    else:
-        console.print("\n[dim]No candidate model found[/dim]")
+    
+    if not has_any_model:
+        console.print("\n[yellow]✗ No models found[/yellow]")
+        console.print("[dim]Train a model: buddy train --oanda-live --candles 5000[/dim]")
     
     console.print("\n" + "-" * 60)
     console.print("[dim]Commands:[/dim]")
-    console.print("  [cyan]python main.py buddy[/cyan]           - Run inference")
-    console.print("  [cyan]python main.py promote-model[/cyan]   - Promote candidate to production")
-    console.print("  [cyan]python main.py train-buddy[/cyan]     - Train new model")
+    console.print("  [cyan]buddy predict[/cyan]  - Run inference")
+    console.print("  [cyan]buddy promote[/cyan]  - Promote candidate to production")
+    console.print("  [cyan]buddy train[/cyan]    - Train new model")
     console.print("=" * 60 + "\n")
 
 
@@ -7973,6 +8142,64 @@ def promote_model(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None
     
     models_dir = Path("trained_data") / "models"
     
+    # =========================================================================
+    # CHECK FOR MODULAR ENSEMBLE CANDIDATE FIRST
+    # =========================================================================
+    modular_candidate_meta = models_dir / "modular_ensemble_candidate.meta.json"
+    modular_prod_meta = models_dir / "modular_ensemble.meta.json"
+    
+    if modular_candidate_meta.exists():
+        try:
+            meta = json.loads(modular_candidate_meta.read_text())
+            
+            # Show candidate stats
+            console.print("\n[cyan]Modular Ensemble Candidate Stats:[/cyan]")
+            direction = meta.get('models', {}).get('direction', {})
+            dir_metrics = direction.get('metrics', {})
+            val_acc = dir_metrics.get('val_accuracy')
+            if val_acc is not None:
+                console.print(f"  Direction Accuracy: {val_acc:.1%}")
+            console.print(f"  Model Type:         {meta.get('model_type', 'modular_ensemble')}")
+            if meta.get('trained_at'):
+                console.print(f"  Trained:            {meta.get('trained_at')}")
+            
+            # Backup existing production
+            if modular_prod_meta.exists():
+                backup_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+                backup_meta = models_dir / f"modular_ensemble_backup_{backup_suffix}.meta.json"
+                shutil.copy2(modular_prod_meta, backup_meta)
+                console.print(f"[dim]Backed up existing meta to: {backup_meta.name}[/dim]")
+                
+                # Backup component models
+                prod_meta_data = json.loads(modular_prod_meta.read_text())
+                for name, model_info in prod_meta_data.get('models', {}).items():
+                    model_path = Path(model_info.get('path', ''))
+                    if model_path.exists():
+                        backup_model = model_path.parent / f"{model_path.stem}_backup_{backup_suffix}{model_path.suffix}"
+                        shutil.copy2(model_path, backup_model)
+            
+            # Promote: copy candidate models to production locations
+            for name, model_info in meta.get('models', {}).items():
+                cand_path = Path(model_info.get('path', '').replace('.keras', '_candidate.keras').replace('.pkl', '_candidate.pkl'))
+                prod_path = Path(model_info.get('path', ''))
+                
+                if cand_path.exists():
+                    shutil.copy2(cand_path, prod_path)
+                    console.print(f"  [green]✓[/green] Promoted {name}: {cand_path.name} → {prod_path.name}")
+            
+            # Promote meta
+            shutil.copy2(modular_candidate_meta, modular_prod_meta)
+            
+            console.print("\n[green]✓ Modular ensemble promoted successfully![/green]")
+            console.print("\n[dim]Run inference: buddy predict[/dim]")
+            return
+            
+        except Exception as e:
+            console.print(f"[yellow]⚠ Error promoting modular ensemble: {e}[/yellow]")
+    
+    # =========================================================================
+    # FALLBACK TO LEGACY SINGLE MODEL
+    # =========================================================================
     cand_model = models_dir / "buddy_tf_candidate.keras"
     cand_meta = models_dir / "buddy_tf_candidate.meta.json"
     prod_model = models_dir / "buddy_tf.keras"
@@ -7980,7 +8207,7 @@ def promote_model(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None
     
     if not cand_model.exists() or not cand_meta.exists():
         console.print("[red]✗ No candidate model to promote[/red]")
-        console.print("[dim]Train a model first: python main.py train-buddy[/dim]")
+        console.print("[dim]Train a model first: buddy train --oanda-live --candles 5000[/dim]")
         return
     
     # Show candidate stats
@@ -8011,7 +8238,7 @@ def promote_model(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None
     
     console.print("\n[green]✓ Model promoted successfully![/green]")
     console.print(f"  Production model: {prod_model}")
-    console.print("\n[dim]Run inference: python main.py buddy --config config_m1_optimized.yaml[/dim]")
+    console.print("\n[dim]Run inference: buddy predict[/dim]")
 
 
 def main() -> None:

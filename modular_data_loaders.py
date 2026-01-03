@@ -463,6 +463,211 @@ def _select_features_for_task(
 
 
 # =============================================================================
+# REGIME DATA LOADER - Market Regime Classification (Trend/Chop/Mean-Revert)
+# =============================================================================
+
+def load_regime_data(
+    df: pd.DataFrame,
+    split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
+    lookback: int = 20,  # Bars to look back for regime detection
+    lookahead: int = 12,  # Bars ahead to confirm regime
+) -> Dict[str, np.ndarray]:
+    """
+    Load data for market regime classification (3 classes).
+    
+    Regimes:
+    - 0 = TREND: Strong directional movement (ADX high, consistent direction)
+    - 1 = CHOP: Sideways, no clear direction (low ADX, high reversals)
+    - 2 = MEAN_REVERT: Overextended, likely to reverse (RSI extreme, z-score extreme)
+    
+    The Transformer becomes a "bouncer" - it tells you WHAT KIND of market you're in,
+    not which direction to trade. Direction decisions are delegated to other models
+    based on regime:
+    - TREND: Let XGBoost/Ridge/RF decide direction
+    - CHOP: Skip trading entirely
+    - MEAN_REVERT: Fade 2-bar momentum
+    
+    Features: NORMALIZED regime indicators (instrument-agnostic)
+    Target: 3-class regime (0=trend, 1=chop, 2=mean_revert)
+    """
+    logger.info(f"Loading regime data (lookback={lookback}, lookahead={lookahead})...")
+    
+    # Compute normalized features if not already present
+    if 'returns_1' not in df.columns:
+        df = compute_normalized_features(df)
+    
+    # REGIME FEATURES - indicators that describe market state
+    regime_features = [
+        # Trend strength
+        'adx', 'trend_strength',
+        # Volatility state
+        'atr_pct_14', 'atr_pct_20', 'volatility_10', 'volatility_20',
+        # Mean reversion signals
+        'zscore_20', 'zscore_50', 'rsi', 'rsi_norm',
+        'bb_position_20', 'pct_rank_20', 'pct_rank_50',
+        # Momentum consistency
+        'returns_1', 'returns_5', 'returns_10', 'returns_20',
+        # Crossover state
+        'sma_cross_5_20', 'macd_cross',
+        # Volume context
+        'volume_ratio_10', 'volume_zscore',
+    ]
+    
+    # Get available features
+    features = _ensure_features_exist(df, regime_features)
+    
+    # Fallback if needed
+    if len(features) < 10:
+        fallback = ['adx', 'rsi', 'atr', 'volatility', 'zscore', 'returns', 'bb_position']
+        pattern_features = _find_features_by_pattern(df, fallback)
+        for f in pattern_features:
+            if f not in features and f not in ['open', 'high', 'low', 'close', 'volume', 'time']:
+                features.append(f)
+    
+    if len(features) < 5:
+        raise ValueError(f"Regime model needs at least 5 features, got {len(features)}")
+    
+    logger.info(f"Regime features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
+    
+    # Extract feature matrix
+    X = df[features].values.astype(np.float32)
+    
+    # Create regime labels
+    close = df['close'].values
+    high = df['high'].values
+    low = df['low'].values
+    n = len(close)
+    
+    # Get ADX and RSI if available (key regime indicators)
+    adx = df['adx'].values if 'adx' in df.columns else np.full(n, 25.0)
+    rsi = df['rsi'].values if 'rsi' in df.columns else np.full(n, 50.0)
+    zscore = df['zscore_20'].values if 'zscore_20' in df.columns else np.zeros(n)
+    
+    # Initialize labels
+    y = np.full(n, 1, dtype=np.int32)  # Default: CHOP (safest default)
+    
+    n_trend = 0
+    n_chop = 0
+    n_mean_revert = 0
+    
+    for i in range(lookback, n - lookahead):
+        # === REGIME DETECTION LOGIC ===
+        
+        # Look at recent price action
+        recent_close = close[i-lookback:i+1]
+        recent_high = high[i-lookback:i+1]
+        recent_low = low[i-lookback:i+1]
+        
+        # Calculate metrics
+        price_range = (recent_high.max() - recent_low.min()) / close[i] if close[i] > 0 else 0
+        
+        # Directional consistency: how often did price move in same direction?
+        returns = np.diff(recent_close) / recent_close[:-1]
+        returns = returns[~np.isnan(returns)]
+        if len(returns) > 0:
+            up_ratio = (returns > 0).mean()
+            consistency = max(up_ratio, 1 - up_ratio)  # 0.5 = random, 1.0 = perfectly consistent
+        else:
+            consistency = 0.5
+        
+        # Current indicators
+        current_adx = adx[i] if not np.isnan(adx[i]) else 25.0
+        current_rsi = rsi[i] if not np.isnan(rsi[i]) else 50.0
+        current_zscore = zscore[i] if not np.isnan(zscore[i]) else 0.0
+        
+        # === CLASSIFICATION RULES ===
+        
+        # MEAN REVERT: Overextended (RSI extreme OR z-score extreme)
+        rsi_extreme = current_rsi < 25 or current_rsi > 75
+        zscore_extreme = abs(current_zscore) > 2.0
+        
+        if rsi_extreme or zscore_extreme:
+            # Confirm with lookahead: did price actually revert?
+            future_close = close[i + lookahead]
+            current_close = close[i]
+            future_return = (future_close - current_close) / current_close if current_close > 0 else 0
+            
+            # Mean revert confirmed if price moved opposite to extension
+            if current_rsi > 75 and future_return < -0.001:  # Overbought -> went down
+                y[i] = 2  # MEAN_REVERT
+                n_mean_revert += 1
+                continue
+            elif current_rsi < 25 and future_return > 0.001:  # Oversold -> went up
+                y[i] = 2  # MEAN_REVERT
+                n_mean_revert += 1
+                continue
+            elif current_zscore > 2.0 and future_return < -0.001:
+                y[i] = 2  # MEAN_REVERT
+                n_mean_revert += 1
+                continue
+            elif current_zscore < -2.0 and future_return > 0.001:
+                y[i] = 2  # MEAN_REVERT
+                n_mean_revert += 1
+                continue
+        
+        # TREND: Strong ADX + directional consistency
+        if current_adx > 25 and consistency > 0.6:
+            # Confirm with lookahead: did trend continue?
+            future_close = close[i + lookahead]
+            current_close = close[i]
+            future_return = (future_close - current_close) / current_close if current_close > 0 else 0
+            
+            # Trend confirmed if price moved significantly in either direction
+            if abs(future_return) > 0.002:  # 0.2% move confirms trend
+                y[i] = 0  # TREND
+                n_trend += 1
+                continue
+        
+        # CHOP: Everything else (low ADX, inconsistent, no clear signal)
+        y[i] = 1  # CHOP
+        n_chop += 1
+    
+    # Trim edges (no lookback/lookahead data)
+    valid_start = lookback
+    valid_end = n - lookahead
+    X = X[valid_start:valid_end]
+    y = y[valid_start:valid_end]
+    
+    # Handle NaN/Inf
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    
+    # Temporal split
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    
+    # Label statistics
+    total = n_trend + n_chop + n_mean_revert
+    label_stats = {
+        'n_trend': n_trend,
+        'n_chop': n_chop,
+        'n_mean_revert': n_mean_revert,
+        'trend_rate': n_trend / max(total, 1),
+        'chop_rate': n_chop / max(total, 1),
+        'mean_revert_rate': n_mean_revert / max(total, 1),
+        'lookback': lookback,
+        'lookahead': lookahead,
+    }
+    
+    logger.info(f"Regime labels: {n_trend} trend ({label_stats['trend_rate']:.1%}), "
+                f"{n_chop} chop ({label_stats['chop_rate']:.1%}), "
+                f"{n_mean_revert} mean_revert ({label_stats['mean_revert_rate']:.1%})")
+    
+    result = {
+        'X_train': X[train_idx],
+        'y_train': y[train_idx],
+        'X_val': X[val_idx],
+        'y_val': y[val_idx],
+        'X_test': X[test_idx],
+        'y_test': y[test_idx],
+        'feature_names': features,
+        'label_stats': label_stats,
+        'class_names': ['trend', 'chop', 'mean_revert'],
+    }
+    
+    logger.info(f"Regime data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
+    return result
+
+
+# =============================================================================
 # DIRECTION DATA LOADER - Direction Prediction (for TCN/Transformer)
 # =============================================================================
 
@@ -1093,6 +1298,9 @@ def load_all_modular_data(
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
     direction_threshold: float = 0.005,
     direction_lookahead: int = 6,
+    use_regime: bool = False,
+    regime_lookback: int = 20,
+    regime_lookahead: int = 12,
 ) -> Dict[str, Dict[str, np.ndarray]]:
     """
     Load data for all 4 models at once.
@@ -1105,9 +1313,12 @@ def load_all_modular_data(
         split: (train_frac, val_frac, test_frac)
         direction_threshold: Min price change for clear direction labels
         direction_lookahead: Bars ahead for direction prediction
+        use_regime: If True, load regime data instead of direction data
+        regime_lookback: Bars to look back for regime detection
+        regime_lookahead: Bars ahead to confirm regime
     
     Returns:
-        Dict with 'direction', 'xgboost', 'rf', 'ridge' keys, each containing
+        Dict with 'direction'/'regime', 'xgboost', 'rf', 'ridge' keys, each containing
         X_train, y_train, X_val, y_val, X_test, y_test, feature_names
         (direction also includes w_train, w_val, w_test for sample weights)
     """
@@ -1117,11 +1328,23 @@ def load_all_modular_data(
     df_normalized = compute_normalized_features(df)
     logger.info(f"DataFrame now has {len(df_normalized.columns)} columns after normalization")
     
-    return {
-        'direction': load_direction_data(df_normalized, split, direction_lookahead, direction_threshold),
-        'tcn': load_direction_data(df_normalized, split, direction_lookahead, direction_threshold),  # Alias for backward compat
+    result = {
         'xgboost': load_xgboost_data(df_normalized, split),
         'rf': load_rf_data(df_normalized, split),
         'ridge': load_ridge_data(df_normalized, split),
     }
+    
+    if use_regime:
+        # REGIME MODE: Transformer classifies market regime (trend/chop/mean_revert)
+        logger.info("Using REGIME classification mode (3 classes)")
+        regime_data = load_regime_data(df_normalized, split, regime_lookback, regime_lookahead)
+        result['regime'] = regime_data
+    else:
+        # DIRECTION MODE: Transformer predicts binary direction (legacy)
+        logger.info("Using DIRECTION prediction mode (binary)")
+        direction_data = load_direction_data(df_normalized, split, direction_lookahead, direction_threshold)
+        result['direction'] = direction_data
+        result['tcn'] = direction_data  # Alias for backward compat
+    
+    return result
 

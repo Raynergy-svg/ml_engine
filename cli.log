@@ -8371,3 +8371,1347 @@ oanda_practice.OandaApiError: OANDA API error 400: Invalid value specified for '
 2026-01-02 03:47:20 - modular_trainers - INFO - [modular_trainers.py:1084] - Ridge saved to trained_data/models/ridge_confidence.pkl
 2026-01-02 03:51:36 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
 2026-01-02 03:51:46 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-02 03:51:54 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-02 03:51:54 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (15000, 9) -> (14801, 192)
+2026-01-02 03:51:54 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-02 03:52:10 - modular_data_loaders - INFO - [modular_data_loaders.py:1116] - Computing normalized features for instrument-agnostic training...
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:1118] - DataFrame now has 235 columns after normalization
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:495] - Loading direction data (threshold=0.500%, lookahead=12)...
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:534] - Direction features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'zscore_10', 'zscore_20', 'zscore_50', 'pct_rank_10', 'pct_rank_20']... (24 total)
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:595] - Direction labels: 728 up, 689 down, 13371 unclear (9.6% clear, 51.4% up)
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:612] - Direction data: train=10647, val=2662, test=1479, features=24
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:495] - Loading direction data (threshold=0.500%, lookahead=12)...
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:534] - Direction features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'zscore_10', 'zscore_20', 'zscore_50', 'pct_rank_10', 'pct_rank_20']... (24 total)
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:595] - Direction labels: 728 up, 689 down, 13371 unclear (9.6% clear, 51.4% up)
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:612] - Direction data: train=10647, val=2662, test=1479, features=24
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:723] - Loading XGBoost data (momentum analysis)...
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:759] - XGBoost features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'returns_20', 'log_returns_1', 'atr_pct_5', 'atr_pct_10', 'atr_pct_14']... (19 total)
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:785] - XGBoost momentum: P90=0.000998, norm_factor=0.001109
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:825] - XGBoost data: train=10645, val=2661, test=1479, features=19
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:854] - Loading Random Forest data (risk assessment)...
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:890] - RF features: ['atr_pct_5', 'atr_pct_10', 'atr_pct_14', 'atr_pct_20', 'volatility_5', 'volatility_10', 'volatility_20', 'tr_pct', 'hl_range_pct', 'upper_wick_ratio']... (18 total)
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:966] - RF data: train=10648, val=2663, test=1479, features=18
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:995] - Loading Ridge data (confidence scoring)...
+2026-01-02 03:52:15 - modular_data_loaders - INFO - [modular_data_loaders.py:1031] - Ridge features: ['atr_pct_10', 'atr_pct_20', 'volatility_10', 'volatility_20', 'sma_ratio_20', 'ema_ratio_26', 'macd_norm', 'rsi_norm', 'zscore_20', 'volume_ratio_10']... (14 total)
+2026-01-02 03:52:16 - modular_data_loaders - INFO - [modular_data_loaders.py:1083] - Ridge data: train=10648, val=2663, test=1479, features=14
+2026-01-02 03:52:17 - modular_trainers - INFO - [modular_trainers.py:463] - Training Transformer (Direction)...
+2026-01-02 03:52:17 - modular_trainers - INFO - [modular_trainers.py:506] - Filtered training: 1079/10587 sequences with clear labels
+2026-01-02 03:52:17 - modular_trainers - INFO - [modular_trainers.py:507] - Filtered validation: 241/2602 sequences with clear labels
+2026-01-02 03:52:17 - modular_trainers - INFO - [modular_trainers.py:512] - Class distribution: train=50.8% up, val=53.9% up
+2026-01-02 03:52:17 - modular_trainers - INFO - [modular_trainers.py:524] - Class weights: down=1.016, up=0.984
+2026-01-02 03:52:17 - modular_trainers - INFO - [modular_trainers.py:529] - Sequence shape: train=(1079, 60, 24), val=(241, 60, 24)
+2026-01-02 03:52:17 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:462] - Model: "transformer_direction"
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:463] - __________________________________________________________________________________________________
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  Layer (type)                Output Shape                 Param #   Connected to                  
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:465] - ==================================================================================================
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  features (InputLayer)       [(None, 60, 24)]             0         []                            
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  input_projection (Dense)    (None, 60, 32)               800       ['features[0][0]']            
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add (TFOp  (None, 60, 32)               0         ['input_projection[0][0]']    
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  Lambda)                                                                                          
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_mha (MultiHe  (None, 60, 32)               4224      ['tf.__operators__.add[0][0]',
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  adAttention)                                                        'tf.__operators__.add[0][0]']
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  dropout (Dropout)           (None, 60, 32)               0         ['transformer_0_mha[0][0]']   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_1 (TF  (None, 60, 32)               0         ['tf.__operators__.add[0][0]',
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout[0][0]']             
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ln1 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_1[0][0]
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ffn1 (Dense)  (None, 60, 64)               2112      ['transformer_0_ln1[0][0]']   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ffn2 (Dense)  (None, 60, 32)               2080      ['transformer_0_ffn1[0][0]']  
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_1 (Dropout)         (None, 60, 32)               0         ['transformer_0_ffn2[0][0]']  
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_2 (TF  (None, 60, 32)               0         ['transformer_0_ln1[0][0]',   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_1[0][0]']           
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ln2 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_2[0][0]
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_mha (MultiHe  (None, 60, 32)               4224      ['transformer_0_ln2[0][0]',   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  adAttention)                                                        'transformer_0_ln2[0][0]']   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_2 (Dropout)         (None, 60, 32)               0         ['transformer_1_mha[0][0]']   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_3 (TF  (None, 60, 32)               0         ['transformer_0_ln2[0][0]',   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_2[0][0]']           
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ln1 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_3[0][0]
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ffn1 (Dense)  (None, 60, 64)               2112      ['transformer_1_ln1[0][0]']   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ffn2 (Dense)  (None, 60, 32)               2080      ['transformer_1_ffn1[0][0]']  
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_3 (Dropout)         (None, 60, 32)               0         ['transformer_1_ffn2[0][0]']  
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_4 (TF  (None, 60, 32)               0         ['transformer_1_ln1[0][0]',   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_3[0][0]']           
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ln2 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_4[0][0]
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  global_average_pooling1d (  (None, 32)                   0         ['transformer_1_ln2[0][0]']   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  GlobalAveragePooling1D)                                                                          
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  dense (Dense)               (None, 32)                   1056      ['global_average_pooling1d[0][
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -                                                                     0]']                          
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_4 (Dropout)         (None, 32)                   0         ['dense[0][0]']               
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:460] -  direction (Dense)           (None, 1)                    33        ['dropout_4[0][0]']           
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:574] - ==================================================================================================
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:590] - Total params: 18977 (74.13 KB)
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:594] - Trainable params: 18977 (74.13 KB)
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:598] - Non-trainable params: 0 (0.00 Byte)
+2026-01-02 03:52:17 - modular_trainers - INFO - [layer_utils.py:602] - __________________________________________________________________________________________________
+2026-01-02 03:53:08 - modular_trainers - INFO - [modular_trainers.py:594] - Transformer trained: val_accuracy=0.5643, balanced_acc=0.5520 (up=0.7077, down=0.3964)
+2026-01-02 03:53:08 - modular_trainers - INFO - [modular_trainers.py:645] - Transformer saved to trained_data/models/transformer_direction.keras
+2026-01-02 03:53:08 - modular_trainers - INFO - [modular_trainers.py:709] - Training XGBoost (Momentum)...
+2026-01-02 03:53:10 - modular_trainers - INFO - [modular_trainers.py:770] - XGBoost trained: momentum_mae=0.0335, accel_acc=0.8749
+2026-01-02 03:53:10 - modular_trainers - INFO - [modular_trainers.py:822] - XGBoost saved to trained_data/models/xgb_momentum.pkl
+2026-01-02 03:53:10 - modular_trainers - INFO - [modular_trainers.py:880] - Training Random Forest (Risk)...
+2026-01-02 03:53:40 - modular_trainers - INFO - [modular_trainers.py:931] - RF trained: drawdown_mae=0.00 pips, streak_mae=0.1223
+2026-01-02 03:53:40 - modular_trainers - INFO - [modular_trainers.py:980] - Random Forest saved to trained_data/models/rf_risk.pkl
+2026-01-02 03:53:40 - modular_trainers - INFO - [modular_trainers.py:1028] - Training Ridge (Confidence)...
+2026-01-02 03:53:40 - modular_trainers - INFO - [modular_trainers.py:1055] - Ridge trained: confidence_mae=3.24, r2=0.4453
+2026-01-02 03:53:40 - modular_trainers - INFO - [modular_trainers.py:1097] - Ridge saved to trained_data/models/ridge_confidence.pkl
+2026-01-02 03:56:13 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-02 03:56:14 - root - ERROR - [main.py:8499] - Command failed: OANDA API error 404: Unrecognized endpoint: /v3/instruments/GBP/USD/candles
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 8470, in main
+    buddy_test(
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 7668, in buddy_test
+    _buddy_test_modular_ensemble(
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 7407, in _buddy_test_modular_ensemble
+    resp = client.get_candles(instrument, granularity=granularity, count=fetch_count, price="MBA")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/oanda_practice.py", line 230, in get_candles
+    return self._request(
+           ^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/oanda_practice.py", line 197, in _request
+    raise OandaApiError(
+oanda_practice.OandaApiError: OANDA API error 404: Unrecognized endpoint: /v3/instruments/GBP/USD/candles
+2026-01-02 03:57:11 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-02 03:57:12 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-02 03:57:12 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-02 03:57:12 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (499, 9) -> (300, 192)
+2026-01-02 03:57:12 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-02 03:57:16 - modular_inference - INFO - [modular_inference.py:119] - Loading modular ensemble models...
+2026-01-02 03:57:17 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-02 03:57:18 - modular_trainers - INFO - [modular_trainers.py:665] - Transformer loaded from trained_data/models/transformer_direction.keras
+2026-01-02 03:57:18 - modular_inference - INFO - [modular_inference.py:128] - ✓ Transformer direction model loaded
+2026-01-02 03:57:18 - modular_trainers - INFO - [modular_trainers.py:832] - XGB Scaler - mean_: [4.62826490e-06 9.30043760e-06 1.39394600e-05 2.37303350e-05
+ 4.70630078e-05 9.24932286e-05 4.20414012e-06 1.23621889e-03
+ 1.23582909e-03 1.23572328e-03 6.71524219e-04 7.60197260e-04
+ 5.17154074e-01 5.06480394e-01 2.67981209e-05 7.10604361e-10
+ 1.09813728e+00 1.09890966e+00 3.60102923e-02]
+2026-01-02 03:57:18 - modular_trainers - INFO - [modular_trainers.py:833] - XGB Scaler - scale_: [9.20970375e-04 1.30306445e-03 1.58588169e-03 2.04321595e-03
+ 2.88409732e-03 4.03740234e-03 9.21006288e-04 6.46752627e-04
+ 5.36395903e-04 4.61742736e-04 4.79178049e-04 4.31312393e-04
+ 3.82427150e-01 1.29956674e-01 1.02681147e-03 3.07421425e-04
+ 6.36349113e-01 6.64394167e-01 1.26860445e+00]
+2026-01-02 03:57:18 - modular_trainers - INFO - [modular_trainers.py:843] - XGBoost loaded from trained_data/models/xgb_momentum.pkl
+2026-01-02 03:57:18 - modular_inference - INFO - [modular_inference.py:141] - ✓ XGBoost loaded
+2026-01-02 03:57:18 - modular_trainers - INFO - [modular_trainers.py:995] - Random Forest loaded from trained_data/models/rf_risk.pkl
+2026-01-02 03:57:18 - modular_inference - INFO - [modular_inference.py:150] - ✓ Random Forest loaded
+2026-01-02 03:57:18 - modular_trainers - INFO - [modular_trainers.py:1111] - Ridge loaded from trained_data/models/ridge_confidence.pkl
+2026-01-02 03:57:18 - modular_inference - INFO - [modular_inference.py:159] - ✓ Ridge loaded
+2026-01-02 03:57:18 - modular_inference - INFO - [modular_inference.py:164] - Modular ensemble loaded.
+2026-01-02 03:57:19 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:19 - modular_inference - INFO - [modular_inference.py:454] - XGBoost features shape: (100, 19)
+2026-01-02 03:57:19 - modular_inference - INFO - [modular_inference.py:456] - XGBoost feature stats - min:-1.89 max:4.00 mean:0.16
+2026-01-02 03:57:19 - modular_trainers - INFO - [modular_trainers.py:788] - XGB Predict - Input shape: (100, 19), Scaled shape: (100, 19)
+2026-01-02 03:57:19 - modular_trainers - INFO - [modular_trainers.py:789] - XGB Predict - X_last scaled: [ 0.17348987  0.06741248  0.24573226  0.07616707 -1.1576382   0.32921487
+  0.17392896 -0.751421    0.600987    0.7397056  -0.6636254   0.5718199
+  0.80421686 -0.9860516   0.15268601 -0.04054217 -0.89840055 -1.3154017
+ -0.8265959 ]
+2026-01-02 03:57:20 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:20 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:20 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:20 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:20 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:21 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:21 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:21 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:21 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:21 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:22 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:22 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:22 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:22 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:22 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:23 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:23 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:23 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:23 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:23 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:24 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:24 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:24 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:24 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:24 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:25 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:25 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:25 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:25 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:26 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:26 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:27 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:27 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:27 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:28 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:28 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:28 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:28 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:28 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:29 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:29 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:29 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:29 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:29 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:31 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:31 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:31 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:31 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:31 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:32 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:32 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:32 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:32 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:32 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:33 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:33 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:33 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:33 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:33 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:34 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:34 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:34 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:34 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:35 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:35 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:35 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:35 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:35 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:59 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:59 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:59 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:59 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:57:59 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:00 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:00 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:00 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:00 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:01 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:01 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:01 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:01 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:02 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:02 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:02 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:02 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:03 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:03 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:03 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:03 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:04 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:04 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:04 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:04 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:05 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:05 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:05 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:05 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:06 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:06 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:06 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:06 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:07 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:07 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:07 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:07 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:08 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:08 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 03:58:08 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 04:03:24 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-02 04:03:29 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-02 04:03:37 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-02 04:03:37 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (15000, 9) -> (14801, 192)
+2026-01-02 04:03:37 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-02 04:03:51 - modular_data_loaders - INFO - [modular_data_loaders.py:1116] - Computing normalized features for instrument-agnostic training...
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:1118] - DataFrame now has 235 columns after normalization
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:495] - Loading direction data (threshold=0.300%, lookahead=24)...
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:534] - Direction features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'zscore_10', 'zscore_20', 'zscore_50', 'pct_rank_10', 'pct_rank_20']... (24 total)
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:595] - Direction labels: 3353 up, 3124 down, 8299 unclear (43.8% clear, 51.8% up)
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:612] - Direction data: train=10638, val=2660, test=1478, features=24
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:495] - Loading direction data (threshold=0.300%, lookahead=24)...
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:534] - Direction features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'zscore_10', 'zscore_20', 'zscore_50', 'pct_rank_10', 'pct_rank_20']... (24 total)
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:595] - Direction labels: 3353 up, 3124 down, 8299 unclear (43.8% clear, 51.8% up)
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:612] - Direction data: train=10638, val=2660, test=1478, features=24
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:723] - Loading XGBoost data (momentum analysis)...
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:759] - XGBoost features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'returns_20', 'log_returns_1', 'atr_pct_5', 'atr_pct_10', 'atr_pct_14']... (19 total)
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:785] - XGBoost momentum: P90=0.000998, norm_factor=0.001109
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:825] - XGBoost data: train=10645, val=2661, test=1479, features=19
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:854] - Loading Random Forest data (risk assessment)...
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:890] - RF features: ['atr_pct_5', 'atr_pct_10', 'atr_pct_14', 'atr_pct_20', 'volatility_5', 'volatility_10', 'volatility_20', 'tr_pct', 'hl_range_pct', 'upper_wick_ratio']... (18 total)
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:966] - RF data: train=10648, val=2663, test=1479, features=18
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:995] - Loading Ridge data (confidence scoring)...
+2026-01-02 04:03:55 - modular_data_loaders - INFO - [modular_data_loaders.py:1031] - Ridge features: ['atr_pct_10', 'atr_pct_20', 'volatility_10', 'volatility_20', 'sma_ratio_20', 'ema_ratio_26', 'macd_norm', 'rsi_norm', 'zscore_20', 'volume_ratio_10']... (14 total)
+2026-01-02 04:03:56 - modular_data_loaders - INFO - [modular_data_loaders.py:1083] - Ridge data: train=10648, val=2663, test=1479, features=14
+2026-01-02 04:03:56 - modular_trainers - INFO - [modular_trainers.py:463] - Training Transformer (Direction)...
+2026-01-02 04:03:56 - modular_trainers - INFO - [modular_trainers.py:506] - Filtered training: 4668/10578 sequences with clear labels
+2026-01-02 04:03:56 - modular_trainers - INFO - [modular_trainers.py:507] - Filtered validation: 1261/2600 sequences with clear labels
+2026-01-02 04:03:56 - modular_trainers - INFO - [modular_trainers.py:512] - Class distribution: train=51.5% up, val=51.4% up
+2026-01-02 04:03:56 - modular_trainers - INFO - [modular_trainers.py:524] - Class weights: down=1.030, up=0.971
+2026-01-02 04:03:56 - modular_trainers - INFO - [modular_trainers.py:529] - Sequence shape: train=(4668, 60, 24), val=(1261, 60, 24)
+2026-01-02 04:03:57 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:462] - Model: "transformer_direction"
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:463] - __________________________________________________________________________________________________
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  Layer (type)                Output Shape                 Param #   Connected to                  
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:465] - ==================================================================================================
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  features (InputLayer)       [(None, 60, 24)]             0         []                            
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  input_projection (Dense)    (None, 60, 32)               800       ['features[0][0]']            
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add (TFOp  (None, 60, 32)               0         ['input_projection[0][0]']    
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  Lambda)                                                                                          
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_mha (MultiHe  (None, 60, 32)               4224      ['tf.__operators__.add[0][0]',
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  adAttention)                                                        'tf.__operators__.add[0][0]']
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  dropout (Dropout)           (None, 60, 32)               0         ['transformer_0_mha[0][0]']   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_1 (TF  (None, 60, 32)               0         ['tf.__operators__.add[0][0]',
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout[0][0]']             
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ln1 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_1[0][0]
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ffn1 (Dense)  (None, 60, 64)               2112      ['transformer_0_ln1[0][0]']   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ffn2 (Dense)  (None, 60, 32)               2080      ['transformer_0_ffn1[0][0]']  
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_1 (Dropout)         (None, 60, 32)               0         ['transformer_0_ffn2[0][0]']  
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_2 (TF  (None, 60, 32)               0         ['transformer_0_ln1[0][0]',   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_1[0][0]']           
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ln2 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_2[0][0]
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_mha (MultiHe  (None, 60, 32)               4224      ['transformer_0_ln2[0][0]',   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  adAttention)                                                        'transformer_0_ln2[0][0]']   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_2 (Dropout)         (None, 60, 32)               0         ['transformer_1_mha[0][0]']   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_3 (TF  (None, 60, 32)               0         ['transformer_0_ln2[0][0]',   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_2[0][0]']           
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ln1 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_3[0][0]
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ffn1 (Dense)  (None, 60, 64)               2112      ['transformer_1_ln1[0][0]']   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ffn2 (Dense)  (None, 60, 32)               2080      ['transformer_1_ffn1[0][0]']  
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_3 (Dropout)         (None, 60, 32)               0         ['transformer_1_ffn2[0][0]']  
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_4 (TF  (None, 60, 32)               0         ['transformer_1_ln1[0][0]',   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_3[0][0]']           
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ln2 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_4[0][0]
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  global_average_pooling1d (  (None, 32)                   0         ['transformer_1_ln2[0][0]']   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  GlobalAveragePooling1D)                                                                          
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  dense (Dense)               (None, 32)                   1056      ['global_average_pooling1d[0][
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -                                                                     0]']                          
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_4 (Dropout)         (None, 32)                   0         ['dense[0][0]']               
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:460] -  direction (Dense)           (None, 1)                    33        ['dropout_4[0][0]']           
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:574] - ==================================================================================================
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:590] - Total params: 18977 (74.13 KB)
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:594] - Trainable params: 18977 (74.13 KB)
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:598] - Non-trainable params: 0 (0.00 Byte)
+2026-01-02 04:03:57 - modular_trainers - INFO - [layer_utils.py:602] - __________________________________________________________________________________________________
+2026-01-02 04:05:43 - modular_trainers - INFO - [modular_trainers.py:594] - Transformer trained: val_accuracy=0.5067, balanced_acc=0.4997 (up=0.7531, down=0.2463)
+2026-01-02 04:05:43 - modular_trainers - INFO - [modular_trainers.py:645] - Transformer saved to trained_data/models/transformer_direction.keras
+2026-01-02 04:05:43 - modular_trainers - INFO - [modular_trainers.py:709] - Training XGBoost (Momentum)...
+2026-01-02 04:05:46 - modular_trainers - INFO - [modular_trainers.py:770] - XGBoost trained: momentum_mae=0.0333, accel_acc=0.8749
+2026-01-02 04:05:46 - modular_trainers - INFO - [modular_trainers.py:822] - XGBoost saved to trained_data/models/xgb_momentum.pkl
+2026-01-02 04:05:46 - modular_trainers - INFO - [modular_trainers.py:880] - Training Random Forest (Risk)...
+2026-01-02 04:06:15 - modular_trainers - INFO - [modular_trainers.py:931] - RF trained: drawdown_mae=0.00 pips, streak_mae=0.1227
+2026-01-02 04:06:15 - modular_trainers - INFO - [modular_trainers.py:980] - Random Forest saved to trained_data/models/rf_risk.pkl
+2026-01-02 04:06:15 - modular_trainers - INFO - [modular_trainers.py:1028] - Training Ridge (Confidence)...
+2026-01-02 04:06:15 - modular_trainers - INFO - [modular_trainers.py:1055] - Ridge trained: confidence_mae=3.24, r2=0.4457
+2026-01-02 04:06:15 - modular_trainers - INFO - [modular_trainers.py:1097] - Ridge saved to trained_data/models/ridge_confidence.pkl
+2026-01-02 04:18:51 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-02 04:19:01 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-02 04:19:10 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-02 04:19:10 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (15000, 9) -> (14801, 192)
+2026-01-02 04:19:10 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-02 04:19:21 - modular_data_loaders - INFO - [modular_data_loaders.py:1327] - Computing normalized features for instrument-agnostic training...
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1329] - DataFrame now has 235 columns after normalization
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:928] - Loading XGBoost data (momentum analysis)...
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:964] - XGBoost features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'returns_20', 'log_returns_1', 'atr_pct_5', 'atr_pct_10', 'atr_pct_14']... (19 total)
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:990] - XGBoost momentum: P90=0.000998, norm_factor=0.001109
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1030] - XGBoost data: train=10645, val=2661, test=1479, features=19
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1059] - Loading Random Forest data (risk assessment)...
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1095] - RF features: ['atr_pct_5', 'atr_pct_10', 'atr_pct_14', 'atr_pct_20', 'volatility_5', 'volatility_10', 'volatility_20', 'tr_pct', 'hl_range_pct', 'upper_wick_ratio']... (18 total)
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1171] - RF data: train=10648, val=2663, test=1479, features=18
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1200] - Loading Ridge data (confidence scoring)...
+2026-01-02 04:19:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1236] - Ridge features: ['atr_pct_10', 'atr_pct_20', 'volatility_10', 'volatility_20', 'sma_ratio_20', 'ema_ratio_26', 'macd_norm', 'rsi_norm', 'zscore_20', 'volume_ratio_10']... (14 total)
+2026-01-02 04:19:27 - modular_data_loaders - INFO - [modular_data_loaders.py:1288] - Ridge data: train=10648, val=2663, test=1479, features=14
+2026-01-02 04:19:27 - modular_data_loaders - INFO - [modular_data_loaders.py:1344] - Using DIRECTION prediction mode (binary)
+2026-01-02 04:19:27 - modular_data_loaders - INFO - [modular_data_loaders.py:700] - Loading direction data (threshold=0.300%, lookahead=24)...
+2026-01-02 04:19:27 - modular_data_loaders - INFO - [modular_data_loaders.py:739] - Direction features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'zscore_10', 'zscore_20', 'zscore_50', 'pct_rank_10', 'pct_rank_20']... (24 total)
+2026-01-02 04:19:27 - modular_data_loaders - INFO - [modular_data_loaders.py:800] - Direction labels: 3353 up, 3124 down, 8299 unclear (43.8% clear, 51.8% up)
+2026-01-02 04:19:27 - modular_data_loaders - INFO - [modular_data_loaders.py:817] - Direction data: train=10638, val=2660, test=1478, features=24
+2026-01-02 04:19:28 - modular_trainers - INFO - [modular_trainers.py:463] - Training Transformer (Direction)...
+2026-01-02 04:19:28 - modular_trainers - INFO - [modular_trainers.py:506] - Filtered training: 4668/10578 sequences with clear labels
+2026-01-02 04:19:28 - modular_trainers - INFO - [modular_trainers.py:507] - Filtered validation: 1261/2600 sequences with clear labels
+2026-01-02 04:19:28 - modular_trainers - INFO - [modular_trainers.py:512] - Class distribution: train=51.5% up, val=51.4% up
+2026-01-02 04:19:28 - modular_trainers - INFO - [modular_trainers.py:524] - Class weights: down=1.030, up=0.971
+2026-01-02 04:19:28 - modular_trainers - INFO - [modular_trainers.py:529] - Sequence shape: train=(4668, 60, 24), val=(1261, 60, 24)
+2026-01-02 04:19:29 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:462] - Model: "transformer_direction"
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:463] - __________________________________________________________________________________________________
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  Layer (type)                Output Shape                 Param #   Connected to                  
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:465] - ==================================================================================================
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  features (InputLayer)       [(None, 60, 24)]             0         []                            
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  input_projection (Dense)    (None, 60, 32)               800       ['features[0][0]']            
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add (TFOp  (None, 60, 32)               0         ['input_projection[0][0]']    
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  Lambda)                                                                                          
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_mha (MultiHe  (None, 60, 32)               4224      ['tf.__operators__.add[0][0]',
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  adAttention)                                                        'tf.__operators__.add[0][0]']
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  dropout (Dropout)           (None, 60, 32)               0         ['transformer_0_mha[0][0]']   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_1 (TF  (None, 60, 32)               0         ['tf.__operators__.add[0][0]',
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout[0][0]']             
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ln1 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_1[0][0]
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ffn1 (Dense)  (None, 60, 64)               2112      ['transformer_0_ln1[0][0]']   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ffn2 (Dense)  (None, 60, 32)               2080      ['transformer_0_ffn1[0][0]']  
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_1 (Dropout)         (None, 60, 32)               0         ['transformer_0_ffn2[0][0]']  
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_2 (TF  (None, 60, 32)               0         ['transformer_0_ln1[0][0]',   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_1[0][0]']           
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ln2 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_2[0][0]
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_mha (MultiHe  (None, 60, 32)               4224      ['transformer_0_ln2[0][0]',   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  adAttention)                                                        'transformer_0_ln2[0][0]']   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_2 (Dropout)         (None, 60, 32)               0         ['transformer_1_mha[0][0]']   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_3 (TF  (None, 60, 32)               0         ['transformer_0_ln2[0][0]',   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_2[0][0]']           
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ln1 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_3[0][0]
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ffn1 (Dense)  (None, 60, 64)               2112      ['transformer_1_ln1[0][0]']   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ffn2 (Dense)  (None, 60, 32)               2080      ['transformer_1_ffn1[0][0]']  
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_3 (Dropout)         (None, 60, 32)               0         ['transformer_1_ffn2[0][0]']  
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_4 (TF  (None, 60, 32)               0         ['transformer_1_ln1[0][0]',   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_3[0][0]']           
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ln2 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_4[0][0]
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  global_average_pooling1d (  (None, 32)                   0         ['transformer_1_ln2[0][0]']   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  GlobalAveragePooling1D)                                                                          
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  dense (Dense)               (None, 32)                   1056      ['global_average_pooling1d[0][
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -                                                                     0]']                          
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_4 (Dropout)         (None, 32)                   0         ['dense[0][0]']               
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:460] -  direction (Dense)           (None, 1)                    33        ['dropout_4[0][0]']           
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:574] - ==================================================================================================
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:590] - Total params: 18977 (74.13 KB)
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:594] - Trainable params: 18977 (74.13 KB)
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:598] - Non-trainable params: 0 (0.00 Byte)
+2026-01-02 04:19:29 - modular_trainers - INFO - [layer_utils.py:602] - __________________________________________________________________________________________________
+2026-01-02 04:21:15 - modular_trainers - INFO - [modular_trainers.py:594] - Transformer trained: val_accuracy=0.5067, balanced_acc=0.4997 (up=0.7531, down=0.2463)
+2026-01-02 04:21:15 - modular_trainers - INFO - [modular_trainers.py:645] - Transformer saved to trained_data/models/transformer_direction.keras
+2026-01-02 04:21:15 - modular_trainers - INFO - [modular_trainers.py:1041] - Training XGBoost (Momentum)...
+2026-01-02 04:21:17 - modular_trainers - INFO - [modular_trainers.py:1102] - XGBoost trained: momentum_mae=0.0333, accel_acc=0.8749
+2026-01-02 04:21:17 - modular_trainers - INFO - [modular_trainers.py:1154] - XGBoost saved to trained_data/models/xgb_momentum.pkl
+2026-01-02 04:21:17 - modular_trainers - INFO - [modular_trainers.py:1212] - Training Random Forest (Risk)...
+2026-01-02 04:21:49 - modular_trainers - INFO - [modular_trainers.py:1263] - RF trained: drawdown_mae=0.00 pips, streak_mae=0.1227
+2026-01-02 04:21:49 - modular_trainers - INFO - [modular_trainers.py:1312] - Random Forest saved to trained_data/models/rf_risk.pkl
+2026-01-02 04:21:49 - modular_trainers - INFO - [modular_trainers.py:1360] - Training Ridge (Confidence)...
+2026-01-02 04:21:50 - modular_trainers - INFO - [modular_trainers.py:1387] - Ridge trained: confidence_mae=3.24, r2=0.4457
+2026-01-02 04:21:50 - modular_trainers - INFO - [modular_trainers.py:1429] - Ridge saved to trained_data/models/ridge_confidence.pkl
+2026-01-02 07:23:52 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-02 07:36:07 - root - ERROR - [main.py:8593] - Command failed: Network error: HTTPSConnectionPool(host='api-fxpractice.oanda.com', port=443): Read timed out.
+Traceback (most recent call last):
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/response.py", line 899, in _error_catcher
+    yield
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/response.py", line 1417, in read_chunked
+    chunk = self._handle_chunk(amt)
+            ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/response.py", line 1350, in _handle_chunk
+    value = self._fp._safe_read(amt)  # type: ignore[union-attr]
+            ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/http/client.py", line 638, in _safe_read
+    data = self.fp.read(amt)
+           ^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/socket.py", line 718, in readinto
+    return self._sock.recv_into(b)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/ssl.py", line 1314, in recv_into
+    return self.read(nbytes, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/ssl.py", line 1166, in read
+    return self._sslobj.read(len, buffer)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TimeoutError: The read operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/requests/models.py", line 820, in generate
+    yield from self.raw.stream(chunk_size, decode_content=True)
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/response.py", line 1246, in stream
+    yield from self.read_chunked(amt, decode_content=decode_content)
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/response.py", line 1393, in read_chunked
+    with self._error_catcher():
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/contextlib.py", line 158, in __exit__
+    self.gen.throw(typ, value, traceback)
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/response.py", line 904, in _error_catcher
+    raise ReadTimeoutError(self._pool, None, "Read timed out.") from e  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='api-fxpractice.oanda.com', port=443): Read timed out.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Desktop/ml_engine/oanda_practice.py", line 176, in _request
+    resp = self._session.request(
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/requests/sessions.py", line 746, in send
+    r.content
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/requests/models.py", line 902, in content
+    self._content = b"".join(self.iter_content(CONTENT_CHUNK_SIZE)) or b""
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/requests/models.py", line 826, in generate
+    raise ConnectionError(e)
+requests.exceptions.ConnectionError: HTTPSConnectionPool(host='api-fxpractice.oanda.com', port=443): Read timed out.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 8556, in main
+    _dispatch_train_buddy(args, command_map)
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 7004, in _dispatch_train_buddy
+    command_map["train-buddy"](
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 1132, in train_buddy
+    _train_buddy_impl(
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 1303, in _train_buddy_impl
+    df = _buddy_load_and_validate_csv(
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/buddy_training_helpers.py", line 215, in _buddy_load_and_validate_csv
+    csv_path_eff = _resolve_training_csv_path(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/buddy_training_helpers.py", line 35, in _resolve_training_csv_path
+    return oanda_fetch_to_csv(oanda_fetch)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 291, in _oanda_fetch_to_csv
+    resp = client.get_candles(
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/oanda_practice.py", line 230, in get_candles
+    return self._request(
+           ^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/oanda_practice.py", line 181, in _request
+    raise OandaApiError(0, f"Network error: {e}")
+oanda_practice.OandaApiError: Network error: HTTPSConnectionPool(host='api-fxpractice.oanda.com', port=443): Read timed out.
+2026-01-02 07:40:14 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-02 07:47:16 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-02 07:47:22 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-02 07:47:22 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (15000, 9) -> (14801, 192)
+2026-01-02 07:47:22 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-02 09:42:25 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-02 09:43:08 - root - ERROR - [main.py:8593] - Command failed: Network error: HTTPSConnectionPool(host='api-fxpractice.oanda.com', port=443): Read timed out. (read timeout=5)
+Traceback (most recent call last):
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/connectionpool.py", line 464, in _make_request
+    self._validate_conn(conn)
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/connectionpool.py", line 1093, in _validate_conn
+    conn.connect()
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/connection.py", line 796, in connect
+    sock_and_verified = _ssl_wrap_socket_and_match_hostname(
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/connection.py", line 975, in _ssl_wrap_socket_and_match_hostname
+    ssl_sock = ssl_wrap_socket(
+               ^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/util/ssl_.py", line 483, in ssl_wrap_socket
+    ssl_sock = _ssl_wrap_socket_impl(sock, context, tls_in_tls, server_hostname)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/util/ssl_.py", line 527, in _ssl_wrap_socket_impl
+    return ssl_context.wrap_socket(sock, server_hostname=server_hostname)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/ssl.py", line 517, in wrap_socket
+    return self.sslsocket_class._create(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/ssl.py", line 1104, in _create
+    self.do_handshake()
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/ssl.py", line 1382, in do_handshake
+    self._sslobj.do_handshake()
+TimeoutError: _ssl.c:999: The handshake operation timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/requests/adapters.py", line 644, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/util/retry.py", line 474, in increment
+    raise reraise(type(error), error, _stacktrace)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/util/util.py", line 39, in reraise
+    raise value
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/connectionpool.py", line 488, in _make_request
+    raise new_e
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/connectionpool.py", line 466, in _make_request
+    self._raise_timeout(err=e, url=url, timeout_value=conn.timeout)
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/urllib3/connectionpool.py", line 367, in _raise_timeout
+    raise ReadTimeoutError(
+urllib3.exceptions.ReadTimeoutError: HTTPSConnectionPool(host='api-fxpractice.oanda.com', port=443): Read timed out. (read timeout=5)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Desktop/ml_engine/oanda_practice.py", line 176, in _request
+    resp = self._session.request(
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/miniforge3/envs/tf-metal/lib/python3.11/site-packages/requests/adapters.py", line 690, in send
+    raise ReadTimeout(e, request=request)
+requests.exceptions.ReadTimeout: HTTPSConnectionPool(host='api-fxpractice.oanda.com', port=443): Read timed out. (read timeout=5)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 8556, in main
+    _dispatch_train_buddy(args, command_map)
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 7004, in _dispatch_train_buddy
+    command_map["train-buddy"](
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 1132, in train_buddy
+    _train_buddy_impl(
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 1303, in _train_buddy_impl
+    df = _buddy_load_and_validate_csv(
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/buddy_training_helpers.py", line 215, in _buddy_load_and_validate_csv
+    csv_path_eff = _resolve_training_csv_path(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/buddy_training_helpers.py", line 35, in _resolve_training_csv_path
+    return oanda_fetch_to_csv(oanda_fetch)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 291, in _oanda_fetch_to_csv
+    resp = client.get_candles(
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/oanda_practice.py", line 230, in get_candles
+    return self._request(
+           ^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/oanda_practice.py", line 181, in _request
+    raise OandaApiError(0, f"Network error: {e}")
+oanda_practice.OandaApiError: Network error: HTTPSConnectionPool(host='api-fxpractice.oanda.com', port=443): Read timed out. (read timeout=5)
+2026-01-03 01:28:05 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-03 01:28:12 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:28:16 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:28:16 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (20000, 9) -> (19801, 192)
+2026-01-03 01:28:16 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:28:24 - modular_data_loaders - INFO - [modular_data_loaders.py:1327] - Computing normalized features for instrument-agnostic training...
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1329] - DataFrame now has 235 columns after normalization
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:928] - Loading XGBoost data (momentum analysis)...
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:964] - XGBoost features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'returns_20', 'log_returns_1', 'atr_pct_5', 'atr_pct_10', 'atr_pct_14']... (19 total)
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:990] - XGBoost momentum: P90=0.001380, norm_factor=0.001534
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1030] - XGBoost data: train=14245, val=3561, test=1979, features=19
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1059] - Loading Random Forest data (risk assessment)...
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1095] - RF features: ['atr_pct_5', 'atr_pct_10', 'atr_pct_14', 'atr_pct_20', 'volatility_5', 'volatility_10', 'volatility_20', 'tr_pct', 'hl_range_pct', 'upper_wick_ratio']... (18 total)
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1171] - RF data: train=14248, val=3563, test=1979, features=18
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1200] - Loading Ridge data (confidence scoring)...
+2026-01-03 01:28:26 - modular_data_loaders - INFO - [modular_data_loaders.py:1236] - Ridge features: ['atr_pct_10', 'atr_pct_20', 'volatility_10', 'volatility_20', 'sma_ratio_20', 'ema_ratio_26', 'macd_norm', 'rsi_norm', 'zscore_20', 'volume_ratio_10']... (14 total)
+2026-01-03 01:28:27 - modular_data_loaders - INFO - [modular_data_loaders.py:1288] - Ridge data: train=14248, val=3563, test=1979, features=14
+2026-01-03 01:28:27 - modular_data_loaders - INFO - [modular_data_loaders.py:1344] - Using DIRECTION prediction mode (binary)
+2026-01-03 01:28:27 - modular_data_loaders - INFO - [modular_data_loaders.py:700] - Loading direction data (threshold=0.300%, lookahead=24)...
+2026-01-03 01:28:27 - modular_data_loaders - INFO - [modular_data_loaders.py:739] - Direction features: ['returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10', 'zscore_10', 'zscore_20', 'zscore_50', 'pct_rank_10', 'pct_rank_20']... (24 total)
+2026-01-03 01:28:27 - modular_data_loaders - INFO - [modular_data_loaders.py:800] - Direction labels: 6115 up, 5252 down, 8409 unclear (57.5% clear, 53.8% up)
+2026-01-03 01:28:27 - modular_data_loaders - INFO - [modular_data_loaders.py:817] - Direction data: train=14238, val=3560, test=1978, features=24
+2026-01-03 01:28:27 - modular_trainers - INFO - [modular_trainers.py:463] - Training Transformer (Direction)...
+2026-01-03 01:28:27 - modular_trainers - INFO - [modular_trainers.py:506] - Filtered training: 8027/14178 sequences with clear labels
+2026-01-03 01:28:27 - modular_trainers - INFO - [modular_trainers.py:507] - Filtered validation: 2187/3500 sequences with clear labels
+2026-01-03 01:28:27 - modular_trainers - INFO - [modular_trainers.py:512] - Class distribution: train=54.1% up, val=50.9% up
+2026-01-03 01:28:27 - modular_trainers - INFO - [modular_trainers.py:524] - Class weights: down=1.090, up=0.924
+2026-01-03 01:28:27 - modular_trainers - INFO - [modular_trainers.py:529] - Sequence shape: train=(8027, 60, 24), val=(2187, 60, 24)
+2026-01-03 01:28:28 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:462] - Model: "transformer_direction"
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:463] - __________________________________________________________________________________________________
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  Layer (type)                Output Shape                 Param #   Connected to                  
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:465] - ==================================================================================================
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  features (InputLayer)       [(None, 60, 24)]             0         []                            
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  input_projection (Dense)    (None, 60, 32)               800       ['features[0][0]']            
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add (TFOp  (None, 60, 32)               0         ['input_projection[0][0]']    
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  Lambda)                                                                                          
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_mha (MultiHe  (None, 60, 32)               4224      ['tf.__operators__.add[0][0]',
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  adAttention)                                                        'tf.__operators__.add[0][0]']
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  dropout (Dropout)           (None, 60, 32)               0         ['transformer_0_mha[0][0]']   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_1 (TF  (None, 60, 32)               0         ['tf.__operators__.add[0][0]',
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout[0][0]']             
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ln1 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_1[0][0]
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ffn1 (Dense)  (None, 60, 64)               2112      ['transformer_0_ln1[0][0]']   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ffn2 (Dense)  (None, 60, 32)               2080      ['transformer_0_ffn1[0][0]']  
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_1 (Dropout)         (None, 60, 32)               0         ['transformer_0_ffn2[0][0]']  
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_2 (TF  (None, 60, 32)               0         ['transformer_0_ln1[0][0]',   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_1[0][0]']           
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_0_ln2 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_2[0][0]
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_mha (MultiHe  (None, 60, 32)               4224      ['transformer_0_ln2[0][0]',   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  adAttention)                                                        'transformer_0_ln2[0][0]']   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_2 (Dropout)         (None, 60, 32)               0         ['transformer_1_mha[0][0]']   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_3 (TF  (None, 60, 32)               0         ['transformer_0_ln2[0][0]',   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_2[0][0]']           
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ln1 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_3[0][0]
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ffn1 (Dense)  (None, 60, 64)               2112      ['transformer_1_ln1[0][0]']   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ffn2 (Dense)  (None, 60, 32)               2080      ['transformer_1_ffn1[0][0]']  
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_3 (Dropout)         (None, 60, 32)               0         ['transformer_1_ffn2[0][0]']  
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  tf.__operators__.add_4 (TF  (None, 60, 32)               0         ['transformer_1_ln1[0][0]',   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  OpLambda)                                                           'dropout_3[0][0]']           
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  transformer_1_ln2 (LayerNo  (None, 60, 32)               64        ['tf.__operators__.add_4[0][0]
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  rmalization)                                                       ']                            
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  global_average_pooling1d (  (None, 32)                   0         ['transformer_1_ln2[0][0]']   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  GlobalAveragePooling1D)                                                                          
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  dense (Dense)               (None, 32)                   1056      ['global_average_pooling1d[0][
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -                                                                     0]']                          
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  dropout_4 (Dropout)         (None, 32)                   0         ['dense[0][0]']               
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:460] -  direction (Dense)           (None, 1)                    33        ['dropout_4[0][0]']           
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:566] -                                                                                                   
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:574] - ==================================================================================================
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:590] - Total params: 18977 (74.13 KB)
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:594] - Trainable params: 18977 (74.13 KB)
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:598] - Non-trainable params: 0 (0.00 Byte)
+2026-01-03 01:28:28 - modular_trainers - INFO - [layer_utils.py:602] - __________________________________________________________________________________________________
+2026-01-03 01:30:06 - modular_trainers - INFO - [modular_trainers.py:594] - Transformer trained: val_accuracy=0.5432, balanced_acc=0.5395 (up=0.7397, down=0.3392)
+2026-01-03 01:30:06 - modular_trainers - INFO - [modular_trainers.py:645] - Transformer saved to trained_data/models/transformer_direction.keras
+2026-01-03 01:30:06 - modular_trainers - INFO - [modular_trainers.py:1041] - Training XGBoost (Momentum)...
+2026-01-03 01:30:07 - modular_trainers - INFO - [modular_trainers.py:1102] - XGBoost trained: momentum_mae=0.0364, accel_acc=0.8211
+2026-01-03 01:30:07 - modular_trainers - INFO - [modular_trainers.py:1154] - XGBoost saved to trained_data/models/xgb_momentum.pkl
+2026-01-03 01:30:07 - modular_trainers - INFO - [modular_trainers.py:1212] - Training Random Forest (Risk)...
+2026-01-03 01:30:14 - modular_trainers - INFO - [modular_trainers.py:1263] - RF trained: drawdown_mae=0.00 pips, streak_mae=0.1341
+2026-01-03 01:30:16 - modular_trainers - INFO - [modular_trainers.py:1312] - Random Forest saved to trained_data/models/rf_risk.pkl
+2026-01-03 01:30:16 - modular_trainers - INFO - [modular_trainers.py:1360] - Training Ridge (Confidence)...
+2026-01-03 01:30:16 - modular_trainers - INFO - [modular_trainers.py:1387] - Ridge trained: confidence_mae=6.09, r2=0.4118
+2026-01-03 01:30:16 - modular_trainers - INFO - [modular_trainers.py:1429] - Ridge saved to trained_data/models/ridge_confidence.pkl
+2026-01-03 01:30:23 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-03 01:30:24 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:30:25 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:30:25 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (2000, 9) -> (1801, 192)
+2026-01-03 01:30:25 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:30:29 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-03 01:30:30 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:30:30 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:30:30 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (500, 9) -> (301, 192)
+2026-01-03 01:30:30 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:30:33 - modular_inference - INFO - [modular_inference.py:139] - Loading modular ensemble models...
+2026-01-03 01:30:33 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-03 01:30:34 - modular_trainers - INFO - [modular_trainers.py:665] - Transformer loaded from trained_data/models/transformer_direction.keras
+2026-01-03 01:30:34 - modular_inference - INFO - [modular_inference.py:157] - ✓ Transformer direction model loaded
+2026-01-03 01:30:34 - modular_trainers - INFO - [modular_trainers.py:1164] - XGB Scaler - mean_: [4.43868478e-06 8.72979378e-06 1.31104962e-05 2.11930236e-05
+ 4.07515399e-05 7.79433791e-05 3.50948957e-06 1.71767735e-03
+ 1.71784534e-03 1.71785738e-03 9.30664441e-04 1.05543800e-03
+ 5.51557541e-01 5.31917589e-01 1.25698962e-05 5.02684763e-07
+ 1.09409778e+00 1.06879525e+00 1.57196484e-02]
+2026-01-03 01:30:34 - modular_trainers - INFO - [modular_trainers.py:1165] - XGB Scaler - scale_: [1.36215326e-03 1.94001416e-03 2.39260647e-03 3.08977315e-03
+ 4.37900580e-03 6.27421309e-03 1.36376526e-03 1.04790712e-03
+ 9.03258353e-04 8.47008804e-04 7.79620469e-04 7.41956375e-04
+ 3.86824520e-01 1.18233740e-01 1.60976058e-03 4.73489119e-04
+ 6.66506284e-01 6.09760975e-01 1.24402911e+00]
+2026-01-03 01:30:34 - modular_trainers - INFO - [modular_trainers.py:1175] - XGBoost loaded from trained_data/models/xgb_momentum.pkl
+2026-01-03 01:30:34 - modular_inference - INFO - [modular_inference.py:172] - ✓ XGBoost loaded
+2026-01-03 01:30:34 - modular_trainers - INFO - [modular_trainers.py:1327] - Random Forest loaded from trained_data/models/rf_risk.pkl
+2026-01-03 01:30:34 - modular_inference - INFO - [modular_inference.py:181] - ✓ Random Forest loaded
+2026-01-03 01:30:34 - modular_trainers - INFO - [modular_trainers.py:1443] - Ridge loaded from trained_data/models/ridge_confidence.pkl
+2026-01-03 01:30:34 - modular_inference - INFO - [modular_inference.py:190] - ✓ Ridge loaded
+2026-01-03 01:30:34 - modular_inference - INFO - [modular_inference.py:195] - Modular ensemble loaded.
+2026-01-03 01:30:34 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:36 - modular_trainers - INFO - [modular_trainers.py:1120] - XGB Predict - Input shape: (101, 19), Scaled shape: (101, 19)
+2026-01-03 01:30:36 - modular_trainers - INFO - [modular_trainers.py:1121] - XGB Predict - X_last scaled: [ 0.37957835  0.01843584  0.01046069  0.80157095  2.1149812   1.7120486
+  0.37971133 -0.23076883  0.6969903   0.2905978  -0.16420908  0.4978802
+  1.1592917   0.6953857   1.740882    1.8740469   0.14234135 -0.25506067
+  0.37021974]
+2026-01-03 01:30:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:36 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:39 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:40 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:41 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:42 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:43 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:44 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:46 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:47 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:48 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:49 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:50 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:51 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:52 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:54 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:55 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:56 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:57 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:58 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:59 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:59 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:59 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:30:59 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:31:21 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-03 01:31:22 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:22 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:22 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (400, 9) -> (201, 192)
+2026-01-03 01:31:22 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (400, 9) -> (201, 192)
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (400, 9) -> (201, 192)
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (400, 9) -> (201, 192)
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (400, 9) -> (201, 192)
+2026-01-03 01:31:23 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:24 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:24 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:24 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (400, 9) -> (201, 192)
+2026-01-03 01:31:24 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:24 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:24 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:24 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (400, 9) -> (201, 192)
+2026-01-03 01:31:24 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:29 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-03 01:31:29 - modular_inference - INFO - [modular_inference.py:139] - Loading modular ensemble models...
+2026-01-03 01:31:31 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-03 01:31:32 - modular_trainers - INFO - [modular_trainers.py:665] - Transformer loaded from trained_data/models/transformer_direction.keras
+2026-01-03 01:31:32 - modular_inference - INFO - [modular_inference.py:157] - ✓ Transformer direction model loaded
+2026-01-03 01:31:32 - modular_trainers - INFO - [modular_trainers.py:1164] - XGB Scaler - mean_: [4.43868478e-06 8.72979378e-06 1.31104962e-05 2.11930236e-05
+ 4.07515399e-05 7.79433791e-05 3.50948957e-06 1.71767735e-03
+ 1.71784534e-03 1.71785738e-03 9.30664441e-04 1.05543800e-03
+ 5.51557541e-01 5.31917589e-01 1.25698962e-05 5.02684763e-07
+ 1.09409778e+00 1.06879525e+00 1.57196484e-02]
+2026-01-03 01:31:32 - modular_trainers - INFO - [modular_trainers.py:1165] - XGB Scaler - scale_: [1.36215326e-03 1.94001416e-03 2.39260647e-03 3.08977315e-03
+ 4.37900580e-03 6.27421309e-03 1.36376526e-03 1.04790712e-03
+ 9.03258353e-04 8.47008804e-04 7.79620469e-04 7.41956375e-04
+ 3.86824520e-01 1.18233740e-01 1.60976058e-03 4.73489119e-04
+ 6.66506284e-01 6.09760975e-01 1.24402911e+00]
+2026-01-03 01:31:32 - modular_trainers - INFO - [modular_trainers.py:1175] - XGBoost loaded from trained_data/models/xgb_momentum.pkl
+2026-01-03 01:31:32 - modular_inference - INFO - [modular_inference.py:172] - ✓ XGBoost loaded
+2026-01-03 01:31:32 - modular_trainers - INFO - [modular_trainers.py:1327] - Random Forest loaded from trained_data/models/rf_risk.pkl
+2026-01-03 01:31:32 - modular_inference - INFO - [modular_inference.py:181] - ✓ Random Forest loaded
+2026-01-03 01:31:32 - modular_trainers - INFO - [modular_trainers.py:1443] - Ridge loaded from trained_data/models/ridge_confidence.pkl
+2026-01-03 01:31:32 - modular_inference - INFO - [modular_inference.py:190] - ✓ Ridge loaded
+2026-01-03 01:31:32 - modular_inference - INFO - [modular_inference.py:195] - Modular ensemble loaded.
+2026-01-03 01:31:32 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:33 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:33 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (300, 9) -> (101, 192)
+2026-01-03 01:31:33 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:33 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:31:34 - modular_trainers - INFO - [modular_trainers.py:1120] - XGB Predict - Input shape: (101, 19), Scaled shape: (101, 19)
+2026-01-03 01:31:34 - modular_trainers - INFO - [modular_trainers.py:1121] - XGB Predict - X_last scaled: [ 0.1283085  -0.14959835  0.01948525 -0.49215928 -0.0502173  -0.56940114
+  0.12882641 -0.5999114  -0.6984499  -0.7025342  -0.53378403 -0.30570745
+ -1.1572428  -1.3751591  -0.33086216 -0.20529369 -1.0773752  -1.1994226
+ -0.9939395 ]
+2026-01-03 01:31:42 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-03 01:31:42 - modular_inference - INFO - [modular_inference.py:139] - Loading modular ensemble models...
+2026-01-03 01:31:44 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-03 01:31:45 - modular_trainers - INFO - [modular_trainers.py:665] - Transformer loaded from trained_data/models/transformer_direction.keras
+2026-01-03 01:31:45 - modular_inference - INFO - [modular_inference.py:157] - ✓ Transformer direction model loaded
+2026-01-03 01:31:45 - modular_trainers - INFO - [modular_trainers.py:1164] - XGB Scaler - mean_: [4.43868478e-06 8.72979378e-06 1.31104962e-05 2.11930236e-05
+ 4.07515399e-05 7.79433791e-05 3.50948957e-06 1.71767735e-03
+ 1.71784534e-03 1.71785738e-03 9.30664441e-04 1.05543800e-03
+ 5.51557541e-01 5.31917589e-01 1.25698962e-05 5.02684763e-07
+ 1.09409778e+00 1.06879525e+00 1.57196484e-02]
+2026-01-03 01:31:45 - modular_trainers - INFO - [modular_trainers.py:1165] - XGB Scaler - scale_: [1.36215326e-03 1.94001416e-03 2.39260647e-03 3.08977315e-03
+ 4.37900580e-03 6.27421309e-03 1.36376526e-03 1.04790712e-03
+ 9.03258353e-04 8.47008804e-04 7.79620469e-04 7.41956375e-04
+ 3.86824520e-01 1.18233740e-01 1.60976058e-03 4.73489119e-04
+ 6.66506284e-01 6.09760975e-01 1.24402911e+00]
+2026-01-03 01:31:45 - modular_trainers - INFO - [modular_trainers.py:1175] - XGBoost loaded from trained_data/models/xgb_momentum.pkl
+2026-01-03 01:31:45 - modular_inference - INFO - [modular_inference.py:172] - ✓ XGBoost loaded
+2026-01-03 01:31:45 - modular_trainers - INFO - [modular_trainers.py:1327] - Random Forest loaded from trained_data/models/rf_risk.pkl
+2026-01-03 01:31:45 - modular_inference - INFO - [modular_inference.py:181] - ✓ Random Forest loaded
+2026-01-03 01:31:45 - modular_trainers - INFO - [modular_trainers.py:1443] - Ridge loaded from trained_data/models/ridge_confidence.pkl
+2026-01-03 01:31:45 - modular_inference - INFO - [modular_inference.py:190] - ✓ Ridge loaded
+2026-01-03 01:31:45 - modular_inference - INFO - [modular_inference.py:195] - Modular ensemble loaded.
+2026-01-03 01:31:45 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:45 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:45 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (300, 9) -> (101, 192)
+2026-01-03 01:31:45 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:45 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:31:46 - modular_trainers - INFO - [modular_trainers.py:1120] - XGB Predict - Input shape: (101, 19), Scaled shape: (101, 19)
+2026-01-03 01:31:46 - modular_trainers - INFO - [modular_trainers.py:1121] - XGB Predict - X_last scaled: [-0.05136998 -0.05704575 -0.38862252 -0.16704606  0.08385819  0.26196173
+ -0.05062949 -0.77071923 -0.76448774 -0.87642896 -0.41207573 -0.5407301
+  1.1561999   0.932974    0.30176947 -0.01415447 -0.8647387  -0.9081332
+ -0.49182224]
+2026-01-03 01:31:46 - root - ERROR - [main.py:8593] - Command failed: cannot import name 'OandaPracticeTrader' from 'fx_paper' (/Users/mirelacertan/Desktop/ml_engine/fx_paper.py)
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 8558, in main
+    _dispatch_buddy(args, command_map)
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 6826, in _dispatch_buddy
+    command_map["buddy"](
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 5449, in buddy
+    from fx_paper import OandaPracticeTrader
+ImportError: cannot import name 'OandaPracticeTrader' from 'fx_paper' (/Users/mirelacertan/Desktop/ml_engine/fx_paper.py)
+2026-01-03 01:31:50 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-03 01:31:50 - modular_inference - INFO - [modular_inference.py:139] - Loading modular ensemble models...
+2026-01-03 01:31:52 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-03 01:31:52 - modular_trainers - INFO - [modular_trainers.py:665] - Transformer loaded from trained_data/models/transformer_direction.keras
+2026-01-03 01:31:52 - modular_inference - INFO - [modular_inference.py:157] - ✓ Transformer direction model loaded
+2026-01-03 01:31:52 - modular_trainers - INFO - [modular_trainers.py:1164] - XGB Scaler - mean_: [4.43868478e-06 8.72979378e-06 1.31104962e-05 2.11930236e-05
+ 4.07515399e-05 7.79433791e-05 3.50948957e-06 1.71767735e-03
+ 1.71784534e-03 1.71785738e-03 9.30664441e-04 1.05543800e-03
+ 5.51557541e-01 5.31917589e-01 1.25698962e-05 5.02684763e-07
+ 1.09409778e+00 1.06879525e+00 1.57196484e-02]
+2026-01-03 01:31:52 - modular_trainers - INFO - [modular_trainers.py:1165] - XGB Scaler - scale_: [1.36215326e-03 1.94001416e-03 2.39260647e-03 3.08977315e-03
+ 4.37900580e-03 6.27421309e-03 1.36376526e-03 1.04790712e-03
+ 9.03258353e-04 8.47008804e-04 7.79620469e-04 7.41956375e-04
+ 3.86824520e-01 1.18233740e-01 1.60976058e-03 4.73489119e-04
+ 6.66506284e-01 6.09760975e-01 1.24402911e+00]
+2026-01-03 01:31:52 - modular_trainers - INFO - [modular_trainers.py:1175] - XGBoost loaded from trained_data/models/xgb_momentum.pkl
+2026-01-03 01:31:52 - modular_inference - INFO - [modular_inference.py:172] - ✓ XGBoost loaded
+2026-01-03 01:31:52 - modular_trainers - INFO - [modular_trainers.py:1327] - Random Forest loaded from trained_data/models/rf_risk.pkl
+2026-01-03 01:31:52 - modular_inference - INFO - [modular_inference.py:181] - ✓ Random Forest loaded
+2026-01-03 01:31:52 - modular_trainers - INFO - [modular_trainers.py:1443] - Ridge loaded from trained_data/models/ridge_confidence.pkl
+2026-01-03 01:31:52 - modular_inference - INFO - [modular_inference.py:190] - ✓ Ridge loaded
+2026-01-03 01:31:52 - modular_inference - INFO - [modular_inference.py:195] - Modular ensemble loaded.
+2026-01-03 01:31:52 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:31:53 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:31:53 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (300, 9) -> (101, 192)
+2026-01-03 01:31:53 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:31:53 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:31:53 - modular_trainers - INFO - [modular_trainers.py:1120] - XGB Predict - Input shape: (101, 19), Scaled shape: (101, 19)
+2026-01-03 01:31:53 - modular_trainers - INFO - [modular_trainers.py:1121] - XGB Predict - X_last scaled: [-0.00325858  0.45786536  0.9393113   0.57428414  0.12721299  0.03520382
+ -0.00257338 -0.3229477  -0.41215116 -0.4401637  -0.10731207 -0.3435476
+ -0.02022731 -0.94290125  0.05097061 -0.00943911 -1.213565   -1.3009071
+ -1.0789661 ]
+2026-01-03 01:31:53 - root - ERROR - [main.py:8593] - Command failed: cannot import name 'OandaPracticeTrader' from 'fx_paper' (/Users/mirelacertan/Desktop/ml_engine/fx_paper.py)
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 8558, in main
+    _dispatch_buddy(args, command_map)
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 6826, in _dispatch_buddy
+    command_map["buddy"](
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 5449, in buddy
+    from fx_paper import OandaPracticeTrader
+ImportError: cannot import name 'OandaPracticeTrader' from 'fx_paper' (/Users/mirelacertan/Desktop/ml_engine/fx_paper.py)
+2026-01-03 01:44:58 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-03 01:44:59 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:44:59 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:44:59 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (320, 9) -> (121, 192)
+2026-01-03 01:44:59 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:45:02 - modular_inference - INFO - [modular_inference.py:139] - Loading modular ensemble models...
+2026-01-03 01:45:02 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-03 01:45:03 - modular_trainers - INFO - [modular_trainers.py:665] - Transformer loaded from trained_data/models/transformer_direction.keras
+2026-01-03 01:45:03 - modular_inference - INFO - [modular_inference.py:157] - ✓ Transformer direction model loaded
+2026-01-03 01:45:03 - modular_trainers - INFO - [modular_trainers.py:1164] - XGB Scaler - mean_: [4.43868478e-06 8.72979378e-06 1.31104962e-05 2.11930236e-05
+ 4.07515399e-05 7.79433791e-05 3.50948957e-06 1.71767735e-03
+ 1.71784534e-03 1.71785738e-03 9.30664441e-04 1.05543800e-03
+ 5.51557541e-01 5.31917589e-01 1.25698962e-05 5.02684763e-07
+ 1.09409778e+00 1.06879525e+00 1.57196484e-02]
+2026-01-03 01:45:03 - modular_trainers - INFO - [modular_trainers.py:1165] - XGB Scaler - scale_: [1.36215326e-03 1.94001416e-03 2.39260647e-03 3.08977315e-03
+ 4.37900580e-03 6.27421309e-03 1.36376526e-03 1.04790712e-03
+ 9.03258353e-04 8.47008804e-04 7.79620469e-04 7.41956375e-04
+ 3.86824520e-01 1.18233740e-01 1.60976058e-03 4.73489119e-04
+ 6.66506284e-01 6.09760975e-01 1.24402911e+00]
+2026-01-03 01:45:03 - modular_trainers - INFO - [modular_trainers.py:1175] - XGBoost loaded from trained_data/models/xgb_momentum.pkl
+2026-01-03 01:45:03 - modular_inference - INFO - [modular_inference.py:172] - ✓ XGBoost loaded
+2026-01-03 01:45:03 - modular_trainers - INFO - [modular_trainers.py:1327] - Random Forest loaded from trained_data/models/rf_risk.pkl
+2026-01-03 01:45:03 - modular_inference - INFO - [modular_inference.py:181] - ✓ Random Forest loaded
+2026-01-03 01:45:03 - modular_trainers - INFO - [modular_trainers.py:1443] - Ridge loaded from trained_data/models/ridge_confidence.pkl
+2026-01-03 01:45:03 - modular_inference - INFO - [modular_inference.py:190] - ✓ Ridge loaded
+2026-01-03 01:45:03 - modular_inference - INFO - [modular_inference.py:195] - Modular ensemble loaded.
+2026-01-03 01:45:03 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:45:04 - modular_trainers - INFO - [modular_trainers.py:1120] - XGB Predict - Input shape: (101, 19), Scaled shape: (101, 19)
+2026-01-03 01:45:04 - modular_trainers - INFO - [modular_trainers.py:1121] - XGB Predict - X_last scaled: [ 3.0620688e-01 -2.9393086e-01 -3.5473901e-01 -6.6019385e-04
+ -1.6665371e-01  3.0325370e-02  3.0646116e-01 -7.5623000e-01
+ -7.4596292e-01 -8.4357023e-01 -4.3739384e-01 -5.6531131e-01
+  6.8930465e-01 -1.5545805e+00  2.3007399e-01 -4.5084316e-01
+  5.2447569e-01 -7.1391410e-01 -6.1889791e-01]
+2026-01-03 01:45:04 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:45:04 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:45:04 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:45:04 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:45:25 - utils - INFO - [utils.py:185] - Successfully loaded configuration from /Users/mirelacertan/Desktop/ml_engine/config_improved_H1.yaml
+2026-01-03 01:45:26 - feature_engineering - INFO - [feature_engineering.py:865] - Starting feature engineering...
+2026-01-03 01:45:26 - feature_engineering - INFO - [feature_engineering.py:955] - Dropped 199 rows with NaN after forward-fill
+2026-01-03 01:45:26 - feature_engineering - INFO - [feature_engineering.py:958] - Feature engineering complete: (305, 9) -> (106, 192)
+2026-01-03 01:45:26 - feature_engineering - INFO - [feature_engineering.py:963] - Added 183 new features
+2026-01-03 01:45:29 - modular_inference - INFO - [modular_inference.py:139] - Loading modular ensemble models...
+2026-01-03 01:45:29 - absl - WARNING - [optimizer.py:70] - At this time, the v2.11+ optimizer `tf.keras.optimizers.Adam` runs slowly on M1/M2 Macs, please use the legacy Keras optimizer instead, located at `tf.keras.optimizers.legacy.Adam`.
+2026-01-03 01:45:29 - modular_trainers - INFO - [modular_trainers.py:665] - Transformer loaded from trained_data/models/transformer_direction.keras
+2026-01-03 01:45:29 - modular_inference - INFO - [modular_inference.py:157] - ✓ Transformer direction model loaded
+2026-01-03 01:45:30 - modular_trainers - INFO - [modular_trainers.py:1164] - XGB Scaler - mean_: [4.43868478e-06 8.72979378e-06 1.31104962e-05 2.11930236e-05
+ 4.07515399e-05 7.79433791e-05 3.50948957e-06 1.71767735e-03
+ 1.71784534e-03 1.71785738e-03 9.30664441e-04 1.05543800e-03
+ 5.51557541e-01 5.31917589e-01 1.25698962e-05 5.02684763e-07
+ 1.09409778e+00 1.06879525e+00 1.57196484e-02]
+2026-01-03 01:45:30 - modular_trainers - INFO - [modular_trainers.py:1165] - XGB Scaler - scale_: [1.36215326e-03 1.94001416e-03 2.39260647e-03 3.08977315e-03
+ 4.37900580e-03 6.27421309e-03 1.36376526e-03 1.04790712e-03
+ 9.03258353e-04 8.47008804e-04 7.79620469e-04 7.41956375e-04
+ 3.86824520e-01 1.18233740e-01 1.60976058e-03 4.73489119e-04
+ 6.66506284e-01 6.09760975e-01 1.24402911e+00]
+2026-01-03 01:45:30 - modular_trainers - INFO - [modular_trainers.py:1175] - XGBoost loaded from trained_data/models/xgb_momentum.pkl
+2026-01-03 01:45:30 - modular_inference - INFO - [modular_inference.py:172] - ✓ XGBoost loaded
+2026-01-03 01:45:30 - modular_trainers - INFO - [modular_trainers.py:1327] - Random Forest loaded from trained_data/models/rf_risk.pkl
+2026-01-03 01:45:30 - modular_inference - INFO - [modular_inference.py:181] - ✓ Random Forest loaded
+2026-01-03 01:45:30 - modular_trainers - INFO - [modular_trainers.py:1443] - Ridge loaded from trained_data/models/ridge_confidence.pkl
+2026-01-03 01:45:30 - modular_inference - INFO - [modular_inference.py:190] - ✓ Ridge loaded
+2026-01-03 01:45:30 - modular_inference - INFO - [modular_inference.py:195] - Modular ensemble loaded.
+2026-01-03 01:45:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:45:30 - modular_trainers - INFO - [modular_trainers.py:1120] - XGB Predict - Input shape: (101, 19), Scaled shape: (101, 19)
+2026-01-03 01:45:30 - modular_trainers - INFO - [modular_trainers.py:1121] - XGB Predict - X_last scaled: [ 0.62965006 -0.4251388  -0.4902711  -0.40698513 -0.34249064  0.08322787
+  0.6293147  -0.63428444 -0.8214921  -0.9690117  -0.2536023  -0.6285575
+  0.5874465   0.13594702  0.14363778 -0.39633685  0.08279002  0.3159788
+  1.1241808 ]
+2026-01-03 01:45:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:45:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:45:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
+2026-01-03 01:45:30 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 230 normalized features
