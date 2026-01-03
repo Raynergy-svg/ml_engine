@@ -8,3 +8,4 @@ def pytest_configure() -> None:
     root_str = str(root)
     if root_str not in sys.path:
         sys.path.insert(0, root_str)
+# — Raynergy-svg —

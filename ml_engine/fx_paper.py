@@ -7,3 +7,4 @@ implementation lives at the repo root as `fx_paper.py`.
 from __future__ import annotations
 
 from fx_paper import *  # noqa: F403
+# — Raynergy-svg —

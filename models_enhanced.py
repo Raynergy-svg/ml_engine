@@ -634,3 +634,4 @@ class EnsemblePredictor(nn.Module):
             return (predictions * weights.view(-1, 1, 1)).sum(dim=0)
         else:
             return predictions.mean(dim=0)
+# — Raynergy-svg —

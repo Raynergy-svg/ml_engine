@@ -618,3 +618,4 @@ class AttentionIntegrationModel(nn.Module):
         integrated_prediction = self.output_proj(x_avg)  # [batch_size, 1]
         
         return integrated_prediction, engine_weights
+# — Raynergy-svg —

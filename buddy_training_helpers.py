@@ -245,3 +245,4 @@ def _buddy_load_and_validate_csv(
         console=console,
     )
     return df
+# — Raynergy-svg —

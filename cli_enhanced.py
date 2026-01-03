@@ -447,3 +447,4 @@ class StockPredictionCLI:
             self.load_config(config_path)
 
         # Initialize all engines
+# — Raynergy-svg —

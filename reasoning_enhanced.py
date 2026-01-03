@@ -788,3 +788,4 @@ class ReasoningEngine:
             plt.show()
         
         return fig
+# — Raynergy-svg —

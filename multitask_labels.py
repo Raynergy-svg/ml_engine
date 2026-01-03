@@ -136,3 +136,4 @@ def split_time_series(
     train_idx = np.arange(0, split, dtype=int)
     val_idx = np.arange(split, n, dtype=int)
     return train_idx, val_idx
+# — Raynergy-svg —

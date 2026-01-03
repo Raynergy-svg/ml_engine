@@ -126,3 +126,4 @@ if __name__ == "__main__":
     for i, factor in enumerate(results['justification'], 1):
         print(f"  {i}. {factor}")
 
+# — Raynergy-svg —

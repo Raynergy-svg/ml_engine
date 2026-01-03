@@ -771,3 +771,4 @@ def _normalize_downloaded_data(data: pd.DataFrame, required_cols: set) -> Option
         return None
     
     return data
+# — Raynergy-svg —
