@@ -206,7 +206,7 @@ Edit `config_tuned.yaml` to customize Buddy's behavior:
 - `epochs`: Maximum training epochs (default: 300)
 - `batch_size`: Training batch size (default: 32)
 - `es_monitor`: Early stopping metric (choices: `direction`, `combined`, `val_loss`)
-- `shared_encoder`: Use single LSTM vs 5 parallel heads (default: false)
+- `shared_encoder`: Use single LSTM instead of 5 parallel heads (default: false)
 
 **Trading parameters (`buddy`):**
 - `stop_loss_pips`: Stop-loss distance in pips (default: 20.0)
