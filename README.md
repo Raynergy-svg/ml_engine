@@ -59,6 +59,47 @@ This version includes significant enhancements to code quality, reliability, and
 - Edge case and robustness testing
 - 90%+ code coverage for core modules
 
+## Hierarchy 
+
+┌─────────────────────────────────────────┐
+│     INPUT: OHLCV + Technical Features   │
+└─────────────────┬───────────────────────┘
+                  │
+        ┌─────────┴─────────┐
+        │                   │
+    ┌───▼────┐         ┌────▼────┐
+    │  TCN/  │         │ XGBoost │
+    │Transf. │         │         │
+    │(Neural)│         │ (Tree)  │
+    └───┬────┘         └────┬────┘
+        │                   │
+        │ Direction         │ Momentum
+        │ (UP/DOWN)         │ (Strength)
+        │                   │
+        └─────────┬─────────┘
+                  │
+         ┌────────▼──────────┐
+         │   GATING LOGIC    │
+         │  (All must align) │
+         └────────┬──────────┘
+                  │
+        ┌─────────┴──────────┐
+        │                    │
+    ┌───▼─────┐        ┌─────▼────┐
+    │ Random  │        │  Ridge   │
+    │ Forest  │        │          │
+    └───┬─────┘        └─────┬────┘
+        │                    │
+        │ Risk/Drawdown      │ Confidence
+        │ (Safety check)     │ (Certainty)
+        │                    │
+        └──────────┬─────────┘
+                   │
+            ┌──────▼──────┐
+            │ FINAL TRADE │
+            │  DECISION   │
+            └─────────────┘
+
 ## Features
 
 - **Modular Architecture:** Easily extend and customize model training, evaluation, and prediction.
