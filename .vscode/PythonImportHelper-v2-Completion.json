@@ -1625,6 +1625,46 @@
         "documentation": {}
     },
     {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Callable",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Any",
         "importPath": "typing",
         "description": "typing",
@@ -2440,6 +2480,22 @@
         "documentation": {}
     },
     {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
         "label": "timezone",
         "importPath": "datetime",
         "description": "datetime",
@@ -2670,6 +2726,14 @@
         "description": "neural_engine_unified",
         "isExtraImport": true,
         "detail": "neural_engine_unified",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
         "documentation": {}
     },
     {
@@ -3452,6 +3516,22 @@
     },
     {
         "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "field",
         "importPath": "dataclasses",
         "description": "dataclasses",
         "isExtraImport": true,
@@ -10300,6 +10380,177 @@
         "description": "train_optimized_m1",
         "peekOfCode": "DEFAULT_CONFIG = {\n    'sequence_length': 60,\n    'target_shift': 1,\n    'risk_window': 14,\n    'state_classes': 2,\n    'enable_data_scaling': True,\n    # Model config\n    'hidden_size': 32,\n    'num_layers': 2,\n    'dropout': 0.35,",
         "detail": "train_optimized_m1",
+        "documentation": {}
+    },
+    {
+        "label": "SuppressLogging",
+        "kind": 6,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "class SuppressLogging:\n    \"\"\"Context manager to suppress logging from specific loggers during training.\n    Usage:\n        with SuppressLogging(['modular_trainers', 'tensorflow']):\n            # Train model - logs will be suppressed\n            trainer.train(...)\n    \"\"\"\n    def __init__(self, logger_names: List[str] = None, level: int = logging.WARNING):\n        \"\"\"\n        Args:",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "TrainingConfig",
+        "kind": 6,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "class TrainingConfig:\n    \"\"\"Training session configuration for display.\"\"\"\n    model_name: str = \"Transformer\"\n    task: str = \"Direction Prediction\"\n    instrument: str = \"\"\n    granularity: str = \"\"\n    total_epochs: int = 100\n    batch_size: int = 64\n    learning_rate: float = 0.001\n    n_train_samples: int = 0",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "EpochMetrics",
+        "kind": 6,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "class EpochMetrics:\n    \"\"\"Metrics for a single epoch.\"\"\"\n    epoch: int\n    loss: float\n    accuracy: float\n    val_loss: float\n    val_accuracy: float\n    lr: float = 0.001\n    duration_sec: float = 0.0\n    @property",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "TrainingDisplay",
+        "kind": 6,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "class TrainingDisplay:\n    \"\"\"\n    Enterprise-grade training display with Rich formatting.\n    Features:\n    - Session header with configuration\n    - Real-time epoch progress\n    - Color-coded metrics\n    - Live updates\n    - Summary tables\n    \"\"\"",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "ProfessionalTrainingCallback",
+        "kind": 6,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "class ProfessionalTrainingCallback:\n    \"\"\"\n    Keras callback wrapper for professional training display.\n    Integrates with Keras training loop to provide:\n    - Real-time epoch updates\n    - Learning rate tracking\n    - Early stopping notifications\n    \"\"\"\n    def __init__(self, display: TrainingDisplay):\n        self.display = display",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "QuickModelResult",
+        "kind": 6,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "class QuickModelResult:\n    \"\"\"Result from a quick-training model.\"\"\"\n    model_name: str\n    step: str  # e.g., \"2/4\"\n    purpose: str\n    features_desc: str\n    output_desc: str\n    metrics: Dict[str, float]\n    duration_sec: float = 0.0\n    extra_info: str = \"\"",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "create_training_display",
+        "kind": 2,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "def create_training_display(\n    model_name: str = \"Transformer\",\n    task: str = \"Direction Prediction\",\n    instrument: str = \"\",\n    granularity: str = \"\",\n    total_epochs: int = 100,\n    batch_size: int = 64,\n    learning_rate: float = 0.001,\n    n_train_samples: int = 0,\n    n_val_samples: int = 0,",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "format_metric_table",
+        "kind": 2,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "def format_metric_table(metrics: Dict[str, float], title: str = \"Metrics\") -> str:\n    \"\"\"Format metrics as a table string.\"\"\"\n    if not RICH_AVAILABLE:\n        lines = [f\"\\n{title}:\", \"-\" * 40]\n        for key, value in metrics.items():\n            if isinstance(value, float):\n                lines.append(f\"  {key}: {value:.4f}\")\n            else:\n                lines.append(f\"  {key}: {value}\")\n        return \"\\n\".join(lines)",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "print_data_summary",
+        "kind": 2,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "def print_data_summary(\n    n_train: int,\n    n_val: int,\n    n_features: int,\n    class_balance: Dict[str, float] = None,\n    regime_dist: Dict[str, float] = None,\n):\n    \"\"\"Print data loading summary.\"\"\"\n    if not RICH_AVAILABLE:\n        print(f\"\\nData Summary:\")",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "print_quick_model_header",
+        "kind": 2,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "def print_quick_model_header(\n    step: str,\n    model_name: str,\n    purpose: str,\n    features_desc: str,\n    output_desc: str,\n    color: str = \"cyan\",\n):\n    \"\"\"Print professional header for quick-training model step.\"\"\"\n    if not RICH_AVAILABLE:",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "print_quick_model_result",
+        "kind": 2,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "def print_quick_model_result(\n    model_name: str,\n    metrics: Dict[str, Any],\n    duration_sec: float = 0.0,\n    success: bool = True,\n):\n    \"\"\"Print professional result for quick-training model.\"\"\"\n    if not RICH_AVAILABLE:\n        status = \"✓\" if success else \"✗\"\n        print(f\"{status} {model_name} complete\")",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "print_ensemble_summary",
+        "kind": 2,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "def print_ensemble_summary(\n    model_results: Dict[str, Dict[str, Any]],\n    config: Dict[str, Any],\n    saved_paths: List[str],\n    inference_logic: str = \"\",\n    use_regime: bool = False,\n):\n    \"\"\"Print professional ensemble training summary.\"\"\"\n    if not RICH_AVAILABLE:\n        print(\"\\n\" + \"=\" * 60)",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# =============================================================================\n# LOGGING CONTROL\n# =============================================================================\nclass SuppressLogging:\n    \"\"\"Context manager to suppress logging from specific loggers during training.\n    Usage:\n        with SuppressLogging(['modular_trainers', 'tensorflow']):\n            # Train model - logs will be suppressed\n            trainer.train(...)",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "ACCURACY_EXCELLENT",
+        "kind": 5,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "ACCURACY_EXCELLENT = 0.70\nACCURACY_GOOD = 0.55\nACCURACY_FAIR = 0.50\nLOSS_EXCELLENT = 0.3\nLOSS_GOOD = 0.5\nLOSS_FAIR = 0.7\n# =============================================================================\n# DATA CLASSES\n# =============================================================================\n@dataclass",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "ACCURACY_GOOD",
+        "kind": 5,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "ACCURACY_GOOD = 0.55\nACCURACY_FAIR = 0.50\nLOSS_EXCELLENT = 0.3\nLOSS_GOOD = 0.5\nLOSS_FAIR = 0.7\n# =============================================================================\n# DATA CLASSES\n# =============================================================================\n@dataclass\nclass TrainingConfig:",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "ACCURACY_FAIR",
+        "kind": 5,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "ACCURACY_FAIR = 0.50\nLOSS_EXCELLENT = 0.3\nLOSS_GOOD = 0.5\nLOSS_FAIR = 0.7\n# =============================================================================\n# DATA CLASSES\n# =============================================================================\n@dataclass\nclass TrainingConfig:\n    \"\"\"Training session configuration for display.\"\"\"",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "LOSS_EXCELLENT",
+        "kind": 5,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "LOSS_EXCELLENT = 0.3\nLOSS_GOOD = 0.5\nLOSS_FAIR = 0.7\n# =============================================================================\n# DATA CLASSES\n# =============================================================================\n@dataclass\nclass TrainingConfig:\n    \"\"\"Training session configuration for display.\"\"\"\n    model_name: str = \"Transformer\"",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "LOSS_GOOD",
+        "kind": 5,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "LOSS_GOOD = 0.5\nLOSS_FAIR = 0.7\n# =============================================================================\n# DATA CLASSES\n# =============================================================================\n@dataclass\nclass TrainingConfig:\n    \"\"\"Training session configuration for display.\"\"\"\n    model_name: str = \"Transformer\"\n    task: str = \"Direction Prediction\"",
+        "detail": "training_display",
+        "documentation": {}
+    },
+    {
+        "label": "LOSS_FAIR",
+        "kind": 5,
+        "importPath": "training_display",
+        "description": "training_display",
+        "peekOfCode": "LOSS_FAIR = 0.7\n# =============================================================================\n# DATA CLASSES\n# =============================================================================\n@dataclass\nclass TrainingConfig:\n    \"\"\"Training session configuration for display.\"\"\"\n    model_name: str = \"Transformer\"\n    task: str = \"Direction Prediction\"\n    instrument: str = \"\"",
+        "detail": "training_display",
         "documentation": {}
     },
     {
