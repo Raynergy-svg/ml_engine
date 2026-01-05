@@ -400,3 +400,4 @@ class OandaPracticeClient:
             pass
 
         return result
+# — Raynergy-svg —

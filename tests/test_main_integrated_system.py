@@ -41,3 +41,4 @@ def test_compute_slm_indicators_smoke():
 
     assert "rsi_14" in indicators
     assert len(indicators["rsi_14"]) == len(df)
+# — Raynergy-svg —

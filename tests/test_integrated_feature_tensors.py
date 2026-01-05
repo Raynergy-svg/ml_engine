@@ -45,3 +45,4 @@ def test_build_integrated_feature_tensors_padding_when_allowed():
     assert tuple(tensors["ml_features"].shape) == (1, 10, 7)
     assert tuple(tensors["mt_features"].shape) == (1, 10, 11)
     assert tuple(tensors["mr_features"].shape) == (1, 10, 11)
+# — Raynergy-svg —

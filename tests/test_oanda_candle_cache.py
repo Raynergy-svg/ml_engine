@@ -44,3 +44,4 @@ def test_merge_dedupe_by_time_sorts_and_dedupes_keep_last():
     row = out.iloc[1]
     assert float(row["open"]) == 20.0
     assert float(row["close"]) == 20.05
+# — Raynergy-svg —

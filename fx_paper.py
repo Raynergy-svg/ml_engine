@@ -386,3 +386,4 @@ def setup_signal(df: pd.DataFrame) -> Signal:
     if last_close < last_ema and 30 <= last_rsi <= 55:
         return "sell"
     return "hold"
+# — Raynergy-svg —

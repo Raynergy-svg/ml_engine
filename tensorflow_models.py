@@ -1343,3 +1343,4 @@ if __name__ == "__main__":
     print(f"Input shape: {test_input.shape}")
     print(f"Output shape: {output.shape}")
     print(f"Parameters: {model.count_params():,}")
+# — Raynergy-svg —

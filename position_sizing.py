@@ -330,3 +330,4 @@ def create_conservative_position_sizer() -> DynamicPositionSizer:
         min_position_size=1000
     )
     return DynamicPositionSizer(config)
+# — Raynergy-svg —

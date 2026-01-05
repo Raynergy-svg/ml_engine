@@ -42,3 +42,4 @@ def test_resample_5min_and_ema14_close():
     assert abs(float(out["close"].iloc[1]) - second_close) < 1e-12
     assert abs(float(out["close_ema_14"].iloc[0]) - ema0) < 1e-12
     assert abs(float(out["close_ema_14"].iloc[1]) - ema1) < 1e-12
+# — Raynergy-svg —

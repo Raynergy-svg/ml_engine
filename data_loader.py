@@ -461,3 +461,4 @@ class MarketDataLoader(DataLoader):
 
         else:
             raise ValueError(f"Unknown combination method: {method}")
+# — Raynergy-svg —

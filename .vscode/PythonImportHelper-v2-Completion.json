@@ -5285,7 +5285,7 @@
         "kind": 2,
         "importPath": "legacy_quarantine.python.orphans.cli_entry",
         "description": "legacy_quarantine.python.orphans.cli_entry",
-        "peekOfCode": "def main() -> None:\n    repo_root = Path(__file__).resolve().parent\n    script = repo_root / \"main.py\"\n    # Execute the script as __main__ so its top-level CLI logic runs unchanged.\n    runpy.run_path(str(script), run_name=\"__main__\")",
+        "peekOfCode": "def main() -> None:\n    repo_root = Path(__file__).resolve().parent\n    script = repo_root / \"main.py\"\n    # Execute the script as __main__ so its top-level CLI logic runs unchanged.\n    runpy.run_path(str(script), run_name=\"__main__\")\n# — Raynergy-svg —",
         "detail": "legacy_quarantine.python.orphans.cli_entry",
         "documentation": {}
     },
@@ -5798,7 +5798,7 @@
         "kind": 2,
         "importPath": "legacy_quarantine.python.ai_assistant",
         "description": "legacy_quarantine.python.ai_assistant",
-        "peekOfCode": "def ai_assistant(*_args, **_kwargs):\n    raise RuntimeError(\"Retired: use Buddy TensorFlow pipeline in main.py\")",
+        "peekOfCode": "def ai_assistant(*_args, **_kwargs):\n    raise RuntimeError(\"Retired: use Buddy TensorFlow pipeline in main.py\")\n# — Raynergy-svg —",
         "detail": "legacy_quarantine.python.ai_assistant",
         "documentation": {}
     },
@@ -5879,7 +5879,7 @@
         "kind": 6,
         "importPath": "legacy_quarantine.tests.test_integration",
         "description": "legacy_quarantine.tests.test_integration",
-        "peekOfCode": "class TestErrorHandling(unittest.TestCase):\n    \"\"\"Test error handling functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        pass\n    def test_data_loading_error_handling(self):\n        \"\"\"Test error handling in data loading.\"\"\"\n        try:\n           <response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>",
+        "peekOfCode": "class TestErrorHandling(unittest.TestCase):\n    \"\"\"Test error handling functionality.\"\"\"\n    def setUp(self):\n        \"\"\"Set up test environment.\"\"\"\n        pass\n    def test_data_loading_error_handling(self):\n        \"\"\"Test error handling in data loading.\"\"\"\n        try:\n           <response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>\n# — Raynergy-svg —",
         "detail": "legacy_quarantine.tests.test_integration",
         "documentation": {}
     },
@@ -6050,7 +6050,7 @@
         "kind": 2,
         "importPath": "tests.conftest",
         "description": "tests.conftest",
-        "peekOfCode": "def pytest_configure() -> None:\n    # Ensure repo root is importable for tests that use top-level modules.\n    root = Path(__file__).resolve().parents[1]\n    root_str = str(root)\n    if root_str not in sys.path:\n        sys.path.insert(0, root_str)",
+        "peekOfCode": "def pytest_configure() -> None:\n    # Ensure repo root is importable for tests that use top-level modules.\n    root = Path(__file__).resolve().parents[1]\n    root_str = str(root)\n    if root_str not in sys.path:\n        sys.path.insert(0, root_str)\n# — Raynergy-svg —",
         "detail": "tests.conftest",
         "documentation": {}
     },
@@ -6095,7 +6095,7 @@
         "kind": 2,
         "importPath": "tests.test_buddy_trade_commands",
         "description": "tests.test_buddy_trade_commands",
-        "peekOfCode": "def test_manual_trade_close_dry_run(capsys):\n    ctx = _prime_fx_context(_ctx())\n    assert unified_talk._handle_talk_command(ctx, \"trade close EUR_USD\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"dry-run\" in out.lower()\n    assert \"close\" in out.lower()\n    assert ctx.oanda_client.closes == []",
+        "peekOfCode": "def test_manual_trade_close_dry_run(capsys):\n    ctx = _prime_fx_context(_ctx())\n    assert unified_talk._handle_talk_command(ctx, \"trade close EUR_USD\", period=\"5d\", interval=\"1h\") is True\n    out = capsys.readouterr().out\n    assert \"dry-run\" in out.lower()\n    assert \"close\" in out.lower()\n    assert ctx.oanda_client.closes == []\n# — Raynergy-svg —",
         "detail": "tests.test_buddy_trade_commands",
         "documentation": {}
     },
@@ -6266,7 +6266,7 @@
         "kind": 2,
         "importPath": "tests.test_main_integrated_system",
         "description": "tests.test_main_integrated_system",
-        "peekOfCode": "def test_compute_slm_indicators_smoke():\n    pd = pytest.importorskip(\"pandas\")\n    import main\n    df = pd.DataFrame({\"Close\": [1, 2, 3, 4, 5]})\n    indicators = main.compute_slm_indicators(df)\n    assert \"rsi_14\" in indicators\n    assert len(indicators[\"rsi_14\"]) == len(df)",
+        "peekOfCode": "def test_compute_slm_indicators_smoke():\n    pd = pytest.importorskip(\"pandas\")\n    import main\n    df = pd.DataFrame({\"Close\": [1, 2, 3, 4, 5]})\n    indicators = main.compute_slm_indicators(df)\n    assert \"rsi_14\" in indicators\n    assert len(indicators[\"rsi_14\"]) == len(df)\n# — Raynergy-svg —",
         "detail": "tests.test_main_integrated_system",
         "documentation": {}
     },
@@ -6743,7 +6743,7 @@
         "kind": 2,
         "importPath": "confidence_calibration",
         "description": "confidence_calibration",
-        "peekOfCode": "def create_adjuster() -> ConfidenceAdjuster:\n    \"\"\"Create a default confidence adjuster.\"\"\"\n    config = CalibrationConfig(\n        min_confidence_threshold=0.3,\n        max_confidence_threshold=0.95,\n        trading_penalty=0.05,\n        win_probability_threshold=0.5,\n    )\n    return ConfidenceAdjuster(config)",
+        "peekOfCode": "def create_adjuster() -> ConfidenceAdjuster:\n    \"\"\"Create a default confidence adjuster.\"\"\"\n    config = CalibrationConfig(\n        min_confidence_threshold=0.3,\n        max_confidence_threshold=0.95,\n        trading_penalty=0.05,\n        win_probability_threshold=0.5,\n    )\n    return ConfidenceAdjuster(config)\n# — Raynergy-svg —",
         "detail": "confidence_calibration",
         "documentation": {}
     },
@@ -9340,15 +9340,6 @@
         "documentation": {}
     },
     {
-        "label": "MarketRegime",
-        "kind": 6,
-        "importPath": "risk_management",
-        "description": "risk_management",
-        "peekOfCode": "class MarketRegime:\n    \"\"\"Market regime classification result.\"\"\"\n    regime: str  # 'trending', 'ranging', 'volatile', 'quiet'\n    atr_percentile: float  # ATR percentile vs historical (0-100)\n    volatility_level: str  # 'low', 'medium', 'high'\n    preferred_predictor: str  # 'transformer', 'histgb', 'both'\n    confidence_adjustment: float  # Multiplier for confidence (0.5-1.5)\n    reason: str\ndef detect_market_regime(\n    df,",
-        "detail": "risk_management",
-        "documentation": {}
-    },
-    {
         "label": "create_default_risk_manager",
         "kind": 2,
         "importPath": "risk_management",
@@ -9363,24 +9354,6 @@
         "importPath": "risk_management",
         "description": "risk_management",
         "peekOfCode": "def create_conservative_risk_manager() -> ConfidenceBasedRiskManager:\n    \"\"\"Create a conservative risk manager.\"\"\"\n    config = RiskManagementConfig(\n        low_confidence_rr=1.2,\n        medium_confidence_rr=1.5,\n        high_confidence_rr=2.0,\n        low_confidence_threshold=0.6,\n        medium_confidence_threshold=0.8,\n        high_confidence_threshold=0.9,\n        min_rr_ratio=1.0,",
-        "detail": "risk_management",
-        "documentation": {}
-    },
-    {
-        "label": "detect_market_regime",
-        "kind": 2,
-        "importPath": "risk_management",
-        "description": "risk_management",
-        "peekOfCode": "def detect_market_regime(\n    df,\n    atr_period: int = 14,\n    lookback: int = 100,\n    low_vol_threshold: float = 30.0,  # ATR below 30th percentile = low vol\n    high_vol_threshold: float = 70.0,  # ATR above 70th percentile = high vol\n) -> MarketRegime:\n    \"\"\"\n    Detect market regime using ATR clusters for predictor switching.\n    Logic:",
-        "detail": "risk_management",
-        "documentation": {}
-    },
-    {
-        "label": "apply_regime_adjustment",
-        "kind": 2,
-        "importPath": "risk_management",
-        "description": "risk_management",
-        "peekOfCode": "def apply_regime_adjustment(\n    transformer_direction: int,\n    transformer_prob: float,\n    histgb_direction: Optional[int],\n    histgb_prob: Optional[float],\n    regime: MarketRegime,\n) -> tuple[int, float, str]:\n    \"\"\"\n    Apply regime-based adjustment to hybrid prediction.\n    Returns:",
         "detail": "risk_management",
         "documentation": {}
     },
@@ -9632,7 +9605,7 @@
         "kind": 5,
         "importPath": "tensorflow_engine",
         "description": "tensorflow_engine",
-        "peekOfCode": "history = engine.train(X_train, y_train, X_val, y_val)\n# View training progress:\n# tensorboard --logdir=trained_data/tensorboard\n# Evaluate\nresults = engine.evaluate(X_test, y_test)\nprint(results)\n\"\"\")",
+        "peekOfCode": "history = engine.train(X_train, y_train, X_val, y_val)\n# View training progress:\n# tensorboard --logdir=trained_data/tensorboard\n# Evaluate\nresults = engine.evaluate(X_test, y_test)\nprint(results)\n\"\"\")\n# — Raynergy-svg —",
         "detail": "tensorflow_engine",
         "documentation": {}
     },
@@ -9641,7 +9614,7 @@
         "kind": 5,
         "importPath": "tensorflow_engine",
         "description": "tensorflow_engine",
-        "peekOfCode": "results = engine.evaluate(X_test, y_test)\nprint(results)\n\"\"\")",
+        "peekOfCode": "results = engine.evaluate(X_test, y_test)\nprint(results)\n\"\"\")\n# — Raynergy-svg —",
         "detail": "tensorflow_engine",
         "documentation": {}
     },
@@ -9704,7 +9677,7 @@
         "kind": 2,
         "importPath": "tensorflow_engine_unified",
         "description": "tensorflow_engine_unified",
-        "peekOfCode": "def is_pytorch_checkpoint(path: str) -> bool:\n    \"\"\"Check if a path is a PyTorch checkpoint.\n    Args:\n        path: Path to check\n    Returns:\n        True if path ends with .pth or .pt\n    \"\"\"\n    path_lower = str(path).lower()\n    return path_lower.endswith('.pth') or path_lower.endswith('.pt')",
+        "peekOfCode": "def is_pytorch_checkpoint(path: str) -> bool:\n    \"\"\"Check if a path is a PyTorch checkpoint.\n    Args:\n        path: Path to check\n    Returns:\n        True if path ends with .pth or .pt\n    \"\"\"\n    path_lower = str(path).lower()\n    return path_lower.endswith('.pth') or path_lower.endswith('.pt')\n# — Raynergy-svg —",
         "detail": "tensorflow_engine_unified",
         "documentation": {}
     },

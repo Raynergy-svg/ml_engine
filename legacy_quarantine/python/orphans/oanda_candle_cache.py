@@ -230,3 +230,4 @@ def update_oanda_cache(
 
     _save_merged_cache(existing, incoming, out_path)
     return out_path
+# — Raynergy-svg —
