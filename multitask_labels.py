@@ -121,12 +121,43 @@ def build_multitask_targets(
     base_indices = np.arange(n, dtype=int) + sequence_length - 1
     target_indices = base_indices + target_shift
 
-    # Trend/direction are defined over the prediction horizon (t0 -> t1),
-    # not the one-step return at t1. This makes the direction head learnable
-    # for the same horizon as the price target.
-    horizon_return = (close[target_indices] / np.clip(close[base_indices], 1e-12, None)) - 1.0
-    trend_aligned = horizon_return
-    direction_aligned = (horizon_return > 0).astype(np.float32)
+    # =========================================================================
+    # TREND-AGNOSTIC LABELING (2025 Best Practice)
+    # Use LOG RETURNS instead of price ratios for stationarity
+    # Add DEAD-ZONE threshold to filter noise from spreads/random movements
+    # =========================================================================
+    
+    # Log returns are stationary and trend-neutral (mean/variance don't drift)
+    # This removes the bias where model learns "buy in downtrend" patterns
+    horizon_log_return = np.log(
+        close[target_indices] / np.clip(close[base_indices], 1e-12, None)
+    )
+    trend_aligned = horizon_log_return  # Use log returns for trend target too
+    
+    # Dynamic dead-zone threshold: 0.5× rolling standard deviation of returns
+    # This filters out noise from spreads (0.5-2 pips) and random walk movements
+    # Samples in dead-zone get direction=-1 (HOLD) and should be filtered/downweighted
+    rolling_std = np.zeros_like(returns, dtype=float)
+    std_window = min(100, len(returns) // 4)  # Adaptive window for small datasets
+    for i in range(len(returns)):
+        start = max(0, i - std_window + 1)
+        window = returns[start : i + 1]
+        rolling_std[i] = float(np.std(window)) if len(window) > 1 else 0.001
+    
+    # Use mean rolling std as threshold (0.5× std dev = half a standard deviation)
+    # This is approximately where random noise ends and true signals begin
+    threshold = np.mean(rolling_std[rolling_std > 0]) * 0.5
+    threshold = max(threshold, 0.0001)  # Minimum threshold to avoid div-by-zero edge cases
+    
+    # Three-class labeling: 1=UP, 0=DOWN, -1=HOLD (dead-zone)
+    # Dead-zone samples should be filtered or given lower sample weights during training
+    direction_aligned = np.where(
+        horizon_log_return > threshold, 1.0,  # Clear UP signal
+        np.where(
+            horizon_log_return < -threshold, 0.0,  # Clear DOWN signal
+            -1.0  # Dead-zone: ambiguous, filter or downweight
+        )
+    ).astype(np.float32)
 
     # Risk/state remain aligned to the prediction time t1 (they are targets).
     risk_aligned = risk[target_indices]

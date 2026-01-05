@@ -317,9 +317,49 @@ class FeatureEngineering:
             std = df["close"].rolling(window=window).std()
             df[f"zscore_{window}"] = (df["close"] - mean) / std
 
-        # Momentum
+        # =====================================================================
+        # TREND-AGNOSTIC MOMENTUM FEATURES (2025 Best Practice)
+        # Use percentage returns normalized by volatility instead of raw price diffs
+        # This makes features stationary across different price levels and regimes
+        # =====================================================================
+        
+        # ATR for volatility normalization (compute if not already present)
+        if "atr" not in df.columns:
+            high_low = df["high"] - df["low"]
+            high_close = np.abs(df["high"] - df["close"].shift())
+            low_close = np.abs(df["low"] - df["close"].shift())
+            ranges = pd.concat([high_low, high_close, low_close], axis=1)
+            true_range = ranges.max(axis=1)
+            atr_temp = true_range.rolling(window=14).mean()
+        else:
+            atr_temp = df["atr"]
+        
+        # Rolling ATR for normalization (smoothed to reduce noise)
+        rolling_atr = atr_temp.rolling(20).mean().fillna(atr_temp)
+        # Prevent division by zero
+        rolling_atr = rolling_atr.replace(0, np.nan).ffill().fillna(0.0001)
+        
+        # Momentum as LOG RETURNS (trend-agnostic, stationary)
+        # Log returns compound properly and are symmetric for up/down moves
         for window in [5, 10, 20]:
-            df[f"momentum_{window}"] = df["close"] - df["close"].shift(window)
+            # Log return momentum: ln(close[t] / close[t-N])
+            log_return_momentum = np.log(
+                df["close"] / df["close"].shift(window).replace(0, np.nan)
+            ).fillna(0)
+            
+            # Volatility-normalized momentum: divide by rolling ATR
+            # This makes "0.5% move" mean different things in low vs high volatility
+            # A 0.5% move in low vol is significant; in high vol it's noise
+            df[f"momentum_{window}"] = log_return_momentum / rolling_atr
+            
+            # Also keep raw percentage momentum for comparison
+            df[f"momentum_pct_{window}"] = (
+                df["close"] / df["close"].shift(window) - 1.0
+            ).fillna(0)
+        
+        # Clip extreme values to prevent outliers from dominating
+        for window in [5, 10, 20]:
+            df[f"momentum_{window}"] = df[f"momentum_{window}"].clip(-10, 10)
 
         # Volume features
         df["volume_sma_20"] = df["volume"].rolling(window=20).mean()

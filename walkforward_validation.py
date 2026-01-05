@@ -560,6 +560,155 @@ def run_walkforward_analysis(
 
 
 # =============================================================================
+# Walk-Forward Training for Direction Prediction
+# =============================================================================
+
+def train_direction_with_walkforward(
+    trainer,
+    X: np.ndarray,
+    y: np.ndarray,
+    feature_names: Optional[List[str]] = None,
+    w: Optional[np.ndarray] = None,
+    n_splits: int = 5,
+    train_size: float = 0.6,
+    gap: int = 10,
+    mode: str = "expanding",
+) -> Dict[str, Any]:
+    """
+    Train direction model with walk-forward validation.
+    
+    This provides a more robust estimate of out-of-sample performance
+    by training multiple models on different time periods and averaging.
+    
+    Args:
+        trainer: TransformerDirectionTrainer instance (will be cloned for each fold)
+        X: Feature array [samples, features]
+        y: Direction labels [samples]
+        feature_names: Optional feature names
+        w: Optional sample weights (1=clear label, 0=unclear)
+        n_splits: Number of walk-forward folds
+        train_size: Initial training size fraction
+        gap: Gap between train and val to prevent leakage
+        mode: "expanding" (growing train) or "rolling" (fixed train size)
+    
+    Returns:
+        Dict with:
+        - fold_metrics: List of metrics per fold
+        - mean_val_accuracy: Mean val accuracy ± std
+        - mean_balanced_accuracy: Mean balanced accuracy ± std
+        - best_fold: Index of best performing fold
+        - stability_score: Coefficient of variation (lower = more stable)
+    """
+    validator = WalkForwardValidator(
+        n_splits=n_splits,
+        train_size=train_size,
+        val_size=0.1,  # 10% for validation
+        test_size=0.1,  # 10% for test (holdout)
+        gap=gap,
+        mode=mode,
+        min_train_size=500,
+    )
+    
+    fold_metrics = []
+    val_accuracies = []
+    balanced_accuracies = []
+    
+    logger.info(f"\n{'='*60}")
+    logger.info(f"Walk-Forward Validation ({n_splits} folds, {mode} mode)")
+    logger.info(f"Gap: {gap} samples | Initial train: {train_size*100:.0f}%")
+    logger.info(f"{'='*60}")
+    
+    for fold, (train_idx, val_idx, test_idx) in enumerate(validator.split(X)):
+        logger.info(f"\n--- Fold {fold + 1}/{n_splits} ---")
+        logger.info(f"Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)}")
+        
+        # Split data
+        X_train_fold = X[train_idx]
+        y_train_fold = y[train_idx]
+        X_val_fold = X[val_idx]
+        y_val_fold = y[val_idx]
+        X_test_fold = X[test_idx] if len(test_idx) > 0 else None
+        y_test_fold = y[test_idx] if len(test_idx) > 0 else None
+        
+        # Get weights if provided
+        w_train_fold = w[train_idx] if w is not None else None
+        w_val_fold = w[val_idx] if w is not None else None
+        
+        # Create fresh trainer instance for this fold
+        # Import here to avoid circular import
+        from modular_trainers import TransformerDirectionTrainer, TrainerConfig
+        fold_trainer = TransformerDirectionTrainer(trainer.config)
+        
+        # Train on this fold
+        metrics = fold_trainer.train(
+            X_train_fold, y_train_fold,
+            X_val_fold, y_val_fold,
+            feature_names=feature_names,
+            w_train=w_train_fold,
+            w_val=w_val_fold,
+        )
+        
+        # Store metrics
+        fold_metrics.append({
+            'fold': fold + 1,
+            'train_size': len(train_idx),
+            'val_size': len(val_idx),
+            **metrics
+        })
+        
+        val_accuracies.append(metrics.get('val_accuracy', 0))
+        balanced_accuracies.append(metrics.get('val_balanced_accuracy', 0))
+        
+        # Log fold results
+        logger.info(
+            f"Fold {fold + 1} Results: val_acc={metrics.get('val_accuracy', 0):.4f}, "
+            f"balanced={metrics.get('val_balanced_accuracy', 0):.4f}"
+        )
+        
+        # Clean up to free memory
+        import tensorflow as tf
+        tf.keras.backend.clear_session()
+        del fold_trainer
+    
+    # Calculate summary statistics
+    mean_val_acc = np.mean(val_accuracies)
+    std_val_acc = np.std(val_accuracies)
+    mean_balanced = np.mean(balanced_accuracies)
+    std_balanced = np.std(balanced_accuracies)
+    
+    # Stability score (coefficient of variation - lower is better)
+    stability = std_val_acc / mean_val_acc if mean_val_acc > 0 else float('inf')
+    
+    # Best fold
+    best_fold = int(np.argmax(val_accuracies))
+    
+    # Summary
+    logger.info(f"\n{'='*60}")
+    logger.info("Walk-Forward Summary")
+    logger.info(f"{'='*60}")
+    logger.info(f"Mean Val Accuracy:      {mean_val_acc:.4f} ± {std_val_acc:.4f}")
+    logger.info(f"Mean Balanced Accuracy: {mean_balanced:.4f} ± {std_balanced:.4f}")
+    logger.info(f"Best Fold:              {best_fold + 1} ({val_accuracies[best_fold]:.4f})")
+    logger.info(f"Stability Score (CV):   {stability:.4f} {'(stable)' if stability < 0.1 else '(unstable)' if stability > 0.2 else ''}")
+    
+    # Check for overfitting signals
+    acc_range = max(val_accuracies) - min(val_accuracies)
+    if acc_range > 0.1:
+        logger.warning(f"High variance across folds ({acc_range:.2f}). Model may be unstable or overfitting to specific periods.")
+    
+    return {
+        'fold_metrics': fold_metrics,
+        'mean_val_accuracy': mean_val_acc,
+        'std_val_accuracy': std_val_acc,
+        'mean_balanced_accuracy': mean_balanced,
+        'std_balanced_accuracy': std_balanced,
+        'best_fold': best_fold,
+        'stability_score': stability,
+        'val_accuracies': val_accuracies,
+    }
+
+
+# =============================================================================
 # Testing
 # =============================================================================
 

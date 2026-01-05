@@ -154,7 +154,7 @@ class TCNTrainer(BaseTrainer):
         x = keras.layers.Dropout(self.config.tcn_dropout)(x)
         
         # Binary direction output
-        direction = keras.layers.Dense(1, activation='sigmoid', name='direction', dtype='float32')(x)
+        direction = keras.layers.Dense(1, activation='sigmoid', name='direction', dtype='float32', bias_initializer='zeros')(x)  # Zero bias init for balanced predictions
         
         model = keras.Model(inputs=inp, outputs=direction, name='tcn_direction')
         
@@ -359,7 +359,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         seq_len, n_features = input_shape
         
         # L2 regularization to prevent overfitting
-        l2_reg = keras.regularizers.l2(0.01)
+        l2_reg = keras.regularizers.l2(0.001)  # Reduced from 0.01 to prevent dead neurons
         
         # Input
         inp = keras.Input(shape=(seq_len, n_features), name="features")
@@ -392,16 +392,21 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Global pooling and output
         x = keras.layers.GlobalAveragePooling1D()(x)
         x = keras.layers.Dense(16, activation='relu', kernel_regularizer=l2_reg)(x)  # Reduced from 32
-        x = keras.layers.Dropout(0.5)(x)  # Higher dropout before output
+        x = keras.layers.Dropout(0.3)(x)  # Reduced from 0.5 to prevent over-regularization
         
         # Binary direction output
-        direction = keras.layers.Dense(1, activation='sigmoid', name='direction', dtype='float32')(x)
+        direction = keras.layers.Dense(1, activation='sigmoid', name='direction', dtype='float32', bias_initializer='zeros')(x)  # Zero bias init for balanced predictions
         
         model = keras.Model(inputs=inp, outputs=direction, name='transformer_direction')
         
+        # Use standard Adam optimizer - AdamW from TFA has issues on M1 Metal causing weight collapse
+        # The existing L2 regularization (0.01) on Dense layers provides sufficient weight decay
+        optimizer = keras.optimizers.Adam(learning_rate=self.config.learning_rate)
+        logger.info(f"Using Adam optimizer with lr={self.config.learning_rate}")
+        
         # Use label smoothing to prevent overconfident predictions
         model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=self.config.learning_rate),
+            optimizer=optimizer,
             loss=keras.losses.BinaryCrossentropy(label_smoothing=0.1),
             metrics=['accuracy'],
         )
@@ -460,6 +465,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         feature_names: Optional[list] = None,
         w_train: Optional[np.ndarray] = None,
         w_val: Optional[np.ndarray] = None,
+        warm_start_path: Optional[str] = None,
     ) -> Dict[str, float]:
         """
         Train Transformer for direction prediction.
@@ -467,6 +473,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         IMPORTANT: Create sequences FIRST from all data (preserving temporal order),
         THEN filter sequences based on whether the target label is clear.
         This preserves temporal continuity for proper sequence modeling.
+        
+        Args:
+            warm_start_path: Path to existing model to load weights from (iterative training)
         """
         import tensorflow as tf
         from tensorflow import keras
@@ -518,24 +527,90 @@ class TransformerDirectionTrainer(BaseTrainer):
         logger.info(f"Filtered training: {train_clear_mask.sum()}/{len(train_clear_mask)} sequences with clear labels")
         logger.info(f"Filtered validation: {val_clear_mask.sum()}/{len(val_clear_mask)} sequences with clear labels")
         
-        # Log class distribution
+        # Log class distribution and imbalance ratio
         train_up_pct = (y_train_filtered == 1).mean() * 100
         val_up_pct = (y_val_filtered == 1).mean() * 100
-        logger.info(f"Class distribution: train={train_up_pct:.1f}% up, val={val_up_pct:.1f}% up")
+        train_imbalance = max(train_up_pct, 100 - train_up_pct) / min(train_up_pct, 100 - train_up_pct) if min(train_up_pct, 100 - train_up_pct) > 0 else float('inf')
+        val_imbalance = max(val_up_pct, 100 - val_up_pct) / min(val_up_pct, 100 - val_up_pct) if min(val_up_pct, 100 - val_up_pct) > 0 else float('inf')
+        logger.info(
+            "Class distribution: train=%.1f%% up (imbalance=%.2fx), val=%.1f%% up (imbalance=%.2fx)",
+            train_up_pct, train_imbalance, val_up_pct, val_imbalance
+        )
+        if train_imbalance > 2.0 or val_imbalance > 2.0:
+            logger.warning("High class imbalance detected (>2x). Consider adjusting direction_threshold.")
         
-        # Calculate class weights to handle imbalance
+        # =========================================================================
+        # PHASE 2: REGIME-AWARE SAMPLE WEIGHTS (2025 Best Practice)
+        # Compute per-sample weights that balance classes WITHIN each volatility regime
+        # This prevents the model from learning regime-specific biases
+        # =========================================================================
         n_up = (y_train_filtered == 1).sum()
         n_down = (y_train_filtered == 0).sum()
+        
         if n_up > 0 and n_down > 0:
-            # Inverse frequency weighting
+            # Compute volatility regime from sequence features
+            # Use the last timestep's volatility percentile as regime indicator
+            # Feature index for atr_pct or volatility (typically in first few features)
+            
+            # Extract volatility from sequences (mean of last 5 timesteps to reduce noise)
+            seq_volatility = np.mean(np.abs(X_train_filtered[:, -5:, :]), axis=(1, 2))
+            
+            # Quantile-based regime classification (3 regimes: low, medium, high vol)
+            vol_p33 = np.percentile(seq_volatility, 33)
+            vol_p66 = np.percentile(seq_volatility, 66)
+            
+            regime_train = np.where(
+                seq_volatility < vol_p33, 0,  # Low volatility
+                np.where(seq_volatility < vol_p66, 1, 2)  # Medium / High volatility
+            )
+            
+            # Compute per-regime class weights
+            sample_weights = np.ones(len(y_train_filtered), dtype=np.float32)
+            
+            for regime in [0, 1, 2]:
+                regime_mask = (regime_train == regime)
+                if regime_mask.sum() == 0:
+                    continue
+                
+                regime_up = ((y_train_filtered == 1) & regime_mask).sum()
+                regime_down = ((y_train_filtered == 0) & regime_mask).sum()
+                regime_total = regime_up + regime_down
+                
+                if regime_up > 0 and regime_down > 0:
+                    # Inverse frequency weighting within regime
+                    up_weight = regime_total / (2 * regime_up)
+                    down_weight = regime_total / (2 * regime_down)
+                    
+                    # Apply weights to samples in this regime
+                    sample_weights[(y_train_filtered == 1) & regime_mask] = up_weight
+                    sample_weights[(y_train_filtered == 0) & regime_mask] = down_weight
+                    
+                    regime_name = ['LOW_VOL', 'MED_VOL', 'HIGH_VOL'][regime]
+                    logger.info(f"  Regime {regime_name}: n={regime_mask.sum()}, up={regime_up} ({100*regime_up/regime_total:.1f}%), "
+                               f"weights: up={up_weight:.3f}, down={down_weight:.3f}")
+            
+            # Normalize weights to mean=1 (preserves effective batch size)
+            sample_weights = sample_weights / sample_weights.mean()
+            
+            # Also compute global class weights for Keras (backup)
             total = n_up + n_down
             class_weight = {
                 0: total / (2 * n_down),
                 1: total / (2 * n_up),
             }
-            logger.info(f"Class weights: down={class_weight[0]:.3f}, up={class_weight[1]:.3f}")
+            logger.info(f"Global class weights: down={class_weight[0]:.3f}, up={class_weight[1]:.3f}")
+            logger.info(f"Regime-aware sample weights: mean={sample_weights.mean():.3f}, std={sample_weights.std():.3f}")
+            
+            # PHASE 2 FIX: Only apply sample weights if data is significantly imbalanced
+            # Since Phase 1 dead-zone filtering already balanced the data, weights may overcorrect
+            imbalance_ratio = max(n_up, n_down) / min(n_up, n_down)
+            if imbalance_ratio < 1.15:  # Less than 15% imbalance
+                logger.info(f"Data is balanced (ratio={imbalance_ratio:.3f} < 1.15), disabling sample weights to avoid overcorrection")
+                sample_weights = None
+                class_weight = None
         else:
             class_weight = None
+            sample_weights = None
             logger.warning("Cannot compute class weights - one class has zero samples")
         
         logger.info(f"Sequence shape: train={X_train_filtered.shape}, val={X_val_filtered.shape}")
@@ -543,32 +618,55 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Build model
         self.model = self._build_model((seq_len, self.n_features))
         
+        # WARM-START: Load existing weights if provided (iterative training)
+        if warm_start_path and Path(warm_start_path).exists():
+            try:
+                logger.info(f"🔥 WARM-START: Loading weights from {warm_start_path}")
+                existing_model = keras.models.load_model(warm_start_path, compile=False)
+                
+                # Check if architectures match
+                if existing_model.count_params() == self.model.count_params():
+                    self.model.set_weights(existing_model.get_weights())
+                    logger.info(f"✓ Successfully loaded {self.model.count_params():,} parameters from checkpoint")
+                    logger.info("  Training will continue from previous weights (compounding learning)")
+                else:
+                    logger.warning(f"Architecture mismatch: checkpoint has {existing_model.count_params():,} params, "
+                                 f"new model has {self.model.count_params():,}. Starting fresh.")
+                del existing_model
+            except Exception as e:
+                logger.warning(f"Could not load warm-start checkpoint: {e}. Starting fresh.")
+        elif warm_start_path:
+            logger.info(f"No checkpoint found at {warm_start_path}. Starting fresh training.")
+        
         # Print model summary
         self.model.summary(print_fn=logger.info)
         
         # Callbacks - use config patience values
-        # Key insight: val_loss is the most reliable metric for detecting overfitting
-        # If val_loss increases while train_loss decreases, we're overfitting
+        # Key insight: For classification, val_accuracy is what matters for trading
+        # val_loss can improve while accuracy drops (model becomes uncertain)
         callbacks = [
-            # Primary: Stop when validation loss stops improving (best for overfitting)
+            # Primary: Stop when validation ACCURACY stops improving
             keras.callbacks.EarlyStopping(
-                monitor='val_loss',
+                monitor='val_accuracy',
                 patience=self.config.patience,
-                mode='min',
+                mode='max',  # We want to MAXIMIZE accuracy
                 restore_best_weights=True,  # Restore weights from best epoch
                 verbose=1,
             ),
-            # LR reduction (less aggressive: factor=0.5, patience=1/4 of early stopping)
+            # LR reduction based on accuracy plateau
             keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
+                monitor='val_accuracy',
                 factor=0.5,
                 patience=max(4, self.config.patience // 4),
+                mode='max',  # Reduce LR when accuracy stops improving
                 min_lr=1e-6,
                 verbose=1,
             ),
         ]
         
-        # Train on FILTERED sequences (clear labels only) with class weighting
+        # Train on FILTERED sequences (clear labels only) with REGIME-AWARE sample weights
+        # Use sample_weight (per-sample) instead of class_weight (per-class)
+        # This gives finer-grained control: balance classes WITHIN each volatility regime
         history = self.model.fit(
             X_train_filtered, y_train_filtered,
             validation_data=(X_val_filtered, y_val_filtered),
@@ -576,12 +674,15 @@ class TransformerDirectionTrainer(BaseTrainer):
             batch_size=self.config.batch_size,
             callbacks=callbacks,
             verbose=self.config.verbose,
-            class_weight=class_weight,
+            sample_weight=sample_weights,  # PHASE 2: Regime-aware weights instead of global class_weight
         )
         
         self.is_trained = True
         
         # Calculate metrics on FILTERED validation (clear labels only)
+        # NOTE: This is the CANONICAL val_accuracy - computed on full val set after EarlyStopping
+        # restores best weights. Different from epoch-level val_accuracy logged during training
+        # (which uses batch-level estimates and may differ by 1-2%).
         val_pred = (self.model.predict(X_val_filtered, verbose=0) > 0.5).astype(float)
         val_acc = np.mean(val_pred.flatten() == y_val_filtered)
         
@@ -603,7 +704,24 @@ class TransformerDirectionTrainer(BaseTrainer):
             'n_val_samples': len(X_val_filtered),
         }
         
-        logger.info(f"Transformer trained: val_accuracy={val_acc:.4f}, "
+        # Log weight norms for regularization monitoring
+        # Higher norms may indicate insufficient regularization
+        try:
+            total_weight_norm = 0.0
+            trainable_params = 0
+            for layer in self.model.layers:
+                for w in layer.trainable_weights:
+                    w_norm = float(tf.norm(w).numpy())
+                    total_weight_norm += w_norm
+                    trainable_params += int(tf.size(w).numpy())
+            avg_weight_norm = total_weight_norm / max(1, len([w for l in self.model.layers for w in l.trainable_weights]))
+            self.metrics['total_weight_norm'] = total_weight_norm
+            self.metrics['avg_weight_norm'] = avg_weight_norm
+            logger.info(f"Weight norms: total={total_weight_norm:.2f}, avg={avg_weight_norm:.4f} (trainable params={trainable_params:,})")
+        except Exception as e:
+            logger.debug(f"Could not compute weight norms: {e}")
+        
+        logger.info(f"Transformer trained [canonical]: val_accuracy={val_acc:.4f}, "
                    f"balanced_acc={balanced_acc:.4f} (up={up_acc:.4f}, down={down_acc:.4f})")
         return self.metrics
     
@@ -1460,6 +1578,234 @@ class RidgeTrainer(BaseTrainer):
 
 
 # =============================================================================
+# HISTGRADIENTBOOSTING TRAINER - Direction Baseline (sklearn)
+# =============================================================================
+
+class HistGradientBoostingDirectionTrainer(BaseTrainer):
+    """
+    HistGradientBoostingClassifier for direction prediction.
+    
+    This is a fast, accurate sklearn-based baseline that:
+    - Handles NaN/missing values natively
+    - Uses histogram-based splits for speed
+    - Provides competitive accuracy without deep learning overhead
+    
+    Use as sanity check: If Transformer beats this by <2%, Transformer may be overfitting.
+    If this baseline achieves 55-60%, the features are informative.
+    
+    Input: Flattened feature matrix (no sequences needed)
+    Output: Binary direction (0=down, 1=up) with probabilities
+    """
+    
+    def __init__(self, config: Optional[TrainerConfig] = None):
+        super().__init__(config)
+        self.scaler = None
+        self.pca = None
+        self.feature_names = None
+        self.n_features = None
+        
+        # HistGB specific config
+        self.max_iter = getattr(config, 'histgb_max_iter', 200) if config else 200
+        self.max_depth = getattr(config, 'histgb_max_depth', 8) if config else 8
+        self.learning_rate = getattr(config, 'histgb_learning_rate', 0.05) if config else 0.05
+        self.l2_regularization = getattr(config, 'histgb_l2_reg', 0.1) if config else 0.1
+        self.use_pca = getattr(config, 'histgb_use_pca', True) if config else True
+        self.pca_variance = getattr(config, 'histgb_pca_variance', 0.95) if config else 0.95
+    
+    def train(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        X_val: np.ndarray,
+        y_val: np.ndarray,
+        feature_names: Optional[list] = None,
+        w_train: Optional[np.ndarray] = None,
+        w_val: Optional[np.ndarray] = None,
+    ) -> Dict[str, float]:
+        """
+        Train HistGradientBoostingClassifier for direction.
+        
+        Uses optional PCA to reduce dimensionality and prevent overfitting.
+        """
+        from sklearn.ensemble import HistGradientBoostingClassifier
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.decomposition import PCA
+        
+        logger.info("Training HistGradientBoosting (Direction Baseline)...")
+        
+        # Save feature names for inference
+        self.feature_names = feature_names
+        self.n_features = X_train.shape[-1]
+        
+        # Flatten if 3D (sequences) - use last timestep or mean
+        if X_train.ndim == 3:
+            logger.info(f"Flattening 3D input: {X_train.shape} -> using last timestep")
+            X_train = X_train[:, -1, :]  # Use last timestep
+            X_val = X_val[:, -1, :]
+        
+        # Filter by weights if provided (keep only clear labels)
+        if w_train is not None:
+            clear_mask_train = w_train > 0
+            clear_mask_val = w_val > 0 if w_val is not None else np.ones(len(y_val), dtype=bool)
+            X_train_filtered = X_train[clear_mask_train]
+            y_train_filtered = y_train[clear_mask_train]
+            X_val_filtered = X_val[clear_mask_val]
+            y_val_filtered = y_val[clear_mask_val]
+            logger.info(f"Filtered to clear labels: train={len(X_train_filtered)}, val={len(X_val_filtered)}")
+        else:
+            X_train_filtered = X_train
+            y_train_filtered = y_train
+            X_val_filtered = X_val
+            y_val_filtered = y_val
+        
+        # Ensure labels are integer (sklearn classifier requires discrete labels)
+        y_train_filtered = np.asarray(y_train_filtered).astype(int)
+        y_val_filtered = np.asarray(y_val_filtered).astype(int)
+        
+        # Scale features
+        self.scaler = StandardScaler()
+        X_train_scaled = self.scaler.fit_transform(X_train_filtered)
+        X_val_scaled = self.scaler.transform(X_val_filtered)
+        
+        # Optional PCA for dimensionality reduction
+        if self.use_pca and X_train_scaled.shape[1] > 20:
+            self.pca = PCA(n_components=self.pca_variance, random_state=42)
+            X_train_pca = self.pca.fit_transform(X_train_scaled)
+            X_val_pca = self.pca.transform(X_val_scaled)
+            logger.info(f"PCA: {X_train_scaled.shape[1]} features -> {X_train_pca.shape[1]} components "
+                       f"(explaining {self.pca_variance*100:.0f}% variance)")
+            X_train_final = X_train_pca
+            X_val_final = X_val_pca
+        else:
+            X_train_final = X_train_scaled
+            X_val_final = X_val_scaled
+            self.pca = None
+        
+        # Log class distribution
+        train_up_pct = (y_train_filtered == 1).mean() * 100
+        val_up_pct = (y_val_filtered == 1).mean() * 100
+        logger.info(f"Class distribution: train={train_up_pct:.1f}% up, val={val_up_pct:.1f}% up")
+        
+        # Train HistGradientBoosting with early stopping
+        self.model = HistGradientBoostingClassifier(
+            max_iter=self.max_iter,
+            max_depth=self.max_depth,
+            learning_rate=self.learning_rate,
+            l2_regularization=self.l2_regularization,
+            early_stopping=True,
+            validation_fraction=0.15,
+            n_iter_no_change=20,
+            random_state=42,
+            verbose=0,
+        )
+        
+        self.model.fit(X_train_final, y_train_filtered)
+        self.is_trained = True
+        
+        # Evaluate
+        y_pred = self.model.predict(X_val_final)
+        y_prob = self.model.predict_proba(X_val_final)[:, 1]
+        
+        # Metrics
+        val_acc = np.mean(y_pred == y_val_filtered)
+        
+        # Balanced accuracy
+        up_mask = y_val_filtered == 1
+        down_mask = y_val_filtered == 0
+        up_acc = np.mean(y_pred[up_mask] == 1) if up_mask.sum() > 0 else 0
+        down_acc = np.mean(y_pred[down_mask] == 0) if down_mask.sum() > 0 else 0
+        balanced_acc = (up_acc + down_acc) / 2
+        
+        # AUC
+        try:
+            from sklearn.metrics import roc_auc_score
+            auc = roc_auc_score(y_val_filtered, y_prob)
+        except:
+            auc = 0.5
+        
+        self.metrics = {
+            'val_accuracy': float(val_acc),
+            'val_balanced_accuracy': float(balanced_acc),
+            'val_up_accuracy': float(up_acc),
+            'val_down_accuracy': float(down_acc),
+            'auc': float(auc),
+            'n_train_samples': len(X_train_filtered),
+            'n_val_samples': len(X_val_filtered),
+            'n_features_used': X_train_final.shape[1],
+            'n_iterations': self.model.n_iter_,
+        }
+        
+        logger.info(f"HistGB trained: val_accuracy={val_acc:.4f}, balanced={balanced_acc:.4f}, "
+                   f"auc={auc:.4f}, iters={self.model.n_iter_}")
+        return self.metrics
+    
+    def predict(self, X: np.ndarray) -> Dict[str, Any]:
+        """Predict direction (0 or 1) with probability."""
+        if not self.is_trained:
+            raise RuntimeError("Model not trained")
+        
+        # Flatten if 3D
+        if X.ndim == 3:
+            X = X[:, -1, :]
+        
+        # Scale
+        X_scaled = self.scaler.transform(X.reshape(-1, X.shape[-1]))
+        
+        # Apply PCA if used
+        if self.pca is not None:
+            X_final = self.pca.transform(X_scaled)
+        else:
+            X_final = X_scaled
+        
+        # Get last row for prediction
+        X_last = X_final[-1:] if len(X_final) > 1 else X_final
+        
+        prob = float(self.model.predict_proba(X_last)[0, 1])
+        direction = int(self.model.predict(X_last)[0])
+        
+        return {
+            'direction': direction,
+            'probability': prob,
+        }
+    
+    def save(self, path: str) -> None:
+        """Save HistGB model."""
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        data = {
+            'model': self.model,
+            'scaler': self.scaler,
+            'pca': self.pca,
+            'metrics': self.metrics,
+            'config': self.config.__dict__ if self.config else {},
+            'feature_names': self.feature_names,
+            'n_features': self.n_features,
+            'model_type': 'histgb',
+        }
+        
+        with open(path, 'wb') as f:
+            pickle.dump(data, f)
+        
+        logger.info(f"HistGB saved to {path}")
+    
+    def load(self, path: str) -> None:
+        """Load HistGB model."""
+        with open(path, 'rb') as f:
+            data = pickle.load(f)
+        
+        self.model = data['model']
+        self.scaler = data['scaler']
+        self.pca = data.get('pca')
+        self.metrics = data['metrics']
+        self.feature_names = data.get('feature_names')
+        self.n_features = data.get('n_features')
+        self.is_trained = True
+        
+        logger.info(f"HistGB loaded from {path}")
+
+
+# =============================================================================
 # CONVENIENCE FUNCTION - Train All Models
 # =============================================================================
 
@@ -1469,6 +1815,8 @@ def train_all_modular(
     save_dir: str = "trained_data/models",
     use_transformer: bool = True,
     use_regime: bool = False,
+    warm_start: bool = False,
+    train_histgb: bool = False,
 ) -> Dict[str, BaseTrainer]:
     """
     Train all 4 models independently.
@@ -1479,6 +1827,8 @@ def train_all_modular(
         save_dir: Directory to save models
         use_transformer: If True, use Transformer; if False, use TCN (only for direction mode)
         use_regime: If True, train regime classifier instead of direction predictor
+        warm_start: If True, load existing model weights and continue training (compounding learning)
+        train_histgb: If True, also train HistGradientBoosting for hybrid voting with Transformer
     
     Returns:
         Dict with trained trainer instances
@@ -1488,6 +1838,9 @@ def train_all_modular(
     save_dir.mkdir(parents=True, exist_ok=True)
     
     trainers = {}
+    
+    # Determine warm-start checkpoint path
+    transformer_checkpoint = save_dir / "transformer_direction.keras" if warm_start else None
     
     # 1. Regime or Direction Model
     logger.info("\n" + "="*50)
@@ -1528,12 +1881,18 @@ def train_all_modular(
         
         if use_transformer:
             dir_trainer = TransformerDirectionTrainer(config)
+            
+            # Log warm-start status
+            if warm_start and transformer_checkpoint and transformer_checkpoint.exists():
+                logger.info(f"🔥 WARM-START enabled: Loading weights from {transformer_checkpoint}")
+            
             dir_trainer.train(
                 dir_data['X_train'], dir_data['y_train'],
                 dir_data['X_val'], dir_data['y_val'],
                 feature_names=dir_data.get('feature_names'),
                 w_train=dir_data.get('w_train'),
                 w_val=dir_data.get('w_val'),
+                warm_start_path=str(transformer_checkpoint) if warm_start else None,
             )
             dir_trainer.save(str(save_dir / "transformer_direction.keras"))
             trainers['direction'] = dir_trainer
@@ -1590,6 +1949,26 @@ def train_all_modular(
     )
     ridge_trainer.save(str(save_dir / "ridge_confidence.pkl"))
     trainers['ridge'] = ridge_trainer
+    
+    # 5. HistGradientBoosting (Optional - for hybrid voting)
+    if train_histgb and not use_regime:
+        logger.info("\n" + "="*50)
+        logger.info("Training HistGradientBoosting (Direction Baseline for Hybrid Voting)")
+        logger.info("="*50)
+        
+        dir_data = data.get('direction', data.get('tcn'))
+        if dir_data is not None:
+            histgb_trainer = HistGradientBoostingDirectionTrainer(config)
+            histgb_trainer.train(
+                dir_data['X_train'], dir_data['y_train'],
+                dir_data['X_val'], dir_data['y_val'],
+                feature_names=dir_data.get('feature_names'),
+            )
+            histgb_trainer.save(str(save_dir / "histgb_direction.pkl"))
+            trainers['histgb'] = histgb_trainer
+            logger.info("✓ HistGB trained for hybrid voting with Transformer")
+        else:
+            logger.warning("No direction data found for HistGB training")
     
     logger.info("\n" + "="*50)
     logger.info("All 4 models trained independently!")

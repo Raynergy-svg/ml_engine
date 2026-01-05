@@ -90,6 +90,11 @@ class TradeSignal:
     rf_drawdown_pips: float = 0.0
     rf_streak_prob: float = 0.0
     
+    # Hybrid voting (HistGB + Transformer)
+    histgb_direction: Optional[int] = None
+    histgb_probability: float = 0.5
+    models_agree: bool = True  # True if Transformer and HistGB agree
+    
     # Gate status
     confidence_gate_passed: bool = False
     momentum_gate_passed: bool = False
@@ -107,9 +112,15 @@ class ModularEnsembleInference:
     Loads 4 independent models and combines their predictions using gated logic.
     No shared processing - each model sees its own feature subset.
     
-    Supports two modes:
+    Supports three modes:
     - DIRECTION MODE: Transformer/TCN predicts direction directly
     - REGIME MODE: Transformer classifies regime, direction derived from momentum
+    - HYBRID MODE: Transformer + HistGB voting for higher confidence trades
+    
+    Hybrid voting logic:
+    - If both models agree: trade with full confidence
+    - If models disagree in low-vol regime: use HistGB (more stable)
+    - If models disagree in high-vol regime: use Transformer (better at trends)
     """
     
     def __init__(
@@ -121,19 +132,22 @@ class ModularEnsembleInference:
         self.config = config or InferenceConfig()
         
         self.tcn = None  # Direction model (legacy)
+        self.histgb = None  # HistGB baseline for hybrid voting
         self.regime_model = None  # Regime classifier (new)
         self.xgb = None
         self.rf = None
         self.ridge = None
         
         self.use_regime = False  # Will be set during load_models
+        self.use_hybrid = False  # Enable HistGB voting
         self._loaded = False
     
     def load_models(self) -> None:
         """Load all 4 models from disk."""
         from modular_trainers import (
             TCNTrainer, TransformerDirectionTrainer, TransformerRegimeTrainer,
-            XGBoostTrainer, RandomForestTrainer, RidgeTrainer
+            XGBoostTrainer, RandomForestTrainer, RidgeTrainer,
+            HistGradientBoostingDirectionTrainer
         )
         
         logger.info("Loading modular ensemble models...")
@@ -142,6 +156,7 @@ class ModularEnsembleInference:
         regime_path = self.model_dir / "transformer_regime.keras"
         transformer_path = self.model_dir / "transformer_direction.keras"
         tcn_path = self.model_dir / "tcn_direction.keras"
+        histgb_path = self.model_dir / "histgb_direction.pkl"
         
         if regime_path.exists():
             # REGIME MODE
@@ -163,6 +178,16 @@ class ModularEnsembleInference:
             logger.info("✓ TCN direction model loaded (legacy)")
         else:
             logger.warning(f"No direction/regime model found at {regime_path}, {transformer_path}, or {tcn_path}")
+        
+        # Load HistGB for hybrid voting (if available)
+        if histgb_path.exists():
+            self.histgb = HistGradientBoostingDirectionTrainer()
+            self.histgb.load(str(histgb_path))
+            self.use_hybrid = True
+            logger.info("✓ HistGB baseline loaded (hybrid voting enabled)")
+        else:
+            self.use_hybrid = False
+            logger.info("ℹ HistGB not found - single-model mode (train with --train-histgb to enable hybrid)")
         
         # XGBoost
         xgb_path = self.model_dir / "xgb_momentum.pkl"
@@ -517,6 +542,49 @@ class ModularEnsembleInference:
             except Exception as e:
                 logger.warning(f"TCN prediction failed: {e}")
         
+        # === HYBRID VOTING (HistGB + Transformer) ===
+        histgb_direction = None
+        histgb_probability = 0.5
+        models_agree = True
+        
+        if self.use_hybrid and self.histgb is not None and not self.use_regime:
+            try:
+                histgb_features = self._extract_tcn_features(df)  # Same features as Transformer
+                histgb_pred = self.histgb.predict(histgb_features)
+                histgb_direction = histgb_pred['direction']
+                histgb_probability = histgb_pred['probability']
+                
+                # Calculate confidence (distance from 0.5)
+                tcn_confidence = abs(tcn_probability - 0.5) * 2  # 0-1 scale
+                histgb_confidence = abs(histgb_probability - 0.5) * 2  # 0-1 scale
+                
+                # Check if models agree
+                if tcn_direction is not None and histgb_direction is not None:
+                    models_agree = (tcn_direction == histgb_direction)
+                    
+                    if models_agree:
+                        # Both agree - boost confidence
+                        tcn_probability = (tcn_probability + histgb_probability) / 2
+                        logger.debug(f"Hybrid: AGREE (Transformer={tcn_direction}, HistGB={histgb_direction})")
+                    else:
+                        # Models disagree - use confidence-weighted decision
+                        # Only trust HistGB if it's significantly more confident
+                        atr_pct = df['atr_pct_14'].iloc[-1] if 'atr_pct_14' in df.columns else 0.01
+                        
+                        # NEW: Consider confidence, not just volatility
+                        # HistGB wins only if: (1) higher confidence AND (2) low volatility
+                        if atr_pct < 0.005 and histgb_confidence > tcn_confidence * 1.2:
+                            # Low-vol AND HistGB is 20%+ more confident - trust HistGB
+                            tcn_direction = histgb_direction
+                            tcn_probability = histgb_probability
+                            logger.debug(f"Hybrid: DISAGREE, low-vol + HistGB more confident -> HistGB ({histgb_direction})")
+                        else:
+                            # Trust Transformer (primary model), reduce confidence due to disagreement
+                            tcn_probability = tcn_probability * 0.8
+                            logger.debug(f"Hybrid: DISAGREE -> Transformer ({tcn_direction}), conf={tcn_confidence:.2f} vs HistGB={histgb_confidence:.2f}")
+            except Exception as e:
+                logger.warning(f"HistGB prediction failed: {e}")
+        
         # === GET SUPPORTING MODEL PREDICTIONS ===
         try:
             if self.ridge is not None:
@@ -661,6 +729,9 @@ class ModularEnsembleInference:
             xgb_acceleration=xgb_acceleration,
             rf_drawdown_pips=rf_drawdown_pips,
             rf_streak_prob=rf_streak_prob,
+            histgb_direction=histgb_direction,
+            histgb_probability=histgb_probability,
+            models_agree=models_agree,
             confidence_gate_passed=confidence_gate_passed,
             momentum_gate_passed=momentum_gate_passed,
             risk_gate_passed=risk_gate_passed,

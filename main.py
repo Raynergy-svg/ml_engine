@@ -416,7 +416,7 @@ def _meta_path_for_checkpoint(model_path: str) -> Path | None:
 
 
 # Constants
-DEFAULT_CONFIG_PATH = "./config_tuned.yaml"
+DEFAULT_CONFIG_PATH = "./config_improved_H1.yaml"
 DEFAULT_MESSAGE_FORMAT = "Epoch {epoch} completed"
 TIMESTAMP_FORMAT = "%H:%M:%S"
 TABLE_HEADER_STYLE = "bold magenta"
@@ -2062,6 +2062,7 @@ def _train_buddy_impl(
                 XGBoostTrainer,
                 RandomForestTrainer,
                 RidgeTrainer,
+                HistGradientBoostingDirectionTrainer,
             )
             
             # Get model configuration from config
@@ -2264,6 +2265,13 @@ def _train_buddy_impl(
                 # Get direction data (new key 'direction' or fallback to 'tcn')
                 dir_data = all_data.get('direction', all_data.get('tcn'))
                 
+                # WARM-START: Check if we should load existing weights (default=True for compounding learning)
+                warm_start_enabled = cfg.get("buddy", {}).get("train_defaults", {}).get("warm_start", True)
+                warm_start_path = model_dir / "transformer_direction.keras" if warm_start_enabled else None
+                if warm_start_enabled and warm_start_path.exists():
+                    console.print(f"[yellow]🔥 WARM-START enabled: Loading weights from {warm_start_path}[/yellow]")
+                    console.print("[dim]   Training will continue from previous weights (compounding learning)[/dim]")
+                
                 if use_transformer:
                     dir_trainer = TransformerDirectionTrainer(trainer_config)
                     dir_metrics = dir_trainer.train(
@@ -2272,6 +2280,7 @@ def _train_buddy_impl(
                         feature_names=dir_data['feature_names'],
                         w_train=dir_data.get('w_train'),  # Sample weights for threshold filtering
                         w_val=dir_data.get('w_val'),
+                        warm_start_path=str(warm_start_path) if warm_start_enabled else None,
                     )
                     dir_trainer.save(str(model_dir / "transformer_direction.keras"))
                     dir_model_path = str(model_dir / "transformer_direction.keras")
@@ -2357,6 +2366,31 @@ def _train_buddy_impl(
             all_metrics['ridge'] = ridge_metrics
             
             console.print(f"[green]✓ Ridge complete: confidence_mae={ridge_metrics['confidence_mae']:.2f}, r2={ridge_metrics['r2_score']:.4f}[/green]")
+            
+            # ============================================================
+            # TRAIN HISTGB (Optional - for hybrid voting with Transformer)
+            # ============================================================
+            train_histgb = cfg.get("buddy", {}).get("train_defaults", {}).get("train_histgb", False)
+            histgb_metrics = None
+            
+            if train_histgb and not use_regime:
+                console.print("\n[bold magenta]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold magenta]")
+                console.print("[bold magenta]  Step 5: Training HistGB (Hybrid Voting Baseline)[/bold magenta]")
+                console.print("[bold magenta]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/bold magenta]")
+                console.print("[dim]Purpose: Hybrid voting with Transformer → trade only when BOTH AGREE[/dim]")
+                console.print("[dim]Expected: Higher precision at cost of fewer trades[/dim]")
+                
+                histgb_trainer = HistGradientBoostingDirectionTrainer(trainer_config)
+                histgb_metrics = histgb_trainer.train(
+                    dir_data['X_train'], dir_data['y_train'],
+                    dir_data['X_val'], dir_data['y_val'],
+                    feature_names=dir_data['feature_names'],
+                )
+                histgb_trainer.save(str(model_dir / "histgb_direction.pkl"))
+                all_metrics['histgb'] = histgb_metrics
+                
+                console.print(f"[green]✓ HistGB complete: val_accuracy={histgb_metrics['val_accuracy']:.1%}, balanced={histgb_metrics.get('val_balanced_accuracy', 0):.1%}[/green]")
+                console.print("[yellow]🔥 Hybrid voting ENABLED: Transformer + HistGB will vote together[/yellow]")
             
             # ============================================================
             # SAVE METADATA
@@ -6964,7 +6998,8 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
         )
 
     init_from = getattr(args, "init_from", None)
-    if not init_from and bool(getattr(args, "warm_start", False)):
+    # WARM-START default=True: Always load existing weights for compounding learning
+    if not init_from and bool(getattr(args, "warm_start", True)):
         init_from = str(Path("trained_data") / "models" / "buddy_tf.keras")
 
     advanced = BuddyTrainingAdvancedOptions(
@@ -7516,9 +7551,13 @@ def _buddy_test_modular_ensemble(
     closes = df["close"].values
     pip_size = 0.01 if "JPY" in instrument else 0.0001
     
-    # Test window
-    test_start = len(df) - test_candles - 1
-    test_end = len(df) - 1
+    # Get threshold from config (match training)
+    threshold_pct = cfg.get("training", {}).get("transformer", {}).get("direction_threshold", 0.003)
+    lookahead = cfg.get("training", {}).get("transformer", {}).get("direction_lookahead", 24)
+    
+    # Test window - need extra buffer for lookahead
+    test_start = len(df) - test_candles - lookahead - 1
+    test_end = len(df) - lookahead - 1  # Leave room for lookahead measurement
     
     # Metrics for GATED trades (production mode)
     gated_correct = 0
@@ -7534,6 +7573,10 @@ def _buddy_test_modular_ensemble(
     raw_wins_pips = []
     raw_losses_pips = []
     
+    # Metrics for CLEAR signals only (matching training threshold)
+    clear_correct = 0
+    clear_wrong = 0
+    
     # Track gate failures
     gate_failures = {"confidence": 0, "momentum": 0, "risk": 0, "no_direction": 0}
     
@@ -7542,6 +7585,8 @@ def _buddy_test_modular_ensemble(
     all_acceleration_values = []
     all_rf_drawdowns = []
     all_rf_streaks = []
+    
+    console.print(f"[dim]Using lookahead={lookahead} bars, threshold={threshold_pct*100:.2f}% to match training config[/dim]\n")
     
     for i in range(test_start, test_end):
         if i < 60:  # Need at least 60 bars of history
@@ -7571,11 +7616,15 @@ def _buddy_test_modular_ensemble(
         except Exception:
             ts_str = f"candle_{i}"
         
-        # Actual movement
+        # Actual movement over LOOKAHEAD period (must match training!)
         entry_price = closes[i]
-        exit_price = closes[i + 1]
+        exit_price = closes[i + lookahead]  # lookahead from config
         actual_pips = (exit_price - entry_price) / pip_size
         actual_direction = "↑" if actual_pips > 0 else "↓"
+        
+        # Calculate move percentage (for threshold matching)
+        move_pct = abs(exit_price - entry_price) / entry_price
+        is_clear_move = move_pct >= threshold_pct  # threshold_pct from config
         
         # RAW TCN evaluation (ignore gates - just evaluate direction prediction)
         if signal.tcn_direction is not None:
@@ -7589,6 +7638,13 @@ def _buddy_test_modular_ensemble(
             else:
                 raw_wrong += 1
                 raw_losses_pips.append(abs(actual_pips))
+            
+            # Also track clear-signal accuracy (matching training labels)
+            if is_clear_move:
+                if raw_is_correct:
+                    clear_correct += 1
+                else:
+                    clear_wrong += 1
         
         # GATED production evaluation
         if signal.trade:
@@ -7666,6 +7722,15 @@ def _buddy_test_modular_ensemble(
         raw_ev = (raw_correct / raw_total) * raw_avg_win - (raw_wrong / raw_total) * raw_avg_loss
         console.print(f"  Expected Value:     {raw_ev:+.2f} pips/trade")
     
+    # Clear signal accuracy (matching training labels - moves >= threshold)
+    clear_total = clear_correct + clear_wrong
+    if clear_total > 0:
+        clear_accuracy = 100 * clear_correct / clear_total
+        console.print(f"\n[bold magenta]Clear Signals Only (>= {threshold_pct*100:.1f}% moves, matching training):[/bold magenta]")
+        console.print(f"  Clear Signals:      {clear_total} ({100*clear_total/raw_total:.1f}% of all)")
+        console.print(f"  Correct:            {clear_correct} ({clear_accuracy:.1f}%)")
+        console.print(f"  Wrong:              {clear_wrong} ({100-clear_accuracy:.1f}%)")
+    
     # Gated performance (production)
     console.print(f"\n[bold yellow]Gated Trades (Production Mode):[/bold yellow]")
     console.print(f"  Trades Taken:       {trades_taken}")
@@ -7708,6 +7773,43 @@ def _buddy_test_modular_ensemble(
         console.print(f"  Streak Prob - Min: {rf_streak_arr.min():.3f}, Max: {rf_streak_arr.max():.3f}, Mean: {rf_streak_arr.mean():.3f}")
         console.print(f"  Drawdown < 30 pips: {(rf_dd_arr < 30).sum()} / {len(rf_dd_arr)} ({100*(rf_dd_arr < 30).mean():.1f}%)")
         console.print(f"  Streak prob < 0.3: {(rf_streak_arr < 0.3).sum()} / {len(rf_streak_arr)} ({100*(rf_streak_arr < 0.3).mean():.1f}%)")
+    
+    # =========================================================================
+    # TRADE FREQUENCY ANALYSIS (Step 6)
+    # =========================================================================
+    console.print(f"\n[bold cyan]📊 Trade Frequency Analysis:[/bold cyan]")
+    
+    # Calculate trades per day (assuming H1 timeframe: 24 candles/day)
+    candles_per_day = 24 if granularity == "H1" else 288 if granularity == "M5" else 96 if granularity == "M15" else 24
+    test_days = test_candles / candles_per_day
+    trades_per_day = trades_taken / test_days if test_days > 0 else 0
+    
+    console.print(f"  Test Period:      {test_days:.1f} days ({test_candles} candles)")
+    console.print(f"  Trades Taken:     {trades_taken}")
+    console.print(f"  Trades/Day:       {trades_per_day:.2f}")
+    
+    # Trade frequency warnings
+    if trades_per_day < 1:
+        console.print(f"  [yellow]⚠ LOW FREQUENCY: <1 trade/day. Consider relaxing gates:[/yellow]")
+        console.print(f"    - Lower confidence threshold (currently {cfg.get('gates', {}).get('min_confidence', 75)})")
+        console.print(f"    - Lower momentum threshold (currently {cfg.get('gates', {}).get('min_momentum', 0.5)})")
+    elif trades_per_day < 2:
+        console.print(f"  [yellow]⚠ Below target: <2 trades/day. May need to relax gates.[/yellow]")
+    elif trades_per_day > 10:
+        console.print(f"  [yellow]⚠ HIGH FREQUENCY: >{10} trades/day. Consider tightening gates.[/yellow]")
+    else:
+        console.print(f"  [green]✓ Good frequency: {trades_per_day:.1f} trades/day[/green]")
+    
+    # Regime breakdown (if regime info available)
+    # Note: This requires regime classifier to be active
+    console.print(f"\n[bold]Gate Pass Rates:[/bold]")
+    total_candles = test_candles
+    conf_pass_rate = (total_candles - gate_failures['confidence']) / total_candles * 100
+    mom_pass_rate = (total_candles - gate_failures['momentum']) / total_candles * 100
+    risk_pass_rate = (total_candles - gate_failures['risk']) / total_candles * 100
+    console.print(f"  Confidence gate: {conf_pass_rate:.1f}% pass rate")
+    console.print(f"  Momentum gate:   {mom_pass_rate:.1f}% pass rate")
+    console.print(f"  Risk gate:       {risk_pass_rate:.1f}% pass rate")
     
     console.print("-" * 70)
     if raw_accuracy >= 52:
@@ -8453,13 +8555,13 @@ def main() -> None:
     parser.add_argument(
         "--instrument",
         "-I",
-        default="USD_JPY",
+        default="EUR_USD",
         help="OANDA instrument e.g. USD_JPY,EUR_USD,GBP_USD (used by buddy and --oanda-live training)",
     )
     parser.add_argument(
         "--granularity",
         "-g",
-        default="M5",
+        default="H1",
         help="OANDA candle granularity, e.g. M5, M15, H1 (used by buddy and --oanda-live training)",
     )
     parser.add_argument(

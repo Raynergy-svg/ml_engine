@@ -174,12 +174,63 @@ def load_tensorflow_multitask_data(
     meta['risk_scale'] = float(risk_max) if risk_max > 0 else 1.0
     logger.info(f"Risk scaling: max={risk_max:.6f}, scaled to [0, 1]")
     
+    # =========================================================================
+    # DEAD-ZONE FILTERING (2025 Best Practice for Trend-Agnostic Models)
+    # Filter out samples where direction == -1 (ambiguous/noisy labels)
+    # These are movements smaller than 0.5× rolling std (noise from spreads)
+    # =========================================================================
+    direction_values = targets.direction
+    dead_zone_mask = (direction_values == -1.0)
+    n_dead_zone = dead_zone_mask.sum()
+    
+    if n_dead_zone > 0:
+        # Create sample weights: 0 for dead-zone, 1 for clear signals
+        sample_weights = np.where(dead_zone_mask, 0.0, 1.0).astype(np.float32)
+        
+        # Option 1: Filter out dead-zone samples entirely (recommended for training)
+        filter_dead_zone = bool(config.get('filter_dead_zone_samples', True))
+        
+        if filter_dead_zone:
+            valid_mask = ~dead_zone_mask
+            valid_indices = np.where(valid_mask)[0]
+            
+            # Filter train/val/test indices to only include valid samples
+            train_idx = np.array([i for i in train_idx if i in valid_indices])
+            val_idx = np.array([i for i in val_idx if i in valid_indices])
+            test_idx = np.array([i for i in test_idx if i in valid_indices])
+            
+            logger.info(f"[Dead-zone filtering] Removed {n_dead_zone} ambiguous samples ({100*n_dead_zone/len(direction_values):.1f}%)")
+            logger.info(f"[Dead-zone filtering] After filter: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}")
+        else:
+            # Option 2: Keep dead-zone samples but with zero weight (not recommended)
+            logger.info(f"[Dead-zone] {n_dead_zone} ambiguous samples will be downweighted to 0")
+        
+        meta['dead_zone_samples'] = int(n_dead_zone)
+        meta['dead_zone_fraction'] = float(n_dead_zone / len(direction_values))
+        meta['sample_weights'] = sample_weights
+    else:
+        meta['dead_zone_samples'] = 0
+        meta['dead_zone_fraction'] = 0.0
+        meta['sample_weights'] = np.ones(len(direction_values), dtype=np.float32)
+    
+    # Log class distribution AFTER dead-zone filtering for verification
+    filtered_directions = direction_values[direction_values != -1.0]
+    n_up = (filtered_directions > 0.5).sum()  # 1.0 = UP, use > 0.5 for float safety
+    n_down = (filtered_directions < 0.5).sum()  # 0.0 = DOWN, use < 0.5 for float safety
+    total_filtered = len(filtered_directions)
+    logger.info(f"[Direction distribution after filtering] UP={n_up} ({100*n_up/total_filtered:.1f}%), DOWN={n_down} ({100*n_down/total_filtered:.1f}%)")
+    
     def create_target_dict(indices: np.ndarray) -> Dict[str, np.ndarray]:
         """Create target dictionary with one-hot encoded state."""
+        # Ensure direction is binary (0 or 1) for filtered samples
+        dir_vals = targets.direction[indices].astype(np.float32)
+        # Any remaining -1 values (shouldn't happen after filtering) get mapped to 0.5
+        dir_vals = np.where(dir_vals == -1.0, 0.5, dir_vals)
+        
         return {
             'price': y_price[indices].astype(np.float32).reshape(-1, 1),
             'trend': targets.trend[indices].astype(np.float32).reshape(-1, 1),
-            'direction': targets.direction[indices].astype(np.float32).reshape(-1, 1),
+            'direction': dir_vals.reshape(-1, 1),
             'risk': risk_scaled[indices].astype(np.float32).reshape(-1, 1),
             'state_logits': np.eye(state_classes, dtype=np.float32)[targets.state[indices]],  # One-hot
         }
@@ -696,6 +747,138 @@ class AdaptiveLossWeightCallback(tf.keras.callbacks.Callback):
             for key in self.weights:
                 if key in self.model.loss_weights:
                     self.model.loss_weights[key] = self.weights[key]
+
+
+# =============================================================================
+# TREND-AGNOSTIC VALIDATION UTILITIES (2025 Best Practice)
+# =============================================================================
+
+def validate_trend_agnosticism(
+    model,
+    x_test: np.ndarray,
+    y_test: Dict[str, np.ndarray],
+    *,
+    verbose: bool = True,
+) -> Dict[str, float]:
+    """
+    Validate if model is truly trend-agnostic by testing on sign-inverted data.
+    
+    A trend-agnostic model should predict opposite direction with similar confidence
+    when input features are sign-inverted (UP becomes DOWN and vice versa).
+    
+    Test procedure:
+    1. Get predictions on original test data
+    2. Create sign-inverted version of test data (flip return-based features)
+    3. Get predictions on inverted data
+    4. Check if inverted predictions are roughly opposite to original
+    
+    Args:
+        model: Trained Keras model with 'direction' output
+        x_test: Test features (batch, seq_len, features)
+        y_test: Test labels dict with 'direction' key
+        verbose: Print detailed results
+    
+    Returns:
+        Dict with validation metrics:
+        - 'original_accuracy': Accuracy on original data
+        - 'inverted_correlation': How well inverted predictions match expected flip
+        - 'symmetry_score': 0-1 score (1 = perfectly symmetric/trend-agnostic)
+        - 'buy_ratio_original': Fraction of BUY predictions on original
+        - 'buy_ratio_inverted': Fraction of BUY predictions on inverted (should be ~1-original)
+    """
+    results = {}
+    
+    # 1. Original predictions
+    preds_original = model.predict(x_test, verbose=0)
+    if isinstance(preds_original, dict):
+        dir_preds_original = preds_original.get('direction', preds_original)
+    else:
+        # Multi-output model returns list
+        dir_preds_original = preds_original[2] if len(preds_original) > 2 else preds_original
+    
+    dir_preds_original = np.array(dir_preds_original).flatten()
+    dir_labels = y_test['direction'].flatten()
+    
+    # Calculate original accuracy
+    original_correct = ((dir_preds_original > 0.5) == (dir_labels > 0.5)).mean()
+    results['original_accuracy'] = float(original_correct)
+    
+    # Calculate BUY ratio
+    buy_ratio_original = (dir_preds_original > 0.5).mean()
+    results['buy_ratio_original'] = float(buy_ratio_original)
+    
+    # 2. Create sign-inverted features
+    # Identify return-based features to invert (momentum, returns, log_returns, etc.)
+    # These are typically in specific positions - we'll invert all signed features
+    x_inverted = x_test.copy()
+    
+    # Simple approach: invert the sign of the entire feature matrix
+    # This works because return-based features dominate after our Phase 1 changes
+    x_inverted = -x_inverted
+    
+    # 3. Get predictions on inverted data
+    preds_inverted = model.predict(x_inverted, verbose=0)
+    if isinstance(preds_inverted, dict):
+        dir_preds_inverted = preds_inverted.get('direction', preds_inverted)
+    else:
+        dir_preds_inverted = preds_inverted[2] if len(preds_inverted) > 2 else preds_inverted
+    
+    dir_preds_inverted = np.array(dir_preds_inverted).flatten()
+    
+    buy_ratio_inverted = (dir_preds_inverted > 0.5).mean()
+    results['buy_ratio_inverted'] = float(buy_ratio_inverted)
+    
+    # 4. Calculate symmetry metrics
+    # For a trend-agnostic model: inverted predictions should be ~(1 - original)
+    expected_inverted = 1.0 - dir_preds_original
+    
+    # Correlation between actual inverted preds and expected
+    if np.std(dir_preds_inverted) > 1e-6 and np.std(expected_inverted) > 1e-6:
+        correlation = np.corrcoef(dir_preds_inverted, expected_inverted)[0, 1]
+        results['inverted_correlation'] = float(correlation) if np.isfinite(correlation) else 0.0
+    else:
+        results['inverted_correlation'] = 0.0
+    
+    # Symmetry score: how close is inverted buy ratio to (1 - original buy ratio)?
+    expected_inverted_buy_ratio = 1.0 - buy_ratio_original
+    symmetry_error = abs(buy_ratio_inverted - expected_inverted_buy_ratio)
+    symmetry_score = 1.0 - min(symmetry_error * 2, 1.0)  # Scale: 0.5 error = 0 score
+    results['symmetry_score'] = float(symmetry_score)
+    
+    # 5. Bias detection
+    # If BUY ratio deviates significantly from 0.5 on balanced test data, model is biased
+    bias_magnitude = abs(buy_ratio_original - 0.5) * 2  # Scale to 0-1
+    results['direction_bias'] = float(bias_magnitude)
+    
+    if verbose:
+        logger.info("=" * 60)
+        logger.info("TREND-AGNOSTICISM VALIDATION")
+        logger.info("=" * 60)
+        logger.info(f"Original accuracy:     {results['original_accuracy']:.1%}")
+        logger.info(f"BUY ratio (original):  {results['buy_ratio_original']:.1%}")
+        logger.info(f"BUY ratio (inverted):  {results['buy_ratio_inverted']:.1%}")
+        logger.info(f"Expected (inverted):   {expected_inverted_buy_ratio:.1%}")
+        logger.info(f"Inverted correlation:  {results['inverted_correlation']:.3f}")
+        logger.info(f"Symmetry score:        {results['symmetry_score']:.1%}")
+        logger.info(f"Direction bias:        {results['direction_bias']:.1%}")
+        logger.info("-" * 60)
+        
+        if results['symmetry_score'] > 0.8:
+            logger.info("✅ Model is TREND-AGNOSTIC (symmetry > 80%)")
+        elif results['symmetry_score'] > 0.5:
+            logger.info("⚠️ Model has MILD BIAS (symmetry 50-80%)")
+        else:
+            logger.info("❌ Model has STRONG BIAS (symmetry < 50%)")
+        
+        if results['direction_bias'] > 0.3:
+            if buy_ratio_original > 0.5:
+                logger.info(f"⚠️ Model is BUY-biased ({results['buy_ratio_original']:.0%} BUY predictions)")
+            else:
+                logger.info(f"⚠️ Model is SELL-biased ({1-results['buy_ratio_original']:.0%} SELL predictions)")
+        
+        logger.info("=" * 60)
+    
+    return results
 
 
 # =============================================================================

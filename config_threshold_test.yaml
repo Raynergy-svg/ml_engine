@@ -69,7 +69,10 @@ sequence_length: 60
 # ----- DIRECTION LABELING -----
 # Look 12 bars ahead (1 hour on M5) for cleaner signals
 direction_lookahead: 12
-direction_threshold: 0.001  # Min 0.1% move to count as directional (reduced for M5)
+# A/B TEST VARIANT: Higher threshold (0.003 = 0.3%) for stricter filtering.
+# Compare results with config_improved.yaml (0.0025) to find optimal balance
+# between label quality and sample count.
+direction_threshold: 0.003  # Min 0.3% move to count as directional (stricter)
 
 # ----- MODEL CONFIGURATION -----
 model:

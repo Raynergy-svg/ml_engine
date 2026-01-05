@@ -4,7 +4,7 @@
   "primary_model_type": "transformer",
   "primary_config": {
     "use_regime": false,
-    "threshold": 0.003,
+    "threshold": 0.0015,
     "lookahead": 24,
     "use_transformer": true
   },
@@ -15,14 +15,16 @@
       "purpose": "direction_prediction",
       "output": "binary (0=short, 1=long)",
       "metrics": {
-        "train_accuracy": 0.7094841599464417,
-        "val_accuracy": 0.4889287851585877,
-        "val_balanced_accuracy": 0.4888314342605019,
-        "val_up_accuracy": 0.48951781970649894,
-        "val_down_accuracy": 0.4881450488145049,
-        "epochs_trained": 58,
-        "n_train_samples": 6843,
-        "n_val_samples": 1671
+        "train_accuracy": 0.6257497072219849,
+        "val_accuracy": 0.43412526997840173,
+        "val_balanced_accuracy": 0.4436901408450704,
+        "val_up_accuracy": 0.5633802816901409,
+        "val_down_accuracy": 0.324,
+        "epochs_trained": 12,
+        "n_train_samples": 2501,
+        "n_val_samples": 463,
+        "total_weight_norm": 80.09475510211124,
+        "avg_weight_norm": 2.1077567132134534
       },
       "features": [
         "returns_1",
@@ -51,12 +53,12 @@
         "lower_low_ratio"
       ],
       "label_stats": {
-        "n_clear_up": 4915,
-        "n_clear_down": 4414,
-        "n_unclear": 10447,
-        "clear_rate": 0.4717334142394822,
-        "up_rate": 0.5268517525994212,
-        "threshold": 0.003,
+        "n_clear_up": 1695,
+        "n_clear_down": 1557,
+        "n_unclear": 1523,
+        "clear_rate": 0.6810471204188482,
+        "up_rate": 0.5212177121771218,
+        "threshold": 0.0015,
         "lookahead": 24
       }
     },
@@ -65,8 +67,8 @@
       "purpose": "momentum_analysis",
       "output": "momentum_score (0-1), acceleration (bool)",
       "metrics": {
-        "momentum_mae": 0.03128773346543312,
-        "acceleration_accuracy": 0.8727885425442291
+        "momentum_mae": 0.02851802110671997,
+        "acceleration_accuracy": 0.8559814169570267
       },
       "features": [
         "returns_1",
@@ -95,9 +97,9 @@
       "purpose": "risk_assessment",
       "output": "expected_drawdown_pips, streak_prob",
       "metrics": {
-        "drawdown_mae_pct": 0.0007597317425571145,
-        "drawdown_mae_bps": 7.597317425571145,
-        "streak_prob_mae": 0.11854013200234535
+        "drawdown_mae_pct": 0.0009440497359131945,
+        "drawdown_mae_bps": 9.440497359131944,
+        "streak_prob_mae": 0.13442687858145333
       },
       "features": [
         "atr_pct_5",
@@ -125,8 +127,8 @@
       "purpose": "confidence_scoring",
       "output": "confidence (0-100)",
       "metrics": {
-        "confidence_mae": 3.2262420654296875,
-        "r2_score": 0.349972128868103
+        "confidence_mae": 2.3977415561676025,
+        "r2_score": -0.2336045503616333
       },
       "features": [
         "atr_pct_10",
@@ -154,10 +156,10 @@
     "risk_per_trade_pct": 0.02
   },
   "data_split": {
-    "train_frac": 0.7200000000000001,
-    "val_frac": 0.18000000000000002,
+    "train_frac": 0.719962492185872,
+    "val_frac": 0.18003750781412795,
     "test_frac": 0.1,
-    "total_samples": 19800
+    "total_samples": 4799
   },
-  "trained_at": "2026-01-03T11:07:27.671845"
+  "trained_at": "2026-01-04T19:02:07.237262"
 }

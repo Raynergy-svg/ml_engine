@@ -370,3 +370,158 @@ def create_conservative_risk_manager() -> ConfidenceBasedRiskManager:
         min_take_profit_pips=10.0
     )
     return ConfidenceBasedRiskManager(config)
+
+
+# =============================================================================
+# REGIME DETECTION - Dynamic predictor switching based on market regime
+# =============================================================================
+
+@dataclass
+class MarketRegime:
+    """Market regime classification result."""
+    regime: str  # 'trending', 'ranging', 'volatile', 'quiet'
+    atr_percentile: float  # ATR percentile vs historical (0-100)
+    volatility_level: str  # 'low', 'medium', 'high'
+    preferred_predictor: str  # 'transformer', 'histgb', 'both'
+    confidence_adjustment: float  # Multiplier for confidence (0.5-1.5)
+    reason: str
+
+
+def detect_market_regime(
+    df,
+    atr_period: int = 14,
+    lookback: int = 100,
+    low_vol_threshold: float = 30.0,  # ATR below 30th percentile = low vol
+    high_vol_threshold: float = 70.0,  # ATR above 70th percentile = high vol
+) -> MarketRegime:
+    """
+    Detect market regime using ATR clusters for predictor switching.
+    
+    Logic:
+    - Low volatility (ranging): HistGB tends to work better (mean-reversion)
+    - High volatility (trending): Transformer tends to capture trends
+    - Medium volatility: Use both with voting
+    
+    Args:
+        df: DataFrame with OHLC data
+        atr_period: Period for ATR calculation
+        lookback: Number of bars for percentile calculation
+        low_vol_threshold: ATR percentile below which regime is 'low volatility'
+        high_vol_threshold: ATR percentile above which regime is 'high volatility'
+    
+    Returns:
+        MarketRegime with regime classification and predictor recommendation
+    """
+    # Calculate ATR
+    high = df['high'].astype(float)
+    low = df['low'].astype(float)
+    close = df['close'].astype(float)
+    
+    prev_close = close.shift(1)
+    tr = np.maximum(
+        high - low,
+        np.maximum(
+            np.abs(high - prev_close),
+            np.abs(low - prev_close)
+        )
+    )
+    
+    atr_series = tr.rolling(atr_period).mean()
+    current_atr = float(atr_series.iloc[-1])
+    
+    if not np.isfinite(current_atr) or current_atr <= 0:
+        return MarketRegime(
+            regime='unknown',
+            atr_percentile=50.0,
+            volatility_level='medium',
+            preferred_predictor='transformer',
+            confidence_adjustment=1.0,
+            reason='ATR calculation failed'
+        )
+    
+    # Calculate ATR percentile over lookback
+    atr_history = atr_series.iloc[-lookback:].dropna()
+    if len(atr_history) < 10:
+        atr_percentile = 50.0
+    else:
+        atr_percentile = float((atr_history < current_atr).sum() / len(atr_history) * 100)
+    
+    # Classify regime
+    if atr_percentile < low_vol_threshold:
+        regime = 'ranging'
+        volatility_level = 'low'
+        # Low vol = ranging market, mean-reversion strategies work better
+        # HistGB with PCA tends to pick up mean-reversion patterns
+        # But HistGB performed poorly (48%), so still prefer Transformer
+        preferred_predictor = 'transformer'  # Transformer still better overall
+        confidence_adjustment = 0.9  # Slightly reduce confidence in quiet markets
+        reason = f'Low volatility (ATR {atr_percentile:.0f}th pctl) - ranging market, reduce position size'
+    elif atr_percentile > high_vol_threshold:
+        regime = 'trending'
+        volatility_level = 'high'
+        # High vol = trending market, momentum strategies work better
+        # Transformer better at capturing trends
+        preferred_predictor = 'transformer'
+        confidence_adjustment = 1.1  # Slightly boost confidence in trending markets
+        reason = f'High volatility (ATR {atr_percentile:.0f}th pctl) - trending market, Transformer preferred'
+    else:
+        regime = 'normal'
+        volatility_level = 'medium'
+        # Normal conditions - use both with voting
+        preferred_predictor = 'both'
+        confidence_adjustment = 1.0
+        reason = f'Normal volatility (ATR {atr_percentile:.0f}th pctl) - standard hybrid voting'
+    
+    return MarketRegime(
+        regime=regime,
+        atr_percentile=atr_percentile,
+        volatility_level=volatility_level,
+        preferred_predictor=preferred_predictor,
+        confidence_adjustment=confidence_adjustment,
+        reason=reason
+    )
+
+
+def apply_regime_adjustment(
+    transformer_direction: int,
+    transformer_prob: float,
+    histgb_direction: Optional[int],
+    histgb_prob: Optional[float],
+    regime: MarketRegime,
+) -> tuple[int, float, str]:
+    """
+    Apply regime-based adjustment to hybrid prediction.
+    
+    Returns:
+        Tuple of (final_direction, final_confidence, decision_reason)
+    """
+    # If no HistGB model, just use Transformer
+    if histgb_direction is None or histgb_prob is None:
+        adjusted_conf = transformer_prob * regime.confidence_adjustment
+        return transformer_direction, adjusted_conf, f"Transformer only ({regime.regime})"
+    
+    # Check if models agree
+    models_agree = transformer_direction == histgb_direction
+    
+    if models_agree:
+        # Both agree - high confidence
+        avg_prob = (transformer_prob + histgb_prob) / 2
+        adjusted_conf = avg_prob * regime.confidence_adjustment * 1.1  # Boost for agreement
+        return transformer_direction, min(adjusted_conf, 0.95), f"Models agree ({regime.regime})"
+    
+    # Models disagree - use regime to decide
+    if regime.preferred_predictor == 'transformer' or regime.volatility_level == 'high':
+        # Trust Transformer in trending/high-vol markets
+        adjusted_conf = transformer_prob * regime.confidence_adjustment * 0.8  # Reduce for disagreement
+        return transformer_direction, adjusted_conf, f"Transformer wins ({regime.regime}, models disagree)"
+    
+    elif regime.preferred_predictor == 'histgb' or regime.volatility_level == 'low':
+        # Trust HistGB in ranging/low-vol markets (if it were better)
+        # Since HistGB is 48%, still prefer Transformer but reduce confidence
+        adjusted_conf = transformer_prob * regime.confidence_adjustment * 0.7
+        return transformer_direction, adjusted_conf, f"Transformer fallback ({regime.regime}, HistGB weak)"
+    
+    else:
+        # Medium volatility - average but reduce confidence
+        adjusted_conf = transformer_prob * regime.confidence_adjustment * 0.75
+        return transformer_direction, adjusted_conf, f"Transformer cautious ({regime.regime}, models disagree)"
