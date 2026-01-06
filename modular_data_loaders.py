@@ -821,6 +821,9 @@ def load_direction_data(
     n_clear_down = 0
     n_unclear = 0
     
+    # Handle threshold=0 case: include ALL samples with simple up/down labeling
+    use_all_samples = (threshold <= 0)
+    
     for i in range(n - lookahead):
         future_close = close[i + lookahead]
         current_close = close[i]
@@ -830,14 +833,21 @@ def load_direction_data(
         
         pct_change = (future_close - current_close) / current_close
         
-        if abs(pct_change) >= threshold:
-            # Clear signal - large enough move
-            y[i] = 1.0 if pct_change > 0 else 0.0
-            weights[i] = 1.0
-            if pct_change > 0:
+        if use_all_samples or abs(pct_change) >= threshold:
+            # Label based on direction (with small threshold to handle float precision)
+            if pct_change > 1e-10:
+                y[i] = 1.0  # UP
+                weights[i] = 1.0
                 n_clear_up += 1
-            else:
+            elif pct_change < -1e-10:
+                y[i] = 0.0  # DOWN
+                weights[i] = 1.0
                 n_clear_down += 1
+            else:
+                # Exactly zero change - label as unclear
+                y[i] = 0.5
+                weights[i] = 0.0
+                n_unclear += 1
         else:
             # Unclear signal - move too small (noise)
             y[i] = 0.5
