@@ -2499,14 +2499,19 @@ class TransformerDirectionTrainer(BaseTrainer):
                 X_replay, y_replay, w_replay = self.replay_buffer.get_replay_samples(len(X_train_filtered))
                 
                 if X_replay is not None and len(X_replay) > 0:
-                    # Mix replay samples with new training data
-                    X_train_filtered = np.vstack([X_train_filtered, X_replay])
-                    y_train_filtered = np.concatenate([y_train_filtered, y_replay])
-                    
-                    if sample_weights is not None and w_replay is not None:
-                        sample_weights = np.concatenate([sample_weights, w_replay])
-                    
-                    logger.info(f"📦 Mixed {len(X_replay)} replay samples, new train size: {len(X_train_filtered)}")
+                    # Check dimension compatibility before mixing
+                    if X_replay.shape[2] == X_train_filtered.shape[2]:
+                        # Mix replay samples with new training data
+                        X_train_filtered = np.vstack([X_train_filtered, X_replay])
+                        y_train_filtered = np.concatenate([y_train_filtered, y_replay])
+                        
+                        if sample_weights is not None and w_replay is not None:
+                            sample_weights = np.concatenate([sample_weights, w_replay])
+                        
+                        logger.info(f"📦 Mixed {len(X_replay)} replay samples, new train size: {len(X_train_filtered)}")
+                    else:
+                        logger.warning(f"⚠️ Replay buffer feature mismatch: buffer has {X_replay.shape[2]} features, "
+                                      f"current data has {X_train_filtered.shape[2]}. Skipping replay mixing.")
             
             # Add current training data to buffer for future sessions
             self.replay_buffer.add_samples(
