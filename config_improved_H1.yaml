@@ -62,9 +62,9 @@ sequence_length: 60
 
 # ----- H1 DIRECTION LABELING -----
 # Look 24 bars ahead (24 hours = 1 day) for cleaner signals on H1
-# LOWERED threshold (0.15%) for more balanced signals in low-volatility markets
+# Lower threshold (0.3%) + longer lookahead = more clear labels for training
 direction_lookahead: 24
-direction_threshold: 0.0015  # Min 0.15% move (was 0.3%, lowered for more balance)
+direction_threshold: 0.003  # Min 0.3% move for clear signal (more training data)
 
 # ----- MODEL CONFIGURATION -----
 model:
@@ -128,8 +128,8 @@ optimizer:
 training:
   epochs: 200
   
-  # Reduced patience for quick early stopping (save best model fast)
-  early_stopping_patience: 10
+  # Increased patience for H1 (slower convergence expected)
+  early_stopping_patience: 40
   
   # Minimum epochs before early stopping
   min_epochs: 60
@@ -180,7 +180,7 @@ validation_split: 0.15
 
 # ----- EARLY STOPPING -----
 early_stop_monitor: val_loss
-early_stopping_patience: 10
+early_stopping_patience: 40
 min_epochs: 60
 
 # ----- REGULARIZATION -----
@@ -253,7 +253,7 @@ buddy:
     epochs: 200
     batch_size: 64
     lr: 0.0003
-    patience: 10
+    patience: 40
     es_monitor: combined
     combined_w_dir: 0.6
     combined_w_conf: 0.4
@@ -266,23 +266,14 @@ buddy:
     no_train_smoothing: true  # CRITICAL: Disable M5 resampling for H1 data
     top_features: 20  # Use only top 20 most important features (prevents overfitting)
     
-    # WARM-START / ITERATIVE TRAINING (compounding learning)
-    # When true, loads existing checkpoint weights before training
-    # This allows iterative improvement: train pair A, then warm-start on pair B
-    warm_start: true  # ENABLED: Continue from previous weights for compounding gains
-    
-    # HISTGB HYBRID VOTING (train HistGradientBoosting alongside Transformer)
-    # When both models agree, confidence is higher → better trade quality
-    train_histgb: true  # ENABLED: Train HistGB for hybrid voting with Transformer
-    
     # REGIME MODEL SETTINGS (replaces direction prediction)
     use_transformer: true      # Use Transformer architecture
-    use_regime: false          # Use binary direction prediction (for hybrid voting)
+    use_regime: true           # NEW: Classify market regime instead of direction
     regime_lookback: 20        # 20 bars to analyze regime
     regime_lookahead: 12       # 12 bars to confirm regime
     # Legacy direction settings (only used if use_regime: false)
-    direction_threshold: 0.0015 # Min 0.15% move - LOWERED for more samples & balance
-    direction_lookahead: 24     # 24 hours lookahead
+    direction_threshold: 0.003 # Min 0.3% move for clear signal
+    direction_lookahead: 24    # 24 hours lookahead
   
   # H1 TIMEFRAME TP/SL - WIDER STOPS for hourly candles
   stop_loss_pips: 30.0    # 30 pips SL - appropriate for H1
