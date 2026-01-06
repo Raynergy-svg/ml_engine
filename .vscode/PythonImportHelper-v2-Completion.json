@@ -7944,7 +7944,7 @@
         "kind": 6,
         "importPath": "enterprise_training",
         "description": "enterprise_training",
-        "peekOfCode": "class WalkForwardConfig:\n    \"\"\"Configuration for walk-forward validation.\"\"\"\n    n_splits: int = 5\n    train_period: int = 2000  # Samples in training window\n    test_period: int = 500  # Samples in test window\n    gap: int = 24  # Gap between train and test to prevent leakage\n    expanding: bool = True  # Expanding vs sliding window\n    purge_overlap: int = 0  # Additional purge for overlapping labels\nclass WalkForwardValidator:\n    \"\"\"",
+        "peekOfCode": "class WalkForwardConfig:\n    \"\"\"Configuration for walk-forward validation.\n    For 12,000 H1 candles (~500 trading days):\n    - min_train_samples: 4000 (~167 days) - minimum for reliable Transformer training\n    - test_period: 1000 (~42 days) - enough for statistically meaningful validation\n    - n_splits: 3 - balances regime coverage vs training data adequacy\n    - gap: 24 (1 day) - prevents label leakage from overlapping windows\n    \"\"\"\n    n_splits: int = 3  # Reduced from 5 - ensures adequate training data per fold\n    min_train_samples: int = 4000  # Minimum training samples (prevents underfitting in early folds)",
         "detail": "enterprise_training",
         "documentation": {}
     },
