@@ -862,8 +862,40 @@ def load_direction_data(
     # Handle NaN/Inf
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     
-    # Temporal split
+    # Temporal split (BEFORE scaling to avoid data leakage)
     train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    
+    # =========================================================================
+    # FEATURE SCALING: Fit on train, apply to all (prevents data leakage)
+    # =========================================================================
+    from sklearn.preprocessing import RobustScaler
+    
+    scaler = RobustScaler()  # Robust to outliers (better for financial data)
+    
+    # Fit ONLY on training data
+    X_train_scaled = scaler.fit_transform(X[train_idx])
+    X_val_scaled = scaler.transform(X[val_idx])
+    X_test_scaled = scaler.transform(X[test_idx])
+    
+    # Clip extreme values after scaling (prevents numerical issues)
+    clip_value = 10.0  # Clip to [-10, 10] after robust scaling
+    X_train_scaled = np.clip(X_train_scaled, -clip_value, clip_value)
+    X_val_scaled = np.clip(X_val_scaled, -clip_value, clip_value)
+    X_test_scaled = np.clip(X_test_scaled, -clip_value, clip_value)
+    
+    # Remove constant features (zero variance after scaling)
+    feature_stds = np.std(X_train_scaled, axis=0)
+    valid_features = feature_stds > 1e-6
+    n_removed = np.sum(~valid_features)
+    if n_removed > 0:
+        logger.info(f"Removing {n_removed} constant features")
+        X_train_scaled = X_train_scaled[:, valid_features]
+        X_val_scaled = X_val_scaled[:, valid_features]
+        X_test_scaled = X_test_scaled[:, valid_features]
+        features = [f for f, v in zip(features, valid_features) if v]
+    
+    logger.info(f"Feature scaling: max={np.max(np.abs(X_train_scaled)):.2f}, "
+                f"mean_abs={np.mean(np.abs(X_train_scaled)):.4f}")
     
     # Label statistics
     total_clear = n_clear_up + n_clear_down
@@ -881,17 +913,18 @@ def load_direction_data(
                 f"({label_stats['clear_rate']:.1%} clear, {label_stats['up_rate']:.1%} up)")
     
     result = {
-        'X_train': X[train_idx],
+        'X_train': X_train_scaled.astype(np.float32),
         'y_train': y[train_idx],
         'w_train': weights[train_idx],
-        'X_val': X[val_idx],
+        'X_val': X_val_scaled.astype(np.float32),
         'y_val': y[val_idx],
         'w_val': weights[val_idx],
-        'X_test': X[test_idx],
+        'X_test': X_test_scaled.astype(np.float32),
         'y_test': y[test_idx],
         'w_test': weights[test_idx],
         'feature_names': features,
         'label_stats': label_stats,
+        'scaler': scaler,  # Save scaler for inference
     }
     
     logger.info(f"Direction data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
