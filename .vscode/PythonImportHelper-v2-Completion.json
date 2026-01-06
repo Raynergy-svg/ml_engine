@@ -9321,7 +9321,7 @@
         "kind": 6,
         "importPath": "modular_trainers",
         "description": "modular_trainers",
-        "peekOfCode": "class OverfitPreventionCallback(tf.keras.callbacks.Callback):\n    \"\"\"\n    Callback to detect and mitigate overfitting during training.\n    Actions when overfitting detected (train_acc >> val_acc):\n    1. Saves checkpoints ONLY when validation improves AND gap is acceptable\n    2. Increases dropout dynamically when overfit gap grows\n    3. Early stops if overfit gap exceeds critical threshold\n    4. Reduces learning rate aggressively on severe overfitting\n    Key insight: A model with 30%+ train-val gap is memorizing, not learning.\n    We should NOT save such models as \"best\" even if val_acc improves slightly.",
+        "peekOfCode": "class OverfitPreventionCallback(tf.keras.callbacks.Callback):\n    \"\"\"\n    Advanced callback to detect and mitigate overfitting during training.\n    Based on research from:\n    - Stochastic Weight Averaging (SWA) - Izmailov et al. (arXiv:1803.05407)\n    - SGDR: Cosine Annealing with Warm Restarts (arXiv:1608.03983)\n    - Mixup: Beyond Empirical Risk Minimization (arXiv:1710.09412)\n    Key Features:\n    1. Stochastic Weight Averaging (SWA) in final 25% of training\n       - Averages weights to find flatter optima that generalize better",
         "detail": "modular_trainers",
         "documentation": {}
     },

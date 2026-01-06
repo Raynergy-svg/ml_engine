@@ -400,30 +400,68 @@ def create_ewc_loss(base_loss, ewc_penalty_fn, ewc_weight: float = 1.0):
 
 class OverfitPreventionCallback(tf.keras.callbacks.Callback):
     """
-    Callback to detect and mitigate overfitting during training.
+    Advanced callback to detect and mitigate overfitting during training.
     
-    Actions when overfitting detected (train_acc >> val_acc):
-    1. Saves checkpoints ONLY when validation improves AND gap is acceptable
-    2. Increases dropout dynamically when overfit gap grows
-    3. Early stops if overfit gap exceeds critical threshold
-    4. Reduces learning rate aggressively on severe overfitting
+    Based on research from:
+    - Stochastic Weight Averaging (SWA) - Izmailov et al. (arXiv:1803.05407)
+    - SGDR: Cosine Annealing with Warm Restarts (arXiv:1608.03983)
+    - Mixup: Beyond Empirical Risk Minimization (arXiv:1710.09412)
     
-    Key insight: A model with 30%+ train-val gap is memorizing, not learning.
-    We should NOT save such models as "best" even if val_acc improves slightly.
+    Key Features:
+    1. Stochastic Weight Averaging (SWA) in final 25% of training
+       - Averages weights to find flatter optima that generalize better
+       - Research shows SGD finds boundary of flat region, SWA finds center
+    
+    2. Cosine Annealing with Warm Restarts
+       - Periodically resets LR to escape local minima
+       - Allows re-exploration when stuck in sharp optima
+    
+    3. Aggressive Early Intervention
+       - Immediate LR reduction on overfitting detection
+       - Dynamic dropout adjustment
+       - L2 weight decay boost
+    
+    4. Gap-Gated Checkpointing
+       - Only saves when val improves AND gap is acceptable
+       - Prevents saving memorizing models
+    
+    5. Warm-Start Overfit Detection (NEW)
+       - Detects if warm-started model is already overfitting
+       - Can perturb weights to break memorization pattern
+       - Resets optimizer momentum to allow fresh learning
+    
+    Key insight: A model with 15%+ train-val gap is memorizing, not learning.
+    SWA helps find flatter optima that generalize better to validation.
     """
     
     def __init__(
         self,
         checkpoint_dir: str = "trained_data/checkpoints",
         model_name: str = "transformer",
-        overfit_threshold: float = 0.08,  # 8% gap triggers warning
+        overfit_threshold: float = 0.08,   # 8% gap triggers warning
         critical_threshold: float = 0.15,  # 15% gap triggers intervention
         severe_threshold: float = 0.25,    # 25% gap triggers early stop
         max_acceptable_gap: float = 0.12,  # Won't save checkpoint if gap > 12%
-        patience_epochs: int = 3,  # Epochs before taking action (reduced from 5)
+        patience_epochs: int = 2,          # Reduced from 3 for faster response
         auto_adjust_dropout: bool = True,
         auto_reduce_lr: bool = True,
-        max_dropout_increase: float = 0.3,  # More aggressive dropout (was 0.2)
+        max_dropout_increase: float = 0.3,
+        # SWA settings
+        enable_swa: bool = True,
+        swa_start_fraction: float = 0.75,  # Start SWA at 75% of training
+        swa_lr_factor: float = 0.5,        # SWA uses lower constant LR
+        # Cosine restart settings
+        enable_cosine_restarts: bool = True,
+        restart_period: int = 10,          # Restart every 10 epochs
+        restart_lr_mult: float = 0.8,      # Each restart uses 80% of prev LR
+        # Mixup augmentation (applied at batch level)
+        enable_mixup: bool = False,        # Disabled by default (needs data pipeline change)
+        mixup_alpha: float = 0.2,
+        # Warm-start overfit recovery (NEW)
+        enable_warmstart_detection: bool = True,
+        warmstart_reset_threshold: float = 0.15,  # If initial gap > 15%, intervene
+        weight_perturbation_scale: float = 0.02,  # Noise to break memorization
+        reset_optimizer_on_overfit: bool = True,  # Reset momentum on critical overfit
     ):
         super().__init__()
         self.checkpoint_dir = Path(checkpoint_dir)
@@ -438,6 +476,34 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         self.auto_reduce_lr = auto_reduce_lr
         self.max_dropout_increase = max_dropout_increase
         
+        # SWA settings
+        self.enable_swa = enable_swa
+        self.swa_start_fraction = swa_start_fraction
+        self.swa_lr_factor = swa_lr_factor
+        self.swa_weights = None
+        self.swa_count = 0
+        self.swa_started = False
+        
+        # Cosine restart settings
+        self.enable_cosine_restarts = enable_cosine_restarts
+        self.restart_period = restart_period
+        self.restart_lr_mult = restart_lr_mult
+        self.current_restart_epoch = 0
+        self.num_restarts = 0
+        
+        # Mixup settings
+        self.enable_mixup = enable_mixup
+        self.mixup_alpha = mixup_alpha
+        
+        # Warm-start overfit recovery (NEW)
+        self.enable_warmstart_detection = enable_warmstart_detection
+        self.warmstart_reset_threshold = warmstart_reset_threshold
+        self.weight_perturbation_scale = weight_perturbation_scale
+        self.reset_optimizer_on_overfit = reset_optimizer_on_overfit
+        self._warmstart_checked = False
+        self._initial_weights_perturbed = False
+        self._optimizer_reset_count = 0
+        
         # State tracking
         self.best_val_acc = 0.0
         self.best_val_acc_clean = 0.0  # Best val_acc with acceptable gap
@@ -448,10 +514,13 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         self.val_acc_history = []
         self.train_acc_history = []
         self.gap_history = []
+        self.lr_history = []
         self.dropout_adjustments = 0
         self.lr_reductions = 0
         self._console = None
         self._initial_lr = None
+        self._total_epochs = None
+        self._base_weights = None  # Store weights before overfitting
     
     @property
     def console(self):
@@ -461,11 +530,241 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         return self._console
     
     def on_train_begin(self, logs=None):
-        """Capture initial learning rate."""
+        """Capture initial learning rate and total epochs."""
         try:
             self._initial_lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
         except Exception:
             self._initial_lr = 0.001
+        
+        # Try to get total epochs from params
+        self._total_epochs = self.params.get('epochs', 100)
+        
+        self.console.print(
+            f"  [dim]🧪 Advanced Training: SWA={self.enable_swa}, "
+            f"CosineRestarts={self.enable_cosine_restarts}[/dim]"
+        )
+    
+    def _perturb_weights(self, scale: float = 0.02):
+        """
+        Add small noise to weights to break memorization patterns.
+        
+        This helps escape sharp local minima where the model has memorized
+        training data. Research shows that flat minima generalize better.
+        """
+        perturbed_count = 0
+        for layer in self.model.layers:
+            for weight in layer.trainable_weights:
+                if 'kernel' in weight.name or 'weight' in weight.name:
+                    # Add Gaussian noise proportional to weight magnitude
+                    noise = tf.random.normal(
+                        shape=weight.shape,
+                        mean=0.0,
+                        stddev=scale * tf.reduce_mean(tf.abs(weight))
+                    )
+                    weight.assign_add(noise)
+                    perturbed_count += 1
+        
+        if perturbed_count > 0:
+            self.console.print(
+                f"  [yellow]🎲 Weight perturbation applied (scale={scale:.1%}) "
+                f"to {perturbed_count} layers[/yellow]"
+            )
+        return perturbed_count
+    
+    def _reinitialize_dense_layers(self):
+        """
+        Reinitialize only Dense/output layers that tend to memorize most.
+        
+        Keeps convolutional/attention layers (feature extraction) but resets
+        the classification head which often overfits first.
+        """
+        reinitialized = 0
+        for layer in self.model.layers:
+            # Reset Dense layers (classification head)
+            if isinstance(layer, tf.keras.layers.Dense):
+                for weight in layer.trainable_weights:
+                    if 'kernel' in weight.name:
+                        # Glorot uniform initialization
+                        fan_in = weight.shape[0]
+                        fan_out = weight.shape[1] if len(weight.shape) > 1 else 1
+                        limit = np.sqrt(6.0 / (fan_in + fan_out))
+                        new_weights = tf.random.uniform(weight.shape, -limit, limit)
+                        weight.assign(new_weights)
+                        reinitialized += 1
+                    elif 'bias' in weight.name:
+                        weight.assign(tf.zeros_like(weight))
+        
+        if reinitialized > 0:
+            self.console.print(
+                f"  [red]🔄 Reinitialized {reinitialized} Dense layer weights (classification head reset)[/red]"
+            )
+        return reinitialized
+    
+    def _full_weight_reset(self):
+        """
+        Completely reinitialize all model weights.
+        
+        Nuclear option when model is too far into memorization to recover.
+        """
+        self.console.print(
+            f"  [red bold]🔥 FULL WEIGHT RESET - Model too far into memorization[/red bold]"
+        )
+        
+        # Save current architecture, reinitialize weights
+        for layer in self.model.layers:
+            if hasattr(layer, 'kernel_initializer') and hasattr(layer, 'kernel'):
+                # Reinitialize kernel
+                if layer.kernel is not None:
+                    new_kernel = layer.kernel_initializer(layer.kernel.shape)
+                    layer.kernel.assign(new_kernel)
+            if hasattr(layer, 'bias_initializer') and hasattr(layer, 'bias'):
+                # Reinitialize bias
+                if layer.bias is not None:
+                    new_bias = layer.bias_initializer(layer.bias.shape)
+                    layer.bias.assign(new_bias)
+        
+        # Reset optimizer
+        self._reset_optimizer_state()
+        
+        # Reset LR to initial
+        try:
+            tf.keras.backend.set_value(self.model.optimizer.learning_rate, self._initial_lr)
+            self.console.print(
+                f"  [cyan]📈 LR reset to initial: {self._initial_lr:.2e}[/cyan]"
+            )
+        except Exception:
+            pass
+        
+        self.console.print(
+            f"  [yellow]   Starting fresh - warm-start weights were too corrupted[/yellow]"
+        )
+    
+    def _reset_optimizer_state(self):
+        """
+        Reset optimizer momentum/velocity to allow fresh gradient accumulation.
+        
+        When overfitting, the optimizer momentum may be pointing toward
+        memorization. Resetting allows re-exploration.
+        """
+        try:
+            optimizer = self.model.optimizer
+            
+            # Reset slot variables (momentum, velocity for Adam)
+            for var in optimizer.variables():
+                if 'momentum' in var.name.lower() or 'velocity' in var.name.lower() or 'm/' in var.name or 'v/' in var.name:
+                    var.assign(tf.zeros_like(var))
+            
+            self._optimizer_reset_count += 1
+            self.console.print(
+                f"  [yellow]🔄 Optimizer momentum reset (#{self._optimizer_reset_count}) - "
+                f"fresh gradient accumulation[/yellow]"
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Could not reset optimizer: {e}")
+            return False
+    
+    def _check_warmstart_overfit(self, train_acc: float, val_acc: float, gap: float):
+        """
+        Check if warm-started model is already overfitting and take action.
+        
+        Called only on first epoch to detect problematic warm-start.
+        """
+        if self._warmstart_checked:
+            return
+        
+        self._warmstart_checked = True
+        
+        if not self.enable_warmstart_detection:
+            return
+        
+        # Check if this looks like a warm-start (high train acc on epoch 1)
+        is_likely_warmstart = train_acc > 0.65  # Fresh model wouldn't have 65%+ on epoch 1
+        
+        if is_likely_warmstart and gap > self.warmstart_reset_threshold:
+            self.console.print(
+                f"  [red bold]⚠️ WARM-START OVERFIT DETECTED[/red bold]"
+            )
+            self.console.print(
+                f"  [yellow]   Initial gap={gap:.1%} suggests loaded weights are memorizing.[/yellow]"
+            )
+            
+            # Severity determines action
+            if gap > 0.20:  # 20%+ gap - nuclear option
+                self.console.print(
+                    f"  [red]   Gap > 20% - applying AGGRESSIVE recovery (dense layer reset)[/red]"
+                )
+                self._reinitialize_dense_layers()
+                self._reset_optimizer_state()
+            else:
+                self.console.print(
+                    f"  [yellow]   Applying recovery: weight perturbation + optimizer reset[/yellow]"
+                )
+                # Standard recovery
+                self._perturb_weights(scale=self.weight_perturbation_scale)
+                self._initial_weights_perturbed = True
+                if self.reset_optimizer_on_overfit:
+                    self._reset_optimizer_state()
+            
+            # Set LR to a moderate value for re-learning
+            try:
+                recovery_lr = self._initial_lr * 2  # Higher LR for exploration
+                tf.keras.backend.set_value(self.model.optimizer.learning_rate, recovery_lr)
+                self.console.print(
+                    f"  [cyan]📈 LR boosted to {recovery_lr:.2e} for recovery exploration[/cyan]"
+                )
+            except Exception:
+                pass
+    
+    def _get_cosine_lr(self, epoch: int, base_lr: float) -> float:
+        """Calculate cosine annealing LR with warm restarts."""
+        if not self.enable_cosine_restarts:
+            return base_lr
+        
+        # Epoch within current restart cycle
+        cycle_epoch = (epoch - self.current_restart_epoch) % self.restart_period
+        
+        # Cosine annealing: lr_t = lr_min + 0.5 * (lr_max - lr_min) * (1 + cos(pi * t / T))
+        lr_min = base_lr * 0.01  # Min LR is 1% of base
+        lr_max = base_lr * (self.restart_lr_mult ** self.num_restarts)  # Decay with restarts
+        
+        cos_val = np.cos(np.pi * cycle_epoch / self.restart_period)
+        new_lr = lr_min + 0.5 * (lr_max - lr_min) * (1 + cos_val)
+        
+        return new_lr
+    
+    def _update_swa_weights(self):
+        """Update running average of weights for SWA."""
+        if self.swa_weights is None:
+            # Initialize SWA weights as copy of current weights
+            self.swa_weights = [w.numpy().copy() for w in self.model.trainable_weights]
+            self.swa_count = 1
+            self.console.print("  [magenta]🔄 SWA initialized - collecting weights for averaging[/magenta]")
+        else:
+            # Running average: swa_w = (swa_w * n + w) / (n + 1)
+            self.swa_count += 1
+            for i, w in enumerate(self.model.trainable_weights):
+                self.swa_weights[i] = (self.swa_weights[i] * (self.swa_count - 1) + w.numpy()) / self.swa_count
+    
+    def _apply_swa_weights(self):
+        """Apply averaged weights to model."""
+        if self.swa_weights is not None and self.swa_count > 1:
+            for i, w in enumerate(self.model.trainable_weights):
+                w.assign(self.swa_weights[i])
+            self.console.print(f"  [magenta]✨ SWA applied: averaged {self.swa_count} weight snapshots[/magenta]")
+            return True
+        return False
+    
+    def _store_base_weights(self):
+        """Store current weights as backup before overfitting gets worse."""
+        self._base_weights = [w.numpy().copy() for w in self.model.trainable_weights]
+    
+    def _restore_base_weights(self):
+        """Restore weights to pre-overfit state."""
+        if self._base_weights is not None:
+            for i, w in enumerate(self.model.trainable_weights):
+                w.assign(self._base_weights[i])
+            self.console.print("  [cyan]↩️ Restored weights to pre-overfit checkpoint[/cyan]")
     
     def on_epoch_end(self, epoch, logs=None):
         if logs is None:
@@ -479,10 +778,107 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         self.val_acc_history.append(val_acc)
         self.gap_history.append(overfit_gap)
         
+        # === WARM-START OVERFIT CHECK (first epoch only) ===
+        if epoch == 0:
+            self._check_warmstart_overfit(train_acc, val_acc, overfit_gap)
+        
+        # === STUCK DETECTION: Escalating interventions ===
+        if self.critical_epochs >= 5 and self.critical_epochs % 5 == 0:
+            if not hasattr(self, '_last_perturbation_epoch') or epoch - self._last_perturbation_epoch >= 5:
+                self._last_perturbation_epoch = epoch
+                self.console.print(
+                    f"  [yellow]⚠️ Stuck in critical overfit for {self.critical_epochs} epochs[/yellow]"
+                )
+                
+                # Escalating interventions based on how long we've been stuck
+                if self.critical_epochs >= 20:
+                    # 20+ epochs stuck: Nuclear option - full dense layer reset
+                    self.console.print(
+                        "  [red bold]🔥 20+ epochs stuck - resetting Dense layers entirely[/red bold]"
+                    )
+                    self._reinitialize_dense_layers()
+                    self._reset_optimizer_state()
+                    # Reset LR to allow fresh learning
+                    try:
+                        tf.keras.backend.set_value(self.model.optimizer.learning_rate, self._initial_lr)
+                    except Exception:
+                        pass
+                    # Reset counters to give it a fresh chance
+                    self.critical_epochs = 0
+                    self.dropout_adjustments = 0
+                    self.lr_reductions = 0
+                elif self.critical_epochs >= 15:
+                    # 15+ epochs: Larger perturbation + dense layer partial reset
+                    self.console.print(
+                        "  [red]💥 15+ epochs stuck - larger perturbation + partial reset[/red]"
+                    )
+                    self._perturb_weights(scale=self.weight_perturbation_scale * 2)
+                    self._reinitialize_dense_layers()
+                    self._reset_optimizer_state()
+                elif self.critical_epochs >= 10:
+                    # 10+ epochs: Medium perturbation
+                    self._perturb_weights(scale=self.weight_perturbation_scale)
+                    self._reset_optimizer_state()
+                else:
+                    # 5+ epochs: Small perturbation
+                    self._perturb_weights(scale=self.weight_perturbation_scale * 0.5)
+                    if self.reset_optimizer_on_overfit:
+                        self._reset_optimizer_state()
+        
+        # === COSINE ANNEALING WITH WARM RESTARTS ===
+        if self.enable_cosine_restarts:
+            cycle_epoch = (epoch - self.current_restart_epoch)
+            if cycle_epoch > 0 and cycle_epoch % self.restart_period == 0:
+                # Time for warm restart
+                self.num_restarts += 1
+                self.current_restart_epoch = epoch
+                new_lr = self._initial_lr * (self.restart_lr_mult ** (self.num_restarts - 1))
+                try:
+                    tf.keras.backend.set_value(self.model.optimizer.learning_rate, new_lr)
+                    self.console.print(
+                        f"  [magenta]🔄 Warm restart #{self.num_restarts}: LR reset to {new_lr:.2e}[/magenta]"
+                    )
+                except Exception:
+                    pass
+            else:
+                # Apply cosine decay within cycle
+                new_lr = self._get_cosine_lr(epoch, self._initial_lr)
+                try:
+                    # Only apply cosine if we're not in overfit intervention mode
+                    if self.lr_reductions == 0:
+                        tf.keras.backend.set_value(self.model.optimizer.learning_rate, new_lr)
+                except Exception:
+                    pass
+        
+        # === STOCHASTIC WEIGHT AVERAGING ===
+        if self.enable_swa and self._total_epochs:
+            swa_start_epoch = int(self._total_epochs * self.swa_start_fraction)
+            if epoch >= swa_start_epoch:
+                if not self.swa_started:
+                    self.swa_started = True
+                    # Reduce LR for SWA phase
+                    try:
+                        swa_lr = self._initial_lr * self.swa_lr_factor
+                        tf.keras.backend.set_value(self.model.optimizer.learning_rate, swa_lr)
+                        self.console.print(
+                            f"  [magenta]🎯 SWA phase started (epoch {epoch+1}/{self._total_epochs}): "
+                            f"LR={swa_lr:.2e}[/magenta]"
+                        )
+                    except Exception:
+                        pass
+                
+                # Update SWA weights every epoch during SWA phase
+                if overfit_gap <= self.critical_threshold:  # Only average good weights
+                    self._update_swa_weights()
+        
         # Track best overall (even if overfitting)
         if val_acc > self.best_val_acc:
             self.best_val_acc = val_acc
             self.best_epoch = epoch + 1
+        
+        # Store weights when gap is healthy (for potential rollback)
+        if overfit_gap <= self.overfit_threshold and val_acc >= self.best_val_acc_clean * 0.98:
+            self._store_base_weights()
         
         # === CHECKPOINT: Only save if gap is acceptable ===
         if val_acc > self.best_val_acc_clean and overfit_gap <= self.max_acceptable_gap:
@@ -500,7 +896,8 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         elif val_acc > self.best_val_acc_clean:
             # Val improved but gap too large - DON'T save
             self.console.print(
-                f"  [yellow]⚠️ Val improved to {val_acc:.1%} but gap={overfit_gap:.1%} > {self.max_acceptable_gap:.0%} - NOT saving[/yellow]"
+                f"  [yellow]⚠️ Val improved to {val_acc:.1%} but gap={overfit_gap:.1%} > "
+                f"{self.max_acceptable_gap:.0%} - NOT saving[/yellow]"
             )
         
         # === OVERFIT SEVERITY CLASSIFICATION ===
@@ -509,14 +906,22 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             self.critical_epochs += 1
             if self.critical_epochs >= 2:  # 2 consecutive severe epochs
                 self.console.print(
-                    f"  [red bold]🛑 SEVERE OVERFITTING: gap={overfit_gap:.1%} > {self.severe_threshold:.0%}[/red bold]"
+                    f"  [red bold]🛑 SEVERE OVERFITTING: gap={overfit_gap:.1%} > "
+                    f"{self.severe_threshold:.0%}[/red bold]"
+                )
+                
+                # Try to recover with SWA weights before stopping
+                if self._apply_swa_weights():
+                    self.console.print(
+                        "  [yellow]💡 Applied SWA averaged weights before stopping.[/yellow]"
+                    )
+                
+                self.console.print(
+                    "  [yellow]💡 Model is memorizing training data. Stopping.[/yellow]"
                 )
                 self.console.print(
-                    "  [yellow]💡 Model is memorizing training data. Stopping to prevent further damage.[/yellow]"
-                )
-                self.console.print(
-                    "  [cyan]   Recommendations: 1) Add more training data, 2) Simplify model, "
-                    "3) Increase dropout to 0.5+, 4) Add L2 regularization[/cyan]"
+                    "  [cyan]   Try: 1) More data, 2) Simplify model, "
+                    "3) Dropout 0.5+, 4) L2 regularization[/cyan]"
                 )
                 self.model.stop_training = True
                 return
@@ -527,16 +932,18 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             self.critical_epochs += 1
             
             self.console.print(
-                f"  [red]⚠️ CRITICAL: train={train_acc:.1%} vs val={val_acc:.1%} (gap={overfit_gap:.1%})[/red]"
+                f"  [red]⚠️ CRITICAL: train={train_acc:.1%} vs val={val_acc:.1%} "
+                f"(gap={overfit_gap:.1%})[/red]"
             )
             
-            # Immediate action: reduce LR
-            if self.auto_reduce_lr and self.lr_reductions < 3:
-                self._reduce_learning_rate(factor=0.5)
+            # Immediate action: reduce LR significantly
+            if self.auto_reduce_lr and self.lr_reductions < 4:
+                factor = 0.3 if self.critical_epochs >= 2 else 0.5
+                self._reduce_learning_rate(factor=factor)
             
-            # After patience: increase dropout
+            # After patience: increase dropout aggressively
             if self.auto_adjust_dropout and self.critical_epochs >= self.patience_epochs:
-                if self.dropout_adjustments < 4:
+                if self.dropout_adjustments < 5:
                     self._increase_dropout(aggressive=True)
                     
         elif overfit_gap > self.overfit_threshold:
@@ -546,12 +953,13 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             
             if self.overfit_epochs == 1:
                 self.console.print(
-                    f"  [yellow]⚠️ Overfit warning: gap={overfit_gap:.1%} (train={train_acc:.1%}, val={val_acc:.1%})[/yellow]"
+                    f"  [yellow]⚠️ Overfit warning: gap={overfit_gap:.1%} "
+                    f"(train={train_acc:.1%}, val={val_acc:.1%})[/yellow]"
                 )
             
             # After patience: mild dropout increase
             if self.auto_adjust_dropout and self.overfit_epochs >= self.patience_epochs:
-                if self.dropout_adjustments < 4:
+                if self.dropout_adjustments < 5:
                     self._increase_dropout(aggressive=False)
                     self.overfit_epochs = 0  # Reset after adjustment
         else:
@@ -570,7 +978,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         for layer in self.model.layers:
             if isinstance(layer, tf.keras.layers.Dropout):
                 old_rate = layer.rate
-                new_rate = min(0.6, old_rate + dropout_delta)  # Cap at 60%
+                new_rate = min(0.7, old_rate + dropout_delta)  # Cap at 70% (was 60%)
                 if new_rate > old_rate:
                     layer.rate = new_rate
                     adjusted_count += 1
@@ -579,7 +987,8 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             self.dropout_adjustments += 1
             adj_type = "aggressive" if aggressive else "mild"
             self.console.print(
-                f"  [cyan]🔧 Dropout +{dropout_delta:.0%} ({adj_type}) → adjustment #{self.dropout_adjustments}[/cyan]"
+                f"  [cyan]🔧 Dropout +{dropout_delta:.0%} ({adj_type}) → "
+                f"adjustment #{self.dropout_adjustments}[/cyan]"
             )
     
     def _reduce_learning_rate(self, factor: float = 0.5):
@@ -590,12 +999,30 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             tf.keras.backend.set_value(self.model.optimizer.learning_rate, new_lr)
             self.lr_reductions += 1
             self.console.print(
-                f"  [cyan]📉 LR reduced: {current_lr:.2e} → {new_lr:.2e} (to slow memorization)[/cyan]"
+                f"  [cyan]📉 LR reduced: {current_lr:.2e} → {new_lr:.2e} "
+                f"(x{factor}, #{self.lr_reductions})[/cyan]"
             )
         except Exception as e:
             logger.warning(f"Could not reduce LR: {e}")
     
     def on_train_end(self, logs=None):
+        # Apply SWA weights at the end if we collected any
+        if self.enable_swa and self.swa_count > 1:
+            self.console.print(f"  [magenta]📊 SWA collected {self.swa_count} weight snapshots[/magenta]")
+            
+            # Save SWA model separately
+            swa_checkpoint_path = self.checkpoint_dir / f"{self.model_name}_swa.keras"
+            
+            # Apply SWA weights
+            if self._apply_swa_weights():
+                try:
+                    self.model.save(swa_checkpoint_path)
+                    self.console.print(
+                        f"  [magenta]💾 SWA model saved: {swa_checkpoint_path}[/magenta]"
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not save SWA checkpoint: {e}")
+        
         # Summary
         if self.best_epoch_clean > 0:
             self.console.print(
@@ -612,12 +1039,21 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         if len(self.gap_history) > 0:
             avg_gap = np.mean(self.gap_history)
             max_gap = max(self.gap_history)
+            min_gap = min(self.gap_history)
+            
+            self.console.print(
+                f"  [dim]📊 Gap stats: min={min_gap:.1%}, avg={avg_gap:.1%}, max={max_gap:.1%}[/dim]"
+            )
+            
+            if self.num_restarts > 0:
+                self.console.print(
+                    f"  [dim]🔄 Warm restarts: {self.num_restarts}[/dim]"
+                )
+            
             if max_gap > self.critical_threshold:
                 self.console.print(
-                    f"  [yellow]📊 Overfit stats: avg_gap={avg_gap:.1%}, max_gap={max_gap:.1%}[/yellow]"
-                )
-                self.console.print(
-                    "  [yellow]   Consider: more data, stronger regularization, or simpler model[/yellow]"
+                    "  [yellow]💡 Suggestions: more data, stronger regularization, "
+                    "or simpler model[/yellow]"
                 )
 
 
@@ -1737,20 +2173,33 @@ class TransformerDirectionTrainer(BaseTrainer):
         self._is_warm_start = False
     
     def _build_model(self, input_shape: Tuple[int, int]) -> Any:
-        """Build Transformer model architecture with strong regularization."""
+        """
+        Build Transformer model architecture with AGGRESSIVE regularization.
+        
+        Key anti-overfitting measures:
+        1. Strong L2 regularization (0.01)
+        2. High dropout (0.5) after every major layer
+        3. Spatial dropout on sequences
+        4. Label smoothing (0.15)
+        5. Gaussian noise on input
+        6. Small model capacity (d_model=16, 1 layer)
+        """
         import tensorflow as tf
         from tensorflow import keras
         
         seq_len, n_features = input_shape
         
-        # L2 regularization to prevent overfitting
-        l2_reg = keras.regularizers.l2(0.001)  # Reduced from 0.01 to prevent dead neurons
+        # STRONG L2 regularization - key to preventing memorization
+        l2_reg = keras.regularizers.l2(0.01)  # Increased from 0.001
         
         # Input
         inp = keras.Input(shape=(seq_len, n_features), name="features")
         
-        # Add input noise for regularization
-        x = keras.layers.GaussianNoise(0.1)(inp)
+        # Input noise - helps prevent memorization of exact values
+        x = keras.layers.GaussianNoise(0.15)(inp)  # Increased from 0.1
+        
+        # Spatial dropout on input sequence (drops entire features)
+        x = keras.layers.SpatialDropout1D(0.2)(x)
         
         # Project features to d_model dimension (with L2)
         x = keras.layers.Dense(
@@ -1758,6 +2207,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             kernel_regularizer=l2_reg,
             name='input_projection'
         )(x)
+        x = keras.layers.Dropout(0.3)(x)  # Dropout after projection
         
         # Add positional encoding
         x = self._add_positional_encoding(x, seq_len, self.transformer_d_model)
@@ -1769,30 +2219,38 @@ class TransformerDirectionTrainer(BaseTrainer):
                 self.transformer_d_model, 
                 self.transformer_num_heads,
                 self.transformer_dff,
-                self.transformer_dropout,
+                self.transformer_dropout,  # Uses config dropout (0.4)
                 l2_reg,
                 name_prefix=f'transformer_{i}'
             )
         
         # Global pooling and output
         x = keras.layers.GlobalAveragePooling1D()(x)
-        x = keras.layers.Dense(16, activation='relu', kernel_regularizer=l2_reg)(x)  # Reduced from 32
-        x = keras.layers.Dropout(0.3)(x)  # Reduced from 0.5 to prevent over-regularization
         
-        # Binary direction output
-        direction = keras.layers.Dense(1, activation='sigmoid', name='direction', dtype='float32', bias_initializer='zeros')(x)  # Zero bias init for balanced predictions
+        # Small dense layer with strong regularization
+        x = keras.layers.Dense(8, activation='relu', kernel_regularizer=l2_reg)(x)  # Reduced from 16
+        x = keras.layers.Dropout(0.5)(x)  # High dropout before output
+        
+        # Binary direction output with zero bias for balanced predictions
+        direction = keras.layers.Dense(
+            1, 
+            activation='sigmoid', 
+            name='direction', 
+            dtype='float32', 
+            bias_initializer='zeros',
+            kernel_regularizer=l2_reg  # L2 on output layer too
+        )(x)
         
         model = keras.Model(inputs=inp, outputs=direction, name='transformer_direction')
         
-        # Use standard Adam optimizer - AdamW from TFA has issues on M1 Metal causing weight collapse
-        # The existing L2 regularization (0.01) on Dense layers provides sufficient weight decay
-        optimizer = keras.optimizers.Adam(learning_rate=self.config.learning_rate)
-        logger.info(f"Using Adam optimizer with lr={self.config.learning_rate}")
+        # Adam optimizer with reduced learning rate for stability
+        optimizer = keras.optimizers.Adam(learning_rate=self.config.learning_rate * 0.5)  # Halved LR
+        logger.info(f"Using Adam optimizer with lr={self.config.learning_rate * 0.5:.2e} (reduced for anti-overfit)")
         
-        # Use label smoothing to prevent overconfident predictions
+        # Stronger label smoothing to prevent overconfident predictions
         model.compile(
             optimizer=optimizer,
-            loss=keras.losses.BinaryCrossentropy(label_smoothing=0.1),
+            loss=keras.losses.BinaryCrossentropy(label_smoothing=0.15),  # Increased from 0.1
             metrics=['accuracy'],
         )
         

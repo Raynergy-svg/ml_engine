@@ -4,7 +4,7 @@
   "primary_model_type": "transformer",
   "primary_config": {
     "use_regime": false,
-    "threshold": 0.0015,
+    "threshold": 0.003,
     "lookahead": 24,
     "use_transformer": true
   },
@@ -15,16 +15,16 @@
       "purpose": "direction_prediction",
       "output": "binary (0=short, 1=long)",
       "metrics": {
-        "train_accuracy": 0.8168951869010925,
-        "val_accuracy": 0.5555555555555556,
-        "val_balanced_accuracy": 0.5465682814509022,
-        "val_up_accuracy": 0.3008595988538682,
-        "val_down_accuracy": 0.7922769640479361,
-        "epochs_trained": 19,
-        "n_train_samples": 6783,
-        "n_val_samples": 1449,
-        "total_weight_norm": 35.80193440459698,
-        "avg_weight_norm": 1.6273606547544082,
+        "train_accuracy": 0.5511921644210815,
+        "val_accuracy": 0.5841269841269842,
+        "val_balanced_accuracy": 0.5851175416640406,
+        "val_up_accuracy": 0.5990888382687927,
+        "val_down_accuracy": 0.5711462450592886,
+        "epochs_trained": 57,
+        "n_train_samples": 4278,
+        "n_val_samples": 945,
+        "total_weight_norm": 86.55701768194922,
+        "avg_weight_norm": 2.2778162547881373,
         "drift_detected": false
       },
       "features": [
@@ -41,39 +41,39 @@
         "volume_sma_20",
         "returns_1",
         "volatility_20",
-        "hour_cos",
         "di_crossover",
         "hour_sin",
-        "ema_12_26_cross",
+        "macd_crossover",
+        "hour_cos",
         "macd_hist",
         "ma_alignment",
+        "volume_price_confirm",
         "skew_60",
         "skew_20",
-        "volume_price_confirm",
         "returns_2",
         "cci",
         "zscore_10",
-        "returns_lag_10",
         "macd_x_adx",
+        "returns_lag_10",
+        "returns_lag_20",
         "returns_lag_5",
         "returns_lag_3",
-        "returns_lag_20",
         "volume_zscore",
         "day_cos",
         "month_sin",
         "month_cos",
+        "kurt_20",
         "is_quarter_end",
         "is_quarter_start",
-        "kurt_20",
         "is_month_start",
         "is_month_end",
         "volume_change",
         "friday_afternoon",
         "is_asian_london_overlap",
-        "kurt_60",
         "is_session_close",
         "is_london_ny_overlap",
         "is_session_open",
+        "kurt_60",
         "bb_lower_touch",
         "bb_upper_touch",
         "is_friday",
@@ -81,8 +81,8 @@
         "is_monday",
         "volume_price_strength",
         "bb_squeeze",
-        "bb_expansion",
         "macd_divergence",
+        "bb_expansion",
         "is_high_volatility",
         "is_low_volatility",
         "bearish_divergence",
@@ -97,25 +97,25 @@
         "volume_std_5",
         "volume_lag_20",
         "volume_lag_10",
-        "volume_lag_5",
-        "volume_lag_3",
-        "volume_lag_2",
         "volume_lag_1",
-        "bb_width_20",
-        "volatility_log_5",
+        "volume_lag_2",
+        "volume_lag_3",
+        "volume_lag_5",
+        "close_std_20",
         "tr_pct",
+        "volatility_log_5",
         "volatility_5",
         "volume_std_10",
         "lower_wick_ratio",
         "upper_wick_ratio"
       ],
       "label_stats": {
-        "n_clear_up": 3995,
-        "n_clear_down": 3872,
-        "n_unclear": 3909,
-        "clear_rate": 0.6680536684782609,
-        "up_rate": 0.5078174653616372,
-        "threshold": 0.0015,
+        "n_clear_up": 2532,
+        "n_clear_down": 2313,
+        "n_unclear": 6931,
+        "clear_rate": 0.411430027173913,
+        "up_rate": 0.5226006191950464,
+        "threshold": 0.003,
         "lookahead": 24
       }
     },
@@ -124,8 +124,8 @@
       "purpose": "momentum_analysis",
       "output": "momentum_score (0-1), acceleration (bool)",
       "metrics": {
-        "momentum_mae": 0.03629934415221214,
-        "acceleration_accuracy": 0.8642149929278642
+        "momentum_mae": 0.036364372819662094,
+        "acceleration_accuracy": 0.8698727015558698
       },
       "features": [
         "returns_1",
@@ -154,9 +154,9 @@
       "purpose": "risk_assessment",
       "output": "expected_drawdown_pips, streak_prob",
       "metrics": {
-        "drawdown_mae_pct": 0.000724800977221804,
-        "drawdown_mae_bps": 7.248009772218039,
-        "streak_prob_mae": 0.1314581354080379
+        "drawdown_mae_pct": 0.0007253582754931366,
+        "drawdown_mae_bps": 7.253582754931366,
+        "streak_prob_mae": 0.13139331429562426
       },
       "features": [
         "atr_pct_5",
@@ -184,8 +184,8 @@
       "purpose": "confidence_scoring",
       "output": "confidence (0-100)",
       "metrics": {
-        "confidence_mae": 3.3744566440582275,
-        "r2_score": 0.5024397373199463
+        "confidence_mae": 3.378098726272583,
+        "r2_score": 0.5021960735321045
       },
       "features": [
         "atr_pct_10",
@@ -218,5 +218,5 @@
     "test_frac": 0.1,
     "total_samples": 11800
   },
-  "trained_at": "2026-01-05T23:51:18.138079"
+  "trained_at": "2026-01-06T02:29:37.209678"
 }
