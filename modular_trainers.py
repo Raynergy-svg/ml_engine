@@ -2469,15 +2469,10 @@ class TransformerDirectionTrainer(BaseTrainer):
             logger.info(f"Global class weights: down={class_weight[0]:.3f}, up={class_weight[1]:.3f}")
             logger.info(f"Regime-aware sample weights: mean={sample_weights.mean():.3f}, std={sample_weights.std():.3f}")
             
-            # PHASE 2 FIX: Only apply sample weights if data is significantly imbalanced
-            # Threshold raised to 1.25 to keep class weights active for better down-prediction
+            # ALWAYS use sample weights to prevent model collapse to majority class
+            # Even with balanced data, regime-aware weighting helps
             imbalance_ratio = max(n_up, n_down) / min(n_up, n_down)
-            if imbalance_ratio < 1.05:  # Only disable if nearly perfectly balanced (<5% imbalance)
-                logger.info(f"Data is nearly perfectly balanced (ratio={imbalance_ratio:.3f} < 1.05), disabling sample weights")
-                sample_weights = None
-                class_weight = None
-            else:
-                logger.info(f"Class weights ENABLED (ratio={imbalance_ratio:.3f} >= 1.05) to improve down-prediction accuracy")
+            logger.info(f"Class imbalance ratio: {imbalance_ratio:.3f} - sample weights ALWAYS enabled")
         else:
             class_weight = None
             sample_weights = None
@@ -2636,6 +2631,40 @@ class TransformerDirectionTrainer(BaseTrainer):
                 if self.ema_callback:
                     self.ema_callback.update()
         
+        # === PREDICTION COLLAPSE DETECTION CALLBACK ===
+        # Detects if model collapses to predicting all one class
+        class PredictionCollapseCallback(keras.callbacks.Callback):
+            def __init__(self, X_val, y_val, check_every=5):
+                super().__init__()
+                self.X_val = X_val
+                self.y_val = y_val
+                self.check_every = check_every
+                self.collapse_warned = False
+            
+            def on_epoch_end(self, epoch, logs=None):
+                if (epoch + 1) % self.check_every != 0:
+                    return
+                
+                preds = self.model.predict(self.X_val, verbose=0)
+                pred_classes = (preds > 0.5).astype(float).flatten()
+                
+                pred_up_pct = pred_classes.mean() * 100
+                pred_down_pct = 100 - pred_up_pct
+                
+                # Check for collapse (>95% same prediction)
+                if pred_up_pct > 95 or pred_down_pct > 95:
+                    if not self.collapse_warned:
+                        dominant = "UP" if pred_up_pct > 95 else "DOWN"
+                        logger.warning(f"⚠️ PREDICTION COLLAPSE at epoch {epoch+1}: "
+                                      f"Model predicts {pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN "
+                                      f"(all {dominant})")
+                        self.collapse_warned = True
+                else:
+                    self.collapse_warned = False
+                    if epoch > 0 and (epoch + 1) % 10 == 0:
+                        logger.info(f"📊 Prediction distribution at epoch {epoch+1}: "
+                                   f"{pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN")
+        
         # Callbacks - use config patience values
         # Key insight: For classification, val_accuracy is what matters for trading
         # val_loss can improve while accuracy drops (model becomes uncertain)
@@ -2674,6 +2703,8 @@ class TransformerDirectionTrainer(BaseTrainer):
                 auto_adjust_dropout=True,
                 auto_reduce_lr=True,
             ),
+            # Prediction collapse detection - warns if model predicts mostly one class
+            PredictionCollapseCallback(X_val_filtered, y_val_filtered, check_every=5),
         ]
         
         # Add EMA update callback if enabled
