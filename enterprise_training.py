@@ -613,10 +613,18 @@ class ExperimentTracker:
 
 @dataclass
 class WalkForwardConfig:
-    """Configuration for walk-forward validation."""
-    n_splits: int = 5
-    train_period: int = 2000  # Samples in training window
-    test_period: int = 500  # Samples in test window
+    """Configuration for walk-forward validation.
+    
+    For 12,000 H1 candles (~500 trading days):
+    - min_train_samples: 4000 (~167 days) - minimum for reliable Transformer training
+    - test_period: 1000 (~42 days) - enough for statistically meaningful validation
+    - n_splits: 3 - balances regime coverage vs training data adequacy
+    - gap: 24 (1 day) - prevents label leakage from overlapping windows
+    """
+    n_splits: int = 3  # Reduced from 5 - ensures adequate training data per fold
+    min_train_samples: int = 4000  # Minimum training samples (prevents underfitting in early folds)
+    train_period: int = 6000  # Target training window for sliding mode
+    test_period: int = 1000  # ~42 days H1 - more stable validation estimates
     gap: int = 24  # Gap between train and test to prevent leakage
     expanding: bool = True  # Expanding vs sliding window
     purge_overlap: int = 0  # Additional purge for overlapping labels
@@ -646,30 +654,43 @@ class WalkForwardValidator:
         """
         Generate train/test indices for walk-forward validation.
         
+        Ensures minimum training samples per fold to prevent underfitting,
+        especially important for deep learning models like Transformers.
+        
         Yields:
             (train_indices, test_indices) for each fold
         """
         n_samples = len(X)
         cfg = self.config
         
-        # Calculate fold positions
-        min_train = cfg.train_period + cfg.gap
+        # Use min_train_samples to ensure adequate training data
+        min_train = getattr(cfg, 'min_train_samples', cfg.train_period) + cfg.gap
         available_space = n_samples - cfg.test_period - min_train
         
         if available_space < cfg.n_splits:
             logger.warning(
-                f"Insufficient data for {cfg.n_splits} folds, "
+                f"Insufficient data for {cfg.n_splits} folds with min_train={min_train}, "
                 f"reducing to {max(1, available_space)} folds"
             )
             n_splits = max(1, available_space)
         else:
             n_splits = cfg.n_splits
         
+        # Position test windows to ensure minimum training samples
+        # First test window starts after min_train samples
+        first_test_start = min_train
+        last_test_start = n_samples - cfg.test_period
+        
         test_starts = np.linspace(
-            min_train,
-            n_samples - cfg.test_period,
+            first_test_start,
+            last_test_start,
             n_splits,
             dtype=int
+        )
+        
+        logger.info(
+            f"Walk-forward: {n_splits} folds, min_train={min_train}, "
+            f"test_period={cfg.test_period}, total_samples={n_samples}"
         )
         
         for fold, test_start in enumerate(test_starts):
@@ -680,6 +701,14 @@ class WalkForwardValidator:
                 train_start = max(0, test_start - cfg.gap - cfg.train_period)
             
             train_end = test_start - cfg.gap - cfg.purge_overlap
+            
+            # Ensure minimum training samples even in expanding mode
+            if train_end - train_start < getattr(cfg, 'min_train_samples', 2000):
+                logger.warning(
+                    f"Fold {fold + 1}: Training samples ({train_end - train_start}) "
+                    f"below minimum ({getattr(cfg, 'min_train_samples', 2000)}), skipping"
+                )
+                continue
             
             # Test indices
             test_end = min(test_start + cfg.test_period, n_samples)
