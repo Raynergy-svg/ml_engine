@@ -2248,10 +2248,11 @@ class TransformerDirectionTrainer(BaseTrainer):
         logger.info(f"Using Adam optimizer with lr={self.config.learning_rate * 0.5:.2e} (reduced for anti-overfit)")
         
         # Stronger label smoothing to prevent overconfident predictions
+        # Use explicit BinaryAccuracy to fix TF 2.19 accuracy bug with sigmoid outputs
         model.compile(
             optimizer=optimizer,
             loss=keras.losses.BinaryCrossentropy(label_smoothing=0.15),  # Increased from 0.1
-            metrics=['accuracy'],
+            metrics=[keras.metrics.BinaryAccuracy(name='accuracy', threshold=0.5)],
         )
         
         return model
