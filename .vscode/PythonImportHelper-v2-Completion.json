@@ -737,6 +737,126 @@
         "documentation": {}
     },
     {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Callable",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Callable",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Generator",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "TypeVar",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "List",
         "importPath": "typing",
         "description": "typing",
@@ -1169,6 +1289,14 @@
         "documentation": {}
     },
     {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Optional",
         "importPath": "typing",
         "description": "typing",
@@ -1178,6 +1306,14 @@
     },
     {
         "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -2372,6 +2508,22 @@
         "documentation": {}
     },
     {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
         "label": "logging",
         "kind": 6,
         "isExtraImport": true,
@@ -2440,6 +2592,30 @@
         "documentation": {}
     },
     {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
         "label": "time",
         "importPath": "datetime",
         "description": "datetime",
@@ -2449,6 +2625,14 @@
     },
     {
         "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
         "importPath": "datetime",
         "description": "datetime",
         "isExtraImport": true,
@@ -3145,6 +3329,22 @@
         "documentation": {}
     },
     {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
         "label": "runpy",
         "kind": 6,
         "isExtraImport": true,
@@ -3347,6 +3547,54 @@
         "documentation": {}
     },
     {
+        "label": "field",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "asdict",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "field",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "asdict",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
         "label": "dataclass",
         "importPath": "dataclasses",
         "description": "dataclasses",
@@ -3420,6 +3668,14 @@
     },
     {
         "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "field",
         "importPath": "dataclasses",
         "description": "dataclasses",
         "isExtraImport": true,
@@ -4635,6 +4891,22 @@
         "documentation": {}
     },
     {
+        "label": "Panel",
+        "importPath": "rich.panel",
+        "description": "rich.panel",
+        "isExtraImport": true,
+        "detail": "rich.panel",
+        "documentation": {}
+    },
+    {
+        "label": "Panel",
+        "importPath": "rich.panel",
+        "description": "rich.panel",
+        "isExtraImport": true,
+        "detail": "rich.panel",
+        "documentation": {}
+    },
+    {
         "label": "pickle",
         "kind": 6,
         "isExtraImport": true,
@@ -4768,12 +5040,226 @@
         "documentation": {}
     },
     {
+        "label": "ExperimentConfig",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "ExperimentTracker",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "TrainingExperiment",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "WalkForwardConfig",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "WalkForwardValidator",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "StatisticalValidator",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "ResourceMonitor",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "ReproducibilityManager",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "DataValidator",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "DataValidationResult",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "setup_enterprise_logging",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "MLFLOW_AVAILABLE",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "SCIPY_AVAILABLE",
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "isExtraImport": true,
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "hashlib",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "hashlib",
+        "description": "hashlib",
+        "detail": "hashlib",
+        "documentation": {}
+    },
+    {
         "label": "platform",
         "kind": 6,
         "isExtraImport": true,
         "importPath": "platform",
         "description": "platform",
         "detail": "platform",
+        "documentation": {}
+    },
+    {
+        "label": "random",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "random",
+        "description": "random",
+        "detail": "random",
+        "documentation": {}
+    },
+    {
+        "label": "signal",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "signal",
+        "description": "signal",
+        "detail": "signal",
+        "documentation": {}
+    },
+    {
+        "label": "subprocess",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "subprocess",
+        "description": "subprocess",
+        "detail": "subprocess",
+        "documentation": {}
+    },
+    {
+        "label": "threading",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "threading",
+        "description": "threading",
+        "detail": "threading",
+        "documentation": {}
+    },
+    {
+        "label": "traceback",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "traceback",
+        "description": "traceback",
+        "detail": "traceback",
+        "documentation": {}
+    },
+    {
+        "label": "ABC",
+        "importPath": "abc",
+        "description": "abc",
+        "isExtraImport": true,
+        "detail": "abc",
+        "documentation": {}
+    },
+    {
+        "label": "abstractmethod",
+        "importPath": "abc",
+        "description": "abc",
+        "isExtraImport": true,
+        "detail": "abc",
+        "documentation": {}
+    },
+    {
+        "label": "ABC",
+        "importPath": "abc",
+        "description": "abc",
+        "isExtraImport": true,
+        "detail": "abc",
+        "documentation": {}
+    },
+    {
+        "label": "abstractmethod",
+        "importPath": "abc",
+        "description": "abc",
+        "isExtraImport": true,
+        "detail": "abc",
+        "documentation": {}
+    },
+    {
+        "label": "contextmanager",
+        "importPath": "contextlib",
+        "description": "contextlib",
+        "isExtraImport": true,
+        "detail": "contextlib",
+        "documentation": {}
+    },
+    {
+        "label": "contextmanager",
+        "importPath": "contextlib",
+        "description": "contextlib",
+        "isExtraImport": true,
+        "detail": "contextlib",
+        "documentation": {}
+    },
+    {
+        "label": "contextmanager",
+        "importPath": "contextlib",
+        "description": "contextlib",
+        "isExtraImport": true,
+        "detail": "contextlib",
         "documentation": {}
     },
     {
@@ -4913,30 +5399,6 @@
         "documentation": {}
     },
     {
-        "label": "Panel",
-        "importPath": "rich.panel",
-        "description": "rich.panel",
-        "isExtraImport": true,
-        "detail": "rich.panel",
-        "documentation": {}
-    },
-    {
-        "label": "contextmanager",
-        "importPath": "contextlib",
-        "description": "contextlib",
-        "isExtraImport": true,
-        "detail": "contextlib",
-        "documentation": {}
-    },
-    {
-        "label": "contextmanager",
-        "importPath": "contextlib",
-        "description": "contextlib",
-        "isExtraImport": true,
-        "detail": "contextlib",
-        "documentation": {}
-    },
-    {
         "label": "psutil",
         "kind": 6,
         "isExtraImport": true,
@@ -4959,22 +5421,6 @@
         "description": "modular_data_loaders",
         "isExtraImport": true,
         "detail": "modular_data_loaders",
-        "documentation": {}
-    },
-    {
-        "label": "ABC",
-        "importPath": "abc",
-        "description": "abc",
-        "isExtraImport": true,
-        "detail": "abc",
-        "documentation": {}
-    },
-    {
-        "label": "abstractmethod",
-        "importPath": "abc",
-        "description": "abc",
-        "isExtraImport": true,
-        "detail": "abc",
         "documentation": {}
     },
     {
@@ -5075,24 +5521,6 @@
         "description": "tensorflow_engine",
         "isExtraImport": true,
         "detail": "tensorflow_engine",
-        "documentation": {}
-    },
-    {
-        "label": "hashlib",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "hashlib",
-        "description": "hashlib",
-        "detail": "hashlib",
-        "documentation": {}
-    },
-    {
-        "label": "threading",
-        "kind": 6,
-        "isExtraImport": true,
-        "importPath": "threading",
-        "description": "threading",
-        "detail": "threading",
         "documentation": {}
     },
     {
@@ -7395,6 +7823,231 @@
         "documentation": {}
     },
     {
+        "label": "EnterpriseConfig",
+        "kind": 6,
+        "importPath": "enterprise_integration",
+        "description": "enterprise_integration",
+        "peekOfCode": "class EnterpriseConfig:\n    \"\"\"Extended configuration for enterprise training.\"\"\"\n    # Experiment metadata\n    experiment_name: str = \"ensemble_training\"\n    model_type: str = \"ensemble\"\n    instrument: str = \"EUR_USD\"\n    granularity: str = \"H1\"\n    description: str = \"\"\n    # Base trainer config\n    trainer_config: Optional[TrainerConfig] = None",
+        "detail": "enterprise_integration",
+        "documentation": {}
+    },
+    {
+        "label": "ModelMetrics",
+        "kind": 6,
+        "importPath": "enterprise_integration",
+        "description": "enterprise_integration",
+        "peekOfCode": "class ModelMetrics:\n    \"\"\"Metrics for a single model.\"\"\"\n    model_name: str\n    val_accuracy: float = 0.0\n    val_loss: float = 0.0\n    balanced_accuracy: float = 0.0\n    # Additional metrics (model-specific)\n    mae: float = 0.0\n    r2_score: float = 0.0\n    auc: float = 0.0",
+        "detail": "enterprise_integration",
+        "documentation": {}
+    },
+    {
+        "label": "EnsembleResults",
+        "kind": 6,
+        "importPath": "enterprise_integration",
+        "description": "enterprise_integration",
+        "peekOfCode": "class EnsembleResults:\n    \"\"\"Complete results from enterprise ensemble training.\"\"\"\n    experiment_id: str\n    experiment_name: str\n    timestamp: str = field(default_factory=lambda: datetime.now().isoformat())\n    # Model metrics\n    transformer_metrics: Optional[ModelMetrics] = None\n    xgboost_metrics: Optional[ModelMetrics] = None\n    rf_metrics: Optional[ModelMetrics] = None\n    ridge_metrics: Optional[ModelMetrics] = None",
+        "detail": "enterprise_integration",
+        "documentation": {}
+    },
+    {
+        "label": "EnterpriseEnsembleTrainer",
+        "kind": 6,
+        "importPath": "enterprise_integration",
+        "description": "enterprise_integration",
+        "peekOfCode": "class EnterpriseEnsembleTrainer:\n    \"\"\"\n    Enterprise-grade ensemble trainer with MLOps features.\n    Wraps modular_trainers with:\n    - Full experiment lifecycle management\n    - Cross-validation with proper time-series splits\n    - Statistical significance testing\n    - Comprehensive result reporting\n    \"\"\"\n    def __init__(self, config: EnterpriseConfig):",
+        "detail": "enterprise_integration",
+        "documentation": {}
+    },
+    {
+        "label": "run_enterprise_ensemble_training",
+        "kind": 2,
+        "importPath": "enterprise_integration",
+        "description": "enterprise_integration",
+        "peekOfCode": "def run_enterprise_ensemble_training(\n    data: Dict[str, Dict[str, np.ndarray]],\n    experiment_name: str = \"ensemble_training\",\n    instrument: str = \"EUR_USD\",\n    granularity: str = \"H1\",\n    trainer_config: Optional[TrainerConfig] = None,\n    enable_cross_validation: bool = True,\n    enable_statistical_validation: bool = True,\n    save_dir: str = \"trained_data/models\",\n    **kwargs,",
+        "detail": "enterprise_integration",
+        "documentation": {}
+    },
+    {
+        "label": "generate_training_report",
+        "kind": 2,
+        "importPath": "enterprise_integration",
+        "description": "enterprise_integration",
+        "peekOfCode": "def generate_training_report(results: EnsembleResults, output_path: str = None) -> str:\n    \"\"\"\n    Generate a markdown training report.\n    Args:\n        results: EnsembleResults from training\n        output_path: Optional path to save report\n    Returns:\n        Markdown string\n    \"\"\"\n    lines = [",
+        "detail": "enterprise_integration",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "enterprise_integration",
+        "description": "enterprise_integration",
+        "peekOfCode": "logger = logging.getLogger(\"enterprise_integration\")\n# =============================================================================\n# ENTERPRISE TRAINING CONFIGURATION\n# =============================================================================\n@dataclass\nclass EnterpriseConfig:\n    \"\"\"Extended configuration for enterprise training.\"\"\"\n    # Experiment metadata\n    experiment_name: str = \"ensemble_training\"\n    model_type: str = \"ensemble\"",
+        "detail": "enterprise_integration",
+        "documentation": {}
+    },
+    {
+        "label": "ReproducibilityConfig",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class ReproducibilityConfig:\n    \"\"\"Configuration for reproducible training.\"\"\"\n    seed: int = 42\n    deterministic: bool = True\n    hash_data: bool = True\n    log_environment: bool = True\nclass ReproducibilityManager:\n    \"\"\"\n    Ensure reproducible training across runs.\n    Sets seeds for:",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "ReproducibilityManager",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class ReproducibilityManager:\n    \"\"\"\n    Ensure reproducible training across runs.\n    Sets seeds for:\n    - Python random\n    - NumPy\n    - TensorFlow\n    - Environment variables\n    Logs environment fingerprint for debugging.\n    \"\"\"",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "ResourceStats",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class ResourceStats:\n    \"\"\"Resource utilization snapshot.\"\"\"\n    timestamp: float\n    cpu_percent: float\n    memory_percent: float\n    memory_gb: float\n    gpu_available: bool = False\n    gpu_memory_gb: float = 0.0\n    gpu_utilization: float = 0.0\nclass ResourceMonitor:",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "ResourceMonitor",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class ResourceMonitor:\n    \"\"\"\n    Monitor GPU and system resources during training.\n    Runs in background thread, collects stats at intervals.\n    Useful for:\n    - Detecting memory leaks\n    - Capacity planning\n    - Cost optimization\n    \"\"\"\n    def __init__(",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "ExperimentConfig",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class ExperimentConfig:\n    \"\"\"Configuration for an ML experiment.\"\"\"\n    name: str\n    model_type: str\n    instrument: str = \"\"\n    granularity: str = \"\"\n    description: str = \"\"\n    tags: Dict[str, str] = field(default_factory=dict)\n    # Training params\n    epochs: int = 100",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "ExperimentTracker",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class ExperimentTracker:\n    \"\"\"\n    Track experiments using MLflow.\n    Features:\n    - Automatic parameter logging\n    - Metric tracking with history\n    - Model artifact storage\n    - Experiment comparison\n    \"\"\"\n    def __init__(",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "WalkForwardConfig",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class WalkForwardConfig:\n    \"\"\"Configuration for walk-forward validation.\"\"\"\n    n_splits: int = 5\n    train_period: int = 2000  # Samples in training window\n    test_period: int = 500  # Samples in test window\n    gap: int = 24  # Gap between train and test to prevent leakage\n    expanding: bool = True  # Expanding vs sliding window\n    purge_overlap: int = 0  # Additional purge for overlapping labels\nclass WalkForwardValidator:\n    \"\"\"",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "WalkForwardValidator",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class WalkForwardValidator:\n    \"\"\"\n    Walk-forward cross-validation for time series.\n    Critical for financial ML to:\n    - Prevent look-ahead bias\n    - Simulate realistic deployment scenario\n    - Test model stability across market regimes\n    References:\n    - Lopez de Prado, \"Advances in Financial Machine Learning\" (2018)\n    \"\"\"",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "StatisticalValidator",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class StatisticalValidator:\n    \"\"\"\n    Statistical significance testing for ML models.\n    Methods:\n    - Bootstrap confidence intervals\n    - Paired t-test for model comparison\n    - Sharpe ratio significance test\n    \"\"\"\n    @staticmethod\n    def bootstrap_confidence_interval(",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "DataValidationResult",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class DataValidationResult:\n    \"\"\"Result of data validation checks.\"\"\"\n    passed: bool\n    checks: Dict[str, Any] = field(default_factory=dict)\n    warnings: List[str] = field(default_factory=list)\n    errors: List[str] = field(default_factory=list)\nclass DataValidator:\n    \"\"\"\n    Validate data quality and detect drift.\n    Checks:",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "DataValidator",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class DataValidator:\n    \"\"\"\n    Validate data quality and detect drift.\n    Checks:\n    - Missing values\n    - Duplicate timestamps\n    - Value ranges\n    - Distribution drift (KS test)\n    \"\"\"\n    def __init__(",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "TrainingErrorHandler",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class TrainingErrorHandler:\n    \"\"\"\n    Handle training errors with automatic recovery.\n    Features:\n    - Signal handling (SIGINT, SIGTERM)\n    - Emergency checkpoint saving\n    - OOM recovery\n    \"\"\"\n    def __init__(\n        self,",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "TrainingExperiment",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class TrainingExperiment:\n    \"\"\"\n    Enterprise training experiment orchestrator.\n    Combines all enterprise features:\n    - MLflow tracking\n    - Reproducibility\n    - Resource monitoring\n    - Error handling\n    - Statistical validation\n    Usage:",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "EnterpriseTrainingCallback",
+        "kind": 6,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "class EnterpriseTrainingCallback:\n    \"\"\"\n    Keras callback for enterprise logging during training.\n    Integrates with TrainingExperiment for:\n    - Per-epoch metric logging\n    - Resource monitoring updates\n    - Error handler epoch tracking\n    \"\"\"\n    def __init__(self, experiment: TrainingExperiment):\n        self.experiment = experiment",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "setup_enterprise_logging",
+        "kind": 2,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "def setup_enterprise_logging(\n    log_level: str = \"INFO\",\n    log_dir: Optional[str] = None,\n    json_format: bool = True,\n    experiment_name: Optional[str] = None,\n) -> logging.Logger:\n    \"\"\"\n    Configure enterprise-grade structured logging.\n    Features:\n    - JSON format for log aggregation (ELK, Splunk compatible)",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "run_enterprise_training",
+        "kind": 2,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "def run_enterprise_training(\n    model_fn: Callable,\n    X_train: np.ndarray,\n    y_train: np.ndarray,\n    X_val: np.ndarray,\n    y_val: np.ndarray,\n    config: ExperimentConfig,\n    fit_kwargs: Dict[str, Any] = None,\n) -> Dict[str, Any]:\n    \"\"\"",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "generate_training_report",
+        "kind": 2,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "def generate_training_report(\n    output_path: Union[str, Path],\n    experiment_config: Optional[ExperimentConfig] = None,\n    metrics: Optional[Dict[str, Any]] = None,\n    model_paths: Optional[Dict[str, str]] = None,\n    validation_results: Optional[Dict[str, Any]] = None,\n    include_plots: bool = False,\n) -> Path:\n    \"\"\"\n    Generate a comprehensive Markdown training report.",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "enterprise_training",
+        "description": "enterprise_training",
+        "peekOfCode": "logger = logging.getLogger(\"enterprise_training\")\n# =============================================================================\n# REPRODUCIBILITY\n# =============================================================================\n@dataclass\nclass ReproducibilityConfig:\n    \"\"\"Configuration for reproducible training.\"\"\"\n    seed: int = 42\n    deterministic: bool = True\n    hash_data: bool = True",
+        "detail": "enterprise_training",
+        "documentation": {}
+    },
+    {
         "label": "FeatureEngineering",
         "kind": 6,
         "importPath": "feature_engineering",
@@ -8641,7 +9294,79 @@
         "kind": 6,
         "importPath": "modular_trainers",
         "description": "modular_trainers",
-        "peekOfCode": "class TrainerConfig:\n    \"\"\"Configuration for model trainers.\"\"\"\n    # Common\n    epochs: int = 100\n    batch_size: int = 64\n    learning_rate: float = 0.001\n    patience: int = 20\n    verbose: int = 1\n    # TCN specific\n    tcn_hidden_size: int = 32",
+        "peekOfCode": "class TrainerConfig:\n    \"\"\"Configuration for model trainers.\"\"\"\n    # Common\n    epochs: int = 100\n    batch_size: int = 64\n    learning_rate: float = 0.001\n    patience: int = 20  # Original setting that achieved 60.9%\n    verbose: int = 1\n    # TCN specific\n    tcn_hidden_size: int = 32",
+        "detail": "modular_trainers",
+        "documentation": {}
+    },
+    {
+        "label": "EMACallback",
+        "kind": 6,
+        "importPath": "modular_trainers",
+        "description": "modular_trainers",
+        "peekOfCode": "class EMACallback:\n    \"\"\"\n    Exponential Moving Average of model weights for stable inference.\n    Maintains shadow weights: θ_ema = α * θ_ema + (1-α) * θ_current\n    Benefits:\n    - Smoother predictions in volatile markets\n    - Reduces model jitter from noisy financial data\n    - Better generalization without additional training cost\n    Usage:\n        ema = EMACallback(model, decay=0.999)",
+        "detail": "modular_trainers",
+        "documentation": {}
+    },
+    {
+        "label": "EWCPenalty",
+        "kind": 6,
+        "importPath": "modular_trainers",
+        "description": "modular_trainers",
+        "peekOfCode": "class EWCPenalty:\n    \"\"\"\n    Elastic Weight Consolidation for continual learning.\n    Prevents catastrophic forgetting by adding a penalty that discourages\n    large changes to weights that were important for previous tasks.\n    Loss = L_new + (λ/2) * Σ F_i * (θ_i - θ_old)²\n    Where F_i is the Fisher Information (importance) of weight i.\n    References:\n    - Kirkpatrick et al., \"Overcoming catastrophic forgetting\" (2016)\n    - EAT: Experience-accumulated Transformer for stock prediction",
+        "detail": "modular_trainers",
+        "documentation": {}
+    },
+    {
+        "label": "OverfitPreventionCallback",
+        "kind": 6,
+        "importPath": "modular_trainers",
+        "description": "modular_trainers",
+        "peekOfCode": "class OverfitPreventionCallback(tf.keras.callbacks.Callback):\n    \"\"\"\n    Callback to detect and mitigate overfitting during training.\n    Actions when overfitting detected (train_acc >> val_acc):\n    1. Saves checkpoints ONLY when validation improves AND gap is acceptable\n    2. Increases dropout dynamically when overfit gap grows\n    3. Early stops if overfit gap exceeds critical threshold\n    4. Reduces learning rate aggressively on severe overfitting\n    Key insight: A model with 30%+ train-val gap is memorizing, not learning.\n    We should NOT save such models as \"best\" even if val_acc improves slightly.",
+        "detail": "modular_trainers",
+        "documentation": {}
+    },
+    {
+        "label": "EWCTrainingCallback",
+        "kind": 6,
+        "importPath": "modular_trainers",
+        "description": "modular_trainers",
+        "peekOfCode": "class EWCTrainingCallback(tf.keras.callbacks.Callback):\n    \"\"\"\n    Callback to log EWC penalty during training.\n    Helps monitor if the EWC constraint is being applied and its magnitude.\n    \"\"\"\n    def __init__(self, ewc_penalty: EWCPenalty, log_every: int = 10):\n        super().__init__()\n        self.ewc_penalty = ewc_penalty\n        self.log_every = log_every\n        self._batch_count = 0",
+        "detail": "modular_trainers",
+        "documentation": {}
+    },
+    {
+        "label": "RichEpochCallback",
+        "kind": 6,
+        "importPath": "modular_trainers",
+        "description": "modular_trainers",
+        "peekOfCode": "class RichEpochCallback(tf.keras.callbacks.Callback):\n    \"\"\"\n    Rich-formatted epoch display with color-coded metrics.\n    Colors:\n    - Green: Improving / Best\n    - Yellow: Slight degradation  \n    - Red: Significant degradation\n    - Cyan: Neutral / Info\n    \"\"\"\n    def __init__(self, model_name: str = \"Model\", total_epochs: int = 100):",
+        "detail": "modular_trainers",
+        "documentation": {}
+    },
+    {
+        "label": "ReplayBuffer",
+        "kind": 6,
+        "importPath": "modular_trainers",
+        "description": "modular_trainers",
+        "peekOfCode": "class ReplayBuffer:\n    \"\"\"\n    Memory replay buffer for continual learning.\n    Stores representative samples from each training session and mixes them\n    into future training to prevent forgetting old patterns.\n    Uses reservoir sampling for memory-efficient storage of large datasets.\n    Benefits:\n    - Retains examples of past market regimes (flash crashes, trends, etc.)\n    - Simple and data-centric approach\n    - Complements EWC (data + weight protection)",
+        "detail": "modular_trainers",
+        "documentation": {}
+    },
+    {
+        "label": "DriftDetector",
+        "kind": 6,
+        "importPath": "modular_trainers",
+        "description": "modular_trainers",
+        "peekOfCode": "class DriftDetector:\n    \"\"\"\n    Advanced drift detection for continual learning.\n    Detects three types of drift:\n    1. Performance drift: Model accuracy degradation\n    2. Data drift: Distribution shift in input features  \n    3. Concept drift: Relationship between features and labels changes\n    When drift is detected, triggers retraining or alerts.\n    \"\"\"\n    def __init__(",
+        "detail": "modular_trainers",
+        "documentation": {}
+    },
+    {
+        "label": "TrainingLineage",
+        "kind": 6,
+        "importPath": "modular_trainers",
+        "description": "modular_trainers",
+        "peekOfCode": "class TrainingLineage:\n    \"\"\"\n    Track model training history across warm-start sessions.\n    Enables:\n    - Rollback to any ancestor checkpoint\n    - Analysis of model evolution over time\n    - Drift detection based on metric history\n    - Scheduling decisions for retraining\n    \"\"\"\n    checkpoint_id: str = \"\"  # Unique ID for this checkpoint",
         "detail": "modular_trainers",
         "documentation": {}
     },
@@ -8668,7 +9393,7 @@
         "kind": 6,
         "importPath": "modular_trainers",
         "description": "modular_trainers",
-        "peekOfCode": "class TransformerDirectionTrainer(BaseTrainer):\n    \"\"\"\n    Transformer model for direction prediction.\n    Self-attention captures long-range dependencies in price trends,\n    making it better suited for direction prediction than TCN.\n    Input: Directional features (ADX, MACD, SMA crosses, market structure)\n    Output: Binary direction (0=down, 1=up)\n    \"\"\"\n    def __init__(self, config: Optional[TrainerConfig] = None):\n        super().__init__(config)",
+        "peekOfCode": "class TransformerDirectionTrainer(BaseTrainer):\n    \"\"\"\n    Transformer model for direction prediction with advanced continual learning.\n    Self-attention captures long-range dependencies in price trends,\n    making it better suited for direction prediction than TCN.\n    Features (2025):\n    - EMA shadow weights for stable inference\n    - EWC for multi-instrument learning without forgetting\n    - Replay buffer to retain past market patterns\n    - Training lineage tracking",
         "detail": "modular_trainers",
         "documentation": {}
     },
@@ -8718,11 +9443,20 @@
         "documentation": {}
     },
     {
+        "label": "create_ewc_loss",
+        "kind": 2,
+        "importPath": "modular_trainers",
+        "description": "modular_trainers",
+        "peekOfCode": "def create_ewc_loss(base_loss, ewc_penalty_fn, ewc_weight: float = 1.0):\n    \"\"\"\n    Create a custom loss function that includes EWC penalty.\n    This wraps the base loss and adds the EWC constraint to prevent\n    catastrophic forgetting during warm-start training.\n    Args:\n        base_loss: The base loss function (e.g., BinaryCrossentropy)\n        ewc_penalty_fn: Callable that returns the EWC penalty (EWCPenalty.penalty)\n        ewc_weight: Weight for the EWC term (usually 1.0, λ is in EWCPenalty)\n    Returns:",
+        "detail": "modular_trainers",
+        "documentation": {}
+    },
+    {
         "label": "train_all_modular",
         "kind": 2,
         "importPath": "modular_trainers",
         "description": "modular_trainers",
-        "peekOfCode": "def train_all_modular(\n    data: Dict[str, Dict[str, np.ndarray]],\n    config: Optional[TrainerConfig] = None,\n    save_dir: str = \"trained_data/models\",\n    use_transformer: bool = True,\n    use_regime: bool = False,\n    warm_start: bool = False,\n    train_histgb: bool = False,\n) -> Dict[str, BaseTrainer]:\n    \"\"\"",
+        "peekOfCode": "def train_all_modular(\n    data: Dict[str, Dict[str, np.ndarray]],\n    config: Optional[TrainerConfig] = None,\n    save_dir: str = \"trained_data/models\",\n    use_transformer: bool = True,\n    use_regime: bool = False,\n    warm_start: bool = False,\n    train_histgb: bool = False,\n    instrument: str = \"EUR_USD\",\n    data_range: str = \"\",",
         "detail": "modular_trainers",
         "documentation": {}
     },

@@ -1,0 +1,18 @@
+{
+  "capacity_ratio": 0.1,
+  "mix_ratio": 0.2,
+  "sample_count": 5724,
+  "buffer_size": 572,
+  "saved_at": "2026-01-05T18:30:38.634064",
+  "data_sources": [
+    {
+      "id": "UNKNOWN_20260105_182848_654b965e",
+      "n_samples": 5724,
+      "timestamp": "2026-01-05T18:28:48.730237"
+    },
+    {
+      "id": "UNKNOWN_20260105_183147_8312e8b5",
+      "n_samples": 6296,
+      "timestamp": "2026-01-05T18:31:47.498681"
+    },
+    

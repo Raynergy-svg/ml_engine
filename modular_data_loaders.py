@@ -703,38 +703,108 @@ def load_direction_data(
     if 'returns_1' not in df.columns:
         df = compute_normalized_features(df)
     
-    # NORMALIZED DIRECTIONAL FEATURES - instrument-agnostic
-    normalized_features = get_normalized_feature_names()['direction']
+    # USE ALL AVAILABLE NUMERIC FEATURES (not just hardcoded 24!)
+    # This allows the model to leverage all 186+ features from feature engineering
+    exclude_cols = {'open', 'high', 'low', 'close', 'volume', 'time', 'timestamp', 'date', 
+                    'target', 'label', 'direction', 'y', 'target_direction'}
     
-    # Legacy features as fallback (for backward compatibility with existing feature engineering)
-    legacy_features = [
-        'adx', 'trend_strength',
-        'macd', 'macd_signal', 'macd_hist',
-        'rsi', 'rsi_momentum',
-        'stoch_k', 'stoch_d',
-        'returns', 'momentum_10', 'roc_5', 'roc_10',
-        'volatility_20', 'bb_position_20',
-    ]
+    # Get all numeric columns that aren't excluded
+    all_numeric = df.select_dtypes(include=[np.number]).columns.tolist()
+    features = [col for col in all_numeric if col.lower() not in exclude_cols and col not in exclude_cols]
     
-    # Prefer normalized features, fallback to legacy
-    features = _ensure_features_exist(df, normalized_features)
-    if len(features) < 10:
-        logger.info(f"Only {len(features)} normalized features found, adding legacy features")
-        legacy_available = _ensure_features_exist(df, legacy_features)
-        for f in legacy_available:
-            if f not in features:
-                features.append(f)
+    # Remove any columns that look like targets/labels
+    features = [f for f in features if not any(x in f.lower() for x in ['target', 'label', 'future', 'forward'])]
     
-    # Fallback patterns for flexible matching
-    fallback_patterns = ['return', 'zscore', 'ratio', 'norm', 'pct_rank', 'cross']
-    if len(features) < 5:
-        pattern_features = _find_features_by_pattern(df, fallback_patterns)
-        for f in pattern_features:
-            if f not in features and f not in ['open', 'high', 'low', 'close', 'volume', 'time']:
-                features.append(f)
+    # =========================================================================
+    # SMART FEATURE SELECTION: Keep top ~60 uncorrelated features
+    # =========================================================================
+    # VARIANCE-BASED FEATURE SELECTION (no look-ahead bias)
+    # Select features with high variance and remove redundant ones
+    max_features = 80  # Use more features since we're not overfitting to target
+    correlation_threshold = 0.80  # Remove features correlated > 80%
     
-    if len(features) < 5:
-        raise ValueError(f"Direction model needs at least 5 features, got {len(features)}")
+    if len(features) > max_features:
+        logger.info(f"Selecting top {max_features} uncorrelated features from {len(features)}...")
+        
+        # Build numeric feature matrix
+        feature_matrix = df[features].values.astype(np.float64)
+        
+        # Score features by VARIANCE (normalized) - no target leakage
+        # High variance = potentially informative, avoids near-constant features
+        feature_scores = {}
+        for idx, f in enumerate(features):
+            try:
+                f_values = feature_matrix[:, idx]
+                valid_mask = np.isfinite(f_values)
+                if valid_mask.sum() > 100:
+                    vals = f_values[valid_mask]
+                    # Coefficient of variation (normalized variance)
+                    mean_val = np.abs(np.mean(vals))
+                    std_val = np.std(vals)
+                    if mean_val > 1e-10:
+                        # Use CoV for scale-invariant scoring
+                        feature_scores[f] = std_val / mean_val
+                    else:
+                        # If mean near zero, just use std
+                        feature_scores[f] = std_val
+            except Exception:
+                pass
+        
+        # Priority features that are known to be useful for direction prediction
+        priority_features = [
+            'macd_norm', 'macd_signal_norm', 'macd_hist_momentum',
+            'rsi_norm', 'rsi_momentum', 'stoch_k_norm', 'stoch_d_norm',
+            'adx', 'atr_pct_10', 'atr_pct_20',
+            'sma_ratio_10', 'sma_ratio_20', 'ema_ratio_12', 'ema_ratio_26',
+            'bb_position', 'bb_width_norm',
+            'obv', 'volume_ratio_10', 'volume_sma_20',
+            'returns_1', 'returns_5', 'returns_10', 'returns_20',
+            'volatility_10', 'volatility_20'
+        ]
+        
+        # Start with priority features that exist and have good variance
+        selected = []
+        for pf in priority_features:
+            if pf in feature_scores and len(selected) < max_features // 2:
+                selected.append(pf)
+        
+        # Sort remaining by variance score
+        remaining = [f for f in feature_scores.keys() if f not in selected]
+        sorted_remaining = sorted(remaining, key=lambda x: feature_scores[x], reverse=True)
+        
+        # Rebuild feature matrix with selected + sorted remaining
+        all_candidates = selected + sorted_remaining
+        candidate_indices = [features.index(f) for f in all_candidates if f in features]
+        candidate_matrix = feature_matrix[:, candidate_indices]
+        candidate_features = [all_candidates[i] for i in range(len(all_candidates)) if all_candidates[i] in features]
+        
+        # Remove highly correlated features
+        final_selected = []
+        for i, f in enumerate(candidate_features):
+            if len(final_selected) >= max_features:
+                break
+            
+            # Check correlation with already selected features
+            is_redundant = False
+            f_values = candidate_matrix[:, i]
+            
+            for sel_f in final_selected:
+                sel_idx = candidate_features.index(sel_f)
+                sel_values = candidate_matrix[:, sel_idx]
+                
+                # Calculate correlation
+                valid = np.isfinite(f_values) & np.isfinite(sel_values)
+                if valid.sum() > 100:
+                    corr = np.abs(np.corrcoef(f_values[valid], sel_values[valid])[0, 1])
+                    if np.isfinite(corr) and corr > correlation_threshold:
+                        is_redundant = True
+                        break
+            
+            if not is_redundant:
+                final_selected.append(f)
+        
+        features = final_selected
+        logger.info(f"Selected {len(features)} uncorrelated features (variance-based, no target leakage)")
     
     logger.info(f"Direction features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
     

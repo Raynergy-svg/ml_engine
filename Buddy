@@ -50,7 +50,6 @@ cmd_train() {
             *) shift ;;
         esac
     done
-    echo "Training Buddy..."
     run_py "${SCRIPT_DIR}/main.py" train-buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
@@ -66,7 +65,6 @@ cmd_scan() {
             *) shift ;;
         esac
     done
-    echo "Scanning FX pairs..."
     run_py "${SCRIPT_DIR}/main.py" scan --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
@@ -80,7 +78,6 @@ cmd_analyze() {
             *) shift ;;
         esac
     done
-    echo "Analyzing features..."
     run_py "${SCRIPT_DIR}/main.py" analyze --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
 }
 

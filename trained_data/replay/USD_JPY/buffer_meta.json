@@ -1,0 +1,14 @@
+{
+  "capacity_ratio": 0.1,
+  "mix_ratio": 0.2,
+  "sample_count": 6468,
+  "buffer_size": 646,
+  "saved_at": "2026-01-05T21:55:30.619282",
+  "data_sources": [
+    {
+      "id": "USD_JPY_20260105_215307_36209ce9",
+      "n_samples": 6468,
+      "timestamp": "2026-01-05T21:53:07.929058"
+    }
+  ]
+}

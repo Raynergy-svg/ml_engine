@@ -13,6 +13,7 @@ from typing import Any, Callable, Protocol
 
 import numpy as np
 import pandas as pd
+from rich.panel import Panel
 
 
 class _ConsoleLike(Protocol):
@@ -67,13 +68,15 @@ def _load_csv_dataframe(
     console: _ConsoleLike,
 ) -> pd.DataFrame:
     t_csv = time.perf_counter()
-    console.print(f"Loading training CSV: {csv_path}")
     df = pd.read_csv(csv_path)
-    console.print(
-        "Loaded CSV: "
-        f"rows={int(len(df))} cols={int(df.shape[1])} "
-        f"in {time.perf_counter() - t_csv:.2f}s"
-    )
+    elapsed = time.perf_counter() - t_csv
+    console.print(Panel(
+        f"[bold]Loading Training Data[/bold]\n\n"
+        f"[dim]Source:[/dim] {csv_path}\n"
+        f"[dim]Rows:[/dim] {int(len(df)):,}  [dim]Columns:[/dim] {int(df.shape[1])}  [dim]Time:[/dim] {elapsed:.2f}s",
+        title="📄 CSV Data",
+        border_style="blue",
+    ))
     return df
 
 
