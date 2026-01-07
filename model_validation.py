@@ -544,6 +544,30 @@ def run_full_validation(
     
     import tensorflow as tf
     
+    # Custom loss functions that may have been used during training
+    def focal_loss(gamma=2.0, alpha=0.5):
+        def loss_fn(y_true, y_pred):
+            y_pred = tf.clip_by_value(y_pred, 1e-7, 1 - 1e-7)
+            pt = tf.where(tf.equal(y_true, 1), y_pred, 1 - y_pred)
+            alpha_t = tf.where(tf.equal(y_true, 1), alpha, 1 - alpha)
+            return -tf.reduce_mean(alpha_t * tf.pow(1 - pt, gamma) * tf.math.log(pt))
+        return loss_fn
+    
+    def ewc_loss(y_true, y_pred):
+        """Placeholder for EWC loss - actual regularization was applied during training"""
+        return tf.keras.losses.binary_crossentropy(y_true, y_pred)
+    
+    def anti_collapse_loss(y_true, y_pred):
+        """Anti-collapse loss placeholder"""
+        return tf.keras.losses.binary_crossentropy(y_true, y_pred)
+    
+    custom_objects = {
+        'focal_loss': focal_loss,
+        'ewc_loss': ewc_loss,
+        'anti_collapse_loss': anti_collapse_loss,
+        'loss_fn': focal_loss(),
+    }
+    
     # Try to find model
     model_paths = [
         model_path,
@@ -555,9 +579,26 @@ def run_full_validation(
     model = None
     for path in model_paths:
         if path and os.path.exists(path):
-            model = tf.keras.models.load_model(path)
-            console.print(f"  ✅ Loaded model from {path}")
-            break
+            try:
+                # Try loading with custom objects
+                model = tf.keras.models.load_model(path, custom_objects=custom_objects)
+                console.print(f"  ✅ Loaded model from {path}")
+                break
+            except Exception as e:
+                # Try loading without compiling (just architecture + weights)
+                console.print(f"  ⚠️ Standard load failed, trying compile=False...")
+                try:
+                    model = tf.keras.models.load_model(path, compile=False)
+                    # Recompile with standard loss
+                    model.compile(
+                        optimizer=tf.keras.optimizers.legacy.Adam(learning_rate=0.0001),
+                        loss='binary_crossentropy',
+                        metrics=['accuracy']
+                    )
+                    console.print(f"  ✅ Loaded model (recompiled) from {path}")
+                    break
+                except Exception as e2:
+                    console.print(f"  ❌ Failed to load {path}: {e2}")
     
     if model is None:
         console.print("❌ Could not find model. Please provide model_path.")
