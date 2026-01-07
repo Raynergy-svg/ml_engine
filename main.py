@@ -2519,9 +2519,10 @@ def _train_buddy_impl(
             # ============================================================
             console.print()
             console.print(Panel(
-                "[bold]Training Ridge (Confidence Scorer)[/bold]\n\n"
+                "[bold]Training ElasticNet (Confidence Scorer)[/bold]\n\n"
                 "[dim]Features:[/dim] Rolling variance, volume dynamics\n"
-                "[dim]Output:[/dim] Confidence score (0-100)",
+                "[dim]Output:[/dim] Confidence score (0-100)\n"
+                "[dim]CV:[/dim] TimeSeriesSplit (temporal, no leakage)",
                 title="Step 4/4",
                 border_style="cyan",
             ))
@@ -2536,7 +2537,7 @@ def _train_buddy_impl(
             ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
             all_metrics['ridge'] = ridge_metrics
             
-            console.print(f"[green]✓ Ridge complete: confidence_mae={ridge_metrics['confidence_mae']:.2f}, r2={ridge_metrics['r2_score']:.4f}[/green]")
+            console.print(f"[green]✓ ElasticNet complete: MAE={ridge_metrics['confidence_mae']:.2f}, R²={ridge_metrics['r2_score']:.4f}, alpha={ridge_metrics.get('best_alpha', 1.0):.4f}, l1_ratio={ridge_metrics.get('best_l1_ratio', 0.5):.2f}, sparse={ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}[/green]")
             
             # ============================================================
             # TRAIN HISTGB (Optional - for hybrid voting with Transformer)
@@ -2683,6 +2684,9 @@ def _train_buddy_impl(
             perf_table.add_row("", "Streak MAE", f"{rf_metrics['streak_prob_mae']:.4f}")
             perf_table.add_row("Ridge", "R² Score", f"{ridge_metrics['r2_score']:.3f}")
             perf_table.add_row("", "Confidence MAE", f"{ridge_metrics['confidence_mae']:.2f}")
+            perf_table.add_row("", "Best Alpha", f"{ridge_metrics.get('best_alpha', 1.0):.4f}")
+            perf_table.add_row("", "L1 Ratio", f"{ridge_metrics.get('best_l1_ratio', 0.5):.2f}")
+            perf_table.add_row("", "Features (sparse)", f"{ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
             
             console.print(Panel(perf_table, border_style="green"))
             console.print()

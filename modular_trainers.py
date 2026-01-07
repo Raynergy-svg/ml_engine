@@ -72,7 +72,13 @@ class TrainerConfig:
     rf_max_depth: int = 10
     rf_min_samples_leaf: int = 10
     
-    # Ridge specific
+    # ElasticNet specific (replaces Ridge for better feature selection)
+    elasticnet_l1_ratios: List[float] = field(default_factory=lambda: [0.1, 0.5, 0.7, 0.9, 0.95, 1.0])
+    elasticnet_alphas: Optional[List[float]] = None  # Auto-generate via logspace if None
+    elasticnet_cv_splits: int = 5  # TimeSeriesSplit folds
+    elasticnet_max_iter: int = 10000
+    
+    # Legacy Ridge alpha (deprecated, use elasticnet_* instead)
     ridge_alpha: float = 1.0
     
     # === CONTINUAL LEARNING SETTINGS (2025) ===
@@ -3699,10 +3705,16 @@ class RandomForestTrainer(BaseTrainer):
 
 class RidgeTrainer(BaseTrainer):
     """
-    Ridge regression model for confidence scoring.
+    ElasticNet regression model for confidence/stability scoring.
     
-    Input: Rolling variance, volume changes
-    Output: Confidence score (0-100)
+    Uses ElasticNetCV with TimeSeriesSplit for automatic alpha + L1 ratio tuning.
+    Combines L1 (Lasso) and L2 (Ridge) regularization for:
+    - Automatic feature selection (L1 sparsity)
+    - Handling correlated features (L2 stability)
+    - Temporal-aware cross-validation (no data leakage)
+    
+    Input: Rolling variance, volume changes, technical indicators
+    Output: Confidence/stability score (0-100)
     """
     
     def __init__(self, config: Optional[TrainerConfig] = None):
@@ -3710,6 +3722,9 @@ class RidgeTrainer(BaseTrainer):
         self.scaler = None
         self.feature_names = None
         self.n_features = None
+        self.best_alpha = None
+        self.best_l1_ratio = None
+        self.n_nonzero_coefs = None
     
     def train(
         self,
@@ -3719,11 +3734,12 @@ class RidgeTrainer(BaseTrainer):
         y_val: np.ndarray,
         feature_names: Optional[list] = None,
     ) -> Dict[str, float]:
-        """Train Ridge for confidence scoring."""
-        from sklearn.linear_model import Ridge
+        """Train ElasticNetCV for confidence scoring with TimeSeriesSplit."""
+        from sklearn.linear_model import ElasticNetCV
+        from sklearn.model_selection import TimeSeriesSplit
         from sklearn.preprocessing import StandardScaler
         
-        logger.info("Training Ridge (Confidence)...")
+        logger.info("Training ElasticNet (Confidence) with TimeSeriesSplit CV...")
         
         # Save feature names for inference
         self.feature_names = feature_names
@@ -3734,11 +3750,31 @@ class RidgeTrainer(BaseTrainer):
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_val_scaled = self.scaler.transform(X_val)
         
-        # Train Ridge regressor
-        self.model = Ridge(alpha=self.config.ridge_alpha)
+        # Configure TimeSeriesSplit for temporal CV (prevents leakage)
+        tscv = TimeSeriesSplit(n_splits=self.config.elasticnet_cv_splits)
+        
+        # Auto-generate alphas if not specified
+        alphas = self.config.elasticnet_alphas
+        if alphas is None:
+            alphas = np.logspace(-4, 2, 50).tolist()
+        
+        # Train ElasticNetCV with automatic hyperparameter tuning
+        self.model = ElasticNetCV(
+            l1_ratio=self.config.elasticnet_l1_ratios,
+            alphas=alphas,
+            cv=tscv,
+            max_iter=self.config.elasticnet_max_iter,
+            n_jobs=-1,  # Parallel CV
+            selection='random',  # Faster convergence
+        )
         self.model.fit(X_train_scaled, y_train)
         
         self.is_trained = True
+        
+        # Extract best hyperparameters
+        self.best_alpha = float(self.model.alpha_)
+        self.best_l1_ratio = float(self.model.l1_ratio_)
+        self.n_nonzero_coefs = int(np.sum(self.model.coef_ != 0))
         
         # Calculate metrics
         y_pred = self.model.predict(X_val_scaled)
@@ -3748,9 +3784,18 @@ class RidgeTrainer(BaseTrainer):
         self.metrics = {
             'confidence_mae': mae,
             'r2_score': r2,
+            'best_alpha': self.best_alpha,
+            'best_l1_ratio': self.best_l1_ratio,
+            'n_nonzero_coefs': self.n_nonzero_coefs,
+            'n_total_coefs': self.n_features,
+            'sparsity_ratio': 1.0 - (self.n_nonzero_coefs / self.n_features) if self.n_features > 0 else 0.0,
         }
         
-        logger.info(f"Ridge trained: confidence_mae={mae:.2f}, r2={r2:.4f}")
+        logger.info(
+            f"ElasticNet trained: MAE={mae:.2f}, R²={r2:.4f}, "
+            f"alpha={self.best_alpha:.4f}, l1_ratio={self.best_l1_ratio:.2f}, "
+            f"sparse={self.n_nonzero_coefs}/{self.n_features} features"
+        )
         return self.metrics
     
     def predict(self, X: np.ndarray) -> Dict[str, Any]:
@@ -4105,112 +4150,4 @@ def train_all_modular(
     else:
         # DIRECTION MODE: Binary classification (legacy)
         if use_transformer:
-            logger.info("Training Transformer (Direction Predictor)")
-        else:
-            logger.info("Training TCN (Direction Predictor)")
-        logger.info("="*50)
-        
-        # Get direction data (try 'direction' key first, fallback to 'tcn')
-        dir_data = data.get('direction', data.get('tcn'))
-        if dir_data is None:
-            raise ValueError("No direction data found (tried 'direction' and 'tcn' keys)")
-        
-        if use_transformer:
-            dir_trainer = TransformerDirectionTrainer(config)
-            
-            # Log warm-start status
-            if warm_start and transformer_checkpoint and transformer_checkpoint.exists():
-                logger.info(f"🔥 WARM-START enabled: Loading weights from {transformer_checkpoint}")
-            
-            dir_trainer.train(
-                dir_data['X_train'], dir_data['y_train'],
-                dir_data['X_val'], dir_data['y_val'],
-                feature_names=dir_data.get('feature_names'),
-                w_train=dir_data.get('w_train'),
-                w_val=dir_data.get('w_val'),
-                warm_start_path=str(transformer_checkpoint) if warm_start else None,
-                instrument=instrument,
-                data_range=data_range,
-            )
-            dir_trainer.save(str(save_dir / "transformer_direction.keras"))
-            trainers['direction'] = dir_trainer
-            trainers['transformer'] = dir_trainer  # Alias
-        else:
-            dir_trainer = TCNTrainer(config)
-            dir_trainer.train(
-                dir_data['X_train'], dir_data['y_train'],
-                dir_data['X_val'], dir_data['y_val'],
-                feature_names=dir_data.get('feature_names'),
-            )
-            dir_trainer.save(str(save_dir / "tcn_direction.keras"))
-            trainers['direction'] = dir_trainer
-            trainers['tcn'] = dir_trainer  # Alias
-    
-    # 2. XGBoost
-    logger.info("\n" + "="*50)
-    logger.info("Training XGBoost (Momentum Analyzer)")
-    logger.info("="*50)
-    xgb_data = data['xgboost']
-    xgb_trainer = XGBoostTrainer(config)
-    xgb_trainer.train(
-        xgb_data['X_train'], xgb_data['y_train'],
-        xgb_data['X_val'], xgb_data['y_val'],
-        feature_names=xgb_data.get('feature_names'),
-    )
-    xgb_trainer.save(str(save_dir / "xgb_momentum.pkl"))
-    trainers['xgboost'] = xgb_trainer
-    
-    # 3. Random Forest
-    logger.info("\n" + "="*50)
-    logger.info("Training Random Forest (Risk Assessor)")
-    logger.info("="*50)
-    rf_data = data['rf']
-    rf_trainer = RandomForestTrainer(config)
-    rf_trainer.train(
-        rf_data['X_train'], rf_data['y_train'],
-        rf_data['X_val'], rf_data['y_val'],
-        feature_names=rf_data.get('feature_names'),
-    )
-    rf_trainer.save(str(save_dir / "rf_risk.pkl"))
-    trainers['rf'] = rf_trainer
-    
-    # 4. Ridge
-    logger.info("\n" + "="*50)
-    logger.info("Training Ridge (Confidence Scorer)")
-    logger.info("="*50)
-    ridge_data = data['ridge']
-    ridge_trainer = RidgeTrainer(config)
-    ridge_trainer.train(
-        ridge_data['X_train'], ridge_data['y_train'],
-        ridge_data['X_val'], ridge_data['y_val'],
-        feature_names=ridge_data.get('feature_names'),
-    )
-    ridge_trainer.save(str(save_dir / "ridge_confidence.pkl"))
-    trainers['ridge'] = ridge_trainer
-    
-    # 5. HistGradientBoosting (Optional - for hybrid voting)
-    if train_histgb and not use_regime:
-        logger.info("\n" + "="*50)
-        logger.info("Training HistGradientBoosting (Direction Baseline for Hybrid Voting)")
-        logger.info("="*50)
-        
-        dir_data = data.get('direction', data.get('tcn'))
-        if dir_data is not None:
-            histgb_trainer = HistGradientBoostingDirectionTrainer(config)
-            histgb_trainer.train(
-                dir_data['X_train'], dir_data['y_train'],
-                dir_data['X_val'], dir_data['y_val'],
-                feature_names=dir_data.get('feature_names'),
-            )
-            histgb_trainer.save(str(save_dir / "histgb_direction.pkl"))
-            trainers['histgb'] = histgb_trainer
-            logger.info("✓ HistGB trained for hybrid voting with Transformer")
-        else:
-            logger.warning("No direction data found for HistGB training")
-    
-    logger.info("\n" + "="*50)
-    logger.info("All 4 models trained independently!")
-    logger.info("="*50)
-    
-    return trainers
-
+            l
