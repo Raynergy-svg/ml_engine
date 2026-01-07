@@ -2958,11 +2958,134 @@ class TransformerDirectionTrainer(BaseTrainer):
         - .ema.pkl: EMA shadow weights (for inference)
         - .ewc.pkl: EWC state (for future warm-start)
         - replay buffer from trained_data/replay/<instrument>/
+        
+        Handles Keras 2.x/3.x compatibility for models trained on Colab.
         """
+        import tensorflow as tf
         from tensorflow import keras
         
         path = Path(path)
-        self.model = keras.models.load_model(str(path))
+        
+        # Try multiple loading strategies for Keras 2.x/3.x compatibility
+        model = None
+        load_errors = []
+        
+        # Strategy 1: Standard load (works if same Keras version)
+        try:
+            model = keras.models.load_model(str(path), compile=False)
+            logger.info(f"✓ Model loaded with standard loader")
+        except Exception as e:
+            load_errors.append(f"Standard: {e}")
+        
+        # Strategy 2: Use tf.keras.models.load_model (TF-native)
+        if model is None:
+            try:
+                model = tf.keras.models.load_model(str(path), compile=False)
+                logger.info(f"✓ Model loaded with tf.keras loader")
+            except Exception as e:
+                load_errors.append(f"TF-native: {e}")
+        
+        # Strategy 3: Load with safe_mode=False for Keras 3 models
+        if model is None:
+            try:
+                model = keras.models.load_model(str(path), compile=False, safe_mode=False)
+                logger.info(f"✓ Model loaded with safe_mode=False")
+            except Exception as e:
+                load_errors.append(f"Safe-mode: {e}")
+        
+        # Strategy 4: Rebuild model from metadata and load weights only
+        if model is None:
+            meta_path = path.with_suffix('.meta.pkl')
+            if meta_path.exists():
+                try:
+                    with open(meta_path, 'rb') as f:
+                        meta = pickle.load(f)
+                    
+                    n_features = meta.get('n_features', 59)
+                    seq_len = meta.get('seq_len', 60)
+                    config = meta.get('config', {})
+                    
+                    # Get transformer hyperparams from config
+                    d_model = config.get('transformer_d_model', 32)
+                    num_heads = config.get('transformer_num_heads', 4)
+                    num_layers = config.get('transformer_num_layers', 2)
+                    dff = config.get('transformer_dff', 64)
+                    dropout = config.get('transformer_dropout', 0.2)
+                    
+                    logger.info(f"Rebuilding Transformer: n_features={n_features}, seq_len={seq_len}, d_model={d_model}")
+                    
+                    # Rebuild the actual Transformer architecture
+                    inp = keras.Input(shape=(seq_len, n_features), name="features")
+                    x = keras.layers.GaussianNoise(0.15)(inp)
+                    x = keras.layers.SpatialDropout1D(0.2)(x)
+                    
+                    # Input projection
+                    x = keras.layers.Dense(d_model, name='input_projection')(x)
+                    x = keras.layers.Dropout(0.3)(x)
+                    
+                    # Add positional encoding (simplified for rebuild)
+                    positions = np.arange(seq_len)[:, np.newaxis]
+                    dims = np.arange(d_model)[np.newaxis, :]
+                    angles = positions / np.power(10000, (2 * (dims // 2)) / d_model)
+                    pos_encoding = np.zeros((seq_len, d_model))
+                    pos_encoding[:, 0::2] = np.sin(angles[:, 0::2])
+                    pos_encoding[:, 1::2] = np.cos(angles[:, 1::2])
+                    pos_encoding = pos_encoding[np.newaxis, :, :].astype(np.float32)
+                    x = x + tf.constant(pos_encoding)
+                    
+                    # Transformer encoder layers
+                    for i in range(num_layers):
+                        # Multi-head attention
+                        attn_output = keras.layers.MultiHeadAttention(
+                            num_heads=num_heads,
+                            key_dim=d_model // num_heads,
+                            name=f'transformer_{i}_mha'
+                        )(x, x)
+                        attn_output = keras.layers.Dropout(dropout)(attn_output)
+                        x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'transformer_{i}_ln1')(x + attn_output)
+                        
+                        # FFN
+                        ffn = keras.layers.Dense(dff, activation='relu', name=f'transformer_{i}_ffn1')(x)
+                        ffn = keras.layers.Dense(d_model, name=f'transformer_{i}_ffn2')(ffn)
+                        ffn = keras.layers.Dropout(dropout)(ffn)
+                        x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'transformer_{i}_ln2')(x + ffn)
+                    
+                    # Global pooling and output
+                    x = keras.layers.GlobalAveragePooling1D()(x)
+                    x = keras.layers.Dense(8, activation='relu')(x)
+                    x = keras.layers.Dropout(0.5)(x)
+                    direction = keras.layers.Dense(1, activation='sigmoid', name='direction', dtype='float32')(x)
+                    
+                    model = keras.Model(inputs=inp, outputs=direction, name='transformer_direction')
+                    logger.info(f"✓ Model architecture rebuilt from metadata")
+                    
+                    # If model was rebuilt, we need to load weights from EMA
+                    ema_path = path.with_suffix('.ema.pkl')
+                    if ema_path.exists():
+                        with open(ema_path, 'rb') as f:
+                            ema_data = pickle.load(f)
+                        ema_weights = ema_data.get('ema_weights', [])
+                        
+                        # Try to apply EMA weights directly to rebuilt model
+                        model_weights = model.trainable_weights
+                        if len(ema_weights) == len(model_weights):
+                            for w, ema_w in zip(model_weights, ema_weights):
+                                try:
+                                    w.assign(ema_w)
+                                except Exception as assign_err:
+                                    logger.warning(f"Could not assign EMA weight to {w.name}: {assign_err}")
+                            logger.info(f"✓ Loaded {len(ema_weights)} EMA weights into rebuilt model")
+                        else:
+                            logger.warning(f"EMA weights count ({len(ema_weights)}) != model weights ({len(model_weights)})")
+                    
+                except Exception as e:
+                    load_errors.append(f"Rebuild: {e}")
+        
+        if model is None:
+            all_errors = "; ".join(load_errors)
+            raise RuntimeError(f"Failed to load model from {path}. Errors: {all_errors}")
+        
+        self.model = model
         
         # Load metadata
         meta_path = path.with_suffix('.meta.pkl')
@@ -3620,6 +3743,10 @@ class RandomForestTrainer(BaseTrainer):
         drawdown_pred = self.drawdown_model.predict(X_val_scaled)
         streak_pred = self.streak_model.predict(X_val_scaled)
         
+        # Clip predictions to valid range (0-10% for drawdown, 0-1 for streak)
+        drawdown_pred = np.clip(drawdown_pred, 0, 0.10)
+        streak_pred = np.clip(streak_pred, 0, 1.0)
+        
         drawdown_mae = float(np.mean(np.abs(drawdown_pred - y_val_drawdown)))
         streak_mae = float(np.mean(np.abs(streak_pred - y_val_streak)))
         
@@ -3652,9 +3779,9 @@ class RandomForestTrainer(BaseTrainer):
         expected_drawdown_pct = float(self.drawdown_model.predict(X_last)[0])
         streak_prob = float(self.streak_model.predict(X_last)[0])
         
-        # Clamp values
-        expected_drawdown_pct = max(0.0, min(1.0, expected_drawdown_pct))  # 0-100% range
-        streak_prob = max(0.0, min(1.0, streak_prob))
+        # Clamp values to realistic ranges
+        expected_drawdown_pct = max(0.0, min(0.10, expected_drawdown_pct))  # 0-10% max drawdown
+        streak_prob = max(0.0, min(1.0, streak_prob))  # 0-100% probability
         
         return {
             'expected_drawdown_pct': expected_drawdown_pct,

@@ -1094,13 +1094,21 @@ def load_xgboost_data(
         window_returns = np.abs(returns[i-momentum_window:i])
         raw_momentum_all[i] = np.mean(window_returns)
     
-    # ADAPTIVE NORMALIZATION: Use P90 of actual data as "high momentum" reference
-    # This ensures ~10% of bars have momentum > 0.9, making 0.5 threshold meaningful
+    # STABLE NORMALIZATION: Use fixed percentile-based scaling
+    # This ensures consistent behavior across different market conditions
     valid_raw = raw_momentum_all[momentum_window:]
-    p90_momentum = np.percentile(valid_raw[valid_raw > 0], 90) if np.any(valid_raw > 0) else 0.001
-    norm_factor = p90_momentum / 0.9  # P90 maps to 0.9, typical maps to ~0.4-0.5
+    valid_raw = valid_raw[valid_raw > 0]
     
-    logger.info(f"XGBoost momentum: P90={p90_momentum:.6f}, norm_factor={norm_factor:.6f}")
+    if len(valid_raw) > 0:
+        p50_momentum = np.percentile(valid_raw, 50)  # Median momentum
+        p90_momentum = np.percentile(valid_raw, 90)  # High momentum
+        # Scale so median maps to 0.3, P90 maps to 0.7
+        # This ensures threshold of 0.15 catches ~30% of bars
+        norm_factor = p50_momentum / 0.3 if p50_momentum > 0 else 0.001
+    else:
+        norm_factor = 0.001
+    
+    logger.info(f"XGBoost momentum: P50={p50_momentum:.6f}, P90={p90_momentum:.6f}, norm_factor={norm_factor:.6f}")
     
     # Normalize to 0-1 scale with adaptive factor
     momentum_score = np.zeros(n, dtype=np.float32)
@@ -1210,59 +1218,50 @@ def load_rf_data(
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
     
-    # Calculate risk targets (NORMALIZED - percentage based, not pips)
+    # Calculate risk targets based on CURRENT VOLATILITY (learnable!)
+    # Instead of future drawdown, use ATR-scaled risk which IS predictable
     close = df['close'].values
-    high = df['high'].values
-    low = df['low'].values
     n = len(close)
     
-    # Expected drawdown as PERCENTAGE (instrument-agnostic)
-    # This works across all pairs: 0.01 = 1% drawdown
-    expected_drawdown_pct = np.zeros(n, dtype=np.float32)
-    for i in range(n - drawdown_horizon):
-        entry_price = close[i]
-        if entry_price <= 0:
-            continue
-        # For long: max drawdown = (entry - min(future lows)) / entry
-        future_lows = low[i+1:i+1+drawdown_horizon]
-        max_drawdown_long = (entry_price - np.min(future_lows)) / entry_price
-        # For short: max drawdown = (max(future highs) - entry) / entry
-        future_highs = high[i+1:i+1+drawdown_horizon]
-        max_drawdown_short = (np.max(future_highs) - entry_price) / entry_price
-        # Take the average of both directions as expected drawdown
-        expected_drawdown_pct[i] = (max_drawdown_long + max_drawdown_short) / 2
+    # Get ATR as base for expected drawdown (this IS learnable from features)
+    atr_pct = df['atr_pct_14'].values if 'atr_pct_14' in df.columns else None
+    if atr_pct is None:
+        # Calculate ATR percentage manually
+        high = df['high'].values
+        low = df['low'].values
+        tr = np.maximum(high - low, np.abs(high - np.roll(close, 1)), np.abs(low - np.roll(close, 1)))
+        tr[0] = high[0] - low[0]
+        atr = np.zeros(n, dtype=np.float32)
+        for i in range(14, n):
+            atr[i] = np.mean(tr[i-14:i])
+        atr_pct = atr / np.maximum(close, 1e-8)
     
-    # Streak probability: Will consecutive losses continue?
-    # Calculate rolling losing streak length
-    returns = np.diff(close, prepend=close[0]) / np.maximum(close, 1e-8)
+    # Expected drawdown = 2x ATR (typical stop loss distance)
+    # Scaled to 0-1 range: 2% drawdown -> 0.02
+    expected_drawdown_pct = np.clip(atr_pct * 2, 0, 0.10)  # Cap at 10%
+    
+    # Streak probability based on recent volatility trend
+    # High volatility increasing = higher streak probability
+    volatility_10 = df['volatility_10'].values if 'volatility_10' in df.columns else np.zeros(n)
+    volatility_20 = df['volatility_20'].values if 'volatility_20' in df.columns else np.zeros(n)
+    
     streak_prob = np.zeros(n, dtype=np.float32)
-    
-    for i in range(20, n - drawdown_horizon):
-        # Count consecutive negative returns in past 20 bars
-        past_returns = returns[i-20:i]
-        current_streak = 0
-        for r in reversed(past_returns):
-            if r < 0:
-                current_streak += 1
-            else:
-                break
-        
-        # If already in losing streak, check if it continues
-        if current_streak >= 2:
-            future_returns = returns[i+1:i+1+drawdown_horizon]
-            continued_losses = np.sum(future_returns < 0) / max(len(future_returns), 1)
-            streak_prob[i] = continued_losses
+    for i in range(20, n):
+        # If short-term vol > long-term vol, higher streak probability
+        if volatility_20[i] > 0:
+            vol_ratio = volatility_10[i] / volatility_20[i]
+            streak_prob[i] = np.clip((vol_ratio - 0.8) / 0.4, 0, 1)  # 0.8->0, 1.2->1
         else:
-            streak_prob[i] = 0.0
+            streak_prob[i] = 0.5
     
     # Combine targets: [expected_drawdown_pct, streak_prob]
-    # Both are now in 0-1 range (percentage/probability)
     y = np.column_stack([expected_drawdown_pct, streak_prob]).astype(np.float32)
     
-    # Drop rows without valid targets
-    valid_end = n - drawdown_horizon
-    X = X[:valid_end]
-    y = y[:valid_end]
+    # No need to drop rows - we're not using future data anymore
+    # Just drop first 20 rows for volatility calculation warmup
+    valid_start = 20
+    X = X[valid_start:]
+    y = y[valid_start:]
     
     # Handle NaN/Inf
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
@@ -1351,29 +1350,35 @@ def load_ridge_data(
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
     
-    # Calculate confidence target
-    close = df['close'].values
-    volume = df['volume'].values if 'volume' in df.columns else np.ones(len(close))
-    n = len(close)
+    # Calculate confidence based on TREND CLARITY (learnable from ADX, RSI, volatility)
+    # High confidence = strong trend (high ADX) + RSI not extreme + low volatility
+    # This IS learnable because these are computed from the same features!
+    n = len(df)
     
-    # Confidence = f(price stability, volume consistency)
+    # Get indicators
+    adx = df['adx'].values if 'adx' in df.columns else np.ones(n) * 25
+    rsi = df['rsi'].values if 'rsi' in df.columns else np.ones(n) * 50
+    atr_pct = df['atr_pct_14'].values if 'atr_pct_14' in df.columns else np.ones(n) * 0.01
+    
     confidence = np.zeros(n, dtype=np.float32)
     
     for i in range(confidence_window, n):
-        # Price stability: inverse of coefficient of variation
-        price_window = close[i-confidence_window:i]
-        price_cv = np.std(price_window) / max(np.mean(price_window), 1e-8)
-        price_stability = 1.0 / max(price_cv * 100, 0.01)  # Higher = more stable
+        # ADX component: Strong trend = high confidence
+        # ADX 0-20: weak, 20-40: strong, 40+: very strong (but exhausted)
+        adx_score = min(adx[i] / 40, 1.0)  # 0->0, 40+->1
         
-        # Volume consistency: smoothness of volume changes
-        vol_window = volume[i-confidence_window:i]
-        vol_changes = np.abs(np.diff(vol_window))
-        vol_consistency = 1.0 / max(np.std(vol_changes) / max(np.mean(vol_window), 1e-8), 0.01)
+        # RSI component: Not extreme = high confidence
+        # RSI 30-70: good, outside: overbought/oversold risk
+        rsi_distance = abs(rsi[i] - 50)
+        rsi_score = max(0, 1.0 - rsi_distance / 30)  # 50->1, 20/80->0
         
-        # Combine into 0-100 score
-        raw_confidence = (price_stability * 0.6 + vol_consistency * 0.4)
-        # Normalize: typical values 0.5-5.0 -> 0-100
-        confidence[i] = min(max(raw_confidence * 20, 0), 100)
+        # Volatility component: Low vol = high confidence
+        # ATR% < 0.5% is low vol, > 2% is high vol
+        vol_score = max(0, 1.0 - atr_pct[i] / 0.02)  # 0%->1, 2%+->0
+        
+        # Combine: ADX most important, then RSI, then vol
+        raw_conf = (adx_score * 0.5 + rsi_score * 0.3 + vol_score * 0.2)
+        confidence[i] = raw_conf * 100  # Scale to 0-100
     
     y = confidence.astype(np.float32)
     

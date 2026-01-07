@@ -81,14 +81,28 @@ cmd_analyze() {
     run_py "${SCRIPT_DIR}/main.py" analyze --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
 }
 
+cmd_journal() {
+    local args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -u|--update) args+=(--update); shift ;;
+            -d|--days) args+=(--days "$2"); shift 2 ;;
+            -v|--verbose) args+=(--verbose); shift ;;
+            *) shift ;;
+        esac
+    done
+    run_py "${SCRIPT_DIR}/main.py" journal --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+}
+
 cmd_test() {
     local granularity="H1"  # Default to H1 to match config_improved_H1.yaml
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -c|--candles) args+=(--candles "$2"); shift 2 ;;
-            -i|--instrument) args+=(--instrument "$2"); shift 2 ;;
+            -i|-I|--instrument) args+=(--instrument "$2"); shift 2 ;;
             -g|--granularity) granularity="$2"; shift 2 ;;
+            --dry-run) args+=(--dry-run); shift ;;
             *) shift ;;
         esac
     done
@@ -108,10 +122,11 @@ main() {
         scan) cmd_scan "$@" ;;
         analyze|a) cmd_analyze "$@" ;;
         test) cmd_test "$@" ;;
+        journal|j) cmd_journal "$@" ;;
         status|s) cmd_status ;;
         promote) cmd_promote ;;
         loop|l) cmd_loop ;;
-        help|-h|--help) echo "buddy <predict|train|scan|analyze|test|status|loop>" ;;
+        help|-h|--help) echo "buddy <predict|train|scan|analyze|test|journal|status|loop>" ;;
         *) cmd_predict "${cmd}" "$@" ;;
     esac
 }

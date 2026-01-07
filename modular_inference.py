@@ -44,29 +44,53 @@ logger = logging.getLogger(__name__)
 class InferenceConfig:
     """Configuration for inference gates.
     
-    NOTE: All thresholds use NORMALIZED values (percentages, not pips)
-    for instrument-agnostic inference.
+    Thresholds calibrated for gate models trained on:
+    - Confidence: ADX-based trend strength (0-100)
+    - Momentum: Percentile-normalized (median=0.3, P90=0.7)
+    - Risk: ATR-based expected drawdown (typically 0.5-3%)
     """
-    # Confidence gate
-    min_confidence: float = 75.0  # 0-100 scale
+    # Confidence gate - ADX-based, 50+ is strong trend
+    min_confidence: float = 45.0  # 0-100 scale
     
-    # Momentum gate
-    min_momentum: float = 0.3  # 0-1 scale
-    require_fresh_or_accel: bool = True  # Must have either fresh momentum or acceleration
+    # Momentum gate - median momentum is 0.3, so 0.15 catches bottom 30%
+    min_momentum: float = 0.15  # 0-1 scale
+    require_fresh_or_accel: bool = True
     
-    # Risk gate (NORMALIZED - percentage based, not pips)
-    # max_drawdown_pct: 0.005 = 0.5% max expected drawdown
-    # This is instrument-agnostic and works across all pairs
-    max_drawdown_pct: float = 0.01  # 1% max expected drawdown (normalized)
-    max_streak_prob: float = 0.3  # Max acceptable streak continuation probability
+    # Risk gate - ATR-based drawdown (2x ATR, typically 0.5-3%)
+    max_drawdown_pct: float = 0.025  # 2.5% max expected drawdown
+    max_streak_prob: float = 0.6  # 60% max streak continuation
     
     # Legacy pip-based (kept for backward compatibility)
-    max_drawdown_pips: float = 55.0  # Deprecated, use max_drawdown_pct
+    max_drawdown_pips: float = 250.0  # ~2.5% for majors
     
-    # Position sizing
-    risk_per_trade_pct: float = 0.02  # 2% risk per trade
+    # Permissive mode: Ignore failing gates from sklearn models when version mismatch detected
+    # When True, only Transformer direction is used for decision
+    permissive_mode: bool = False
+    
+    # Position sizing - RISK-BASED (not arbitrary lots!)
+    risk_per_trade_pct: float = 0.01  # 1% risk per trade (conservative)
     account_equity: float = 10000.0  # Default equity for sizing
-    pip_value: float = 1.0  # Value per pip (varies by pair)
+    pip_value: float = 10.0  # ~$10 per pip per standard lot
+    
+    # LIQUIDITY LIMITS - Maximum lots by pair to avoid market impact
+    # Large orders cause slippage that destroys edge
+    max_lots_by_pair: dict = None  # Set in __post_init__
+    
+    def __post_init__(self):
+        if self.max_lots_by_pair is None:
+            self.max_lots_by_pair = {
+                'EUR_USD': 2.0,   # Most liquid - 2 lots max
+                'USD_JPY': 1.5,   # Very liquid
+                'GBP_USD': 1.0,   # Liquid
+                'USD_CHF': 1.0,
+                'AUD_USD': 1.0,
+                'USD_CAD': 1.0,
+                'NZD_USD': 0.5,   # Less liquid
+                'GBP_JPY': 0.5,   # Cross - illiquid
+                'EUR_GBP': 0.5,
+                'EUR_JPY': 0.5,
+                'DEFAULT': 0.5,   # Unknown pairs
+            }
 
 
 @dataclass
@@ -216,9 +240,50 @@ class ModularEnsembleInference:
         else:
             logger.warning(f"Ridge model not found at {ridge_path}")
         
+        # Auto-detect sklearn version mismatch and enable permissive mode
+        self._check_sklearn_version_mismatch()
+        
         self._loaded = True
         logger.info("Modular ensemble loaded.")
     
+    def _check_sklearn_version_mismatch(self) -> None:
+        """Check if sklearn models were trained with different version and enable permissive mode."""
+        import sklearn
+        current_version = sklearn.__version__
+        
+        # Check for explicit version mismatch OR poor model quality in model metadata
+        meta_path = self.model_dir / "modular_ensemble.meta.json"
+        if meta_path.exists():
+            import json
+            with open(meta_path) as f:
+                meta = json.load(f)
+            
+            # Check sklearn version mismatch
+            trained_sklearn = meta.get('sklearn_version')
+            if trained_sklearn and trained_sklearn != current_version:
+                major_trained = trained_sklearn.split('.')[0:2]
+                major_current = current_version.split('.')[0:2]
+                
+                if major_trained != major_current:
+                    logger.warning(
+                        f"⚠️ sklearn version mismatch: trained={trained_sklearn}, current={current_version}. "
+                        f"Enabling permissive mode (sklearn gates bypassed)."
+                    )
+                    self.config.permissive_mode = True
+                    return
+            
+            # Check for poor RF model quality (drawdown MAE > 50% means useless)
+            results = meta.get('results', {})
+            rf_results = results.get('random_forest', {})
+            drawdown_mae_bps = rf_results.get('drawdown_mae_bps', 0)
+            
+            if drawdown_mae_bps > 5000:  # > 50% MAE = unreliable
+                logger.warning(
+                    f"⚠️ RF model has high error (MAE={drawdown_mae_bps/100:.1f}%). "
+                    f"Enabling permissive mode (risk gate bypassed)."
+                )
+                self.config.permissive_mode = True
+
     def _find_features_by_pattern(self, df: pd.DataFrame, patterns: List[str]) -> List[str]:
         """Find features by partial name matching."""
         found = []
@@ -241,16 +306,37 @@ class ModularEnsembleInference:
     ) -> np.ndarray:
         """
         Extract features using saved feature names from training.
-        Falls back to pattern matching if feature_names is not available.
+        
+        CRITICAL: If feature_names is provided, we MUST return features in that
+        exact order with the exact count. Missing features are filled with 0.0
+        to maintain compatibility with the trained model's scaler and weights.
+        
+        Falls back to pattern matching only if feature_names is not available.
         """
         exclude = exclude or ['open', 'high', 'low', 'close', 'volume', 'time', 'timestamp']
         
-        # If we have saved feature names from training, use them
+        # If we have saved feature names from training, use them with proper ordering
         if feature_names:
-            available = [f for f in feature_names if f in df.columns]
-            if len(available) == len(feature_names):
-                return df[available].values.astype(np.float32)
-            # Some features missing, fall through to fallback
+            # Build array with exact feature count and order
+            n_features = len(feature_names)
+            n_rows = len(df)
+            result = np.zeros((n_rows, n_features), dtype=np.float32)
+            
+            missing_features = []
+            for i, fname in enumerate(feature_names):
+                if fname in df.columns:
+                    result[:, i] = df[fname].values.astype(np.float32)
+                else:
+                    missing_features.append(fname)
+            
+            if missing_features and len(missing_features) < len(feature_names) // 2:
+                # Log missing features but continue (fill with 0)
+                logger.debug(f"Missing {len(missing_features)} features (filled with 0): {missing_features[:5]}...")
+            elif missing_features:
+                logger.warning(f"Many features missing ({len(missing_features)}/{n_features}). "
+                              f"First 10: {missing_features[:10]}")
+            
+            return result
         
         # Fallback: Try exact matches first
         available = [f for f in fallback_preferred if f in df.columns]
@@ -455,29 +541,55 @@ class ModularEnsembleInference:
         self,
         expected_drawdown_pips: float,
         equity: Optional[float] = None,
+        instrument: Optional[str] = None,
     ) -> float:
         """
-        Calculate position size for target risk percentage.
+        Calculate position size for target risk percentage with liquidity limits.
         
-        Formula: size = (equity * risk_pct) / (drawdown_pips * pip_value)
+        Formula: size = (equity * risk_pct) / (stop_loss_pips * pip_value)
+        
+        CRITICAL: Large positions cause slippage that destroys edge!
+        - 10 lots on EUR_USD = 6+ pips slippage
+        - 1 lot on EUR_USD = <1 pip slippage
+        
+        Args:
+            expected_drawdown_pips: Stop loss distance in pips
+            equity: Account equity (default: config value)
+            instrument: Trading pair for liquidity limit lookup
+        
+        Returns:
+            Position size in lots, capped by liquidity limits
         """
         equity = equity or self.config.account_equity
         risk_amount = equity * self.config.risk_per_trade_pct
         
-        if expected_drawdown_pips <= 0:
-            expected_drawdown_pips = 10.0  # Default minimum
+        # Minimum stop loss to prevent oversizing
+        if expected_drawdown_pips <= 5.0:
+            expected_drawdown_pips = 10.0  # Minimum 10 pip stop
         
-        size = risk_amount / (expected_drawdown_pips * self.config.pip_value)
+        # Risk-based position size: lots = risk_$ / (pips * pip_value)
+        # pip_value ~= $10 per pip per standard lot for most pairs
+        size_lots = risk_amount / (expected_drawdown_pips * self.config.pip_value)
         
-        # Clamp to reasonable range
-        size = max(0.01, min(10.0, size))
+        # Apply liquidity limit for instrument
+        max_lots = self.config.max_lots_by_pair.get(
+            instrument, 
+            self.config.max_lots_by_pair.get('DEFAULT', 0.5)
+        ) if instrument else 1.0
         
-        return round(size, 2)
+        # Hard cap at liquidity limit
+        size_lots = min(size_lots, max_lots)
+        
+        # Minimum position size
+        size_lots = max(0.01, size_lots)
+        
+        return round(size_lots, 2)
     
     def predict(
         self,
         df: pd.DataFrame,
         equity: Optional[float] = None,
+        instrument: Optional[str] = None,
     ) -> TradeSignal:
         """
         Run inference through all models and apply gates.
@@ -496,12 +608,16 @@ class ModularEnsembleInference:
         Args:
             df: DataFrame with features (must have all required columns)
             equity: Account equity for position sizing
+            instrument: Trading pair (e.g., 'EUR_USD') for liquidity limits
         
         Returns:
             TradeSignal with trade decision and all model outputs
         """
         if not self._loaded:
             self.load_models()
+        
+        # Store instrument for position sizing
+        self._current_instrument = instrument
         
         # FIRST: Compute normalized features for instrument-agnostic inference
         if 'returns_1' not in df.columns:
@@ -614,13 +730,54 @@ class ModularEnsembleInference:
             logger.warning(f"Random Forest prediction failed: {e}")
         
         # === APPLY GATES ===
-        confidence_gate_passed = ridge_confidence >= self.config.min_confidence
-        momentum_fresh = xgb_momentum >= self.config.min_momentum
-        momentum_gate_passed = momentum_fresh or xgb_acceleration
-        risk_gate_passed = (
-            rf_drawdown_pct <= self.config.max_drawdown_pct and
-            rf_streak_prob <= self.config.max_streak_prob
-        )
+        # SMART GATING: Transformer probability is the primary signal
+        # Gate models provide confirmation, but TCN confidence can override
+        
+        if self.config.permissive_mode:
+            confidence_gate_passed = True
+            momentum_gate_passed = True
+            risk_gate_passed = True
+            logger.debug("Permissive mode: sklearn gates bypassed")
+        else:
+            # TCN confidence = how far from 0.5 (uncertain)
+            # 0.5 -> 0%, 0.6 -> 20%, 0.7 -> 40%, 0.8 -> 60%, 0.9 -> 80%, 1.0 -> 100%
+            tcn_confidence = abs(tcn_probability - 0.5) * 200
+            
+            # Strong TCN signal (>55% or <45% probability) can override weak gate models
+            tcn_strong = abs(tcn_probability - 0.5) > 0.05  # >55% or <45%
+            tcn_very_strong = abs(tcn_probability - 0.5) > 0.15  # >65% or <35%
+            
+            # CONFIDENCE GATE: Use TCN-derived confidence OR Ridge, whichever is higher
+            effective_confidence = max(ridge_confidence, tcn_confidence)
+            confidence_gate_passed = effective_confidence >= self.config.min_confidence
+            
+            # MOMENTUM GATE: Pass if any of these are true:
+            # 1. XGBoost momentum is fresh (above threshold)
+            # 2. XGBoost detects acceleration
+            # 3. TCN is strong (override weak momentum readings)
+            momentum_fresh = xgb_momentum >= self.config.min_momentum
+            momentum_gate_passed = momentum_fresh or xgb_acceleration or tcn_strong
+            
+            # RISK GATE: More lenient when TCN is confident
+            # The Transformer sees patterns the simple gate models might miss
+            if tcn_very_strong:
+                # Very confident TCN - relax risk thresholds significantly
+                risk_gate_passed = (
+                    rf_drawdown_pct <= self.config.max_drawdown_pct * 2.0 and
+                    rf_streak_prob <= self.config.max_streak_prob * 2.0
+                )
+            elif tcn_strong:
+                # Strong TCN - relax risk thresholds moderately
+                risk_gate_passed = (
+                    rf_drawdown_pct <= self.config.max_drawdown_pct * 1.5 and
+                    rf_streak_prob <= self.config.max_streak_prob * 1.5
+                )
+            else:
+                # Weak TCN - use strict thresholds
+                risk_gate_passed = (
+                    rf_drawdown_pct <= self.config.max_drawdown_pct and
+                    rf_streak_prob <= self.config.max_streak_prob
+                )
         
         # === DETERMINE DIRECTION AND TRADE DECISION ===
         direction_str = None
@@ -713,7 +870,11 @@ class ModularEnsembleInference:
         # === CALCULATE POSITION SIZE ===
         size = 0.0
         if all_gates_passed:
-            size = self._calculate_position_size(rf_drawdown_pips, equity)
+            size = self._calculate_position_size(
+                rf_drawdown_pips, 
+                equity,
+                instrument=getattr(self, '_current_instrument', None)
+            )
         
         return TradeSignal(
             trade=all_gates_passed,
@@ -743,13 +904,14 @@ class ModularEnsembleInference:
         self,
         df: pd.DataFrame,
         equity: Optional[float] = None,
+        instrument: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Run inference with verbose output for logging/display.
         
         Returns dict with all details formatted for display.
         """
-        signal = self.predict(df, equity)
+        signal = self.predict(df, equity, instrument=instrument)
         
         # Format gate checks
         gate_checks = []

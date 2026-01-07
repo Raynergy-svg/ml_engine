@@ -344,6 +344,7 @@ class OandaPracticeClient:
         units: int,
         stop_loss_price: Optional[float] = None,
         take_profit_price: Optional[float] = None,
+        trailing_stop_distance: Optional[float] = None,
         price_bound: Optional[float] = None,
         client_order_id: Optional[str] = None,
         client_tag: str = "ml_engine_paper",
@@ -371,6 +372,10 @@ class OandaPracticeClient:
             order["stopLossOnFill"] = {"price": _format_price(instrument, float(stop_loss_price))}
         if take_profit_price is not None:
             order["takeProfitOnFill"] = {"price": _format_price(instrument, float(take_profit_price))}
+        if trailing_stop_distance is not None:
+            # OANDA trailing stop uses distance in price units
+            decimals = 3 if str(instrument).endswith("_JPY") else 5
+            order["trailingStopLossOnFill"] = {"distance": f"{float(trailing_stop_distance):.{decimals}f}"}
 
         result = self._request(
             "POST",

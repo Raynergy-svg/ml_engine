@@ -5825,7 +5825,7 @@ def buddy(
     checkpoint_path: str | None = None,
     instrument: str = "USD_JPY",
     granularity: str = "M5",
-    candles: int = 300,
+    candles: int = 500,
     execute: bool = False,  # Live trading must be explicitly enabled
     force_execute: bool = False,
     force_units: int | None = None,
@@ -5834,9 +5834,38 @@ def buddy(
     risk_per_trade_pct: float | None = None,
     all_features: bool = True,
     verbose: bool = False,
+    aggressive_scaling: bool = False,  # Enable $100K→$1M strategy
 ) -> None:
-    """Buddy: run one TF-only inference on fresh OANDA candles; optionally place a trade."""
+    """Buddy: run one TF-only inference on fresh OANDA candles; optionally place a trade.
+    
+    Args:
+        aggressive_scaling: Enable the aggressive $100K→$1M scaling strategy with:
+            - Slippage-adjusted Kelly sizing
+            - Smart order execution (limit orders, split orders)  
+            - Intraday compounding
+            - Circuit breakers (drawdown limits, losing streaks)
+    """
     _configure_predict_output(verbose)
+    
+    # Initialize aggressive scaling engine if enabled
+    scaling_engine = None
+    if aggressive_scaling:
+        try:
+            from aggressive_scaling import AggressiveScalingEngine
+            scaling_engine = AggressiveScalingEngine(
+                starting_capital=equity or 100000.0,
+                win_rate=0.78,
+                avg_win_pips=41.5,
+                avg_loss_pips=24.9,
+                slippage_at_10_lots=6.0,
+            )
+            console.print("\n[bold yellow]⚡ AGGRESSIVE SCALING MODE ACTIVE ⚡[/bold yellow]")
+            console.print(f"[yellow]  Kelly Fraction: {scaling_engine.kelly_calculator.kelly_fraction:.1%}[/yellow]")
+            console.print(f"[yellow]  Current Phase: {scaling_engine.phase}[/yellow]")
+            console.print(f"[yellow]  Phase Kelly Multiplier: {scaling_engine._get_kelly_multiplier():.0%}[/yellow]")
+        except ImportError:
+            console.print("[red]Warning: aggressive_scaling module not found. Using standard sizing.[/red]")
+            scaling_engine = None
 
     import json
     import numpy as np
@@ -5866,6 +5895,22 @@ def buddy(
         console.print("[bold magenta]  MODULAR ENSEMBLE INFERENCE[/bold magenta]")
         console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
         
+        # Check if instrument was in training set
+        import json
+        meta = json.loads(modular_ensemble_meta_path.read_text())
+        trained_pairs = meta.get("selected_pairs", [])
+        if trained_pairs and instrument not in trained_pairs:
+            console.print(f"\n[bold yellow]⚠️  WARNING: {instrument} not in training set[/bold yellow]")
+            console.print(f"[dim]Trained: {', '.join(trained_pairs)}[/dim]")
+            console.print(f"[dim]Model may perform differently on {instrument}[/dim]\n")
+        
+        # Suppress verbose TF/Metal logging
+        import os
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+        import logging as _logging
+        for name in ['modular_trainers', 'modular_inference', 'tensorflow', 'absl']:
+            _logging.getLogger(name).setLevel(_logging.ERROR)
+        
         from modular_inference import ModularEnsembleInference, InferenceConfig
         
         # Load modular ensemble
@@ -5892,7 +5937,7 @@ def buddy(
         df = df.ffill().bfill().fillna(0.0)
         
         # Run modular ensemble inference
-        result = ensemble.predict_verbose(df)
+        result = ensemble.predict_verbose(df, instrument=instrument)
         _lap("modular_inference")
         
         # Display results
@@ -5907,20 +5952,128 @@ def buddy(
         
         # Execute trade if gates pass
         if signal.trade and execute:
-            from fx_paper import OandaPracticeTrader
-            trader = OandaPracticeTrader.from_env()
+            from oanda_practice import OandaPracticeClient
+            trader = OandaPracticeClient.from_env()
             
             units = int(signal.size * 100000)  # Convert lots to units
             if signal.direction == 'short':
                 units = -units
             
-            console.print(f"[bold yellow]Executing: {signal.direction.upper()} {abs(units)} units[/bold yellow]")
+            # Calculate TP, SL, TS based on ATR for accurate risk management
+            current_price = float(df['close'].iloc[-1])
+            atr = float(df['atr'].iloc[-1]) if 'atr' in df.columns else None
             
-            try:
-                order_result = trader.market_order(instrument, units)
-                console.print(f"[green]Order placed: {order_result}[/green]")
-            except Exception as e:
-                console.print(f"[red]Order failed: {e}[/red]")
+            # Get bid/ask spread estimate (use ATR * 0.1 as proxy if not available)
+            spread = atr * 0.05 if atr else current_price * 0.0001
+            
+            if atr and atr > 0:
+                # Risk/Reward: SL = 1.5x ATR, TP = 2.5x ATR (1:1.67 R:R)
+                sl_distance = atr * 1.5
+                tp_distance = atr * 2.5
+                ts_distance = atr * 1.0  # Trailing stop at 1x ATR
+                
+                if signal.direction == 'long':
+                    # LONG: SL below entry, TP above entry
+                    sl_price = current_price - sl_distance
+                    tp_price = current_price + tp_distance
+                else:
+                    # SHORT: SL above entry, TP below entry
+                    sl_price = current_price + sl_distance
+                    tp_price = current_price - tp_distance
+                
+                # Display order details
+                is_jpy = instrument.endswith('_JPY')
+                pip_mult = 100 if is_jpy else 10000
+                sl_pips = sl_distance * pip_mult
+                tp_pips = tp_distance * pip_mult
+                ts_pips = ts_distance * pip_mult
+                
+                console.print(f"[bold yellow]Executing: {signal.direction.upper()} {abs(units):,} units @ {current_price:.5f}[/bold yellow]")
+                console.print(f"  [cyan]TP:[/cyan] {tp_price:.5f} (+{tp_pips:.1f} pips)")
+                console.print(f"  [red]SL:[/red] {sl_price:.5f} (-{sl_pips:.1f} pips)")
+                console.print(f"  [magenta]TS:[/magenta] {ts_distance:.5f} ({ts_pips:.1f} pips trailing)")
+                console.print(f"  [dim]ATR: {atr:.5f} | R:R = 1:{tp_distance/sl_distance:.2f}[/dim]")
+                
+                try:
+                    order_result = trader.create_market_order(
+                        instrument=instrument,
+                        units=units,
+                        stop_loss_price=sl_price,
+                        take_profit_price=tp_price,
+                        trailing_stop_distance=ts_distance,
+                    )
+                    fill_tx = order_result.get('orderFillTransaction', {})
+                    fill_price_str = fill_tx.get('price', 'N/A')
+                    # Try multiple ways to get trade ID
+                    trade_id = fill_tx.get('tradeOpened', {}).get('tradeID')
+                    if not trade_id:
+                        trades_opened = fill_tx.get('tradesOpened', [])
+                        if trades_opened:
+                            trade_id = trades_opened[0].get('tradeID')
+                    if not trade_id:
+                        trade_id = getattr(trader, '_last_trade_id', None)
+                    # Also check orderCreateTransaction for cases where order is pending
+                    if not trade_id:
+                        create_tx = order_result.get('orderCreateTransaction', {})
+                        trade_id = create_tx.get('id')
+                    if not trade_id:
+                        trade_id = 'N/A'
+                    
+                    # Calculate and display slippage
+                    if fill_price_str != 'N/A':
+                        fill_price_actual = float(fill_price_str)
+                        slippage = fill_price_actual - current_price
+                        slippage_pips = slippage * pip_mult
+                        
+                        # Positive slippage is bad for LONG, good for SHORT (and vice versa)
+                        is_favorable = (signal.direction == 'short' and slippage < 0) or (signal.direction == 'long' and slippage > 0)
+                        slip_color = 'green' if abs(slippage_pips) < 1.0 else ('yellow' if abs(slippage_pips) < 3.0 else 'red')
+                        slip_sign = '+' if slippage_pips > 0 else ''
+                        favorable_str = ' (favorable)' if is_favorable else ''
+                        
+                        console.print(f"[green]✓ Filled @ {fill_price_str} (Trade #{trade_id})[/green]")
+                        console.print(f"  [{slip_color}]Slippage: {slip_sign}{slippage_pips:.1f} pips{favorable_str}[/{slip_color}]")
+                    else:
+                        fill_price_actual = current_price  # Use expected price as fallback
+                        slippage_pips = 0.0
+                        console.print(f"[green]✓ Order filled (Trade #{trade_id})[/green]")
+                    
+                    # Log trade to journal (regardless of whether we have fill price)
+                    if trade_id and trade_id != 'N/A':
+                        try:
+                            from trade_journal import TradeJournal
+                            journal = TradeJournal()
+                            journal.log_trade(
+                                trade_id=str(trade_id),
+                                instrument=instrument,
+                                direction=signal.direction,
+                                units=abs(units),
+                                lots=signal.size,
+                                expected_price=current_price,
+                                fill_price=fill_price_actual,
+                                stop_loss=sl_price,
+                                take_profit=tp_price,
+                                trailing_stop=ts_distance,
+                                atr=atr,
+                                tcn_probability=signal.tcn_probability,
+                                ridge_confidence=signal.ridge_confidence,
+                                xgb_momentum=signal.xgb_momentum,
+                                rf_drawdown_pips=signal.rf_drawdown_pips,
+                            )
+                            console.print(f"  [dim]📓 Trade logged to journal[/dim]")
+                        except Exception as je:
+                            console.print(f"  [yellow]Journal error: {je}[/yellow]")
+                except Exception as e:
+                    console.print(f"[red]Order failed: {e}[/red]")
+            else:
+                # Fallback: no ATR available, use simple percentage-based stops
+                console.print(f"[bold yellow]Executing: {signal.direction.upper()} {abs(units):,} units[/bold yellow]")
+                console.print("[yellow]⚠ ATR not available - placing order without TP/SL[/yellow]")
+                try:
+                    order_result = trader.create_market_order(instrument=instrument, units=units)
+                    console.print(f"[green]Order placed: {order_result.get('orderFillTransaction', {}).get('price', 'filled')}[/green]")
+                except Exception as e:
+                    console.print(f"[red]Order failed: {e}[/red]")
         
         elif not signal.trade:
             console.print("[yellow]No trade: gates failed[/yellow]")
@@ -6566,9 +6719,58 @@ def buddy(
         if equity is not None
         else cfg.get("buddy", {}).get("equity", cfg.get("fx", {}).get("equity", 10_000.0))
     )
-    # Tier-2 sizing: fractional Kelly for fixed RR, capped by config.
+    
+    # =========================================================================
+    # AGGRESSIVE SCALING: Use slippage-adjusted Kelly sizing with circuit breakers
+    # =========================================================================
     risk_eff = None
-    if tier2_p_win is not None:
+    use_smart_execution = False
+    
+    if scaling_engine is not None:
+        try:
+            # Check circuit breakers first
+            can_trade, block_reason = scaling_engine.risk_manager.can_trade()
+            if not can_trade:
+                console.print(f"[red]🛑 CIRCUIT BREAKER: {block_reason}[/red]")
+                return
+            
+            # Calculate slippage-adjusted Kelly sizing
+            position_lots = scaling_engine.calculate_position_size(
+                equity=equity_eff,
+                atr_pips=stop_loss_pips,  # Use SL as proxy for volatility
+            )
+            
+            # Convert lots to units
+            units_from_scaling = int(position_lots * 100000)
+            
+            # Apply phase-based Kelly multiplier
+            kelly_mult = scaling_engine._get_kelly_multiplier()
+            
+            # Get adjusted risk percentage
+            kelly_fraction = scaling_engine.kelly_calculator.kelly_fraction
+            slippage_adj = scaling_engine.kelly_calculator.slippage_adjustment
+            risk_eff = kelly_fraction * slippage_adj * kelly_mult
+            
+            # Cap at max risk
+            risk_eff = min(risk_eff, 0.03)  # Never risk more than 3% per trade
+            
+            use_smart_execution = position_lots >= 5.0  # Split orders if >= 5 lots
+            
+            if verbose:
+                console.print(f"[yellow]Aggressive Scaling:[/yellow]")
+                console.print(f"  Kelly Fraction: {kelly_fraction:.1%}")
+                console.print(f"  Slippage Adjustment: {slippage_adj:.1%}")
+                console.print(f"  Phase Multiplier: {kelly_mult:.0%}")
+                console.print(f"  Effective Risk: {risk_eff:.2%}")
+                console.print(f"  Position Size: {position_lots:.2f} lots ({units_from_scaling:,} units)")
+                if use_smart_execution:
+                    console.print(f"  [cyan]Smart Execution: Will split large order[/cyan]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Aggressive scaling error: {e}. Using standard sizing.[/yellow]")
+            risk_eff = None
+    
+    # Fallback: Tier-2 sizing (fractional Kelly for fixed RR, capped by config)
+    if risk_eff is None and tier2_p_win is not None:
         try:
             stop_loss_pips_eff = float(cfg.get("buddy", {}).get("stop_loss_pips", 20.0))
             take_profit_pips_eff = float(cfg.get("buddy", {}).get("take_profit_pips", 60.0))
@@ -6626,16 +6828,88 @@ def buddy(
     if verbose:
         console.print(f"[dim]Order sizing[/dim]: computed_units={units} final_submitted_units={units_final}")
 
-    price_bound = _fx_execution_guard_price_bound(None, client, instrument=instrument, units=units_final)
-    result = client.create_market_order(
-        instrument=instrument,
-        units=units_final,
-        stop_loss_price=float(stop_price),
-        take_profit_price=float(tp_price),
-        price_bound=price_bound,
-        client_tag="buddy_tf",
-    )
-    console.print(f"[green]Order submitted[/green]: {result}")
+    # =========================================================================
+    # AGGRESSIVE SCALING: Smart Order Execution
+    # =========================================================================
+    if scaling_engine is not None and use_smart_execution and abs(units_final) >= 500000:
+        # Split large orders to reduce slippage
+        try:
+            from aggressive_scaling import SmartOrderExecutor
+            executor = SmartOrderExecutor(atr_pips=stop_loss_pips, spread_pips=1.5)
+            
+            split_orders = executor.split_order(
+                total_lots=abs(units_final) / 100000,
+                current_price=last_close,
+                side=side,
+            )
+            
+            console.print(f"[cyan]Smart Execution: Splitting into {len(split_orders)} orders[/cyan]")
+            
+            total_filled = 0
+            for i, order in enumerate(split_orders, 1):
+                order_units = int(order['size'] * 100000)
+                if side == "sell":
+                    order_units = -abs(order_units)
+                
+                price_bound = _fx_execution_guard_price_bound(None, client, instrument=instrument, units=order_units)
+                result = client.create_market_order(
+                    instrument=instrument,
+                    units=order_units,
+                    stop_loss_price=float(stop_price),
+                    take_profit_price=float(tp_price),
+                    price_bound=price_bound,
+                    client_tag="buddy_tf_split",
+                )
+                total_filled += abs(order_units)
+                console.print(f"  [green]Order {i}/{len(split_orders)}[/green]: {order_units:,} units - {result}")
+                
+                if i < len(split_orders):
+                    time.sleep(0.5)  # Brief pause between splits
+            
+            console.print(f"[green]Total filled[/green]: {total_filled:,} units")
+            
+            # Update scaling engine state
+            scaling_engine.record_trade_result(
+                win=True,  # Will be updated when trade closes
+                pips=0,  # Will be updated when trade closes
+                lots=total_filled / 100000,
+            )
+        except Exception as e:
+            console.print(f"[yellow]Smart execution failed: {e}. Using standard order.[/yellow]")
+            price_bound = _fx_execution_guard_price_bound(None, client, instrument=instrument, units=units_final)
+            result = client.create_market_order(
+                instrument=instrument,
+                units=units_final,
+                stop_loss_price=float(stop_price),
+                take_profit_price=float(tp_price),
+                price_bound=price_bound,
+                client_tag="buddy_tf",
+            )
+            console.print(f"[green]Order submitted[/green]: {result}")
+    else:
+        # Standard order execution
+        price_bound = _fx_execution_guard_price_bound(None, client, instrument=instrument, units=units_final)
+        result = client.create_market_order(
+            instrument=instrument,
+            units=units_final,
+            stop_loss_price=float(stop_price),
+            take_profit_price=float(tp_price),
+            price_bound=price_bound,
+            client_tag="buddy_tf",
+        )
+        console.print(f"[green]Order submitted[/green]: {result}")
+        
+        # Update scaling engine state if active
+        if scaling_engine is not None:
+            try:
+                scaling_engine.record_trade_result(
+                    win=True,  # Placeholder - will be updated when trade closes
+                    pips=0,
+                    lots=abs(units_final) / 100000,
+                )
+            except Exception:
+                pass
+    
     # Schedule an auto-close for scalping if requested via CLI/arg `max_hold_minutes`.
     try:
         if max_hold_minutes is not None:
@@ -6652,7 +6926,7 @@ def buddy_loop(
     checkpoint_path: str | None = None,
     instrument: str = "USD_JPY",
     granularity: str = "M5",
-    candles: int = 300,
+    candles: int = 500,
     execute: bool = False,
     force_execute: bool = False,
     force_units: int | None = None,
@@ -7264,6 +7538,9 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
     )
     max_hold_raw = getattr(args, "max_hold_minutes", None)
     max_hold_eff = float(max_hold_raw) if max_hold_raw is not None else None
+    
+    # Check for aggressive scaling mode
+    aggressive_scaling = bool(getattr(args, "aggressive_scaling", False))
 
     if bool(getattr(args, "loop", False)):
         buddy_loop(
@@ -7298,6 +7575,7 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
         risk_per_trade_pct=float(getattr(args, "risk", 0.005)),
         all_features=getattr(args, "all_features", False),
         verbose=args.verbose,
+        aggressive_scaling=aggressive_scaling,
     )
 
 
@@ -7529,11 +7807,13 @@ def buddy_scan(
     """
     Scan multiple FX pairs to find the best trading opportunities.
     
-    Uses technical indicators to rank pairs by:
-    - Trend strength (ADX)
-    - Volatility regime (ATR percentile)
-    - Momentum (RSI, MACD)
-    - Entry quality (MA alignment)
+    Uses MODEL_78_v2 modular ensemble (78.4% accuracy) for predictions:
+    - Transformer direction model for signal
+    - XGBoost momentum for confirmation  
+    - Ridge confidence scoring
+    - RF risk assessment
+    
+    Falls back to technical indicators if model unavailable.
     """
     import json
     import numpy as np
@@ -7541,10 +7821,18 @@ def buddy_scan(
     from rich.table import Table
     
     console.print("\n" + "=" * 70)
-    console.print(f"[bold cyan]📡 MULTI-PAIR SCANNER[/bold cyan]")
+    console.print(f"[bold cyan]📡 MULTI-PAIR SCANNER (MODEL_78_v2)[/bold cyan]")
     console.print("=" * 70)
     
+    # Suppress config loading message
+    import logging as _logging
+    _utils_logger = _logging.getLogger('utils')
+    _utils_prev = _utils_logger.level
+    _utils_logger.setLevel(_logging.WARNING)
+    
     cfg = load_config(config_path)
+    
+    _utils_logger.setLevel(_utils_prev)
     
     # Parse pairs
     from pair_scanner import MAJOR_PAIRS, PairAnalysis
@@ -7558,15 +7846,59 @@ def buddy_scan(
     console.print(f"[dim]Timeframe: {granularity} | Top {top_n} results[/dim]")
     console.print("-" * 70)
     
+    # Suppress verbose logging during model loading
+    import logging as _logging
+    import os
+    import warnings
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TF INFO/WARNING
+    
+    # Suppress version warnings for XGBoost and sklearn
+    warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
+    warnings.filterwarnings('ignore', message='.*InconsistentVersionWarning.*')
+    warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
+    
+    # Suppress all model-related loggers
+    _loggers_to_quiet = ['modular_trainers', 'modular_inference', 'feature_engineering', 
+                         'modular_data_loaders', 'tensorflow', 'absl']
+    _prev_levels = {}
+    for name in _loggers_to_quiet:
+        logger = _logging.getLogger(name)
+        _prev_levels[name] = logger.level
+        logger.setLevel(_logging.ERROR)  # Only show errors
+    
     # Initialize scanner
     from oanda_practice import OandaPracticeClient
     from feature_engineering import FeatureEngineering
     from fx_paper import candles_to_ohlcv_df
     
     client = OandaPracticeClient.from_env()
-    fe = FeatureEngineering()
+    fe = FeatureEngineering(cfg.get("feature_engineering", {}))
     
-    # Scan each pair using technical indicators (no model needed)
+    # Try to load modular ensemble (MODEL_78_v2)
+    modular_ensemble = None
+    modular_ensemble_meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
+    
+    if modular_ensemble_meta_path.exists():
+        try:
+            from modular_inference import ModularEnsembleInference
+            modular_ensemble = ModularEnsembleInference()
+            modular_ensemble.load_models()
+            
+            # Load meta for model info
+            meta = json.loads(modular_ensemble_meta_path.read_text())
+            val_acc = meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0)
+            console.print(f"[bold green]✓ MODEL_78_v2 loaded[/bold green] (val_accuracy: {val_acc:.1%})")
+            console.print(f"[dim]  Trained on: {', '.join(meta.get('selected_pairs', []))}[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]⚠ Could not load modular ensemble: {e}[/yellow]")
+            console.print("[dim]Falling back to technical indicators[/dim]")
+            modular_ensemble = None
+    else:
+        console.print("[dim]No modular ensemble found, using technical indicators[/dim]")
+    
+    console.print("-" * 70)
+    
+    # Scan each pair
     analyses = []
     
     for pair in pair_list:
@@ -7584,6 +7916,10 @@ def buddy_scan(
             
             # Feature engineering
             df = fe.create_features(df_raw.copy(), include_all=True)
+            
+            # Clean up data
+            df = df.replace([np.inf, -np.inf], np.nan)
+            df = df.ffill().bfill().fillna(0.0)
             
             # Calculate metrics from technical indicators
             vol_pct = 0.5
@@ -7603,25 +7939,58 @@ def buddy_scan(
                 adx_val = df["adx"].iloc[-1]
                 trend_str = min(float(adx_val) / 60, 1.0)
             
-            # Direction from momentum indicators
+            # === USE MODULAR ENSEMBLE IF AVAILABLE ===
             direction = "LONG"
             confidence = 0.5
+            model_used = False
+            gates_passed = False
+            ridge_conf = 0.0
+            tcn_conf = 0.0
             
-            # Use RSI for direction
-            if "rsi" in df.columns:
-                rsi = df["rsi"].iloc[-1]
-                if rsi < 30:
-                    direction = "LONG"
-                    confidence = 0.5 + (30 - rsi) / 60  # Higher conf for lower RSI
-                elif rsi > 70:
-                    direction = "SHORT"
-                    confidence = 0.5 + (rsi - 70) / 60
-                else:
-                    # Neutral zone - use MACD
-                    if "macd" in df.columns:
-                        macd = df["macd"].iloc[-1]
-                        direction = "LONG" if macd > 0 else "SHORT"
-                        confidence = 0.5 + min(abs(macd) * 10, 0.2)
+            if modular_ensemble is not None:
+                try:
+                    signal = modular_ensemble.predict(df)
+                    
+                    # Use TCN direction even if gates don't pass (for scanning)
+                    if signal.tcn_direction is not None:
+                        direction = "LONG" if signal.tcn_direction == 1 else "SHORT"
+                        # Calculate TCN confidence (distance from 0.5 = uncertainty)
+                        # 0.5 -> 0%, 0.6 -> 20%, 0.7 -> 40%, 0.8 -> 60%, 0.9 -> 80%, 1.0 -> 100%
+                        tcn_conf = abs(signal.tcn_probability - 0.5) * 200  # 0-100 scale to match ridge
+                        # Use the higher of TCN or Ridge confidence
+                        ridge_conf = signal.ridge_confidence
+                        confidence = max(tcn_conf, ridge_conf) / 100  # Convert to 0-1 for internal use
+                        model_used = True
+                        gates_passed = signal.trade
+                    elif signal.direction is not None:
+                        direction = signal.direction.upper()
+                        confidence = signal.confidence if signal.confidence > 0 else 0.5
+                        model_used = True
+                        gates_passed = signal.trade
+                        ridge_conf = signal.ridge_confidence
+                        tcn_conf = confidence * 100
+                        
+                except Exception as e:
+                    if verbose:
+                        console.print(f"[yellow]Model prediction failed: {e}[/yellow]")
+                    model_used = False
+            
+            # === FALLBACK TO TECHNICAL INDICATORS ===
+            if not model_used:
+                # Use RSI for direction
+                if "rsi" in df.columns:
+                    rsi = df["rsi"].iloc[-1]
+                    if rsi < 30:
+                        direction = "LONG"
+                        confidence = 0.5 + (30 - rsi) / 60
+                    elif rsi > 70:
+                        direction = "SHORT"
+                        confidence = 0.5 + (rsi - 70) / 60
+                    else:
+                        if "macd" in df.columns:
+                            macd = df["macd"].iloc[-1]
+                            direction = "LONG" if macd > 0 else "SHORT"
+                            confidence = 0.5 + min(abs(macd) * 10, 0.2)
             
             # Entry score based on MA alignment and RSI
             if "rsi" in df.columns:
@@ -7638,9 +8007,9 @@ def buddy_scan(
                 if (close > sma_20 > sma_50) or (close < sma_20 < sma_50):
                     entry_score += 0.15
                     if direction == "LONG" and close > sma_20:
-                        confidence += 0.1
+                        confidence += 0.05
                     elif direction == "SHORT" and close < sma_20:
-                        confidence += 0.1
+                        confidence += 0.05
             
             # Cap confidence
             confidence = min(confidence, 0.95)
@@ -7656,8 +8025,15 @@ def buddy_scan(
                 atr=atr,
                 timestamp=datetime.now(),
             )
-            analyses.append(analysis)
-            console.print(f"[green]{direction} ({confidence:.0%})[/green]")
+            analyses.append((analysis, gates_passed))  # Include gate status
+            
+            # Show result with model info
+            signal_marker = "🤖" if model_used else "📊"
+            gate_marker = "✅" if gates_passed else "⚠️" if model_used else ""
+            # Display the actual confidence used (max of tcn_conf and ridge_conf)
+            effective_conf = max(tcn_conf, ridge_conf) if model_used else confidence * 100
+            conf_display = f"{effective_conf:.0f}%"
+            console.print(f"{signal_marker} [{('green' if direction == 'LONG' else 'red')}]{direction}[/] (conf: {conf_display}) {gate_marker}")
             
         except Exception as e:
             console.print(f"[red]error: {e}[/red]")
@@ -7667,10 +8043,11 @@ def buddy_scan(
             continue
     
     # Sort and display results
-    analyses.sort(key=lambda x: x.overall_score, reverse=True)
+    analyses.sort(key=lambda x: x[0].overall_score, reverse=True)
     
     console.print("\n" + "=" * 70)
-    console.print(f"[bold green]📊 SCAN RESULTS (Top {min(top_n, len(analyses))})[/bold green]")
+    model_label = "MODEL_78_v2" if modular_ensemble else "Technical"
+    console.print(f"[bold green]📊 SCAN RESULTS ({model_label}) - Top {min(top_n, len(analyses))}[/bold green]")
     console.print("=" * 70)
     
     table = Table(show_header=True, header_style="bold cyan")
@@ -7678,18 +8055,21 @@ def buddy_scan(
     table.add_column("Pair", style="bold")
     table.add_column("Signal", justify="center")
     table.add_column("Confidence", justify="right")
+    table.add_column("Gates", justify="center")
     table.add_column("Trend", justify="right")
     table.add_column("Volatility", justify="right")
     table.add_column("Score", justify="right", style="bold")
     table.add_column("Price", justify="right")
     
-    for i, a in enumerate(analyses[:top_n], 1):
+    for i, (a, gates_ok) in enumerate(analyses[:top_n], 1):
         signal_color = "green" if a.direction == "LONG" else "red"
+        gate_display = "[green]✓[/green]" if gates_ok else "[yellow]⚠[/yellow]"
         table.add_row(
             str(i),
             a.pair.replace("_", "/"),
             f"[{signal_color}]{a.direction}[/{signal_color}]",
             f"{a.confidence:.0%}",
+            gate_display,
             f"{a.trend_strength:.2f}",
             f"{a.volatility_percentile:.0%}",
             f"{a.overall_score:.2f}",
@@ -7700,16 +8080,137 @@ def buddy_scan(
     
     # Best opportunities
     if analyses:
-        best_long = max([a for a in analyses if a.direction == "LONG"], key=lambda x: x.overall_score, default=None)
-        best_short = max([a for a in analyses if a.direction == "SHORT"], key=lambda x: x.overall_score, default=None)
+        analyses_only = [a for a, _ in analyses]
+        best_long = max([a for a in analyses_only if a.direction == "LONG"], key=lambda x: x.overall_score, default=None)
+        best_short = max([a for a in analyses_only if a.direction == "SHORT"], key=lambda x: x.overall_score, default=None)
         
-        console.print("\n[bold]🎯 TOP OPPORTUNITIES:[/bold]")
+        # Count tradeable (gates passed)
+        tradeable_count = sum(1 for _, gates_ok in analyses if gates_ok)
+        
+        console.print(f"\n[bold]🎯 TOP OPPORTUNITIES:[/bold] ({tradeable_count}/{len(analyses)} tradeable)")
         if best_long:
             console.print(f"  [green]Best LONG:[/green]  {best_long.pair.replace('_', '/')} (conf: {best_long.confidence:.0%}, score: {best_long.overall_score:.2f})")
         if best_short:
             console.print(f"  [red]Best SHORT:[/red] {best_short.pair.replace('_', '/')} (conf: {best_short.confidence:.0%}, score: {best_short.overall_score:.2f})")
     
     console.print("\n" + "=" * 70)
+    
+    # Restore logging levels
+    for name, level in _prev_levels.items():
+        _logging.getLogger(name).setLevel(level)
+
+
+def buddy_journal(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    update: bool = False,
+    days: int = 30,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """Display trade journal statistics and recent trades.
+    
+    Args:
+        config_path: Path to config file
+        update: If True, fetch closed trade results from OANDA
+        days: Number of days of history to show
+        verbose: Show detailed trade list
+    """
+    from datetime import datetime
+    from trade_journal import TradeJournal
+    
+    console.print("\n" + "=" * 70)
+    console.print("[bold cyan]📓 TRADE JOURNAL[/bold cyan]")
+    console.print("=" * 70)
+    
+    journal = TradeJournal()
+    
+    # Update from OANDA if requested
+    if update:
+        console.print("\n[dim]Fetching closed trades from OANDA...[/dim]")
+        try:
+            from oanda_practice import OandaPracticeClient
+            client = OandaPracticeClient.from_env()
+            updated_count = journal.update_from_oanda(client)
+            console.print(f"[green]✓ Updated {updated_count} trades from OANDA[/green]")
+        except Exception as e:
+            console.print(f"[red]Failed to update from OANDA: {e}[/red]")
+    
+    # Get statistics
+    stats = journal.get_statistics(days=days)
+    
+    if stats["total_trades"] == 0:
+        console.print("\n[yellow]No trades found in journal.[/yellow]")
+        console.print("[dim]Trades are logged when using 'buddy predict' with --execute[/dim]")
+        console.print("=" * 70)
+        return
+    
+    # Display formatted statistics
+    from trade_journal import format_journal_stats
+    console.print(format_journal_stats(stats))
+    
+    # Show recent trades if verbose
+    if verbose:
+        console.print("\n[bold]📋 RECENT TRADES:[/bold]")
+        recent = journal.get_recent_trades(n=20)
+        
+        if recent:
+            from rich.table import Table
+            table = Table(show_header=True, header_style="bold")
+            table.add_column("Date", style="dim")
+            table.add_column("Pair")
+            table.add_column("Dir", justify="center")
+            table.add_column("Conf", justify="right")
+            table.add_column("Entry", justify="right")
+            table.add_column("Size", justify="right")
+            table.add_column("P/L", justify="right")
+            table.add_column("Status")
+            
+            for trade in recent:
+                direction_style = "green" if trade.direction.upper() == "LONG" else "red"
+                direction_symbol = "⬆" if trade.direction.upper() == "LONG" else "⬇"
+                
+                # P/L formatting
+                if trade.pnl is not None:
+                    pnl_style = "green" if trade.pnl >= 0 else "red"
+                    pnl_str = f"[{pnl_style}]{trade.pnl:+.2f}[/{pnl_style}]"
+                else:
+                    pnl_str = "[dim]--[/dim]"
+                
+                # Status formatting
+                if trade.status in ("win", "loss", "breakeven"):
+                    color = "green" if trade.status == "win" else ("red" if trade.status == "loss" else "yellow")
+                    status_str = f"[{color}]✓ {trade.exit_reason or trade.status}[/{color}]"
+                elif trade.status == "open":
+                    status_str = "[yellow]● open[/yellow]"
+                else:
+                    status_str = f"[dim]{trade.status}[/dim]"
+                
+                # Parse timestamp
+                try:
+                    dt = datetime.fromisoformat(trade.timestamp.replace('Z', '+00:00'))
+                    date_str = dt.strftime("%m/%d %H:%M")
+                except Exception:
+                    date_str = trade.timestamp[:16] if trade.timestamp else "--"
+                
+                table.add_row(
+                    date_str,
+                    trade.instrument.replace("_", "/"),
+                    f"[{direction_style}]{direction_symbol}[/{direction_style}]",
+                    f"{trade.ridge_confidence:.0f}%",
+                    f"{trade.entry_price:.5f}" if trade.entry_price else "--",
+                    f"{trade.units:,.0f}",
+                    pnl_str,
+                    status_str,
+                )
+            
+            console.print(table)
+        else:
+            console.print("[dim]No recent trades[/dim]")
+    
+    console.print("\n" + "=" * 70)
+    console.print("[dim]Use --update to fetch latest results from OANDA[/dim]")
+    console.print("[dim]Use --verbose to see trade list[/dim]")
 
 
 def buddy_analyze(
@@ -7969,6 +8470,18 @@ def _buddy_test_modular_ensemble(
     
     cfg = load_config(config_path)
     
+    # Check if instrument was in training set
+    meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
+    if meta_path.exists():
+        import json
+        meta = json.loads(meta_path.read_text())
+        trained_pairs = meta.get("selected_pairs", [])
+        if trained_pairs and instrument not in trained_pairs:
+            console.print(f"\n[bold red]⚠️  WARNING: {instrument} was NOT in the training set![/bold red]")
+            console.print(f"[yellow]Trained pairs: {', '.join(trained_pairs)}[/yellow]")
+            console.print(f"[yellow]Model may not generalize well to {instrument}.[/yellow]")
+            console.print(f"[cyan]For accurate testing, use: buddy test -I {trained_pairs[0]}[/cyan]\n")
+    
     # Fetch candles
     fetch_count = test_candles + 300  # Buffer for feature engineering NaN rows
     console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
@@ -7999,9 +8512,15 @@ def _buddy_test_modular_ensemble(
     closes = df["close"].values
     pip_size = 0.01 if "JPY" in instrument else 0.0001
     
-    # Get threshold from config (match training)
-    threshold_pct = cfg.get("training", {}).get("transformer", {}).get("direction_threshold", 0.003)
-    lookahead = cfg.get("training", {}).get("transformer", {}).get("direction_lookahead", 24)
+    # Get threshold from MODEL METADATA (not config!) to match how model was trained
+    model_meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
+    model_meta = json.loads(model_meta_path.read_text()) if model_meta_path.exists() else {}
+    model_cfg = model_meta.get("config", {})
+    
+    threshold_pct = model_cfg.get("direction_threshold", 0.0015)  # Default matches training
+    lookahead = model_cfg.get("direction_lookahead", 24)
+    
+    console.print(f"[dim]Using MODEL training settings: threshold={threshold_pct*100:.2f}%, lookahead={lookahead}[/dim]")
     
     # Test window - need extra buffer for lookahead
     test_start = len(df) - test_candles - lookahead - 1
@@ -8807,6 +9326,7 @@ def main() -> None:
             "test",
             "scan",
             "analyze",
+            "journal",
         ],
         help="Command to execute",
     )
@@ -9016,7 +9536,7 @@ def main() -> None:
         "--candles",
         "-n",
         type=int,
-        default=300,
+        default=500,
         help="How many candles to fetch (used by buddy and --oanda-live training)",
     )
     parser.add_argument(
@@ -9043,6 +9563,19 @@ def main() -> None:
         "--save",
         action="store_true",
         help="For analyze: save plots to trained_data/visualizations",
+    )
+    
+    # Journal command arguments
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="For journal: update trade results from OANDA",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="For journal: number of days of history to show (default: 30)",
     )
 
     parser.add_argument(
@@ -9204,6 +9737,11 @@ def main() -> None:
         default=None,
         help="Force approximate margin in USD for the trade (converted to units using 1 unit = $0.05).",
     )
+    parser.add_argument(
+        "--aggressive-scaling",
+        action="store_true",
+        help="Enable $100K→$1M aggressive scaling strategy with slippage-adjusted Kelly sizing, smart order execution, and circuit breakers.",
+    )
 
     # --- Continual Learning / Scheduling flags ---
     parser.add_argument(
@@ -9350,6 +9888,7 @@ def main() -> None:
         "test": buddy_test,
         "scan": buddy_scan,
         "analyze": buddy_analyze,
+        "journal": buddy_journal,
     }
 
     try:
@@ -9383,6 +9922,13 @@ def main() -> None:
                 args.config,
                 top_n=int(getattr(args, "top", 30)),
                 save_plots=bool(getattr(args, "save", False)),
+                verbose=bool(getattr(args, "verbose", False)),
+            )
+        elif args.command == "journal":
+            buddy_journal(
+                args.config,
+                update=bool(getattr(args, "update", False)),
+                days=int(getattr(args, "days", 30)),
                 verbose=bool(getattr(args, "verbose", False)),
             )
         else:

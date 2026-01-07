@@ -337,6 +337,46 @@
         "documentation": {}
     },
     {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -1601,6 +1641,38 @@
         "documentation": {}
     },
     {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Dict",
         "importPath": "typing",
         "description": "typing",
@@ -1746,6 +1818,38 @@
     },
     {
         "label": "Iterator",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
         "importPath": "typing",
         "description": "typing",
         "isExtraImport": true,
@@ -2556,6 +2660,38 @@
         "documentation": {}
     },
     {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
         "label": "logging",
         "kind": 6,
         "isExtraImport": true,
@@ -2593,6 +2729,30 @@
     },
     {
         "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timezone",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
         "importPath": "datetime",
         "description": "datetime",
         "isExtraImport": true,
@@ -2689,6 +2849,54 @@
     },
     {
         "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timezone",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timezone",
         "importPath": "datetime",
         "description": "datetime",
         "isExtraImport": true,
@@ -3393,6 +3601,22 @@
         "documentation": {}
     },
     {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
+        "label": "annotations",
+        "importPath": "__future__",
+        "description": "__future__",
+        "isExtraImport": true,
+        "detail": "__future__",
+        "documentation": {}
+    },
+    {
         "label": "runpy",
         "kind": 6,
         "isExtraImport": true,
@@ -3524,6 +3748,30 @@
     },
     {
         "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "field",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "asdict",
         "importPath": "dataclasses",
         "description": "dataclasses",
         "isExtraImport": true,
@@ -3819,7 +4067,47 @@
         "documentation": {}
     },
     {
+        "label": "field",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "asdict",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
         "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "asdict",
         "importPath": "dataclasses",
         "description": "dataclasses",
         "isExtraImport": true,
@@ -4923,6 +5211,22 @@
         "documentation": {}
     },
     {
+        "label": "Enum",
+        "importPath": "enum",
+        "description": "enum",
+        "isExtraImport": true,
+        "detail": "enum",
+        "documentation": {}
+    },
+    {
+        "label": "Enum",
+        "importPath": "enum",
+        "description": "enum",
+        "isExtraImport": true,
+        "detail": "enum",
+        "documentation": {}
+    },
+    {
         "label": "stats",
         "importPath": "scipy",
         "description": "scipy",
@@ -4936,6 +5240,14 @@
         "description": "scipy",
         "isExtraImport": true,
         "detail": "scipy",
+        "documentation": {}
+    },
+    {
+        "label": "Panel",
+        "importPath": "rich.panel",
+        "description": "rich.panel",
+        "isExtraImport": true,
+        "detail": "rich.panel",
         "documentation": {}
     },
     {
@@ -5415,6 +5727,14 @@
         "documentation": {}
     },
     {
+        "label": "Console",
+        "importPath": "rich.console",
+        "description": "rich.console",
+        "isExtraImport": true,
+        "detail": "rich.console",
+        "documentation": {}
+    },
+    {
         "label": "Live",
         "importPath": "rich.live",
         "description": "rich.live",
@@ -5561,6 +5881,14 @@
         "description": "m1_metal_optimizer",
         "isExtraImport": true,
         "detail": "m1_metal_optimizer",
+        "documentation": {}
+    },
+    {
+        "label": "track",
+        "importPath": "rich.progress",
+        "description": "rich.progress",
+        "isExtraImport": true,
+        "detail": "rich.progress",
         "documentation": {}
     },
     {
@@ -7109,6 +7437,177 @@
         "description": "tests.test_utils_improved",
         "peekOfCode": "class TestGetConfig(unittest.TestCase):\n    \"\"\"Test get_config function\"\"\"\n    def setUp(self):\n        \"\"\"Set up temporary config file\"\"\"\n        self.temp_dir = tempfile.mkdtemp()\n        self.config_path = Path(self.temp_dir) / \"test_config.yaml\"\n        self.user_config = {\n            'model': {\n                'hidden_size': 256\n            },",
         "detail": "tests.test_utils_improved",
+        "documentation": {}
+    },
+    {
+        "label": "ScalingPhase",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class ScalingPhase(Enum):\n    \"\"\"Scaling phases for progressive position sizing.\"\"\"\n    VALIDATION = \"validation\"      # Weeks 1-2: Prove model\n    OPTIMIZATION = \"optimization\"  # Weeks 3-4: Optimize execution\n    SCALING = \"scaling\"            # Month 2+: Full Kelly\n    ACCELERATION = \"acceleration\"  # Month 3+: Multiple pairs/accounts\n@dataclass\nclass TradingStats:\n    \"\"\"Historical trading statistics for Kelly calculation.\"\"\"\n    # Core stats",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "TradingStats",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class TradingStats:\n    \"\"\"Historical trading statistics for Kelly calculation.\"\"\"\n    # Core stats\n    win_rate: float = 0.78              # Validation win rate\n    avg_win_pips: float = 41.5          # Average winning trade\n    avg_loss_pips: float = 24.9         # Average losing trade\n    # Sample size tracking\n    total_trades: int = 6               # 6/6 wins so far\n    winning_trades: int = 6\n    losing_trades: int = 0",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "KellyConfig",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class KellyConfig:\n    \"\"\"Kelly Criterion configuration.\"\"\"\n    # Kelly fraction scaling\n    full_kelly_fraction: float = 1.0    # 1.0 = full Kelly, 0.5 = half Kelly\n    max_kelly_fraction: float = 0.65    # Never exceed 65% even with perfect stats\n    min_kelly_fraction: float = 0.05    # Minimum 5% position\n    # Safety adjustments\n    slippage_adjustment: bool = True    # Adjust for execution costs\n    sample_size_scaling: bool = True    # Scale down until 20+ trades\n    # Phase-based Kelly multipliers",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "ExecutionConfig",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class ExecutionConfig:\n    \"\"\"Smart order execution configuration.\"\"\"\n    # Limit order settings\n    use_limit_orders: bool = True\n    limit_offset_atr_mult: float = 0.3   # Place limit 0.3 ATR away\n    limit_wait_seconds: int = 900        # 15 min wait before market order\n    # Split order settings\n    use_split_orders: bool = True\n    split_threshold_lots: float = 5.0    # Split orders > 5 lots\n    split_count: int = 3                 # Split into 3 orders",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "CompoundingConfig",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class CompoundingConfig:\n    \"\"\"Intraday compounding configuration.\"\"\"\n    enabled: bool = True\n    recalculate_after_each_trade: bool = True\n    compound_frequency: str = \"intraday\"  # intraday, daily, weekly\n    # Reserve settings\n    profit_reserve_pct: float = 0.10     # Keep 10% as drawdown buffer\n    min_compound_amount: float = 1000    # Min $1K before compounding\n@dataclass\nclass DrawdownConfig:",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "DrawdownConfig",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class DrawdownConfig:\n    \"\"\"Drawdown protection configuration.\"\"\"\n    # Daily circuit breakers\n    max_daily_drawdown_pct: float = 0.10  # Stop at -10% daily\n    max_trades_per_day: int = 6\n    # Losing streak protection\n    losing_streak_reduction: Dict[int, float] = field(default_factory=lambda: {\n        1: 0.75,  # 75% after 1 loss\n        2: 0.50,  # 50% after 2 losses\n        3: 0.25,  # 25% after 3+ losses",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "AggressiveScalingConfig",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class AggressiveScalingConfig:\n    \"\"\"Master configuration for aggressive scaling.\"\"\"\n    # Phase configuration\n    current_phase: ScalingPhase = ScalingPhase.VALIDATION\n    phase_start_date: str = \"\"\n    # Sub-configurations\n    stats: TradingStats = field(default_factory=TradingStats)\n    kelly: KellyConfig = field(default_factory=KellyConfig)\n    execution: ExecutionConfig = field(default_factory=ExecutionConfig)\n    compounding: CompoundingConfig = field(default_factory=CompoundingConfig)",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "KellyCalculator",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class KellyCalculator:\n    \"\"\"\n    Optimal position sizing using Kelly Criterion with slippage adjustment.\n    Full Kelly Formula:\n        f* = (p*b - q) / b\n    Where:\n        p = probability of winning (win rate)\n        q = probability of losing (1 - p)\n        b = ratio of win to loss (R:R)\n    Slippage-Adjusted Kelly:",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "OrderPlan",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class OrderPlan:\n    \"\"\"Plan for smart order execution.\"\"\"\n    total_lots: float\n    split_orders: List[Dict[str, Any]]\n    use_limit: bool\n    limit_price: Optional[float]\n    limit_offset: Optional[float]\n    total_expected_slippage_pips: float\n    estimated_savings_usd: float\nclass SmartOrderExecutor:",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "SmartOrderExecutor",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class SmartOrderExecutor:\n    \"\"\"\n    Smart order execution to minimize slippage.\n    Strategies:\n    1. Limit orders with mean reversion entry\n    2. Split large orders into smaller chunks\n    3. Time-based execution to avoid market impact\n    \"\"\"\n    def __init__(self, config: AggressiveScalingConfig):\n        self.config = config",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "IntradayState",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class IntradayState:\n    \"\"\"Track intraday trading state for compounding.\"\"\"\n    date: str\n    starting_equity: float\n    current_equity: float\n    trades_today: int = 0\n    wins_today: int = 0\n    losses_today: int = 0\n    pnl_today: float = 0.0\n    trade_history: List[Dict] = field(default_factory=list)",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "IntradayCompounder",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class IntradayCompounder:\n    \"\"\"\n    Intraday compounding engine.\n    Reinvests profits within the trading day for exponential growth.\n    \"\"\"\n    def __init__(self, config: AggressiveScalingConfig):\n        self.config = config\n        self.state: Optional[IntradayState] = None\n    def start_session(self, starting_equity: float) -> IntradayState:\n        \"\"\"Initialize a new trading session.\"\"\"",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "RiskState",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class RiskState:\n    \"\"\"Track risk state for drawdown protection.\"\"\"\n    losing_streak: int = 0\n    winning_streak: int = 0\n    daily_pnl: float = 0.0\n    daily_trades: int = 0\n    is_paused: bool = False\n    pause_reason: Optional[str] = None\n    position_multiplier: float = 1.0\nclass AggressiveRiskManager:",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "AggressiveRiskManager",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class AggressiveRiskManager:\n    \"\"\"\n    Risk management with drawdown protection and losing streak handling.\n    Features:\n    - Daily loss circuit breaker\n    - Position size reduction after losses\n    - Recovery mode after winning streak\n    \"\"\"\n    def __init__(self, config: AggressiveScalingConfig):\n        self.config = config",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "AggressiveScalingEngine",
+        "kind": 6,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "class AggressiveScalingEngine:\n    \"\"\"\n    Main engine coordinating all aggressive scaling components.\n    Usage:\n        engine = AggressiveScalingEngine()\n        # Get optimal position size\n        position = engine.calculate_position(\n            account_equity=100000,\n            stop_loss_pips=24.9,\n            current_price=1.0850,",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "create_validation_phase_engine",
+        "kind": 2,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "def create_validation_phase_engine() -> AggressiveScalingEngine:\n    \"\"\"Create engine configured for validation phase (weeks 1-2).\"\"\"\n    config = AggressiveScalingConfig(\n        current_phase=ScalingPhase.VALIDATION,\n    )\n    # More conservative settings\n    config.kelly.full_kelly_fraction = 0.25  # Quarter Kelly\n    config.execution.use_limit_orders = True\n    config.execution.use_split_orders = False  # Smaller sizes don't need splits\n    config.drawdown.max_daily_drawdown_pct = 0.05  # 5% max",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "create_scaling_phase_engine",
+        "kind": 2,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "def create_scaling_phase_engine() -> AggressiveScalingEngine:\n    \"\"\"Create engine configured for scaling phase (month 2+).\"\"\"\n    config = AggressiveScalingConfig(\n        current_phase=ScalingPhase.SCALING,\n    )\n    config.kelly.full_kelly_fraction = 0.75  # 3/4 Kelly\n    config.execution.use_limit_orders = True\n    config.execution.use_split_orders = True\n    return AggressiveScalingEngine(config)\ndef create_full_kelly_engine() -> AggressiveScalingEngine:",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "create_full_kelly_engine",
+        "kind": 2,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "def create_full_kelly_engine() -> AggressiveScalingEngine:\n    \"\"\"Create engine configured for full Kelly (month 3+).\"\"\"\n    config = AggressiveScalingConfig(\n        current_phase=ScalingPhase.ACCELERATION,\n    )\n    config.kelly.full_kelly_fraction = 1.0\n    config.execution.use_limit_orders = True\n    config.execution.use_split_orders = True\n    return AggressiveScalingEngine(config)\n# ============================================================================",
+        "detail": "aggressive_scaling",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "aggressive_scaling",
+        "description": "aggressive_scaling",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# ============================================================================\n# Configuration Dataclasses\n# ============================================================================\nclass ScalingPhase(Enum):\n    \"\"\"Scaling phases for progressive position sizing.\"\"\"\n    VALIDATION = \"validation\"      # Weeks 1-2: Prove model\n    OPTIMIZATION = \"optimization\"  # Weeks 3-4: Optimize execution\n    SCALING = \"scaling\"            # Month 2+: Full Kelly\n    ACCELERATION = \"acceleration\"  # Month 3+: Multiple pairs/accounts",
+        "detail": "aggressive_scaling",
         "documentation": {}
     },
     {
@@ -8799,7 +9298,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"USD_JPY\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = False,  # Live trading must be explicitly enabled\n    force_execute: bool = False,\n    force_units: int | None = None,",
+        "peekOfCode": "def buddy(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"USD_JPY\",\n    granularity: str = \"M5\",\n    candles: int = 500,\n    execute: bool = False,  # Live trading must be explicitly enabled\n    force_execute: bool = False,\n    force_units: int | None = None,",
         "detail": "main",
         "documentation": {}
     },
@@ -8808,7 +9307,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def buddy_loop(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"USD_JPY\",\n    granularity: str = \"M5\",\n    candles: int = 300,\n    execute: bool = False,\n    force_execute: bool = False,\n    force_units: int | None = None,",
+        "peekOfCode": "def buddy_loop(\n    config_path: str,\n    *,\n    checkpoint_path: str | None = None,\n    instrument: str = \"USD_JPY\",\n    granularity: str = \"M5\",\n    candles: int = 500,\n    execute: bool = False,\n    force_execute: bool = False,\n    force_units: int | None = None,",
         "detail": "main",
         "documentation": {}
     },
@@ -8818,6 +9317,15 @@
         "importPath": "main",
         "description": "main",
         "peekOfCode": "def buddy_scan(\n    config_path: str = DEFAULT_CONFIG_PATH,\n    *,\n    pairs: Optional[str] = None,\n    granularity: str = \"H1\",\n    top_n: int = 5,\n    verbose: bool = False,\n    **kwargs: Any,\n) -> None:\n    \"\"\"",
+        "detail": "main",
+        "documentation": {}
+    },
+    {
+        "label": "buddy_journal",
+        "kind": 2,
+        "importPath": "main",
+        "description": "main",
+        "peekOfCode": "def buddy_journal(\n    config_path: str = DEFAULT_CONFIG_PATH,\n    *,\n    update: bool = False,\n    days: int = 30,\n    verbose: bool = False,\n    **kwargs: Any,\n) -> None:\n    \"\"\"Display trade journal statistics and recent trades.\n    Args:",
         "detail": "main",
         "documentation": {}
     },
@@ -9438,7 +9946,7 @@
         "kind": 6,
         "importPath": "modular_inference",
         "description": "modular_inference",
-        "peekOfCode": "class InferenceConfig:\n    \"\"\"Configuration for inference gates.\n    NOTE: All thresholds use NORMALIZED values (percentages, not pips)\n    for instrument-agnostic inference.\n    \"\"\"\n    # Confidence gate\n    min_confidence: float = 75.0  # 0-100 scale\n    # Momentum gate\n    min_momentum: float = 0.3  # 0-1 scale\n    require_fresh_or_accel: bool = True  # Must have either fresh momentum or acceleration",
+        "peekOfCode": "class InferenceConfig:\n    \"\"\"Configuration for inference gates.\n    Thresholds calibrated for gate models trained on:\n    - Confidence: ADX-based trend strength (0-100)\n    - Momentum: Percentile-normalized (median=0.3, P90=0.7)\n    - Risk: ATR-based expected drawdown (typically 0.5-3%)\n    \"\"\"\n    # Confidence gate - ADX-based, 50+ is strong trend\n    min_confidence: float = 45.0  # 0-100 scale\n    # Momentum gate - median momentum is 0.3, so 0.15 catches bottom 30%",
         "detail": "modular_inference",
         "documentation": {}
     },
@@ -9474,7 +9982,7 @@
         "kind": 5,
         "importPath": "modular_inference",
         "description": "modular_inference",
-        "peekOfCode": "logger = logging.getLogger(__name__)\n@dataclass\nclass InferenceConfig:\n    \"\"\"Configuration for inference gates.\n    NOTE: All thresholds use NORMALIZED values (percentages, not pips)\n    for instrument-agnostic inference.\n    \"\"\"\n    # Confidence gate\n    min_confidence: float = 75.0  # 0-100 scale\n    # Momentum gate",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n@dataclass\nclass InferenceConfig:\n    \"\"\"Configuration for inference gates.\n    Thresholds calibrated for gate models trained on:\n    - Confidence: ADX-based trend strength (0-100)\n    - Momentum: Percentile-normalized (median=0.3, P90=0.7)\n    - Risk: ATR-based expected drawdown (typically 0.5-3%)\n    \"\"\"\n    # Confidence gate - ADX-based, 50+ is strong trend",
         "detail": "modular_inference",
         "documentation": {}
     },
@@ -10118,6 +10626,24 @@
         "documentation": {}
     },
     {
+        "label": "create_aggressive_position_sizer",
+        "kind": 2,
+        "importPath": "position_sizing",
+        "description": "position_sizing",
+        "peekOfCode": "def create_aggressive_position_sizer() -> DynamicPositionSizer:\n    \"\"\"Create an aggressive position sizer for the $100K → $1M strategy.\n    Uses higher risk per trade and position multipliers based on Kelly Criterion\n    optimization for high win-rate systems (78%+).\n    WARNING: Only use after validating win rate with 20+ trades.\n    \"\"\"\n    config = PositionSizingConfig(\n        risk_per_trade_pct=0.05,  # 5% risk per trade (based on adjusted Kelly)\n        min_confidence_threshold=0.65,  # Higher threshold for aggressive sizing\n        max_position_multiplier=5.0,  # Allow larger position scaling",
+        "detail": "position_sizing",
+        "documentation": {}
+    },
+    {
+        "label": "create_kelly_position_sizer",
+        "kind": 2,
+        "importPath": "position_sizing",
+        "description": "position_sizing",
+        "peekOfCode": "def create_kelly_position_sizer(\n    win_rate: float = 0.78,\n    avg_win_pips: float = 41.5,\n    avg_loss_pips: float = 24.9,\n    slippage_pips: float = 6.0,\n    kelly_fraction: float = 0.5  # Half-Kelly for safety\n) -> DynamicPositionSizer:\n    \"\"\"Create a position sizer based on Kelly Criterion.\n    Calculates optimal position sizing based on actual trading statistics.\n    Args:",
+        "detail": "position_sizing",
+        "documentation": {}
+    },
+    {
         "label": "logger",
         "kind": 5,
         "importPath": "position_sizing",
@@ -10307,6 +10833,24 @@
         "documentation": {}
     },
     {
+        "label": "main",
+        "kind": 2,
+        "importPath": "retrain_gates",
+        "description": "retrain_gates",
+        "peekOfCode": "def main():\n    parser = argparse.ArgumentParser(description=\"Retrain gate models locally\")\n    parser.add_argument(\"--pairs\", type=str, default=\"EUR_USD,GBP_USD,USD_JPY\",\n                       help=\"Comma-separated list of pairs to train on\")\n    parser.add_argument(\"--candles\", type=int, default=5000,\n                       help=\"Number of candles per pair\")\n    parser.add_argument(\"--granularity\", type=str, default=\"H1\",\n                       help=\"Timeframe\")\n    args = parser.parse_args()\n    pairs = [p.strip() for p in args.pairs.split(\",\")]",
+        "detail": "retrain_gates",
+        "documentation": {}
+    },
+    {
+        "label": "console",
+        "kind": 5,
+        "importPath": "retrain_gates",
+        "description": "retrain_gates",
+        "peekOfCode": "console = Console()\ndef main():\n    parser = argparse.ArgumentParser(description=\"Retrain gate models locally\")\n    parser.add_argument(\"--pairs\", type=str, default=\"EUR_USD,GBP_USD,USD_JPY\",\n                       help=\"Comma-separated list of pairs to train on\")\n    parser.add_argument(\"--candles\", type=int, default=5000,\n                       help=\"Number of candles per pair\")\n    parser.add_argument(\"--granularity\", type=str, default=\"H1\",\n                       help=\"Timeframe\")\n    args = parser.parse_args()",
+        "detail": "retrain_gates",
+        "documentation": {}
+    },
+    {
         "label": "RiskManagementConfig",
         "kind": 6,
         "importPath": "risk_management",
@@ -10367,6 +10911,69 @@
         "description": "risk_management",
         "peekOfCode": "logger = logging.getLogger(__name__)\n@dataclass\nclass RiskManagementConfig:\n    \"\"\"Configuration for confidence-based risk management.\"\"\"\n    # Base risk-reward ratios for different confidence levels\n    low_confidence_rr: float = 1.5  # 1:1.5\n    medium_confidence_rr: float = 2.0  # 1:2\n    high_confidence_rr: float = 3.0  # 1:3\n    # Confidence thresholds for risk-reward adjustments\n    low_confidence_threshold: float = 0.5",
         "detail": "risk_management",
+        "documentation": {}
+    },
+    {
+        "label": "ActionStatus",
+        "kind": 6,
+        "importPath": "scaling_action_plan",
+        "description": "scaling_action_plan",
+        "peekOfCode": "class ActionStatus(Enum):\n    NOT_STARTED = \"not_started\"\n    IN_PROGRESS = \"in_progress\"\n    COMPLETED = \"completed\"\n    BLOCKED = \"blocked\"\n@dataclass\nclass ActionItem:\n    \"\"\"Single action item to track.\"\"\"\n    id: str\n    description: str",
+        "detail": "scaling_action_plan",
+        "documentation": {}
+    },
+    {
+        "label": "ActionItem",
+        "kind": 6,
+        "importPath": "scaling_action_plan",
+        "description": "scaling_action_plan",
+        "peekOfCode": "class ActionItem:\n    \"\"\"Single action item to track.\"\"\"\n    id: str\n    description: str\n    week: int\n    category: str\n    status: ActionStatus = ActionStatus.NOT_STARTED\n    target_value: Optional[float] = None\n    current_value: Optional[float] = None\n    notes: str = \"\"",
+        "detail": "scaling_action_plan",
+        "documentation": {}
+    },
+    {
+        "label": "WeeklyStats",
+        "kind": 6,
+        "importPath": "scaling_action_plan",
+        "description": "scaling_action_plan",
+        "peekOfCode": "class WeeklyStats:\n    \"\"\"Weekly performance statistics.\"\"\"\n    week_number: int\n    start_date: str\n    end_date: str\n    starting_equity: float\n    ending_equity: float\n    total_trades: int = 0\n    wins: int = 0\n    losses: int = 0",
+        "detail": "scaling_action_plan",
+        "documentation": {}
+    },
+    {
+        "label": "WeeklyActionTracker",
+        "kind": 6,
+        "importPath": "scaling_action_plan",
+        "description": "scaling_action_plan",
+        "peekOfCode": "class WeeklyActionTracker:\n    \"\"\"\n    Track weekly progress against the $100K → $1M action plan.\n    Usage:\n        tracker = WeeklyActionTracker()\n        # Check current week's actions\n        actions = tracker.get_current_week_actions()\n        # Update an action\n        tracker.update_action(\"w1_reduce_size\", current_value=5)\n        # Complete an action",
+        "detail": "scaling_action_plan",
+        "documentation": {}
+    },
+    {
+        "label": "sync_from_trade_journal",
+        "kind": 2,
+        "importPath": "scaling_action_plan",
+        "description": "scaling_action_plan",
+        "peekOfCode": "def sync_from_trade_journal(tracker: WeeklyActionTracker, journal_path: Optional[Path] = None) -> None:\n    \"\"\"\n    Sync tracker with trade journal data.\n    Args:\n        tracker: Action tracker to update\n        journal_path: Path to trade journal JSON\n    \"\"\"\n    journal_path = journal_path or Path(\"trained_data\") / \"trade_journal.json\"\n    if not journal_path.exists():\n        logger.warning(\"Trade journal not found\")",
+        "detail": "scaling_action_plan",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "scaling_action_plan",
+        "description": "scaling_action_plan",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass ActionStatus(Enum):\n    NOT_STARTED = \"not_started\"\n    IN_PROGRESS = \"in_progress\"\n    COMPLETED = \"completed\"\n    BLOCKED = \"blocked\"\n@dataclass\nclass ActionItem:\n    \"\"\"Single action item to track.\"\"\"\n    id: str",
+        "detail": "scaling_action_plan",
+        "documentation": {}
+    },
+    {
+        "label": "DEFAULT_ACTION_PLAN",
+        "kind": 5,
+        "importPath": "scaling_action_plan",
+        "description": "scaling_action_plan",
+        "peekOfCode": "DEFAULT_ACTION_PLAN = [\n    # Week 1: Validation\n    ActionItem(\"w1_reduce_size\", \"Reduce size to 5 lots\", 1, \"position_sizing\", target_value=5),\n    ActionItem(\"w1_measure_slippage\", \"Measure slippage on each trade\", 1, \"execution\", target_value=20),\n    ActionItem(\"w1_track_execution\", \"Track expected vs actual price\", 1, \"execution\"),\n    ActionItem(\"w1_20_trades\", \"Complete 20 trades to confirm win rate\", 1, \"validation\", target_value=20),\n    ActionItem(\"w1_verify_78pct\", \"Verify 78%+ win rate holds\", 1, \"validation\", target_value=78),\n    # Week 2: Optimization\n    ActionItem(\"w2_limit_orders\", \"Implement limit orders\", 2, \"execution\"),\n    ActionItem(\"w2_slippage_target\", \"Reduce slippage to <2 pips\", 2, \"execution\", target_value=2),",
+        "detail": "scaling_action_plan",
         "documentation": {}
     },
     {
@@ -11186,6 +11793,60 @@
         "description": "tracing_setup",
         "peekOfCode": "_tracing_initialized = False\ndef _env_truthy(value: Optional[str]) -> bool:\n    if value is None:\n        return False\n    return value.strip().lower() in {\"1\", \"true\", \"yes\", \"y\", \"on\"}\ndef tracing_enabled() -> bool:\n    return _env_truthy(os.getenv(\"ML_ENGINE_TRACING\"))\ndef setup_tracing(\n    *,\n    enabled: Optional[bool] = None,",
         "detail": "tracing_setup",
+        "documentation": {}
+    },
+    {
+        "label": "TradeEntry",
+        "kind": 6,
+        "importPath": "trade_journal",
+        "description": "trade_journal",
+        "peekOfCode": "class TradeEntry:\n    \"\"\"Record of a single trade.\"\"\"\n    # Identifiers\n    trade_id: str\n    timestamp: str\n    instrument: str\n    # Entry details\n    direction: str  # 'long' or 'short'\n    entry_price: float\n    expected_price: float",
+        "detail": "trade_journal",
+        "documentation": {}
+    },
+    {
+        "label": "TradeJournal",
+        "kind": 6,
+        "importPath": "trade_journal",
+        "description": "trade_journal",
+        "peekOfCode": "class TradeJournal:\n    \"\"\"Manage trade journal - log, update, and analyze trades.\"\"\"\n    def __init__(self, path: Path = JOURNAL_PATH):\n        self.path = path\n        self.trades: List[TradeEntry] = []\n        self._load()\n    def _load(self):\n        \"\"\"Load existing journal from disk.\"\"\"\n        if self.path.exists():\n            try:",
+        "detail": "trade_journal",
+        "documentation": {}
+    },
+    {
+        "label": "SlippageAnalyzer",
+        "kind": 6,
+        "importPath": "trade_journal",
+        "description": "trade_journal",
+        "peekOfCode": "class SlippageAnalyzer:\n    \"\"\"\n    Analyze slippage to optimize execution for aggressive scaling.\n    Key metrics for $100K → $1M strategy:\n    - Average slippage at different lot sizes\n    - Slippage by time of day\n    - Slippage by instrument\n    - Cost impact on returns\n    \"\"\"\n    def __init__(self, journal: TradeJournal):",
+        "detail": "trade_journal",
+        "documentation": {}
+    },
+    {
+        "label": "format_journal_stats",
+        "kind": 2,
+        "importPath": "trade_journal",
+        "description": "trade_journal",
+        "peekOfCode": "def format_journal_stats(stats: Dict[str, Any]) -> str:\n    \"\"\"Format statistics for display.\"\"\"\n    lines = []\n    lines.append(\"=\" * 60)\n    lines.append(\"📊 TRADE JOURNAL STATISTICS\")\n    lines.append(\"=\" * 60)\n    if stats.get('message'):\n        lines.append(f\"\\n{stats['message']}\")\n        lines.append(f\"Open trades: {stats['open_trades']}\")\n        return \"\\n\".join(lines)",
+        "detail": "trade_journal",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "trade_journal",
+        "description": "trade_journal",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nJOURNAL_PATH = Path(\"trained_data\") / \"trade_journal.json\"\n@dataclass\nclass TradeEntry:\n    \"\"\"Record of a single trade.\"\"\"\n    # Identifiers\n    trade_id: str\n    timestamp: str\n    instrument: str\n    # Entry details",
+        "detail": "trade_journal",
+        "documentation": {}
+    },
+    {
+        "label": "JOURNAL_PATH",
+        "kind": 5,
+        "importPath": "trade_journal",
+        "description": "trade_journal",
+        "peekOfCode": "JOURNAL_PATH = Path(\"trained_data\") / \"trade_journal.json\"\n@dataclass\nclass TradeEntry:\n    \"\"\"Record of a single trade.\"\"\"\n    # Identifiers\n    trade_id: str\n    timestamp: str\n    instrument: str\n    # Entry details\n    direction: str  # 'long' or 'short'",
+        "detail": "trade_journal",
         "documentation": {}
     },
     {
