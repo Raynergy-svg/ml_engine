@@ -1201,6 +1201,38 @@
         "documentation": {}
     },
     {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "List",
         "importPath": "typing",
         "description": "typing",
@@ -2617,6 +2649,22 @@
     },
     {
         "label": "time",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "timedelta",
+        "importPath": "datetime",
+        "description": "datetime",
+        "isExtraImport": true,
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
         "importPath": "datetime",
         "description": "datetime",
         "isExtraImport": true,
@@ -5405,6 +5453,30 @@
         "importPath": "psutil",
         "description": "psutil",
         "detail": "psutil",
+        "documentation": {}
+    },
+    {
+        "label": "RegimeAnalyzer",
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "isExtraImport": true,
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "TransactionCostAnalyzer",
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "isExtraImport": true,
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "LeakageDetector",
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "isExtraImport": true,
+        "detail": "model_validation",
         "documentation": {}
     },
     {
@@ -9071,6 +9143,123 @@
         "description": "ml_head_engine",
         "peekOfCode": "class MLEngineHead(tf.keras.Model):\n    def __init__(\n        self,\n        *,\n        hidden_size: int = 64,\n        num_layers: int = 2,\n        dropout: float = 0.1,\n        projection_dim: Optional[int] = None,\n        name: str = \"ml_head\",\n        **kwargs: Any,",
         "detail": "ml_head_engine",
+        "documentation": {}
+    },
+    {
+        "label": "ValidationConfig",
+        "kind": 6,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "class ValidationConfig:\n    \"\"\"Validation test configuration\"\"\"\n    # Data settings\n    PAIRS = ['EUR_USD', 'GBP_USD', 'USD_JPY']\n    TIMEFRAME = 'H1'\n    MIN_SAMPLES = 1000\n    # Transaction costs (realistic)\n    SPREADS = {\n        'EUR_USD': 0.00010,  # 1.0 pip\n        'GBP_USD': 0.00012,  # 1.2 pips",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "CrossPairValidator",
+        "kind": 6,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "class CrossPairValidator:\n    \"\"\"Test if model generalizes across currency pairs\"\"\"\n    def __init__(self, model, scaler, config: ValidationConfig):\n        self.model = model\n        self.scaler = scaler\n        self.config = config\n        self.results = {}\n    def load_pair_data(self, pair: str) -> Optional[pd.DataFrame]:\n        \"\"\"Load data for a specific pair\"\"\"\n        # Try multiple data sources",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "RegimeAnalyzer",
+        "kind": 6,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "class RegimeAnalyzer:\n    \"\"\"Test model performance across different market regimes\"\"\"\n    def __init__(self, model, scaler, config: ValidationConfig):\n        self.model = model\n        self.scaler = scaler\n        self.config = config\n        self.results = {}\n    def detect_regimes(self, df: pd.DataFrame) -> pd.DataFrame:\n        \"\"\"Classify each period into bull/bear/ranging\"\"\"\n        df = df.copy()",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "TransactionCostAnalyzer",
+        "kind": 6,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "class TransactionCostAnalyzer:\n    \"\"\"Calculate actual profitability after spreads and commissions\"\"\"\n    def __init__(self, config: ValidationConfig):\n        self.config = config\n        self.results = {}\n    def calculate_pnl(self, predictions: np.ndarray, actual_returns: np.ndarray,\n                      pair: str = 'EUR_USD') -> Dict:\n        \"\"\"Calculate P&L with transaction costs\"\"\"\n        spread = self.config.SPREADS.get(pair, 0.0001)\n        commission = self.config.COMMISSION_PER_SIDE * 2  # Round trip",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "LeakageDetector",
+        "kind": 6,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "class LeakageDetector:\n    \"\"\"Check for potential data leakage via feature importance\"\"\"\n    def __init__(self, model, feature_names: List[str]):\n        self.model = model\n        self.feature_names = feature_names\n        self.results = {}\n    def permutation_importance(self, X: np.ndarray, y: np.ndarray, \n                                n_repeats: int = 5) -> Dict:\n        \"\"\"Calculate permutation importance for each feature\"\"\"\n        console.print(Panel(\"[bold cyan]4. Feature Importance & Leakage Detection[/bold cyan]\"))",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "run_full_validation",
+        "kind": 2,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "def run_full_validation(\n    model_path: str = None,\n    scaler_path: str = None,\n    data_path: str = None,\n    pair: str = 'EUR_USD'\n):\n    \"\"\"Run complete validation suite\"\"\"\n    console.print(Panel(\n        \"[bold green]ML Engine Model Validation Suite[/bold green]\\n\"\n        \"Testing 78% accuracy claim with comprehensive validation\",",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "quick_validate",
+        "kind": 2,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "def quick_validate(model, scaler, X_test, y_test, test_df, pair='EUR_USD'):\n    \"\"\"\n    Quick validation after training - paste this in Colab\n    Usage:\n        from model_validation import quick_validate\n        results = quick_validate(transformer_model, scaler, X_test_seq, y_test, test_df)\n    \"\"\"\n    config = ValidationConfig()\n    results = {}\n    console.print(Panel(\"[bold cyan]Quick Validation Suite[/bold cyan]\"))",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "regime_analyzer",
+        "kind": 5,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "regime_analyzer = RegimeAnalyzer(transformer_model, scaler, ValidationConfig())\nregime_results = regime_analyzer.run(test_df, X_test_seq, y_test_seq)\n# 3. Transaction Cost Analysis\ncost_analyzer = TransactionCostAnalyzer(ValidationConfig())\npredictions = transformer_model.predict(X_test_seq)\nactual_returns = test_df['close'].pct_change().values[-len(predictions):]\ncost_results = cost_analyzer.run(predictions, actual_returns, pair='EUR_USD')\n# 4. Feature Importance (takes a while)\n# leakage_detector = LeakageDetector(transformer_model, feature_columns)\n# leakage_results = leakage_detector.permutation_importance(X_test_seq, y_test_seq)",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "regime_results",
+        "kind": 5,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "regime_results = regime_analyzer.run(test_df, X_test_seq, y_test_seq)\n# 3. Transaction Cost Analysis\ncost_analyzer = TransactionCostAnalyzer(ValidationConfig())\npredictions = transformer_model.predict(X_test_seq)\nactual_returns = test_df['close'].pct_change().values[-len(predictions):]\ncost_results = cost_analyzer.run(predictions, actual_returns, pair='EUR_USD')\n# 4. Feature Importance (takes a while)\n# leakage_detector = LeakageDetector(transformer_model, feature_columns)\n# leakage_results = leakage_detector.permutation_importance(X_test_seq, y_test_seq)\n'''",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "cost_analyzer",
+        "kind": 5,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "cost_analyzer = TransactionCostAnalyzer(ValidationConfig())\npredictions = transformer_model.predict(X_test_seq)\nactual_returns = test_df['close'].pct_change().values[-len(predictions):]\ncost_results = cost_analyzer.run(predictions, actual_returns, pair='EUR_USD')\n# 4. Feature Importance (takes a while)\n# leakage_detector = LeakageDetector(transformer_model, feature_columns)\n# leakage_results = leakage_detector.permutation_importance(X_test_seq, y_test_seq)\n'''\n    console.print(code_template)\n    # ========== Summary ==========",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "predictions",
+        "kind": 5,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "predictions = transformer_model.predict(X_test_seq)\nactual_returns = test_df['close'].pct_change().values[-len(predictions):]\ncost_results = cost_analyzer.run(predictions, actual_returns, pair='EUR_USD')\n# 4. Feature Importance (takes a while)\n# leakage_detector = LeakageDetector(transformer_model, feature_columns)\n# leakage_results = leakage_detector.permutation_importance(X_test_seq, y_test_seq)\n'''\n    console.print(code_template)\n    # ========== Summary ==========\n    console.print(Panel(\"[bold green]Validation Complete[/bold green]\"))",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "actual_returns",
+        "kind": 5,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "actual_returns = test_df['close'].pct_change().values[-len(predictions):]\ncost_results = cost_analyzer.run(predictions, actual_returns, pair='EUR_USD')\n# 4. Feature Importance (takes a while)\n# leakage_detector = LeakageDetector(transformer_model, feature_columns)\n# leakage_results = leakage_detector.permutation_importance(X_test_seq, y_test_seq)\n'''\n    console.print(code_template)\n    # ========== Summary ==========\n    console.print(Panel(\"[bold green]Validation Complete[/bold green]\"))\n    return results",
+        "detail": "model_validation",
+        "documentation": {}
+    },
+    {
+        "label": "cost_results",
+        "kind": 5,
+        "importPath": "model_validation",
+        "description": "model_validation",
+        "peekOfCode": "cost_results = cost_analyzer.run(predictions, actual_returns, pair='EUR_USD')\n# 4. Feature Importance (takes a while)\n# leakage_detector = LeakageDetector(transformer_model, feature_columns)\n# leakage_results = leakage_detector.permutation_importance(X_test_seq, y_test_seq)\n'''\n    console.print(code_template)\n    # ========== Summary ==========\n    console.print(Panel(\"[bold green]Validation Complete[/bold green]\"))\n    return results\n# ============================================================",
+        "detail": "model_validation",
         "documentation": {}
     },
     {
