@@ -4150,4 +4150,112 @@ def train_all_modular(
     else:
         # DIRECTION MODE: Binary classification (legacy)
         if use_transformer:
-            l
+            logger.info("Training Transformer (Direction Predictor)")
+        else:
+            logger.info("Training TCN (Direction Predictor)")
+        logger.info("="*50)
+        
+        # Get direction data (try 'direction' key first, fallback to 'tcn')
+        dir_data = data.get('direction', data.get('tcn'))
+        if dir_data is None:
+            raise ValueError("No direction data found (tried 'direction' and 'tcn' keys)")
+        
+        if use_transformer:
+            dir_trainer = TransformerDirectionTrainer(config)
+            
+            # Log warm-start status
+            if warm_start and transformer_checkpoint and transformer_checkpoint.exists():
+                logger.info(f"🔥 WARM-START enabled: Loading weights from {transformer_checkpoint}")
+            
+            dir_trainer.train(
+                dir_data['X_train'], dir_data['y_train'],
+                dir_data['X_val'], dir_data['y_val'],
+                feature_names=dir_data.get('feature_names'),
+                w_train=dir_data.get('w_train'),
+                w_val=dir_data.get('w_val'),
+                warm_start_path=str(transformer_checkpoint) if warm_start else None,
+                instrument=instrument,
+                data_range=data_range,
+            )
+            dir_trainer.save(str(save_dir / "transformer_direction.keras"))
+            trainers['direction'] = dir_trainer
+            trainers['transformer'] = dir_trainer  # Alias
+        else:
+            dir_trainer = TCNTrainer(config)
+            dir_trainer.train(
+                dir_data['X_train'], dir_data['y_train'],
+                dir_data['X_val'], dir_data['y_val'],
+                feature_names=dir_data.get('feature_names'),
+            )
+            dir_trainer.save(str(save_dir / "tcn_direction.keras"))
+            trainers['direction'] = dir_trainer
+            trainers['tcn'] = dir_trainer  # Alias
+    
+    # 2. XGBoost
+    logger.info("\n" + "="*50)
+    logger.info("Training XGBoost (Momentum Analyzer)")
+    logger.info("="*50)
+    xgb_data = data['xgboost']
+    xgb_trainer = XGBoostTrainer(config)
+    xgb_trainer.train(
+        xgb_data['X_train'], xgb_data['y_train'],
+        xgb_data['X_val'], xgb_data['y_val'],
+        feature_names=xgb_data.get('feature_names'),
+    )
+    xgb_trainer.save(str(save_dir / "xgb_momentum.pkl"))
+    trainers['xgboost'] = xgb_trainer
+    
+    # 3. Random Forest
+    logger.info("\n" + "="*50)
+    logger.info("Training Random Forest (Risk Assessor)")
+    logger.info("="*50)
+    rf_data = data['rf']
+    rf_trainer = RandomForestTrainer(config)
+    rf_trainer.train(
+        rf_data['X_train'], rf_data['y_train'],
+        rf_data['X_val'], rf_data['y_val'],
+        feature_names=rf_data.get('feature_names'),
+    )
+    rf_trainer.save(str(save_dir / "rf_risk.pkl"))
+    trainers['rf'] = rf_trainer
+    
+    # 4. Ridge
+    logger.info("\n" + "="*50)
+    logger.info("Training Ridge (Confidence Scorer)")
+    logger.info("="*50)
+    ridge_data = data['ridge']
+    ridge_trainer = RidgeTrainer(config)
+    ridge_trainer.train(
+        ridge_data['X_train'], ridge_data['y_train'],
+        ridge_data['X_val'], ridge_data['y_val'],
+        feature_names=ridge_data.get('feature_names'),
+    )
+    ridge_trainer.save(str(save_dir / "ridge_confidence.pkl"))
+    trainers['ridge'] = ridge_trainer
+    
+    # 5. HistGradientBoosting (Optional - for hybrid voting)
+    if train_histgb and not use_regime:
+        logger.info("\n" + "="*50)
+        logger.info("Training HistGradientBoosting (Direction Baseline for Hybrid Voting)")
+        logger.info("="*50)
+        
+        dir_data = data.get('direction', data.get('tcn'))
+        if dir_data is not None:
+            histgb_trainer = HistGradientBoostingDirectionTrainer(config)
+            histgb_trainer.train(
+                dir_data['X_train'], dir_data['y_train'],
+                dir_data['X_val'], dir_data['y_val'],
+                feature_names=dir_data.get('feature_names'),
+            )
+            histgb_trainer.save(str(save_dir / "histgb_direction.pkl"))
+            trainers['histgb'] = histgb_trainer
+            logger.info("✓ HistGB trained for hybrid voting with Transformer")
+        else:
+            logger.warning("No direction data found for HistGB training")
+    
+    logger.info("\n" + "="*50)
+    logger.info("All 4 models trained independently!")
+    logger.info("="*50)
+    
+    return trainers
+

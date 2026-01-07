@@ -9618,7 +9618,7 @@
         "kind": 6,
         "importPath": "modular_trainers",
         "description": "modular_trainers",
-        "peekOfCode": "class RidgeTrainer(BaseTrainer):\n    \"\"\"\n    Ridge regression model for confidence scoring.\n    Input: Rolling variance, volume changes\n    Output: Confidence score (0-100)\n    \"\"\"\n    def __init__(self, config: Optional[TrainerConfig] = None):\n        super().__init__(config)\n        self.scaler = None\n        self.feature_names = None",
+        "peekOfCode": "class RidgeTrainer(BaseTrainer):\n    \"\"\"\n    ElasticNet regression model for confidence/stability scoring.\n    Uses ElasticNetCV with TimeSeriesSplit for automatic alpha + L1 ratio tuning.\n    Combines L1 (Lasso) and L2 (Ridge) regularization for:\n    - Automatic feature selection (L1 sparsity)\n    - Handling correlated features (L2 stability)\n    - Temporal-aware cross-validation (no data leakage)\n    Input: Rolling variance, volume changes, technical indicators\n    Output: Confidence/stability score (0-100)",
         "detail": "modular_trainers",
         "documentation": {}
     },
