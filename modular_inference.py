@@ -537,6 +537,81 @@ class ModularEnsembleInference:
         feature_names = getattr(self.ridge, 'feature_names', None) if self.ridge else None
         return self._extract_features_by_names(df, feature_names, fallback_preferred, fallback_patterns)
     
+    def _compute_confidence_direct(self, df: pd.DataFrame) -> float:
+        """
+        Compute confidence score directly from indicators (0-100 scale).
+        
+        This bypasses the ElasticNet model and uses the formula directly,
+        which is faster and avoids learning a synthetic target.
+        
+        Formula weights:
+        - ADX (40%): Trend strength - higher = more confident
+        - Volatility (20%): Moderate vol = high confidence
+        - RSI (15%): Not extreme = high confidence
+        - BB Position (10%): Position within Bollinger Bands
+        - Volume (15%): Above average volume = confirmation
+        """
+        import numpy as np
+        
+        # Get the last row of data
+        row = df.iloc[-1]
+        
+        # Extract indicators with safe defaults
+        adx = row.get('adx', 25.0) if 'adx' in df.columns else 25.0
+        rsi = row.get('rsi', 50.0) if 'rsi' in df.columns else 50.0
+        atr_pct = row.get('atr_pct_14', 0.01) if 'atr_pct_14' in df.columns else 0.01
+        bb_pos = row.get('bb_position_20', 0.5) if 'bb_position_20' in df.columns else 0.5
+        volume_ratio = row.get('volume_ratio_20', 1.0) if 'volume_ratio_20' in df.columns else 1.0
+        
+        # Handle NaN values
+        adx = float(adx) if not np.isnan(adx) else 25.0
+        rsi = float(rsi) if not np.isnan(rsi) else 50.0
+        atr_pct = float(atr_pct) if not np.isnan(atr_pct) else 0.01
+        bb_pos = float(bb_pos) if not np.isnan(bb_pos) else 0.5
+        volume_ratio = float(volume_ratio) if not np.isnan(volume_ratio) else 1.0
+        
+        # ADX score (40%) - higher ADX = more confident trend
+        # Use percentile-based scaling: 15-35 is typical range
+        adx_normalized = (adx - 15) / 20  # 15->0, 35->1
+        adx_score = np.clip(adx_normalized * 0.5 + 0.25, 0.0, 1.0)
+        
+        # Volatility score (20%) - moderate vol is ideal
+        if atr_pct < 0.005:  # Too low - no movement
+            vol_score = 0.5
+        elif atr_pct > 0.02:  # Too high - chaotic
+            vol_score = max(0.0, 1.0 - (atr_pct - 0.02) / 0.02)
+        else:  # Sweet spot
+            vol_score = 0.8 + 0.2 * (1.0 - abs(atr_pct - 0.01) / 0.01)
+        vol_score = np.clip(vol_score, 0.0, 1.0)
+        
+        # RSI score (15%) - not extreme = high confidence
+        rsi_distance = abs(rsi - 50)
+        rsi_score = max(0.0, 1.0 - rsi_distance / 30.0)
+        
+        # BB position score (10%) - extremes can be good for reversals
+        if bb_pos < 0.2 or bb_pos > 0.8:  # Near bands
+            bb_score = 0.7
+        else:  # Middle zone
+            bb_score = 0.5 + 0.5 * (1.0 - abs(bb_pos - 0.5) * 2)
+        bb_score = np.clip(bb_score, 0.0, 1.0)
+        
+        # Volume confirmation (15%) - above average = confirmation
+        vol_conf_score = np.clip((volume_ratio - 0.5) / 1.0, 0.0, 1.0)
+        
+        # Combine with weights
+        raw_conf = (
+            adx_score * 0.40 +
+            vol_score * 0.20 +
+            rsi_score * 0.15 +
+            bb_score * 0.10 +
+            vol_conf_score * 0.15
+        )
+        
+        # Map to 15-95 range (never fully 0 or 100)
+        confidence = 15 + raw_conf * 80
+        
+        return float(confidence)
+    
     def _calculate_position_size(
         self,
         expected_drawdown_pips: float,
@@ -703,12 +778,20 @@ class ModularEnsembleInference:
         
         # === GET SUPPORTING MODEL PREDICTIONS ===
         try:
-            if self.ridge is not None:
-                ridge_features = self._extract_ridge_features(df)
-                ridge_pred = self.ridge.predict(ridge_features)
-                ridge_confidence = ridge_pred['confidence']
+            # OPTION A: Use direct formula instead of Ridge model (faster, more reliable)
+            # This computes confidence from indicators directly rather than learning it
+            ridge_confidence = self._compute_confidence_direct(df)
+            logger.debug(f"Direct confidence formula: {ridge_confidence:.1f}")
         except Exception as e:
-            logger.warning(f"Ridge prediction failed: {e}")
+            logger.warning(f"Direct confidence calculation failed: {e}, falling back to Ridge")
+            try:
+                if self.ridge is not None:
+                    ridge_features = self._extract_ridge_features(df)
+                    ridge_pred = self.ridge.predict(ridge_features)
+                    ridge_confidence = ridge_pred['confidence']
+            except Exception as e2:
+                logger.warning(f"Ridge prediction also failed: {e2}")
+                ridge_confidence = 50.0  # Neutral default
         
         try:
             if self.xgb is not None:
