@@ -10,5 +10,14 @@
     ],
     "python.testing.pytestEnabled": false,
     "python.testing.unittestEnabled": true,
-    "DockerRun.DisableDockerrc": true
+    "DockerRun.DisableDockerrc": true,
+    "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+    "mcp": {
+        "servers": {
+            "codebridge": {
+                "type": "http",
+                "url": "http://localhost:9100/mcp"
+            }
+        }
+    }
 }
