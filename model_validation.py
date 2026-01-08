@@ -604,20 +604,52 @@ def run_full_validation(
         console.print("❌ Could not find model. Please provide model_path.")
         return None
     
-    # Load scaler
+    # Load scaler - PRIORITIZE meta.pkl (contains properly fitted scaler)
     scaler = None
-    scaler_paths = [
-        scaler_path,
-        f"{config.MODEL_DIR}/direction_scaler.pkl",
-        "trained_data/models/direction_scaler.pkl",
+    
+    # First, try to load from meta.pkl (the authoritative source)
+    meta_paths = [
+        f"{config.MODEL_DIR}/transformer_direction.meta.pkl",
+        "trained_data/models/transformer_direction.meta.pkl",
+        "/content/ml_engine/trained_data/models/transformer_direction.meta.pkl",
     ]
     
-    for path in scaler_paths:
-        if path and os.path.exists(path):
-            with open(path, 'rb') as f:
-                scaler = pickle.load(f)
-            console.print(f"  ✅ Loaded scaler from {path}")
-            break
+    for meta_path in meta_paths:
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, 'rb') as f:
+                    meta = pickle.load(f)
+                if 'scaler' in meta and meta['scaler'] is not None:
+                    scaler = meta['scaler']
+                    console.print(f"  ✅ Loaded scaler from {meta_path} (meta.pkl)")
+                    # Verify scaler is fitted
+                    if hasattr(scaler, 'mean_') or hasattr(scaler, 'center_'):
+                        console.print(f"     ✅ Scaler is properly fitted")
+                    else:
+                        console.print(f"     ⚠️ Scaler may not be fitted")
+                    break
+            except Exception as e:
+                console.print(f"  ⚠️ Failed to load meta from {meta_path}: {e}")
+    
+    # Fallback to separate scaler files (for backward compatibility)
+    if scaler is None:
+        scaler_paths = [
+            scaler_path,
+            f"{config.MODEL_DIR}/direction_scaler.pkl",
+            "trained_data/models/direction_scaler.pkl",
+        ]
+        
+        for path in scaler_paths:
+            if path and os.path.exists(path):
+                with open(path, 'rb') as f:
+                    scaler = pickle.load(f)
+                console.print(f"  ✅ Loaded scaler from {path} (fallback)")
+                # Warn if scaler is identity transform
+                if hasattr(scaler, 'center_'):
+                    import numpy as np
+                    if np.allclose(scaler.center_, 0) and np.allclose(scaler.scale_, 1):
+                        console.print(f"     ⚠️ WARNING: Scaler is identity transform - may need retraining!")
+                break
     
     # ========== Run Tests ==========
     results = {}
