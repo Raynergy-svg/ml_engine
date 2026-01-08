@@ -1360,25 +1360,60 @@ def load_ridge_data(
     rsi = df['rsi'].values if 'rsi' in df.columns else np.ones(n) * 50
     atr_pct = df['atr_pct_14'].values if 'atr_pct_14' in df.columns else np.ones(n) * 0.01
     
+    # Additional indicators for richer confidence signal
+    bb_pos = df['bb_position_20'].values if 'bb_position_20' in df.columns else np.ones(n) * 0.5
+    volume_ratio = df['volume_ratio_20'].values if 'volume_ratio_20' in df.columns else np.ones(n) * 1.0
+    
+    # Compute ADX percentile thresholds from actual data for better scaling
+    adx_valid = adx[~np.isnan(adx)]
+    adx_p25 = np.percentile(adx_valid, 25) if len(adx_valid) > 0 else 15
+    adx_p75 = np.percentile(adx_valid, 75) if len(adx_valid) > 0 else 30
+    adx_range = max(adx_p75 - adx_p25, 5)  # Avoid division by zero
+    
     confidence = np.zeros(n, dtype=np.float32)
     
     for i in range(confidence_window, n):
-        # ADX component: Strong trend = high confidence
-        # ADX 0-20: weak, 20-40: strong, 40+: very strong (but exhausted)
-        adx_score = min(adx[i] / 40, 1.0)  # 0->0, 40+->1
+        # ===== ADX component: Strong trend = high confidence =====
+        # Use percentile-based scaling for the instrument's actual ADX range
+        # Maps ADX to [0, 1] where p25->0.25, p75->0.75, p90+->1.0
+        adx_normalized = (adx[i] - adx_p25) / adx_range
+        adx_score = np.clip(adx_normalized * 0.5 + 0.25, 0.0, 1.0)
         
-        # RSI component: Not extreme = high confidence
-        # RSI 30-70: good, outside: overbought/oversold risk
+        # ===== RSI component: Not extreme = high confidence =====
+        # RSI 40-60: high confidence (centered), 30-70: medium, outside: low
         rsi_distance = abs(rsi[i] - 50)
-        rsi_score = max(0, 1.0 - rsi_distance / 30)  # 50->1, 20/80->0
+        rsi_score = max(0, 1.0 - rsi_distance / 25)  # 50->1, 25/75->0
         
-        # Volatility component: Low vol = high confidence
-        # ATR% < 0.5% is low vol, > 2% is high vol
-        vol_score = max(0, 1.0 - atr_pct[i] / 0.02)  # 0%->1, 2%+->0
+        # ===== Volatility component: Low vol = high confidence =====
+        # Use instrument-relative scaling (ATR% typically 0.3%-1.5% for FX)
+        vol_score = np.clip(1.0 - atr_pct[i] / 0.015, 0.0, 1.0)
         
-        # Combine: ADX most important, then RSI, then vol
-        raw_conf = (adx_score * 0.5 + rsi_score * 0.3 + vol_score * 0.2)
-        confidence[i] = raw_conf * 100  # Scale to 0-100
+        # ===== Bollinger Band position: Middle = high confidence =====
+        # BB position 0.3-0.7: confident middle, extremes: overbought/oversold
+        bb_distance = abs(bb_pos[i] - 0.5)
+        bb_score = max(0, 1.0 - bb_distance * 2.5)  # 0.5->1, 0.1/0.9->0
+        
+        # ===== Volume confirmation: Above average = high confidence =====
+        # Volume ratio > 1.0: good conviction, < 0.7: low conviction
+        vol_conf_score = np.clip((volume_ratio[i] - 0.7) / 0.6, 0.0, 1.0)
+        
+        # ===== Combine with weights =====
+        # ADX: 35% (trend strength)
+        # RSI: 20% (not overbought/oversold)
+        # Volatility: 20% (predictable conditions)
+        # BB Position: 15% (price location)
+        # Volume: 10% (conviction)
+        raw_conf = (
+            adx_score * 0.35 + 
+            rsi_score * 0.20 + 
+            vol_score * 0.20 + 
+            bb_score * 0.15 + 
+            vol_conf_score * 0.10
+        )
+        
+        # Scale to 0-100 with slight boost for high-quality setups
+        # Base range 20-80, can reach 10-95 with extreme values
+        confidence[i] = 20 + raw_conf * 75  # Maps [0,1] -> [20,95]
     
     y = confidence.astype(np.float32)
     
