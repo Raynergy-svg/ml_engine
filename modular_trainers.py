@@ -66,6 +66,7 @@ class TrainerConfig:
     xgb_n_estimators: int = 200
     xgb_max_depth: int = 5
     xgb_learning_rate: float = 0.05
+    use_gpu: bool = False  # Enable GPU acceleration for XGBoost (A100)
     
     # Random Forest specific
     rf_n_estimators: int = 200
@@ -3520,7 +3521,7 @@ class XGBoostTrainer(BaseTrainer):
         feature_names: Optional[list] = None,
         momentum_norm_factor: Optional[float] = None,
     ) -> Dict[str, float]:
-        """Train XGBoost for momentum analysis (2 models)."""
+        """Train XGBoost for momentum analysis (2 models) with GPU support."""
         self.momentum_norm_factor = momentum_norm_factor
         try:
             import xgboost as xgb
@@ -3529,7 +3530,11 @@ class XGBoostTrainer(BaseTrainer):
         
         from sklearn.preprocessing import StandardScaler
         
-        logger.info("Training XGBoost (Momentum)...")
+        # Detect GPU availability
+        use_gpu = self.config.use_gpu if hasattr(self.config, 'use_gpu') else False
+        tree_method = 'gpu_hist' if use_gpu else 'auto'
+        
+        logger.info(f"Training XGBoost (Momentum) - GPU: {use_gpu}, tree_method: {tree_method}")
         
         # Save feature names for inference
         self.feature_names = feature_names
@@ -3546,13 +3551,15 @@ class XGBoostTrainer(BaseTrainer):
         y_val_momentum = y_val[:, 0]
         y_val_accel = y_val[:, 1].astype(int)
         
-        # Train momentum regressor
+        # Train momentum regressor with GPU acceleration
         self.momentum_model = xgb.XGBRegressor(
             n_estimators=self.config.xgb_n_estimators,
             max_depth=self.config.xgb_max_depth,
             learning_rate=self.config.xgb_learning_rate,
+            tree_method=tree_method,          # GPU-accelerated if available
+            predictor='gpu_predictor' if use_gpu else 'auto',
             verbosity=0,
-            n_jobs=-1,
+            n_jobs=-1 if not use_gpu else 1,  # GPU doesn't need multi-threading
             random_state=42,
         )
         self.momentum_model.fit(
@@ -3561,13 +3568,15 @@ class XGBoostTrainer(BaseTrainer):
             verbose=False,
         )
         
-        # Train acceleration classifier
+        # Train acceleration classifier with GPU acceleration
         self.accel_model = xgb.XGBClassifier(
             n_estimators=self.config.xgb_n_estimators,
             max_depth=self.config.xgb_max_depth,
             learning_rate=self.config.xgb_learning_rate,
+            tree_method=tree_method,          # GPU-accelerated if available
+            predictor='gpu_predictor' if use_gpu else 'auto',
             verbosity=0,
-            n_jobs=-1,
+            n_jobs=-1 if not use_gpu else 1,  # GPU doesn't need multi-threading
             random_state=42,
         )
         self.accel_model.fit(

@@ -39795,3 +39795,17 @@ AttributeError: 'TradeJournal' object has no attribute 'format_journal_stats'
 2026-01-07 11:55:37 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 233 normalized features
 2026-01-07 11:55:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 233 normalized features
 2026-01-07 11:55:38 - modular_data_loaders - INFO - [modular_data_loaders.py:297] - Computed 233 normalized features
+2026-01-07 18:59:54 - root - ERROR - [main.py:9940] - Command failed: Not enough rows (60) for seq_len=60
+Traceback (most recent call last):
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 9896, in main
+    _dispatch_train_buddy(args, command_map)
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 7758, in _dispatch_train_buddy
+    command_map["train-buddy"](
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 1152, in train_buddy
+    _train_buddy_impl(
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 2001, in _train_buddy_impl
+    val_ds = make_sequence_dataset(
+             ^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/mirelacertan/Desktop/ml_engine/main.py", line 1745, in make_sequence_dataset
+    raise ValueError(f"Not enough rows ({len(x2d)}) for seq_len={int(seq_len)}")
+ValueError: Not enough rows (60) for seq_len=60
