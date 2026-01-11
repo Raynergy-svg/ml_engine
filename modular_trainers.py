@@ -2850,14 +2850,22 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Scale
         X_scaled = self.scaler.transform(X.reshape(-1, X.shape[-1]))
         
-        # Create sequence from last seq_len rows
-        if len(X_scaled) >= self.seq_len:
-            X_seq = X_scaled[-self.seq_len:].reshape(1, self.seq_len, -1)
+        # Check model input shape to determine if sequence or flat input
+        model_input_shape = self.model.input_shape
+        is_flat_model = len(model_input_shape) == 2  # (None, n_features)
+        
+        if is_flat_model:
+            # Flat input model - use last row only
+            X_input = X_scaled[-1:] if len(X_scaled) > 1 else X_scaled
         else:
-            # Pad with zeros if not enough data
-            pad_len = self.seq_len - len(X_scaled)
-            X_padded = np.vstack([np.zeros((pad_len, X_scaled.shape[1])), X_scaled])
-            X_seq = X_padded.reshape(1, self.seq_len, -1)
+            # Sequence model - create sequence from last seq_len rows
+            if len(X_scaled) >= self.seq_len:
+                X_input = X_scaled[-self.seq_len:].reshape(1, self.seq_len, -1)
+            else:
+                # Pad with zeros if not enough data
+                pad_len = self.seq_len - len(X_scaled)
+                X_padded = np.vstack([np.zeros((pad_len, X_scaled.shape[1])), X_scaled])
+                X_input = X_padded.reshape(1, self.seq_len, -1)
         
         # Use EMA weights for stable inference if available
         use_ema_weights = (
@@ -2872,7 +2880,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             self.ema.apply()  # Apply EMA weights
         
         try:
-            prob = float(self.model.predict(X_seq, verbose=0)[0, 0])
+            prob = float(self.model.predict(X_input, verbose=0)[0, 0])
         finally:
             if use_ema_weights:
                 self.ema.restore()  # Restore training weights
