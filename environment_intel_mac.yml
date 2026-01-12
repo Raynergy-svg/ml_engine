@@ -1,0 +1,69 @@
+# Conda Environment for Intel Mac (i7-8750H)
+# ml_engine FX Trading Bot
+# 
+# Usage:
+#   conda env create -f environment_intel_mac.yml
+#   conda activate ml_engine_py312
+#
+# For full TensorFlow CPU optimization, run:
+#   cd ~/tensorflow-build && ./build_optimized.sh
+
+name: ml_engine_py312
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.12
+  - pip
+  
+  # Core ML
+  - numpy=1.26.4
+  - pandas
+  - scipy
+  - scikit-learn
+  - xgboost
+  
+  # Deep Learning (TensorFlow via pip for better Intel support)
+  - keras
+  
+  # JIT & Explainability
+  - numba
+  - llvmlite
+  - shap
+  
+  # Hyperparameter Optimization
+  - optuna
+  
+  # Visualization
+  - matplotlib
+  - seaborn
+  - plotly
+  
+  # Data & Utils
+  - pyyaml
+  - python-dotenv
+  - requests
+  - aiohttp
+  - tqdm
+  - rich
+  
+  # Development
+  - pytest
+  - ipykernel
+  - jupyter
+  
+  # pip packages
+  - pip:
+    - tensorflow>=2.16,<2.19  # Intel optimized builds available
+    - ta  # Technical Analysis
+    - ccxt  # Crypto/FX exchange connectivity
+    - gymnasium  # RL environments
+    - mplfinance  # Financial charts
+    - quantstats  # Portfolio analytics
+    - wandb  # Experiment tracking
+    - lime  # Model interpretability
+    - fastapi
+    - uvicorn
+    - structlog
+    - psutil

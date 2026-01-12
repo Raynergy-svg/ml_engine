@@ -1,6 +1,7 @@
 {
-    "python.defaultInterpreterPath": "/Users/mirelacertan/miniforge3/envs/tf-metal/bin/python",
+    "python.defaultInterpreterPath": "/Users/davidcertan/miniforge3/envs/ml_engine_py312/bin/python",
     "python.terminal.activateEnvironment": true,
+    "python.condaPath": "/Users/davidcertan/miniforge3/bin/conda",
     "python.testing.unittestArgs": [
         "-v",
         "-s",
@@ -17,7 +18,29 @@
             "codebridge": {
                 "type": "http",
                 "url": "http://localhost:9100/mcp"
+            },
+            "filesystem": {
+                "type": "stdio",
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users/davidcertan/Desktop/ml_engine"]
+            },
+            "memory": {
+                "type": "stdio",
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-memory"]
+            },
+            "sequential-thinking": {
+                "type": "stdio",
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+            },
+            "context7": {
+                "type": "stdio",
+                "command": "npx",
+                "args": ["-y", "@upstash/context7-mcp"]
             }
         }
-    }
+    },
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python-envs.pythonProjects": []
 }
