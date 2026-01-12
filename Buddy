@@ -115,20 +115,4 @@ cmd_loop() { run_py "${SCRIPT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --lo
 
 main() {
     [[ $# -eq 0 ]] && { cmd_predict; exit $?; }
-    local cmd="$1"; shift
-    case "${cmd}" in
-        predict|p) cmd_predict "$@" ;;
-        train|t) cmd_train "$@" ;;
-        scan) cmd_scan "$@" ;;
-        analyze|a) cmd_analyze "$@" ;;
-        test) cmd_test "$@" ;;
-        journal|j) cmd_journal "$@" ;;
-        status|s) cmd_status ;;
-        promote) cmd_promote ;;
-        loop|l) cmd_loop ;;
-        help|-h|--help) echo "buddy <predict|train|scan|analyze|test|journal|status|loop>" ;;
-        *) cmd_predict "${cmd}" "$@" ;;
-    esac
-}
-
-main "$@"
+    local cmd="$1";

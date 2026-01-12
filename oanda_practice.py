@@ -394,15 +394,4 @@ class OandaPracticeClient:
                 if isinstance(to, dict):
                     trade_id = to.get("tradeID") or to.get("id")
                 tro = tx.get("tradesOpened")
-                if trade_id is None and isinstance(tro, list) and len(tro) > 0:
-                    trade_id = tro[0].get("tradeID") or tro[0].get("id")
-            if trade_id:
-                try:
-                    self._last_trade_id = str(trade_id)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-
-        return result
-# — Raynergy-svg —
+                if trade_id is None and isinstance(tro, list)
