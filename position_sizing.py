@@ -332,4 +332,77 @@ def create_conservative_position_sizer() -> DynamicPositionSizer:
     return DynamicPositionSizer(config)
 
 
-def create_aggressive
+def create_aggressive_position_sizer() -> DynamicPositionSizer:
+    """Create an aggressive position sizer for the $100K → $1M strategy.
+    
+    Uses higher risk per trade and position multipliers based on Kelly Criterion
+    optimization for high win-rate systems (78%+).
+    
+    WARNING: Only use after validating win rate with 20+ trades.
+    """
+    config = PositionSizingConfig(
+        risk_per_trade_pct=0.05,  # 5% risk per trade (based on adjusted Kelly)
+        min_confidence_threshold=0.65,  # Higher threshold for aggressive sizing
+        max_position_multiplier=5.0,  # Allow larger position scaling
+        low_confidence_band=(0.65, 0.75),
+        medium_confidence_band=(0.75, 0.85),
+        high_confidence_band=(0.85, 1.0),
+        low_confidence_multiplier=0.5,    # 50% at low confidence
+        medium_confidence_multiplier=1.5,  # 150% at medium confidence
+        high_confidence_multiplier=3.0,    # 300% at high confidence
+        max_position_pct=0.20,  # 20% max position (aggressive)
+        min_position_size=10000  # Minimum 0.1 lots
+    )
+    return DynamicPositionSizer(config)
+
+
+def create_kelly_position_sizer(
+    win_rate: float = 0.78,
+    avg_win_pips: float = 41.5,
+    avg_loss_pips: float = 24.9,
+    slippage_pips: float = 6.0,
+    kelly_fraction: float = 0.5  # Half-Kelly for safety
+) -> DynamicPositionSizer:
+    """Create a position sizer based on Kelly Criterion.
+    
+    Calculates optimal position sizing based on actual trading statistics.
+    
+    Args:
+        win_rate: Historical win rate (0-1)
+        avg_win_pips: Average winning trade in pips
+        avg_loss_pips: Average losing trade in pips
+        slippage_pips: Expected slippage per trade
+        kelly_fraction: Fraction of full Kelly to use (0.5 = half Kelly)
+    
+    Returns:
+        DynamicPositionSizer configured for Kelly-optimal sizing
+    """
+    # Adjust for slippage
+    effective_win = avg_win_pips - slippage_pips
+    effective_loss = avg_loss_pips + slippage_pips
+    
+    # Calculate Kelly fraction: f* = (p*b - q) / b
+    p = win_rate
+    q = 1 - p
+    b = effective_win / effective_loss if effective_loss > 0 else 1.0
+    
+    raw_kelly = (p * b - q) / b if b > 0 else 0
+    adjusted_kelly = max(0.01, min(0.25, raw_kelly * kelly_fraction))
+    
+    logger.info(f"Kelly calculation: p={p:.2f}, b={b:.2f}, raw_kelly={raw_kelly:.2f}, adjusted={adjusted_kelly:.2f}")
+    
+    config = PositionSizingConfig(
+        risk_per_trade_pct=adjusted_kelly,
+        min_confidence_threshold=0.6,
+        max_position_multiplier=3.0,
+        low_confidence_band=(0.6, 0.7),
+        medium_confidence_band=(0.7, 0.85),
+        high_confidence_band=(0.85, 1.0),
+        low_confidence_multiplier=0.5,
+        medium_confidence_multiplier=1.0,
+        high_confidence_multiplier=2.0,
+        max_position_pct=min(0.25, adjusted_kelly * 3),  # Max 3x Kelly
+        min_position_size=1000
+    )
+    return DynamicPositionSizer(config)
+# — Raynergy-svg —

@@ -807,4 +807,282 @@ class ModularEnsembleInference:
                 rf_features = self._extract_rf_features(df)
                 rf_pred = self.rf.predict(rf_features)
                 rf_drawdown_pct = rf_pred.get('expected_drawdown_pct', rf_pred.get('expected_drawdown_pips', 0) / 10000)
-                rf_drawdown_pips = r
+                rf_drawdown_pips = rf_pred.get('expected_drawdown_pips', rf_drawdown_pct * 10000)
+                rf_streak_prob = rf_pred['streak_prob']
+        except Exception as e:
+            logger.warning(f"Random Forest prediction failed: {e}")
+        
+        # === APPLY GATES ===
+        # SMART GATING: Transformer probability is the primary signal
+        # Gate models provide confirmation, but TCN confidence can override
+        
+        if self.config.permissive_mode:
+            confidence_gate_passed = True
+            momentum_gate_passed = True
+            risk_gate_passed = True
+            logger.debug("Permissive mode: sklearn gates bypassed")
+        else:
+            # TCN confidence = how far from 0.5 (uncertain)
+            # 0.5 -> 0%, 0.6 -> 20%, 0.7 -> 40%, 0.8 -> 60%, 0.9 -> 80%, 1.0 -> 100%
+            tcn_confidence = abs(tcn_probability - 0.5) * 200
+            
+            # Strong TCN signal (>55% or <45% probability) can override weak gate models
+            tcn_strong = abs(tcn_probability - 0.5) > 0.05  # >55% or <45%
+            tcn_very_strong = abs(tcn_probability - 0.5) > 0.15  # >65% or <35%
+            
+            # CONFIDENCE GATE: Use TCN-derived confidence OR Ridge, whichever is higher
+            effective_confidence = max(ridge_confidence, tcn_confidence)
+            confidence_gate_passed = effective_confidence >= self.config.min_confidence
+            
+            # MOMENTUM GATE: Pass if any of these are true:
+            # 1. XGBoost momentum is fresh (above threshold)
+            # 2. XGBoost detects acceleration
+            # 3. TCN is strong (override weak momentum readings)
+            momentum_fresh = xgb_momentum >= self.config.min_momentum
+            momentum_gate_passed = momentum_fresh or xgb_acceleration or tcn_strong
+            
+            # RISK GATE: More lenient when TCN is confident
+            # The Transformer sees patterns the simple gate models might miss
+            if tcn_very_strong:
+                # Very confident TCN - relax risk thresholds significantly
+                risk_gate_passed = (
+                    rf_drawdown_pct <= self.config.max_drawdown_pct * 2.0 and
+                    rf_streak_prob <= self.config.max_streak_prob * 2.0
+                )
+            elif tcn_strong:
+                # Strong TCN - relax risk thresholds moderately
+                risk_gate_passed = (
+                    rf_drawdown_pct <= self.config.max_drawdown_pct * 1.5 and
+                    rf_streak_prob <= self.config.max_streak_prob * 1.5
+                )
+            else:
+                # Weak TCN - use strict thresholds
+                risk_gate_passed = (
+                    rf_drawdown_pct <= self.config.max_drawdown_pct and
+                    rf_streak_prob <= self.config.max_streak_prob
+                )
+        
+        # === DETERMINE DIRECTION AND TRADE DECISION ===
+        direction_str = None
+        regime_gate_passed = True
+        
+        if self.use_regime:
+            # REGIME-BASED DIRECTION LOGIC
+            if regime == 'chop':
+                # CHOP: Skip trading entirely
+                regime_gate_passed = False
+                direction_str = None
+            elif regime == 'trend':
+                # TREND: Direction from recent momentum sign
+                # Use 2-bar return to determine trend direction
+                if 'returns_2' in df.columns:
+                    recent_return = df['returns_2'].iloc[-1]
+                elif 'returns_1' in df.columns:
+                    recent_return = df['returns_1'].iloc[-1]
+                else:
+                    recent_return = 0
+                
+                # Follow the trend
+                if recent_return > 0:
+                    direction_str = 'long'
+                    tcn_direction = 1
+                else:
+                    direction_str = 'short'
+                    tcn_direction = 0
+                tcn_probability = regime_confidence
+            elif regime == 'mean_revert':
+                # MEAN REVERT: Fade 2-bar momentum
+                if 'returns_2' in df.columns:
+                    recent_return = df['returns_2'].iloc[-1]
+                elif 'returns_1' in df.columns:
+                    recent_return = df['returns_1'].iloc[-1]
+                else:
+                    recent_return = 0
+                
+                # Fade (opposite of recent move)
+                if recent_return > 0:
+                    direction_str = 'short'  # Fade the up move
+                    tcn_direction = 0
+                else:
+                    direction_str = 'long'  # Fade the down move
+                    tcn_direction = 1
+                tcn_probability = regime_confidence
+            
+            # All gates for regime mode
+            all_gates_passed = (
+                regime_gate_passed and
+                direction_str is not None and
+                confidence_gate_passed and
+                momentum_gate_passed and
+                risk_gate_passed
+            )
+        else:
+            # DIRECTION MODE (legacy)
+            all_gates_passed = (
+                tcn_direction is not None and
+                confidence_gate_passed and
+                momentum_gate_passed and
+                risk_gate_passed
+            )
+            if all_gates_passed and tcn_direction is not None:
+                direction_str = 'long' if tcn_direction == 1 else 'short'
+        
+        # === BUILD REJECTION REASON ===
+        reason = None
+        if not all_gates_passed:
+            reasons = []
+            if self.use_regime:
+                if not regime_gate_passed:
+                    reasons.append(f"regime=CHOP (skip)")
+                if direction_str is None and regime != 'chop':
+                    reasons.append("no_direction")
+            else:
+                if tcn_direction is None:
+                    reasons.append("no_direction")
+            if not confidence_gate_passed:
+                reasons.append(f"low_confidence({ridge_confidence:.0f}<{self.config.min_confidence})")
+            if not momentum_gate_passed:
+                reasons.append(f"dead_momentum({xgb_momentum:.2f})")
+            if not risk_gate_passed:
+                if rf_drawdown_pct > self.config.max_drawdown_pct:
+                    reasons.append(f"high_drawdown({rf_drawdown_pct:.2%})")
+                if rf_streak_prob > self.config.max_streak_prob:
+                    reasons.append(f"streak_risk({rf_streak_prob:.2f})")
+            reason = ", ".join(reasons)
+        
+        # === CALCULATE POSITION SIZE ===
+        size = 0.0
+        if all_gates_passed:
+            size = self._calculate_position_size(
+                rf_drawdown_pips, 
+                equity,
+                instrument=getattr(self, '_current_instrument', None)
+            )
+        
+        return TradeSignal(
+            trade=all_gates_passed,
+            direction=direction_str,
+            size=size,
+            confidence=ridge_confidence,
+            regime=regime,
+            regime_confidence=regime_confidence,
+            tcn_direction=tcn_direction,
+            tcn_probability=tcn_probability,
+            ridge_confidence=ridge_confidence,
+            xgb_momentum=xgb_momentum,
+            xgb_acceleration=xgb_acceleration,
+            rf_drawdown_pips=rf_drawdown_pips,
+            rf_streak_prob=rf_streak_prob,
+            histgb_direction=histgb_direction,
+            histgb_probability=histgb_probability,
+            models_agree=models_agree,
+            confidence_gate_passed=confidence_gate_passed,
+            momentum_gate_passed=momentum_gate_passed,
+            risk_gate_passed=risk_gate_passed,
+            regime_gate_passed=regime_gate_passed,
+            reason=reason,
+        )
+    
+    def predict_verbose(
+        self,
+        df: pd.DataFrame,
+        equity: Optional[float] = None,
+        instrument: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run inference with verbose output for logging/display.
+        
+        Returns dict with all details formatted for display.
+        """
+        signal = self.predict(df, equity, instrument=instrument)
+        
+        # Format gate checks
+        gate_checks = []
+        
+        # TCN direction
+        if signal.tcn_direction is not None:
+            dir_str = "LONG" if signal.tcn_direction == 1 else "SHORT"
+            gate_checks.append(f"TCN: {dir_str} (prob={signal.tcn_probability:.2f})")
+        else:
+            gate_checks.append("TCN: NO SIGNAL")
+        
+        # Ridge confidence
+        status = "✓" if signal.confidence_gate_passed else "✗"
+        gate_checks.append(f"Ridge: {signal.ridge_confidence:.0f}/100 {status}")
+        
+        # XGBoost momentum
+        status = "✓" if signal.momentum_gate_passed else "✗"
+        accel_str = "accel=true" if signal.xgb_acceleration else "accel=false"
+        gate_checks.append(f"XGBoost: momentum={signal.xgb_momentum:.2f}, {accel_str} {status}")
+        
+        # RF risk
+        status = "✓" if signal.risk_gate_passed else "✗"
+        gate_checks.append(f"RF: drawdown={signal.rf_drawdown_pips:.1f}pips, streak={signal.rf_streak_prob:.2f} {status}")
+        
+        # Final decision
+        if signal.trade:
+            decision = f"→ TRADE: {signal.direction.upper()}, size={signal.size} lots"
+        else:
+            decision = f"→ NO TRADE: {signal.reason}"
+        
+        return {
+            'trade': signal.trade,
+            'direction': signal.direction,
+            'size': signal.size,
+            'gate_checks': gate_checks,
+            'decision': decision,
+            'raw_signal': signal,
+        }
+
+
+def run_inference_test():
+    """Quick test of inference pipeline."""
+    import pandas as pd
+    import numpy as np
+    
+    # Create dummy data
+    n = 100
+    df = pd.DataFrame({
+        'close': np.cumsum(np.random.randn(n) * 0.01) + 150,
+        'high': np.cumsum(np.random.randn(n) * 0.01) + 150.1,
+        'low': np.cumsum(np.random.randn(n) * 0.01) + 149.9,
+        'volume': np.random.randint(1000, 10000, n),
+        'returns': np.random.randn(n) * 0.01,
+        'volatility_5': np.abs(np.random.randn(n)) * 0.01,
+        'volatility_10': np.abs(np.random.randn(n)) * 0.01,
+        'volatility_20': np.abs(np.random.randn(n)) * 0.01,
+        'atr': np.abs(np.random.randn(n)) * 0.5,
+        'rsi': np.random.uniform(30, 70, n),
+        'momentum_10': np.random.randn(n) * 0.01,
+        'macd': np.random.randn(n) * 0.001,
+        'macd_hist': np.random.randn(n) * 0.001,
+        'obv': np.cumsum(np.random.randint(-1000, 1000, n)),
+        'mfi': np.random.uniform(20, 80, n),
+        'adx': np.random.uniform(15, 40, n),
+    })
+    
+    # Test inference
+    ensemble = ModularEnsembleInference()
+    
+    # Check if models exist (check for both Transformer and TCN)
+    model_dir = Path("trained_data/models")
+    if not (model_dir / "transformer_direction.keras").exists() and not (model_dir / "tcn_direction.keras").exists():
+        print("Models not found. Train first with: buddy train --model-type ensemble")
+        return
+    
+    result = ensemble.predict_verbose(df)
+    
+    print("\n" + "="*60)
+    print("MODULAR ENSEMBLE INFERENCE TEST")
+    print("="*60)
+    for check in result['gate_checks']:
+        print(check)
+    print("-"*60)
+    print(result['decision'])
+    print("="*60)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    run_inference_test()
+

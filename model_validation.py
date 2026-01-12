@@ -710,4 +710,51 @@ def quick_validate(model, scaler, X_test, y_test, test_df, pair='EUR_USD'):
     console.print(Panel("[bold cyan]Quick Validation Suite[/bold cyan]"))
     
     # 1. Basic accuracy check
-    predictions = model.predict
+    predictions = model.predict(X_test, verbose=0)
+    pred_classes = (predictions.flatten() > 0.5).astype(int)
+    accuracy = np.mean(pred_classes == y_test)
+    
+    console.print(f"\n📊 Accuracy: {accuracy:.1%}")
+    console.print(f"   Predictions: {np.mean(pred_classes):.1%} UP | Actual: {np.mean(y_test):.1%} UP")
+    
+    # 2. Regime Analysis
+    regime_analyzer = RegimeAnalyzer(model, scaler, config)
+    results['regime'] = regime_analyzer.run(test_df, X_test, y_test)
+    
+    # 3. Transaction Cost Analysis
+    cost_analyzer = TransactionCostAnalyzer(config)
+    actual_returns = test_df['close'].pct_change().values[-len(predictions):]
+    results['costs'] = cost_analyzer.run(predictions.flatten(), actual_returns, pair)
+    
+    # 4. Summary Assessment
+    console.print(Panel("[bold green]Assessment[/bold green]"))
+    
+    issues = []
+    if accuracy < 0.55:
+        issues.append("Low accuracy - may be random")
+    if np.mean(pred_classes) < 0.2 or np.mean(pred_classes) > 0.8:
+        issues.append("Prediction collapse detected")
+    if results['costs']['sharpe_ratio'] < 0.5:
+        issues.append("Low Sharpe ratio - not profitable after costs")
+    if results['costs']['max_drawdown'] > 0.20:
+        issues.append("High drawdown risk")
+    
+    if not issues:
+        console.print("✅ All checks passed! Model looks viable for paper trading.")
+    else:
+        console.print("⚠️ Issues found:")
+        for issue in issues:
+            console.print(f"   • {issue}")
+    
+    return results
+
+
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) > 1:
+        model_path = sys.argv[1]
+    else:
+        model_path = None
+    
+    run_full_validation(model_path=model_path)

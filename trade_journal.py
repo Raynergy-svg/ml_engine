@@ -370,4 +370,292 @@ def format_journal_stats(stats: Dict[str, Any]) -> str:
     
     # Averages
     lines.append(f"\n📊 AVERAGES")
-    lines.append(f"  Avg Win: ${sta
+    lines.append(f"  Avg Win: ${stats['avg_win']:.2f} ({stats['avg_win_pips']:.1f} pips)")
+    lines.append(f"  Avg Loss: ${stats['avg_loss']:.2f} ({stats['avg_loss_pips']:.1f} pips)")
+    lines.append(f"  Avg Slippage: {stats['avg_slippage_pips']:.2f} pips")
+    
+    # Risk/Reward
+    if stats['avg_loss_pips'] > 0:
+        rr_ratio = stats['avg_win_pips'] / stats['avg_loss_pips']
+        lines.append(f"  R:R Realized: 1:{rr_ratio:.2f}")
+    
+    # Exit reasons
+    if stats['exit_reasons']:
+        lines.append(f"\n🚪 EXIT REASONS")
+        for reason, count in stats['exit_reasons'].items():
+            pct = count / stats['closed_trades'] * 100
+            lines.append(f"  {reason.upper()}: {count} ({pct:.0f}%)")
+    
+    # By instrument
+    if stats['by_instrument']:
+        lines.append(f"\n🌍 BY INSTRUMENT")
+        for instr, data in stats['by_instrument'].items():
+            total = data['wins'] + data['losses']
+            wr = data['wins'] / total * 100 if total > 0 else 0
+            lines.append(f"  {instr}: {data['wins']}W/{data['losses']}L ({wr:.0f}%) ${data['pnl']:.2f}")
+    
+    lines.append("\n" + "=" * 60)
+    return "\n".join(lines)
+
+
+# ============================================================================
+# Slippage Analysis for Aggressive Scaling
+# ============================================================================
+
+class SlippageAnalyzer:
+    """
+    Analyze slippage to optimize execution for aggressive scaling.
+    
+    Key metrics for $100K → $1M strategy:
+    - Average slippage at different lot sizes
+    - Slippage by time of day
+    - Slippage by instrument
+    - Cost impact on returns
+    """
+    
+    def __init__(self, journal: TradeJournal):
+        self.journal = journal
+    
+    def analyze_slippage(self) -> Dict[str, Any]:
+        """Comprehensive slippage analysis."""
+        trades = self.journal.trades
+        
+        if not trades:
+            return {"message": "No trades to analyze"}
+        
+        # Overall slippage stats
+        slippages = [t.slippage_pips for t in trades]
+        abs_slippages = [abs(s) for s in slippages]
+        
+        # By lot size
+        by_lots: Dict[str, List[float]] = {}
+        for t in trades:
+            lot_bucket = self._get_lot_bucket(t.lots)
+            if lot_bucket not in by_lots:
+                by_lots[lot_bucket] = []
+            by_lots[lot_bucket].append(abs(t.slippage_pips))
+        
+        # By instrument
+        by_instrument: Dict[str, List[float]] = {}
+        for t in trades:
+            if t.instrument not in by_instrument:
+                by_instrument[t.instrument] = []
+            by_instrument[t.instrument].append(abs(t.slippage_pips))
+        
+        # By hour (if we can parse timestamps)
+        by_hour: Dict[int, List[float]] = {}
+        for t in trades:
+            try:
+                hour = datetime.fromisoformat(t.timestamp.replace('Z', '+00:00')).hour
+                if hour not in by_hour:
+                    by_hour[hour] = []
+                by_hour[hour].append(abs(t.slippage_pips))
+            except Exception:
+                pass
+        
+        # Calculate cost impact
+        pip_value_per_lot = 10.0  # $10/pip for standard pairs
+        total_slippage_cost = sum(
+            abs(t.slippage_pips) * t.lots * pip_value_per_lot 
+            for t in trades
+        )
+        avg_slippage_cost_per_trade = total_slippage_cost / len(trades)
+        
+        # Projected annual cost at 6 trades/day
+        trades_per_year = 6 * 252  # 252 trading days
+        projected_annual_cost = avg_slippage_cost_per_trade * trades_per_year
+        
+        return {
+            "summary": {
+                "total_trades": len(trades),
+                "avg_slippage_pips": sum(abs_slippages) / len(abs_slippages),
+                "max_slippage_pips": max(abs_slippages),
+                "min_slippage_pips": min(abs_slippages),
+                "std_dev_slippage": self._std_dev(abs_slippages),
+                "positive_slippage_pct": len([s for s in slippages if s > 0]) / len(slippages) * 100,
+            },
+            "by_lot_size": {
+                bucket: {
+                    "count": len(slips),
+                    "avg": sum(slips) / len(slips),
+                    "max": max(slips),
+                }
+                for bucket, slips in sorted(by_lots.items())
+            },
+            "by_instrument": {
+                instr: {
+                    "count": len(slips),
+                    "avg": sum(slips) / len(slips),
+                }
+                for instr, slips in by_instrument.items()
+            },
+            "by_hour": {
+                hour: {
+                    "count": len(slips),
+                    "avg": sum(slips) / len(slips),
+                }
+                for hour, slips in sorted(by_hour.items())
+            },
+            "cost_impact": {
+                "total_slippage_cost_usd": round(total_slippage_cost, 2),
+                "avg_cost_per_trade_usd": round(avg_slippage_cost_per_trade, 2),
+                "projected_annual_cost_usd": round(projected_annual_cost, 2),
+            },
+            "recommendations": self._generate_recommendations(
+                avg_slippage=sum(abs_slippages) / len(abs_slippages),
+                by_lots=by_lots,
+                by_hour=by_hour,
+            ),
+        }
+    
+    def _get_lot_bucket(self, lots: float) -> str:
+        """Categorize lot size into buckets."""
+        if lots <= 1:
+            return "0-1 lots"
+        elif lots <= 3:
+            return "1-3 lots"
+        elif lots <= 5:
+            return "3-5 lots"
+        elif lots <= 10:
+            return "5-10 lots"
+        else:
+            return "10+ lots"
+    
+    def _std_dev(self, values: List[float]) -> float:
+        """Calculate standard deviation."""
+        if len(values) < 2:
+            return 0.0
+        mean = sum(values) / len(values)
+        variance = sum((x - mean) ** 2 for x in values) / len(values)
+        return variance ** 0.5
+    
+    def _generate_recommendations(
+        self,
+        avg_slippage: float,
+        by_lots: Dict[str, List[float]],
+        by_hour: Dict[int, List[float]],
+    ) -> List[str]:
+        """Generate actionable recommendations based on slippage analysis."""
+        recommendations = []
+        
+        # High slippage warning
+        if avg_slippage > 3.0:
+            recommendations.append(
+                f"⚠️ HIGH SLIPPAGE: Average {avg_slippage:.1f} pips. "
+                "Implement limit orders immediately."
+            )
+        elif avg_slippage > 2.0:
+            recommendations.append(
+                f"⚡ MODERATE SLIPPAGE: Average {avg_slippage:.1f} pips. "
+                "Consider limit orders for larger positions."
+            )
+        else:
+            recommendations.append(
+                f"✅ GOOD SLIPPAGE: Average {avg_slippage:.1f} pips is acceptable."
+            )
+        
+        # Lot size recommendation
+        if "10+ lots" in by_lots and by_lots["10+ lots"]:
+            large_lot_slippage = sum(by_lots["10+ lots"]) / len(by_lots["10+ lots"])
+            if large_lot_slippage > avg_slippage * 1.5:
+                recommendations.append(
+                    f"📊 SPLIT ORDERS: 10+ lot orders have {large_lot_slippage:.1f} pip slippage. "
+                    "Split into 5-lot chunks."
+                )
+        
+        # Best trading hours
+        if by_hour:
+            best_hour = min(by_hour.keys(), key=lambda h: sum(by_hour[h]) / len(by_hour[h]))
+            best_slippage = sum(by_hour[best_hour]) / len(by_hour[best_hour])
+            recommendations.append(
+                f"🕐 BEST HOUR: {best_hour}:00 UTC has lowest slippage ({best_slippage:.1f} pips)."
+            )
+        
+        return recommendations
+    
+    def get_kelly_adjusted_stats(self) -> Dict[str, Any]:
+        """Get stats adjusted for Kelly Criterion calculation."""
+        stats = self.journal.get_statistics()
+        slippage_analysis = self.analyze_slippage()
+        
+        if "message" in slippage_analysis:
+            return {"message": "Insufficient data for analysis"}
+        
+        avg_slippage = slippage_analysis["summary"]["avg_slippage_pips"]
+        
+        # Adjust win/loss averages for Kelly
+        effective_avg_win = stats["avg_win_pips"] - avg_slippage
+        effective_avg_loss = stats["avg_loss_pips"] + avg_slippage
+        
+        raw_rr = stats["avg_win_pips"] / stats["avg_loss_pips"] if stats["avg_loss_pips"] > 0 else 2.0
+        effective_rr = effective_avg_win / effective_avg_loss if effective_avg_loss > 0 else 1.0
+        
+        # Kelly calculation
+        win_rate = stats["win_rate"]
+        p = win_rate
+        q = 1 - p
+        
+        raw_kelly = (p * raw_rr - q) / raw_rr if raw_rr > 0 else 0
+        adjusted_kelly = (p * effective_rr - q) / effective_rr if effective_rr > 0 else 0
+        
+        kelly_reduction = 1 - (adjusted_kelly / raw_kelly) if raw_kelly > 0 else 0
+        
+        return {
+            "win_rate": win_rate,
+            "raw_stats": {
+                "avg_win_pips": stats["avg_win_pips"],
+                "avg_loss_pips": stats["avg_loss_pips"],
+                "risk_reward": raw_rr,
+                "kelly_fraction": max(0, raw_kelly),
+            },
+            "slippage_adjusted": {
+                "avg_slippage_pips": avg_slippage,
+                "effective_avg_win_pips": effective_avg_win,
+                "effective_avg_loss_pips": effective_avg_loss,
+                "effective_risk_reward": effective_rr,
+                "kelly_fraction": max(0, adjusted_kelly),
+            },
+            "impact": {
+                "kelly_reduction_pct": kelly_reduction * 100,
+                "message": f"Slippage reduces optimal position size by {kelly_reduction*100:.1f}%",
+            },
+        }
+    
+    def print_report(self) -> None:
+        """Print formatted slippage analysis report."""
+        analysis = self.analyze_slippage()
+        
+        print("\n" + "=" * 60)
+        print("📊 SLIPPAGE ANALYSIS REPORT")
+        print("=" * 60)
+        
+        if "message" in analysis:
+            print(f"\n{analysis['message']}")
+            return
+        
+        summary = analysis["summary"]
+        print(f"\n📈 SUMMARY ({summary['total_trades']} trades)")
+        print(f"   Average Slippage: {summary['avg_slippage_pips']:.2f} pips")
+        print(f"   Max Slippage: {summary['max_slippage_pips']:.2f} pips")
+        print(f"   Std Dev: {summary['std_dev_slippage']:.2f} pips")
+        print(f"   Positive Slippage: {summary['positive_slippage_pct']:.1f}%")
+        
+        print("\n📦 BY LOT SIZE")
+        for bucket, data in analysis["by_lot_size"].items():
+            print(f"   {bucket}: {data['avg']:.2f} pips avg ({data['count']} trades)")
+        
+        print("\n🌍 BY INSTRUMENT")
+        for instr, data in analysis["by_instrument"].items():
+            print(f"   {instr}: {data['avg']:.2f} pips avg ({data['count']} trades)")
+        
+        cost = analysis["cost_impact"]
+        print("\n💰 COST IMPACT")
+        print(f"   Total Slippage Cost: ${cost['total_slippage_cost_usd']:,.2f}")
+        print(f"   Avg Cost per Trade: ${cost['avg_cost_per_trade_usd']:.2f}")
+        print(f"   Projected Annual Cost: ${cost['projected_annual_cost_usd']:,.2f}")
+        
+        print("\n🎯 RECOMMENDATIONS")
+        for rec in analysis["recommendations"]:
+            print(f"   {rec}")
+        
+        print("\n" + "=" * 60)
