@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-VERSION="2.1.0"
+VERSION="2.2.0"
 SOURCE="${BASH_SOURCE[0]}"
 while [[ -L "$SOURCE" ]]; do
     DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
@@ -9,7 +9,13 @@ while [[ -L "$SOURCE" ]]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 CONFIG_FILE="${SCRIPT_DIR}/config_improved_H1.yaml"
-ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
+
+# Auto-detect environment: Intel Mac uses ml_engine_py312, M1 uses tf-metal
+if [[ "$(uname -m)" == "x86_64" ]]; then
+    ENV_NAME="${BUDDY_CONDA_ENV:-ml_engine_py312}"
+else
+    ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
+fi
 
 get_conda() {
     for p in "${HOME}/miniforge3/bin/conda" "${HOME}/miniconda3/bin/conda"; do
