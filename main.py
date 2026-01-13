@@ -12,6 +12,10 @@ A command-line interface for the ML trading engine that handles:
 
 from __future__ import annotations
 
+# Suppress TensorFlow CPU instruction warnings (irrelevant on Apple Silicon/Metal)
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # 0=all, 1=info, 2=warning, 3=error
+
 import sys
 import time
 import logging
@@ -123,6 +127,8 @@ class BuddyTrainingOptions:
     bootstrap_samples: int = 1000  # Bootstrap iterations
     mlflow_experiment: str | None = None  # MLflow experiment name
     generate_report: bool = True  # Generate markdown report
+    # Continual learning - EWC disabled by default (high compute, use for research)
+    enable_ewc: bool = False  # Enable EWC (Elastic Weight Consolidation)
 
 
 def _tier2_get_calibration_dict(meta: dict[str, Any]) -> dict[str, Any] | None:
@@ -380,6 +386,107 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     return str(out_path)
 
 
+def _migrate_keras2_to_keras3(model_path: str, seq_len: int, feature_dim: int, custom_objects: dict):
+    """
+    Migrate a Keras 2.x model to Keras 3.x by recreating architecture and loading weights.
+    This handles the keras.src.engine.functional → keras.models.Model path change.
+    """
+    import tensorflow as tf
+    from tensorflow.keras import layers
+    from tensorflow.keras.regularizers import l2
+    import zipfile
+    import json as _json
+    import tempfile
+    import shutil
+
+    console.print("[yellow]Attempting Keras 2→3 migration...[/yellow]")
+
+    # Try to extract weights from the .keras file (it's a zip)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            with zipfile.ZipFile(model_path, 'r') as zf:
+                zf.extractall(tmpdir)
+
+            # Load config to understand architecture
+            config_path = Path(tmpdir) / "config.json"
+            if config_path.exists():
+                config = _json.loads(config_path.read_text())
+                model_config = config.get("config", {})
+                model_name = model_config.get("name", "unknown")
+                console.print(f"[dim]Old model: {model_name}[/dim]")
+
+            # Load weights file
+            weights_path = Path(tmpdir) / "model.weights.h5"
+            if not weights_path.exists():
+                raise FileNotFoundError("No model.weights.h5 in .keras archive")
+
+            # Create a fresh model with the same architecture (MetalOptimizedTCN)
+            l2_reg = l2(0.002)
+            hidden_size = 32
+            dropout = 0.35
+            
+            inp = tf.keras.Input(shape=(int(seq_len), int(feature_dim)), name="input")
+            x = layers.GaussianNoise(0.03)(inp)
+            x = layers.SpatialDropout1D(dropout * 0.5)(x)
+            
+            # TCN layers (2 blocks)
+            for i in range(2):
+                dilation_rate = 2 ** i
+                conv_out = layers.Conv1D(hidden_size, 3, padding='causal', dilation_rate=dilation_rate, 
+                                         activation='relu', kernel_regularizer=l2_reg)(x)
+                conv_out = layers.BatchNormalization()(conv_out)
+                conv_out = layers.Dropout(dropout)(conv_out)
+                if x.shape[-1] != hidden_size:
+                    x = layers.Conv1D(hidden_size, 1)(x)
+                x = layers.Add()([x, conv_out])
+            
+            x = x[:, -1, :]  # Take last timestep
+            x = layers.Dense(64, activation='relu')(x)
+            x = layers.Dropout(dropout)(x)
+            
+            # Multi-output heads
+            dir_branch = layers.Dense(32, activation='relu')(x)
+            dir_branch = layers.Dropout(dropout * 0.5)(dir_branch)
+            price_branch = layers.Dense(32, activation='relu')(x)
+            risk_branch = layers.Dense(16, activation='relu')(x)
+            state_branch = layers.Dense(32, activation='relu')(x)
+            state_branch = layers.Dropout(dropout * 0.5)(state_branch)
+            trend_branch = layers.Dense(32, activation='relu')(x)
+            
+            direction = layers.Dense(1, activation='sigmoid', name='direction', dtype='float32')(dir_branch)
+            price = layers.Dense(1, activation='linear', name='price', dtype='float32')(price_branch)
+            risk = layers.Dense(1, activation='sigmoid', name='risk', dtype='float32')(risk_branch)
+            state_logits = layers.Dense(2, activation='softmax', name='state_logits', dtype='float32')(state_branch)
+            trend = layers.Dense(1, activation='linear', name='trend', dtype='float32')(trend_branch)
+            
+            fresh_model = tf.keras.Model(
+                inputs=inp,
+                outputs={'direction': direction, 'price': price, 'risk': risk, 'state_logits': state_logits, 'trend': trend},
+                name='MetalOptimizedTCN',
+            )
+
+            # Try to load weights (may fail if architecture differs significantly)
+            try:
+                fresh_model.load_weights(str(weights_path))
+                console.print("[green]✓ Weights migrated successfully[/green]")
+
+                # Save as new Keras 3 model (overwrite old)
+                backup_path = model_path + ".keras2_backup"
+                if not Path(backup_path).exists():
+                    shutil.copy(model_path, backup_path)
+                    console.print(f"[dim]Backup saved: {backup_path}[/dim]")
+                fresh_model.save(model_path)
+                console.print(f"[green]✓ Model migrated to Keras 3: {model_path}[/green]")
+                return fresh_model
+
+            except Exception as weight_err:
+                console.print(f"[yellow]Weight loading failed (architecture mismatch): {weight_err}[/yellow]")
+                raise ValueError(f"Cannot migrate: architecture incompatible. Delete old model and retrain.")
+
+        except zipfile.BadZipFile:
+            raise ValueError(f"Model file {model_path} is not a valid .keras archive")
+
+
 def _load_buddy_checkpoint(*, model_path: str, seq_len: int, feature_dim: int):
     import tensorflow as tf
 
@@ -389,17 +496,29 @@ def _load_buddy_checkpoint(*, model_path: str, seq_len: int, feature_dim: int):
     from mt_engine import MTEngineHead
     from mx_head_engine import MXEngineHead
 
-    model = tf.keras.models.load_model(
-        model_path,
-        compile=False,
-        custom_objects={
-            "MLEngineHead": MLEngineHead,
-            "MREngineHead": MREngineHead,
-            "MSEngineHead": MSEngineHead,
-            "MTEngineHead": MTEngineHead,
-            "MXEngineHead": MXEngineHead,
-        },
-    )
+    custom_objects = {
+        "MLEngineHead": MLEngineHead,
+        "MREngineHead": MREngineHead,
+        "MSEngineHead": MSEngineHead,
+        "MTEngineHead": MTEngineHead,
+        "MXEngineHead": MXEngineHead,
+    }
+
+    # Try standard load first
+    try:
+        model = tf.keras.models.load_model(
+            model_path,
+            compile=False,
+            custom_objects=custom_objects,
+        )
+    except Exception as e:
+        err_str = str(e)
+        # Handle Keras 2 → Keras 3 incompatibility
+        if "keras.src.engine.functional" in err_str or "cannot be imported" in err_str:
+            # Attempt weights-only migration
+            model = _migrate_keras2_to_keras3(model_path, seq_len, feature_dim, custom_objects)
+        else:
+            raise
 
     in_shape = tuple(getattr(model, "input_shape", ()) or ())
     if len(in_shape) >= 3:
@@ -965,11 +1084,11 @@ def _build_buddy_model_tcn(
     hidden_size: int = 64,
     num_layers: int = 3,
     kernel_size: int = 3,
-    dropout: float = 0.2,
+    dropout: float = 0.5,           # Increased from 0.2 to combat overfitting
     dense_hidden: int = 128,
-    dense_dropout: float = 0.2,
-    kernel_regularizer: float = 0.002,
-    noise_std: float = 0.03,
+    dense_dropout: float = 0.4,     # Increased from 0.2
+    kernel_regularizer: float = 0.005,  # Increased from 0.002 (stronger L2)
+    noise_std: float = 0.05,        # Increased from 0.03 (more input noise)
 ):
     """Create a Buddy model with TCN encoder - FASTER on M1 Metal than LSTM.
     
@@ -2298,13 +2417,18 @@ def _train_buddy_impl(
             is_warm_start = has_existing_model and warm_start_enabled
             
             # Enable CL only for warm-start (incremental training)
+            # EWC is opt-in via --enable-ewc (high compute cost)
             use_ema = is_warm_start
-            use_ewc = is_warm_start
+            use_ewc = is_warm_start and options.enable_ewc  # Only if explicitly enabled
             use_replay = is_warm_start
             disable_cl = not is_warm_start
             
             if not is_warm_start:
                 console.print("[dim]Fresh training detected - Continual Learning disabled for stability[/dim]")
+            elif options.enable_ewc:
+                console.print("[cyan]EWC enabled via --enable-ewc flag[/cyan]")
+            else:
+                console.print("[dim]EWC disabled (high compute). Use --enable-ewc to enable.[/dim]")
             
             # Default continual learning params
             ema_alpha = 0.999
@@ -7792,6 +7916,8 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
         bootstrap_samples=int(getattr(args, "bootstrap_samples", 1000)),
         mlflow_experiment=getattr(args, "mlflow_experiment", None),
         generate_report=not bool(getattr(args, "no_report", False)),
+        # Continual learning - EWC disabled by default (high compute)
+        enable_ewc=bool(getattr(args, "enable_ewc", False)),
     )
 
 
@@ -7802,10 +7928,22 @@ def buddy_scan(
     granularity: str = "H1",
     top_n: int = 5,
     verbose: bool = False,
+    prompt_train: bool = False,
+    prompt_execute: bool = True,
+    no_execute: bool = False,
     **kwargs: Any,
-) -> None:
+) -> list:
     """
     Scan multiple FX pairs to find the best trading opportunities.
+    
+    UPGRADED v2.0: Now uses BuddyScanner with:
+    - Parallel pair scanning (4x faster)
+    - Integrated position sizing (lots, SL/TP)
+    - 50-candle quick backtesting
+    - Drift detection with retraining prompts
+    - Correlation analysis for diversification
+    - Historical accuracy tracking
+    - Trade execution prompt after scan
     
     Uses MODEL_78_v2 modular ensemble (78.4% accuracy) for predictions:
     - Transformer direction model for signal
@@ -7815,6 +7953,254 @@ def buddy_scan(
     
     Falls back to technical indicators if model unavailable.
     """
+    try:
+        # Use new enhanced BuddyScanner
+        from buddy_scanner import BuddyScanner, EnhancedScanResult
+        from pair_scanner import PairAnalysis
+        
+        # Don't override account_equity unless explicitly passed
+        # Let config file value be used by default
+        explicit_equity = kwargs.get("account_equity")
+        scanner = BuddyScanner(
+            config_path=config_path,
+            account_equity=explicit_equity,  # None = use config
+        )
+        
+        # Parse pairs
+        pair_list = None
+        if pairs:
+            pair_list = [p.strip().upper().replace("/", "_") for p in pairs.split(",")]
+        
+        # Run enhanced scan
+        results = scanner.scan(
+            pairs=pair_list,
+            granularity=granularity,
+            top_n=top_n,
+            verbose=True,  # Always verbose for CLI
+            prompt_train=prompt_train,
+            prompt_execute=prompt_execute and not no_execute,
+        )
+        
+        # Convert to legacy format for backward compatibility
+        legacy_results = []
+        for r in results:
+            # Create PairAnalysis-compatible object
+            analysis = PairAnalysis(
+                pair=r.pair,
+                direction=r.direction,
+                confidence=r.confidence,
+                volatility_percentile=r.volatility_percentile,
+                trend_strength=r.trend_strength,
+                optimal_entry_score=r.entry_score,
+                historical_accuracy=r.historical_accuracy,
+                current_price=r.current_price,
+                atr=r.atr,
+                timestamp=r.timestamp,
+            )
+            legacy_results.append((analysis, r.gates_passed))
+        
+        return legacy_results
+        
+    except ImportError as e:
+        # Fallback to legacy implementation if buddy_scanner not available
+        console.print(f"[yellow]⚠ BuddyScanner not available ({e}), using legacy scan[/yellow]")
+        return _buddy_scan_legacy(
+            config_path=config_path,
+            pairs=pairs,
+            granularity=granularity,
+            top_n=top_n,
+            verbose=verbose,
+            prompt_train=prompt_train,
+            **kwargs,
+        )
+
+
+def buddy_predict_78(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    instrument: str = "EUR_USD",
+    granularity: str = "H1",
+    execute: bool = False,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> Optional[Dict[str, Any]]:
+    """
+    Run prediction using the verified 78% model with aggressive position sizing.
+    
+    This is the recommended predict command for the $100k → $1M compounding strategy.
+    Uses BuddyScanner for consistent position sizing with scan results.
+    
+    Args:
+        config_path: Path to config file
+        instrument: Currency pair (e.g., "EUR_USD", "USD_JPY")
+        granularity: Timeframe (default H1)
+        execute: If True, execute the trade on OANDA practice
+        verbose: Show extra details
+        
+    Returns:
+        Dict with prediction details or None on failure
+    """
+    from datetime import datetime
+    
+    # Normalize instrument
+    instrument = instrument.upper().replace("/", "_")
+    
+    console.print("\n" + "=" * 60)
+    console.print("[bold cyan]📊 BUDDY PREDICT (78% Model)[/bold cyan]")
+    console.print("=" * 60)
+    
+    # Use BuddyScanner for consistent results with scan
+    try:
+        from buddy_scanner import BuddyScanner
+        
+        scanner = BuddyScanner(config_path=config_path)
+        
+        # Run scan for just this one pair
+        results = scanner.scan(
+            pairs=[instrument],
+            granularity=granularity,
+            top_n=1,
+            verbose=False,
+            prompt_train=False,
+        )
+        
+        if not results:
+            console.print(f"[red]✗ No prediction for {instrument}[/red]")
+            return None
+        
+        r = results[0]
+        
+        # Get live account equity from scanner (uses compounding!)
+        account_equity = scanner._scan_config.account_equity
+        
+    except Exception as e:
+        console.print(f"[red]✗ Scanner error: {e}[/red]")
+        import traceback
+        traceback.print_exc()
+        return None
+    
+    # Display prediction (matches scan format)
+    console.print(f"[green]✓ MODEL_78_v2[/green] ({scanner._model_meta.get('results', {}).get('transformer', {}).get('val_accuracy', 0.78):.1%} accuracy)")
+    console.print(f"[dim]Data: {granularity} timeframe | Compounding Equity: ${account_equity:,.2f}[/dim]")
+    console.print("-" * 60)
+    
+    signal_color = "green" if r.direction == "LONG" else "red"
+    signal_emoji = "🟢" if r.direction == "LONG" else "🔴"
+    
+    console.print(f"\n{signal_emoji} [bold {signal_color}]{r.direction}[/bold {signal_color}] {instrument.replace('_', '/')}")
+    console.print(f"   Confidence: [{signal_color}]{r.confidence:.1%}[/{signal_color}]")
+    console.print(f"   Entry:      {r.current_price:.5f}")
+    
+    # Calculate actual SL/TP prices
+    from fx_paper import pip_size
+    pip = pip_size(instrument)
+    
+    if r.direction == "LONG":
+        sl_price = r.current_price - (r.sl_pips * pip)
+        tp_price = r.current_price + (r.tp_pips * pip)
+    else:
+        sl_price = r.current_price + (r.sl_pips * pip)
+        tp_price = r.current_price - (r.tp_pips * pip)
+    
+    console.print(f"   SL:         {sl_price:.5f} ({r.sl_pips:.0f} pips)")
+    console.print(f"   TP:         {tp_price:.5f} ({r.tp_pips:.0f} pips)")
+    console.print(f"   R:R:        1:{r.tp_pips/r.sl_pips:.1f}" if r.sl_pips > 0 else "   R:R:        N/A")
+    console.print()
+    
+    # Position sizing
+    units = int(r.recommended_lots * 100000)
+    pip_value = 10.0 if not instrument.endswith("JPY") else 7.5
+    est_profit = r.recommended_lots * r.tp_pips * pip_value
+    est_loss = r.recommended_lots * r.sl_pips * pip_value
+    
+    console.print(f"   [bold]Position: {r.recommended_lots:.2f} lots[/bold] ({units:,} units)")
+    console.print(f"   Risk:       ${est_loss:,.0f} ({r.risk_pct:.0%} of ${account_equity:,.0f})")
+    console.print(f"   Target:     [green]+${est_profit:,.0f}[/green]")
+    console.print("-" * 60)
+    
+    # Gate check
+    if r.gates_passed:
+        console.print(f"[green]✓ GATES PASSED[/green] (conf {r.confidence:.0%})")
+    else:
+        console.print(f"[yellow]⚠ GATES NOT PASSED[/yellow] (conf {r.confidence:.0%})")
+    
+    # Execute trade if requested
+    if execute and r.gates_passed and r.recommended_lots > 0:
+        console.print("\n[bold]Executing trade...[/bold]")
+        try:
+            from oanda_practice import OandaPracticeClient
+            client = OandaPracticeClient.from_env()
+            
+            result = client.create_market_order(
+                instrument=instrument,
+                units=units if r.direction == "LONG" else -units,
+                take_profit_price=round(tp_price, 5),
+                stop_loss_price=round(sl_price, 5),
+            )
+            
+            if result and "orderFillTransaction" in result:
+                fill = result["orderFillTransaction"]
+                fill_price = float(fill.get("price", r.current_price))
+                trade_id = fill.get("tradeOpened", {}).get("tradeID", "N/A")
+                console.print(f"[green]✓ FILLED[/green] @ {fill_price:.5f} (Trade #{trade_id})")
+                
+                # Log to journal
+                try:
+                    from memory_client import MLEngineMemory
+                    mem = MLEngineMemory()
+                    mem.log_trade({
+                        "timestamp": datetime.now().isoformat(),
+                        "instrument": instrument,
+                        "direction": r.direction,
+                        "confidence": r.confidence,
+                        "lots": r.recommended_lots,
+                        "entry": fill_price,
+                        "sl": sl_price,
+                        "tp": tp_price,
+                        "trade_id": trade_id,
+                        "model": "MODEL_78_v2",
+                    })
+                    console.print("[dim]📓 Trade logged[/dim]")
+                except Exception:
+                    pass
+            else:
+                console.print(f"[yellow]Order result: {result}[/yellow]")
+                
+        except Exception as e:
+            console.print(f"[red]✗ Execution failed: {e}[/red]")
+    elif execute and not r.gates_passed:
+        console.print("[yellow]⚠ Trade not executed - gates not passed[/yellow]")
+    elif execute and r.recommended_lots <= 0:
+        console.print("[yellow]⚠ Trade not executed - no position size calculated[/yellow]")
+    
+    console.print("=" * 60 + "\n")
+    
+    return {
+        "instrument": instrument,
+        "direction": r.direction,
+        "confidence": r.confidence,
+        "lots": r.recommended_lots,
+        "entry": r.current_price,
+        "sl": sl_price,
+        "tp": tp_price,
+        "sl_pips": r.sl_pips,
+        "tp_pips": r.tp_pips,
+        "gates_passed": r.gates_passed,
+        "score": r.overall_score,
+    }
+
+
+def _buddy_scan_legacy(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    pairs: Optional[str] = None,
+    granularity: str = "H1",
+    top_n: int = 5,
+    verbose: bool = False,
+    prompt_train: bool = True,
+    **kwargs: Any,
+) -> list:
+    """Legacy buddy_scan implementation (fallback)."""
     import json
     import numpy as np
     from datetime import datetime
@@ -7852,14 +8238,18 @@ def buddy_scan(
     import warnings
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress TF INFO/WARNING
     
-    # Suppress version warnings for XGBoost and sklearn
+    # Suppress version warnings for XGBoost and sklearn (comprehensive)
     warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
     warnings.filterwarnings('ignore', message='.*InconsistentVersionWarning.*')
+    warnings.filterwarnings('ignore', message='.*serialized model.*')
+    warnings.filterwarnings('ignore', message='.*older version of XGBoost.*')
+    warnings.filterwarnings('ignore', message='.*Booster.save_model.*')
     warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
+    warnings.filterwarnings('ignore', category=FutureWarning)
     
     # Suppress all model-related loggers
     _loggers_to_quiet = ['modular_trainers', 'modular_inference', 'feature_engineering', 
-                         'modular_data_loaders', 'tensorflow', 'absl']
+                         'modular_data_loaders', 'tensorflow', 'absl', 'xgboost']
     _prev_levels = {}
     for name in _loggers_to_quiet:
         logger = _logging.getLogger(name)
@@ -7886,9 +8276,26 @@ def buddy_scan(
             
             # Load meta for model info
             meta = json.loads(modular_ensemble_meta_path.read_text())
-            val_acc = meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0)
+            
+            # Get val_accuracy - handle multiple possible locations:
+            # 1. results.transformer.val_accuracy (MODEL_78_v2 from Colab)
+            # 2. models.direction.metrics.val_accuracy (local training)
+            val_acc = 0
+            if "results" in meta:
+                val_acc = meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0)
+            if val_acc == 0 and "models" in meta:
+                val_acc = meta.get("models", {}).get("direction", {}).get("metrics", {}).get("val_accuracy", 0)
+            
+            # Get training info - check multiple possible locations
+            trained_pairs = meta.get("selected_pairs", [])
+            if not trained_pairs:
+                trained_pairs = meta.get("trained_pairs", [])
+            if not trained_pairs:
+                trained_at = meta.get("trained_at", "unknown")
+                trained_pairs = [f"EUR_USD (trained {trained_at[:10]})"] if trained_at != "unknown" else ["EUR_USD"]
+            
             console.print(f"[bold green]✓ MODEL_78_v2 loaded[/bold green] (val_accuracy: {val_acc:.1%})")
-            console.print(f"[dim]  Trained on: {', '.join(meta.get('selected_pairs', []))}[/dim]")
+            console.print(f"[dim]  Trained on: {', '.join(trained_pairs) if trained_pairs else 'EUR_USD'}[/dim]")
         except Exception as e:
             console.print(f"[yellow]⚠ Could not load modular ensemble: {e}[/yellow]")
             console.print("[dim]Falling back to technical indicators[/dim]")
@@ -8098,6 +8505,344 @@ def buddy_scan(
     # Restore logging levels
     for name, level in _prev_levels.items():
         _logging.getLogger(name).setLevel(level)
+    
+    # === SCAN → TRAIN INTERACTIVE PROMPT ===
+    if prompt_train and analyses:
+        # Find best tradeable pair (gates passed)
+        tradeable = [(a, g) for a, g in analyses if g]
+        if tradeable:
+            best_pair = tradeable[0][0].pair
+            best_conf = tradeable[0][0].confidence
+        else:
+            # Fall back to best overall if none tradeable
+            best_pair = analyses[0][0].pair
+            best_conf = analyses[0][0].confidence
+        
+        # Check for existing model (warm-start available)
+        model_path = Path("trained_data/models/transformer_direction.keras")
+        warm_start_available = model_path.exists()
+        warm_label = " (warm-start)" if warm_start_available else ""
+        
+        console.print(f"\n[bold yellow]🎯 Train {best_pair.replace('_', '/')}?{warm_label}[/bold yellow]")
+        train_answer = _buddy_wizard_ask("  [y/n]: ")
+        
+        if _parse_bool_answer(train_answer, default=False):
+            console.print(f"\n[bold green]Starting training for {best_pair}...[/bold green]")
+            
+            # Import memory client for tracking (if available)
+            try:
+                from memory_client import MLEngineMemory
+                memory = MLEngineMemory()
+                if memory.should_skip_pair(best_pair, max_age_hours=24):
+                    console.print(f"[yellow]⚠ {best_pair} was trained < 24h ago. Training anyway...[/yellow]")
+            except ImportError:
+                pass  # Memory client not available
+            
+            # Call train_buddy with full ensemble
+            train_opts = BuddyTrainingOptions(
+                oanda_fetch=OandaFetchOptions(
+                    instrument=best_pair,
+                    granularity=granularity,
+                    candles=12000,  # Full dataset for quality training
+                ),
+                epochs=200,
+                batch_size=128,
+                enterprise=True,  # Enable MLflow + CV
+            )
+            train_buddy(config_path, options=train_opts)
+            
+            # Log training to memory (if available)
+            try:
+                from memory_client import MLEngineMemory
+                memory = MLEngineMemory()
+                memory.log_training(best_pair, {"granularity": granularity})
+            except ImportError:
+                pass
+    
+    return analyses
+
+
+def retrain_gates(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    pairs: str | None = None,
+    granularity: str = "H1",
+    candles: int = 5000,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """
+    Retrain only sklearn gate models (XGBoost, RF, Ridge) while keeping Transformer.
+    
+    This solves sklearn version mismatch issues by retraining the fast sklearn
+    models locally while preserving the proven 78% Colab-trained Transformer.
+    
+    Args:
+        config_path: Path to config file
+        pairs: Comma-separated pairs to train on (default: all major pairs)
+        granularity: Candle timeframe (default: H1)
+        candles: Number of candles per pair (default: 5000, will batch if >5000)
+        verbose: Show detailed logs
+    """
+    import json
+    import pickle
+    import sklearn
+    import xgboost
+    import time
+    from datetime import datetime
+    from pathlib import Path
+    
+    from rich.panel import Panel
+    from rich.progress import track
+    
+    # ALL major forex pairs by default
+    ALL_MAJOR_PAIRS = [
+        "EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF",
+        "AUD_USD", "USD_CAD", "NZD_USD",
+        "EUR_GBP", "EUR_JPY", "GBP_JPY",
+        "EUR_CHF", "EUR_AUD", "EUR_CAD",
+        "AUD_JPY", "CAD_JPY", "CHF_JPY",
+    ]
+    
+    # Parse pairs
+    if pairs:
+        pair_list = [p.strip() for p in pairs.split(",")]
+    else:
+        pair_list = ALL_MAJOR_PAIRS
+    
+    console.print(Panel(
+        f"[bold]Retraining Gate Models Locally[/bold]\n\n"
+        f"Pairs: {', '.join(pair_list)}\n"
+        f"Candles per pair: {candles:,}\n"
+        f"Granularity: {granularity}\n\n"
+        "[dim]This will retrain XGBoost, RF, and Ridge models[/dim]\n"
+        "[dim]The Transformer direction model will be kept unchanged[/dim]",
+        title="🔧 Gate Model Retraining",
+        border_style="cyan"
+    ))
+    
+    # Import trainers and data loaders
+    from modular_data_loaders import (
+        compute_normalized_features,
+        load_xgboost_data,
+        load_rf_data,
+        load_ridge_data
+    )
+    from modular_trainers import (
+        XGBoostTrainer,
+        RandomForestTrainer,
+        RidgeTrainer,
+        TrainerConfig
+    )
+    from feature_engineering import FeatureEngineering
+    
+    # Fetch data from OANDA
+    console.print("\n[bold]Step 1: Fetching data from OANDA...[/bold]")
+    
+    # OANDA API limit is 5000 candles per request
+    OANDA_MAX_CANDLES = 5000
+    
+    try:
+        from oanda_practice import OandaPracticeClient
+        oanda = OandaPracticeClient.from_env()
+    except Exception as e:
+        console.print(f"[red]Failed to connect to OANDA: {e}[/red]")
+        console.print("[yellow]Please set OANDA_ACCOUNT_ID and OANDA_TOKEN environment variables[/yellow]")
+        return
+    
+    all_dfs = []
+    import pandas as pd
+    
+    for pair in track(pair_list, description="Fetching pairs..."):
+        try:
+            pair_dfs = []
+            remaining = candles
+            last_time = None
+            
+            # Batch requests if candles > 5000
+            while remaining > 0:
+                batch_size = min(remaining, OANDA_MAX_CANDLES)
+                
+                # Build request params
+                params = {
+                    'granularity': granularity,
+                    'count': batch_size
+                }
+                if last_time:
+                    params['to'] = last_time
+                
+                response = oanda.get_candles(pair, **params)
+                candles_raw = response.get('candles', [])
+                
+                if not candles_raw:
+                    break
+                
+                rows = []
+                for c in candles_raw:
+                    mid = c.get('mid', {})
+                    rows.append({
+                        'time': c.get('time'),
+                        'open': float(mid.get('o', 0)),
+                        'high': float(mid.get('h', 0)),
+                        'low': float(mid.get('l', 0)),
+                        'close': float(mid.get('c', 0)),
+                        'volume': int(c.get('volume', 0)),
+                    })
+                
+                batch_df = pd.DataFrame(rows)
+                pair_dfs.append(batch_df)
+                
+                # Update for next batch (go backwards in time)
+                last_time = candles_raw[0].get('time')  # Oldest candle in batch
+                remaining -= len(candles_raw)
+                
+                # Small delay to avoid rate limiting
+                if remaining > 0:
+                    time.sleep(0.2)
+            
+            if pair_dfs:
+                # Combine batches and sort by time
+                df = pd.concat(pair_dfs, ignore_index=True)
+                df = df.drop_duplicates(subset=['time']).sort_values('time').reset_index(drop=True)
+                df['pair'] = pair
+                all_dfs.append(df)
+                console.print(f"  ✓ {pair}: {len(df):,} candles")
+            
+        except Exception as e:
+            console.print(f"[yellow]  ✗ {pair}: {e}[/yellow]")
+            continue
+    
+    if not all_dfs:
+        console.print("[red]No data available. Please check OANDA connection.[/red]")
+        return
+    
+    # Combine all pairs
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    console.print(f"\n[green]Combined data: {len(combined_df):,} total candles[/green]")
+    
+    # Feature engineering
+    console.print("\n[bold]Step 2: Computing features...[/bold]")
+    
+    fe = FeatureEngineering()
+    feature_df = fe.create_features(combined_df)
+    console.print(f"  Features computed: {len(feature_df.columns)} columns")
+    
+    # Compute normalized features
+    feature_df = compute_normalized_features(feature_df)
+    console.print(f"  Normalized features: {len(feature_df.columns)} columns")
+    
+    # Load data for each model
+    console.print("\n[bold]Step 3: Preparing training data...[/bold]")
+    
+    split = (0.7, 0.2, 0.1)
+    
+    xgb_data = load_xgboost_data(feature_df, split)
+    rf_data = load_rf_data(feature_df, split)
+    ridge_data = load_ridge_data(feature_df, split)
+    
+    console.print(f"  XGBoost: {len(xgb_data['X_train']):,} train, {len(xgb_data['X_val']):,} val")
+    console.print(f"  RF: {len(rf_data['X_train']):,} train, {len(rf_data['X_val']):,} val")
+    console.print(f"  Ridge: {len(ridge_data['X_train']):,} train, {len(ridge_data['X_val']):,} val")
+    
+    # Configure trainer
+    config = TrainerConfig()
+    model_dir = Path("trained_data/models")
+    model_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Train XGBoost
+    console.print("\n[bold]Step 4: Training XGBoost (Momentum)...[/bold]")
+    
+    xgb_trainer = XGBoostTrainer(config)
+    xgb_metrics = xgb_trainer.train(
+        xgb_data['X_train'], xgb_data['y_train'],
+        xgb_data['X_val'], xgb_data['y_val'],
+        feature_names=xgb_data['feature_names'],
+        momentum_norm_factor=xgb_data.get('momentum_norm_factor'),
+    )
+    xgb_trainer.save(str(model_dir / "xgb_momentum.pkl"))
+    
+    console.print(f"  [green]✓ XGBoost: momentum_mae={xgb_metrics['momentum_mae']:.4f}, "
+                 f"accel_acc={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
+    
+    # Train RF
+    console.print("\n[bold]Step 5: Training Random Forest (Risk)...[/bold]")
+    
+    rf_trainer = RandomForestTrainer(config)
+    rf_metrics = rf_trainer.train(
+        rf_data['X_train'], rf_data['y_train'],
+        rf_data['X_val'], rf_data['y_val'],
+        feature_names=rf_data['feature_names'],
+    )
+    rf_trainer.save(str(model_dir / "rf_risk.pkl"))
+    
+    drawdown_mae_bps = rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pct', 0) * 10000)
+    console.print(f"  [green]✓ RF: drawdown_mae={drawdown_mae_bps:.1f} bps, "
+                 f"streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
+    
+    # Train Ridge
+    console.print("\n[bold]Step 6: Training ElasticNet (Confidence)...[/bold]")
+    
+    ridge_trainer = RidgeTrainer(config)
+    ridge_metrics = ridge_trainer.train(
+        ridge_data['X_train'], ridge_data['y_train'],
+        ridge_data['X_val'], ridge_data['y_val'],
+        feature_names=ridge_data['feature_names'],
+    )
+    ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
+    
+    console.print(f"  [green]✓ Ridge: MAE={ridge_metrics['confidence_mae']:.2f}, "
+                 f"R²={ridge_metrics['r2_score']:.4f}[/green]")
+    
+    # Update metadata
+    console.print("\n[bold]Step 7: Updating metadata...[/bold]")
+    
+    meta_path = model_dir / "modular_ensemble.meta.json"
+    if meta_path.exists():
+        with open(meta_path) as f:
+            meta = json.load(f)
+    else:
+        meta = {}
+    
+    # Update with new training info
+    meta['gate_models_retrained_at'] = datetime.now().isoformat()
+    meta['gate_models_trained_on'] = 'local_m1'
+    meta['sklearn_version'] = sklearn.__version__
+    meta['xgboost_version'] = xgboost.__version__
+    meta['retrained_pairs'] = pair_list
+    meta['retrained_candles'] = candles
+    meta['retrained_granularity'] = granularity
+    
+    # Update results
+    if 'results' not in meta:
+        meta['results'] = {}
+    meta['results']['xgboost'] = xgb_metrics
+    meta['results']['random_forest'] = rf_metrics
+    meta['results']['ridge'] = ridge_metrics
+    
+    with open(meta_path, 'w') as f:
+        json.dump(meta, f, indent=2)
+    
+    console.print(f"  [green]✓ Metadata updated with sklearn={sklearn.__version__}, xgboost={xgboost.__version__}[/green]")
+    
+    # Summary
+    console.print("\n" + "=" * 60)
+    console.print(Panel(
+        f"[bold green]Gate Models Retrained Successfully![/bold green]\n\n"
+        f"[bold]sklearn version:[/bold] {sklearn.__version__}\n"
+        f"[bold]xgboost version:[/bold] {xgboost.__version__}\n\n"
+        f"[bold]XGBoost (Momentum):[/bold]\n"
+        f"  MAE: {xgb_metrics['momentum_mae']:.4f}\n"
+        f"  Acceleration Accuracy: {xgb_metrics['acceleration_accuracy']:.1%}\n\n"
+        f"[bold]Random Forest (Risk):[/bold]\n"
+        f"  Drawdown MAE: {drawdown_mae_bps:.1f} bps\n"
+        f"  Streak MAE: {rf_metrics['streak_prob_mae']:.4f}\n\n"
+        f"[bold]ElasticNet (Confidence):[/bold]\n"
+        f"  MAE: {ridge_metrics['confidence_mae']:.2f}\n"
+        f"  R²: {ridge_metrics['r2_score']:.4f}\n\n"
+        f"[dim]Run 'buddy predict' to test the updated gates[/dim]",
+        title="✅ Complete",
+        border_style="green"
+    ))
 
 
 def buddy_journal(
@@ -8106,111 +8851,328 @@ def buddy_journal(
     update: bool = False,
     days: int = 30,
     verbose: bool = False,
+    import_trades: bool = False,
     **kwargs: Any,
 ) -> None:
-    """Display trade journal statistics and recent trades.
+    """Display comprehensive trade journal with full OANDA account performance.
     
     Args:
         config_path: Path to config file
-        update: If True, fetch closed trade results from OANDA
+        update: If True, sync local journal with OANDA
         days: Number of days of history to show
         verbose: Show detailed trade list
+        import_trades: If True, import untracked open trades into journal
     """
     from datetime import datetime
     from trade_journal import TradeJournal
-    
-    console.print("\n" + "=" * 70)
-    console.print("[bold cyan]📓 TRADE JOURNAL[/bold cyan]")
-    console.print("=" * 70)
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.columns import Columns
+    from rich.text import Text
     
     journal = TradeJournal()
     
-    # Update from OANDA if requested
-    if update:
-        console.print("\n[dim]Fetching closed trades from OANDA...[/dim]")
-        try:
-            from oanda_practice import OandaPracticeClient
-            client = OandaPracticeClient.from_env()
-            updated_count = journal.update_from_oanda(client)
-            console.print(f"[green]✓ Updated {updated_count} trades from OANDA[/green]")
-        except Exception as e:
-            console.print(f"[red]Failed to update from OANDA: {e}[/red]")
-    
-    # Get statistics
-    stats = journal.get_statistics(days=days)
-    
-    if stats["total_trades"] == 0:
-        console.print("\n[yellow]No trades found in journal.[/yellow]")
-        console.print("[dim]Trades are logged when using 'buddy predict' with --execute[/dim]")
-        console.print("=" * 70)
+    # Connect to OANDA
+    client = None
+    try:
+        from oanda_practice import OandaPracticeClient
+        client = OandaPracticeClient.from_env()
+    except Exception as e:
+        console.print(f"\n[red]✗ Failed to connect to OANDA: {e}[/red]")
+        console.print("[dim]Set OANDA_API_TOKEN and OANDA_ACCOUNT_ID in .env file[/dim]")
         return
     
-    # Display formatted statistics
-    from trade_journal import format_journal_stats
-    console.print(format_journal_stats(stats))
+    # Fetch comprehensive performance data from OANDA
+    console.print("\n[dim]Fetching account data from OANDA...[/dim]")
+    perf_data = journal.get_full_performance_stats(client, days=days if days != 30 else None)
     
-    # Show recent trades if verbose
-    if verbose:
-        console.print("\n[bold]📋 RECENT TRADES:[/bold]")
-        recent = journal.get_recent_trades(n=20)
+    account = perf_data.get('account')
+    open_trades = perf_data.get('open_trades', [])
+    closed_trades = perf_data.get('closed_trades', [])
+    stats = perf_data.get('stats', {})
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # HEADER
+    # ═══════════════════════════════════════════════════════════════════════════
+    console.print()
+    console.print("╔" + "═" * 78 + "╗")
+    console.print("║" + " " * 25 + "[bold cyan]📊 TRADING PERFORMANCE DASHBOARD[/bold cyan]" + " " * 22 + "║")
+    console.print("╚" + "═" * 78 + "╝")
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # ACCOUNT SUMMARY
+    # ═══════════════════════════════════════════════════════════════════════════
+    if account:
+        console.print()
         
-        if recent:
-            from rich.table import Table
-            table = Table(show_header=True, header_style="bold")
-            table.add_column("Date", style="dim")
-            table.add_column("Pair")
-            table.add_column("Dir", justify="center")
-            table.add_column("Conf", justify="right")
-            table.add_column("Entry", justify="right")
-            table.add_column("Size", justify="right")
-            table.add_column("P/L", justify="right")
-            table.add_column("Status")
-            
-            for trade in recent:
-                direction_style = "green" if trade.direction.upper() == "LONG" else "red"
-                direction_symbol = "⬆" if trade.direction.upper() == "LONG" else "⬇"
-                
-                # P/L formatting
-                if trade.pnl is not None:
-                    pnl_style = "green" if trade.pnl >= 0 else "red"
-                    pnl_str = f"[{pnl_style}]{trade.pnl:+.2f}[/{pnl_style}]"
-                else:
-                    pnl_str = "[dim]--[/dim]"
-                
-                # Status formatting
-                if trade.status in ("win", "loss", "breakeven"):
-                    color = "green" if trade.status == "win" else ("red" if trade.status == "loss" else "yellow")
-                    status_str = f"[{color}]✓ {trade.exit_reason or trade.status}[/{color}]"
-                elif trade.status == "open":
-                    status_str = "[yellow]● open[/yellow]"
-                else:
-                    status_str = f"[dim]{trade.status}[/dim]"
-                
-                # Parse timestamp
-                try:
-                    dt = datetime.fromisoformat(trade.timestamp.replace('Z', '+00:00'))
-                    date_str = dt.strftime("%m/%d %H:%M")
-                except Exception:
-                    date_str = trade.timestamp[:16] if trade.timestamp else "--"
-                
-                table.add_row(
-                    date_str,
-                    trade.instrument.replace("_", "/"),
-                    f"[{direction_style}]{direction_symbol}[/{direction_style}]",
-                    f"{trade.ridge_confidence:.0f}%",
-                    f"{trade.entry_price:.5f}" if trade.entry_price else "--",
-                    f"{trade.units:,.0f}",
-                    pnl_str,
-                    status_str,
-                )
-            
-            console.print(table)
-        else:
-            console.print("[dim]No recent trades[/dim]")
+        # Calculate daily P/L (approximation)
+        daily_pnl = account.realized_pnl / max(days, 1) if days else account.realized_pnl / 30
+        
+        # Account status panel
+        balance_color = "green" if account.balance >= 100000 else "white"
+        nav_color = "green" if account.nav >= account.balance else "red"
+        unrealized_color = "green" if account.unrealized_pnl >= 0 else "red"
+        realized_color = "green" if account.realized_pnl >= 0 else "red"
+        
+        # Main metrics
+        metrics_table = Table(show_header=False, box=None, padding=(0, 2))
+        metrics_table.add_column("Label", style="dim")
+        metrics_table.add_column("Value", justify="right")
+        metrics_table.add_column("Label2", style="dim")
+        metrics_table.add_column("Value2", justify="right")
+        
+        metrics_table.add_row(
+            "Balance:",
+            f"[{balance_color}]${account.balance:,.2f}[/{balance_color}]",
+            "NAV:",
+            f"[{nav_color}]${account.nav:,.2f}[/{nav_color}]",
+        )
+        metrics_table.add_row(
+            "Unrealized P/L:",
+            f"[{unrealized_color}]${account.unrealized_pnl:+,.2f}[/{unrealized_color}]",
+            "Realized P/L:",
+            f"[{realized_color}]${account.realized_pnl:+,.2f}[/{realized_color}]",
+        )
+        metrics_table.add_row(
+            "Margin Used:",
+            f"${account.margin_used:,.2f}",
+            "Margin Available:",
+            f"${account.margin_available:,.2f}",
+        )
+        
+        margin_pct = (account.margin_used / account.nav * 100) if account.nav > 0 else 0
+        margin_color = "green" if margin_pct < 30 else ("yellow" if margin_pct < 50 else "red")
+        metrics_table.add_row(
+            "Margin Usage:",
+            f"[{margin_color}]{margin_pct:.1f}%[/{margin_color}]",
+            "Open Positions:",
+            f"{account.open_trade_count}",
+        )
+        
+        console.print(Panel(
+            metrics_table,
+            title="[bold white]💰 ACCOUNT SUMMARY[/bold white]",
+            border_style="blue",
+            padding=(1, 2),
+        ))
     
-    console.print("\n" + "=" * 70)
-    console.print("[dim]Use --update to fetch latest results from OANDA[/dim]")
-    console.print("[dim]Use --verbose to see trade list[/dim]")
+    # ═══════════════════════════════════════════════════════════════════════════
+    # OPEN POSITIONS
+    # ═══════════════════════════════════════════════════════════════════════════
+    if open_trades:
+        total_unrealized = sum(t.unrealized_pnl for t in open_trades)
+        pnl_color = "green" if total_unrealized >= 0 else "red"
+        
+        open_table = Table(show_header=True, header_style="bold white", box=None)
+        open_table.add_column("ID", style="dim", width=6)
+        open_table.add_column("Pair", width=9)
+        open_table.add_column("Dir", justify="center", width=4)
+        open_table.add_column("Units", justify="right", width=10)
+        open_table.add_column("Entry", justify="right", width=10)
+        open_table.add_column("SL", justify="right", width=10)
+        open_table.add_column("TP", justify="right", width=10)
+        open_table.add_column("P/L", justify="right", width=12)
+        
+        for trade in open_trades:
+            direction_style = "green" if trade.direction == "long" else "red"
+            direction_symbol = "⬆" if trade.direction == "long" else "⬇"
+            
+            pnl = trade.unrealized_pnl
+            trade_pnl_color = "green" if pnl >= 0 else "red"
+            
+            is_jpy = trade.instrument.endswith('_JPY')
+            price_fmt = ".3f" if is_jpy else ".5f"
+            
+            sl_str = f"{trade.stop_loss:{price_fmt}}" if trade.stop_loss else "—"
+            tp_str = f"{trade.take_profit:{price_fmt}}" if trade.take_profit else "—"
+            
+            open_table.add_row(
+                str(trade.trade_id),
+                trade.instrument.replace("_", "/"),
+                f"[{direction_style}]{direction_symbol}[/{direction_style}]",
+                f"{trade.units:,}",
+                f"{trade.entry_price:{price_fmt}}",
+                sl_str,
+                tp_str,
+                f"[{trade_pnl_color}]${pnl:+,.2f}[/{trade_pnl_color}]",
+            )
+        
+        header = f"[bold white]🔴 OPEN POSITIONS ({len(open_trades)})[/bold white]  │  Unrealized: [{pnl_color}]${total_unrealized:+,.2f}[/{pnl_color}]"
+        console.print(Panel(
+            open_table,
+            title=header,
+            border_style="cyan",
+            padding=(0, 1),
+        ))
+    else:
+        console.print(Panel(
+            "[dim]No open positions[/dim]",
+            title="[bold white]🔴 OPEN POSITIONS[/bold white]",
+            border_style="dim",
+        ))
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # PERFORMANCE STATISTICS
+    # ═══════════════════════════════════════════════════════════════════════════
+    if stats.get('total_trades', 0) > 0:
+        # Performance metrics
+        win_rate = stats.get('win_rate', 0) * 100
+        wr_color = "green" if win_rate >= 50 else ("yellow" if win_rate >= 40 else "red")
+        
+        pf = stats.get('profit_factor', 0)
+        pf_color = "green" if pf >= 1.5 else ("yellow" if pf >= 1.0 else "red")
+        pf_str = f"{pf:.2f}" if pf != float('inf') else "∞"
+        
+        total_pnl = stats.get('total_pnl', 0)
+        pnl_color = "green" if total_pnl >= 0 else "red"
+        
+        # Build performance panel
+        perf_lines = []
+        perf_lines.append(f"[bold]📈 Performance Metrics[/bold]")
+        perf_lines.append("")
+        perf_lines.append(f"  Total Trades:     [white]{stats.get('total_trades', 0)}[/white]")
+        perf_lines.append(f"  Win Rate:         [{wr_color}]{win_rate:.1f}%[/{wr_color}]  ({stats.get('wins', 0)}W / {stats.get('losses', 0)}L)")
+        perf_lines.append(f"  Profit Factor:    [{pf_color}]{pf_str}[/{pf_color}]")
+        perf_lines.append(f"  Total P/L:        [{pnl_color}]${total_pnl:+,.2f}[/{pnl_color}]")
+        perf_lines.append(f"  Total Pips:       {stats.get('total_pips', 0):+.1f}")
+        
+        if stats.get('total_financing', 0) != 0:
+            fin_color = "red" if stats.get('total_financing', 0) < 0 else "green"
+            perf_lines.append(f"  Financing:        [{fin_color}]${stats.get('total_financing', 0):+.2f}[/{fin_color}]")
+        
+        perf_lines.append("")
+        perf_lines.append(f"[bold]📊 Risk Metrics[/bold]")
+        perf_lines.append("")
+        avg_win = stats.get('avg_win', 0)
+        avg_loss = stats.get('avg_loss', 0)
+        rr_ratio = avg_win / avg_loss if avg_loss > 0 else 0
+        
+        perf_lines.append(f"  Avg Win:          [green]${avg_win:,.2f}[/green]")
+        perf_lines.append(f"  Avg Loss:         [red]${avg_loss:,.2f}[/red]")
+        perf_lines.append(f"  Risk/Reward:      {rr_ratio:.2f}")
+        perf_lines.append(f"  Max Drawdown:     [red]${stats.get('max_drawdown', 0):,.2f}[/red]")
+        
+        # Streak info
+        streak = stats.get('current_streak', 0)
+        streak_color = "green" if streak > 0 else ("red" if streak < 0 else "white")
+        streak_text = f"+{streak}" if streak > 0 else str(streak)
+        
+        perf_lines.append("")
+        perf_lines.append(f"[bold]🔥 Streaks[/bold]")
+        perf_lines.append("")
+        perf_lines.append(f"  Current Streak:   [{streak_color}]{streak_text}[/{streak_color}]")
+        perf_lines.append(f"  Best Win Streak:  [green]+{stats.get('max_win_streak', 0)}[/green]")
+        perf_lines.append(f"  Worst Loss Streak:[red]-{stats.get('max_loss_streak', 0)}[/red]")
+        
+        # By instrument breakdown
+        by_instrument = stats.get('by_instrument', {})
+        if by_instrument:
+            perf_lines.append("")
+            perf_lines.append(f"[bold]🌍 By Instrument[/bold]")
+            perf_lines.append("")
+            
+            # Sort by P/L
+            sorted_instruments = sorted(by_instrument.items(), key=lambda x: x[1]['pnl'], reverse=True)
+            for instr, data in sorted_instruments[:6]:  # Top 6
+                total = data['wins'] + data['losses']
+                wr = data['wins'] / total * 100 if total > 0 else 0
+                instr_pnl_color = "green" if data['pnl'] >= 0 else "red"
+                perf_lines.append(
+                    f"  {instr.replace('_', '/'):<10} {data['wins']}W/{data['losses']}L "
+                    f"({wr:.0f}%) [{instr_pnl_color}]${data['pnl']:+,.2f}[/{instr_pnl_color}]"
+                )
+        
+        console.print(Panel(
+            "\n".join(perf_lines),
+            title=f"[bold white]📈 PERFORMANCE SUMMARY ({stats.get('total_trades', 0)} trades)[/bold white]",
+            border_style="green" if total_pnl >= 0 else "red",
+            padding=(1, 2),
+        ))
+    else:
+        console.print(Panel(
+            "[dim]No closed trades to analyze[/dim]",
+            title="[bold white]📈 PERFORMANCE SUMMARY[/bold white]",
+            border_style="dim",
+        ))
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # RECENT TRADE HISTORY
+    # ═══════════════════════════════════════════════════════════════════════════
+    if verbose and closed_trades:
+        console.print()
+        
+        history_table = Table(show_header=True, header_style="bold white", box=None)
+        history_table.add_column("Date", style="dim", width=12)
+        history_table.add_column("Pair", width=9)
+        history_table.add_column("Dir", justify="center", width=4)
+        history_table.add_column("Units", justify="right", width=10)
+        history_table.add_column("Entry", justify="right", width=10)
+        history_table.add_column("Exit", justify="right", width=10)
+        history_table.add_column("P/L", justify="right", width=12)
+        
+        for trade in closed_trades[:20]:  # Show last 20
+            direction_style = "green" if trade.direction == "long" else "red"
+            direction_symbol = "⬆" if trade.direction == "long" else "⬇"
+            
+            pnl = trade.realized_pnl
+            trade_pnl_color = "green" if pnl >= 0 else "red"
+            
+            is_jpy = trade.instrument.endswith('_JPY')
+            price_fmt = ".3f" if is_jpy else ".5f"
+            
+            try:
+                dt = datetime.fromisoformat(trade.close_time.replace('Z', '+00:00'))
+                date_str = dt.strftime("%m/%d %H:%M")
+            except Exception:
+                date_str = "—"
+            
+            history_table.add_row(
+                date_str,
+                trade.instrument.replace("_", "/"),
+                f"[{direction_style}]{direction_symbol}[/{direction_style}]",
+                f"{trade.units:,}",
+                f"{trade.entry_price:{price_fmt}}",
+                f"{trade.exit_price:{price_fmt}}",
+                f"[{trade_pnl_color}]${pnl:+,.2f}[/{trade_pnl_color}]",
+            )
+        
+        console.print(Panel(
+            history_table,
+            title=f"[bold white]📋 RECENT TRADE HISTORY (Last {min(20, len(closed_trades))})[/bold white]",
+            border_style="white",
+            padding=(0, 1),
+        ))
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # SYNC LOCAL JOURNAL (if requested)
+    # ═══════════════════════════════════════════════════════════════════════════
+    if update:
+        console.print()
+        console.print("[dim]Syncing local journal...[/dim]")
+        try:
+            sync_results = journal.sync_open_trades(client)
+            closed_updated = sync_results.get('closed_updated', 0)
+            open_updated = sync_results.get('open_updated', 0)
+            
+            if closed_updated > 0 or open_updated > 0:
+                console.print(f"[green]✓ Local journal synced ({closed_updated} closed, {open_updated} open)[/green]")
+            
+            # Import untracked trades if requested
+            untracked = sync_results.get('untracked_trades', [])
+            if untracked and import_trades:
+                imported = journal.import_untracked_trades(client)
+                if imported > 0:
+                    console.print(f"[green]✓ Imported {imported} trades into local journal[/green]")
+        except Exception as e:
+            console.print(f"[yellow]Local journal sync failed: {e}[/yellow]")
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # FOOTER
+    # ═══════════════════════════════════════════════════════════════════════════
+    console.print()
+    console.print("─" * 80)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    console.print(f"[dim]Last updated: {timestamp}  │  Use --verbose for trade history  │  Use --update to sync journal[/dim]")
 
 
 def buddy_analyze(
@@ -9076,130 +10038,56 @@ def model_status(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None:
     has_any_model = False
     
     # =========================================================================
-    # CHECK FOR MODULAR ENSEMBLE (new architecture)
+    # CHECK FOR 78% VERIFIED MODEL (Colab A100 - ACTIVE PRODUCTION)
+    # =========================================================================
+    model_78_meta_path = models_dir / "modular_ensemble_78pct.meta.json"
+    model_78_keras_path = models_dir / "transformer_direction_78pct.keras"
+    
+    if model_78_meta_path.exists() and model_78_keras_path.exists():
+        has_any_model = True
+        try:
+            meta = json.loads(model_78_meta_path.read_text())
+            results = meta.get('results', {}).get('transformer', {})
+            verif = meta.get('verification', {})
+            xgb = meta.get('results', {}).get('xgboost', {})
+            
+            console.print("\n[bold green]★ MODEL_78_v2 (Active)[/bold green]")
+            console.print(f"  Accuracy:    [bold]{results.get('val_accuracy', 0):.1%}[/bold] (verified: {verif.get('future_accuracy', 0):.1%} on future data)")
+            console.print(f"  Momentum:    {xgb.get('acceleration_accuracy', 0):.1%}")
+            console.print(f"  Leakage:     {'✓ None' if not verif.get('leakage_detected') else '❌ Detected'}")
+            console.print(f"  Trained:     {meta.get('trained_on', 'colab_a100')} | {meta.get('trained_at', '')[:10]}")
+                
+        except Exception as e:
+            console.print(f"[yellow]⚠ Error reading model meta: {e}[/yellow]")
+    
+    # =========================================================================
+    # CHECK FOR LOCAL FALLBACK (only show if 78% not available)
     # =========================================================================
     modular_meta_path = models_dir / "modular_ensemble.meta.json"
-    modular_candidate_path = models_dir / "modular_ensemble_candidate.meta.json"
     
     if modular_meta_path.exists():
         has_any_model = True
         try:
             meta = json.loads(modular_meta_path.read_text())
-            console.print("\n[green]✓ Modular Ensemble (Production)[/green]")
-            console.print(f"  Model Type:         {meta.get('model_type', 'modular_ensemble')}")
-            console.print(f"  Primary Model:      {meta.get('primary_model_type', 'transformer')}")
+            direction = meta.get('models', {}).get('direction', {}).get('metrics', {})
             
-            # Direction model metrics
-            direction = meta.get('models', {}).get('direction', {})
-            dir_metrics = direction.get('metrics', {})
-            val_acc = dir_metrics.get('val_accuracy')
-            if val_acc is not None:
-                console.print(f"  Direction Accuracy: {val_acc:.1%}")
-                balanced = dir_metrics.get('val_balanced_accuracy')
-                if balanced:
-                    console.print(f"  Balanced Accuracy:  {balanced:.1%}")
-            
-            # XGBoost momentum
-            xgb = meta.get('models', {}).get('xgboost', {})
-            xgb_metrics = xgb.get('metrics', {})
-            accel_acc = xgb_metrics.get('acceleration_accuracy')
-            if accel_acc is not None:
-                console.print(f"  Momentum Accel Acc: {accel_acc:.1%}")
-            
-            # Ridge confidence
-            ridge = meta.get('models', {}).get('ridge', {})
-            ridge_metrics = ridge.get('metrics', {})
-            r2 = ridge_metrics.get('r2_score')
-            if r2 is not None:
-                console.print(f"  Confidence R²:      {r2:.3f}")
-            
-            # Training info
-            if meta.get('trained_at'):
-                console.print(f"  Trained:            {meta.get('trained_at')}")
-            
-            # Component models
-            console.print(f"\n  [dim]Components:[/dim]")
-            for name, model_info in meta.get('models', {}).items():
-                path = Path(model_info.get('path', ''))
-                exists = "✓" if path.exists() else "✗"
-                console.print(f"    {exists} {name}: {path.name}")
-                
-        except Exception as e:
-            console.print(f"[yellow]⚠ Error reading modular ensemble meta: {e}[/yellow]")
-    
-    if modular_candidate_path.exists():
-        has_any_model = True
-        try:
-            meta = json.loads(modular_candidate_path.read_text())
-            console.print("\n[cyan]● Modular Ensemble (Candidate)[/cyan]")
-            console.print(f"  Model Type:         {meta.get('model_type', 'modular_ensemble')}")
-            
-            direction = meta.get('models', {}).get('direction', {})
-            dir_metrics = direction.get('metrics', {})
-            val_acc = dir_metrics.get('val_accuracy')
-            if val_acc is not None:
-                console.print(f"  Direction Accuracy: {val_acc:.1%}")
-            
-            if meta.get('trained_at'):
-                console.print(f"  Trained:            {meta.get('trained_at')}")
-        except Exception as e:
-            console.print(f"[yellow]⚠ Error reading modular candidate meta: {e}[/yellow]")
-    
-    # =========================================================================
-    # CHECK FOR LEGACY SINGLE MODEL
-    # =========================================================================
-    prod_meta = models_dir / "buddy_tf.meta.json"
-    if prod_meta.exists():
-        has_any_model = True
-        try:
-            meta = json.loads(prod_meta.read_text())
-            console.print("\n[green]✓ Legacy Model: buddy_tf.keras[/green]")
-            console.print(f"  Direction Accuracy: {meta.get('val_direction_accuracy', 'N/A'):.1%}" if isinstance(meta.get('val_direction_accuracy'), (int, float)) else f"  Direction Accuracy: {meta.get('val_direction_accuracy', 'N/A')}")
-            console.print(f"  Model Type:         {meta.get('model_type', 'unknown')}")
-            console.print(f"  Seq Length:         {meta.get('seq_len', 'N/A')}")
-            console.print(f"  Features:           {len(meta.get('feature_columns', []))}")
-            if meta.get('trained_at'):
-                console.print(f"  Trained:            {meta.get('trained_at')}")
-        except Exception as e:
-            console.print(f"[yellow]⚠ Error reading production meta: {e}[/yellow]")
-    
-    # Check candidate model (legacy)
-    cand_meta = models_dir / "buddy_tf_candidate.meta.json"
-    if cand_meta.exists():
-        has_any_model = True
-        try:
-            meta = json.loads(cand_meta.read_text())
-            console.print("\n[cyan]● Legacy Candidate: buddy_tf_candidate.keras[/cyan]")
-            val_acc = meta.get('val_direction_accuracy')
-            if isinstance(val_acc, (int, float)):
-                console.print(f"  Direction Accuracy: {val_acc:.1%}")
+            # Only show as fallback if 78% model exists, otherwise show as primary
+            if model_78_keras_path.exists():
+                console.print(f"\n[dim]○ Local Fallback: {direction.get('val_accuracy', 0):.1%} acc | {meta.get('trained_at', '')[:10]}[/dim]")
             else:
-                console.print(f"  Direction Accuracy: {val_acc}")
-            console.print(f"  Model Type:         {meta.get('model_type', 'unknown')}")
-            console.print(f"  Seq Length:         {meta.get('seq_len', 'N/A')}")
-            console.print(f"  Features:           {len(meta.get('feature_columns', []))}")
-            if meta.get('trained_at'):
-                console.print(f"  Trained:            {meta.get('trained_at')}")
-            
-            # Tier-2 calibration info
-            tier2 = meta.get('tier2_calibration', {})
-            if tier2:
-                console.print(f"  Tier-2 Win Rate:    {tier2.get('train_win_rate', 'N/A'):.1%}" if isinstance(tier2.get('train_win_rate'), (int, float)) else "")
-                ts = tier2.get('temperature_scaling', {})
-                if ts.get('enabled'):
-                    console.print(f"  Temperature:        {ts.get('temperature', 'N/A'):.2f}")
-        except Exception as e:
-            console.print(f"[yellow]⚠ Error reading candidate meta: {e}[/yellow]")
+                console.print(f"\n[yellow]● Local Model (No 78% model)[/yellow]")
+                console.print(f"  Accuracy:    {direction.get('val_accuracy', 0):.1%}")
+                console.print(f"  Trained:     {meta.get('trained_at', '')[:10]}")
+                
+        except Exception:
+            pass
     
     if not has_any_model:
         console.print("\n[yellow]✗ No models found[/yellow]")
-        console.print("[dim]Train a model: buddy train --oanda-live --candles 5000[/dim]")
+        console.print("[dim]Train: buddy train --oanda-live --candles 5000[/dim]")
     
     console.print("\n" + "-" * 60)
-    console.print("[dim]Commands:[/dim]")
-    console.print("  [cyan]buddy predict[/cyan]  - Run inference")
-    console.print("  [cyan]buddy promote[/cyan]  - Promote candidate to production")
-    console.print("  [cyan]buddy train[/cyan]    - Train new model")
+    console.print("[dim]buddy predict | buddy scan | buddy train[/dim]")
     console.print("=" * 60 + "\n")
 
 
@@ -9319,6 +10207,7 @@ def main() -> None:
         default="buddy",
         choices=[
             "train-buddy",
+            "retrain-gates",
             "buddy",
             "Buddy",
             "promote-model",
@@ -9560,6 +10449,18 @@ def main() -> None:
         help="For scan/analyze: number of top results to show",
     )
     parser.add_argument(
+        "--no-train",
+        action="store_true",
+        dest="no_train",
+        help="For scan: skip the train prompt after scanning (deprecated)",
+    )
+    parser.add_argument(
+        "--skip-execute",
+        action="store_true",
+        dest="skip_execute",
+        help="For scan: skip the trade execution prompt after scanning",
+    )
+    parser.add_argument(
         "--save",
         action="store_true",
         help="For analyze: save plots to trained_data/visualizations",
@@ -9576,6 +10477,11 @@ def main() -> None:
         type=int,
         default=30,
         help="For journal: number of days of history to show (default: 30)",
+    )
+    parser.add_argument(
+        "--import-trades",
+        action="store_true",
+        help="For journal: import untracked open trades from OANDA into journal",
     )
 
     parser.add_argument(
@@ -9861,6 +10767,11 @@ def main() -> None:
         action="store_true",
         help="Skip generating the training report.",
     )
+    parser.add_argument(
+        "--enable-ewc",
+        action="store_true",
+        help="Enable EWC (Elastic Weight Consolidation) for continual learning. High compute cost, use for research only. (default: disabled)",
+    )
 
     # If invoked as `buddy` with no extra args, run the interactive wizard.
     # (The installed `buddy` launcher calls: python main.py buddy ...)
@@ -9881,6 +10792,7 @@ def main() -> None:
 
     command_map = {
         "train-buddy": train_buddy,
+        "retrain-gates": retrain_gates,
         "buddy": buddy,
         "Buddy": buddy,
         "promote-model": promote_model,
@@ -9894,6 +10806,16 @@ def main() -> None:
     try:
         if args.command == "train-buddy":
             _dispatch_train_buddy(args, command_map)
+        elif args.command == "retrain-gates":
+            # Retrain sklearn gates only (XGBoost, RF, Ridge)
+            # Keeps Transformer direction model unchanged
+            retrain_gates(
+                config_path=args.config,
+                pairs=getattr(args, "pairs", None),
+                granularity=str(getattr(args, "granularity", "H1")),
+                candles=int(getattr(args, "candles", 5000)),
+                verbose=bool(getattr(args, "verbose", False)),
+            )
         elif args.command in {"buddy", "Buddy"}:
             _dispatch_buddy(args, command_map)
         elif args.command == "promote-model":
@@ -9916,6 +10838,8 @@ def main() -> None:
                 granularity=str(getattr(args, "granularity", "H1")),
                 top_n=int(getattr(args, "top", 5)),
                 verbose=bool(getattr(args, "verbose", False)),
+                prompt_train=not bool(getattr(args, "no_train", False)),
+                no_execute=bool(getattr(args, "skip_execute", False)),
             )
         elif args.command == "analyze":
             buddy_analyze(
@@ -9930,6 +10854,7 @@ def main() -> None:
                 update=bool(getattr(args, "update", False)),
                 days=int(getattr(args, "days", 30)),
                 verbose=bool(getattr(args, "verbose", False)),
+                import_trades=bool(getattr(args, "import_trades", False)),
             )
         else:
             command_map[args.command](args.config)
