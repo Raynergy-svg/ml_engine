@@ -177,6 +177,28 @@ auto_focal_alpha: true
 focal_gamma: 2.0
 direction_loss: focal  # Options: focal, bce
 
+# ----- LABEL SMOOTHING (Quick Win #2) -----
+# Prevents overconfidence, improves generalization
+label_smoothing: 0.1  # For direction head (soft targets: 0.1/0.9 instead of 0/1)
+state_label_smoothing: 0.05  # For state classification
+
+# ----- MODEL EMA (Quick Win #4) -----
+# Exponential moving average of weights for smoother inference
+use_model_ema: true
+ema_decay: 0.999  # Higher = smoother but slower adaptation
+
+# ----- WARM RESTART LR SCHEDULE (Medium Effort #2) -----
+# Cosine annealing with warm restarts for escaping local minima
+# Paper: "SGDR: Stochastic Gradient Descent with Warm Restarts"
+lr_schedule:
+  type: "cosine_restarts"  # Options: "cosine_restarts", "warmup_cosine", "exponential"
+  initial_lr: 0.001
+  first_decay_epochs: 10  # T_0: First cycle length in epochs
+  t_mul: 2.0  # T_mult: Each cycle is t_mul times longer (10, 20, 40, 80...)
+  m_mul: 0.9  # LR decay per cycle (0.9 = 10% decay each restart)
+  alpha: 0.01  # Minimum LR as fraction of initial
+  warmup_epochs: 2  # Linear warmup at start
+
 # ----- DATA SCALING -----
 enable_data_scaling: true
 normalize_features: true
@@ -224,7 +246,7 @@ fx:
   timezone: America/New_York
   granularity: M5
   horizon_bars: 1
-  equity: 10000.0
+  # equity: fetched from OANDA live account (compounding)
   instruments:
     - EUR_USD
     - GBP_USD
@@ -235,8 +257,8 @@ fx:
     force_flat_at: "11:55"
     reset_at: "08:00"
   limits:
-    max_open_positions: 1
-    max_entries_per_day: 1
+    max_open_positions: 5  # Allow multiple positions for diversification
+    max_entries_per_day: 30  # Professional: up to 30 trades/day
   risk:
     risk_per_trade_pct: 0.02  # 2% risk per trade
     daily_loss_stop_pct: 0.05  # 5% daily stop

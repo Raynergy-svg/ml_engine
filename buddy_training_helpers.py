@@ -248,4 +248,88 @@ def _buddy_load_and_validate_csv(
         console=console,
     )
     return df
+
+
+def _load_multi_pair_data(
+    pairs: list[str],
+    granularity: str = "H1",
+    candles_per_pair: int = 5000,
+    console: _ConsoleLike | None = None,
+) -> pd.DataFrame:
+    """Load and concatenate data from multiple currency pairs.
+    
+    This enables multi-pair foundation model training by:
+    1. Fetching historical data for each pair from OANDA
+    2. Normalizing features to make them instrument-agnostic
+    3. Concatenating all data with shuffle for training
+    
+    Args:
+        pairs: List of instrument names (e.g., ["EUR_USD", "GBP_USD", "USD_JPY"])
+        granularity: Candle timeframe (default: H1)
+        candles_per_pair: Number of candles to fetch per pair
+        console: Rich console for output
+        
+    Returns:
+        Combined DataFrame with normalized features from all pairs
+    """
+    try:
+        from oanda_practice import OandaPracticeClient
+        oanda = OandaPracticeClient.from_env()
+    except Exception as e:
+        raise RuntimeError(f"Failed to connect to OANDA: {e}")
+    
+    all_dfs = []
+    
+    for pair in pairs:
+        try:
+            # Fetch data
+            df = oanda.get_candles(pair, granularity, count=candles_per_pair)
+            
+            if df is None or len(df) < 100:
+                if console:
+                    console.print(f"  [yellow]⚠ {pair}: insufficient data ({len(df) if df is not None else 0} rows)[/yellow]")
+                continue
+            
+            # Add pair identifier (optional, for conditioning)
+            df['pair'] = pair
+            
+            # Normalize OHLCV to percentage returns (instrument-agnostic)
+            # This makes models generalizable across pairs
+            df['open_pct'] = df['open'].pct_change()
+            df['high_pct'] = (df['high'] - df['open']) / df['open']
+            df['low_pct'] = (df['low'] - df['open']) / df['open']
+            df['close_pct'] = df['close'].pct_change()
+            
+            # Normalize volume to z-score (relative to pair's own history)
+            if 'volume' in df.columns:
+                vol_mean = df['volume'].rolling(100, min_periods=10).mean()
+                vol_std = df['volume'].rolling(100, min_periods=10).std().clip(lower=1e-8)
+                df['volume_zscore'] = (df['volume'] - vol_mean) / vol_std
+            
+            # Drop first row with NaN from pct_change
+            df = df.iloc[1:].copy()
+            
+            all_dfs.append(df)
+            
+            if console:
+                console.print(f"  [green]✓ {pair}: {len(df):,} rows[/green]")
+                
+        except Exception as e:
+            if console:
+                console.print(f"  [red]✗ {pair}: {e}[/red]")
+            continue
+    
+    if not all_dfs:
+        raise ValueError("No data loaded from any pairs")
+    
+    # Concatenate all DataFrames
+    combined = pd.concat(all_dfs, ignore_index=True)
+    
+    # Shuffle to mix pairs (important for training)
+    combined = combined.sample(frac=1.0, random_state=42).reset_index(drop=True)
+    
+    if console:
+        console.print(f"\n  [bold]Total: {len(combined):,} rows from {len(all_dfs)} pairs[/bold]")
+    
+    return combined
 # — Raynergy-svg —

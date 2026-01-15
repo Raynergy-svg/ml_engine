@@ -105,19 +105,53 @@ PIP_VALUES = {
 
 @dataclass
 class ScanConfig:
-    """Configuration for buddy scanner."""
+    """Configuration for buddy scanner.
+    
+    H1 Timeframe Optimizations:
+    - ATR-based SL/TP (1.5x ATR for SL, 3x ATR for TP = 2:1 R:R)
+    - Session filtering (London/NY best)
+    - Volatility filter (skip low-ATR periods)
+    - Trailing stop after 1R profit
+    """
     lookback_candles: int = 200
     parallel_workers: int = 4
     backtest_window: int = 50
     auto_retrain_prompt: bool = True
     drift_threshold: float = 0.03
-    min_confidence: float = 0.0
+    min_confidence: float = 0.52  # 52%+ (above random)
+    min_gate_confidence: float = 0.55  # 55%+ required for gates to pass
+    
+    # H1 ATR-based SL/TP settings
+    atr_period: int = 14  # Standard H1 ATR period
+    atr_sl_multiplier: float = 1.0  # SL = 1.0x ATR (tighter for scalping)
+    atr_tp_multiplier: float = 1.5  # TP = 1.5x ATR (tighter targets)
+    rr_multiplier: float = 1.5  # Fallback R:R if ATR unavailable
+    
+    # Tight pip ranges for quick trades (user requested)
+    min_sl_pips: float = 15.0  # Fixed 15 pip SL as requested
+    max_sl_pips: float = 15.0  # Cap at 15 pips - don't exceed
+    min_tp_pips: float = 20.0  # Minimum 20 pip TP
+    max_tp_pips: float = 30.0  # Max 30 pip TP (base)
+    
+    # High probability TP bonus (>65% confidence)
+    high_prob_threshold: float = 0.65  # Probability threshold for bonus TP
+    high_prob_tp_bonus: float = 20.0  # Extra pips added when prob > 65%
+    
+    # Position sizing - optimized for $101k account
     position_sizing_enabled: bool = True
-    account_equity: float = 100000.0  # $100k default
-    risk_per_trade_pct: float = 0.05  # 5% aggressive
+    account_equity: float = 0.0  # 0 = fetch from OANDA live
+    risk_per_trade_pct: float = 0.02  # 2% risk per trade for larger lots
     leverage: int = 50  # 50:1 leverage
-    aggressive_mode: bool = True  # Use aggressive position sizing
-    max_trades_per_day: int = 10  # Max trades per day for projection
+    aggressive_mode: bool = True  # Enabled for larger position sizes
+    max_trades_per_day: int = 30  # Max 30 trades/day as requested
+    
+    # Session filter (UTC hours)
+    enable_session_filter: bool = True
+    session_start_utc: int = 8  # London open
+    session_end_utc: int = 21  # NY close
+    
+    # Volatility filter
+    min_atr_pips: float = 8.0  # Skip if H1 ATR < 8 pips (dead market)
     
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ScanConfig":
@@ -128,13 +162,28 @@ class ScanConfig:
             backtest_window=d.get("backtest_window", 50),
             auto_retrain_prompt=d.get("auto_retrain_prompt", True),
             drift_threshold=d.get("drift_threshold", 0.03),
-            min_confidence=d.get("min_confidence", 0.0),
+            min_confidence=d.get("min_confidence", 0.52),
+            min_gate_confidence=d.get("min_gate_confidence", 0.55),
+            atr_period=d.get("atr_period", 14),
+            atr_sl_multiplier=d.get("atr_sl_multiplier", 1.5),
+            atr_tp_multiplier=d.get("atr_tp_multiplier", 3.0),
+            rr_multiplier=d.get("rr_multiplier", 2.0),
+            min_sl_pips=d.get("min_sl_pips", 15.0),
+            max_sl_pips=d.get("max_sl_pips", 15.0),
+            min_tp_pips=d.get("min_tp_pips", 20.0),
+            max_tp_pips=d.get("max_tp_pips", 30.0),
+            high_prob_threshold=d.get("high_prob_threshold", 0.65),
+            high_prob_tp_bonus=d.get("high_prob_tp_bonus", 20.0),
             position_sizing_enabled=d.get("position_sizing_enabled", True),
-            account_equity=d.get("account_equity", 100000.0),
-            risk_per_trade_pct=d.get("risk_per_trade_pct", 0.05),
+            account_equity=d.get("account_equity", 101000.0),
+            risk_per_trade_pct=d.get("risk_per_trade_pct", 0.02),
             leverage=d.get("leverage", 50),
-            aggressive_mode=d.get("aggressive_mode", True),
-            max_trades_per_day=d.get("max_trades_per_day", 10),
+            aggressive_mode=d.get("aggressive_mode", False),
+            max_trades_per_day=d.get("max_trades_per_day", 3),
+            enable_session_filter=d.get("enable_session_filter", True),
+            session_start_utc=d.get("session_start_utc", 8),
+            session_end_utc=d.get("session_end_utc", 21),
+            min_atr_pips=d.get("min_atr_pips", 8.0),
         )
 
 
@@ -161,6 +210,12 @@ class EnhancedScanResult:
     sl_pips: float = 0.0
     tp_pips: float = 0.0
     confidence_level: str = "unknown"
+    
+    # Model status per pair
+    has_pair_model: bool = False  # Whether pair has dedicated trained model
+    model_accuracy: Optional[float] = None  # Model accuracy for this pair
+    needs_training: bool = False  # Whether pair needs (re)training
+    training_reason: Optional[str] = None  # Why training is needed
     
     # Backtest fields (populated for top 3 only)
     backtest_win_rate: Optional[float] = None
@@ -223,6 +278,7 @@ class BuddyScanner:
         self,
         config_path: str = "config_improved_H1.yaml",
         account_equity: Optional[float] = None,
+        use_rl_sizer: bool = True,
     ):
         """
         Initialize the scanner.
@@ -230,6 +286,7 @@ class BuddyScanner:
         Args:
             config_path: Path to config YAML file
             account_equity: Override account equity for position sizing
+            use_rl_sizer: Use RL-based position sizing instead of Kelly
         """
         self.config_path = config_path
         self._cfg = None
@@ -243,6 +300,7 @@ class BuddyScanner:
         self._memory_client = None
         self._model_meta = None
         self._account_equity = account_equity
+        self._use_rl_sizer = use_rl_sizer
         
         # Cached historical accuracy per pair
         self._historical_accuracy: Dict[str, float] = {}
@@ -281,30 +339,101 @@ class BuddyScanner:
             account = result.get('account', {})
             nav = float(account.get('NAV', 0))
             if nav > 0:
-                logger.info(f"Fetched live NAV: ${nav:,.2f}")
+                logger.debug(f"Fetched live NAV: ${nav:,.2f}")
                 return nav
         except Exception as e:
             logger.debug(f"Could not fetch live NAV: {e}")
         return None
     
-    def _update_equity_from_oanda(self) -> bool:
-        """Update account equity from OANDA for compounding.
+    def _fetch_trades_today(self) -> int:
+        """Fetch count of trades opened today from OANDA.
         
-        Only updates if no explicit equity was provided.
-        Returns True if equity was updated.
+        Returns:
+            Number of trades opened today (0 if unable to fetch)
         """
-        # Don't override if equity was explicitly set
-        if self._account_equity:
-            return False
+        try:
+            self._init_oanda_client()
+            from datetime import datetime, timezone
+            
+            # Get today's date in UTC
+            today_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            
+            # Fetch recent trades
+            result = self._oanda_client._request(
+                'GET',
+                f'/accounts/{self._oanda_client._config.account_id}/trades',
+                params={'state': 'ALL', 'count': 100}
+            )
+            trades = result.get('trades', [])
+            
+            # Count trades opened today
+            trades_today = 0
+            for t in trades:
+                open_time = t.get('openTime', '')
+                if open_time.startswith(today_utc):
+                    trades_today += 1
+            
+            return trades_today
+            
+        except Exception as e:
+            logger.debug(f"Could not fetch trades today: {e}")
+            return 0
+    
+    def _update_equity_from_oanda(self) -> Tuple[bool, float, int, int]:
+        """Update account equity from OANDA and get trade limits.
         
+        Returns:
+            Tuple of (was_updated, nav, trades_today, trades_remaining)
+        """
         nav = self._fetch_live_nav()
+        trades_today = self._fetch_trades_today()
+        max_trades = self._scan_config.max_trades_per_day
+        trades_remaining = max(0, max_trades - trades_today)
+        
+        # Update equity if fetched successfully and no explicit override
+        was_updated = False
         if nav and nav > 0:
-            old_equity = self._scan_config.account_equity
-            self._scan_config.account_equity = nav
-            if abs(nav - old_equity) > 100:  # Only log if significant change
-                logger.info(f"Updated equity for compounding: ${old_equity:,.0f} → ${nav:,.0f}")
-            return True
-        return False
+            if not self._account_equity:  # Only update if not explicitly set
+                self._scan_config.account_equity = nav
+                was_updated = True
+            else:
+                nav = self._account_equity  # Use explicitly set equity
+        elif self._account_equity:
+            nav = self._account_equity
+        else:
+            nav = self._scan_config.account_equity or 10000.0  # Fallback
+        
+        return was_updated, nav, trades_today, trades_remaining
+    
+    def _fetch_actual_win_rate(self) -> Tuple[float, int]:
+        """Fetch actual win rate from OANDA closed trades.
+        
+        Returns:
+            Tuple of (win_rate, total_trades)
+        """
+        try:
+            self._init_oanda_client()
+            # Use _request directly as OandaPracticeClient doesn't have get_trades
+            result = self._oanda_client._request(
+                'GET',
+                f'/accounts/{self._oanda_client._config.account_id}/trades',
+                params={'state': 'CLOSED', 'count': 100}
+            )
+            trades = result.get('trades', [])
+            
+            if not trades:
+                return 0.0, 0
+            
+            wins = sum(1 for t in trades if float(t.get('realizedPL', 0)) > 0)
+            total = len(trades)
+            win_rate = wins / total if total > 0 else 0.0
+            
+            logger.info(f"Actual trading performance: {win_rate:.1%} ({wins}W/{total-wins}L)")
+            return win_rate, total
+            
+        except Exception as e:
+            logger.debug(f"Could not fetch actual win rate: {e}")
+            return 0.0, 0
     
     def _init_oanda_client(self):
         """Initialize OANDA API client."""
@@ -339,7 +468,7 @@ class BuddyScanner:
                     self._model_meta = {
                         "results": {"transformer": {"val_accuracy": model_78.accuracy}}
                     }
-                    logger.info(f"Loaded verified 78% model")
+                    logger.debug(f"Loaded verified 78% model")
                     return True
         except Exception as e:
             logger.debug(f"78% model not available: {e}")
@@ -352,7 +481,7 @@ class BuddyScanner:
         try:
             with suppress_logging():
                 from modular_inference import ModularEnsembleInference
-                self._modular_ensemble = ModularEnsembleInference()
+                self._modular_ensemble = ModularEnsembleInference(use_rl_sizer=self._use_rl_sizer)
                 self._modular_ensemble.load_models()
             
             # Load meta for model info
@@ -524,8 +653,9 @@ class BuddyScanner:
                     confidence = prob
                     tcn_conf = prob * 100
                     ridge_conf = prob * 100
-                    # Gates pass if confidence > min_confidence threshold
-                    gates_passed = confidence >= self._scan_config.min_confidence
+                    # Gates pass if confidence >= min_gate_confidence (stricter than min_confidence)
+                    # This improves WR by only taking higher-confidence trades
+                    gates_passed = confidence >= self._scan_config.min_gate_confidence
                     return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed
             except Exception as e:
                 logger.warning(f"78% model inference failed for {pair}: {e}")
@@ -634,13 +764,22 @@ class BuddyScanner:
         self._init_position_sizer()
         self._init_risk_manager()
         
-        # Calculate SL in pips (1.5 * ATR is common)
+        # TIGHT SCALPING: Fixed SL/TP with probability-based TP bonus
         pip_value = PIP_VALUES.get(pair, 0.0001)
-        sl_pips = (atr * 1.5) / pip_value if pip_value > 0 else 30.0
-        sl_pips = max(10.0, min(sl_pips, 100.0))  # Clamp to reasonable range
         
-        # Get risk management levels
-        tp_pips = sl_pips * 2.0  # Default 1:2 R:R
+        # Fixed 15 pip SL (user requested - lower risk)
+        sl_pips = self._scan_config.max_sl_pips  # Fixed at 15 pips
+        
+        # Base TP: 20-30 pips (user requested - quick targets)
+        base_tp = (atr * self._scan_config.atr_tp_multiplier) / pip_value if pip_value > 0 else 25.0
+        tp_pips = max(self._scan_config.min_tp_pips, min(base_tp, self._scan_config.max_tp_pips))
+        
+        # HIGH PROBABILITY BONUS: If confidence > 65%, add bonus TP pips
+        if confidence >= self._scan_config.high_prob_threshold:
+            tp_bonus = self._scan_config.high_prob_tp_bonus
+            tp_pips = tp_pips + tp_bonus
+            logger.info(f"High probability ({confidence:.1%}) - TP bonus +{tp_bonus} pips → {tp_pips:.1f} pips")
+        
         confidence_level = "medium"
         
         if self._risk_manager is not None:
@@ -809,6 +948,70 @@ class BuddyScanner:
         
         return drift_detected, current_acc, baseline_acc
     
+    def _check_pair_model_status(self, pair: str) -> Tuple[bool, Optional[float], bool, Optional[str]]:
+        """
+        Check model status for a specific pair.
+        
+        Returns:
+            Tuple of (has_pair_model, model_accuracy, needs_training, training_reason)
+        """
+        from pathlib import Path
+        
+        # Check for pair-specific model directory
+        pair_model_dir = Path("trained_data/models") / pair
+        has_pair_model = pair_model_dir.exists() and any(pair_model_dir.glob("*.keras"))
+        
+        model_accuracy = None
+        needs_training = False
+        training_reason = None
+        
+        if has_pair_model:
+            # Check for model metadata
+            meta_path = pair_model_dir / "meta.json"
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text())
+                    model_accuracy = meta.get("val_accuracy", meta.get("accuracy"))
+                    
+                    # Check if model is old (trained >7 days ago)
+                    trained_date = meta.get("trained_at", meta.get("timestamp"))
+                    if trained_date:
+                        from datetime import datetime
+                        try:
+                            trained_dt = datetime.fromisoformat(trained_date.replace("Z", "+00:00"))
+                            days_old = (datetime.now(trained_dt.tzinfo) - trained_dt).days
+                            if days_old > 7:
+                                needs_training = True
+                                training_reason = f"Model is {days_old} days old"
+                        except:
+                            pass
+                    
+                    # Check if accuracy is below threshold
+                    if model_accuracy and model_accuracy < 0.55:
+                        needs_training = True
+                        training_reason = f"Low accuracy ({model_accuracy:.1%})"
+                        
+                except json.JSONDecodeError:
+                    pass
+        else:
+            # No pair-specific model - check if generic model covers it
+            generic_meta_path = Path("trained_data/models/modular_ensemble.meta.json")
+            if generic_meta_path.exists():
+                try:
+                    meta = json.loads(generic_meta_path.read_text())
+                    trained_pairs = meta.get("selected_pairs", [])
+                    if pair not in trained_pairs:
+                        needs_training = True
+                        training_reason = "No model trained for this pair"
+                except:
+                    needs_training = True
+                    training_reason = "No model trained for this pair"
+            else:
+                needs_training = True
+                training_reason = "No model available"
+        
+        return has_pair_model, model_accuracy, needs_training, training_reason
+
     def _scan_pair(
         self,
         pair: str,
@@ -825,6 +1028,9 @@ class BuddyScanner:
             EnhancedScanResult or None on failure
         """
         try:
+            # Check model status for this pair
+            has_pair_model, model_accuracy, needs_training, training_reason = self._check_pair_model_status(pair)
+            
             # Fetch data
             df_raw = self._fetch_pair_data(
                 pair,
@@ -847,6 +1053,22 @@ class BuddyScanner:
             
             # Calculate metrics
             vol_pct, trend_str, entry_score, current_price, atr = self._calculate_metrics(df)
+            
+            # H1 FILTERS: Session and volatility checks
+            # Filter 1: Session timing (skip outside London/NY hours)
+            if self._scan_config.enable_session_filter:
+                from datetime import datetime, timezone
+                current_utc_hour = datetime.now(timezone.utc).hour
+                if not (self._scan_config.session_start_utc <= current_utc_hour <= self._scan_config.session_end_utc):
+                    logger.debug(f"{pair}: Outside active session ({current_utc_hour}:00 UTC)")
+                    return None
+            
+            # Filter 2: Volatility check (skip dead markets)
+            pip_value = PIP_VALUES.get(pair, 0.0001)
+            atr_pips = atr / pip_value if pip_value > 0 else 0
+            if atr_pips < self._scan_config.min_atr_pips:
+                logger.debug(f"{pair}: Low volatility (ATR={atr_pips:.1f} pips < {self._scan_config.min_atr_pips})")
+                return None
             
             # Calculate position sizing
             lots, risk_pct, sl_pips, tp_pips, conf_level = self._calculate_position_size(
@@ -875,6 +1097,10 @@ class BuddyScanner:
                 tp_pips=tp_pips,
                 confidence_level=conf_level,
                 historical_accuracy=hist_acc,
+                has_pair_model=has_pair_model,
+                model_accuracy=model_accuracy,
+                needs_training=needs_training,
+                training_reason=training_reason,
             )
             
             return result
@@ -890,7 +1116,6 @@ class BuddyScanner:
         top_n: int = 5,
         verbose: bool = True,
         prompt_train: bool = False,
-        prompt_execute: bool = True,
     ) -> List[EnhancedScanResult]:
         """
         Scan multiple pairs in parallel.
@@ -901,7 +1126,6 @@ class BuddyScanner:
             top_n: Number of top results to return
             verbose: Print progress and results
             prompt_train: Prompt to train on best pair (deprecated, default False)
-            prompt_execute: Prompt to execute trades (default True)
             
         Returns:
             List of EnhancedScanResult sorted by overall_score
@@ -912,9 +1136,17 @@ class BuddyScanner:
             self._init_memory_client()
             model_loaded = self._init_modular_ensemble()
         
-        # CRITICAL: Update equity from live OANDA NAV for proper compounding
-        # This ensures position sizes grow as the account grows
-        equity_updated = self._update_equity_from_oanda()
+        # CRITICAL: Fetch live account data for proper position sizing
+        # This pulls: NAV (for position sizing), trades today, remaining trade slots
+        equity_updated, nav, trades_today, trades_remaining = self._update_equity_from_oanda()
+        
+        # Block scan if daily limit reached
+        if trades_remaining <= 0:
+            if verbose and console:
+                console.print(f"\n[bold red]⛔ DAILY TRADE LIMIT REACHED[/bold red]")
+                console.print(f"[red]Trades today: {trades_today}/{self._scan_config.max_trades_per_day}[/red]")
+                console.print("[dim]Come back tomorrow or adjust max_trades_per_day in config[/dim]")
+            return []
         
         pair_list = pairs or MAJOR_PAIRS
         
@@ -923,11 +1155,24 @@ class BuddyScanner:
             console.print("[bold cyan]📡 BUDDY SCANNER v2.0[/bold cyan]")
             console.print("=" * 70)
             
-            # Show compounding info
+            # Show account info with live balance
+            console.print(f"\n[bold]💰 ACCOUNT STATUS[/bold]")
             if equity_updated:
-                console.print(f"[green]✓ COMPOUNDING MODE[/green] - Using live NAV: ${self._scan_config.account_equity:,.2f}")
+                console.print(f"   [green]✓ Live Balance:[/green] ${nav:,.2f} (fetched from OANDA)")
             else:
-                console.print(f"[dim]Using configured equity: ${self._scan_config.account_equity:,.2f}[/dim]")
+                console.print(f"   [dim]Balance:[/dim] ${nav:,.2f}")
+            
+            console.print(f"   [dim]Trades Today:[/dim] {trades_today}/{self._scan_config.max_trades_per_day}")
+            if trades_remaining <= 5:
+                console.print(f"   [yellow]Trades Remaining:[/yellow] {trades_remaining}")
+            else:
+                console.print(f"   [green]Trades Remaining:[/green] {trades_remaining}")
+            console.print(f"   [dim]Risk per Trade:[/dim] {self._scan_config.risk_per_trade_pct:.1%}")
+            
+            # Calculate example position size for display
+            example_risk_amount = nav * self._scan_config.risk_per_trade_pct
+            console.print(f"   [dim]Max Risk Amount:[/dim] ${example_risk_amount:,.2f} per trade")
+            console.print()
             
             if model_loaded:
                 val_acc = 0
@@ -940,6 +1185,36 @@ class BuddyScanner:
             else:
                 console.print(f"[dim]Technical indicators | {len(pair_list)} pairs | {granularity}[/dim]")
             console.print("-" * 70)
+            
+            # Session hours check with user prompt
+            from datetime import datetime, timezone
+            current_utc_hour = datetime.now(timezone.utc).hour
+            in_session = self._scan_config.session_start_utc <= current_utc_hour <= self._scan_config.session_end_utc
+            
+            if not in_session and self._scan_config.enable_session_filter:
+                console.print()
+                console.print("[bold yellow]⚠️  OUTSIDE OPTIMAL TRADING HOURS[/bold yellow]")
+                console.print(f"[yellow]Current time: {current_utc_hour}:00 UTC[/yellow]")
+                console.print(f"[dim]Best practice for H1: Trade during London/NY session (08:00-21:00 UTC)[/dim]")
+                console.print(f"[dim]Reason: Higher liquidity = better fills, cleaner price action[/dim]")
+                console.print()
+                
+                # Prompt user using standard input (more reliable than rich console.input)
+                try:
+                    import sys
+                    sys.stdout.write("\033[93mContinue scanning anyway? [y/N]: \033[0m")
+                    sys.stdout.flush()
+                    response = sys.stdin.readline().strip().lower()
+                    if response not in ('y', 'yes'):
+                        console.print("[dim]Scan cancelled. Try again during London/NY hours for best results.[/dim]")
+                        return []
+                    console.print("[green]Proceeding with scan...[/green]")
+                    console.print("-" * 70)
+                    # Disable the per-pair session filter since user chose to proceed
+                    self._scan_config.enable_session_filter = False
+                except (EOFError, KeyboardInterrupt):
+                    console.print("\n[dim]Scan cancelled.[/dim]")
+                    return []
         
         # Scan pairs in parallel (with logging suppressed)
         results: List[EnhancedScanResult] = []
@@ -1023,12 +1298,6 @@ class BuddyScanner:
             except Exception:
                 pass  # Silent - failed to store
         
-        # Prompt for trade execution (replaces training prompt)
-        if prompt_execute and results:
-            tradeable = [r for r in results[:top_n] if r.gates_passed]
-            if tradeable:
-                self._prompt_execute_trades(tradeable, granularity)
-        
         return results[:top_n]
     
     def _display_results(
@@ -1050,65 +1319,122 @@ class BuddyScanner:
         console.print(f"[dim]Account: ${self._scan_config.account_equity:,.0f} | Risk: {self._scan_config.risk_per_trade_pct:.0%}/trade | Leverage: {self._scan_config.leverage}:1[/dim]")
         console.print("=" * 70)
         
-        # Main results table
-        table = Table(show_header=True, header_style="bold cyan")
-        table.add_column("Rank", style="dim", width=4)
-        table.add_column("Pair", style="bold")
-        table.add_column("Signal", justify="center")
-        table.add_column("Conf", justify="right")
-        table.add_column("Gates", justify="center")
-        table.add_column("Lots", justify="right")
-        table.add_column("SL/TP", justify="right")
-        table.add_column("Est. $", justify="right")
-        table.add_column("Score", justify="right", style="bold")
+        # Separate tradeable and needs-training pairs
+        tradeable_results = [r for r in results[:top_n] if r.gates_passed]
+        needs_training = [r for r in results[:top_n] if r.needs_training]
         
-        for i, r in enumerate(results[:top_n], 1):
-            signal_color = "green" if r.direction == "LONG" else "red"
-            gate_display = "[green]✓[/green]" if r.gates_passed else "[yellow]⚠[/yellow]"
+        # === SECTION 1: TRADEABLE PAIRS ===
+        if tradeable_results:
+            console.print(f"\n[bold green]✅ TRADEABLE NOW ({len(tradeable_results)} pairs)[/bold green]")
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("#", style="dim", width=3)
+            table.add_column("Pair", style="bold")
+            table.add_column("Signal", justify="center")
+            table.add_column("Conf", justify="right")
+            table.add_column("Model", justify="center")
+            table.add_column("Lots", justify="right")
+            table.add_column("SL/TP", justify="right")
+            table.add_column("Est. $", justify="right")
             
-            # SL/TP display
-            sl_tp = f"{r.sl_pips:.0f}/{r.tp_pips:.0f}" if r.sl_pips > 0 else "-"
-            
-            # Lots display
-            lots_display = f"{r.recommended_lots:.2f}" if r.recommended_lots > 0 else "-"
-            
-            # Estimated $ return (TP hit) - $10 per pip per standard lot
-            pip_value = 10.0 if not r.pair.endswith("JPY") else 7.5  # Approx for JPY pairs
-            est_return = r.recommended_lots * r.tp_pips * pip_value if r.tp_pips > 0 else 0
-            est_display = f"[green]+${est_return:,.0f}[/green]" if est_return > 0 else "-"
-            
-            table.add_row(
-                str(i),
-                r.pair.replace("_", "/"),
-                f"[{signal_color}]{r.direction}[/{signal_color}]",
-                f"{r.confidence:.0%}",
-                gate_display,
-                lots_display,
-                sl_tp,
-                est_display,
-                f"{r.overall_score:.2f}",
-            )
+            for i, r in enumerate(tradeable_results, 1):
+                signal_color = "green" if r.direction == "LONG" else "red"
+                
+                # Model status indicator
+                if r.has_pair_model:
+                    if r.model_accuracy and r.model_accuracy > 0.65:
+                        model_display = f"[green]✓{r.model_accuracy:.0%}[/green]"
+                    else:
+                        model_display = f"[yellow]✓{r.model_accuracy:.0%}[/yellow]" if r.model_accuracy else "[yellow]✓[/yellow]"
+                else:
+                    model_display = "[dim]generic[/dim]"
+                
+                sl_tp = f"{r.sl_pips:.0f}/{r.tp_pips:.0f}" if r.sl_pips > 0 else "-"
+                lots_display = f"{r.recommended_lots:.2f}" if r.recommended_lots > 0 else "-"
+                pip_value = 10.0 if not r.pair.endswith("JPY") else 7.5
+                est_return = r.recommended_lots * r.tp_pips * pip_value if r.tp_pips > 0 else 0
+                est_display = f"[green]+${est_return:,.0f}[/green]" if est_return > 0 else "-"
+                
+                table.add_row(
+                    str(i),
+                    r.pair.replace("_", "/"),
+                    f"[{signal_color}]{r.direction}[/{signal_color}]",
+                    f"{r.confidence:.0%}",
+                    model_display,
+                    lots_display,
+                    sl_tp,
+                    est_display,
+                )
+            console.print(table)
+        else:
+            console.print(f"\n[yellow]⚠️ NO TRADEABLE PAIRS - All gates failed[/yellow]")
         
-        console.print(table)
+        # === SECTION 2: NON-TRADEABLE (Gates Failed) ===
+        non_tradeable = [r for r in results[:top_n] if not r.gates_passed]
+        if non_tradeable:
+            console.print(f"\n[bold yellow]⚠️ GATES FAILED ({len(non_tradeable)} pairs)[/bold yellow]")
+            table2 = Table(show_header=True, header_style="dim")
+            table2.add_column("Pair", style="dim")
+            table2.add_column("Signal", justify="center")
+            table2.add_column("Conf", justify="right")
+            table2.add_column("Model", justify="center")
+            table2.add_column("Reason", justify="left")
+            
+            for r in non_tradeable:
+                signal_color = "dim green" if r.direction == "LONG" else "dim red"
+                model_display = "[green]✓[/green]" if r.has_pair_model else "[dim]generic[/dim]"
+                
+                # Determine why gates failed
+                reason = []
+                if r.confidence < 0.55:
+                    reason.append(f"low conf ({r.confidence:.0%})")
+                if r.tcn_confidence < 55:
+                    reason.append(f"TCN weak")
+                if r.ridge_confidence < 45:
+                    reason.append(f"Ridge weak")
+                reason_str = ", ".join(reason) if reason else "gate thresholds"
+                
+                table2.add_row(
+                    r.pair.replace("_", "/"),
+                    f"[{signal_color}]{r.direction}[/{signal_color}]",
+                    f"[dim]{r.confidence:.0%}[/dim]",
+                    model_display,
+                    f"[dim]{reason_str}[/dim]",
+                )
+            console.print(table2)
         
-        # Warnings section
+        # === SECTION 3: NEEDS TRAINING ===
+        if needs_training:
+            console.print(f"\n[bold magenta]📚 NEEDS TRAINING ({len(needs_training)} pairs)[/bold magenta]")
+            console.print("[dim]Run: buddy train -I <PAIR> to train these pairs[/dim]")
+            table3 = Table(show_header=True, header_style="magenta")
+            table3.add_column("Pair")
+            table3.add_column("Reason")
+            table3.add_column("Command")
+            
+            for r in needs_training:
+                reason = r.training_reason or "No model"
+                cmd = f"buddy train -I {r.pair}"
+                table3.add_row(r.pair.replace("_", "/"), reason, f"[cyan]{cmd}[/cyan]")
+            console.print(table3)
+        
+        # === SECTION 4: WARNINGS ===
         if drift_detected:
             console.print(f"\n[bold yellow]⚠️ MODEL DRIFT DETECTED[/bold yellow] (current: {current_acc:.1%}, baseline: {baseline_acc:.1%})")
             console.print("[dim]Consider retraining the model[/dim]")
         
-        # Correlation warnings
         corr_pairs = [r.pair for r in results[:top_n] if r.correlation_warning]
         if corr_pairs:
             console.print(f"\n[yellow]⚠️ Correlation Warning:[/yellow] {', '.join(corr_pairs)}")
             console.print("[dim]Consider diversifying to reduce correlated exposure[/dim]")
         
-        # Best opportunities
+        # === SECTION 5: SUMMARY & PROJECTIONS ===
         if results:
-            longs = [r for r in results if r.direction == "LONG"]
-            shorts = [r for r in results if r.direction == "SHORT"]
+            longs = [r for r in results if r.direction == "LONG" and r.gates_passed]
+            shorts = [r for r in results if r.direction == "SHORT" and r.gates_passed]
             tradeable = [r for r in results if r.gates_passed]
             
-            console.print(f"\n[bold]🎯 TOP OPPORTUNITIES:[/bold] ({len(tradeable)}/{len(results)} tradeable)")
+            if tradeable:
+                console.print(f"\n[bold]🎯 QUICK SUMMARY[/bold]")
             
             if longs:
                 best_long = max(longs, key=lambda x: x.overall_score)
@@ -1118,17 +1444,25 @@ class BuddyScanner:
                 best_short = max(shorts, key=lambda x: x.overall_score)
                 console.print(f"  [red]Best SHORT:[/red] {best_short.pair.replace('_', '/')} (conf: {best_short.confidence:.0%}, lots: {best_short.recommended_lots:.2f})")
             
-            # Compounding projection based on realistic backtest
+            # Compounding projection based on ACTUAL trading performance
             if tradeable:
                 max_trades = self._scan_config.max_trades_per_day
                 trades_to_use = tradeable[:max_trades]
                 
-                # Use actual backtest win rates if available, else model accuracy
-                backtest_wrs = [r.backtest_win_rate for r in trades_to_use if r.backtest_win_rate is not None]
-                if backtest_wrs:
-                    avg_win_rate = sum(backtest_wrs) / len(backtest_wrs)
+                # CRITICAL: Use ACTUAL win rate from OANDA, not model accuracy
+                actual_wr, actual_trades = self._fetch_actual_win_rate()
+                if actual_trades >= 10:  # Only use if we have enough data
+                    avg_win_rate = actual_wr
+                    wr_source = f"actual ({actual_trades} trades)"
                 else:
-                    avg_win_rate = 0.78  # Model baseline
+                    # Fall back to backtest or conservative estimate
+                    backtest_wrs = [r.backtest_win_rate for r in trades_to_use if r.backtest_win_rate is not None]
+                    if backtest_wrs:
+                        avg_win_rate = sum(backtest_wrs) / len(backtest_wrs)
+                        wr_source = "backtest"
+                    else:
+                        avg_win_rate = 0.50  # Conservative default, NOT 78%
+                        wr_source = "conservative"
                 
                 # Calculate avg SL and TP from actual trades
                 avg_tp = sum(r.tp_pips for r in trades_to_use) / len(trades_to_use) if trades_to_use else 30
@@ -1154,17 +1488,103 @@ class BuddyScanner:
                 # H1 candles in 6 months for reference
                 candles_6mo = 24 * 180  # ~4320 H1 candles
                 
-                console.print(f"\n[bold cyan]📈 COMPOUNDING PROJECTION ({avg_win_rate:.0%} WR, {quality_trades_per_day} trades/day)[/bold cyan]")
+                # Color-code win rate based on source
+                if wr_source.startswith("actual"):
+                    wr_color = "yellow" if avg_win_rate < 0.5 else "green"
+                else:
+                    wr_color = "dim"
+                
+                # Calculate breakeven win rate for current R:R
+                breakeven_wr = 1 / (1 + rr_ratio)  # e.g., 1.5:1 R:R needs 40% WR to break even
+                
+                console.print(f"\n[bold cyan]📈 COMPOUNDING PROJECTION[/bold cyan] ([{wr_color}]{avg_win_rate:.0%} WR[/{wr_color}] {wr_source}, {quality_trades_per_day} trades/day)")
                 console.print(f"  Avg Trade: {avg_lots:.1f} lots, SL:{avg_sl:.0f}/TP:{avg_tp:.0f} pips (R:R {rr_ratio:.1f}:1)")
-                console.print(f"  EV/Trade:  [green]+${ev_per_trade:,.0f}[/green] | Daily: [green]+${net_daily:,.0f}[/green] ({daily_pct:.2f}%)")
-                console.print(f"  6-Month:   [bold green]${projected_6mo:,.0f}[/bold green] ({trading_days_6mo} trading days, ~{candles_6mo:,} H1 candles)")
+                
+                # Color-code EV properly (red if negative, yellow if near zero, green if positive)
+                if ev_per_trade < -10:
+                    ev_color = "red"
+                    ev_sign = "-"
+                    ev_display = abs(ev_per_trade)
+                elif ev_per_trade < 50:
+                    ev_color = "yellow"
+                    ev_sign = "+" if ev_per_trade >= 0 else "-"
+                    ev_display = abs(ev_per_trade)
+                else:
+                    ev_color = "green"
+                    ev_sign = "+"
+                    ev_display = ev_per_trade
+                
+                # Same for daily
+                if net_daily < -10:
+                    daily_color = "red"
+                    daily_sign = "-"
+                    daily_display = abs(net_daily)
+                elif net_daily < 50:
+                    daily_color = "yellow"
+                    daily_sign = "+" if net_daily >= 0 else "-"
+                    daily_display = abs(net_daily)
+                else:
+                    daily_color = "green"
+                    daily_sign = "+"
+                    daily_display = net_daily
+                
+                console.print(f"  EV/Trade:  [{ev_color}]{ev_sign}${ev_display:,.0f}[/{ev_color}] | Daily: [{daily_color}]{daily_sign}${daily_display:,.0f}[/{daily_color}] ({daily_pct:+.2f}%)")
+                
+                # Show breakeven analysis
+                if avg_win_rate < breakeven_wr - 0.02:
+                    console.print(f"  [bold red]⚠️ NEGATIVE EDGE:[/bold red] {avg_win_rate:.0%} WR < {breakeven_wr:.0%} breakeven for {rr_ratio:.1f}:1 R:R")
+                elif avg_win_rate < breakeven_wr + 0.05:
+                    console.print(f"  [yellow]⚠️ Near breakeven:[/yellow] {avg_win_rate:.0%} WR ≈ {breakeven_wr:.0%} breakeven for {rr_ratio:.1f}:1 R:R")
+                else:
+                    console.print(f"  [green]✓ Positive edge:[/green] {avg_win_rate:.0%} WR > {breakeven_wr:.0%} breakeven for {rr_ratio:.1f}:1 R:R")
+                
+                # 6-month projection with proper coloring
+                if projected_6mo < self._scan_config.account_equity * 0.95:
+                    proj_color = "red"
+                elif projected_6mo < self._scan_config.account_equity * 1.2:
+                    proj_color = "yellow"
+                else:
+                    proj_color = "green"
+                    
+                console.print(f"  6-Month:   [bold {proj_color}]${projected_6mo:,.0f}[/bold {proj_color}] ({trading_days_6mo} trading days, ~{candles_6mo:,} H1 candles)")
                 if projected_6mo >= 1_000_000:
                     console.print(f"  [bold yellow]🎯 $1M TARGET: ACHIEVABLE[/bold yellow]")
                 else:
                     needed_daily = ((1_000_000 / self._scan_config.account_equity) ** (1/trading_days_6mo) - 1) * 100
-                    console.print(f"  [yellow]Need {needed_daily:.2f}%/day for $1M (current: {daily_pct:.2f}%)[/yellow]")
+                    console.print(f"  [yellow]Need {needed_daily:.2f}%/day for $1M (current: {daily_pct:+.2f}%)[/yellow]")
+                
+                # Actionable recommendation when EV is zero or negative
+                if ev_per_trade < 100:  # Show recommendation if EV is less than $100/trade
+                    needed_wr = breakeven_wr + 0.10  # 10% above breakeven for decent edge
+                    console.print(f"\n  [bold yellow]💡 RECOMMENDATION:[/bold yellow]")
+                    if ev_per_trade < 0:
+                        console.print(f"     [red]NEGATIVE EDGE - Consider pausing live trading[/red]")
+                    elif ev_per_trade < 50:
+                        console.print(f"     [yellow]MARGINAL EDGE - Profitability not guaranteed[/yellow]")
+                    console.print(f"     Option 1: Improve WR to {needed_wr:.0%}+ (currently {avg_win_rate:.0%})")
+                    needed_rr = (1 - avg_win_rate) / avg_win_rate  # R:R needed for current WR to break even
+                    console.print(f"     Option 2: Improve R:R to {needed_rr:.1f}:1+ (currently {rr_ratio:.1f}:1)")
+                    console.print(f"     Option 3: Use higher-confidence signals only (>60%)")
         
+        # === SECTION 6: ACTION COMMANDS ===
         console.print("\n" + "=" * 70)
+        console.print("[bold cyan]📋 NEXT STEPS[/bold cyan]")
+        
+        tradeable = [r for r in results if r.gates_passed]
+        needs_train = [r for r in results if r.needs_training]
+        
+        if tradeable:
+            console.print(f"\n[green]To execute trades:[/green]")
+            for r in tradeable[:3]:  # Show top 3 tradeable
+                console.print(f"  buddy -I {r.pair} --execute")
+        
+        if needs_train:
+            console.print(f"\n[magenta]To train missing models:[/magenta]")
+            for r in needs_train[:3]:  # Show top 3 needing training
+                console.print(f"  buddy train -I {r.pair}")
+        
+        console.print(f"\n[dim]View journal: buddy journal[/dim]")
+        console.print("=" * 70)
     
     def _prompt_execute_trades(
         self,
@@ -1240,11 +1660,28 @@ class BuddyScanner:
         trades: List[EnhancedScanResult],
         granularity: str,
     ):
-        """Execute a list of trades on OANDA."""
+        """Execute a list of trades on OANDA with daily limit enforcement."""
         if not trades:
             return
         
+        # Check daily limit before execution
+        trades_today = self._fetch_trades_today()
+        max_trades = self._scan_config.max_trades_per_day
+        trades_remaining = max(0, max_trades - trades_today)
+        
+        if trades_remaining <= 0:
+            console.print(f"\n[bold red]⛔ DAILY TRADE LIMIT REACHED[/bold red]")
+            console.print(f"[red]Trades today: {trades_today}/{max_trades}[/red]")
+            console.print("[dim]Come back tomorrow or adjust max_trades_per_day in config[/dim]")
+            return
+        
+        # Limit trades to execute to remaining daily slots
+        if len(trades) > trades_remaining:
+            console.print(f"[yellow]⚠ Only executing {trades_remaining} of {len(trades)} trades (daily limit)[/yellow]")
+            trades = trades[:trades_remaining]
+        
         console.print(f"\n[bold]Executing {len(trades)} trade(s)...[/bold]")
+        console.print(f"[dim]Trades today after execution: {trades_today + len(trades)}/{max_trades}[/dim]")
         
         try:
             from oanda_practice import OandaPracticeClient
@@ -1252,6 +1689,9 @@ class BuddyScanner:
             from datetime import datetime
             
             client = OandaPracticeClient.from_env()
+            
+            # Fetch live balance for proper position sizing
+            _, nav, _, _ = self._update_equity_from_oanda()
             
             executed = 0
             for r in trades:
@@ -1282,6 +1722,7 @@ class BuddyScanner:
                         
                         signal = "🟢" if r.direction == "LONG" else "🔴"
                         console.print(f"  {signal} [green]✓ FILLED[/green] {r.pair.replace('_', '/')} {r.direction} @ {fill_price:.5f} (#{trade_id})")
+                        console.print(f"      [dim]Lots: {r.recommended_lots:.2f} | SL: {r.sl_pips:.0f} pips | TP: {r.tp_pips:.0f} pips[/dim]")
                         executed += 1
                         
                         # Log to memory
@@ -1299,6 +1740,7 @@ class BuddyScanner:
                                     "trade_id": trade_id,
                                     "model": "MODEL_78_v2",
                                     "granularity": granularity,
+                                    "account_balance": nav,
                                 })
                             except Exception:
                                 pass
@@ -1310,6 +1752,7 @@ class BuddyScanner:
             
             if executed > 0:
                 console.print(f"\n[bold green]✓ {executed}/{len(trades)} trade(s) executed[/bold green]")
+                console.print(f"[dim]Trades remaining today: {trades_remaining - executed}[/dim]")
                 console.print("[dim]Use 'buddy journal' to track positions[/dim]")
             
         except Exception as e:
@@ -1438,7 +1881,6 @@ def buddy_scan_v2(
     top_n: int = 5,
     verbose: bool = True,
     prompt_train: bool = False,
-    prompt_execute: bool = True,
     account_equity: float = 10000.0,
 ) -> List[EnhancedScanResult]:
     """
@@ -1451,7 +1893,6 @@ def buddy_scan_v2(
         top_n: Number of results
         verbose: Print output
         prompt_train: Prompt for training (deprecated)
-        prompt_execute: Prompt for trade execution
         account_equity: Account equity for position sizing
         
     Returns:
@@ -1469,7 +1910,6 @@ def buddy_scan_v2(
         top_n=top_n,
         verbose=verbose,
         prompt_train=prompt_train,
-        prompt_execute=prompt_execute,
     )
 
 

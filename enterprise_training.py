@@ -78,6 +78,12 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+
+try:
     from scipy import stats
     SCIPY_AVAILABLE = True
 except ImportError:
@@ -467,23 +473,29 @@ class ExperimentConfig:
 
 class ExperimentTracker:
     """
-    Track experiments using MLflow.
+    Track experiments using MLflow and WandB.
     
     Features:
-    - Automatic parameter logging
+    - Automatic parameter logging to MLflow AND WandB
     - Metric tracking with history
     - Model artifact storage
     - Experiment comparison
+    - WandB real-time visualization
     """
     
     def __init__(
         self,
         tracking_uri: str = "trained_data/mlruns",
         experiment_name: Optional[str] = None,
+        wandb_project: str = "ml_engine",
+        wandb_tags: Optional[List[str]] = None,
     ):
         self.tracking_uri = tracking_uri
         self.experiment_name = experiment_name or "ml_engine_training"
+        self.wandb_project = wandb_project
+        self.wandb_tags = wandb_tags or []
         self._run_id: Optional[str] = None
+        self._wandb_run = None
         self._start_time: Optional[float] = None
         
         self._setup_mlflow()
@@ -508,25 +520,65 @@ class ExperimentTracker:
         except Exception as e:
             logger.warning(f"MLflow setup error: {e}")
     
+    def _setup_wandb(self, run_name: str, config: Optional[ExperimentConfig] = None):
+        """Initialize WandB tracking."""
+        if not WANDB_AVAILABLE:
+            logger.debug("WandB not available, skipping")
+            return
+        
+        try:
+            # Convert config to dict for WandB
+            config_dict = asdict(config) if config else {}
+            
+            self._wandb_run = wandb.init(
+                project=self.wandb_project,
+                name=run_name,
+                tags=self.wandb_tags,
+                config=config_dict,
+                reinit=True,  # Allow multiple runs in same process
+            )
+            logger.info(f"📈 WandB run: {run_name} (project: {self.wandb_project})")
+        except Exception as e:
+            logger.warning(f"WandB setup error: {e}")
+            self._wandb_run = None
+    
+    def _finish_wandb(self):
+        """Finish WandB run."""
+        if WANDB_AVAILABLE and self._wandb_run is not None:
+            try:
+                wandb.finish()
+                logger.debug("WandB run finished")
+            except Exception as e:
+                logger.warning(f"WandB finish error: {e}")
+            finally:
+                self._wandb_run = None
+    
     @contextmanager
     def start_run(
         self,
         run_name: Optional[str] = None,
         config: Optional[ExperimentConfig] = None,
+        wandb_tags: Optional[List[str]] = None,
     ):
         """
-        Context manager for MLflow run.
+        Context manager for MLflow AND WandB run.
         
         Usage:
-            with tracker.start_run(config=config):
+            with tracker.start_run(config=config, wandb_tags=["GBP_JPY", "H1"]):
                 # Training code
                 tracker.log_metric("loss", 0.5)
         """
         self._start_time = time.time()
+        run_name = run_name or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        # Merge tags
+        all_tags = list(set(self.wandb_tags + (wandb_tags or [])))
+        self.wandb_tags = all_tags
+        
+        # Start WandB
+        self._setup_wandb(run_name, config)
         
         if MLFLOW_AVAILABLE:
-            run_name = run_name or f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            
             with mlflow.start_run(run_name=run_name) as run:
                 self._run_id = run.info.run_id
                 
@@ -539,9 +591,16 @@ class ExperimentTracker:
                 finally:
                     duration = time.time() - self._start_time
                     mlflow.log_metric("training_duration_seconds", duration)
+                    # Log duration to WandB too
+                    if WANDB_AVAILABLE and self._wandb_run:
+                        wandb.log({"training_duration_seconds": duration})
+                    self._finish_wandb()
         else:
             # Fallback to file-based tracking
-            yield self
+            try:
+                yield self
+            finally:
+                self._finish_wandb()
     
     def _log_config(self, config: ExperimentConfig):
         """Log experiment configuration as MLflow params."""
@@ -564,23 +623,45 @@ class ExperimentTracker:
                 pass  # Ignore param logging errors
     
     def log_metric(self, name: str, value: float, step: Optional[int] = None):
-        """Log a single metric."""
+        """Log a single metric to MLflow AND WandB."""
         if MLFLOW_AVAILABLE and mlflow.active_run():
             mlflow.log_metric(name, value, step=step)
+        
+        # Log to WandB
+        if WANDB_AVAILABLE and self._wandb_run:
+            log_data = {name: value}
+            if step is not None:
+                wandb.log(log_data, step=step)
+            else:
+                wandb.log(log_data)
         
         logger.debug(f"Metric: {name}={value}" + (f" (step={step})" if step else ""))
     
     def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
-        """Log multiple metrics."""
+        """Log multiple metrics to MLflow AND WandB."""
         if MLFLOW_AVAILABLE and mlflow.active_run():
             mlflow.log_metrics(metrics, step=step)
+        
+        # Log to WandB
+        if WANDB_AVAILABLE and self._wandb_run:
+            if step is not None:
+                wandb.log(metrics, step=step)
+            else:
+                wandb.log(metrics)
         
         logger.debug(f"Metrics (step={step}): {metrics}")
     
     def log_artifact(self, path: str, artifact_path: Optional[str] = None):
-        """Log a file as artifact."""
+        """Log a file as artifact to MLflow AND WandB."""
         if MLFLOW_AVAILABLE and mlflow.active_run():
             mlflow.log_artifact(path, artifact_path)
+        
+        # Log to WandB
+        if WANDB_AVAILABLE and self._wandb_run:
+            try:
+                wandb.save(path)
+            except Exception as e:
+                logger.debug(f"WandB artifact save failed: {e}")
         
         logger.info(f"📦 Artifact logged: {path}")
     
@@ -596,15 +677,29 @@ class ExperimentTracker:
         
         if MLFLOW_AVAILABLE and mlflow.active_run():
             mlflow.log_text(summary_text, f"{model_name}_summary.txt")
+        
+        # Log to WandB
+        if WANDB_AVAILABLE and self._wandb_run:
+            wandb.log({f"{model_name}_summary": wandb.Html(f"<pre>{summary_text}</pre>")})
     
     def set_tag(self, key: str, value: str):
         """Set a tag on the current run."""
         if MLFLOW_AVAILABLE and mlflow.active_run():
             mlflow.set_tag(key, value)
+        
+        # WandB tags are set at init, but we can add to config
+        if WANDB_AVAILABLE and self._wandb_run:
+            wandb.config.update({key: value}, allow_val_change=True)
     
     def get_run_id(self) -> Optional[str]:
         """Get current run ID."""
         return self._run_id
+    
+    def get_wandb_url(self) -> Optional[str]:
+        """Get WandB run URL for easy access."""
+        if WANDB_AVAILABLE and self._wandb_run:
+            return self._wandb_run.get_url()
+        return None
 
 
 # =============================================================================

@@ -91,6 +91,10 @@ class BuddyTrainingOptions:
     - enterprise: Enable MLflow tracking, CV, bootstrap CI
     - cv_folds: Walk-forward cross-validation folds
     - bootstrap: Bootstrap confidence intervals
+    
+    Multi-Pair Pre-training:
+    - multi_pair: Train foundation model on multiple pairs simultaneously
+    - foundation_pairs: Comma-separated list of pairs for pre-training
     """
     oanda_fetch: OandaFetchOptions | None = None
     advanced: BuddyTrainingAdvancedOptions | None = None
@@ -129,6 +133,9 @@ class BuddyTrainingOptions:
     generate_report: bool = True  # Generate markdown report
     # Continual learning - EWC disabled by default (high compute, use for research)
     enable_ewc: bool = False  # Enable EWC (Elastic Weight Consolidation)
+    # Multi-pair pre-training - foundation model across instruments
+    multi_pair: bool = False  # Enable multi-pair foundation training
+    foundation_pairs: str | None = None  # Comma-separated pairs (default: majors)
 
 
 def _tier2_get_calibration_dict(meta: dict[str, Any]) -> dict[str, Any] | None:
@@ -629,6 +636,86 @@ def _normalize_instrument(s: str) -> str:
     if "_" not in v and len(v) == 6:
         v = v[:3] + "_" + v[3:]
     return v
+
+
+def _extract_instrument_from_csv_path(csv_path: str) -> str:
+    """
+    Extract instrument from CSV filename for pair-specific model training.
+    
+    Patterns recognized:
+    - market_data/EUR_USD_H1.csv -> EUR_USD
+    - market_data/oanda_GBP_USD_H1_live_*.csv -> GBP_USD
+    - market_data/USD_JPY_*.csv -> USD_JPY
+    - market_data/EURUSD.csv -> EUR_USD (6-char format)
+    
+    Returns normalized instrument or "GENERIC" if not extractable.
+    """
+    import re
+    from pathlib import Path
+    
+    if not csv_path:
+        return "GENERIC"
+    
+    filename = Path(csv_path).stem.upper()  # e.g., "EUR_USD_H1" or "oanda_GBP_USD_H1_live_20250114"
+    
+    # Try to find a valid instrument in the filename
+    # Pattern 1: Direct match for XXX_YYY format
+    for instrument in VALID_OANDA_INSTRUMENTS:
+        if instrument in filename:
+            return instrument
+    
+    # Pattern 2: 6-char format like "EURUSD" 
+    match = re.search(r'([A-Z]{6})', filename)
+    if match:
+        candidate = match.group(1)[:3] + "_" + match.group(1)[3:]
+        if candidate in VALID_OANDA_INSTRUMENTS:
+            return candidate
+    
+    # Pattern 3: Try to extract XXX_YYY pattern from filename
+    match = re.search(r'([A-Z]{3})_([A-Z]{3})', filename)
+    if match:
+        candidate = f"{match.group(1)}_{match.group(2)}"
+        if candidate in VALID_OANDA_INSTRUMENTS:
+            return candidate
+    
+    return "GENERIC"
+
+
+def _get_pair_model_paths(model_dir: Path, instrument: str, model_type: str = "transformer") -> dict:
+    """
+    Get pair-specific model paths for saving/loading.
+    
+    Returns dict with paths for:
+    - direction: Transformer/TCN direction model
+    - xgboost: XGBoost momentum model  
+    - rf: Random Forest risk model
+    - ridge: Ridge confidence model
+    - histgb: HistGB hybrid voting model (optional)
+    
+    Example for EUR_USD:
+    - trained_data/models/EUR_USD/transformer_direction.keras
+    - trained_data/models/EUR_USD/xgb_momentum.pkl
+    """
+    # Use GENERIC for generic models, pair name for pair-specific
+    if instrument and instrument != "GENERIC":
+        pair_dir = model_dir / instrument
+    else:
+        pair_dir = model_dir
+    
+    # Ensure directory exists
+    pair_dir.mkdir(parents=True, exist_ok=True)
+    
+    direction_filename = "transformer_direction.keras" if model_type == "transformer" else "tcn_direction.keras"
+    
+    return {
+        'direction': pair_dir / direction_filename,
+        'regime': pair_dir / "transformer_regime.keras",
+        'xgboost': pair_dir / "xgb_momentum.pkl",
+        'rf': pair_dir / "rf_risk.pkl",
+        'ridge': pair_dir / "ridge_confidence.pkl",
+        'histgb': pair_dir / "histgb_direction.pkl",
+        'pair_dir': pair_dir,
+    }
 
 
 def _validate_instrument(instrument: str) -> str:
@@ -1402,8 +1489,8 @@ def _train_buddy_impl(
     spread_mult = float(advanced.spread_mult) if advanced else 3.0
 
     tier2_calibrate = bool(getattr(advanced, "tier2_calibrate", True)) if advanced else True
-    tier2_stop_loss_pips_cfg = float(buddy_cfg.get("stop_loss_pips", 20.0))
-    tier2_take_profit_pips_cfg = float(buddy_cfg.get("take_profit_pips", 60.0))
+    tier2_stop_loss_pips_cfg = float(buddy_cfg.get("stop_loss_pips", 15.0))  # 15 pip SL
+    tier2_take_profit_pips_cfg = float(buddy_cfg.get("take_profit_pips", 30.0))  # 30 pip TP base
     tier2_spread_fallback_pips_cfg = float(buddy_cfg.get("tier2_spread_fallback_pips", 2.0))
     tier2_horizon_candles_cfg = int(buddy_cfg.get("tier2_horizon_candles", 288))
     tier2_tie_break_cfg = str(buddy_cfg.get("tier2_tie_break", "sl"))
@@ -2404,17 +2491,54 @@ def _train_buddy_impl(
             
             console.print(Panel(dataset_table, title="📊 Ensemble Dataset Summary", border_style="blue"))
             
-            # Extract instrument for replay buffer (from oanda_fetch or default)
-            training_instrument = getattr(oanda_fetch, 'instrument', 'EUR_USD') if oanda_fetch else 'EUR_USD'
-            training_granularity = getattr(oanda_fetch, 'granularity', 'H1') if oanda_fetch else 'H1'
+            # Extract instrument for pair-specific model training
+            # Priority: 1) OANDA fetch instrument, 2) CSV filename, 3) Default
+            if oanda_fetch:
+                training_instrument = getattr(oanda_fetch, 'instrument', 'GENERIC')
+                training_granularity = getattr(oanda_fetch, 'granularity', 'H1')
+            elif csv_path:
+                training_instrument = _extract_instrument_from_csv_path(csv_path)
+                # Try to extract granularity from filename (e.g., EUR_USD_H1.csv)
+                import re
+                gran_match = re.search(r'_(M\d+|H\d+|D|W)(?:_|\.)', str(csv_path).upper())
+                training_granularity = gran_match.group(1) if gran_match else 'H1'
+            else:
+                training_instrument = 'GENERIC'
+                training_granularity = 'H1'
+            
+            console.print(f"[cyan]📊 Training instrument: {training_instrument}, Granularity: {training_granularity}[/cyan]")
             
             # Auto-detect fresh vs warm-start training
             # Continual learning (EWC, EMA, Replay) is ONLY beneficial for warm-start
             # For fresh training, these features can cause instability
             model_dir = Path("trained_data/models")
-            has_existing_model = (model_dir / "transformer_direction.keras").exists()
+            
+            # Get pair-specific model paths for compound learning
+            use_transformer = (options.model_type or "transformer") != "tcn"
+            pair_paths = _get_pair_model_paths(model_dir, training_instrument, 
+                                               "transformer" if use_transformer else "tcn")
+            
+            # Check for existing pair-specific model for warm-start (compound learning)
+            has_existing_model = pair_paths['direction'].exists()
+            # Also check generic model as fallback for warm-start
+            generic_paths = _get_pair_model_paths(model_dir, "GENERIC", 
+                                                  "transformer" if use_transformer else "tcn")
+            has_generic_model = (model_dir / "transformer_direction.keras").exists() or generic_paths['direction'].exists()
+            
             warm_start_enabled = cfg.get("buddy", {}).get("train_defaults", {}).get("warm_start", True)
-            is_warm_start = has_existing_model and warm_start_enabled
+            
+            # Prefer pair-specific warm-start, fallback to generic
+            if has_existing_model and warm_start_enabled:
+                is_warm_start = True
+                warm_start_path = pair_paths['direction']
+                console.print(f"[green]♻️  Compound learning: warm-start from {training_instrument} model[/green]")
+            elif has_generic_model and warm_start_enabled:
+                is_warm_start = True
+                warm_start_path = model_dir / "transformer_direction.keras"
+                console.print(f"[yellow]⚡ Initial training for {training_instrument} (warm-start from generic model)[/yellow]")
+            else:
+                is_warm_start = False
+                warm_start_path = None
             
             # Enable CL only for warm-start (incremental training)
             # EWC is opt-in via --enable-ewc (high compute cost)
@@ -2452,12 +2576,16 @@ def _train_buddy_impl(
             console.print()
             
             # Configure trainers with Transformer settings
+            # Use pair-specific checkpoint directory
+            pair_checkpoint_dir = str(pair_paths['pair_dir'] / "checkpoints") if training_instrument != "GENERIC" else "trained_data/checkpoints"
+            
             trainer_config = TrainerConfig(
                 epochs=int(epochs),
                 batch_size=int(batch_size),
                 learning_rate=float(lr),
                 patience=int(patience),
                 verbose=int(fit_verbose),
+                checkpoint_dir=pair_checkpoint_dir,  # Pair-specific checkpoints
                 # Transformer settings from config
                 transformer_d_model=int(transformer_cfg.get("d_model", 32)),
                 transformer_num_heads=int(transformer_cfg.get("num_heads", 4)),
@@ -2535,10 +2663,9 @@ def _train_buddy_impl(
                 # Get direction data (new key 'direction' or fallback to 'tcn')
                 dir_data = all_data.get('direction', all_data.get('tcn'))
                 
-                # WARM-START: Use auto-detected is_warm_start (already computed above)
-                # is_warm_start is True only if model exists - no config needed
-                warm_start_path = model_dir / "transformer_direction.keras" if is_warm_start else None
-                if is_warm_start:
+                # WARM-START: Use the already-computed warm_start_path from pair detection above
+                # warm_start_path is already set to pair-specific or generic path as appropriate
+                if is_warm_start and warm_start_path:
                     console.print(Panel(
                         f"[yellow]Loading weights from:[/yellow] {warm_start_path}\n"
                         "[dim]Training will continue from previous weights (compounding learning)[/dim]",
@@ -2565,11 +2692,16 @@ def _train_buddy_impl(
                         feature_names=dir_data['feature_names'],
                         w_train=dir_data.get('w_train'),  # Sample weights for threshold filtering
                         w_val=dir_data.get('w_val'),
-                        warm_start_path=str(warm_start_path) if is_warm_start else None,
+                        warm_start_path=str(warm_start_path) if warm_start_path else None,
                         instrument=training_instrument,  # For replay buffer storage
                     )
-                    dir_trainer.save(str(model_dir / "transformer_direction.keras"), instrument=training_instrument)
-                    dir_model_path = str(model_dir / "transformer_direction.keras")
+                    # Save to BOTH pair-specific AND generic paths for compatibility
+                    dir_trainer.save(str(pair_paths['direction']), instrument=training_instrument)
+                    # Also save to generic path for backward compatibility
+                    if training_instrument != "GENERIC":
+                        dir_trainer.save(str(model_dir / "transformer_direction.keras"), instrument=training_instrument)
+                    dir_model_path = str(pair_paths['direction'])
+                    console.print(f"[cyan]💾 Direction model saved to: {pair_paths['direction']}[/cyan]")
                 else:
                     dir_trainer = TCNTrainer(trainer_config)
                     dir_metrics = dir_trainer.train(
@@ -2577,8 +2709,11 @@ def _train_buddy_impl(
                         dir_data['X_val'], dir_data['y_val'],
                         feature_names=dir_data['feature_names']
                     )
-                    dir_trainer.save(str(model_dir / "tcn_direction.keras"))
-                    dir_model_path = str(model_dir / "tcn_direction.keras")
+                    dir_trainer.save(str(pair_paths['direction']))
+                    if training_instrument != "GENERIC":
+                        dir_trainer.save(str(model_dir / "tcn_direction.keras"))
+                    dir_model_path = str(pair_paths['direction'])
+                    console.print(f"[cyan]💾 TCN model saved to: {pair_paths['direction']}[/cyan]")
                 
                 all_metrics['direction'] = dir_metrics
                 
@@ -2609,10 +2744,14 @@ def _train_buddy_impl(
                 feature_names=xgb_data['feature_names'],
                 momentum_norm_factor=xgb_data.get('momentum_norm_factor'),
             )
-            xgb_trainer.save(str(model_dir / "xgb_momentum.pkl"))
+            # Save to both pair-specific and generic paths
+            xgb_trainer.save(str(pair_paths['xgboost']))
+            if training_instrument != "GENERIC":
+                xgb_trainer.save(str(model_dir / "xgb_momentum.pkl"))
             all_metrics['xgboost'] = xgb_metrics
             
             console.print(f"[green]✓ XGBoost complete: momentum_mae={xgb_metrics['momentum_mae']:.4f}, accel_acc={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
+            console.print(f"[cyan]💾 XGBoost saved to: {pair_paths['xgboost']}[/cyan]")
             
             # ============================================================
             # TRAIN RANDOM FOREST (Risk Assessor)
@@ -2633,10 +2772,14 @@ def _train_buddy_impl(
                 rf_data['X_val'], rf_data['y_val'],
                 feature_names=rf_data['feature_names']
             )
-            rf_trainer.save(str(model_dir / "rf_risk.pkl"))
+            # Save to both pair-specific and generic paths
+            rf_trainer.save(str(pair_paths['rf']))
+            if training_instrument != "GENERIC":
+                rf_trainer.save(str(model_dir / "rf_risk.pkl"))
             all_metrics['rf'] = rf_metrics
             
             console.print(f"[green]✓ RF complete: drawdown_mae={rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps, streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
+            console.print(f"[cyan]💾 RF saved to: {pair_paths['rf']}[/cyan]")
             
             # ============================================================
             # TRAIN RIDGE (Confidence Scorer)
@@ -2658,10 +2801,14 @@ def _train_buddy_impl(
                 ridge_data['X_val'], ridge_data['y_val'],
                 feature_names=ridge_data['feature_names']
             )
-            ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
+            # Save to both pair-specific and generic paths
+            ridge_trainer.save(str(pair_paths['ridge']))
+            if training_instrument != "GENERIC":
+                ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
             all_metrics['ridge'] = ridge_metrics
             
             console.print(f"[green]✓ ElasticNet complete: MAE={ridge_metrics['confidence_mae']:.2f}, R²={ridge_metrics['r2_score']:.4f}, alpha={ridge_metrics.get('best_alpha', 1.0):.4f}, l1_ratio={ridge_metrics.get('best_l1_ratio', 0.5):.2f}, sparse={ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}[/green]")
+            console.print(f"[cyan]💾 Ridge saved to: {pair_paths['ridge']}[/cyan]")
             
             # ============================================================
             # TRAIN HISTGB (Optional - for hybrid voting with Transformer)
@@ -2685,10 +2832,14 @@ def _train_buddy_impl(
                     dir_data['X_val'], dir_data['y_val'],
                     feature_names=dir_data['feature_names'],
                 )
-                histgb_trainer.save(str(model_dir / "histgb_direction.pkl"))
+                # Save to both pair-specific and generic paths
+                histgb_trainer.save(str(pair_paths['histgb']))
+                if training_instrument != "GENERIC":
+                    histgb_trainer.save(str(model_dir / "histgb_direction.pkl"))
                 all_metrics['histgb'] = histgb_metrics
                 
                 console.print(f"[green]✓ HistGB complete: val_accuracy={histgb_metrics['val_accuracy']:.1%}, balanced={histgb_metrics.get('val_balanced_accuracy', 0):.1%}[/green]")
+                console.print(f"[cyan]💾 HistGB saved to: {pair_paths['histgb']}[/cyan]")
                 console.print("[yellow]🔥 Hybrid voting ENABLED: Transformer + HistGB will vote together[/yellow]")
             
             # ============================================================
@@ -2736,24 +2887,26 @@ def _train_buddy_impl(
                 "use_regime": use_regime,
                 "primary_model_type": "regime" if use_regime else direction_model_name.lower(),
                 "primary_config": primary_config,
+                "training_instrument": training_instrument,  # Track which pair this was trained on
+                "pair_model_dir": str(pair_paths['pair_dir']),  # Pair-specific model directory
                 "models": {
                     **primary_model_meta,
                     "xgboost": {
-                        "path": str(model_dir / "xgb_momentum.pkl"),
+                        "path": str(pair_paths['xgboost']),
                         "purpose": "momentum_analysis",
                         "output": "momentum_score (0-1), acceleration (bool)",
                         "metrics": xgb_metrics,
                         "features": xgb_data['feature_names'],
                     },
                     "rf": {
-                        "path": str(model_dir / "rf_risk.pkl"),
+                        "path": str(pair_paths['rf']),
                         "purpose": "risk_assessment",
                         "output": "expected_drawdown_pips, streak_prob",
                         "metrics": rf_metrics,
                         "features": rf_data['feature_names'],
                     },
                     "ridge": {
-                        "path": str(model_dir / "ridge_confidence.pkl"),
+                        "path": str(pair_paths['ridge']),
                         "purpose": "confidence_scoring",
                         "output": "confidence (0-100)",
                         "metrics": ridge_metrics,
@@ -2820,9 +2973,9 @@ def _train_buddy_impl(
             artifacts_table.add_column("Type", style="cyan", width=15)
             artifacts_table.add_column("Path", style="dim")
             artifacts_table.add_row("Direction", str(dir_model_path))
-            artifacts_table.add_row("Momentum", str(model_dir / 'xgb_momentum.pkl'))
-            artifacts_table.add_row("Risk", str(model_dir / 'rf_risk.pkl'))
-            artifacts_table.add_row("Confidence", str(model_dir / 'ridge_confidence.pkl'))
+            artifacts_table.add_row("Momentum", str(pair_paths['xgboost']))
+            artifacts_table.add_row("Risk", str(pair_paths['rf']))
+            artifacts_table.add_row("Confidence", str(pair_paths['ridge']))
             artifacts_table.add_row("Metadata", str(meta_path))
             
             console.print(Panel(artifacts_table, title="[bold]Saved Artifacts[/bold]", border_style="blue"))
@@ -3047,9 +3200,9 @@ def _train_buddy_impl(
 
 ## Model Paths
 - Direction: {dir_model_path}
-- Momentum: {model_dir / 'xgb_momentum.pkl'}
-- Risk: {model_dir / 'rf_risk.pkl'}
-- Confidence: {model_dir / 'ridge_confidence.pkl'}
+- Momentum: {pair_paths['xgboost']}
+- Risk: {pair_paths['rf']}
+- Confidence: {pair_paths['ridge']}
 """
                         
                         with open(report_path, 'w') as f:
@@ -3153,17 +3306,32 @@ def _train_buddy_impl(
                     train_dir_preds = xgb_preds_train["direction"]
                     val_dir_preds = xgb_preds_val["direction"]
                     
-                    # Configure meta-labeler
+                    # Configure meta-labeler with regularization (prevents overfitting)
+                    meta_cfg_yaml = cfg.get("buddy", {}).get("meta_labeling", {})
                     meta_cfg = MetaLabelingConfig(
                         use_xgboost=True,
-                        n_estimators=int(cfg.get("buddy", {}).get("meta_labeling", {}).get("n_estimators", 200)),
-                        max_depth=int(cfg.get("buddy", {}).get("meta_labeling", {}).get("max_depth", 4)),
-                        learning_rate=float(cfg.get("buddy", {}).get("meta_labeling", {}).get("learning_rate", 0.1)),
-                        min_confidence_threshold=float(cfg.get("buddy", {}).get("meta_labeling", {}).get("threshold", 0.55)),
+                        # Reduced defaults to prevent overfitting
+                        n_estimators=int(meta_cfg_yaml.get("n_estimators", 100)),
+                        max_depth=int(meta_cfg_yaml.get("max_depth", 2)),
+                        learning_rate=float(meta_cfg_yaml.get("learning_rate", 0.05)),
+                        # Regularization params
+                        reg_alpha=float(meta_cfg_yaml.get("reg_alpha", 1.0)),
+                        reg_lambda=float(meta_cfg_yaml.get("reg_lambda", 5.0)),
+                        subsample=float(meta_cfg_yaml.get("subsample", 0.7)),
+                        colsample_bytree=float(meta_cfg_yaml.get("colsample_bytree", 0.7)),
+                        min_child_weight=int(meta_cfg_yaml.get("min_child_weight", 5)),
+                        early_stopping_rounds=int(meta_cfg_yaml.get("early_stopping_rounds", 30)),
+                        max_overfitting_gap=float(meta_cfg_yaml.get("max_overfitting_gap", 0.15)),
+                        auto_tune=bool(meta_cfg_yaml.get("auto_tune", False)),
+                        # Threshold
+                        min_confidence_threshold=float(meta_cfg_yaml.get("threshold", 0.55)),
+                        use_reduced_features=bool(meta_cfg_yaml.get("use_reduced_features", True)),
                     )
                     
                     # Train meta-labeler
                     labeler = MetaLabeler(meta_cfg)
+                    
+                    # Fit the meta-labeler (auto-tune happens inside if config.auto_tune=True)
                     meta_metrics = labeler.fit(
                         train_feats,
                         train_dir_preds,
@@ -3174,22 +3342,40 @@ def _train_buddy_impl(
                         verbose=True,
                     )
                     
-                    # Save meta-labeler
-                    meta_labeler_path = model_dir / f"buddy_xgb_meta{suffix}.pkl"
-                    labeler.save(meta_labeler_path)
-                    
                     train_meta_acc = meta_metrics.get("meta_train_accuracy", 0)
                     val_meta_acc = meta_metrics.get("meta_val_accuracy", 0)
-                    console.print(f"Meta-labeler: train_acc={train_meta_acc:.1%} val_acc={val_meta_acc:.1%}")
-                    console.print(f"Saved: {meta_labeler_path}")
+                    overfit_gap = meta_metrics.get("overfitting_gap", train_meta_acc - val_meta_acc)
                     
-                    # Update metadata with meta-labeler info
-                    meta["meta_labeling"] = {
-                        "enabled": True,
-                        "path": str(meta_labeler_path),
-                        "train_accuracy": float(train_meta_acc),
-                        "val_accuracy": float(val_meta_acc),
-                    }
+                    # Tune threshold on validation set
+                    best_thresh, thresh_metrics = labeler.tune_threshold(
+                        val_feats, val_dir_preds, val_dir_raw, verbose=True
+                    )
+                    thresh_improvement = thresh_metrics.get("improvement", 0) if thresh_metrics else 0
+                    
+                    console.print(f"Meta-labeler: train_acc={train_meta_acc:.1%} val_acc={val_meta_acc:.1%} gap={overfit_gap:.1%}")
+                    if thresh_metrics:
+                        console.print(f"Threshold tuned: {best_thresh:.2f} -> +{thresh_improvement*100:.1f}% improvement")
+                    
+                    # Reject meta-labeler if still overfitting badly
+                    if overfit_gap > 0.20:
+                        console.print(f"[yellow]⚠️ Meta-labeler rejected (gap {overfit_gap:.1%} > 20%)[/yellow]")
+                        meta["meta_labeling"] = {"enabled": False, "reason": f"overfitting_gap_{overfit_gap:.1%}"}
+                    else:
+                        # Save meta-labeler
+                        meta_labeler_path = model_dir / f"buddy_xgb_meta{suffix}.pkl"
+                        labeler.save(meta_labeler_path)
+                        console.print(f"Saved: {meta_labeler_path}")
+                        
+                        # Update metadata with meta-labeler info
+                        meta["meta_labeling"] = {
+                            "enabled": True,
+                            "path": str(meta_labeler_path),
+                            "train_accuracy": float(train_meta_acc),
+                            "val_accuracy": float(val_meta_acc),
+                            "overfitting_gap": float(overfit_gap),
+                            "tuned_threshold": float(best_thresh),
+                            "threshold_improvement": float(thresh_improvement),
+                        }
                     
                     # Re-save metadata with meta-labeling info
                     with open(candidate_meta_path.with_suffix('.xgb.meta.json'), "w") as f:
@@ -3197,6 +3383,8 @@ def _train_buddy_impl(
                     
                 except Exception as e:
                     console.print(f"[yellow]Meta-labeling failed[/yellow]: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             console.print("[green]XGBoost training complete![/green]")
             return
@@ -4522,17 +4710,32 @@ def _train_buddy_impl(
             val_dir_aligned = val_dir_aligned[:min_len_val]
             val_feats_for_meta = val_feats_for_meta[:min_len_val]
             
-            # Configure meta-labeler
+            # Configure meta-labeler with regularization (prevents overfitting)
+            meta_cfg_yaml = cfg.get("buddy", {}).get("meta_labeling", {})
             meta_cfg = MetaLabelingConfig(
                 use_xgboost=True,
-                n_estimators=int(cfg.get("buddy", {}).get("meta_labeling", {}).get("n_estimators", 200)),
-                max_depth=int(cfg.get("buddy", {}).get("meta_labeling", {}).get("max_depth", 4)),
-                learning_rate=float(cfg.get("buddy", {}).get("meta_labeling", {}).get("learning_rate", 0.1)),
-                min_confidence_threshold=float(cfg.get("buddy", {}).get("meta_labeling", {}).get("threshold", 0.55)),
+                # Reduced defaults to prevent overfitting
+                n_estimators=int(meta_cfg_yaml.get("n_estimators", 100)),
+                max_depth=int(meta_cfg_yaml.get("max_depth", 2)),
+                learning_rate=float(meta_cfg_yaml.get("learning_rate", 0.05)),
+                # Regularization params
+                reg_alpha=float(meta_cfg_yaml.get("reg_alpha", 1.0)),
+                reg_lambda=float(meta_cfg_yaml.get("reg_lambda", 5.0)),
+                subsample=float(meta_cfg_yaml.get("subsample", 0.7)),
+                colsample_bytree=float(meta_cfg_yaml.get("colsample_bytree", 0.7)),
+                min_child_weight=int(meta_cfg_yaml.get("min_child_weight", 5)),
+                early_stopping_rounds=int(meta_cfg_yaml.get("early_stopping_rounds", 30)),
+                max_overfitting_gap=float(meta_cfg_yaml.get("max_overfitting_gap", 0.15)),
+                auto_tune=bool(meta_cfg_yaml.get("auto_tune", False)),
+                # Threshold
+                min_confidence_threshold=float(meta_cfg_yaml.get("threshold", 0.55)),
+                use_reduced_features=bool(meta_cfg_yaml.get("use_reduced_features", True)),
             )
             
-            # Train
+            # Train meta-labeler (auto-tune happens inside if config.auto_tune=True)
             labeler = MetaLabeler(meta_cfg)
+            
+            # Fit the meta-labeler
             meta_labeling_metrics = labeler.fit(
                 train_feats_for_meta,
                 train_dir_preds,
@@ -4543,20 +4746,36 @@ def _train_buddy_impl(
                 verbose=True,
             )
             
-            # Save meta-labeler
-            meta_labeler_path_obj = model_dir / f"buddy_meta{suffix}.pkl"
-            labeler.save(meta_labeler_path_obj)
-            meta_labeler_path = str(meta_labeler_path_obj)
-            
-            # Report metrics
             train_meta_acc = meta_labeling_metrics.get("meta_train_accuracy", 0)
             val_meta_acc = meta_labeling_metrics.get("meta_val_accuracy", 0)
-            console.print(f"Meta-labeler: train_acc={train_meta_acc:.1%} val_acc={val_meta_acc:.1%}")
-            console.print(f"Saved: {meta_labeler_path}")
+            overfit_gap = meta_labeling_metrics.get("overfitting_gap", train_meta_acc - val_meta_acc)
+            
+            # Tune threshold on validation set
+            best_thresh, thresh_metrics = labeler.tune_threshold(
+                val_feats_for_meta, val_dir_preds, val_dir_aligned, verbose=True
+            )
+            thresh_improvement = thresh_metrics.get("improvement", 0) if thresh_metrics else 0
+            
+            console.print(f"Meta-labeler: train_acc={train_meta_acc:.1%} val_acc={val_meta_acc:.1%} gap={overfit_gap:.1%}")
+            if thresh_metrics:
+                console.print(f"Threshold tuned: {best_thresh:.2f} -> +{thresh_improvement*100:.1f}% improvement")
+            
+            # Reject meta-labeler if still overfitting badly
+            if overfit_gap > 0.20:
+                console.print(f"[yellow]⚠️ Meta-labeler rejected (gap {overfit_gap:.1%} > 20%)[/yellow]")
+                meta_labeler_path = None
+            else:
+                # Save meta-labeler
+                meta_labeler_path_obj = model_dir / f"buddy_meta{suffix}.pkl"
+                labeler.save(meta_labeler_path_obj)
+                meta_labeler_path = str(meta_labeler_path_obj)
+                console.print(f"Saved: {meta_labeler_path}")
             
         except Exception as e:
             console.print(f"[yellow]Meta-labeling failed[/yellow]: {e}")
             meta_warnings.append(f"Meta-labeling failed: {e}")
+            import traceback
+            traceback.print_exc()
 
     meta = {
         "model_path": str(model_path),
@@ -5959,6 +6178,7 @@ def buddy(
     all_features: bool = True,
     verbose: bool = False,
     aggressive_scaling: bool = False,  # Enable $100K→$1M strategy
+    use_rl_sizer: bool = True,  # Use RL-based position sizing (default: enabled)
 ) -> None:
     """Buddy: run one TF-only inference on fresh OANDA candles; optionally place a trade.
     
@@ -5970,6 +6190,51 @@ def buddy(
             - Circuit breakers (drawdown limits, losing streaks)
     """
     _configure_predict_output(verbose)
+    
+    # =========================================================================
+    # FETCH LIVE ACCOUNT BALANCE FROM OANDA (for proper position sizing)
+    # =========================================================================
+    live_nav = None
+    trades_today = 0
+    max_trades_per_day = 30
+    
+    if equity is None:  # Only fetch if not explicitly provided
+        try:
+            from oanda_practice import OandaPracticeClient
+            from datetime import datetime, timezone
+            
+            client = OandaPracticeClient.from_env()
+            account_summary = client.get_account_summary()
+            account = account_summary.get('account', {})
+            live_nav = float(account.get('NAV', 0))
+            
+            # Count trades opened today
+            today_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            trades_result = client._request(
+                'GET',
+                f'/accounts/{client._config.account_id}/trades',
+                params={'state': 'ALL', 'count': 100}
+            )
+            for t in trades_result.get('trades', []):
+                if t.get('openTime', '').startswith(today_utc):
+                    trades_today += 1
+            
+            if live_nav > 0:
+                equity = live_nav
+                console.print(f"[green]💰 Live Balance: ${live_nav:,.2f}[/green] (fetched from OANDA)")
+                trades_remaining = max_trades_per_day - trades_today
+                if trades_remaining <= 5:
+                    console.print(f"[yellow]📊 Trades Today: {trades_today}/{max_trades_per_day} (⚠️ {trades_remaining} remaining)[/yellow]")
+                else:
+                    console.print(f"[dim]📊 Trades Today: {trades_today}/{max_trades_per_day}[/dim]")
+                    
+                if trades_remaining <= 0:
+                    console.print(f"[bold red]⛔ DAILY TRADE LIMIT REACHED[/bold red]")
+                    console.print("[dim]Come back tomorrow or increase max_trades_per_day[/dim]")
+                    return
+        except Exception as e:
+            if verbose:
+                console.print(f"[dim]Could not fetch live balance: {e}[/dim]")
     
     # Initialize aggressive scaling engine if enabled
     scaling_engine = None
@@ -6037,8 +6302,27 @@ def buddy(
         
         from modular_inference import ModularEnsembleInference, InferenceConfig
         
-        # Load modular ensemble
-        ensemble = ModularEnsembleInference()
+        # Load modular ensemble with pair-specific models
+        # Normalizes instrument (e.g., "eur_usd" -> "EUR_USD")
+        normalized_instrument = _normalize_instrument(instrument)
+        
+        # Check if pair-specific models exist
+        pair_model_dir = Path("trained_data/models") / normalized_instrument
+        has_pair_models = pair_model_dir.exists() and any(pair_model_dir.glob("*.keras"))
+        
+        if has_pair_models:
+            console.print(f"[green]📊 Loading {normalized_instrument}-specific models[/green]")
+        else:
+            console.print(f"[yellow]📊 No {normalized_instrument} models found, using generic models[/yellow]")
+        
+        # Show RL sizer status
+        if use_rl_sizer:
+            console.print(f"[cyan]🤖 RL Position Sizer: ENABLED[/cyan]")
+        
+        ensemble = ModularEnsembleInference(
+            instrument=normalized_instrument if has_pair_models else None,
+            use_rl_sizer=use_rl_sizer,
+        )
         ensemble.load_models()
         
         # Fetch candles for inference
@@ -6091,10 +6375,27 @@ def buddy(
             spread = atr * 0.05 if atr else current_price * 0.0001
             
             if atr and atr > 0:
-                # Risk/Reward: SL = 1.5x ATR, TP = 2.5x ATR (1:1.67 R:R)
-                sl_distance = atr * 1.5
-                tp_distance = atr * 2.5
-                ts_distance = atr * 1.0  # Trailing stop at 1x ATR
+                # FIXED SL/TP: 15 pip SL, 20-30 pip TP (user requested tighter targets)
+                is_jpy = instrument.endswith('_JPY')
+                pip_mult = 100 if is_jpy else 10000
+                pip_size = 0.01 if is_jpy else 0.0001
+                
+                # Fixed 15 pip SL
+                sl_pips = 15.0
+                sl_distance = sl_pips * pip_size
+                
+                # Base 30 pip TP, +20 bonus if probability > 65%
+                raw_signal = result.get('raw_signal')
+                tcn_prob = raw_signal.tcn_probability if raw_signal else 0.5
+                if tcn_prob >= 0.65:
+                    tp_pips = 50.0  # 30 + 20 bonus
+                    console.print(f"[green]✓ High probability ({tcn_prob:.1%}) - TP bonus → {tp_pips:.1f} pips[/green]")
+                else:
+                    tp_pips = 30.0  # Base 30 pips
+                tp_distance = tp_pips * pip_size
+                
+                # Trailing stop at 0.9x SL (tighter protection)
+                ts_distance = sl_distance * 0.9
                 
                 if signal.direction == 'long':
                     # LONG: SL below entry, TP above entry
@@ -6105,18 +6406,14 @@ def buddy(
                     sl_price = current_price + sl_distance
                     tp_price = current_price - tp_distance
                 
-                # Display order details
-                is_jpy = instrument.endswith('_JPY')
-                pip_mult = 100 if is_jpy else 10000
-                sl_pips = sl_distance * pip_mult
-                tp_pips = tp_distance * pip_mult
+                # Calculate trailing stop in pips
                 ts_pips = ts_distance * pip_mult
                 
                 console.print(f"[bold yellow]Executing: {signal.direction.upper()} {abs(units):,} units @ {current_price:.5f}[/bold yellow]")
                 console.print(f"  [cyan]TP:[/cyan] {tp_price:.5f} (+{tp_pips:.1f} pips)")
                 console.print(f"  [red]SL:[/red] {sl_price:.5f} (-{sl_pips:.1f} pips)")
                 console.print(f"  [magenta]TS:[/magenta] {ts_distance:.5f} ({ts_pips:.1f} pips trailing)")
-                console.print(f"  [dim]ATR: {atr:.5f} | R:R = 1:{tp_distance/sl_distance:.2f}[/dim]")
+                console.print(f"  [dim]ATR: {atr:.5f} | R:R = 1:{tp_pips/sl_pips:.2f}[/dim]")
                 
                 try:
                     order_result = trader.create_market_order(
@@ -7665,6 +7962,9 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
     
     # Check for aggressive scaling mode
     aggressive_scaling = bool(getattr(args, "aggressive_scaling", False))
+    
+    # Check for RL position sizer
+    use_rl_sizer = bool(getattr(args, "use_rl_sizer", False))
 
     if bool(getattr(args, "loop", False)):
         buddy_loop(
@@ -7700,6 +8000,7 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
         all_features=getattr(args, "all_features", False),
         verbose=args.verbose,
         aggressive_scaling=aggressive_scaling,
+        use_rl_sizer=use_rl_sizer,
     )
 
 
@@ -7805,10 +8106,8 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
     # explicitly provides a local CSV.
     oanda_live_eff = bool(getattr(args, "oanda_live", False)) or (getattr(args, "csv", None) is None)
 
-    # If user didn't override --candles, use a larger default for training fetch.
+    # Use candles from args (default 5000 for training)
     train_candles = int(args.candles)
-    if bool(oanda_live_eff) and train_candles == 300:
-        train_candles = 5000
 
     oanda_fetch = None
     if bool(oanda_live_eff):
@@ -7918,6 +8217,9 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
         generate_report=not bool(getattr(args, "no_report", False)),
         # Continual learning - EWC disabled by default (high compute)
         enable_ewc=bool(getattr(args, "enable_ewc", False)),
+        # Multi-pair foundation training
+        multi_pair=bool(getattr(args, "multi_pair", False)),
+        foundation_pairs=getattr(args, "foundation_pairs", None),
     )
 
 
@@ -7929,8 +8231,6 @@ def buddy_scan(
     top_n: int = 5,
     verbose: bool = False,
     prompt_train: bool = False,
-    prompt_execute: bool = True,
-    no_execute: bool = False,
     **kwargs: Any,
 ) -> list:
     """
@@ -7943,7 +8243,7 @@ def buddy_scan(
     - Drift detection with retraining prompts
     - Correlation analysis for diversification
     - Historical accuracy tracking
-    - Trade execution prompt after scan
+    - Shows tradeable pairs vs needs training
     
     Uses MODEL_78_v2 modular ensemble (78.4% accuracy) for predictions:
     - Transformer direction model for signal
@@ -7952,6 +8252,8 @@ def buddy_scan(
     - RF risk assessment
     
     Falls back to technical indicators if model unavailable.
+    
+    NOTE: Scanner only displays results. Use 'buddy -I <PAIR> --execute' to trade.
     """
     try:
         # Use new enhanced BuddyScanner
@@ -7961,9 +8263,12 @@ def buddy_scan(
         # Don't override account_equity unless explicitly passed
         # Let config file value be used by default
         explicit_equity = kwargs.get("account_equity")
+        use_rl_sizer = kwargs.get("use_rl_sizer", True)  # RL sizer enabled by default
+        
         scanner = BuddyScanner(
             config_path=config_path,
             account_equity=explicit_equity,  # None = use config
+            use_rl_sizer=use_rl_sizer,
         )
         
         # Parse pairs
@@ -7971,14 +8276,13 @@ def buddy_scan(
         if pairs:
             pair_list = [p.strip().upper().replace("/", "_") for p in pairs.split(",")]
         
-        # Run enhanced scan
+        # Run enhanced scan (display only, no execution prompt)
         results = scanner.scan(
             pairs=pair_list,
             granularity=granularity,
             top_n=top_n,
             verbose=True,  # Always verbose for CLI
             prompt_train=prompt_train,
-            prompt_execute=prompt_execute and not no_execute,
         )
         
         # Convert to legacy format for backward compatibility
@@ -8560,6 +8864,264 @@ def _buddy_scan_legacy(
                 pass
     
     return analyses
+
+
+def train_rl_sizer(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    timesteps: int = 500_000,
+    episodes: int | None = None,
+    pairs: str | None = None,
+    granularity: str = "H1",
+    candles: int = 5000,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """
+    Train RL position sizing agent using PPO.
+    
+    Uses a two-phase subprocess approach to avoid TensorFlow/PyTorch GPU conflicts.
+    """
+    import json
+    import subprocess
+    import time
+    import logging
+    from datetime import datetime
+    from pathlib import Path
+    
+    from rich.panel import Panel
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+    from rich.table import Table
+    from rich import box
+    
+    # Suppress noisy logging during data generation
+    logging.getLogger('modular_data_loaders').setLevel(logging.WARNING)
+    logging.getLogger('modular_trainers').setLevel(logging.WARNING)
+    logging.getLogger('modular_inference').setLevel(logging.WARNING)
+    logging.getLogger('feature_engineering').setLevel(logging.WARNING)
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # HEADER
+    # ═══════════════════════════════════════════════════════════════════════
+    console.print()
+    console.print(Panel.fit(
+        "[bold cyan]RL Position Sizer Training[/bold cyan]\n"
+        f"[dim]PPO • {timesteps:,} timesteps • {granularity}[/dim]",
+        border_style="cyan"
+    ))
+    
+    # ═══════════════════════════════════════════════════════════════════════
+    # CHECKLIST
+    # ═══════════════════════════════════════════════════════════════════════
+    steps = [
+        ["⏳", "Check ensemble model", ""],
+        ["⏳", "Connect to OANDA", ""],
+        ["⏳", "Generate predictions", ""],
+        ["⏳", "Train PPO (subprocess)", ""],
+        ["⏳", "Finalize", ""],
+    ]
+    
+    def print_checklist():
+        table = Table(box=None, show_header=False, padding=(0, 1))
+        table.add_column("", width=2)
+        table.add_column("", width=28)
+        table.add_column("", style="dim")
+        for s in steps:
+            clr = "green" if s[0] == "✓" else ("yellow" if s[0] == "⏳" else "red")
+            table.add_row(f"[{clr}]{s[0]}[/{clr}]", s[1], s[2])
+        console.print(table)
+    
+    # Step 1: Check ensemble
+    modular_meta_path = Path("trained_data/models/modular_ensemble.meta.json")
+    if not modular_meta_path.exists():
+        steps[0] = ["✗", "Check ensemble model", "Not found"]
+        print_checklist()
+        console.print("\n[yellow]Train ensemble first: buddy train --oanda-live -n 12000[/yellow]")
+        return
+    steps[0] = ["✓", "Check ensemble model", "Found"]
+    
+    # Suppress TF logging
+    import os
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    _configure_tf_metal(verbose=False)
+    
+    from modular_inference import ModularEnsembleInference
+    from feature_engineering import FeatureEngineering
+    from fx_paper import candles_to_ohlcv_df
+    
+    ensemble = ModularEnsembleInference(use_rl_sizer=False)
+    ensemble.load_models()
+    
+    # Step 2: Connect OANDA
+    try:
+        from oanda_practice import OandaPracticeClient
+        oanda = OandaPracticeClient.from_env()
+        steps[1] = ["✓", "Connect to OANDA", "Connected"]
+    except Exception as e:
+        steps[1] = ["✗", "Connect to OANDA", str(e)[:20]]
+        print_checklist()
+        return
+    
+    # Parse pairs
+    ALL_MAJOR_PAIRS = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD"]
+    pair_list = [p.strip() for p in pairs.split(",")] if pairs else ALL_MAJOR_PAIRS
+    
+    # Print checklist so far
+    console.print()
+    print_checklist()
+    console.print()
+    
+    # Step 3: Generate predictions with progress bar
+    import pandas as pd
+    import numpy as np
+    
+    fe = FeatureEngineering()
+    all_features = []
+    all_predictions = []
+    all_prices = []
+    
+    console.print("[bold]Generating Training Data[/bold]")
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[cyan]{task.description}[/cyan]"),
+        BarColumn(bar_width=40),
+        TaskProgressColumn(),
+        console=console,
+    ) as progress:
+        # Task for pairs
+        pairs_task = progress.add_task(f"Processing {len(pair_list)} pairs", total=len(pair_list))
+        
+        for pair in pair_list:
+            progress.update(pairs_task, description=f"[cyan]{pair}[/cyan]")
+            
+            try:
+                resp = oanda.get_candles(pair, granularity=granularity, count=candles, price="MBA")
+                df_raw = candles_to_ohlcv_df(resp)
+                
+                if df_raw is None or len(df_raw) < 200:
+                    progress.advance(pairs_task)
+                    continue
+                
+                df = fe.create_features(df_raw.copy(), include_all=True)
+                df = df.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
+                prices = df['close'].values
+                
+                # Generate predictions (silently)
+                for i in range(100, len(df) - 1):
+                    df_slice = df.iloc[:i+1].copy()
+                    try:
+                        signal = ensemble.predict(df_slice)
+                        direction_prob = signal.tcn_probability if signal.tcn_probability else 0.5
+                        confidence = signal.ridge_confidence / 100.0 if signal.ridge_confidence else 0.5
+                        vol = df_slice['close'].pct_change().rolling(20).std().iloc[-1]
+                        momentum = signal.xgb_momentum if signal.xgb_momentum else 0.0
+                        
+                        features = np.array([vol, momentum, signal.rf_drawdown_pips / 100.0 if signal.rf_drawdown_pips else 0.0])
+                        predictions = np.array([direction_prob, confidence])
+                        
+                        all_features.append(features)
+                        all_predictions.append(predictions)
+                        all_prices.append(prices[i])
+                    except Exception:
+                        continue
+                
+            except Exception:
+                pass
+            
+            progress.advance(pairs_task)
+    
+    if not all_features:
+        steps[2] = ["✗", "Generate predictions", "No data"]
+        print_checklist()
+        return
+    
+    features_array = np.array(all_features, dtype=np.float32)
+    predictions_array = np.array(all_predictions, dtype=np.float32)
+    prices_array = np.array(all_prices, dtype=np.float32)
+    
+    steps[2] = ["✓", "Generate predictions", f"{len(features_array):,} samples"]
+    
+    # Save training data
+    data_file = Path("trained_data/models/rl_train_data.npz")
+    np.savez(data_file, features=features_array, predictions=predictions_array, prices=prices_array)
+    
+    # Update checklist
+    console.print()
+    print_checklist()
+    console.print()
+    
+    # Step 4: Run PPO training in subprocess
+    console.print("[bold]Training PPO Agent (subprocess)[/bold]")
+    console.print()
+    
+    script_path = Path(__file__).parent / "train_rl_standalone.py"
+    cmd = [sys.executable, str(script_path), "--data", str(data_file), "--timesteps", str(timesteps)]
+    if verbose:
+        cmd.append("--verbose")
+    
+    start_time = time.time()
+    
+    try:
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            cwd=Path(__file__).parent,
+        )
+        
+        for line in process.stdout:
+            print(line, end="")
+        
+        process.wait()
+        
+        if process.returncode != 0:
+            steps[3] = ["✗", "Train PPO (subprocess)", f"Exit {process.returncode}"]
+            console.print()
+            print_checklist()
+            return
+        
+        train_time = time.time() - start_time
+        steps[3] = ["✓", "Train PPO (subprocess)", f"{train_time:.0f}s"]
+        
+    except Exception as e:
+        steps[3] = ["✗", "Train PPO (subprocess)", str(e)[:20]]
+        console.print()
+        print_checklist()
+        return
+    
+    # Step 5: Finalize
+    meta_path = Path("trained_data/models/rl_position_sizer.meta.json")
+    if meta_path.exists():
+        with open(meta_path) as f:
+            meta = json.load(f)
+        meta["pairs_used"] = pair_list
+        meta["granularity"] = granularity
+        meta["candles_per_pair"] = candles
+        with open(meta_path, 'w') as f:
+            json.dump(meta, f, indent=2, default=str)
+    
+    if data_file.exists():
+        data_file.unlink()
+    
+    steps[4] = ["✓", "Finalize", "Cleaned up"]
+    
+    # Final checklist
+    console.print()
+    print_checklist()
+    
+    # Summary panel
+    console.print()
+    console.print(Panel(
+        f"[bold green]✓ RL Position Sizer Trained[/bold green]\n\n"
+        f"Timesteps: {timesteps:,}  •  Time: {train_time:.0f}s  •  Samples: {len(features_array):,}\n"
+        f"Data: {len(pair_list)} pairs × {candles:,} candles ({granularity})\n\n"
+        f"[bold]Usage:[/bold]  buddy scan --use-rl-sizer\n"
+        f"        buddy --use-rl-sizer -I USD_JPY",
+        border_style="green"
+    ))
 
 
 def retrain_gates(
@@ -10200,14 +10762,31 @@ def promote_model(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None
 
 def main() -> None:
     """Main CLI entry point."""
-    parser = argparse.ArgumentParser(description="ML Engine Trading Bot CLI")
+    parser = argparse.ArgumentParser(
+        description="ML Engine Trading Bot CLI",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+COMMAND REFERENCE:
+  scan        Scan ALL pairs → shows tradeable + needs training
+  buddy       Single-pair inference → execute one trade
+  train       Train model for specific pair
+  
+EXAMPLES:
+  buddy scan                     # Scan all majors, show recommendations
+  buddy -I EUR_USD --execute     # Single EUR_USD trade
+  buddy train -I AUD_USD         # Train model for AUD_USD
+  buddy journal                  # View trade journal
+""",
+    )
     parser.add_argument(
         "command",
         nargs="?",
         default="buddy",
         choices=[
+            "train",
             "train-buddy",
             "retrain-gates",
+            "train-rl-sizer",
             "buddy",
             "Buddy",
             "promote-model",
@@ -10217,7 +10796,7 @@ def main() -> None:
             "analyze",
             "journal",
         ],
-        help="Command to execute",
+        help="Command: scan (multi-pair) | buddy (single-pair) | train | journal",
     )
     parser.add_argument(
         "--config",
@@ -10425,8 +11004,8 @@ def main() -> None:
         "--candles",
         "-n",
         type=int,
-        default=500,
-        help="How many candles to fetch (used by buddy and --oanda-live training)",
+        default=5000,
+        help="How many candles to fetch for training (default: 5000)",
     )
     parser.add_argument(
         "--min-confidence",
@@ -10482,6 +11061,25 @@ def main() -> None:
         "--import-trades",
         action="store_true",
         help="For journal: import untracked open trades from OANDA into journal",
+    )
+    
+    # RL Sizer training arguments
+    parser.add_argument(
+        "--timesteps",
+        type=int,
+        default=500_000,
+        help="For train-rl-sizer: total training timesteps (default: 500000)",
+    )
+    parser.add_argument(
+        "--rl-episodes",
+        type=int,
+        default=None,
+        help="For train-rl-sizer: training episodes (if set, overrides --timesteps)",
+    )
+    parser.add_argument(
+        "--use-rl-sizer",
+        action="store_true",
+        help="For buddy/scan: use RL position sizer instead of Kelly criterion",
     )
 
     parser.add_argument(
@@ -10772,6 +11370,19 @@ def main() -> None:
         action="store_true",
         help="Enable EWC (Elastic Weight Consolidation) for continual learning. High compute cost, use for research only. (default: disabled)",
     )
+    
+    # Multi-pair pre-training arguments
+    parser.add_argument(
+        "--multi-pair",
+        action="store_true",
+        help="For train-buddy: train foundation model on multiple pairs simultaneously",
+    )
+    parser.add_argument(
+        "--foundation-pairs",
+        type=str,
+        default=None,
+        help="For train-buddy --multi-pair: comma-separated pairs (default: EUR_USD,GBP_USD,USD_JPY,AUD_USD,USD_CAD)",
+    )
 
     # If invoked as `buddy` with no extra args, run the interactive wizard.
     # (The installed `buddy` launcher calls: python main.py buddy ...)
@@ -10791,8 +11402,10 @@ def main() -> None:
         return
 
     command_map = {
+        "train": train_buddy,  # Short alias
         "train-buddy": train_buddy,
         "retrain-gates": retrain_gates,
+        "train-rl-sizer": train_rl_sizer,
         "buddy": buddy,
         "Buddy": buddy,
         "promote-model": promote_model,
@@ -10804,13 +11417,24 @@ def main() -> None:
     }
 
     try:
-        if args.command == "train-buddy":
+        if args.command in ("train", "train-buddy"):
             _dispatch_train_buddy(args, command_map)
         elif args.command == "retrain-gates":
             # Retrain sklearn gates only (XGBoost, RF, Ridge)
             # Keeps Transformer direction model unchanged
             retrain_gates(
                 config_path=args.config,
+                pairs=getattr(args, "pairs", None),
+                granularity=str(getattr(args, "granularity", "H1")),
+                candles=int(getattr(args, "candles", 5000)),
+                verbose=bool(getattr(args, "verbose", False)),
+            )
+        elif args.command == "train-rl-sizer":
+            # Train RL position sizing agent
+            train_rl_sizer(
+                config_path=args.config,
+                timesteps=int(getattr(args, "timesteps", 500_000)),
+                episodes=getattr(args, "rl_episodes", None),
                 pairs=getattr(args, "pairs", None),
                 granularity=str(getattr(args, "granularity", "H1")),
                 candles=int(getattr(args, "candles", 5000)),
@@ -10840,6 +11464,7 @@ def main() -> None:
                 verbose=bool(getattr(args, "verbose", False)),
                 prompt_train=not bool(getattr(args, "no_train", False)),
                 no_execute=bool(getattr(args, "skip_execute", False)),
+                use_rl_sizer=bool(getattr(args, "use_rl_sizer", False)),
             )
         elif args.command == "analyze":
             buddy_analyze(

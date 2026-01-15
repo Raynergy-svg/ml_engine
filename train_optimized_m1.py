@@ -284,7 +284,7 @@ def create_callbacks(config: Dict[str, Any], run_name: str) -> list:
         )
     )
     
-    # Model checkpoint
+    # Model checkpoint - primary (best overall loss)
     callback_list.append(
         callbacks.ModelCheckpoint(
             filepath=str(checkpoint_dir / 'best_model.keras'),
@@ -293,6 +293,41 @@ def create_callbacks(config: Dict[str, Any], run_name: str) -> list:
             verbose=1,
         )
     )
+    
+    # Multi-metric checkpointing: save best per metric for flexibility
+    if config.get('multi_checkpoint', True):
+        # Best direction accuracy checkpoint
+        callback_list.append(
+            callbacks.ModelCheckpoint(
+                filepath=str(checkpoint_dir / 'best_direction.keras'),
+                monitor='val_direction_dir_acc',
+                mode='max',
+                save_best_only=True,
+                verbose=1,
+            )
+        )
+        
+        # Best price prediction loss
+        callback_list.append(
+            callbacks.ModelCheckpoint(
+                filepath=str(checkpoint_dir / 'best_price.keras'),
+                monitor='val_price_loss',
+                mode='min',
+                save_best_only=True,
+                verbose=1,
+            )
+        )
+        
+        # Best state classification accuracy
+        callback_list.append(
+            callbacks.ModelCheckpoint(
+                filepath=str(checkpoint_dir / 'best_state.keras'),
+                monitor='val_state_logits_state_acc',
+                mode='max',
+                save_best_only=True,
+                verbose=1,
+            )
+        )
     
     # Learning rate reduction
     callback_list.append(

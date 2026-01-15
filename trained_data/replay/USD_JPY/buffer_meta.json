@@ -1,14 +1,29 @@
 {
   "capacity_ratio": 0.1,
   "mix_ratio": 0.2,
-  "sample_count": 6468,
-  "buffer_size": 646,
-  "saved_at": "2026-01-05T21:55:30.619282",
+  "sample_count": 4862,
+  "buffer_size": 486,
+  "saved_at": "2026-01-13T09:59:48.593906",
   "data_sources": [
     {
-      "id": "USD_JPY_20260105_215307_36209ce9",
-      "n_samples": 6468,
-      "timestamp": "2026-01-05T21:53:07.929058"
+      "id": "USD_JPY_20260113_095530_003ae242",
+      "n_samples": 4862,
+      "timestamp": "2026-01-13T09:55:30.744598"
+    },
+    {
+      "id": "USD_JPY_20260113_234145_a31cbcdc",
+      "n_samples": 6269,
+      "timestamp": "2026-01-13T23:41:46.873531"
+    },
+    {
+      "id": "USD_JPY_20260114_192454_770f5e33",
+      "n_samples": 5493,
+      "timestamp": "2026-01-14T19:24:54.441306"
+    },
+    {
+      "id": "USD_JPY_20260114_194926_595cb6e2",
+      "n_samples": 3447,
+      "timestamp": "2026-01-14T19:49:26.445514"
     }
   ]
 }

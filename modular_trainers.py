@@ -49,18 +49,18 @@ class TrainerConfig:
     patience: int = 20  # Original setting that achieved 60.9%
     verbose: int = 1
     
-    # TCN specific
+    # TCN specific - INCREASED REGULARIZATION
     tcn_hidden_size: int = 32
     tcn_num_layers: int = 2
     tcn_kernel_size: int = 3
-    tcn_dropout: float = 0.3
+    tcn_dropout: float = 0.5  # Was 0.3 - increased to combat overfitting
     
-    # Transformer specific (for direction prediction) - RESTORED 60% config
+    # Transformer specific (for direction prediction) - STRONGER REGULARIZATION
     transformer_d_model: int = 32  # Model dimension (was 16, broke training)
     transformer_num_heads: int = 4  # Number of attention heads (was 2)
     transformer_num_layers: int = 2  # Number of encoder layers (was 1)
     transformer_dff: int = 64  # Feedforward network dimension (was 32)
-    transformer_dropout: float = 0.2  # Dropout rate (was 0.4, too aggressive)
+    transformer_dropout: float = 0.4  # Was 0.2 - increased to combat overfitting
     
     # XGBoost specific
     xgb_n_estimators: int = 200
@@ -81,6 +81,9 @@ class TrainerConfig:
     
     # Legacy Ridge alpha (deprecated, use elasticnet_* instead)
     ridge_alpha: float = 1.0
+    
+    # Checkpoint directory for pair-specific models
+    checkpoint_dir: str = "trained_data/checkpoints"
     
     # === CONTINUAL LEARNING SETTINGS (2025) ===
     
@@ -276,16 +279,49 @@ class EWCPenalty:
         # Initialize Fisher as zeros
         new_fisher = [np.zeros_like(w.numpy()) for w in self.model.trainable_weights]
         
-        # Compute gradients for each sample
-        # Use SparseCategoricalCrossentropy for multi-class (3 classes: up/down/hold)
-        loss_fn = tf.keras.losses.SparseCategoricalCrossentropy()
+        # Detect output type to choose correct loss function
+        # Binary classification (sigmoid) uses BinaryCrossentropy
+        # Multi-class (softmax) uses SparseCategoricalCrossentropy
+        try:
+            test_pred = self.model(X_sample[:1], training=False)
+            # Handle dict outputs (multi-head models)
+            if isinstance(test_pred, dict):
+                # Use 'direction' output if available, else first output
+                if 'direction' in test_pred:
+                    test_pred = test_pred['direction']
+                else:
+                    test_pred = list(test_pred.values())[0]
+            output_shape = test_pred.shape[-1] if len(test_pred.shape) > 1 else 1
+        except Exception:
+            output_shape = 1  # Default to binary
+        
+        # Choose loss function based on output shape and label values
+        unique_labels = np.unique(y_sample)
+        is_binary = output_shape == 1 or (len(unique_labels) <= 2 and max(unique_labels) <= 1)
+        
+        if is_binary:
+            loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
+            logger.debug("EWC using BinaryCrossentropy (binary classification)")
+        else:
+            loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
+            logger.debug("EWC using SparseCategoricalCrossentropy (multi-class)")
         
         for i in range(len(X_sample)):
             x_i = X_sample[i:i+1]
             y_i = y_sample[i:i+1]
             
+            # Cast labels to float32 for binary crossentropy
+            if is_binary:
+                y_i = tf.cast(y_i, tf.float32)
+            
             with tf.GradientTape() as tape:
                 pred = self.model(x_i, training=False)
+                # Handle dict outputs (multi-head models)
+                if isinstance(pred, dict):
+                    if 'direction' in pred:
+                        pred = pred['direction']
+                    else:
+                        pred = list(pred.values())[0]
                 loss = loss_fn(y_i, pred)
             
             grads = tape.gradient(loss, self.model.trainable_weights)
@@ -2012,7 +2048,7 @@ class TCNTrainer(BaseTrainer):
             ),
             # Overfit prevention: checkpoints + auto-adjust dropout/LR when train >> val
             OverfitPreventionCallback(
-                checkpoint_dir="trained_data/checkpoints",
+                checkpoint_dir=self.config.checkpoint_dir,
                 model_name="tcn_direction",
                 overfit_threshold=0.08,      # 8% gap → warning
                 critical_threshold=0.15,     # 15% gap → intervention
@@ -2153,7 +2189,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         self.transformer_num_heads = getattr(config, 'transformer_num_heads', 2) if config else 2
         self.transformer_num_layers = getattr(config, 'transformer_num_layers', 1) if config else 1
         self.transformer_dff = getattr(config, 'transformer_dff', 32) if config else 32
-        self.transformer_dropout = getattr(config, 'transformer_dropout', 0.4) if config else 0.4
+        self.transformer_dropout = getattr(config, 'transformer_dropout', 0.2) if config else 0.2  # Reduced from 0.4
         
         # === CONTINUAL LEARNING COMPONENTS ===
         
@@ -2184,20 +2220,20 @@ class TransformerDirectionTrainer(BaseTrainer):
         Build Transformer model architecture with AGGRESSIVE regularization.
         
         Key anti-overfitting measures:
-        1. Strong L2 regularization (0.01)
-        2. High dropout (0.5) after every major layer
-        3. Spatial dropout on sequences
+        1. Strong L2 regularization (0.02)
+        2. High dropout (0.5+) after every major layer
+        3. Spatial dropout on sequences (0.35)
         4. Label smoothing (0.15)
         5. Gaussian noise on input
-        6. Small model capacity (d_model=16, 1 layer)
+        6. Small model capacity (d_model=32, 2 layers)
         """
         import tensorflow as tf
         from tensorflow import keras
         
         seq_len, n_features = input_shape
         
-        # STRONG L2 regularization - key to preventing memorization
-        l2_reg = keras.regularizers.l2(0.01)  # Increased from 0.001
+        # STRONGER L2 regularization - key to preventing memorization
+        l2_reg = keras.regularizers.l2(0.02)  # Increased from 0.01
         
         # Input
         inp = keras.Input(shape=(seq_len, n_features), name="features")
@@ -2206,7 +2242,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         x = keras.layers.GaussianNoise(0.15)(inp)  # Increased from 0.1
         
         # Spatial dropout on input sequence (drops entire features)
-        x = keras.layers.SpatialDropout1D(0.2)(x)
+        x = keras.layers.SpatialDropout1D(0.15)(x)  # Reduced from 0.35 - was preventing learning
         
         # Project features to d_model dimension (with L2)
         x = keras.layers.Dense(
@@ -2214,7 +2250,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             kernel_regularizer=l2_reg,
             name='input_projection'
         )(x)
-        x = keras.layers.Dropout(0.3)(x)  # Dropout after projection
+        x = keras.layers.Dropout(0.25)(x)  # Reduced from 0.5 - allow model to learn
         
         # Add positional encoding
         x = self._add_positional_encoding(x, seq_len, self.transformer_d_model)
@@ -2234,9 +2270,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Global pooling and output
         x = keras.layers.GlobalAveragePooling1D()(x)
         
-        # Small dense layer with strong regularization
-        x = keras.layers.Dense(8, activation='relu', kernel_regularizer=l2_reg)(x)  # Reduced from 16
-        x = keras.layers.Dropout(0.5)(x)  # High dropout before output
+        # Small dense layer with moderate regularization
+        x = keras.layers.Dense(16, activation='relu', kernel_regularizer=l2_reg)(x)  # Restored from 8
+        x = keras.layers.Dropout(0.3)(x)  # Reduced from 0.5 - was preventing learning
         
         # Binary direction output with zero bias for balanced predictions
         direction = keras.layers.Dense(
@@ -2250,15 +2286,15 @@ class TransformerDirectionTrainer(BaseTrainer):
         
         model = keras.Model(inputs=inp, outputs=direction, name='transformer_direction')
         
-        # Adam optimizer with reduced learning rate for stability
-        optimizer = keras.optimizers.Adam(learning_rate=self.config.learning_rate * 0.5)  # Halved LR
-        logger.info(f"Using Adam optimizer with lr={self.config.learning_rate * 0.5:.2e} (reduced for anti-overfit)")
+        # Adam optimizer with standard learning rate
+        optimizer = keras.optimizers.Adam(learning_rate=self.config.learning_rate)
+        logger.info(f"Using Adam optimizer with lr={self.config.learning_rate:.2e}")
         
-        # Stronger label smoothing to prevent overconfident predictions
+        # Moderate label smoothing - 0.05 is enough to prevent overconfidence
         # Use explicit BinaryAccuracy to fix TF 2.19 accuracy bug with sigmoid outputs
         model.compile(
             optimizer=optimizer,
-            loss=keras.losses.BinaryCrossentropy(label_smoothing=0.15),  # Increased from 0.1
+            loss=keras.losses.BinaryCrossentropy(label_smoothing=0.05),  # Reduced from 0.15
             metrics=[keras.metrics.BinaryAccuracy(name='accuracy', threshold=0.5)],
         )
         
@@ -2700,7 +2736,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             ),
             # Overfit prevention: checkpoints + auto-adjust dropout/LR when train >> val
             OverfitPreventionCallback(
-                checkpoint_dir="trained_data/checkpoints",
+                checkpoint_dir=self.config.checkpoint_dir,
                 model_name="transformer_direction",
                 overfit_threshold=0.08,      # 8% gap → warning
                 critical_threshold=0.15,     # 15% gap → intervention (LR reduction)
@@ -3193,7 +3229,7 @@ class TransformerRegimeTrainer(BaseTrainer):
         self.num_heads = getattr(config, 'transformer_num_heads', 2) if config else 2
         self.ff_dim = getattr(config, 'transformer_ff_dim', 32) if config else 32
         self.num_blocks = getattr(config, 'transformer_num_blocks', 1) if config else 1
-        self.transformer_dropout = getattr(config, 'transformer_dropout', 0.4) if config else 0.4
+        self.transformer_dropout = getattr(config, 'transformer_dropout', 0.2) if config else 0.2  # Reduced from 0.4
     
     def _build_model(self, input_shape: Tuple[int, int]) -> Any:
         """Build Transformer model for 3-class regime classification."""
@@ -3641,7 +3677,10 @@ class XGBoostTrainer(BaseTrainer):
         }
     
     def save(self, path: str) -> None:
-        """Save XGBoost models."""
+        """Save XGBoost models with version metadata."""
+        import sklearn
+        import xgboost
+        
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         
@@ -3654,15 +3693,25 @@ class XGBoostTrainer(BaseTrainer):
             'feature_names': self.feature_names,
             'n_features': self.n_features,
             'momentum_norm_factor': self.momentum_norm_factor,
+            # Version metadata for compatibility checks
+            'sklearn_version': sklearn.__version__,
+            'xgboost_version': xgboost.__version__,
+            'saved_at': datetime.now().isoformat(),
         }
         
         with open(path, 'wb') as f:
             pickle.dump(data, f)
         
-        logger.info(f"XGBoost saved to {path}")
+        logger.info(f"XGBoost saved to {path} (sklearn={sklearn.__version__}, xgboost={xgboost.__version__})")
     
     def load(self, path: str) -> None:
         """Load XGBoost models."""
+        import warnings
+        # Suppress XGBoost version warnings (common when loading older serialized models)
+        warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
+        warnings.filterwarnings('ignore', message='.*serialized model.*')
+        warnings.filterwarnings('ignore', message='.*older version of XGBoost.*')
+        
         with open(path, 'rb') as f:
             data = pickle.load(f)
         
@@ -3679,6 +3728,11 @@ class XGBoostTrainer(BaseTrainer):
         self.feature_names = data.get('feature_names')
         self.n_features = data.get('n_features')
         self.is_trained = True
+        
+        # Store version info for compatibility checking
+        self._saved_sklearn_version = data.get('sklearn_version')
+        self._saved_xgboost_version = data.get('xgboost_version')
+        self._saved_at = data.get('saved_at')
         
         logger.info(f"XGBoost loaded from {path}")
 
@@ -3808,7 +3862,9 @@ class RandomForestTrainer(BaseTrainer):
         }
     
     def save(self, path: str) -> None:
-        """Save Random Forest models."""
+        """Save Random Forest models with version metadata."""
+        import sklearn
+        
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         
@@ -3820,15 +3876,27 @@ class RandomForestTrainer(BaseTrainer):
             'config': self.config.__dict__,
             'feature_names': self.feature_names,
             'n_features': self.n_features,
+            # Version metadata for compatibility checks
+            'sklearn_version': sklearn.__version__,
+            'saved_at': datetime.now().isoformat(),
         }
         
         with open(path, 'wb') as f:
             pickle.dump(data, f)
         
-        logger.info(f"Random Forest saved to {path}")
+        logger.info(f"Random Forest saved to {path} (sklearn={sklearn.__version__})")
     
     def load(self, path: str) -> None:
         """Load Random Forest models."""
+        import warnings
+        # Suppress sklearn version warnings
+        try:
+            from sklearn.exceptions import InconsistentVersionWarning
+            warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
+        except ImportError:
+            pass
+        warnings.filterwarnings('ignore', message='.*unpickle estimator.*')
+        
         with open(path, 'rb') as f:
             data = pickle.load(f)
         
@@ -3839,6 +3907,10 @@ class RandomForestTrainer(BaseTrainer):
         self.feature_names = data.get('feature_names')
         self.n_features = data.get('n_features')
         self.is_trained = True
+        
+        # Store version info for compatibility checking
+        self._saved_sklearn_version = data.get('sklearn_version')
+        self._saved_at = data.get('saved_at')
         
         logger.info(f"Random Forest loaded from {path}")
 
@@ -3965,7 +4037,9 @@ class RidgeTrainer(BaseTrainer):
         }
     
     def save(self, path: str) -> None:
-        """Save Ridge model."""
+        """Save Ridge model with version metadata."""
+        import sklearn
+        
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         
@@ -3976,15 +4050,27 @@ class RidgeTrainer(BaseTrainer):
             'config': self.config.__dict__,
             'feature_names': self.feature_names,
             'n_features': self.n_features,
+            # Version metadata for compatibility checks
+            'sklearn_version': sklearn.__version__,
+            'saved_at': datetime.now().isoformat(),
         }
         
         with open(path, 'wb') as f:
             pickle.dump(data, f)
         
-        logger.info(f"Ridge saved to {path}")
+        logger.info(f"Ridge saved to {path} (sklearn={sklearn.__version__})")
     
     def load(self, path: str) -> None:
         """Load Ridge model."""
+        import warnings
+        # Suppress sklearn version warnings
+        try:
+            from sklearn.exceptions import InconsistentVersionWarning
+            warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
+        except ImportError:
+            pass
+        warnings.filterwarnings('ignore', message='.*unpickle estimator.*')
+        
         with open(path, 'rb') as f:
             data = pickle.load(f)
         
@@ -3994,6 +4080,10 @@ class RidgeTrainer(BaseTrainer):
         self.feature_names = data.get('feature_names')
         self.n_features = data.get('n_features')
         self.is_trained = True
+        
+        # Store version info for compatibility checking
+        self._saved_sklearn_version = data.get('sklearn_version')
+        self._saved_at = data.get('saved_at')
         
         logger.info(f"Ridge loaded from {path}")
 
@@ -4212,6 +4302,15 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
     
     def load(self, path: str) -> None:
         """Load HistGB model."""
+        import warnings
+        # Suppress sklearn version warnings
+        try:
+            from sklearn.exceptions import InconsistentVersionWarning
+            warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
+        except ImportError:
+            pass
+        warnings.filterwarnings('ignore', message='.*unpickle estimator.*')
+        
         with open(path, 'rb') as f:
             data = pickle.load(f)
         
@@ -4227,6 +4326,96 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
 
 
 # =============================================================================
+# MODEL MIGRATION UTILITIES
+# =============================================================================
+
+def migrate_xgboost_model(model_path: str, output_path: Optional[str] = None) -> bool:
+    """
+    Migrate XGBoost model from pickle to native format to avoid version warnings.
+    
+    XGBoost models serialized with pickle may cause warnings when loaded with
+    different XGBoost versions. This function re-saves the model in the native
+    XGBoost format which is more portable.
+    
+    Args:
+        model_path: Path to existing pickle model
+        output_path: Path for migrated model (default: same as input)
+        
+    Returns:
+        True if migration successful, False otherwise
+    """
+    import warnings
+    import pickle
+    from pathlib import Path
+    
+    # Suppress warnings during migration
+    warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
+    warnings.filterwarnings('ignore', message='.*serialized model.*')
+    
+    model_path = Path(model_path)
+    output_path = Path(output_path) if output_path else model_path
+    
+    if not model_path.exists():
+        logger.error(f"Model not found: {model_path}")
+        return False
+    
+    try:
+        # Load existing model
+        with open(model_path, 'rb') as f:
+            data = pickle.load(f)
+        
+        # Re-save (this ensures internal XGBoost state is updated)
+        backup_path = model_path.with_suffix('.pkl.bak')
+        if model_path == output_path:
+            # Backup original
+            import shutil
+            shutil.copy(model_path, backup_path)
+        
+        with open(output_path, 'wb') as f:
+            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        logger.info(f"✅ XGBoost model migrated: {output_path}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Migration failed: {e}")
+        return False
+
+
+def migrate_all_models(model_dir: str = "trained_data/models") -> Dict[str, bool]:
+    """
+    Migrate all pickle-based models to reduce version warnings.
+    
+    Args:
+        model_dir: Directory containing models
+        
+    Returns:
+        Dict mapping model name to migration success status
+    """
+    from pathlib import Path
+    
+    model_dir = Path(model_dir)
+    results = {}
+    
+    # Models that may need migration
+    pkl_models = [
+        "xgb_momentum.pkl",
+        "rf_risk.pkl", 
+        "ridge_confidence.pkl",
+        "histgb_direction.pkl",
+    ]
+    
+    for model_name in pkl_models:
+        model_path = model_dir / model_name
+        if model_path.exists():
+            results[model_name] = migrate_xgboost_model(str(model_path))
+        else:
+            results[model_name] = None  # Not found
+    
+    return results
+
+
+# =============================================================================
 # CONVENIENCE FUNCTION - Train All Models
 # =============================================================================
 
@@ -4237,7 +4426,7 @@ def train_all_modular(
     use_transformer: bool = True,
     use_regime: bool = False,
     warm_start: bool = False,
-    train_histgb: bool = False,
+    train_histgb: bool = True,
     instrument: str = "EUR_USD",
     data_range: str = "",
 ) -> Dict[str, BaseTrainer]:

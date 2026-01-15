@@ -882,6 +882,274 @@ def validate_trend_agnosticism(
 
 
 # =============================================================================
+# MEMORY-MAPPED DATASET SUPPORT
+# For large multi-pair training that doesn't fit in RAM
+# =============================================================================
+
+class MemmapDataset:
+    """
+    Memory-mapped dataset for large multi-pair training.
+    
+    Enables training on datasets larger than RAM by storing features
+    on disk and loading them on-demand during training.
+    
+    Usage:
+        # Create memmap files from multiple CSVs
+        mmap_ds = MemmapDataset.from_csv_files(
+            csv_paths=['market_data/EUR_USD_H1.csv', 'market_data/GBP_USD_H1.csv', ...],
+            config=config,
+            cache_dir='trained_data/cache/multi_pair'
+        )
+        
+        # Create tf.data.Dataset that streams from disk
+        train_ds = mmap_ds.create_tf_dataset(split='train', batch_size=128)
+        model.fit(train_ds, ...)
+    """
+    
+    def __init__(self, cache_dir: str = "trained_data/cache"):
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        self.X_train_path: Optional[Path] = None
+        self.X_val_path: Optional[Path] = None
+        self.y_train_path: Optional[Path] = None
+        self.y_val_path: Optional[Path] = None
+        
+        self.shape_train: Optional[tuple] = None
+        self.shape_val: Optional[tuple] = None
+        self.n_features: int = 0
+        self.seq_len: int = 0
+        
+        self._meta: Dict[str, Any] = {}
+    
+    @classmethod
+    def from_csv_files(
+        cls,
+        csv_paths: List[str],
+        config: Dict[str, Any],
+        cache_dir: str = "trained_data/cache/multi_pair",
+        state_classes: int = 2,
+        validation_split: float = 0.2,
+        add_all_features: bool = True,
+        force_rebuild: bool = False,
+    ) -> "MemmapDataset":
+        """
+        Create memory-mapped dataset from multiple CSV files.
+        
+        Processes each instrument, combines data, and saves to disk as
+        memory-mapped numpy arrays for efficient streaming during training.
+        
+        Args:
+            csv_paths: List of paths to instrument CSV files
+            config: Training configuration
+            cache_dir: Directory to store memmap files
+            state_classes: Number of state classes
+            validation_split: Validation split ratio
+            add_all_features: Add all engineered features
+            force_rebuild: Force rebuild even if cache exists
+            
+        Returns:
+            MemmapDataset ready for training
+        """
+        dataset = cls(cache_dir)
+        cache_path = Path(cache_dir)
+        cache_path.mkdir(parents=True, exist_ok=True)
+        
+        # Check for existing cache
+        meta_path = cache_path / "memmap_meta.json"
+        x_train_path = cache_path / "X_train.dat"
+        
+        if not force_rebuild and meta_path.exists() and x_train_path.exists():
+            logger.info(f"Loading existing memmap cache from {cache_path}")
+            dataset._load_meta(meta_path)
+            return dataset
+        
+        logger.info(f"Building memmap cache for {len(csv_paths)} instruments...")
+        
+        # Load all data first (this is the memory-intensive part)
+        x_train, y_train, x_val, y_val, x_test, y_test, meta = load_multi_instrument_data(
+            csv_paths=csv_paths,
+            config=config,
+            state_classes=state_classes,
+            validation_split=validation_split,
+            add_all_features=add_all_features,
+        )
+        
+        # Combine val and test for simplicity (or keep separate if needed)
+        x_val = np.concatenate([x_val, x_test], axis=0)
+        y_val_direction = np.concatenate([y_val['direction'], y_test['direction']], axis=0)
+        
+        # Store shapes
+        n_train, seq_len, n_features = x_train.shape
+        n_val = len(x_val)
+        
+        dataset.shape_train = (n_train, seq_len, n_features)
+        dataset.shape_val = (n_val, seq_len, n_features)
+        dataset.seq_len = seq_len
+        dataset.n_features = n_features
+        
+        # Create memory-mapped files
+        logger.info("Writing memmap files...")
+        
+        # X_train
+        dataset.X_train_path = cache_path / "X_train.dat"
+        X_train_mmap = np.memmap(
+            dataset.X_train_path, dtype='float32', mode='w+',
+            shape=(n_train, seq_len, n_features)
+        )
+        X_train_mmap[:] = x_train.astype(np.float32)
+        X_train_mmap.flush()
+        del X_train_mmap
+        
+        # X_val
+        dataset.X_val_path = cache_path / "X_val.dat"
+        X_val_mmap = np.memmap(
+            dataset.X_val_path, dtype='float32', mode='w+',
+            shape=(n_val, seq_len, n_features)
+        )
+        X_val_mmap[:] = x_val.astype(np.float32)
+        X_val_mmap.flush()
+        del X_val_mmap
+        
+        # y_train (direction only for simplicity - extend for multi-task)
+        dataset.y_train_path = cache_path / "y_train.dat"
+        y_train_mmap = np.memmap(
+            dataset.y_train_path, dtype='float32', mode='w+',
+            shape=(n_train,)
+        )
+        y_train_mmap[:] = y_train['direction'].astype(np.float32)
+        y_train_mmap.flush()
+        del y_train_mmap
+        
+        # y_val
+        dataset.y_val_path = cache_path / "y_val.dat"
+        y_val_mmap = np.memmap(
+            dataset.y_val_path, dtype='float32', mode='w+',
+            shape=(n_val,)
+        )
+        y_val_mmap[:] = y_val_direction.astype(np.float32)
+        y_val_mmap.flush()
+        del y_val_mmap
+        
+        # Save metadata
+        dataset._meta = {
+            'shape_train': dataset.shape_train,
+            'shape_val': dataset.shape_val,
+            'n_features': n_features,
+            'seq_len': seq_len,
+            'instruments': meta.get('instruments', []),
+            'feature_columns': meta.get('feature_columns', []),
+        }
+        dataset._save_meta(meta_path)
+        
+        logger.info(f"✓ Memmap cache created: {n_train:,} train, {n_val:,} val samples")
+        logger.info(f"  Cache size: ~{(n_train + n_val) * seq_len * n_features * 4 / 1e9:.2f} GB")
+        
+        # Free memory
+        del x_train, x_val, y_train, y_val, x_test, y_test
+        import gc
+        gc.collect()
+        
+        return dataset
+    
+    def _save_meta(self, path: Path) -> None:
+        """Save metadata to JSON."""
+        import json
+        with open(path, 'w') as f:
+            json.dump(self._meta, f, indent=2)
+    
+    def _load_meta(self, path: Path) -> None:
+        """Load metadata from JSON."""
+        import json
+        with open(path) as f:
+            self._meta = json.load(f)
+        
+        self.shape_train = tuple(self._meta['shape_train'])
+        self.shape_val = tuple(self._meta['shape_val'])
+        self.n_features = self._meta['n_features']
+        self.seq_len = self._meta['seq_len']
+        
+        self.X_train_path = self.cache_dir / "X_train.dat"
+        self.X_val_path = self.cache_dir / "X_val.dat"
+        self.y_train_path = self.cache_dir / "y_train.dat"
+        self.y_val_path = self.cache_dir / "y_val.dat"
+    
+    def create_tf_dataset(
+        self,
+        split: str = 'train',
+        batch_size: int = 128,
+        shuffle: bool = True,
+        buffer_size: int = 10000,
+    ) -> tf.data.Dataset:
+        """
+        Create tf.data.Dataset that streams from memmap files.
+        
+        Uses a generator that reads chunks from memmap, enabling
+        training on datasets larger than RAM.
+        
+        Args:
+            split: 'train' or 'val'
+            batch_size: Batch size
+            shuffle: Whether to shuffle (train only)
+            buffer_size: Shuffle buffer size
+            
+        Returns:
+            tf.data.Dataset
+        """
+        if split == 'train':
+            x_path = self.X_train_path
+            y_path = self.y_train_path
+            shape = self.shape_train
+        else:
+            x_path = self.X_val_path
+            y_path = self.y_val_path
+            shape = self.shape_val
+        
+        n_samples, seq_len, n_features = shape
+        
+        def generator():
+            """Generator that yields samples from memmap."""
+            # Open memmap in read mode
+            X_mmap = np.memmap(x_path, dtype='float32', mode='r', shape=shape)
+            y_mmap = np.memmap(y_path, dtype='float32', mode='r', shape=(n_samples,))
+            
+            indices = np.arange(n_samples)
+            if shuffle:
+                np.random.shuffle(indices)
+            
+            for i in indices:
+                yield X_mmap[i], y_mmap[i]
+        
+        # Create dataset from generator
+        dataset = tf.data.Dataset.from_generator(
+            generator,
+            output_signature=(
+                tf.TensorSpec(shape=(seq_len, n_features), dtype=tf.float32),
+                tf.TensorSpec(shape=(), dtype=tf.float32),
+            )
+        )
+        
+        # Standard tf.data optimizations
+        if shuffle:
+            dataset = dataset.shuffle(buffer_size)
+        
+        dataset = dataset.batch(batch_size)
+        dataset = dataset.prefetch(tf.data.AUTOTUNE)
+        
+        return dataset
+    
+    @property
+    def train_samples(self) -> int:
+        """Number of training samples."""
+        return self.shape_train[0] if self.shape_train else 0
+    
+    @property
+    def val_samples(self) -> int:
+        """Number of validation samples."""
+        return self.shape_val[0] if self.shape_val else 0
+
+
+# =============================================================================
 # Quick Test
 # =============================================================================
 

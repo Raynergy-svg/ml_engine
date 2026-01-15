@@ -320,6 +320,115 @@ class WarmupCosineDecaySchedule(optimizers.schedules.LearningRateSchedule):
         }
 
 
+class CosineDecayRestarts(optimizers.schedules.LearningRateSchedule):
+    """Cosine decay with warm restarts for escaping local minima.
+    
+    After each restart (T_0 epochs), the learning rate is reset to the initial
+    value, allowing the model to escape local minima and find better solutions.
+    
+    Paper: "SGDR: Stochastic Gradient Descent with Warm Restarts" (Loshchilov & Hutter)
+    
+    Args:
+        initial_learning_rate: Starting LR after each restart
+        first_decay_steps: Steps in first cycle (T_0)
+        t_mul: Cycle length multiplier (T_mult) - each cycle is t_mul times longer
+        m_mul: LR decay multiplier - initial LR decays by this factor each cycle
+        alpha: Minimum LR as fraction of initial_learning_rate
+        warmup_steps: Linear warmup steps at the beginning
+    
+    Example:
+        # T_0=10 epochs, T_mult=2 means cycles of 10, 20, 40, 80 epochs
+        lr_schedule = CosineDecayRestarts(
+            initial_learning_rate=0.001,
+            first_decay_steps=steps_per_epoch * 10,  # 10 epochs
+            t_mul=2.0,
+            m_mul=0.9,
+        )
+    """
+    
+    def __init__(
+        self,
+        initial_learning_rate: float = 0.001,
+        first_decay_steps: int = 1000,
+        t_mul: float = 2.0,
+        m_mul: float = 1.0,
+        alpha: float = 0.0,
+        warmup_steps: int = 0,
+        name: str = "CosineDecayRestarts",
+    ):
+        super().__init__()
+        self.initial_learning_rate = initial_learning_rate
+        self.first_decay_steps = first_decay_steps
+        self.t_mul = t_mul
+        self.m_mul = m_mul
+        self.alpha = alpha
+        self.warmup_steps = warmup_steps
+        self._name = name
+    
+    def __call__(self, step):
+        step = tf.cast(step, tf.float32)
+        
+        # Handle warmup phase
+        if self.warmup_steps > 0:
+            warmup_lr = self.initial_learning_rate * (step / self.warmup_steps)
+            step_after_warmup = step - self.warmup_steps
+        else:
+            warmup_lr = self.initial_learning_rate
+            step_after_warmup = step
+        
+        # Compute restart schedule
+        first_decay_steps = tf.cast(self.first_decay_steps, tf.float32)
+        t_mul = tf.cast(self.t_mul, tf.float32)
+        m_mul = tf.cast(self.m_mul, tf.float32)
+        alpha = tf.cast(self.alpha, tf.float32)
+        
+        # Find which cycle we're in
+        if self.t_mul == 1.0:
+            # Equal cycles: simple division
+            i_restart = tf.floor(step_after_warmup / first_decay_steps)
+            t_curr = step_after_warmup - i_restart * first_decay_steps
+            t_i = first_decay_steps
+        else:
+            # Growing cycles: geometric series
+            # Total steps after n cycles: T_0 * (1 - t_mul^n) / (1 - t_mul)
+            # Solve for n given current step
+            n_float = tf.math.log(
+                1.0 + step_after_warmup * (t_mul - 1.0) / first_decay_steps
+            ) / tf.math.log(t_mul)
+            i_restart = tf.floor(n_float)
+            
+            # Steps at start of current cycle
+            sum_cycles = first_decay_steps * (1.0 - tf.pow(t_mul, i_restart)) / (1.0 - t_mul)
+            t_curr = step_after_warmup - sum_cycles
+            t_i = first_decay_steps * tf.pow(t_mul, i_restart)
+        
+        # Cosine decay within current cycle
+        fraction = t_curr / t_i
+        fraction = tf.minimum(fraction, 1.0)  # Clamp to [0, 1]
+        
+        # Decayed initial LR for this cycle
+        lr_i = self.initial_learning_rate * tf.pow(m_mul, i_restart)
+        
+        # Cosine annealing
+        cosine_decay = 0.5 * (1.0 + tf.cos(np.pi * fraction))
+        decayed = (1.0 - alpha) * cosine_decay + alpha
+        restart_lr = lr_i * decayed
+        
+        # Use warmup LR during warmup, restart LR after
+        return tf.where(step < self.warmup_steps, warmup_lr, restart_lr)
+    
+    def get_config(self):
+        return {
+            "initial_learning_rate": self.initial_learning_rate,
+            "first_decay_steps": self.first_decay_steps,
+            "t_mul": self.t_mul,
+            "m_mul": self.m_mul,
+            "alpha": self.alpha,
+            "warmup_steps": self.warmup_steps,
+            "name": self._name,
+        }
+
+
 class StochasticWeightAveraging(callbacks.Callback):
     """
     Stochastic Weight Averaging (SWA) callback.
@@ -703,6 +812,8 @@ def setup_metal_training(
     )
     
     # 6. Prepare callbacks
+    checkpoint_dir = config.get('checkpoint_dir', 'trained_data/checkpoints')
+    
     training_callbacks = [
         callbacks.EarlyStopping(
             monitor='val_loss',
@@ -716,12 +827,41 @@ def setup_metal_training(
             min_lr=1e-7,
         ),
         callbacks.ModelCheckpoint(
-            filepath=config.get('checkpoint_dir', 'trained_data/checkpoints') + '/best_model.keras',
+            filepath=checkpoint_dir + '/best_model.keras',
             monitor='val_loss',
             save_best_only=True,
         ),
         MetalPerformanceMonitor(log_every_n_batches=50),
     ]
+    
+    # Multi-metric checkpointing: save best per metric for flexibility
+    if config.get('multi_checkpoint', True):
+        # Best direction accuracy checkpoint
+        training_callbacks.append(callbacks.ModelCheckpoint(
+            filepath=checkpoint_dir + '/best_direction.keras',
+            monitor='val_direction_dir_acc',  # From model metrics
+            mode='max',
+            save_best_only=True,
+            verbose=1,
+        ))
+        
+        # Best validation loss (alternate naming)
+        training_callbacks.append(callbacks.ModelCheckpoint(
+            filepath=checkpoint_dir + '/best_val_loss.keras',
+            monitor='val_price_loss',  # Price head loss
+            mode='min',
+            save_best_only=True,
+            verbose=1,
+        ))
+        
+        # Best state classification accuracy
+        training_callbacks.append(callbacks.ModelCheckpoint(
+            filepath=checkpoint_dir + '/best_state_acc.keras',
+            monitor='val_state_logits_state_acc',  # State head accuracy
+            mode='max',
+            save_best_only=True,
+            verbose=1,
+        ))
     
     # Add SWA if training for enough epochs
     if config.get('epochs', 100) >= 50:

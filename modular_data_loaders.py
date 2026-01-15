@@ -87,10 +87,12 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
     
     # ATR as percentage (rolling average of TR%)
     for period in [5, 10, 14, 20]:
-        atr_pct = np.zeros(n)
-        for i in range(period, n):
-            atr_pct[i] = np.mean(tr[i-period:i])
-        df[f'atr_pct_{period}'] = atr_pct
+        col_name = f'atr_pct_{period}'
+        if col_name not in df.columns:
+            atr_pct = np.zeros(n)
+            for i in range(period, n):
+                atr_pct[i] = np.mean(tr[i-period:i])
+            df[col_name] = atr_pct
     
     # Volatility (std of returns)
     for period in [5, 10, 20]:
@@ -1220,39 +1222,100 @@ def load_rf_data(
     
     # Calculate risk targets based on CURRENT VOLATILITY (learnable!)
     # Instead of future drawdown, use ATR-scaled risk which IS predictable
-    close = df['close'].values
+    close = df['close'].values.astype(np.float64)
+    high = df['high'].values.astype(np.float64)
+    low = df['low'].values.astype(np.float64)
     n = len(close)
     
     # Get ATR as base for expected drawdown (this IS learnable from features)
-    atr_pct = df['atr_pct_14'].values if 'atr_pct_14' in df.columns else None
+    atr_pct = None
+    if 'atr_pct_14' in df.columns:
+        atr_pct = df['atr_pct_14'].values.astype(np.float64)
+        # Check if it's valid (not all zeros/NaN)
+        valid_mask = ~np.isnan(atr_pct) & (atr_pct > 0)
+        if np.sum(valid_mask) < 10:
+            atr_pct = None
+        else:
+            # atr_pct_14 should be decimal (e.g., 0.001 = 0.1%)
+            # Typical forex ATR% is 0.0003-0.005 (3-50 bps per bar)
+            mean_val = np.nanmean(np.abs(atr_pct[valid_mask]))
+            logger.info(f"RF: Raw atr_pct_14 mean: {mean_val:.6f}")
+            
+            # If mean > 0.1 (10%), values might be in percentage form (need /100)
+            # If mean > 1.0, definitely wrong scale
+            if mean_val > 0.1:
+                atr_pct = atr_pct / 100.0  # Convert to decimal
+                logger.info(f"RF: Converted atr_pct_14 from percentage to decimal")
+            
+            # Robust outlier handling: cap at 99th percentile (max ~5% for forex)
+            valid_atr = atr_pct[valid_mask]
+            p99 = min(np.nanpercentile(valid_atr, 99), 0.05)  # Cap at 5%
+            p01 = np.nanpercentile(valid_atr, 1)
+            atr_pct = np.clip(atr_pct, p01, p99)
+            
+            logger.info(f"RF: Using atr_pct_14, range: {np.nanmin(atr_pct):.6f} to {np.nanmax(atr_pct):.6f}, mean: {np.nanmean(atr_pct):.6f}")
+    
     if atr_pct is None:
-        # Calculate ATR percentage manually
-        high = df['high'].values
-        low = df['low'].values
-        tr = np.maximum(high - low, np.abs(high - np.roll(close, 1)), np.abs(low - np.roll(close, 1)))
-        tr[0] = high[0] - low[0]
-        atr = np.zeros(n, dtype=np.float32)
-        for i in range(14, n):
-            atr[i] = np.mean(tr[i-14:i])
+        # Calculate ATR percentage manually - more robust version
+        logger.info("RF: Computing ATR manually (atr_pct_14 not available or invalid)")
+        prev_close = np.roll(close, 1)
+        prev_close[0] = close[0]
+        
+        tr = np.maximum.reduce([
+            high - low,
+            np.abs(high - prev_close),
+            np.abs(low - prev_close)
+        ])
+        
+        # Rolling ATR using cumsum for efficiency
+        atr = np.zeros(n, dtype=np.float64)
+        for i in range(n):
+            if i < 14:
+                atr[i] = np.mean(tr[:i+1]) if i > 0 else tr[0]
+            else:
+                atr[i] = np.mean(tr[i-13:i+1])
+        
+        # Convert to percentage
         atr_pct = atr / np.maximum(close, 1e-8)
+        logger.info(f"RF: ATR pct range: {np.nanmin(atr_pct):.6f} to {np.nanmax(atr_pct):.6f}")
     
     # Expected drawdown = 2x ATR (typical stop loss distance)
     # Scaled to 0-1 range: 2% drawdown -> 0.02
-    expected_drawdown_pct = np.clip(atr_pct * 2, 0, 0.10)  # Cap at 10%
+    expected_drawdown_pct = np.clip(atr_pct * 2, 0.0001, 0.10).astype(np.float32)  # Min 1bp, cap at 10%
     
     # Streak probability based on recent volatility trend
     # High volatility increasing = higher streak probability
-    volatility_10 = df['volatility_10'].values if 'volatility_10' in df.columns else np.zeros(n)
-    volatility_20 = df['volatility_20'].values if 'volatility_20' in df.columns else np.zeros(n)
+    volatility_10 = df['volatility_10'].values.astype(np.float64) if 'volatility_10' in df.columns else None
+    volatility_20 = df['volatility_20'].values.astype(np.float64) if 'volatility_20' in df.columns else None
+    
+    # Fallback if volatility columns not available
+    if volatility_10 is None or np.nansum(np.abs(volatility_10)) < 1e-10:
+        logger.info("RF: Computing volatility_10 manually")
+        returns = np.diff(close, prepend=close[0]) / np.maximum(np.roll(close, 1), 1e-8)
+        returns[0] = 0
+        volatility_10 = np.array([np.std(returns[max(0,i-9):i+1]) if i >= 1 else 0.01 for i in range(n)])
+    
+    if volatility_20 is None or np.nansum(np.abs(volatility_20)) < 1e-10:
+        logger.info("RF: Computing volatility_20 manually")
+        returns = np.diff(close, prepend=close[0]) / np.maximum(np.roll(close, 1), 1e-8)
+        returns[0] = 0
+        volatility_20 = np.array([np.std(returns[max(0,i-19):i+1]) if i >= 1 else 0.01 for i in range(n)])
     
     streak_prob = np.zeros(n, dtype=np.float32)
     for i in range(20, n):
         # If short-term vol > long-term vol, higher streak probability
-        if volatility_20[i] > 0:
+        if volatility_20[i] > 1e-10:
             vol_ratio = volatility_10[i] / volatility_20[i]
             streak_prob[i] = np.clip((vol_ratio - 0.8) / 0.4, 0, 1)  # 0.8->0, 1.2->1
         else:
             streak_prob[i] = 0.5
+    
+    # Fill early values with mean
+    mean_streak = np.mean(streak_prob[20:]) if n > 20 else 0.5
+    streak_prob[:20] = mean_streak
+    
+    logger.info(f"RF targets: drawdown_pct range [{np.min(expected_drawdown_pct):.4f}, {np.max(expected_drawdown_pct):.4f}], "
+                f"streak range [{np.min(streak_prob):.4f}, {np.max(streak_prob):.4f}]")
     
     # Combine targets: [expected_drawdown_pct, streak_prob]
     y = np.column_stack([expected_drawdown_pct, streak_prob]).astype(np.float32)

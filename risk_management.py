@@ -25,37 +25,69 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class RiskManagementConfig:
-    """Configuration for confidence-based risk management."""
+    """Configuration for confidence-based risk management.
+    
+    H1 Timeframe Best Practices (Professional FX Trading):
+    - ATR Period: 14 (standard for H1)
+    - SL Multiplier: 1.5-2.0x ATR (gives room for noise)
+    - TP Multiplier: 2.0-3.0x ATR (2:1 minimum R:R)
+    - Hold Time: 4-48 hours typical
+    - Best Sessions: London/NY overlap (08:00-17:00 UTC)
+    - Trailing Stop: Move to breakeven after 1R profit
+    """
     
     # Base risk-reward ratios for different confidence levels
-    low_confidence_rr: float = 1.5  # 1:1.5
-    medium_confidence_rr: float = 2.0  # 1:2
-    high_confidence_rr: float = 3.0  # 1:3
+    # H1 OPTIMIZED: Wider targets suit swing trading style
+    low_confidence_rr: float = 2.0  # 1:2 - minimum for H1 swing
+    medium_confidence_rr: float = 2.5  # 1:2.5 - good edge
+    high_confidence_rr: float = 3.0  # 1:3 - strong edge, let it run
     
     # Confidence thresholds for risk-reward adjustments
-    low_confidence_threshold: float = 0.5
-    medium_confidence_threshold: float = 0.7
-    high_confidence_threshold: float = 0.85
+    low_confidence_threshold: float = 0.55  # Below 55% won't pass gates anyway
+    medium_confidence_threshold: float = 0.65  # 65%+ gets better R:R
+    high_confidence_threshold: float = 0.75  # 75%+ gets best R:R
     
     # Maximum and minimum allowed risk-reward ratios
-    min_rr_ratio: float = 1.0
+    min_rr_ratio: float = 1.5  # Never go below 1.5:1 on H1
     max_rr_ratio: float = 5.0
     
+    # ATR-based stop loss settings (H1 SPECIFIC)
+    atr_period: int = 14  # Standard for H1
+    atr_sl_multiplier: float = 1.5  # 1.5x ATR for SL (gives room for H1 noise)
+    atr_tp_multiplier: float = 3.0  # 3.0x ATR for TP (2:1 R:R with 1.5 SL)
+    
     # Stop loss adjustment factors based on confidence
-    low_confidence_sl_multiplier: float = 1.2  # Wider stops for low confidence
-    medium_confidence_sl_multiplier: float = 1.0  # Standard stops
-    high_confidence_sl_multiplier: float = 0.8  # Tighter stops for high confidence
+    low_confidence_sl_multiplier: float = 1.3  # Wider stops for low confidence
+    medium_confidence_sl_multiplier: float = 1.0  # Standard stops (1.5x ATR)
+    high_confidence_sl_multiplier: float = 0.85  # Tighter stops for high confidence
     
     # Take profit adjustment factors based on confidence
-    low_confidence_tp_multiplier: float = 0.8  # More conservative targets
+    low_confidence_tp_multiplier: float = 0.8  # Conservative targets
     medium_confidence_tp_multiplier: float = 1.0  # Standard targets
-    high_confidence_tp_multiplier: float = 1.5  # Aggressive targets for high confidence
+    high_confidence_tp_multiplier: float = 1.5  # Let winners run
     
-    # Maximum stop loss distance in pips (to prevent excessive risk)
-    max_stop_loss_pips: float = 100.0
+    # Maximum stop loss distance in pips (H1 can have larger moves)
+    max_stop_loss_pips: float = 80.0  # EUR_USD H1 ATR ~10-15 pips, so max ~80
+    min_stop_loss_pips: float = 15.0  # Don't go too tight on H1
     
-    # Minimum take profit distance in pips (to ensure reasonable R:R)
-    min_take_profit_pips: float = 5.0
+    # Minimum take profit distance in pips
+    min_take_profit_pips: float = 20.0  # At least 20 pips on H1
+    
+    # H1 Session filters (UTC hours)
+    # Best trading: London open (08:00) to NY close (21:00)
+    # Peak: London/NY overlap (13:00-17:00)
+    enable_session_filter: bool = True
+    active_sessions_utc: tuple = (8, 21)  # 08:00 - 21:00 UTC
+    peak_sessions_utc: tuple = (13, 17)  # 13:00 - 17:00 UTC (overlap)
+    
+    # Trailing stop settings (move SL to breakeven after 1R)
+    enable_trailing_stop: bool = True
+    trailing_trigger_r: float = 1.0  # Move to BE after 1R profit
+    trailing_distance_r: float = 0.5  # Trail 0.5R behind price
+    
+    # Maximum hold time in hours (H1 swing trades)
+    max_hold_hours: int = 72  # 3 days max for H1 swing
+    target_hold_hours: int = 24  # Target 24h hold (typical H1 swing)
 
 
 @dataclass

@@ -26,29 +26,29 @@ class PositionSizingConfig:
     """Configuration for dynamic position sizing."""
     
     # Base risk per trade as percentage of account equity
-    risk_per_trade_pct: float = 0.02  # 2%
+    risk_per_trade_pct: float = 0.02  # 2% for $101k account (larger lots)
     
     # Minimum confidence threshold for any position
     min_confidence_threshold: float = 0.5
     
     # Maximum position size as multiple of base position
-    max_position_multiplier: float = 3.0
+    max_position_multiplier: float = 5.0  # Allow up to 5x base for high confidence
     
     # Confidence bands for position sizing
-    low_confidence_band: tuple[float, float] = (0.5, 0.65)
-    medium_confidence_band: tuple[float, float] = (0.65, 0.8)
-    high_confidence_band: tuple[float, float] = (0.8, 1.0)
+    low_confidence_band: tuple[float, float] = (0.5, 0.60)
+    medium_confidence_band: tuple[float, float] = (0.60, 0.75)
+    high_confidence_band: tuple[float, float] = (0.75, 1.0)
     
     # Position size multipliers for each confidence band
-    low_confidence_multiplier: float = 0.5
-    medium_confidence_multiplier: float = 1.0
-    high_confidence_multiplier: float = 2.0
+    low_confidence_multiplier: float = 1.0  # Full position even at low confidence
+    medium_confidence_multiplier: float = 1.5  # 1.5x for medium
+    high_confidence_multiplier: float = 2.5  # 2.5x for high confidence
     
     # Maximum position size as percentage of account equity
-    max_position_pct: float = 0.10  # 10%
+    max_position_pct: float = 0.15  # 15% max per trade
     
     # Minimum position size (to avoid very small trades)
-    min_position_size: int = 1000  # 1k units minimum
+    min_position_size: int = 10000  # 10k units minimum (0.1 lots)
 
 
 @dataclass

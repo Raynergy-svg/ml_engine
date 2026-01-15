@@ -1,0 +1,14 @@
+{
+  "capacity_ratio": 0.1,
+  "mix_ratio": 0.2,
+  "sample_count": 2745,
+  "buffer_size": 274,
+  "saved_at": "2026-01-14T23:59:51.261307",
+  "data_sources": [
+    {
+      "id": "USD_CAD_20260114_235545_2fe978c0",
+      "n_samples": 2745,
+      "timestamp": "2026-01-14T23:55:45.302910"
+    }
+  ]
+}

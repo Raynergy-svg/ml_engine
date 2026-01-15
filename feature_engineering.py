@@ -85,6 +85,13 @@ class FeatureEngineering:
         ranges = pd.concat([high_low, high_close, low_close], axis=1)
         true_range = ranges.max(axis=1)
         df["atr"] = true_range.rolling(window=14).mean()
+        
+        # ATR percentage (as decimal, e.g., 0.001 = 0.1%)
+        # Used by RF risk model for expected drawdown
+        df["atr_pct_5"] = true_range.rolling(window=5).mean() / df["close"].clip(lower=1e-8)
+        df["atr_pct_10"] = true_range.rolling(window=10).mean() / df["close"].clip(lower=1e-8)
+        df["atr_pct_14"] = df["atr"] / df["close"].clip(lower=1e-8)
+        df["atr_pct_20"] = true_range.rolling(window=20).mean() / df["close"].clip(lower=1e-8)
 
         # Commodity Channel Index (CCI)
         tp = (df["high"] + df["low"] + df["close"]) / 3

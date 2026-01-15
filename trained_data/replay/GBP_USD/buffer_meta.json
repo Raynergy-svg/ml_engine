@@ -1,0 +1,14 @@
+{
+  "capacity_ratio": 0.1,
+  "mix_ratio": 0.2,
+  "sample_count": 3705,
+  "buffer_size": 370,
+  "saved_at": "2026-01-14T18:58:07.894086",
+  "data_sources": [
+    {
+      "id": "GBP_USD_20260114_185530_07418217",
+      "n_samples": 3705,
+      "timestamp": "2026-01-14T18:55:30.367996"
+    }
+  ]
+}

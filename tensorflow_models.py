@@ -956,7 +956,350 @@ class TFTemporalFusionTransformer(Model):
         return attention_weights
 
 
-        return attention_weights
+@register_keras_serializable()
+class TFTemporalFusionTransformerEnhanced(Model):
+    """
+    Enhanced Temporal Fusion Transformer with FULL feature set.
+    
+    IMPROVEMENTS over base TFT:
+    1. Static covariates (instrument ID, session type)
+    2. Known future inputs (time-of-day, day-of-week embeddings)
+    3. Interpretable attention with visualization support
+    4. Multi-horizon output capability
+    
+    Static Covariates:
+    - Instrument embedding (EUR_USD=0, GBP_USD=1, etc.)
+    - Session embedding (Asian=0, London=1, NY=2)
+    
+    Known Future Inputs:
+    - Hour of day (0-23) -> 24-dim embedding
+    - Day of week (0-6) -> 7-dim embedding
+    - These are known at inference time!
+    
+    Paper: "Temporal Fusion Transformers for Interpretable Multi-horizon Time Series Forecasting"
+    """
+    
+    # Class-level constants for embedding dimensions
+    NUM_INSTRUMENTS = 10  # EUR_USD, GBP_USD, USD_JPY, etc.
+    NUM_SESSIONS = 4      # Asian, London, NY, Overlap
+    NUM_HOURS = 24
+    NUM_DAYS = 7
+    
+    def __init__(
+        self,
+        input_size: int = 7,
+        hidden_size: int = 128,
+        num_heads: int = 4,
+        dropout: float = 0.1,
+        recurrent_dropout: float = DEFAULT_RECURRENT_DROPOUT,
+        kernel_regularizer: float = DEFAULT_L2_REG,
+        num_encoder_steps: int = 60,
+        num_decoder_steps: int = 1,
+        state_classes: int = 3,
+        multi_task: bool = True,
+        noise_std: float = 0.05,
+        # NEW: Static covariate dimensions
+        instrument_embedding_dim: int = 8,
+        session_embedding_dim: int = 4,
+        # NEW: Known future input dimensions
+        hour_embedding_dim: int = 8,
+        day_embedding_dim: int = 4,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        
+        self.hidden_size = hidden_size
+        self.input_size = input_size
+        self.num_encoder_steps = num_encoder_steps
+        self.num_decoder_steps = num_decoder_steps
+        self.multi_task = multi_task
+        self.state_classes = state_classes
+        
+        # L2 regularizer
+        l2_reg = regularizers.L2(kernel_regularizer) if kernel_regularizer > 0 else None
+        
+        # =====================================================================
+        # STATIC COVARIATE ENCODERS (NEW)
+        # =====================================================================
+        
+        # Instrument embedding (learnable representation per currency pair)
+        self.instrument_embedding = layers.Embedding(
+            self.NUM_INSTRUMENTS, instrument_embedding_dim, name='instrument_emb'
+        )
+        
+        # Session embedding (Asian, London, NY, Overlap)
+        self.session_embedding = layers.Embedding(
+            self.NUM_SESSIONS, session_embedding_dim, name='session_emb'
+        )
+        
+        # Static encoder: combines all static features
+        self.static_encoder = keras.Sequential([
+            layers.Dense(hidden_size, activation='elu', kernel_regularizer=l2_reg),
+            layers.Dropout(dropout),
+            layers.Dense(hidden_size, kernel_regularizer=l2_reg),
+        ], name='static_encoder')
+        
+        # Context vectors derived from static (for gating)
+        self.static_context_variable_selection = layers.Dense(hidden_size, name='static_ctx_vs')
+        self.static_context_enrichment = layers.Dense(hidden_size, name='static_ctx_enrich')
+        self.static_context_state_h = layers.Dense(hidden_size, name='static_ctx_h')
+        self.static_context_state_c = layers.Dense(hidden_size, name='static_ctx_c')
+        
+        # =====================================================================
+        # KNOWN FUTURE INPUT ENCODERS (NEW)
+        # Time features that are known at inference time
+        # =====================================================================
+        
+        # Hour of day embedding (captures intraday patterns)
+        self.hour_embedding = layers.Embedding(
+            self.NUM_HOURS, hour_embedding_dim, name='hour_emb'
+        )
+        
+        # Day of week embedding (captures weekly seasonality)
+        self.day_embedding = layers.Embedding(
+            self.NUM_DAYS, day_embedding_dim, name='day_emb'
+        )
+        
+        # Known future encoder
+        self.known_future_encoder = layers.Dense(
+            hidden_size // 4, activation='elu', kernel_regularizer=l2_reg, name='known_future_enc'
+        )
+        
+        # =====================================================================
+        # TEMPORAL PROCESSING (Enhanced with static context)
+        # =====================================================================
+        
+        # Input augmentation layers
+        self.gaussian_noise = layers.GaussianNoise(noise_std)
+        self.spatial_dropout = layers.SpatialDropout1D(dropout * 0.5)
+        
+        # Input projection (now includes known future features)
+        total_input_dim = input_size + hour_embedding_dim + day_embedding_dim
+        self.input_projection = layers.Dense(hidden_size, kernel_regularizer=l2_reg)
+        
+        # Variable Selection Network (conditioned on static context)
+        self.encoder_vsn = GatedResidualNetwork(hidden_size, dropout=dropout)
+        
+        # LSTM Encoder with static covariate initialization
+        self.encoder_lstm = layers.LSTM(
+            hidden_size, 
+            return_sequences=True, 
+            return_state=True,
+            dropout=dropout,
+            recurrent_dropout=recurrent_dropout,
+            kernel_regularizer=l2_reg
+        )
+        
+        # Gated skip connection
+        self.gated_skip = GatedLinearUnit(hidden_size)
+        
+        # Interpretable Multi-Head Attention (stores weights for visualization)
+        self.self_attention = InterpretableMultiHeadAttention(
+            num_heads=num_heads,
+            key_dim=hidden_size // num_heads,
+            dropout=dropout
+        )
+        
+        # Post-attention GRN with static enrichment
+        self.post_attention_grn = GatedResidualNetwork(hidden_size, dropout=dropout)
+        
+        # Layer norms
+        self.layer_norm1 = layers.LayerNormalization()
+        self.layer_norm2 = layers.LayerNormalization()
+        
+        # =====================================================================
+        # MULTI-TASK HEADS
+        # =====================================================================
+        if multi_task:
+            self.price_head = keras.Sequential([
+                layers.Dense(hidden_size, activation='elu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(1, name='price_output')
+            ], name='price_head')
+            
+            self.trend_head = keras.Sequential([
+                layers.Dense(hidden_size, activation='elu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(hidden_size // 2, activation='elu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout * 0.5),
+                layers.Dense(1, name='trend_output')
+            ], name='trend_head')
+            
+            self.direction_head = keras.Sequential([
+                layers.Dense(hidden_size, activation='elu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(hidden_size // 2, activation='elu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout * 0.5),
+                layers.Dense(1, activation='sigmoid', name='direction_output')
+            ], name='direction_head')
+            
+            self.risk_head = keras.Sequential([
+                layers.Dense(hidden_size // 2, activation='elu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(1, activation='sigmoid', name='risk_output')
+            ], name='risk_head')
+            
+            self.state_head = keras.Sequential([
+                layers.Dense(hidden_size // 2, activation='elu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(state_classes, activation='softmax', name='state_output')
+            ], name='state_head')
+        else:
+            self.output_projection = keras.Sequential([
+                layers.Dense(hidden_size, activation='elu', kernel_regularizer=l2_reg),
+                layers.Dropout(dropout),
+                layers.Dense(1)
+            ])
+        
+        # Store last attention weights for interpretability
+        self._last_attention_weights = None
+    
+    def call(self, inputs, training=None):
+        """
+        Forward pass with static covariates and known future inputs.
+        
+        Args:
+            inputs: Can be:
+                - Tensor of shape (batch, seq, features) - basic mode
+                - Dict with keys: 'sequence', 'instrument_id', 'session_id', 'hour', 'day_of_week'
+        """
+        # Handle both basic tensor input and dict input
+        if isinstance(inputs, dict):
+            x = inputs['sequence']
+            instrument_id = inputs.get('instrument_id', tf.zeros((tf.shape(x)[0],), dtype=tf.int32))
+            session_id = inputs.get('session_id', tf.zeros((tf.shape(x)[0],), dtype=tf.int32))
+            hour = inputs.get('hour', tf.zeros((tf.shape(x)[0], tf.shape(x)[1]), dtype=tf.int32))
+            day_of_week = inputs.get('day_of_week', tf.zeros((tf.shape(x)[0], tf.shape(x)[1]), dtype=tf.int32))
+        else:
+            x = inputs
+            batch_size = tf.shape(x)[0]
+            seq_len = tf.shape(x)[1]
+            # Default static covariates (will be learned as average)
+            instrument_id = tf.zeros((batch_size,), dtype=tf.int32)
+            session_id = tf.zeros((batch_size,), dtype=tf.int32)
+            hour = tf.zeros((batch_size, seq_len), dtype=tf.int32)
+            day_of_week = tf.zeros((batch_size, seq_len), dtype=tf.int32)
+        
+        # =====================================================================
+        # STATIC COVARIATE ENCODING
+        # =====================================================================
+        
+        # Embed static features
+        instrument_emb = self.instrument_embedding(instrument_id)  # (batch, emb_dim)
+        session_emb = self.session_embedding(session_id)          # (batch, emb_dim)
+        
+        # Concatenate and encode static features
+        static_features = tf.concat([instrument_emb, session_emb], axis=-1)
+        static_encoded = self.static_encoder(static_features, training=training)
+        
+        # Derive context vectors for different uses
+        static_ctx_vs = self.static_context_variable_selection(static_encoded)
+        static_ctx_enrich = self.static_context_enrichment(static_encoded)
+        static_ctx_h = self.static_context_state_h(static_encoded)
+        static_ctx_c = self.static_context_state_c(static_encoded)
+        
+        # =====================================================================
+        # KNOWN FUTURE INPUT ENCODING
+        # =====================================================================
+        
+        # Embed time features (these are known for all future steps)
+        hour_emb = self.hour_embedding(hour)            # (batch, seq, emb_dim)
+        day_emb = self.day_embedding(day_of_week)       # (batch, seq, emb_dim)
+        known_future = tf.concat([hour_emb, day_emb], axis=-1)
+        
+        # =====================================================================
+        # TEMPORAL PROCESSING
+        # =====================================================================
+        
+        # Input augmentation
+        x = self.gaussian_noise(x, training=training)
+        x = self.spatial_dropout(x, training=training)
+        
+        # Concatenate sequence with known future features
+        x_with_future = tf.concat([x, known_future], axis=-1)
+        
+        # Project inputs
+        embedded = self.input_projection(x_with_future)
+        
+        # Variable selection (conditioned on static context)
+        static_ctx_expanded = tf.expand_dims(static_ctx_vs, 1)  # (batch, 1, hidden)
+        selected = self.encoder_vsn(embedded, context=static_ctx_expanded, training=training)
+        
+        # LSTM encoding with static-initialized states
+        initial_state = [static_ctx_h, static_ctx_c]
+        encoder_output, state_h, _ = self.encoder_lstm(
+            selected, initial_state=initial_state, training=training
+        )
+        
+        # Gated skip connection
+        skip = self.gated_skip(encoder_output)
+        
+        # Self-attention with interpretable weights
+        attention_output, attention_weights = self.self_attention(
+            encoder_output, encoder_output, 
+            training=training,
+            return_attention=True
+        )
+        self._last_attention_weights = attention_weights  # Store for visualization
+        
+        # Add skip connection and normalize
+        temporal_output = self.layer_norm1(skip + attention_output)
+        
+        # Post-attention processing with static enrichment
+        static_ctx_enrich_expanded = tf.expand_dims(static_ctx_enrich, 1)
+        temporal_output = self.post_attention_grn(
+            temporal_output, context=static_ctx_enrich_expanded, training=training
+        )
+        temporal_output = self.layer_norm2(temporal_output + encoder_output)
+        
+        # Take final timestep
+        final_output = temporal_output[:, -1, :]
+        
+        # Multi-task output
+        if self.multi_task:
+            return {
+                'price': self.price_head(final_output, training=training),
+                'trend': self.trend_head(final_output, training=training),
+                'direction': self.direction_head(final_output, training=training),
+                'risk': self.risk_head(final_output, training=training),
+                'state_logits': self.state_head(final_output, training=training),
+            }
+        else:
+            return self.output_projection(final_output, training=training)
+    
+    def get_attention_weights(self):
+        """Get last computed attention weights for interpretability."""
+        return self._last_attention_weights
+    
+    def get_feature_importance(self, x, instrument_id=None, session_id=None):
+        """
+        Get feature importance scores via attention analysis.
+        
+        Returns dict with:
+        - temporal_attention: Which timesteps matter most
+        - feature_weights: Which features contribute most (from VSN)
+        """
+        # Run forward pass to get attention weights
+        inputs = {'sequence': x}
+        if instrument_id is not None:
+            inputs['instrument_id'] = instrument_id
+        if session_id is not None:
+            inputs['session_id'] = session_id
+        
+        _ = self.call(inputs, training=False)
+        
+        attention = self._last_attention_weights
+        if attention is not None:
+            # Average attention across heads
+            temporal_importance = tf.reduce_mean(attention, axis=1)  # (batch, seq, seq)
+            # Sum attention received by each position
+            temporal_importance = tf.reduce_sum(temporal_importance, axis=-1)  # (batch, seq)
+        else:
+            temporal_importance = None
+        
+        return {
+            'temporal_attention': temporal_importance,
+        }
 
 
 @register_keras_serializable()

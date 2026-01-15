@@ -77,14 +77,14 @@ model:
   hidden_size: 64
   num_layers: 3
   
-  # Moderate dropout
-  dropout: 0.3
+  # Strong dropout to prevent overfitting (was 0.3)
+  dropout: 0.5
   
   # Keep at 0 for M1 Metal speed
   recurrent_dropout: 0.0
   
-  # Kernel regularization (L2)
-  kernel_regularizer: 0.001
+  # Strong L2 regularization (was 0.001)
+  kernel_regularizer: 0.005
   
   # TCN-specific (legacy, kept for backward compatibility)
   kernel_size: 3
@@ -104,7 +104,7 @@ transformer:
   num_heads: 4         # Attention heads  
   num_layers: 2        # Encoder layers
   dff: 64              # Feedforward dimension
-  dropout: 0.2         # Dropout rate
+  dropout: 0.4         # Dropout rate (was 0.2 - increased for regularization)
   use_transformer: true  # Use Transformer instead of TCN for direction
 
 # ----- OPTIMIZER CONFIGURATION -----
@@ -275,13 +275,13 @@ buddy:
     direction_threshold: 0.003 # Min 0.3% move for clear signal
     direction_lookahead: 24    # 24 hours lookahead
   
-  # H1 TIMEFRAME TP/SL - WIDER STOPS for hourly candles
-  stop_loss_pips: 30.0    # 30 pips SL - appropriate for H1
-  take_profit_pips: 60.0  # 60 pips TP - 2:1 RR ratio
-  tier2_horizon_candles: 48  # 48 hours = 2 days to hit target
+  # TIGHT SCALPING SL/TP - Quick targets for volatile markets
+  stop_loss_pips: 15.0    # 15 pips SL - tight risk (user requested)
+  take_profit_pips: 30.0  # 30 pips TP base (50 if prob > 65%)
+  tier2_horizon_candles: 24  # 24 hours max to hit target
   tier2_spread_fallback_pips: 1.5
   tier2_tie_break: "sl"
-  risk_per_trade_pct: 0.01
+  risk_per_trade_pct: 0.02  # 2% risk for larger lots
   
   tier2:
     enabled: true
@@ -356,3 +356,60 @@ diagnostics:
   log_feature_importance: true
   save_label_distribution: true
 
+# ----- BUDDY SCANNER SETTINGS -----
+# Configuration for buddy scan command
+# TARGET: $100k → $1M in 6 months (10x, ~1.8%/day compound)
+scan:
+  # Number of candles to fetch for analysis
+  lookback_candles: 200
+  
+  # Number of parallel workers for scanning
+  parallel_workers: 4
+  
+  # Number of candles for quick backtest validation
+  backtest_window: 50
+  
+  # Prompt user to retrain when drift detected
+  auto_retrain_prompt: true
+  
+  # Model drift threshold (retrain warning if accuracy drops by this much)
+  drift_threshold: 0.03
+  
+  # Minimum confidence to include in results (78% model outputs realistic probs)
+  min_confidence: 0.53  # 53%+ is above random, model verified at 78%
+  
+  # Enable position sizing in scan results
+  position_sizing_enabled: true
+  
+  # Account equity: 0 = fetch live balance from OANDA (recommended for compounding)
+  account_equity: 0  # 0 = use live OANDA balance ($101k)
+  
+  # Risk per trade percentage - 2% for larger lots
+  risk_per_trade_pct: 0.02  # 2% risk per trade for larger lots
+  
+  # Leverage ratio
+  leverage: 50
+  
+  # Aggressive mode - enabled for larger position sizes
+  aggressive_mode: true
+  
+  # Tight SL/TP for quick trades (user requested)
+  min_sl_pips: 15.0
+  max_sl_pips: 15.0  # Fixed 15 pip SL
+  min_tp_pips: 20.0
+  max_tp_pips: 30.0  # 20-30 pip TP base
+  high_prob_threshold: 0.65  # Bonus TP if prob > 65%
+  high_prob_tp_bonus: 20.0   # +20 pips bonus for high prob
+  
+  # Max trades per day limit (user requested up to 30)
+  max_trades_per_day: 30
+  
+  # Default pairs to scan (if none specified)
+  default_pairs:
+    - EUR_USD
+    - GBP_USD
+    - USD_JPY
+    - USD_CHF
+    - AUD_USD
+    - USD_CAD
+    - NZD_USD

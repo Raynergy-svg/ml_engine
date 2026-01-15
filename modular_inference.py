@@ -37,6 +37,27 @@ import pandas as pd
 # Import normalized feature computation from data loaders
 from modular_data_loaders import compute_normalized_features, get_normalized_feature_names
 
+# RL position sizer availability is checked lazily to avoid TF/PyTorch GPU conflicts
+# The actual import happens only when use_rl_sizer=True and the model is loaded
+RL_AVAILABLE = True  # We assume it's available, actual check is deferred
+RLPositionSizer = None  # Lazy loaded
+RL_MODEL_PATH = Path("trained_data/models/rl_position_sizer.zip")
+
+def _lazy_load_rl_sizer():
+    """Lazy load RLPositionSizer to avoid TF/PyTorch GPU conflicts at import time."""
+    global RLPositionSizer, RL_AVAILABLE
+    if RLPositionSizer is not None:
+        return RLPositionSizer, RL_AVAILABLE
+    try:
+        from rl_position_sizing import RLPositionSizer as _RLPositionSizer, RL_MODEL_PATH as _RL_MODEL_PATH
+        RLPositionSizer = _RLPositionSizer
+        RL_AVAILABLE = True
+        return RLPositionSizer, RL_AVAILABLE
+    except ImportError:
+        RL_AVAILABLE = False
+        RLPositionSizer = None
+        return None, False
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,6 +70,10 @@ class InferenceConfig:
     - Momentum: Percentile-normalized (median=0.3, P90=0.7)
     - Risk: ATR-based expected drawdown (typically 0.5-3%)
     """
+    # TCN/Transformer probability gate - CRITICAL: reject coin-flip signals
+    # 0.5 = uncertain, 0.55+ = slight edge, 0.60+ = good edge
+    min_tcn_probability: float = 0.55  # Require at least 55% confidence in direction
+    
     # Confidence gate - ADX-based, 50+ is strong trend
     min_confidence: float = 45.0  # 0-100 scale
     
@@ -67,29 +92,33 @@ class InferenceConfig:
     # When True, only Transformer direction is used for decision
     permissive_mode: bool = False
     
-    # Position sizing - RISK-BASED (not arbitrary lots!)
-    risk_per_trade_pct: float = 0.01  # 1% risk per trade (conservative)
-    account_equity: float = 10000.0  # Default equity for sizing
+    # Risk gate bypass: When True AND permissive_mode is True, also bypass the risk gate
+    # By default, risk gate is ALWAYS active even in permissive mode for safety
+    bypass_risk_gate_in_permissive: bool = False
+    
+    # Position sizing - RISK-BASED (2% for $101k account)
+    risk_per_trade_pct: float = 0.02  # 2% risk per trade (larger lots)
+    account_equity: float = 101000.0  # User's account balance
     pip_value: float = 10.0  # ~$10 per pip per standard lot
     
     # LIQUIDITY LIMITS - Maximum lots by pair to avoid market impact
-    # Large orders cause slippage that destroys edge
+    # Increased limits for $101k account
     max_lots_by_pair: dict = None  # Set in __post_init__
     
     def __post_init__(self):
         if self.max_lots_by_pair is None:
             self.max_lots_by_pair = {
-                'EUR_USD': 2.0,   # Most liquid - 2 lots max
-                'USD_JPY': 1.5,   # Very liquid
-                'GBP_USD': 1.0,   # Liquid
-                'USD_CHF': 1.0,
-                'AUD_USD': 1.0,
-                'USD_CAD': 1.0,
-                'NZD_USD': 0.5,   # Less liquid
-                'GBP_JPY': 0.5,   # Cross - illiquid
-                'EUR_GBP': 0.5,
-                'EUR_JPY': 0.5,
-                'DEFAULT': 0.5,   # Unknown pairs
+                'EUR_USD': 5.0,   # Most liquid - 5 lots max
+                'USD_JPY': 4.0,   # Very liquid
+                'GBP_USD': 3.0,   # Liquid
+                'USD_CHF': 3.0,
+                'AUD_USD': 3.0,
+                'USD_CAD': 3.0,
+                'NZD_USD': 2.0,   # Less liquid
+                'GBP_JPY': 1.5,   # Cross - illiquid
+                'EUR_GBP': 1.5,
+                'EUR_JPY': 1.5,
+                'DEFAULT': 1.0,   # Unknown pairs
             }
 
 
@@ -151,9 +180,12 @@ class ModularEnsembleInference:
         self,
         model_dir: str = "trained_data/models",
         config: Optional[InferenceConfig] = None,
+        use_rl_sizer: bool = False,
+        instrument: Optional[str] = None,  # For pair-specific model loading
     ):
         self.model_dir = Path(model_dir)
         self.config = config or InferenceConfig()
+        self.instrument = instrument  # Store for pair-specific loading
         
         self.tcn = None  # Direction model (legacy)
         self.histgb = None  # HistGB baseline for hybrid voting
@@ -162,115 +194,217 @@ class ModularEnsembleInference:
         self.rf = None
         self.ridge = None
         
+        # RL Position Sizer (NEW)
+        self.rl_sizer: Optional[RLPositionSizer] = None
+        self.use_rl_sizer = use_rl_sizer
+        
         self.use_regime = False  # Will be set during load_models
         self.use_hybrid = False  # Enable HistGB voting
         self._loaded = False
+        self._loaded_instrument = None  # Track which pair's models are loaded
     
-    def load_models(self) -> None:
-        """Load all 4 models from disk."""
+    def _get_model_path(self, model_name: str, extension: str = ".keras") -> Path:
+        """
+        Get the path to a model file, preferring pair-specific models.
+        
+        Lookup order:
+        1. trained_data/models/{instrument}/{model_name}{extension}  (pair-specific)
+        2. trained_data/models/{model_name}{extension}  (generic fallback)
+        
+        Returns the first existing path, or the generic path if none exist.
+        """
+        if self.instrument and self.instrument != "GENERIC":
+            pair_path = self.model_dir / self.instrument / f"{model_name}{extension}"
+            if pair_path.exists():
+                return pair_path
+        
+        # Fallback to generic path
+        return self.model_dir / f"{model_name}{extension}"
+    
+    def load_models(self, instrument: Optional[str] = None) -> None:
+        """
+        Load all 4 models from disk.
+        
+        Args:
+            instrument: Optional instrument (e.g., 'EUR_USD') to load pair-specific models.
+                       If None, uses self.instrument or loads generic models.
+        
+        Lookup order for each model:
+        1. trained_data/models/{instrument}/ (pair-specific)
+        2. trained_data/models/ (generic fallback)
+        """
+        # Update instrument if provided
+        if instrument:
+            self.instrument = instrument
+        import warnings
         from modular_trainers import (
             TCNTrainer, TransformerDirectionTrainer, TransformerRegimeTrainer,
             XGBoostTrainer, RandomForestTrainer, RidgeTrainer,
             HistGradientBoostingDirectionTrainer
         )
         
-        logger.info("Loading modular ensemble models...")
+        # Suppress XGBoost version warnings (models serialized with older versions)
+        warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
+        warnings.filterwarnings('ignore', message='.*serialized model.*')
+        warnings.filterwarnings('ignore', message='.*older version of XGBoost.*')
         
-        # Check for regime model first (new mode)
-        regime_path = self.model_dir / "transformer_regime.keras"
-        transformer_path = self.model_dir / "transformer_direction.keras"
-        tcn_path = self.model_dir / "tcn_direction.keras"
-        histgb_path = self.model_dir / "histgb_direction.pkl"
+        # Suppress sklearn version warnings (common when loading across versions)
+        try:
+            from sklearn.exceptions import InconsistentVersionWarning
+            warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
+        except ImportError:
+            pass
+        warnings.filterwarnings('ignore', message='.*InconsistentVersionWarning.*')
+        warnings.filterwarnings('ignore', message='.*unpickle estimator.*')
+        
+        pair_info = f" for {self.instrument}" if self.instrument and self.instrument != "GENERIC" else ""
+        logger.info(f"Loading modular ensemble models{pair_info}...")
+        
+        # Use pair-specific paths with fallback to generic
+        regime_path = self._get_model_path("transformer_regime", ".keras")
+        transformer_path = self._get_model_path("transformer_direction", ".keras")
+        tcn_path = self._get_model_path("tcn_direction", ".keras")
+        histgb_path = self._get_model_path("histgb_direction", ".pkl")
         
         if regime_path.exists():
             # REGIME MODE
             self.regime_model = TransformerRegimeTrainer()
             self.regime_model.load(str(regime_path))
             self.use_regime = True
-            logger.info("✓ Transformer REGIME model loaded (3-class: trend/chop/mean_revert)")
+            logger.info(f"✓ Transformer REGIME model loaded from {regime_path}")
         elif transformer_path.exists():
             # DIRECTION MODE (Transformer)
             self.tcn = TransformerDirectionTrainer()
             self.tcn.load(str(transformer_path))
             self.use_regime = False
-            logger.info("✓ Transformer direction model loaded")
+            logger.info(f"✓ Transformer direction model loaded from {transformer_path}")
         elif tcn_path.exists():
             # DIRECTION MODE (TCN legacy)
             self.tcn = TCNTrainer()
             self.tcn.load(str(tcn_path))
             self.use_regime = False
-            logger.info("✓ TCN direction model loaded (legacy)")
+            logger.info(f"✓ TCN direction model loaded from {tcn_path}")
         else:
-            logger.warning(f"No direction/regime model found at {regime_path}, {transformer_path}, or {tcn_path}")
+            logger.warning(f"No direction/regime model found for {self.instrument or 'generic'}")
         
         # Load HistGB for hybrid voting (if available)
         if histgb_path.exists():
             self.histgb = HistGradientBoostingDirectionTrainer()
             self.histgb.load(str(histgb_path))
             self.use_hybrid = True
-            logger.info("✓ HistGB baseline loaded (hybrid voting enabled)")
+            logger.info(f"✓ HistGB baseline loaded from {histgb_path}")
         else:
             self.use_hybrid = False
-            logger.info("ℹ HistGB not found - single-model mode (train with --train-histgb to enable hybrid)")
+            logger.info("ℹ HistGB not found - single-model mode")
         
-        # XGBoost
-        xgb_path = self.model_dir / "xgb_momentum.pkl"
+        # XGBoost (use pair-specific path)
+        xgb_path = self._get_model_path("xgb_momentum", ".pkl")
         if xgb_path.exists():
             self.xgb = XGBoostTrainer()
             self.xgb.load(str(xgb_path))
-            logger.info("✓ XGBoost loaded")
+            logger.info(f"✓ XGBoost loaded from {xgb_path}")
         else:
             logger.warning(f"XGBoost model not found at {xgb_path}")
         
-        # Random Forest
-        rf_path = self.model_dir / "rf_risk.pkl"
+        # Random Forest (use pair-specific path)
+        rf_path = self._get_model_path("rf_risk", ".pkl")
         if rf_path.exists():
             self.rf = RandomForestTrainer()
             self.rf.load(str(rf_path))
-            logger.info("✓ Random Forest loaded")
+            logger.info(f"✓ Random Forest loaded from {rf_path}")
         else:
             logger.warning(f"Random Forest model not found at {rf_path}")
         
-        # Ridge
-        ridge_path = self.model_dir / "ridge_confidence.pkl"
+        # Ridge (use pair-specific path)
+        ridge_path = self._get_model_path("ridge_confidence", ".pkl")
         if ridge_path.exists():
             self.ridge = RidgeTrainer()
             self.ridge.load(str(ridge_path))
-            logger.info("✓ Ridge loaded")
+            logger.info(f"✓ Ridge loaded from {ridge_path}")
         else:
             logger.warning(f"Ridge model not found at {ridge_path}")
+        
+        # RL Position Sizer (lazy loaded to avoid TF/PyTorch GPU conflicts)
+        if self.use_rl_sizer:
+            RLSizer, rl_available = _lazy_load_rl_sizer()
+            if rl_available and RLSizer is not None:
+                self.rl_sizer = RLSizer()
+                if self.rl_sizer.load():
+                    logger.info("✓ RL Position Sizer loaded")
+                else:
+                    logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
+                    self.rl_sizer = None
+            else:
+                logger.warning("⚠️ RL requested but dependencies not available. Install: pip install gymnasium stable-baselines3")
+                self.rl_sizer = None
         
         # Auto-detect sklearn version mismatch and enable permissive mode
         self._check_sklearn_version_mismatch()
         
         self._loaded = True
-        logger.info("Modular ensemble loaded.")
+        self._loaded_instrument = self.instrument
+        logger.info(f"Modular ensemble loaded{pair_info}.")
     
     def _check_sklearn_version_mismatch(self) -> None:
-        """Check if sklearn models were trained with different version and enable permissive mode."""
+        """
+        Check sklearn version compatibility for each gate model independently.
+        
+        GRACEFUL DEGRADATION: Instead of all-or-nothing permissive mode,
+        we track which gates are usable based on:
+        1. Version compatibility (major.minor match)
+        2. Model quality (MAE thresholds)
+        3. Load success
+        
+        Gates that fail checks are marked unusable but don't disable others.
+        """
         import sklearn
         current_version = sklearn.__version__
+        current_major_minor = current_version.split('.')[0:2]
         
-        # Check for explicit version mismatch OR poor model quality in model metadata
+        # Track gate status: True = usable, False = skip (use fallback)
+        self._gate_status = {
+            'xgboost': True,
+            'random_forest': True,
+            'ridge': True,
+        }
+        self._gate_issues = {}
+        
+        # Check XGBoost version compatibility
+        if self.xgb and hasattr(self.xgb, '_saved_sklearn_version'):
+            saved_ver = self.xgb._saved_sklearn_version
+            if saved_ver:
+                saved_major_minor = saved_ver.split('.')[0:2]
+                if saved_major_minor != current_major_minor:
+                    self._gate_status['xgboost'] = False
+                    self._gate_issues['xgboost'] = f"sklearn {saved_ver} → {current_version}"
+                    logger.warning(f"⚠️ XGBoost gate: sklearn version mismatch ({saved_ver} → {current_version})")
+        
+        # Check RandomForest version compatibility
+        if self.rf and hasattr(self.rf, '_saved_sklearn_version'):
+            saved_ver = self.rf._saved_sklearn_version
+            if saved_ver:
+                saved_major_minor = saved_ver.split('.')[0:2]
+                if saved_major_minor != current_major_minor:
+                    self._gate_status['random_forest'] = False
+                    self._gate_issues['random_forest'] = f"sklearn {saved_ver} → {current_version}"
+                    logger.warning(f"⚠️ RF gate: sklearn version mismatch ({saved_ver} → {current_version})")
+        
+        # Check Ridge version compatibility
+        if self.ridge and hasattr(self.ridge, '_saved_sklearn_version'):
+            saved_ver = self.ridge._saved_sklearn_version
+            if saved_ver:
+                saved_major_minor = saved_ver.split('.')[0:2]
+                if saved_major_minor != current_major_minor:
+                    self._gate_status['ridge'] = False
+                    self._gate_issues['ridge'] = f"sklearn {saved_ver} → {current_version}"
+                    logger.warning(f"⚠️ Ridge gate: sklearn version mismatch ({saved_ver} → {current_version})")
+        
+        # Check model quality from metadata
         meta_path = self.model_dir / "modular_ensemble.meta.json"
         if meta_path.exists():
             import json
             with open(meta_path) as f:
                 meta = json.load(f)
-            
-            # Check sklearn version mismatch
-            trained_sklearn = meta.get('sklearn_version')
-            if trained_sklearn and trained_sklearn != current_version:
-                major_trained = trained_sklearn.split('.')[0:2]
-                major_current = current_version.split('.')[0:2]
-                
-                if major_trained != major_current:
-                    logger.warning(
-                        f"⚠️ sklearn version mismatch: trained={trained_sklearn}, current={current_version}. "
-                        f"Enabling permissive mode (sklearn gates bypassed)."
-                    )
-                    self.config.permissive_mode = True
-                    return
             
             # Check for poor RF model quality (drawdown MAE > 50% means useless)
             results = meta.get('results', {})
@@ -278,11 +412,24 @@ class ModularEnsembleInference:
             drawdown_mae_bps = rf_results.get('drawdown_mae_bps', 0)
             
             if drawdown_mae_bps > 5000:  # > 50% MAE = unreliable
-                logger.warning(
-                    f"⚠️ RF model has high error (MAE={drawdown_mae_bps/100:.1f}%). "
-                    f"Enabling permissive mode (risk gate bypassed)."
-                )
-                self.config.permissive_mode = True
+                self._gate_status['random_forest'] = False
+                self._gate_issues['random_forest'] = f"High MAE ({drawdown_mae_bps/100:.1f}%)"
+                logger.warning(f"⚠️ RF gate: high error (MAE={drawdown_mae_bps/100:.1f}%)")
+        
+        # Count usable gates
+        usable_gates = sum(self._gate_status.values())
+        total_gates = len(self._gate_status)
+        
+        if usable_gates < total_gates:
+            # Some gates have issues - enable permissive mode but with partial degradation
+            self.config.permissive_mode = True
+            logger.info(f"📊 Gate status: {usable_gates}/{total_gates} gates usable. "
+                       f"Issues: {self._gate_issues}")
+            if usable_gates == 0:
+                logger.warning("⚠️ All sklearn gates have issues - using Transformer-only mode")
+                logger.info("💡 Run 'python retrain_gates.py' to fix sklearn version mismatch")
+        else:
+            logger.info(f"✓ All {total_gates} gates compatible with sklearn {current_version}")
 
     def _find_features_by_pattern(self, df: pd.DataFrame, patterns: List[str]) -> List[str]:
         """Find features by partial name matching."""
@@ -617,11 +764,18 @@ class ModularEnsembleInference:
         expected_drawdown_pips: float,
         equity: Optional[float] = None,
         instrument: Optional[str] = None,
+        features: Optional[np.ndarray] = None,
+        tcn_probability: float = 0.5,
+        ridge_confidence: float = 50.0,
     ) -> float:
         """
         Calculate position size for target risk percentage with liquidity limits.
         
-        Formula: size = (equity * risk_pct) / (stop_loss_pips * pip_value)
+        SUPPORTS RL POSITION SIZING:
+        If rl_sizer is loaded and features are provided, uses learned optimal sizing.
+        Otherwise falls back to heuristic risk-based sizing.
+        
+        Formula (heuristic): size = (equity * risk_pct) / (stop_loss_pips * pip_value)
         
         CRITICAL: Large positions cause slippage that destroys edge!
         - 10 lots on EUR_USD = 6+ pips slippage
@@ -631,11 +785,49 @@ class ModularEnsembleInference:
             expected_drawdown_pips: Stop loss distance in pips
             equity: Account equity (default: config value)
             instrument: Trading pair for liquidity limit lookup
+            features: Market features for RL sizer (optional)
+            tcn_probability: TCN direction probability for RL observation
+            ridge_confidence: Ridge confidence score for RL observation
         
         Returns:
             Position size in lots, capped by liquidity limits
         """
         equity = equity or self.config.account_equity
+        
+        # =====================================================================
+        # RL POSITION SIZING (if available)
+        # =====================================================================
+        if self.rl_sizer is not None and features is not None:
+            try:
+                # Construct ensemble prediction for RL observation
+                ensemble_pred = np.array([tcn_probability, ridge_confidence / 100.0])
+                
+                # Get RL-optimized position size (returns $ amount)
+                size_dollars = self.rl_sizer.get_position_size(
+                    features=features[-1] if features.ndim > 1 else features,
+                    ensemble_prediction=ensemble_pred,
+                    account_equity=equity,
+                )
+                
+                # Convert to lots (assume ~$100k per lot)
+                size_lots = size_dollars / 100000
+                
+                # Apply liquidity limit
+                max_lots = self.config.max_lots_by_pair.get(
+                    instrument, 
+                    self.config.max_lots_by_pair.get('DEFAULT', 0.5)
+                ) if instrument else 1.0
+                size_lots = min(size_lots, max_lots)
+                
+                logger.debug(f"RL position size: {size_lots:.2f} lots (${size_dollars:.0f})")
+                return round(max(0.01, size_lots), 2)
+                
+            except Exception as e:
+                logger.warning(f"RL sizing failed, falling back to heuristic: {e}")
+        
+        # =====================================================================
+        # HEURISTIC RISK-BASED SIZING (fallback)
+        # =====================================================================
         risk_amount = equity * self.config.risk_per_trade_pct
         
         # Minimum stop loss to prevent oversizing
@@ -815,12 +1007,55 @@ class ModularEnsembleInference:
         # === APPLY GATES ===
         # SMART GATING: Transformer probability is the primary signal
         # Gate models provide confirmation, but TCN confidence can override
+        #
+        # GRACEFUL DEGRADATION: When permissive_mode is enabled, we check
+        # _gate_status to determine which gates to use vs bypass
+        
+        # Initialize gate status tracking if not done during load
+        if not hasattr(self, '_gate_status'):
+            self._gate_status = {'xgboost': True, 'random_forest': True, 'ridge': True}
+            self._gate_issues = {}
         
         if self.config.permissive_mode:
-            confidence_gate_passed = True
-            momentum_gate_passed = True
-            risk_gate_passed = True
-            logger.debug("Permissive mode: sklearn gates bypassed")
+            # GRACEFUL DEGRADATION: Use gates that are still usable
+            
+            # Confidence gate: use Ridge if available, else pass
+            if self._gate_status.get('ridge', False) and self.ridge is not None:
+                confidence_gate_passed = ridge_confidence >= self.config.min_confidence
+                logger.debug(f"Ridge gate ACTIVE: confidence={ridge_confidence:.1f}, passed={confidence_gate_passed}")
+            else:
+                confidence_gate_passed = True
+                logger.debug(f"Ridge gate BYPASSED: {self._gate_issues.get('ridge', 'not loaded')}")
+            
+            # Momentum gate: use XGBoost if available, else pass
+            if self._gate_status.get('xgboost', False) and self.xgb is not None:
+                momentum_fresh = xgb_momentum >= self.config.min_momentum
+                momentum_gate_passed = momentum_fresh or xgb_acceleration
+                logger.debug(f"XGBoost gate ACTIVE: momentum={xgb_momentum:.3f}, accel={xgb_acceleration}, passed={momentum_gate_passed}")
+            else:
+                momentum_gate_passed = True
+                logger.debug(f"XGBoost gate BYPASSED: {self._gate_issues.get('xgboost', 'not loaded')}")
+            
+            # Risk gate: use RF if available AND not explicitly bypassed
+            if self.config.bypass_risk_gate_in_permissive:
+                risk_gate_passed = True
+                logger.debug("Risk gate BYPASSED: bypass_risk_gate_in_permissive=True")
+            elif self._gate_status.get('random_forest', False) and self.rf is not None:
+                risk_gate_passed = (
+                    rf_drawdown_pct <= self.config.max_drawdown_pct and
+                    rf_streak_prob <= self.config.max_streak_prob
+                )
+                logger.debug(f"RF gate ACTIVE: drawdown={rf_drawdown_pct:.4f}, streak={rf_streak_prob:.2f}, passed={risk_gate_passed}")
+            else:
+                # RF unusable - use conservative fallback based on ATR
+                # If ATR > 2%, be cautious
+                if 'atr_pct_14' in df.columns:
+                    atr_pct = df['atr_pct_14'].iloc[-1]
+                    risk_gate_passed = atr_pct <= 0.02  # Max 2% ATR
+                    logger.debug(f"RF gate BYPASSED, using ATR fallback: atr={atr_pct:.4f}, passed={risk_gate_passed}")
+                else:
+                    risk_gate_passed = True  # No ATR available, trust Transformer
+                    logger.debug(f"RF gate BYPASSED: {self._gate_issues.get('random_forest', 'not loaded')}, no ATR fallback")
         else:
             # TCN confidence = how far from 0.5 (uncertain)
             # 0.5 -> 0%, 0.6 -> 20%, 0.7 -> 40%, 0.8 -> 60%, 0.9 -> 80%, 1.0 -> 100%
@@ -907,11 +1142,17 @@ class ModularEnsembleInference:
                     direction_str = 'long'  # Fade the down move
                     tcn_direction = 1
                 tcn_probability = regime_confidence
-            
+        
+        # === TCN PROBABILITY GATE (applies to all modes) ===
+        # Reject signals where TCN is too uncertain (near 50%)
+        tcn_probability_gate_passed = abs(tcn_probability - 0.5) >= (self.config.min_tcn_probability - 0.5)
+        
+        if self.use_regime:
             # All gates for regime mode
             all_gates_passed = (
                 regime_gate_passed and
                 direction_str is not None and
+                tcn_probability_gate_passed and
                 confidence_gate_passed and
                 momentum_gate_passed and
                 risk_gate_passed
@@ -920,6 +1161,7 @@ class ModularEnsembleInference:
             # DIRECTION MODE (legacy)
             all_gates_passed = (
                 tcn_direction is not None and
+                tcn_probability_gate_passed and
                 confidence_gate_passed and
                 momentum_gate_passed and
                 risk_gate_passed
@@ -931,6 +1173,8 @@ class ModularEnsembleInference:
         reason = None
         if not all_gates_passed:
             reasons = []
+            if not tcn_probability_gate_passed:
+                reasons.append(f"weak_tcn({tcn_probability:.2f}<{self.config.min_tcn_probability})")
             if self.use_regime:
                 if not regime_gate_passed:
                     reasons.append(f"regime=CHOP (skip)")
@@ -953,10 +1197,22 @@ class ModularEnsembleInference:
         # === CALCULATE POSITION SIZE ===
         size = 0.0
         if all_gates_passed:
+            # Prepare features for RL sizer (if enabled)
+            # Use RF features as they contain market conditions
+            rl_features = None
+            if self.rl_sizer is not None:
+                try:
+                    rl_features = self._extract_rf_features(df)
+                except Exception:
+                    pass
+            
             size = self._calculate_position_size(
                 rf_drawdown_pips, 
                 equity,
-                instrument=getattr(self, '_current_instrument', None)
+                instrument=getattr(self, '_current_instrument', None),
+                features=rl_features,
+                tcn_probability=tcn_probability,
+                ridge_confidence=ridge_confidence,
             )
         
         return TradeSignal(

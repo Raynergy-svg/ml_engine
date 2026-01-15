@@ -1,0 +1,24 @@
+{
+  "capacity_ratio": 0.1,
+  "mix_ratio": 0.2,
+  "sample_count": 3934,
+  "buffer_size": 393,
+  "saved_at": "2026-01-12T19:03:42.244298",
+  "data_sources": [
+    {
+      "id": "USD_CHF_20260112_185632_9f7d5bd8",
+      "n_samples": 3934,
+      "timestamp": "2026-01-12T18:56:33.029163"
+    },
+    {
+      "id": "USD_CHF_20260113_201801_e5759bcb",
+      "n_samples": 5151,
+      "timestamp": "2026-01-13T20:18:02.937426"
+    },
+    {
+      "id": "USD_CHF_20260113_203456_7a935ece",
+      "n_samples": 5273,
+      "timestamp": "2026-01-13T20:34:56.588884"
+    }
+  ]
+}

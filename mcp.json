@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ],
+      "env": {
+        "MCP_MEMORY_STORAGE_PATH": "./trained_data/.memory"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "./trained_data",
+        "./logs"
+      ]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    }
+  },
+  "entityTypes": {
+    "scan_result": {
+      "description": "Pair scan results with confidence scores",
+      "ttlDays": 7,
+      "fields": ["pair", "direction", "confidence", "volatility_percentile", "trend_strength", "timestamp"]
+    },
+    "training_session": {
+      "description": "Model training session with metrics and hyperparameters",
+      "ttlDays": null,
+      "fields": ["pair", "models_trained", "metrics", "hyperparams", "duration_seconds", "timestamp"]
+    },
+    "model_state": {
+      "description": "Current model state and version tracking",
+      "ttlDays": null,
+      "fields": ["model_name", "accuracy", "trained_pairs", "version", "last_updated"]
+    }
+  }
+}

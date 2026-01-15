@@ -1,0 +1,20 @@
+[
+  {
+    "pair": "USD_JPY",
+    "granularity": "H1",
+    "models_trained": [
+      "transformer",
+      "xgboost",
+      "rf",
+      "ridge",
+      "histgb"
+    ],
+    "metrics": {
+      "granularity": "H1"
+    },
+    "hyperparams": {},
+    "duration_seconds": 0.0,
+    "warm_start": false,
+    "timestamp": "2026-01-13T10:14:39.398484"
+  }
+]

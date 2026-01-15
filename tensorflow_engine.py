@@ -111,6 +111,57 @@ class BinaryFocalLoss(losses.Loss):
         return config
 
 
+@register_keras_serializable()
+class ModelEMACallback(keras_callbacks.Callback):
+    """Exponential Moving Average of model weights for smoother inference.
+    
+    Maintains EMA of weights during training and applies them at the end.
+    This typically improves test performance by 0.5-1% by smoothing out
+    the noise in SGD updates.
+    
+    Usage:
+        callback_list.append(ModelEMACallback(decay=0.999))
+    
+    Args:
+        decay: EMA decay rate (default 0.999). Higher = smoother but slower adaptation.
+    """
+    
+    def __init__(self, decay: float = 0.999, apply_on_epoch_end: bool = False):
+        super().__init__()
+        self.decay = decay
+        self.apply_on_epoch_end = apply_on_epoch_end
+        self.ema_weights = None
+        self.original_weights = None
+    
+    def on_train_begin(self, logs=None):
+        # Initialize EMA weights as copy of initial weights
+        self.ema_weights = [w.copy() for w in self.model.get_weights()]
+    
+    def on_batch_end(self, batch, logs=None):
+        # Update EMA: ema = decay * ema + (1 - decay) * current
+        current_weights = self.model.get_weights()
+        for i, (ema_w, cur_w) in enumerate(zip(self.ema_weights, current_weights)):
+            self.ema_weights[i] = self.decay * ema_w + (1 - self.decay) * cur_w
+    
+    def on_epoch_end(self, epoch, logs=None):
+        if self.apply_on_epoch_end:
+            # Temporarily apply EMA weights for validation
+            self.original_weights = self.model.get_weights()
+            self.model.set_weights(self.ema_weights)
+    
+    def on_epoch_begin(self, epoch, logs=None):
+        if self.apply_on_epoch_end and self.original_weights is not None:
+            # Restore original weights for training
+            self.model.set_weights(self.original_weights)
+            self.original_weights = None
+    
+    def on_train_end(self, logs=None):
+        # Apply EMA weights at the end of training for inference
+        if self.ema_weights is not None:
+            self.model.set_weights(self.ema_weights)
+            logger.info(f"Applied EMA weights (decay={self.decay}) for smoother inference")
+
+
 def compute_class_weights(y_direction: np.ndarray) -> dict:
     """
     Compute class weights for imbalanced up/down distribution.
@@ -160,6 +211,11 @@ class TradingMetricsCallback(keras_callbacks.Callback):
     Custom callback to log trading-specific metrics to TensorBoard.
     Tracks directional accuracy, profit factor, etc.
     Supports both single-task and multi-task models.
+    
+    Logs the following metrics for checkpointing:
+    - val_direction_accuracy: Directional accuracy (higher is better)
+    - val_confidence_mae: MAE of confidence/price predictions (lower is better)
+    - val_trading_score: Composite score = direction_acc - 0.1*mae (higher is better)
     """
     
     def __init__(self, validation_data: Tuple[np.ndarray, np.ndarray], log_dir: str, multi_task: bool = False):
@@ -180,6 +236,26 @@ class TradingMetricsCallback(keras_callbacks.Callback):
         """Extract price targets from validation data."""
         if isinstance(y_val, dict):
             return y_val.get('price', y_val[list(y_val.keys())[0]])
+        return y_val
+    
+    def _extract_confidence_predictions(self, predictions):
+        """Extract confidence predictions if available."""
+        if isinstance(predictions, dict):
+            if 'confidence' in predictions:
+                return predictions['confidence']
+            if 'price' in predictions:
+                return predictions['price']
+        if isinstance(predictions, (list, tuple)) and len(predictions) > 1:
+            return predictions[1]  # Assume second output is confidence
+        return predictions
+    
+    def _extract_confidence_targets(self, y_val):
+        """Extract confidence targets if available."""
+        if isinstance(y_val, dict):
+            if 'confidence' in y_val:
+                return y_val['confidence']
+            if 'price' in y_val:
+                return y_val['price']
         return y_val
     
     def on_epoch_end(self, epoch, logs=None):
@@ -206,16 +282,34 @@ class TradingMetricsCallback(keras_callbacks.Callback):
             true_direction = np.sign(true_price)
             directional_accuracy = float(np.mean(pred_direction == true_direction))
         
+        # Compute confidence MAE
+        pred_conf = np.array(self._extract_confidence_predictions(predictions)).flatten()
+        true_conf = np.array(self._extract_confidence_targets(y_val)).flatten()
+        confidence_mae = float(np.mean(np.abs(pred_conf - true_conf)))
+        
+        # Normalize MAE to 0-1 scale for composite score (assume typical MAE range 0-10)
+        normalized_mae = min(confidence_mae / 10.0, 1.0)
+        
+        # Composite trading score: higher is better
+        # Weight directional accuracy heavily, penalize high MAE
+        trading_score = directional_accuracy - 0.1 * normalized_mae
+        
         # Log to TensorBoard
         with self.writer.as_default():
             tf.summary.scalar('directional_accuracy', directional_accuracy, step=epoch)
+            tf.summary.scalar('confidence_mae', confidence_mae, step=epoch)
+            tf.summary.scalar('trading_score', trading_score, step=epoch)
             
             # Distribution of predictions
             tf.summary.histogram('predictions', pred_price, step=epoch)
             tf.summary.histogram('targets', true_price, step=epoch)
         
+        # Add metrics to logs for ModelCheckpoint monitoring
         logs = logs or {}
         logs['directional_accuracy'] = directional_accuracy
+        logs['val_direction_accuracy'] = directional_accuracy
+        logs['val_confidence_mae'] = confidence_mae  
+        logs['val_trading_score'] = trading_score
 
 
 class GradientLoggingCallback(keras_callbacks.Callback):
@@ -581,15 +675,21 @@ class TensorFlowEngine:
                     'state_logits': 7.0,
                 })
                 
-                # Get alpha from config or use default (0.5 = balanced)
+                # Get focal loss parameters from config
                 focal_alpha = self.config.get('focal_alpha', 0.5)
                 focal_gamma = self.config.get('focal_gamma', 2.0)
+                # Label smoothing prevents overconfidence (Quick Win #2)
+                label_smoothing = self.config.get('label_smoothing', 0.1)
 
                 direction_loss_type = (self.config.get('direction_loss', 'focal') or 'focal').lower()
                 if direction_loss_type in ('bce', 'binary_crossentropy'):
-                    direction_loss = losses.BinaryCrossentropy(from_logits=False, label_smoothing=0.0)
+                    direction_loss = losses.BinaryCrossentropy(from_logits=False, label_smoothing=label_smoothing)
                 else:
-                    direction_loss = BinaryFocalLoss(gamma=focal_gamma, alpha=focal_alpha, label_smoothing=0.0)
+                    # Focal loss with label smoothing (Quick Win #3 - already implemented)
+                    direction_loss = BinaryFocalLoss(gamma=focal_gamma, alpha=focal_alpha, label_smoothing=label_smoothing)
+                
+                # State logits also benefit from label smoothing
+                state_label_smoothing = self.config.get('state_label_smoothing', 0.05)
                 
                 self.model.compile(
                     optimizer=optimizer,
@@ -598,7 +698,7 @@ class TensorFlowEngine:
                         'trend': losses.Huber(delta=0.5),  # Smaller delta for finer predictions
                         'direction': direction_loss,
                         'risk': losses.MeanSquaredError(),  # Risk is continuous [0,1] regression
-                        'state_logits': losses.CategoricalCrossentropy(label_smoothing=0.0),
+                        'state_logits': losses.CategoricalCrossentropy(label_smoothing=state_label_smoothing),
                     },
                     loss_weights=loss_weights,
                     metrics={
@@ -633,7 +733,7 @@ class TensorFlowEngine:
         return self.model
     
     def _create_optimizer(self) -> optimizers.Optimizer:
-        """Create optimizer from config with gradient clipping."""
+        """Create optimizer from config with gradient clipping and LR scheduling."""
         opt_config = self.config.get('optimizer', {})
         opt_type = opt_config.get('type', 'adamw').lower()
         lr = opt_config.get('learning_rate', self.config.get('learning_rate', 0.001))
@@ -641,6 +741,46 @@ class TensorFlowEngine:
         
         # Gradient clipping (matches PyTorch's clip_grad_norm_ for stability)
         clipnorm = opt_config.get('clipnorm', self.config.get('gradient_clip', 1.0))
+        
+        # --- LR Schedule Support (Medium Effort #2: CosineDecayRestarts) ---
+        lr_schedule_config = self.config.get('lr_schedule', {})
+        schedule_type = lr_schedule_config.get('type', None)
+        
+        if schedule_type == 'cosine_restarts':
+            try:
+                from m1_metal_optimizer import CosineDecayRestarts
+                
+                # Get schedule parameters from config
+                initial_lr = lr_schedule_config.get('initial_lr', lr)
+                first_decay_epochs = lr_schedule_config.get('first_decay_epochs', 10)
+                t_mul = lr_schedule_config.get('t_mul', 2.0)
+                m_mul = lr_schedule_config.get('m_mul', 0.9)
+                alpha = lr_schedule_config.get('alpha', 0.01)
+                warmup_epochs = lr_schedule_config.get('warmup_epochs', 2)
+                
+                # Estimate steps per epoch (need batch_size and training samples)
+                batch_size = self.config.get('batch_size', 128)
+                training_samples = self.config.get('training_samples', 5000)  # Approximate
+                steps_per_epoch = max(1, training_samples // batch_size)
+                
+                first_decay_steps = first_decay_epochs * steps_per_epoch
+                warmup_steps = warmup_epochs * steps_per_epoch
+                
+                lr = CosineDecayRestarts(
+                    initial_learning_rate=initial_lr,
+                    first_decay_steps=first_decay_steps,
+                    t_mul=t_mul,
+                    m_mul=m_mul,
+                    alpha=alpha,
+                    warmup_steps=warmup_steps,
+                )
+                print(f"✓ Using CosineDecayRestarts LR schedule:")
+                print(f"  Initial LR: {initial_lr}, First cycle: {first_decay_epochs} epochs")
+                print(f"  T_mult: {t_mul}, M_mult: {m_mul}")
+                
+            except ImportError as e:
+                print(f"⚠ CosineDecayRestarts not available: {e}")
+                # Fall back to constant LR
 
         is_darwin = platform.system() == 'Darwin'
         legacy = getattr(optimizers, 'legacy', None) if is_darwin else None
@@ -763,6 +903,54 @@ class TensorFlowEngine:
         )
         callback_list.append(model_checkpoint)
         
+        # Multi-metric checkpointing: save best per metric for flexibility
+        multi_checkpoint_enabled = self.config.get('multi_checkpoint', True)
+        if multi_checkpoint_enabled:
+            # Best direction accuracy checkpoint
+            direction_checkpoint_path = os.path.join(
+                self.checkpoint_dir,
+                'tf_model_best_direction.keras'
+            )
+            direction_checkpoint = keras_callbacks.ModelCheckpoint(
+                filepath=direction_checkpoint_path,
+                monitor='val_direction_accuracy' if not multi_task else 'val_trend_accuracy',
+                mode='max',
+                save_best_only=True,
+                save_weights_only=False,
+                verbose=1,
+            )
+            callback_list.append(direction_checkpoint)
+            
+            # Best confidence/MAE checkpoint (lower is better)
+            confidence_checkpoint_path = os.path.join(
+                self.checkpoint_dir,
+                'tf_model_best_confidence.keras'
+            )
+            confidence_checkpoint = keras_callbacks.ModelCheckpoint(
+                filepath=confidence_checkpoint_path,
+                monitor='val_confidence_mae' if not multi_task else 'val_price_mae',
+                mode='min',
+                save_best_only=True,
+                save_weights_only=False,
+                verbose=1,
+            )
+            callback_list.append(confidence_checkpoint)
+            
+            # Best combined score checkpoint (custom metric from TradingMetricsCallback)
+            combined_checkpoint_path = os.path.join(
+                self.checkpoint_dir,
+                'tf_model_best_combined.keras'
+            )
+            combined_checkpoint = keras_callbacks.ModelCheckpoint(
+                filepath=combined_checkpoint_path,
+                monitor='val_trading_score',  # From TradingMetricsCallback
+                mode='max',
+                save_best_only=True,
+                save_weights_only=False,
+                verbose=1,
+            )
+            callback_list.append(combined_checkpoint)
+        
         # Also save in SavedModel format for Buddy inference
         # SavedModel is more portable than .keras for custom layers
         saved_model_callback = SavedModelExportCallback(
@@ -817,6 +1005,12 @@ class TensorFlowEngine:
         # CSV logger for backup
         csv_path = os.path.join(self.tensorboard_dir, 'training_log.csv')
         callback_list.append(keras_callbacks.CSVLogger(csv_path))
+        
+        # Model EMA for smoother inference (Quick Win #4)
+        # Averages weights over training for better generalization
+        if self.config.get('use_model_ema', True):
+            ema_decay = self.config.get('ema_decay', 0.999)
+            callback_list.append(ModelEMACallback(decay=ema_decay))
         
         return callback_list
     

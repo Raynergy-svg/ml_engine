@@ -196,7 +196,15 @@ class RandomForestWrapper(BaseModelWrapper):
 
 
 class RidgeWrapper(BaseModelWrapper):
-    """Ridge/Logistic regression wrapper (linear baseline)."""
+    """Ridge/Logistic regression wrapper with FULL sequence utilization.
+    
+    FIXED: Now uses ALL timesteps instead of just the last one.
+    Extracts rich temporal features:
+    - Last K timesteps (recent context)
+    - Rolling statistics (mean, std, min, max) over multiple windows
+    - Lag features for momentum detection
+    - Trend indicators (slope, acceleration)
+    """
     
     def __init__(self, config: EnsembleConfig):
         super().__init__("ridge")
@@ -237,12 +245,211 @@ class RidgeWrapper(BaseModelWrapper):
         return self.model.predict_proba(X_scaled)[:, 1]
     
     def _flatten(self, X: np.ndarray) -> np.ndarray:
+        """Extract rich temporal features from full sequence.
+        
+        IMPROVED: Uses ALL timesteps with multiple feature types:
+        1. Last 5 timesteps (recent values) - captures recent patterns
+        2. Rolling mean/std for windows [5, 10, 20] - trend & volatility
+        3. Diff features (momentum) - velocity of change
+        4. Slope features (acceleration) - rate of momentum change
+        5. Min/max positions - extreme value locations
+        """
         if X is None:
             return None
-        if X.ndim == 3:
-            # Just use last timestep for linear model
-            return X[:, -1, :]
-        return X
+        if X.ndim != 3:
+            return X
+            
+        batch_size, seq_len, n_features = X.shape
+        features_list = []
+        
+        # 1. Last 5 timesteps (flattened) - recent context
+        use_steps = min(5, seq_len)
+        X_recent = X[:, -use_steps:, :].reshape(batch_size, -1)
+        features_list.append(X_recent)
+        
+        # 2. Rolling statistics over multiple windows
+        for window in [5, 10, 20]:
+            if seq_len >= window:
+                # Mean of last `window` timesteps
+                X_window = X[:, -window:, :]
+                features_list.append(X_window.mean(axis=1))
+                features_list.append(X_window.std(axis=1))
+                features_list.append(X_window.min(axis=1))
+                features_list.append(X_window.max(axis=1))
+        
+        # 3. Global statistics (full sequence)
+        features_list.append(X.mean(axis=1))  # Overall mean
+        features_list.append(X.std(axis=1))   # Overall volatility
+        
+        # 4. First-order differences (momentum)
+        if seq_len >= 2:
+            X_diff = np.diff(X, axis=1)
+            features_list.append(X_diff[:, -1, :])  # Most recent change
+            features_list.append(X_diff.mean(axis=1))  # Average momentum
+        
+        # 5. Second-order differences (acceleration)
+        if seq_len >= 3:
+            X_diff2 = np.diff(X, n=2, axis=1)
+            features_list.append(X_diff2[:, -1, :])  # Most recent acceleration
+            features_list.append(X_diff2.mean(axis=1))  # Average acceleration
+        
+        # 6. Trend features: slope from first to last timestep
+        if seq_len >= 2:
+            slope = (X[:, -1, :] - X[:, 0, :]) / seq_len
+            features_list.append(slope)
+        
+        # 7. Position of min/max within sequence (normalized to [0,1])
+        argmax_pos = np.argmax(X, axis=1) / seq_len  # Where was max?
+        argmin_pos = np.argmin(X, axis=1) / seq_len  # Where was min?
+        features_list.append(argmax_pos)
+        features_list.append(argmin_pos)
+        
+        # Concatenate all features
+        return np.concatenate(features_list, axis=1)
+
+
+# Check if LightGBM is available
+try:
+    import lightgbm as lgb
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    LIGHTGBM_AVAILABLE = False
+
+
+class LightGBMWrapper(BaseModelWrapper):
+    """LightGBM wrapper - BETTER than Ridge for sequence classification.
+    
+    LightGBM handles feature interactions and non-linear patterns that
+    Ridge misses. Uses the same rich temporal features as RidgeWrapper.
+    
+    Benefits over Ridge:
+    - Handles feature interactions automatically
+    - Non-linear decision boundaries
+    - Built-in feature importance
+    - Faster training on large datasets
+    - Better handling of high-dimensional features
+    """
+    
+    def __init__(self, config: EnsembleConfig):
+        super().__init__("lightgbm")
+        self.config = config
+        self.model = None
+        self.scaler = None
+        self.feature_importance_ = None
+    
+    def fit(self, X: np.ndarray, y: np.ndarray, X_val: np.ndarray = None, y_val: np.ndarray = None) -> Dict:
+        if not LIGHTGBM_AVAILABLE:
+            raise ImportError("LightGBM not available. Install with: pip install lightgbm")
+        
+        X_flat = self._flatten(X)
+        X_val_flat = self._flatten(X_val) if X_val is not None else None
+        
+        # Scale features (helps convergence)
+        self.scaler = StandardScaler()
+        X_scaled = self.scaler.fit_transform(X_flat)
+        X_val_scaled = self.scaler.transform(X_val_flat) if X_val_flat is not None else None
+        
+        # LightGBM parameters optimized for FX direction prediction
+        self.model = lgb.LGBMClassifier(
+            objective='binary',
+            boosting_type='gbdt',
+            n_estimators=200,
+            max_depth=6,
+            num_leaves=31,
+            learning_rate=0.05,
+            feature_fraction=0.8,
+            bagging_fraction=0.8,
+            bagging_freq=5,
+            min_child_samples=20,
+            reg_alpha=0.1,
+            reg_lambda=0.1,
+            class_weight='balanced',
+            random_state=42,
+            verbose=-1,
+            n_jobs=-1,
+        )
+        
+        # Fit with early stopping if validation data available
+        if X_val_scaled is not None and y_val is not None:
+            self.model.fit(
+                X_scaled, y,
+                eval_set=[(X_val_scaled, y_val)],
+                callbacks=[lgb.early_stopping(stopping_rounds=20, verbose=False)]
+            )
+        else:
+            self.model.fit(X_scaled, y)
+        
+        self.is_fitted = True
+        self.feature_importance_ = self.model.feature_importances_
+        
+        train_acc = float(np.mean(self.model.predict(X_scaled) == y))
+        val_acc = float(np.mean(self.model.predict(X_val_scaled) == y_val)) if X_val_scaled is not None and y_val is not None else None
+        
+        return {"train_acc": train_acc, "val_acc": val_acc, "n_estimators": self.model.n_estimators_}
+    
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        if not self.is_fitted:
+            raise RuntimeError("LightGBM model not fitted")
+        X_flat = self._flatten(X)
+        X_scaled = self.scaler.transform(X_flat)
+        return self.model.predict_proba(X_scaled)[:, 1]
+    
+    def get_feature_importance(self) -> np.ndarray:
+        """Return feature importances for interpretability."""
+        return self.feature_importance_
+    
+    def _flatten(self, X: np.ndarray) -> np.ndarray:
+        """Extract rich temporal features - same as RidgeWrapper for consistency."""
+        if X is None:
+            return None
+        if X.ndim != 3:
+            return X
+            
+        batch_size, seq_len, n_features = X.shape
+        features_list = []
+        
+        # 1. Last 5 timesteps (flattened) - recent context
+        use_steps = min(5, seq_len)
+        X_recent = X[:, -use_steps:, :].reshape(batch_size, -1)
+        features_list.append(X_recent)
+        
+        # 2. Rolling statistics over multiple windows
+        for window in [5, 10, 20]:
+            if seq_len >= window:
+                X_window = X[:, -window:, :]
+                features_list.append(X_window.mean(axis=1))
+                features_list.append(X_window.std(axis=1))
+                features_list.append(X_window.min(axis=1))
+                features_list.append(X_window.max(axis=1))
+        
+        # 3. Global statistics
+        features_list.append(X.mean(axis=1))
+        features_list.append(X.std(axis=1))
+        
+        # 4. First-order differences (momentum)
+        if seq_len >= 2:
+            X_diff = np.diff(X, axis=1)
+            features_list.append(X_diff[:, -1, :])
+            features_list.append(X_diff.mean(axis=1))
+        
+        # 5. Second-order differences (acceleration)
+        if seq_len >= 3:
+            X_diff2 = np.diff(X, n=2, axis=1)
+            features_list.append(X_diff2[:, -1, :])
+            features_list.append(X_diff2.mean(axis=1))
+        
+        # 6. Trend features
+        if seq_len >= 2:
+            slope = (X[:, -1, :] - X[:, 0, :]) / seq_len
+            features_list.append(slope)
+        
+        # 7. Position of min/max
+        argmax_pos = np.argmax(X, axis=1) / seq_len
+        argmin_pos = np.argmin(X, axis=1) / seq_len
+        features_list.append(argmax_pos)
+        features_list.append(argmin_pos)
+        
+        return np.concatenate(features_list, axis=1)
 
 
 class TCNWrapper(BaseModelWrapper):
@@ -302,8 +509,13 @@ class EnsembleModel:
         if self.config.use_random_forest and SKLEARN_AVAILABLE:
             self.base_models["random_forest"] = RandomForestWrapper(self.config)
         
-        if self.config.use_ridge and SKLEARN_AVAILABLE:
-            self.base_models["ridge"] = RidgeWrapper(self.config)
+        # Prefer LightGBM over Ridge when available (better for non-linear patterns)
+        if self.config.use_ridge:
+            if LIGHTGBM_AVAILABLE:
+                self.base_models["lightgbm"] = LightGBMWrapper(self.config)
+                logger.info("Using LightGBM instead of Ridge (better accuracy)")
+            elif SKLEARN_AVAILABLE:
+                self.base_models["ridge"] = RidgeWrapper(self.config)
         
         logger.info(f"Initialized {len(self.base_models)} base models: {list(self.base_models.keys())}")
     

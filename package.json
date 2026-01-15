@@ -1,0 +1,35 @@
+{
+  "name": "ml_engine",
+  "version": "1.0.0",
+  "description": "<p align=\"center\">   <h1 align=\"center\">ML Engine</h1>   <p align=\"center\">     <strong>Modular Ensemble FX Trading Bot</strong>   </p>   <p align=\"center\">     A professional-grade machine learning system for Forex trading with multi-model ensemble architecture, optimized for Apple Silicon.   </p> </p>",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Raynergy-svg/ml_engine.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Raynergy-svg/ml_engine/issues"
+  },
+  "homepage": "https://github.com/Raynergy-svg/ml_engine#readme",
+  "devDependencies": {
+    "@anthropic-ai/claude-code": "^2.1.5",
+    "@modelcontextprotocol/inspector": "^0.18.0",
+    "@modelcontextprotocol/sdk": "^1.25.2",
+    "@modelcontextprotocol/server-filesystem": "^2025.12.18",
+    "@modelcontextprotocol/server-github": "^2025.4.8",
+    "@modelcontextprotocol/server-memory": "^2025.11.25",
+    "@modelcontextprotocol/server-sequential-thinking": "^2025.12.18",
+    "@notionhq/notion-mcp-server": "^2.0.0",
+    "@upstash/context7-mcp": "^2.1.0"
+  }
+}

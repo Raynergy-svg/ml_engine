@@ -1,0 +1,29 @@
+{
+  "trained_at": "2026-01-14T22:56:39.662733",
+  "timesteps": 50000,
+  "training_time_seconds": 63.7538788318634,
+  "training_samples": 1393,
+  "stats": {
+    "total_timesteps": 50000,
+    "final_equity": 21786.749526634263,
+    "max_drawdown": 0.00014570792466268612,
+    "total_trades": 499,
+    "win_rate": 0.4789579158316633
+  },
+  "config": {
+    "total_timesteps": 50000,
+    "max_drawdown_pct": 0.1,
+    "max_position_pct": 0.05
+  },
+  "pairs_used": [
+    "EUR_USD",
+    "GBP_USD",
+    "USD_JPY",
+    "USD_CHF",
+    "AUD_USD",
+    "USD_CAD",
+    "NZD_USD"
+  ],
+  "granularity": "H1",
+  "candles_per_pair": 500
+}

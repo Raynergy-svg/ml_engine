@@ -47,9 +47,19 @@ class MetaLabelingConfig:
     
     # Meta-model parameters
     use_xgboost: bool = True  # XGBoost often outperforms DL for this
-    n_estimators: int = 200
-    max_depth: int = 4
-    learning_rate: float = 0.1
+    n_estimators: int = 100  # Reduced from 200 to prevent overfitting
+    max_depth: int = 2  # Reduced from 4 - shallower trees generalize better
+    learning_rate: float = 0.05  # Reduced from 0.1 for smoother convergence
+    
+    # Regularization parameters (NEW - to fix overfitting)
+    reg_alpha: float = 1.0  # L1 regularization
+    reg_lambda: float = 5.0  # L2 regularization (strong)
+    subsample: float = 0.7  # Row subsampling
+    colsample_bytree: float = 0.7  # Column subsampling
+    min_child_weight: int = 5  # Min samples per leaf
+    early_stopping_rounds: int = 30  # Early stopping patience
+    max_overfitting_gap: float = 0.15  # Max train-val gap before fallback
+    auto_tune: bool = False  # Enable hyperparameter grid search
     
     # Label generation
     min_confidence_threshold: float = 0.55  # Trades where meta-confidence >= this
@@ -59,6 +69,7 @@ class MetaLabelingConfig:
     include_primary_proba: bool = True  # Include primary model's probability
     include_market_regime: bool = True  # Include volatility/trend regime
     include_position_features: bool = True  # Recent trade history
+    use_reduced_features: bool = True  # Use only essential meta-features (recommended)
 
 
 @dataclass
@@ -128,10 +139,12 @@ class MetaLabeler:
         
         # Original features (or aggregated if sequences)
         if features.ndim == 3:
-            # Sequence: use last timestep + aggregates
+            # Sequence: use last timestep only (reduced feature set)
             meta_feature_list.append(features[:, -1, :])
-            meta_feature_list.append(features.mean(axis=1))
-            meta_feature_list.append(features.std(axis=1))
+            # Only add aggregates if NOT using reduced features (reduces overfitting)
+            if not self.config.use_reduced_features:
+                meta_feature_list.append(features.mean(axis=1))
+                meta_feature_list.append(features.std(axis=1))
         else:
             meta_feature_list.append(features)
         
@@ -190,11 +203,181 @@ class MetaLabeler:
                 features_val, predictions_val, outcomes_val
             )
         
+        # Auto-tune hyperparameters if enabled
+        if self.config.auto_tune and meta_X_val is not None and meta_y_val is not None:
+            if verbose:
+                logger.info("Auto-tuning meta-labeler hyperparameters...")
+            best_params = self.tune_hyperparameters(meta_X, meta_y, meta_w, verbose=verbose)
+            # Update config with best params
+            for key, value in best_params.items():
+                if hasattr(self.config, key):
+                    setattr(self.config, key, value)
+            if verbose:
+                logger.info(f"Best params: {best_params}")
+        
         # Train meta-model
         if self.config.use_xgboost and XGBOOST_AVAILABLE:
-            return self._fit_xgboost(meta_X, meta_y, meta_w, meta_X_val, meta_y_val, verbose)
+            metrics = self._fit_xgboost(meta_X, meta_y, meta_w, meta_X_val, meta_y_val, verbose)
+            
+            # Check for overfitting and fallback to logistic if needed
+            train_acc = metrics.get("meta_train_accuracy", 0)
+            val_acc = metrics.get("meta_val_accuracy", train_acc)
+            gap = train_acc - val_acc
+            
+            if gap > self.config.max_overfitting_gap:
+                logger.warning(
+                    f"Meta-labeler overfitting detected: train={train_acc:.1%}, val={val_acc:.1%}, "
+                    f"gap={gap:.1%} > {self.config.max_overfitting_gap:.1%}. "
+                    f"Falling back to logistic regression."
+                )
+                return self._fit_logistic(meta_X, meta_y, meta_w, meta_X_val, meta_y_val, verbose)
+            
+            return metrics
         else:
             return self._fit_logistic(meta_X, meta_y, meta_w, meta_X_val, meta_y_val, verbose)
+    
+    def tune_hyperparameters(
+        self,
+        X: np.ndarray,
+        y: np.ndarray,
+        w: np.ndarray,
+        *,
+        verbose: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Tune meta-model hyperparameters using TimeSeriesSplit grid search.
+        
+        Args:
+            X: Meta-features
+            y: Meta-labels
+            w: Sample weights
+            verbose: Print progress
+        
+        Returns:
+            Best hyperparameters dict
+        """
+        from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
+        import xgboost as xgb
+        
+        # Define search grid (conservative to prevent overfitting)
+        param_grid = {
+            "max_depth": [2, 3],
+            "reg_lambda": [3.0, 5.0, 10.0],
+            "subsample": [0.6, 0.7],
+            "min_child_weight": [5, 10],
+        }
+        
+        # Base estimator with fixed params
+        base_model = xgb.XGBClassifier(
+            n_estimators=self.config.n_estimators,
+            learning_rate=self.config.learning_rate,
+            reg_alpha=self.config.reg_alpha,
+            colsample_bytree=self.config.colsample_bytree,
+            eval_metric="logloss",
+            use_label_encoder=False,
+            verbosity=0,
+            n_jobs=-1,
+            random_state=42,
+        )
+        
+        # Use TimeSeriesSplit to avoid look-ahead bias
+        tscv = TimeSeriesSplit(n_splits=3)
+        
+        grid_search = GridSearchCV(
+            base_model,
+            param_grid,
+            cv=tscv,
+            scoring="accuracy",
+            n_jobs=-1,
+            verbose=1 if verbose else 0,
+        )
+        
+        grid_search.fit(X, y, sample_weight=w)
+        
+        if verbose:
+            logger.info(f"Grid search best score: {grid_search.best_score_:.4f}")
+            logger.info(f"Grid search best params: {grid_search.best_params_}")
+        
+        return grid_search.best_params_
+    
+    def tune_threshold(
+        self,
+        features_val: np.ndarray,
+        predictions_val: np.ndarray,
+        outcomes_val: np.ndarray,
+        *,
+        threshold_range: Tuple[float, float] = (0.50, 0.70),
+        n_steps: int = 21,
+        verbose: bool = True,
+    ) -> Tuple[float, Dict[str, float]]:
+        """
+        Tune confidence threshold on validation set to maximize filtered accuracy improvement.
+        
+        Args:
+            features_val: Validation features
+            predictions_val: Primary model predictions on validation
+            outcomes_val: True outcomes on validation
+            threshold_range: (min, max) threshold to search
+            n_steps: Number of threshold values to try
+            verbose: Print progress
+        
+        Returns:
+            Tuple of (best_threshold, metrics_dict)
+        """
+        if not self.is_fitted:
+            raise RuntimeError("Meta-model must be fitted before threshold tuning")
+        
+        # Get meta-confidence
+        meta_conf = self.predict_meta_confidence(features_val, predictions_val)
+        
+        # Primary model accuracy (baseline)
+        primary_binary = (predictions_val >= 0.5)
+        actual_binary = (outcomes_val >= 0.5)
+        baseline_acc = float(np.mean(primary_binary == actual_binary))
+        
+        best_threshold = self.config.min_confidence_threshold
+        best_improvement = 0.0
+        best_metrics = {}
+        
+        thresholds = np.linspace(threshold_range[0], threshold_range[1], n_steps)
+        
+        for thresh in thresholds:
+            trade_mask = meta_conf >= thresh
+            n_trades = trade_mask.sum()
+            
+            if n_trades < 10:  # Need minimum trades for reliable estimate
+                continue
+            
+            filtered_acc = float(np.mean(primary_binary[trade_mask] == actual_binary[trade_mask]))
+            improvement = filtered_acc - baseline_acc
+            trade_rate = n_trades / len(meta_conf)
+            
+            # Prefer threshold that maximizes improvement while keeping reasonable trade rate
+            score = improvement * min(trade_rate, 0.5)  # Penalize if filtering too many trades
+            
+            if improvement > best_improvement and trade_rate >= 0.1:
+                best_improvement = improvement
+                best_threshold = float(thresh)
+                best_metrics = {
+                    "threshold": float(thresh),
+                    "baseline_accuracy": baseline_acc,
+                    "filtered_accuracy": filtered_acc,
+                    "improvement": improvement,
+                    "trade_rate": trade_rate,
+                    "n_trades": int(n_trades),
+                }
+        
+        if verbose and best_metrics:
+            logger.info(
+                f"Optimal threshold: {best_threshold:.2f} "
+                f"(acc: {best_metrics.get('baseline_accuracy', 0):.1%} -> {best_metrics.get('filtered_accuracy', 0):.1%}, "
+                f"+{best_metrics.get('improvement', 0)*100:.1f}%, trades: {best_metrics.get('trade_rate', 0):.0%})"
+            )
+        
+        # Update config
+        self.config.min_confidence_threshold = best_threshold
+        
+        return best_threshold, best_metrics
     
     def _fit_xgboost(
         self,
@@ -205,19 +388,33 @@ class MetaLabeler:
         y_val: Optional[np.ndarray],
         verbose: bool,
     ) -> Dict[str, float]:
-        """Train XGBoost meta-model."""
+        """Train XGBoost meta-model with regularization and early stopping."""
         import xgboost as xgb
         
-        self.meta_model = xgb.XGBClassifier(
-            n_estimators=self.config.n_estimators,
-            max_depth=self.config.max_depth,
-            learning_rate=self.config.learning_rate,
-            eval_metric="logloss",
-            use_label_encoder=False,
-            verbosity=0,
-            n_jobs=-1,
-            random_state=42,
-        )
+        # Build XGBClassifier with all params in constructor (avoids deprecation warning)
+        xgb_params = {
+            "n_estimators": self.config.n_estimators,
+            "max_depth": self.config.max_depth,
+            "learning_rate": self.config.learning_rate,
+            # Regularization parameters
+            "reg_alpha": self.config.reg_alpha,
+            "reg_lambda": self.config.reg_lambda,
+            "subsample": self.config.subsample,
+            "colsample_bytree": self.config.colsample_bytree,
+            "min_child_weight": self.config.min_child_weight,
+            # Other params
+            "eval_metric": "logloss",
+            "use_label_encoder": False,
+            "verbosity": 0,
+            "n_jobs": -1,
+            "random_state": 42,
+        }
+        
+        # Add early stopping to constructor if validation data provided
+        if X_val is not None and y_val is not None and self.config.early_stopping_rounds > 0:
+            xgb_params["early_stopping_rounds"] = self.config.early_stopping_rounds
+        
+        self.meta_model = xgb.XGBClassifier(**xgb_params)
         
         fit_kwargs = {"sample_weight": w}
         if X_val is not None and y_val is not None:
@@ -234,6 +431,12 @@ class MetaLabeler:
         if X_val is not None and y_val is not None:
             val_acc = float(np.mean((self.meta_model.predict(X_val) > 0.5) == y_val))
             metrics["meta_val_accuracy"] = val_acc
+            metrics["overfitting_gap"] = train_acc - val_acc
+            
+            if verbose:
+                gap = train_acc - val_acc
+                gap_status = "✓" if gap <= self.config.max_overfitting_gap else "⚠️ HIGH"
+                logger.info(f"Meta-model: train={train_acc:.1%}, val={val_acc:.1%}, gap={gap:.1%} {gap_status}")
         
         return metrics
     
@@ -296,8 +499,10 @@ class MetaLabeler:
         
         if features.ndim == 3:
             meta_feature_list.append(features[:, -1, :])
-            meta_feature_list.append(features.mean(axis=1))
-            meta_feature_list.append(features.std(axis=1))
+            # Only add aggregates if NOT using reduced features
+            if not self.config.use_reduced_features:
+                meta_feature_list.append(features.mean(axis=1))
+                meta_feature_list.append(features.std(axis=1))
         else:
             meta_feature_list.append(features)
         

@@ -42,5 +42,9 @@
         }
     },
     "python-envs.defaultEnvManager": "ms-python.python:system",
-    "python-envs.pythonProjects": []
+    "python-envs.pythonProjects": [],
+    "chat.tools.terminal.autoApprove": {
+        "./Buddy": true
+    },
+    "idf.pythonInstallPath": "/Users/davidcertan/miniforge3/bin/python"
 }

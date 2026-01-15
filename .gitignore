@@ -1,4 +1,4 @@
-__pycache__/
+sx2__pycache__/
 .venv/
 env/
 venv/
@@ -31,3 +31,5 @@ output/
 trained_data/cache/
 trained_data/logs/
 trained_data/visualizations/
+node_modules
+4

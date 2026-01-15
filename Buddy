@@ -27,20 +27,41 @@ get_conda() {
 run_py() { "$(get_conda)" run -n "${ENV_NAME}" --no-capture-output python "$@"; }
 
 cmd_predict() {
-    local granularity="H1"  # Default to H1 to match config_improved_H1.yaml
-    local args=()
+    local granularity="H1"
+    local instrument=""
+    local execute=""
+    local verbose=""
+    
+    # First positional arg is instrument if not a flag
+    if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+        instrument="$1"
+        shift
+    fi
+    
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -c|--candles) args+=(--candles "$2"); shift 2 ;;
-            -i|--instrument) args+=(--instrument "$2"); shift 2 ;;
+            -i|--instrument) instrument="$2"; shift 2 ;;
             -g|--granularity) granularity="$2"; shift 2 ;;
-            -x|--execute) args+=(--execute); shift ;;
-            -f|--force) args+=(--force-execute); shift ;;
-            -v|--verbose) args+=(--verbose); shift ;;
+            -x|--execute) execute="True"; shift ;;
+            -v|--verbose) verbose="True"; shift ;;
             *) shift ;;
         esac
     done
-    run_py "${SCRIPT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
+    
+    # Default to EUR_USD if no instrument
+    instrument="${instrument:-EUR_USD}"
+    
+    # Use the new buddy_predict_78 function with 78% model + aggressive sizing
+    run_py -c "
+from main import buddy_predict_78
+buddy_predict_78(
+    '${CONFIG_FILE}',
+    instrument='${instrument}',
+    granularity='${granularity}',
+    execute=${execute:-False},
+    verbose=${verbose:-False},
+)
+"
 }
 
 cmd_train() {
@@ -49,7 +70,7 @@ cmd_train() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -c|--candles) args+=(--candles "$2"); shift 2 ;;
-            -i|--instrument) args+=(--instrument "$2"); shift 2 ;;
+            -i|-I|--instrument) args+=(--instrument "$2"); shift 2 ;;
             -g|--granularity) granularity="$2"; shift 2 ;;
             -m|--model) args+=(--model-type "$2"); shift 2 ;;
             --oanda-live) args+=(--oanda-live); shift ;;
@@ -94,6 +115,7 @@ cmd_journal() {
             -u|--update) args+=(--update); shift ;;
             -d|--days) args+=(--days "$2"); shift 2 ;;
             -v|--verbose) args+=(--verbose); shift ;;
+            -i|--import) args+=(--import-trades); shift ;;
             *) shift ;;
         esac
     done

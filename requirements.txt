@@ -115,5 +115,7 @@ packaging==25.0
 # oandapyV20  # OANDA trading API - install via: pip install oandapyV20
 # openai      # OpenAI API - install via: pip install openai
 # gymnasium   # RL environments - install via: pip install gymnasium
+# stable-baselines3  # RL algorithms - install via: pip install stable-baselines3
 # ta-lib      # Technical analysis - requires system lib first
 # wandb       # Weights & Biases tracking - install via: pip install wandb
+# optuna      # Hyperparameter optimization - install via: pip install optuna
