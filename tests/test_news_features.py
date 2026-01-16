@@ -9,10 +9,13 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 
+import news_features
 from news_features import (
     EconomicEvent,
+    ImpactLevel,
     PostTradeUpdater,
     TradeFeatures,
+    WIN_THRESHOLD,
     add_sentiment_features,
     analyze_sentiment_finbert,
     check_economic_calendar,
@@ -53,10 +56,16 @@ class TestSentimentAnalysis(unittest.TestCase):
 class TestNewsFetching(unittest.TestCase):
     """Test news fetching functionality."""
 
+    def setUp(self):
+        """Save original fetcher state."""
+        self._original_news_fetcher = news_features.NEWS_FETCHER
+    
+    def tearDown(self):
+        """Restore original fetcher state."""
+        news_features.NEWS_FETCHER = self._original_news_fetcher
+
     def test_fetch_forex_news_default_empty(self):
         """Default fetcher returns empty list."""
-        # Reset any registered fetcher
-        import news_features
         news_features.NEWS_FETCHER = None
         
         news = fetch_forex_news("EUR_USD")
@@ -64,8 +73,6 @@ class TestNewsFetching(unittest.TestCase):
 
     def test_register_news_fetcher(self):
         """Custom news fetcher can be registered."""
-        import news_features
-        
         mock_news = ["EUR rises on ECB decision", "Dollar weakens"]
         
         def mock_fetcher(instrument: str, max_headlines: int):
@@ -75,16 +82,14 @@ class TestNewsFetching(unittest.TestCase):
         
         news = fetch_forex_news("EUR_USD", max_headlines=2)
         self.assertEqual(news, mock_news)
-        
-        # Cleanup
-        news_features.NEWS_FETCHER = None
 
 
 class TestAddSentimentFeatures(unittest.TestCase):
     """Test add_sentiment_features function."""
 
     def setUp(self):
-        """Create test dataframe."""
+        """Create test dataframe and save original fetcher state."""
+        self._original_news_fetcher = news_features.NEWS_FETCHER
         self.df = pd.DataFrame({
             "close": [1.1000, 1.1010, 1.1020],
             "open": [1.0990, 1.1000, 1.1010],
@@ -92,10 +97,13 @@ class TestAddSentimentFeatures(unittest.TestCase):
             "low": [1.0985, 1.0995, 1.1005],
             "volume": [100, 110, 120],
         })
+    
+    def tearDown(self):
+        """Restore original fetcher state."""
+        news_features.NEWS_FETCHER = self._original_news_fetcher
 
     def test_add_sentiment_no_news(self):
         """When no news available, adds neutral features."""
-        import news_features
         news_features.NEWS_FETCHER = None
         
         result = add_sentiment_features(self.df, "EUR_USD")
@@ -107,8 +115,6 @@ class TestAddSentimentFeatures(unittest.TestCase):
 
     def test_add_sentiment_with_news(self):
         """With news available, computes sentiment features."""
-        import news_features
-        
         # Register mock fetcher with positive news
         def mock_fetcher(instrument: str, max_headlines: int):
             return ["Bull market continues", "Strong growth ahead"]
@@ -122,13 +128,9 @@ class TestAddSentimentFeatures(unittest.TestCase):
         self.assertEqual(result["news_volume"].iloc[0], 2)
         # Simple sentiment should return positive for bullish words
         self.assertGreater(result["news_sentiment"].iloc[0], 0.0)
-        
-        # Cleanup
-        news_features.NEWS_FETCHER = None
 
     def test_add_sentiment_preserves_original(self):
         """Original dataframe is not modified."""
-        import news_features
         news_features.NEWS_FETCHER = None
         
         original_cols = list(self.df.columns)
@@ -143,9 +145,16 @@ class TestAddSentimentFeatures(unittest.TestCase):
 class TestEconomicCalendar(unittest.TestCase):
     """Test economic calendar functionality."""
 
+    def setUp(self):
+        """Save original calendar fetcher state."""
+        self._original_calendar_fetcher = news_features.CALENDAR_FETCHER
+    
+    def tearDown(self):
+        """Restore original calendar fetcher state."""
+        news_features.CALENDAR_FETCHER = self._original_calendar_fetcher
+
     def test_fetch_calendar_default_empty(self):
         """Default calendar fetcher returns empty list."""
-        import news_features
         news_features.CALENDAR_FETCHER = None
         
         events = fetch_forexfactory_calendar()
@@ -153,13 +162,11 @@ class TestEconomicCalendar(unittest.TestCase):
 
     def test_register_calendar_fetcher(self):
         """Custom calendar fetcher can be registered."""
-        import news_features
-        
         mock_events = [
             EconomicEvent(
                 title="NFP",
                 currency="USD",
-                impact="high",
+                impact=ImpactLevel.HIGH,
                 time=datetime.now(timezone.utc),
                 time_to=30,
             )
@@ -170,13 +177,9 @@ class TestEconomicCalendar(unittest.TestCase):
         events = fetch_forexfactory_calendar()
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].title, "NFP")
-        
-        # Cleanup
-        news_features.CALENDAR_FETCHER = None
 
     def test_check_calendar_no_events(self):
         """No events means safe to trade."""
-        import news_features
         news_features.CALENDAR_FETCHER = None
         
         result = check_economic_calendar()
@@ -187,13 +190,11 @@ class TestEconomicCalendar(unittest.TestCase):
 
     def test_check_calendar_high_impact_soon(self):
         """High-impact event soon means don't trade."""
-        import news_features
-        
         mock_events = [
             EconomicEvent(
                 title="NFP",
                 currency="USD",
-                impact="high",
+                impact=ImpactLevel.HIGH,
                 time=datetime.now(timezone.utc),
                 time_to=30,  # 30 minutes away
             )
@@ -207,19 +208,14 @@ class TestEconomicCalendar(unittest.TestCase):
         self.assertIn("NFP", result["reason"])
         self.assertIn("30min", result["reason"])
         self.assertEqual(len(result["events"]), 1)
-        
-        # Cleanup
-        news_features.CALENDAR_FETCHER = None
 
     def test_check_calendar_high_impact_far(self):
         """High-impact event far away means safe to trade."""
-        import news_features
-        
         mock_events = [
             EconomicEvent(
                 title="NFP",
                 currency="USD",
-                impact="high",
+                impact=ImpactLevel.HIGH,
                 time=datetime.now(timezone.utc),
                 time_to=180,  # 3 hours away
             )
@@ -231,19 +227,14 @@ class TestEconomicCalendar(unittest.TestCase):
         
         self.assertTrue(result["trade"])
         self.assertIsNone(result["reason"])
-        
-        # Cleanup
-        news_features.CALENDAR_FETCHER = None
 
     def test_check_calendar_low_impact_ignored(self):
         """Low-impact events are ignored."""
-        import news_features
-        
         mock_events = [
             EconomicEvent(
                 title="Building Permits",
                 currency="USD",
-                impact="low",
+                impact=ImpactLevel.LOW,
                 time=datetime.now(timezone.utc),
                 time_to=10,  # Very close but low impact
             )
@@ -254,9 +245,6 @@ class TestEconomicCalendar(unittest.TestCase):
         result = check_economic_calendar()
         
         self.assertTrue(result["trade"])
-        
-        # Cleanup
-        news_features.CALENDAR_FETCHER = None
 
 
 class TestPostTradeUpdater(unittest.TestCase):
@@ -355,9 +343,16 @@ class TestPostTradeUpdater(unittest.TestCase):
 class TestGlobalPostTradeUpdater(unittest.TestCase):
     """Test global PostTradeUpdater singleton."""
 
+    def setUp(self):
+        """Save original updater state."""
+        self._original_updater = news_features._post_trade_updater
+    
+    def tearDown(self):
+        """Restore original updater state."""
+        news_features._post_trade_updater = self._original_updater
+
     def test_get_post_trade_updater(self):
         """Global updater is accessible."""
-        import news_features
         news_features._post_trade_updater = None  # Reset
         
         updater = get_post_trade_updater()
@@ -369,7 +364,6 @@ class TestGlobalPostTradeUpdater(unittest.TestCase):
 
     def test_post_trade_update_convenience(self):
         """Convenience function works."""
-        import news_features
         news_features._post_trade_updater = None  # Reset
         
         features = np.random.randn(10, 5)

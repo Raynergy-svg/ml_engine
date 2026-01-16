@@ -18,12 +18,33 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+
+# Impact levels for economic events
+class ImpactLevel(str, Enum):
+    """Economic event impact levels."""
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+# Threshold for considering a trade as a win (0.5 = anything >= 0.5 is a win)
+WIN_THRESHOLD = 0.5
+
+# Default time threshold in minutes for avoiding high-impact events
+DEFAULT_EVENT_THRESHOLD_MINUTES = 120
+
 
 # Try to import transformers for FinBERT sentiment analysis
 _HAS_TRANSFORMERS = False
@@ -254,7 +275,7 @@ def register_calendar_fetcher(fetcher: Callable[[], List[EconomicEvent]]) -> Non
 
 
 def check_economic_calendar(
-    minutes_threshold: int = 120,
+    minutes_threshold: int = DEFAULT_EVENT_THRESHOLD_MINUTES,
 ) -> Dict[str, Any]:
     """
     Check economic calendar for imminent high-impact events.
@@ -283,7 +304,7 @@ def check_economic_calendar(
     # Filter for high-impact events within threshold
     high_impact = [
         e for e in events
-        if e.impact == "high" and 0 <= e.time_to < minutes_threshold
+        if e.impact == ImpactLevel.HIGH and 0 <= e.time_to < minutes_threshold
     ]
     
     if high_impact:
@@ -466,7 +487,7 @@ class PostTradeUpdater:
             return 0.0
         
         recent = self._trade_results[-n:]
-        wins = sum(1 for t in recent if t.y >= 0.5)
+        wins = sum(1 for t in recent if t.y >= WIN_THRESHOLD)
         return wins / len(recent)
     
     def clear_history(self) -> None:
