@@ -258,10 +258,10 @@ def query_quant_critic(
         
     Returns:
         Dict with keys:
-        - feedback: Specific feedback on the interpretation
-        - improved_rationale: Improved version of the rationale (if needed)
-        - risk_assessment: Additional risk factors to consider
-        - is_optimal: Boolean indicating if no improvements needed
+        - feedback: str - Specific feedback on the interpretation (always present)
+        - improved_rationale: str | None - Improved rationale, or None if optimal
+        - risk_assessment: str | None - Additional risk factors, or None if not applicable
+        - is_optimal: bool - True if no improvements needed, False otherwise
     """
     prompt = f"""You are an expert quant critic improving trading rationale from a static ML model (Buddy).
 
@@ -360,10 +360,11 @@ def improve_trading_rationale(
     # Construct current response
     delta = prediction - last_price
     direction = "BUY" if delta > 0 else "SELL"
+    confidence_str = f"{confidence:.1%}" if confidence <= 1 else f"{confidence:.1f}"
     current_response = (
         f"Signal: {direction} {ticker}\n"
         f"Prediction: {prediction:.5f}, Last: {last_price:.5f}, Delta: {delta:+.5f}\n"
-        f"Confidence: {confidence:.1%}" if confidence <= 1 else f"Confidence: {confidence:.1f}"
+        f"Confidence: {confidence_str}"
     )
     
     return query_quant_critic(
@@ -373,4 +374,3 @@ def improve_trading_rationale(
         current_response=current_response,
         model=model,
     )
-# — Raynergy-svg —

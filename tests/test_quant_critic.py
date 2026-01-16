@@ -128,10 +128,12 @@ class TestImproveTradingRationale:
             assert kwargs["timeframe"] == "H1"
             
             buddy_raw = kwargs["buddy_raw"]
-            assert buddy_raw["prediction"] == 110.500
+            expected_prediction = 110.500
+            expected_last_price = 110.450
+            assert buddy_raw["prediction"] == expected_prediction
             assert buddy_raw["confidence"] == 0.85
-            assert buddy_raw["last_price"] == 110.450
-            assert buddy_raw["delta"] == pytest.approx(0.05, rel=1e-5)
+            assert buddy_raw["last_price"] == expected_last_price
+            assert buddy_raw["delta"] == pytest.approx(expected_prediction - expected_last_price, rel=1e-5)
             assert buddy_raw["direction"] == "long"
 
     def test_direction_short(self):
@@ -205,4 +207,3 @@ class TestImproveTradingRationale:
             )
             
             assert result == expected_result
-# — Raynergy-svg —
