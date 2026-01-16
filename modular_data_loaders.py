@@ -1100,6 +1100,10 @@ def load_xgboost_data(
     X = X[valid_start:]
     raw_momentum_valid = raw_momentum_all[valid_start:]
     
+    # Verify arrays have same length for consistent indexing
+    assert len(X) == len(raw_momentum_valid), \
+        f"Array length mismatch: X={len(X)}, raw_momentum_valid={len(raw_momentum_valid)}"
+    
     # Handle NaN/Inf in features
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     
@@ -1379,6 +1383,10 @@ def load_ridge_data(
     bb_pos_valid_range = bb_pos[valid_start:]
     volume_ratio_valid_range = volume_ratio[valid_start:]
     
+    # Verify arrays have same length for consistent indexing
+    assert len(X) == len(adx_valid_range) == len(rsi_valid_range), \
+        f"Array length mismatch: X={len(X)}, adx={len(adx_valid_range)}, rsi={len(rsi_valid_range)}"
+    
     # Handle NaN/Inf in features
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     
@@ -1476,6 +1484,7 @@ def validate_no_leakage(
     y_val: np.ndarray,
     y_test: np.ndarray,
     max_correlation: float = 0.99,
+    target_std_tolerance: float = 0.01,
 ) -> Dict[str, bool]:
     """
     Validate that there is no data leakage across train/val/test splits.
@@ -1489,6 +1498,7 @@ def validate_no_leakage(
         X_train, X_val, X_test: Feature matrices
         y_train, y_val, y_test: Target arrays
         max_correlation: Maximum allowed correlation between split means (default 0.99)
+        target_std_tolerance: Tolerance for target std comparison (default 0.01 = 1%)
     
     Returns:
         Dict with validation results:
@@ -1504,12 +1514,33 @@ def validate_no_leakage(
     val_mean = X_val.mean(axis=0)
     test_mean = X_test.mean(axis=0)
     
-    train_val_corr = np.corrcoef(train_mean, val_mean)[0, 1] if len(train_mean) > 1 else 0.0
-    train_test_corr = np.corrcoef(train_mean, test_mean)[0, 1] if len(train_mean) > 1 else 0.0
+    # Handle edge cases for correlation calculation
+    # - Single feature: set correlation to 0 (can't compute meaningfully)
+    # - Zero variance: corrcoef may produce NaN/inf
+    train_val_corr = 0.0
+    train_test_corr = 0.0
     
-    # Handle NaN correlations (constant features)
-    train_val_corr = 0.0 if np.isnan(train_val_corr) else train_val_corr
-    train_test_corr = 0.0 if np.isnan(train_test_corr) else train_test_corr
+    if len(train_mean) > 1:
+        # Check for zero variance which would cause NaN in corrcoef
+        train_std = np.std(train_mean)
+        val_std = np.std(val_mean)
+        test_std = np.std(test_mean)
+        
+        if train_std > 1e-10 and val_std > 1e-10:
+            try:
+                train_val_corr = np.corrcoef(train_mean, val_mean)[0, 1]
+            except (FloatingPointError, RuntimeWarning):
+                train_val_corr = 0.0
+        
+        if train_std > 1e-10 and test_std > 1e-10:
+            try:
+                train_test_corr = np.corrcoef(train_mean, test_mean)[0, 1]
+            except (FloatingPointError, RuntimeWarning):
+                train_test_corr = 0.0
+    
+    # Handle NaN correlations (can still occur in edge cases)
+    train_val_corr = 0.0 if np.isnan(train_val_corr) or np.isinf(train_val_corr) else train_val_corr
+    train_test_corr = 0.0 if np.isnan(train_test_corr) or np.isinf(train_test_corr) else train_test_corr
     
     feature_means_ok = train_val_corr < max_correlation and train_test_corr < max_correlation
     
@@ -1527,11 +1558,13 @@ def validate_no_leakage(
     test_target_std = np.std(y_test_flat)
     
     # For temporal data, we expect some drift in target statistics
-    # If all stds are identical (within 1%), it might indicate shared computation
+    # If all stds are identical (within tolerance), it might indicate shared computation
     std_ratio_val = val_target_std / max(train_target_std, 1e-8)
     std_ratio_test = test_target_std / max(train_target_std, 1e-8)
     
-    target_distributions_ok = not (0.99 < std_ratio_val < 1.01 and 0.99 < std_ratio_test < 1.01)
+    lower_bound = 1.0 - target_std_tolerance
+    upper_bound = 1.0 + target_std_tolerance
+    target_distributions_ok = not (lower_bound < std_ratio_val < upper_bound and lower_bound < std_ratio_test < upper_bound)
     
     if not target_distributions_ok:
         warnings.append(f"Target std identical across splits: train={train_target_std:.6f}, val={val_target_std:.6f}, test={test_target_std:.6f}")
