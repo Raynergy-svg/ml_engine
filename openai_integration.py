@@ -232,4 +232,145 @@ def autotune_configurations(config: dict) -> dict:
     config["model"].update(tuned_params)
     logging.info(f"Autotuned configuration: {tuned_params}")
     return config
-# — Raynergy-svg —
+
+
+def query_quant_critic(
+    ticker: str,
+    timeframe: str,
+    buddy_raw: dict,
+    current_response: str,
+    model: str = "gpt-4",
+    temperature: float = 0.2,
+) -> dict:
+    """Query OpenAI to act as a quant critic improving trading rationale.
+    
+    This function provides specific feedback on Buddy's ML model predictions,
+    identifying errors in logic, missing risks, overconfidence, or poor
+    linkage to features.
+    
+    Args:
+        ticker: The trading instrument (e.g., "USD_JPY", "EUR_USD")
+        timeframe: The timeframe of the prediction (e.g., "H1", "M5")
+        buddy_raw: Dict containing Buddy's raw output (confidence score, prob, etc.)
+        current_response: The current interpretation of Buddy's prediction
+        model: OpenAI model to use (default: "gpt-4")
+        temperature: Temperature for generation (default: 0.2)
+        
+    Returns:
+        Dict with keys:
+        - feedback: str - Specific feedback on the interpretation (always present)
+        - improved_rationale: str | None - Improved rationale, or None if optimal
+        - risk_assessment: str | None - Additional risk factors, or None if not applicable
+        - is_optimal: bool - True if no improvements needed, False otherwise
+    """
+    prompt = f"""You are an expert quant critic improving trading rationale from a static ML model (Buddy).
+
+Original Task: Interpret Buddy's prediction for {ticker} on {timeframe}.
+Buddy Raw Output: {json.dumps(buddy_raw, indent=2)}
+
+Current Interpretation: 
+{current_response}
+
+Provide specific feedback:
+- Errors in logic, missing risks, overconfidence, poor linkage to features.
+- Improvements for clarity, completeness, risk assessment.
+- If already optimal: Say "No improvements needed."
+
+Return your response in the following JSON format:
+{{
+    "feedback": "Specific feedback on the current interpretation",
+    "improved_rationale": "Improved version of the rationale, or null if optimal",
+    "risk_assessment": "Additional risk factors to consider",
+    "is_optimal": true/false
+}}
+
+Return only valid JSON."""
+
+    response_text = query_openai(prompt, model=model, temperature=temperature)
+    if response_text is None:
+        return {
+            "feedback": "Unable to query quant critic - API unavailable",
+            "improved_rationale": None,
+            "risk_assessment": None,
+            "is_optimal": False,
+        }
+    
+    try:
+        result = json.loads(response_text)
+        # Ensure all expected keys are present
+        return {
+            "feedback": result.get("feedback", ""),
+            "improved_rationale": result.get("improved_rationale"),
+            "risk_assessment": result.get("risk_assessment"),
+            "is_optimal": result.get("is_optimal", False),
+        }
+    except json.JSONDecodeError as e:
+        logging.error(f"Error parsing quant critic response: {e}")
+        # Return the raw text as feedback if JSON parsing fails
+        return {
+            "feedback": response_text,
+            "improved_rationale": None,
+            "risk_assessment": None,
+            "is_optimal": False,
+        }
+
+
+def improve_trading_rationale(
+    ticker: str,
+    timeframe: str,
+    prediction: float,
+    confidence: float,
+    last_price: float,
+    features: dict = None,
+    gate_results: dict = None,
+    model: str = "gpt-4",
+) -> dict:
+    """Generate improved trading rationale using the quant critic.
+    
+    This is a convenience function that constructs the appropriate inputs
+    for the quant critic from common trading signal components.
+    
+    Args:
+        ticker: Trading instrument
+        timeframe: Prediction timeframe
+        prediction: Model prediction value
+        confidence: Model confidence score (0-1 or 0-100)
+        last_price: Last observed price
+        features: Dict of key features used in prediction (optional)
+        gate_results: Results from trading gates (optional)
+        model: OpenAI model to use
+        
+    Returns:
+        Dict with improved rationale and feedback
+    """
+    # Construct buddy_raw from inputs
+    buddy_raw = {
+        "prediction": prediction,
+        "confidence": confidence,
+        "last_price": last_price,
+        "delta": prediction - last_price,
+        "direction": "long" if prediction > last_price else "short",
+    }
+    
+    if features:
+        buddy_raw["key_features"] = features
+    if gate_results:
+        buddy_raw["gate_results"] = gate_results
+    
+    # Construct current response
+    delta = prediction - last_price
+    direction = "BUY" if delta > 0 else "SELL"
+    confidence_str = f"{confidence:.1%}" if confidence <= 1 else f"{confidence:.1f}"
+    current_response = (
+        f"Signal: {direction} {ticker}\n"
+        f"Prediction: {prediction:.5f}, Last: {last_price:.5f}, Delta: {delta:+.5f}\n"
+        f"Confidence: {confidence_str}"
+    )
+    
+    return query_quant_critic(
+        ticker=ticker,
+        timeframe=timeframe,
+        buddy_raw=buddy_raw,
+        current_response=current_response,
+        model=model,
+    )
