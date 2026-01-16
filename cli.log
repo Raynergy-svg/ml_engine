@@ -33578,3 +33578,29 @@ FileNotFoundError: Configuration file not found: 5000
 2026-01-15 22:45:45 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 3/5: train=[0:7075] (7075), test=[7099:7523] (424)
 2026-01-15 22:48:55 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 4/5: train=[0:8612] (8612), test=[8636:9060] (424)
 2026-01-15 22:52:09 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 5/5: train=[0:10150] (10150), test=[10174:10598] (424)
+2026-01-16 01:33:45 - root - ERROR - [main.py:11489] - Command failed: 'TradeSignal' object has no attribute 'metadata'
+Traceback (most recent call last):
+  File "/Users/davidcertan/Desktop/ml_engine/main.py", line 11443, in main
+    _dispatch_buddy(args, command_map)
+  File "/Users/davidcertan/Desktop/ml_engine/main.py", line 7987, in _dispatch_buddy
+    command_map["buddy"](
+  File "/Users/davidcertan/Desktop/ml_engine/main.py", line 6347, in buddy
+    result = ensemble.predict_verbose(df, instrument=instrument)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/davidcertan/Desktop/ml_engine/modular_inference.py", line 1337, in predict_verbose
+    intel_data = signal.metadata.get('intel_data', {}) if signal.metadata else {}
+                                                          ^^^^^^^^^^^^^^^
+AttributeError: 'TradeSignal' object has no attribute 'metadata'
+2026-01-16 01:39:14 - root - ERROR - [main.py:11489] - Command failed: 'OnlineLearner' object has no attribute 'outcome_buffer'
+Traceback (most recent call last):
+  File "/Users/davidcertan/Desktop/ml_engine/main.py", line 11443, in main
+    _dispatch_buddy(args, command_map)
+  File "/Users/davidcertan/Desktop/ml_engine/main.py", line 7987, in _dispatch_buddy
+    command_map["buddy"](
+  File "/Users/davidcertan/Desktop/ml_engine/main.py", line 6347, in buddy
+    result = ensemble.predict_verbose(df, instrument=instrument)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/davidcertan/Desktop/ml_engine/modular_inference.py", line 1367, in predict_verbose
+    buffer_size = len(self.market_intel.online_learner.outcome_buffer)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'OnlineLearner' object has no attribute 'outcome_buffer'

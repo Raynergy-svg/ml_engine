@@ -169,6 +169,9 @@ class TradeSignal:
     
     # Rejection reason if no trade
     reason: Optional[str] = None
+    
+    # Market intelligence data (NEW)
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class ModularEnsembleInference:
@@ -931,9 +934,10 @@ class ModularEnsembleInference:
                     # Blocked by economic event or sentiment
                     logger.info(f"🚫 Trade blocked by market intelligence: {block_reason}")
                     return TradeSignal(
-                        should_trade=False,
+                        trade=False,
                         direction=None,
-                        size_lots=0.0,
+                        size=0.0,
+                        confidence=0.0,
                         reason=f"Market Intelligence: {block_reason}",
                         regime=None,
                         regime_confidence=0.0,
@@ -943,7 +947,6 @@ class ModularEnsembleInference:
                         xgb_momentum=0.0,
                         xgb_acceleration=False,
                         rf_drawdown_pips=0.0,
-                        rf_drawdown_pct=0.0,
                         rf_streak_prob=0.0,
                         metadata={'intel_data': intel_data},
                     )
@@ -1314,6 +1317,7 @@ class ModularEnsembleInference:
             risk_gate_passed=risk_gate_passed,
             regime_gate_passed=regime_gate_passed,
             reason=reason,
+            metadata={'intel_data': intel_data},
         )
     
     def predict_verbose(
@@ -1321,16 +1325,49 @@ class ModularEnsembleInference:
         df: pd.DataFrame,
         equity: Optional[float] = None,
         instrument: Optional[str] = None,
+        headlines: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Run inference with verbose output for logging/display.
         
         Returns dict with all details formatted for display.
         """
-        signal = self.predict(df, equity, instrument=instrument)
+        signal = self.predict(df, equity, instrument=instrument, headlines=headlines)
         
         # Format gate checks
         gate_checks = []
+        
+        # === MARKET INTELLIGENCE STATUS (NEW) ===
+        intel_data = signal.metadata.get('intel_data', {}) if signal.metadata else {}
+        
+        # Calendar check
+        if 'next_high_impact' in intel_data:
+            event = intel_data['next_high_impact']
+            mins = int(event.get('minutes_until', 999))
+            event_name = event.get('name', 'Unknown')
+            gate_checks.append(f"📅 Calendar: {event_name} in {mins}m ✓")
+        elif self.market_intel:
+            gate_checks.append("📅 Calendar: No events ✓")
+        
+        # Sentiment check
+        if 'sentiment' in intel_data:
+            sent = intel_data['sentiment']
+            label = sent.get('aggregate_label', 'neutral')
+            score = sent.get('aggregate_score', 0.0)
+            n_headlines = sent.get('num_headlines', 0)
+            if n_headlines > 0:
+                gate_checks.append(f"📰 Sentiment: {label} ({score:+.2f}) [{n_headlines} headlines] ✓")
+            else:
+                gate_checks.append("📰 Sentiment: No headlines (skipped)")
+        elif self.market_intel and self.market_intel.sentiment is not None:
+            gate_checks.append("📰 Sentiment: Ready (no headlines provided)")
+        
+        # Online learning status
+        if self.market_intel and self.market_intel.online_learner:
+            buffer_size = len(self.market_intel.online_learner.trade_buffer)
+            gate_checks.append(f"🔄 Online Learning: {buffer_size}/50 trades buffered")
+        
+        gate_checks.append("")  # Spacer
         
         # TCN direction
         if signal.tcn_direction is not None:
@@ -1365,6 +1402,7 @@ class ModularEnsembleInference:
             'gate_checks': gate_checks,
             'decision': decision,
             'raw_signal': signal,
+            'intel_data': intel_data,
         }
 
 
