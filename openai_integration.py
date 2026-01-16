@@ -2,38 +2,20 @@ import os
 import json
 import time
 import logging
+import openai
+import optuna
 import yaml
 
-try:
-    import openai
-    OPENAI_AVAILABLE = True
-except ImportError:
-    openai = None
-    OPENAI_AVAILABLE = False
+from dotenv import load_dotenv
 
-try:
-    import optuna
-    OPTUNA_AVAILABLE = True
-except ImportError:
-    optuna = None
-    OPTUNA_AVAILABLE = False
+load_dotenv()
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
-
-if OPENAI_AVAILABLE and openai:
-    openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = os.getenv("OPENAI_API_KEY")
 project_id = os.getenv("OPENAI_PROJECT_ID")
 
 
 def set_openai_credentials(config: dict) -> None:
     """Set OpenAI credentials from config or environment variables."""
-    if not OPENAI_AVAILABLE:
-        logging.warning("OpenAI not installed, skipping credential setup")
-        return
     openai.api_key = config.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
         logging.error("OpenAI API key not found in configuration or .env")
@@ -45,9 +27,6 @@ client = openai
 
 def query_openai(prompt, model="gpt-4", temperature=0.2, max_attempts=3):
     """General-purpose function to query the OpenAI API."""
-    if not OPENAI_AVAILABLE:
-        logging.error("OpenAI not installed.")
-        return None
     if not openai.api_key:
         logging.error("OPENAI_API_KEY not set.")
         return None
@@ -238,10 +217,7 @@ def report_config_changes(current_config, config_updates, config_path: str = "co
 
 
 def autotune_configurations(config: dict) -> dict:
-    """Use optuna to autotune ML engine configurations (legacy simple version)."""
-    if not OPTUNA_AVAILABLE:
-        logging.warning("Optuna not installed, skipping autotune")
-        return config
+    """Use optuna to autotune ML engine configurations."""
 
     def objective(trial: optuna.trial.Trial) -> float:
         lr = trial.suggest_loguniform("learning_rate", 1e-5, 1e-2)
@@ -258,343 +234,143 @@ def autotune_configurations(config: dict) -> dict:
     return config
 
 
-# =============================================================================
-# FULL ENSEMBLE OPTUNA HYPERPARAMETER OPTIMIZATION
-# =============================================================================
-
-# SQLite storage for cross-session persistence
-OPTUNA_DB_PATH = "trained_data/optuna.db"
-
-
-def get_optuna_storage() -> str:
-    """Get SQLite storage URL for Optuna."""
-    from pathlib import Path
-    Path("trained_data").mkdir(exist_ok=True)
-    return f"sqlite:///{OPTUNA_DB_PATH}"
-
-
-def autotune_ensemble(
-    X_train,
-    y_train,
-    X_val,
-    y_val,
-    *,
-    n_trials: int = 100,
-    study_name: str = "ensemble_hpo",
-    timeout_hours: float = 4.0,
-    models_to_tune: list = None,
+def query_quant_critic(
+    ticker: str,
+    timeframe: str,
+    buddy_raw: dict,
+    current_response: str,
+    model: str = "gpt-4",
+    temperature: float = 0.2,
 ) -> dict:
-    """
-    Full ensemble hyperparameter optimization using Optuna with SQLite persistence.
+    """Query OpenAI to act as a quant critic improving trading rationale.
     
-    Tunes all 5 models in the ensemble:
-    - Transformer: learning_rate, dropout, d_model, num_heads, num_layers
-    - XGBoost: n_estimators, max_depth, learning_rate
-    - Random Forest: n_estimators, max_depth, min_samples_split
-    - Ridge: alpha
-    - HistGradientBoosting: max_iter, max_depth, learning_rate
+    This function provides specific feedback on Buddy's ML model predictions,
+    identifying errors in logic, missing risks, overconfidence, or poor
+    linkage to features.
     
     Args:
-        X_train: Training features
-        y_train: Training labels
-        X_val: Validation features
-        y_val: Validation labels
-        n_trials: Number of optimization trials (default: 100)
-        study_name: Name for the Optuna study (persisted in SQLite)
-        timeout_hours: Maximum time for optimization
-        models_to_tune: List of models to tune (default: all)
+        ticker: The trading instrument (e.g., "USD_JPY", "EUR_USD")
+        timeframe: The timeframe of the prediction (e.g., "H1", "M5")
+        buddy_raw: Dict containing Buddy's raw output (confidence score, prob, etc.)
+        current_response: The current interpretation of Buddy's prediction
+        model: OpenAI model to use (default: "gpt-4")
+        temperature: Temperature for generation (default: 0.2)
         
     Returns:
-        Dict with best hyperparameters for each model
+        Dict with keys:
+        - feedback: str - Specific feedback on the interpretation (always present)
+        - improved_rationale: str | None - Improved rationale, or None if optimal
+        - risk_assessment: str | None - Additional risk factors, or None if not applicable
+        - is_optimal: bool - True if no improvements needed, False otherwise
     """
-    if not OPTUNA_AVAILABLE:
-        logging.error("Optuna not installed. Install with: pip install optuna")
-        return {}
+    prompt = f"""You are an expert quant critic improving trading rationale from a static ML model (Buddy).
+
+Original Task: Interpret Buddy's prediction for {ticker} on {timeframe}.
+Buddy Raw Output: {json.dumps(buddy_raw, indent=2)}
+
+Current Interpretation: 
+{current_response}
+
+Provide specific feedback:
+- Errors in logic, missing risks, overconfidence, poor linkage to features.
+- Improvements for clarity, completeness, risk assessment.
+- If already optimal: Say "No improvements needed."
+
+Return your response in the following JSON format:
+{{
+    "feedback": "Specific feedback on the current interpretation",
+    "improved_rationale": "Improved version of the rationale, or null if optimal",
+    "risk_assessment": "Additional risk factors to consider",
+    "is_optimal": true/false
+}}
+
+Return only valid JSON."""
+
+    response_text = query_openai(prompt, model=model, temperature=temperature)
+    if response_text is None:
+        return {
+            "feedback": "Unable to query quant critic - API unavailable",
+            "improved_rationale": None,
+            "risk_assessment": None,
+            "is_optimal": False,
+        }
     
-    import numpy as np
-    from sklearn.metrics import accuracy_score, r2_score
-    
-    models_to_tune = models_to_tune or ["transformer", "xgboost", "rf", "ridge", "histgb"]
-    storage = get_optuna_storage()
-    
-    best_params = {}
-    
-    # === TRANSFORMER HYPERPARAMETERS ===
-    if "transformer" in models_to_tune:
-        logging.info("🔧 Tuning Transformer hyperparameters...")
-        
-        def transformer_objective(trial: optuna.trial.Trial) -> float:
-            # Hyperparameter search space
-            params = {
-                "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True),
-                "dropout": trial.suggest_float("dropout", 0.1, 0.5),
-                "d_model": trial.suggest_categorical("d_model", [16, 32, 64, 128]),
-                "num_heads": trial.suggest_categorical("num_heads", [2, 4, 8]),
-                "num_layers": trial.suggest_int("num_layers", 1, 3),
-                "dff": trial.suggest_categorical("dff", [32, 64, 128, 256]),
-            }
-            
-            # Ensure d_model is divisible by num_heads
-            if params["d_model"] % params["num_heads"] != 0:
-                return 0.0  # Invalid config
-            
-            try:
-                # Quick training with reduced epochs for HPO
-                from modular_trainers import TransformerTrainer, TrainerConfig
-                
-                config = TrainerConfig(
-                    epochs=30,  # Reduced for HPO
-                    batch_size=128,
-                    learning_rate=params["learning_rate"],
-                    patience=5,
-                    transformer_d_model=params["d_model"],
-                    transformer_num_heads=params["num_heads"],
-                    transformer_num_layers=params["num_layers"],
-                    transformer_dff=params["dff"],
-                    transformer_dropout=params["dropout"],
-                )
-                
-                trainer = TransformerTrainer(
-                    X_train, y_train, X_val, y_val,
-                    config=config,
-                )
-                trainer.train()
-                
-                # Evaluate
-                preds = trainer.predict(X_val)
-                if hasattr(preds, 'argmax'):
-                    pred_classes = preds.argmax(axis=1)
-                else:
-                    pred_classes = (np.array(preds) > 0.5).astype(int)
-                
-                accuracy = accuracy_score(y_val, pred_classes)
-                return accuracy
-                
-            except Exception as e:
-                logging.warning(f"Trial failed: {e}")
-                return 0.0
-        
-        study = optuna.create_study(
-            study_name=f"{study_name}_transformer",
-            storage=storage,
-            direction="maximize",
-            load_if_exists=True,
-        )
-        study.optimize(
-            transformer_objective,
-            n_trials=n_trials // 3,  # Allocate trials across models
-            timeout=timeout_hours * 3600 / 3,
-            show_progress_bar=True,
-        )
-        best_params["transformer"] = study.best_params
-        logging.info(f"✅ Transformer best: {study.best_params} (acc={study.best_value:.4f})")
-    
-    # === XGBOOST HYPERPARAMETERS ===
-    if "xgboost" in models_to_tune:
-        logging.info("🔧 Tuning XGBoost hyperparameters...")
-        
-        def xgb_objective(trial: optuna.trial.Trial) -> float:
-            params = {
-                "n_estimators": trial.suggest_int("n_estimators", 100, 500),
-                "max_depth": trial.suggest_int("max_depth", 3, 10),
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
-                "subsample": trial.suggest_float("subsample", 0.6, 1.0),
-                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
-            }
-            
-            try:
-                from xgboost import XGBClassifier
-                
-                model = XGBClassifier(
-                    **params,
-                    use_label_encoder=False,
-                    eval_metric="logloss",
-                    verbosity=0,
-                )
-                model.fit(X_train, y_train)
-                
-                preds = model.predict(X_val)
-                accuracy = accuracy_score(y_val, preds)
-                return accuracy
-                
-            except Exception as e:
-                logging.warning(f"XGB trial failed: {e}")
-                return 0.0
-        
-        study = optuna.create_study(
-            study_name=f"{study_name}_xgboost",
-            storage=storage,
-            direction="maximize",
-            load_if_exists=True,
-        )
-        study.optimize(
-            xgb_objective,
-            n_trials=n_trials // 5,
-            timeout=timeout_hours * 3600 / 5,
-            show_progress_bar=True,
-        )
-        best_params["xgboost"] = study.best_params
-        logging.info(f"✅ XGBoost best: {study.best_params} (acc={study.best_value:.4f})")
-    
-    # === RANDOM FOREST HYPERPARAMETERS ===
-    if "rf" in models_to_tune:
-        logging.info("🔧 Tuning Random Forest hyperparameters...")
-        
-        def rf_objective(trial: optuna.trial.Trial) -> float:
-            params = {
-                "n_estimators": trial.suggest_int("n_estimators", 100, 500),
-                "max_depth": trial.suggest_int("max_depth", 5, 20),
-                "min_samples_split": trial.suggest_int("min_samples_split", 2, 10),
-                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 5),
-            }
-            
-            try:
-                from sklearn.ensemble import RandomForestClassifier
-                
-                model = RandomForestClassifier(**params, n_jobs=-1, random_state=42)
-                model.fit(X_train, y_train)
-                
-                preds = model.predict(X_val)
-                accuracy = accuracy_score(y_val, preds)
-                return accuracy
-                
-            except Exception as e:
-                logging.warning(f"RF trial failed: {e}")
-                return 0.0
-        
-        study = optuna.create_study(
-            study_name=f"{study_name}_rf",
-            storage=storage,
-            direction="maximize",
-            load_if_exists=True,
-        )
-        study.optimize(
-            rf_objective,
-            n_trials=n_trials // 5,
-            timeout=timeout_hours * 3600 / 5,
-            show_progress_bar=True,
-        )
-        best_params["rf"] = study.best_params
-        logging.info(f"✅ RF best: {study.best_params} (acc={study.best_value:.4f})")
-    
-    # === RIDGE HYPERPARAMETERS ===
-    if "ridge" in models_to_tune:
-        logging.info("🔧 Tuning Ridge hyperparameters...")
-        
-        def ridge_objective(trial: optuna.trial.Trial) -> float:
-            alpha = trial.suggest_float("alpha", 0.01, 100.0, log=True)
-            
-            try:
-                from sklearn.linear_model import Ridge
-                
-                model = Ridge(alpha=alpha)
-                model.fit(X_train, y_train)
-                
-                preds = model.predict(X_val)
-                r2 = r2_score(y_val, preds)
-                return r2
-                
-            except Exception as e:
-                logging.warning(f"Ridge trial failed: {e}")
-                return -1.0
-        
-        study = optuna.create_study(
-            study_name=f"{study_name}_ridge",
-            storage=storage,
-            direction="maximize",
-            load_if_exists=True,
-        )
-        study.optimize(
-            ridge_objective,
-            n_trials=n_trials // 10,  # Ridge is fast
-            timeout=timeout_hours * 3600 / 10,
-            show_progress_bar=True,
-        )
-        best_params["ridge"] = study.best_params
-        logging.info(f"✅ Ridge best: {study.best_params} (r2={study.best_value:.4f})")
-    
-    # === HISTGRADIENTBOOSTING HYPERPARAMETERS ===
-    if "histgb" in models_to_tune:
-        logging.info("🔧 Tuning HistGradientBoosting hyperparameters...")
-        
-        def histgb_objective(trial: optuna.trial.Trial) -> float:
-            params = {
-                "max_iter": trial.suggest_int("max_iter", 100, 500),
-                "max_depth": trial.suggest_int("max_depth", 3, 15),
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
-                "min_samples_leaf": trial.suggest_int("min_samples_leaf", 10, 50),
-                "l2_regularization": trial.suggest_float("l2_regularization", 0.0, 1.0),
-            }
-            
-            try:
-                from sklearn.ensemble import HistGradientBoostingClassifier
-                
-                model = HistGradientBoostingClassifier(**params, random_state=42)
-                model.fit(X_train, y_train)
-                
-                preds = model.predict(X_val)
-                accuracy = accuracy_score(y_val, preds)
-                return accuracy
-                
-            except Exception as e:
-                logging.warning(f"HistGB trial failed: {e}")
-                return 0.0
-        
-        study = optuna.create_study(
-            study_name=f"{study_name}_histgb",
-            storage=storage,
-            direction="maximize",
-            load_if_exists=True,
-        )
-        study.optimize(
-            histgb_objective,
-            n_trials=n_trials // 5,
-            timeout=timeout_hours * 3600 / 5,
-            show_progress_bar=True,
-        )
-        best_params["histgb"] = study.best_params
-        logging.info(f"✅ HistGB best: {study.best_params} (acc={study.best_value:.4f})")
-    
-    # Save best params to file
-    import json
-    from pathlib import Path
-    
-    params_path = Path("trained_data/optuna_best_params.json")
-    params_path.write_text(json.dumps(best_params, indent=2))
-    logging.info(f"📊 Best hyperparameters saved to {params_path}")
-    
-    return best_params
+    try:
+        result = json.loads(response_text)
+        # Ensure all expected keys are present
+        return {
+            "feedback": result.get("feedback", ""),
+            "improved_rationale": result.get("improved_rationale"),
+            "risk_assessment": result.get("risk_assessment"),
+            "is_optimal": result.get("is_optimal", False),
+        }
+    except json.JSONDecodeError as e:
+        logging.error(f"Error parsing quant critic response: {e}")
+        # Return the raw text as feedback if JSON parsing fails
+        return {
+            "feedback": response_text,
+            "improved_rationale": None,
+            "risk_assessment": None,
+            "is_optimal": False,
+        }
 
 
-def load_best_params() -> dict:
-    """Load best hyperparameters from previous Optuna runs."""
-    import json
-    from pathlib import Path
+def improve_trading_rationale(
+    ticker: str,
+    timeframe: str,
+    prediction: float,
+    confidence: float,
+    last_price: float,
+    features: dict = None,
+    gate_results: dict = None,
+    model: str = "gpt-4",
+) -> dict:
+    """Generate improved trading rationale using the quant critic.
     
-    params_path = Path("trained_data/optuna_best_params.json")
-    if params_path.exists():
-        return json.loads(params_path.read_text())
-    return {}
-
-
-def get_study_stats(study_name: str = "ensemble_hpo") -> dict:
-    """Get statistics from Optuna studies."""
-    storage = get_optuna_storage()
-    stats = {}
+    This is a convenience function that constructs the appropriate inputs
+    for the quant critic from common trading signal components.
     
-    for model in ["transformer", "xgboost", "rf", "ridge", "histgb"]:
-        try:
-            study = optuna.load_study(
-                study_name=f"{study_name}_{model}",
-                storage=storage,
-            )
-            stats[model] = {
-                "n_trials": len(study.trials),
-                "best_value": study.best_value,
-                "best_params": study.best_params,
-            }
-        except Exception:
-            stats[model] = {"n_trials": 0, "best_value": None, "best_params": None}
+    Args:
+        ticker: Trading instrument
+        timeframe: Prediction timeframe
+        prediction: Model prediction value
+        confidence: Model confidence score (0-1 or 0-100)
+        last_price: Last observed price
+        features: Dict of key features used in prediction (optional)
+        gate_results: Results from trading gates (optional)
+        model: OpenAI model to use
+        
+    Returns:
+        Dict with improved rationale and feedback
+    """
+    # Construct buddy_raw from inputs
+    buddy_raw = {
+        "prediction": prediction,
+        "confidence": confidence,
+        "last_price": last_price,
+        "delta": prediction - last_price,
+        "direction": "long" if prediction > last_price else "short",
+    }
     
-    return stats
-# — Raynergy-svg —
+    if features:
+        buddy_raw["key_features"] = features
+    if gate_results:
+        buddy_raw["gate_results"] = gate_results
+    
+    # Construct current response
+    delta = prediction - last_price
+    direction = "BUY" if delta > 0 else "SELL"
+    confidence_str = f"{confidence:.1%}" if confidence <= 1 else f"{confidence:.1f}"
+    current_response = (
+        f"Signal: {direction} {ticker}\n"
+        f"Prediction: {prediction:.5f}, Last: {last_price:.5f}, Delta: {delta:+.5f}\n"
+        f"Confidence: {confidence_str}"
+    )
+    
+    return query_quant_critic(
+        ticker=ticker,
+        timeframe=timeframe,
+        buddy_raw=buddy_raw,
+        current_response=current_response,
+        model=model,
+    )
