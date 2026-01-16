@@ -39,7 +39,14 @@ def mock_llm_call_success(
     model: str = "gpt-4",
     temperature: float = 0.2,
 ) -> str:
-    """Mock LLM that returns successful responses."""
+    """Mock LLM that returns successful responses.
+    
+    This mock dispatches based on distinctive keywords in each prompt type.
+    The order of checks matters:
+    - Meta-learning prompts are checked first because they contain "sentiment" 
+      as an example feature, which would otherwise match the multi-modal check.
+    - Each prompt type is matched by its most distinctive identifying keywords.
+    """
     prompt_lower = prompt.lower()
     
     # Check for meta-learning/improvements FIRST (before sentiment check)
@@ -705,4 +712,3 @@ class TestSetLlmCallFunction(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-# — Raynergy-svg —

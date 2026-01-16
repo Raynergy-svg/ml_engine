@@ -51,18 +51,20 @@ def _default_llm_call(
     try:
         import openai
         
-        if not openai.api_key:
-            openai.api_key = os.getenv("OPENAI_API_KEY")
-            if not openai.api_key:
-                logger.debug("OPENAI_API_KEY not set, LLM call skipped")
-                return None
+        api_key = openai.api_key or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            logger.debug("OPENAI_API_KEY not set, LLM call skipped")
+            return None
+        
+        # Create client with explicit API key instead of modifying global state
+        client = openai.OpenAI(api_key=api_key)
         
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
         
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=temperature,
@@ -242,25 +244,9 @@ Timeframe: {timeframe}
             "parsed_sections": {},
         }
     
-    # Parse response to extract key fields
-    trade_call = "NO_TRADE"
-    confidence_level = "Low"
-    
-    response_lower = response.lower()
-    
-    # Extract trade call
-    if "buy" in response_lower and "sell" not in response_lower:
-        trade_call = "BUY"
-    elif "sell" in response_lower and "buy" not in response_lower:
-        trade_call = "SELL"
-    elif "hold" in response_lower:
-        trade_call = "HOLD"
-    
-    # Extract confidence level
-    if "high" in response_lower:
-        confidence_level = "High"
-    elif "medium" in response_lower or "med" in response_lower:
-        confidence_level = "Med"
+    # Parse response to extract key fields using more robust pattern matching
+    trade_call = _extract_trade_call(response)
+    confidence_level = _extract_confidence_level(response)
     
     return {
         "reasoning": response,
@@ -268,6 +254,62 @@ Timeframe: {timeframe}
         "confidence_level": confidence_level,
         "parsed_sections": _parse_reasoning_sections(response),
     }
+
+
+def _extract_trade_call(response: str) -> str:
+    """Extract trade call from response with explicit pattern matching.
+    
+    Looks for explicit trade declarations like "Trade: BUY" or "Final Call: SELL".
+    """
+    response_lower = response.lower()
+    
+    # Look for explicit final call patterns first
+    import re
+    
+    # Pattern: "Trade: BUY" or "Final Call: SELL"
+    explicit_pattern = r"(?:trade|final call)[:\s]*(buy|sell|hold|no[_\s]?trade)"
+    match = re.search(explicit_pattern, response_lower)
+    if match:
+        call = match.group(1).replace(" ", "_").replace("-", "_").upper()
+        return call if call in ("BUY", "SELL", "HOLD", "NO_TRADE") else "NO_TRADE"
+    
+    # Fallback: Count occurrences to determine dominant signal
+    buy_count = response_lower.count("buy")
+    sell_count = response_lower.count("sell")
+    hold_count = response_lower.count("hold")
+    
+    if buy_count > sell_count and buy_count > hold_count:
+        return "BUY"
+    elif sell_count > buy_count and sell_count > hold_count:
+        return "SELL"
+    elif hold_count > 0:
+        return "HOLD"
+    
+    return "NO_TRADE"
+
+
+def _extract_confidence_level(response: str) -> str:
+    """Extract confidence level from response."""
+    response_lower = response.lower()
+    
+    # Look for explicit confidence patterns
+    import re
+    
+    pattern = r"(?:translated )?confidence[:\s]*(high|medium|med|low)"
+    match = re.search(pattern, response_lower)
+    if match:
+        level = match.group(1)
+        if level in ("medium", "med"):
+            return "Med"
+        return level.capitalize()
+    
+    # Fallback to keyword detection
+    if "high" in response_lower:
+        return "High"
+    elif "medium" in response_lower or "med" in response_lower:
+        return "Med"
+    
+    return "Low"
 
 
 def _parse_reasoning_sections(text: str) -> Dict[str, str]:
@@ -656,7 +698,10 @@ Return JSON array of lesson strings only:"""
             return 0.0
         
         pnls = [o["pnl"] for o in self._outcomes[-20:]]
-        cumsum = [sum(pnls[:i+1]) for i in range(len(pnls))]
+        
+        # Use itertools.accumulate for O(n) cumulative sum
+        from itertools import accumulate
+        cumsum = list(accumulate(pnls))
         
         peak = cumsum[0]
         max_dd = 0.0
@@ -1151,4 +1196,3 @@ def get_intelligent_mode(
     if _intelligent_mode is None:
         _intelligent_mode = BuddyIntelligentMode(memory_path=memory_path)
     return _intelligent_mode
-# — Raynergy-svg —
