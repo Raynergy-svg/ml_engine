@@ -13,10 +13,10 @@ model weight updates, ideal for ML/code generation, reasoning, or explanations.
 """
 
 import logging
+import os
 from typing import Optional, Dict, Any, Callable
 
-# Import the existing OpenAI integration
-from openai_integration import query_openai
+import openai
 
 logger = logging.getLogger(__name__)
 
@@ -69,20 +69,17 @@ def _llm_call(
     model: str = "gpt-4",
     temperature: float = 0.2,
 ) -> Optional[str]:
-    """Internal LLM call using the existing OpenAI integration.
+    """Internal LLM call using the OpenAI API.
     
     Args:
         prompt: The user prompt to send.
-        system_prompt: Optional system prompt (if None, uses default from query_openai).
+        system_prompt: Optional system prompt (if None, uses Buddy default).
         model: The model to use (default: gpt-4).
         temperature: Temperature for generation (default: 0.2).
         
     Returns:
         The model's response text, or None if the call failed.
     """
-    import openai
-    import os
-    
     if not openai.api_key:
         openai.api_key = os.getenv("OPENAI_API_KEY")
         if not openai.api_key:
@@ -94,9 +91,10 @@ def _llm_call(
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         else:
+            # Default to Buddy's system prompt for consistency
             messages.append({
                 "role": "system",
-                "content": "You are a production-level ML optimizer."
+                "content": INITIAL_GENERATION_SYSTEM
             })
         messages.append({"role": "user", "content": prompt})
         
