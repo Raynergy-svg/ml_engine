@@ -893,6 +893,41 @@ class FeatureEngineering:
         df["text_sentiment_change"] = df["text_sentiment"].diff()
         return df
 
+    def add_news_sentiment_features(
+        self,
+        df: pd.DataFrame,
+        instrument: str = "EUR_USD",
+    ) -> pd.DataFrame:
+        """Add real-time news sentiment features using FinBERT (if available).
+        
+        This adds:
+        - news_sentiment: Mean sentiment score from recent headlines [-1, 1]
+        - news_volume: Number of news items (activity = volatility signal)
+        
+        Requires optional news_features module. Falls back gracefully if not available.
+        
+        Args:
+            df: DataFrame to add features to
+            instrument: Currency pair for news fetching
+            
+        Returns:
+            DataFrame with news sentiment features added
+        """
+        news_cfg = (self.config or {}).get("news", {})
+        if not bool(news_cfg.get("enabled", True)):
+            return df
+        
+        try:
+            from news_features import add_sentiment_features
+            use_finbert = news_cfg.get("use_finbert", True)
+            return add_sentiment_features(df, instrument, use_finbert=use_finbert)
+        except ImportError:
+            logger.debug("news_features module not available")
+            return df
+        except Exception as e:
+            logger.warning(f"Failed to add news sentiment features: {e}")
+            return df
+
     def create_features(
         self,
         df: pd.DataFrame,
@@ -900,8 +935,17 @@ class FeatureEngineering:
         *,
         apply_candle_smoothing: bool = True,
         median_window: Optional[int] = None,
+        instrument: Optional[str] = None,
     ) -> pd.DataFrame:
-        """Create all features."""
+        """Create all features.
+        
+        Args:
+            df: Input DataFrame with OHLCV data
+            include_all: Whether to add all feature sets
+            apply_candle_smoothing: Whether to apply candle smoothing
+            median_window: Window size for median smoothing
+            instrument: Currency pair for news sentiment features (e.g., 'EUR_USD')
+        """
         logger.info("Starting feature engineering...")
 
         original_shape = df.shape
@@ -922,6 +966,10 @@ class FeatureEngineering:
 
         # Optional text-derived features (sentiment/rolling/lags)
         df = self.add_text_features(df)
+
+        # Optional news sentiment features (requires news_features module)
+        if instrument is not None:
+            df = self.add_news_sentiment_features(df, instrument)
 
         # If smoothing produced an EMA close feature, compute indicators on it while
         # keeping the raw close column intact for labels and downstream OHLC logic.
