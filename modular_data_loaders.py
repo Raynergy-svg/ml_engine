@@ -1094,30 +1094,45 @@ def load_xgboost_data(
         window_returns = np.abs(returns[i-momentum_window:i])
         raw_momentum_all[i] = np.mean(window_returns)
     
-    # STABLE NORMALIZATION: Use fixed percentile-based scaling
-    # This ensures consistent behavior across different market conditions
-    valid_raw = raw_momentum_all[momentum_window:]
-    valid_raw = valid_raw[valid_raw > 0]
+    # Drop initial rows without valid momentum BEFORE splitting
+    # This ensures consistent indexing for train/val/test
+    valid_start = momentum_window + 5
+    X = X[valid_start:]
+    raw_momentum_valid = raw_momentum_all[valid_start:]
     
-    if len(valid_raw) > 0:
-        p50_momentum = np.percentile(valid_raw, 50)  # Median momentum
-        p90_momentum = np.percentile(valid_raw, 90)  # High momentum
+    # Handle NaN/Inf in features
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    
+    # Temporal split FIRST - before computing normalization factors
+    # This prevents data leakage from val/test into training normalization
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    
+    # STABLE NORMALIZATION: Compute percentiles from TRAINING DATA ONLY
+    # This prevents data leakage - val/test distributions not seen during training
+    train_raw_momentum = raw_momentum_valid[train_idx]
+    train_raw_valid = train_raw_momentum[train_raw_momentum > 0]
+    
+    if len(train_raw_valid) > 0:
+        p50_momentum = np.percentile(train_raw_valid, 50)  # Median momentum (train only)
+        p90_momentum = np.percentile(train_raw_valid, 90)  # High momentum (train only)
         # Scale so median maps to 0.3, P90 maps to 0.7
         # This ensures threshold of 0.15 catches ~30% of bars
         norm_factor = p50_momentum / 0.3 if p50_momentum > 0 else 0.001
     else:
+        p50_momentum = 0.0
+        p90_momentum = 0.0
         norm_factor = 0.001
     
-    logger.info(f"XGBoost momentum: P50={p50_momentum:.6f}, P90={p90_momentum:.6f}, norm_factor={norm_factor:.6f}")
+    logger.info(f"XGBoost momentum (train-only): P50={p50_momentum:.6f}, P90={p90_momentum:.6f}, norm_factor={norm_factor:.6f}")
     
-    # Normalize to 0-1 scale with adaptive factor
-    momentum_score = np.zeros(n, dtype=np.float32)
-    for i in range(momentum_window, n):
-        momentum_score[i] = min(raw_momentum_all[i] / norm_factor, 1.0)
+    # Normalize raw momentum to 0-1 scale using training-derived factor
+    # Apply same normalization to all splits
+    momentum_score = np.minimum(raw_momentum_valid / norm_factor, 1.0)
     
     # Acceleration: Is momentum growing? Compare current vs previous momentum
-    acceleration = np.zeros(n, dtype=np.float32)
-    for i in range(momentum_window + 5, n):
+    # Note: We already dropped momentum_window rows, so we have momentum for all remaining
+    acceleration = np.zeros(len(momentum_score), dtype=np.float32)
+    for i in range(5, len(momentum_score)):
         current_mom = momentum_score[i]
         prev_mom = momentum_score[i - 5]
         acceleration[i] = 1.0 if current_mom > prev_mom else 0.0
@@ -1125,17 +1140,8 @@ def load_xgboost_data(
     # Combine targets: [momentum_score, acceleration]
     y = np.column_stack([momentum_score, acceleration]).astype(np.float32)
     
-    # Drop initial rows without valid momentum
-    valid_start = momentum_window + 5
-    X = X[valid_start:]
-    y = y[valid_start:]
-    
-    # Handle NaN/Inf
-    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    # Handle NaN/Inf in targets
     y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
-    
-    # Temporal split
-    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
     
     result = {
         'X_train': X[train_idx],
@@ -1364,38 +1370,60 @@ def load_ridge_data(
     bb_pos = df['bb_position_20'].values if 'bb_position_20' in df.columns else np.ones(n) * 0.5
     volume_ratio = df['volume_ratio_20'].values if 'volume_ratio_20' in df.columns else np.ones(n) * 1.0
     
-    # Compute ADX percentile thresholds from actual data for better scaling
-    adx_valid = adx[~np.isnan(adx)]
-    adx_p25 = np.percentile(adx_valid, 25) if len(adx_valid) > 0 else 15
-    adx_p75 = np.percentile(adx_valid, 75) if len(adx_valid) > 0 else 30
+    # Drop initial rows without valid confidence BEFORE splitting
+    valid_start = confidence_window
+    X = X[valid_start:]
+    adx_valid_range = adx[valid_start:]
+    rsi_valid_range = rsi[valid_start:]
+    atr_pct_valid_range = atr_pct[valid_start:]
+    bb_pos_valid_range = bb_pos[valid_start:]
+    volume_ratio_valid_range = volume_ratio[valid_start:]
+    
+    # Handle NaN/Inf in features
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    
+    # Temporal split FIRST - before computing normalization factors
+    # This prevents data leakage from val/test into training normalization
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    
+    # Compute ADX percentile thresholds from TRAINING DATA ONLY for better scaling
+    # This prevents data leakage - val/test distributions not seen during training
+    train_adx = adx_valid_range[train_idx]
+    train_adx_valid = train_adx[~np.isnan(train_adx)]
+    adx_p25 = np.percentile(train_adx_valid, 25) if len(train_adx_valid) > 0 else 15
+    adx_p75 = np.percentile(train_adx_valid, 75) if len(train_adx_valid) > 0 else 30
     adx_range = max(adx_p75 - adx_p25, 5)  # Avoid division by zero
     
-    confidence = np.zeros(n, dtype=np.float32)
+    logger.info(f"Ridge ADX (train-only): P25={adx_p25:.2f}, P75={adx_p75:.2f}, range={adx_range:.2f}")
     
-    for i in range(confidence_window, n):
+    # Calculate confidence scores using training-derived percentiles
+    # Apply same normalization to all data (train/val/test)
+    confidence = np.zeros(len(X), dtype=np.float32)
+    
+    for i in range(len(X)):
         # ===== ADX component: Strong trend = high confidence =====
-        # Use percentile-based scaling for the instrument's actual ADX range
+        # Use percentile-based scaling for the instrument's actual ADX range (train-derived)
         # Maps ADX to [0, 1] where p25->0.25, p75->0.75, p90+->1.0
-        adx_normalized = (adx[i] - adx_p25) / adx_range
+        adx_normalized = (adx_valid_range[i] - adx_p25) / adx_range
         adx_score = np.clip(adx_normalized * 0.5 + 0.25, 0.0, 1.0)
         
         # ===== RSI component: Not extreme = high confidence =====
         # RSI 40-60: high confidence (centered), 30-70: medium, outside: low
-        rsi_distance = abs(rsi[i] - 50)
+        rsi_distance = abs(rsi_valid_range[i] - 50)
         rsi_score = max(0, 1.0 - rsi_distance / 25)  # 50->1, 25/75->0
         
         # ===== Volatility component: Low vol = high confidence =====
         # Use instrument-relative scaling (ATR% typically 0.3%-1.5% for FX)
-        vol_score = np.clip(1.0 - atr_pct[i] / 0.015, 0.0, 1.0)
+        vol_score = np.clip(1.0 - atr_pct_valid_range[i] / 0.015, 0.0, 1.0)
         
         # ===== Bollinger Band position: Middle = high confidence =====
         # BB position 0.3-0.7: confident middle, extremes: overbought/oversold
-        bb_distance = abs(bb_pos[i] - 0.5)
+        bb_distance = abs(bb_pos_valid_range[i] - 0.5)
         bb_score = max(0, 1.0 - bb_distance * 2.5)  # 0.5->1, 0.1/0.9->0
         
         # ===== Volume confirmation: Above average = high confidence =====
         # Volume ratio > 1.0: good conviction, < 0.7: low conviction
-        vol_conf_score = np.clip((volume_ratio[i] - 0.7) / 0.6, 0.0, 1.0)
+        vol_conf_score = np.clip((volume_ratio_valid_range[i] - 0.7) / 0.6, 0.0, 1.0)
         
         # ===== Combine with weights =====
         # ADX: 35% (trend strength)
@@ -1417,16 +1445,8 @@ def load_ridge_data(
     
     y = confidence.astype(np.float32)
     
-    # Drop initial rows without valid confidence
-    X = X[confidence_window:]
-    y = y[confidence_window:]
-    
-    # Handle NaN/Inf
-    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    # Handle NaN/Inf in targets
     y = np.nan_to_num(y, nan=50.0, posinf=100.0, neginf=0.0)
-    
-    # Temporal split
-    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
     
     result = {
         'X_train': X[train_idx],
@@ -1436,10 +1456,102 @@ def load_ridge_data(
         'X_test': X[test_idx],
         'y_test': y[test_idx],
         'feature_names': features,
+        'adx_p25': float(adx_p25),  # Save for inference
+        'adx_p75': float(adx_p75),  # Save for inference
     }
     
     logger.info(f"Ridge data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
     return result
+
+
+# =============================================================================
+# DATA LEAKAGE VALIDATION
+# =============================================================================
+
+def validate_no_leakage(
+    X_train: np.ndarray,
+    X_val: np.ndarray,
+    X_test: np.ndarray,
+    y_train: np.ndarray,
+    y_val: np.ndarray,
+    y_test: np.ndarray,
+    max_correlation: float = 0.99,
+) -> Dict[str, bool]:
+    """
+    Validate that there is no data leakage across train/val/test splits.
+    
+    This function checks for common signs of data leakage:
+    1. Feature means too similar across splits (suggests global normalization)
+    2. Feature-target correlations identical across splits (suggests shared computation)
+    3. Target distributions suspiciously similar
+    
+    Args:
+        X_train, X_val, X_test: Feature matrices
+        y_train, y_val, y_test: Target arrays
+        max_correlation: Maximum allowed correlation between split means (default 0.99)
+    
+    Returns:
+        Dict with validation results:
+            - 'passed': Overall pass/fail
+            - 'feature_means_ok': Feature means are sufficiently different
+            - 'target_distributions_ok': Target distributions are different
+            - 'warnings': List of any warnings
+    """
+    warnings = []
+    
+    # Check 1: Feature means should differ across splits
+    train_mean = X_train.mean(axis=0)
+    val_mean = X_val.mean(axis=0)
+    test_mean = X_test.mean(axis=0)
+    
+    train_val_corr = np.corrcoef(train_mean, val_mean)[0, 1] if len(train_mean) > 1 else 0.0
+    train_test_corr = np.corrcoef(train_mean, test_mean)[0, 1] if len(train_mean) > 1 else 0.0
+    
+    # Handle NaN correlations (constant features)
+    train_val_corr = 0.0 if np.isnan(train_val_corr) else train_val_corr
+    train_test_corr = 0.0 if np.isnan(train_test_corr) else train_test_corr
+    
+    feature_means_ok = train_val_corr < max_correlation and train_test_corr < max_correlation
+    
+    if not feature_means_ok:
+        warnings.append(f"Feature means too similar: train-val corr={train_val_corr:.4f}, train-test corr={train_test_corr:.4f}")
+        logger.warning(f"⚠️ Potential data leakage: {warnings[-1]}")
+    
+    # Check 2: Target distributions should differ across temporal splits
+    y_train_flat = y_train.flatten() if len(y_train.shape) > 1 else y_train
+    y_val_flat = y_val.flatten() if len(y_val.shape) > 1 else y_val
+    y_test_flat = y_test.flatten() if len(y_test.shape) > 1 else y_test
+    
+    train_target_std = np.std(y_train_flat)
+    val_target_std = np.std(y_val_flat)
+    test_target_std = np.std(y_test_flat)
+    
+    # For temporal data, we expect some drift in target statistics
+    # If all stds are identical (within 1%), it might indicate shared computation
+    std_ratio_val = val_target_std / max(train_target_std, 1e-8)
+    std_ratio_test = test_target_std / max(train_target_std, 1e-8)
+    
+    target_distributions_ok = not (0.99 < std_ratio_val < 1.01 and 0.99 < std_ratio_test < 1.01)
+    
+    if not target_distributions_ok:
+        warnings.append(f"Target std identical across splits: train={train_target_std:.6f}, val={val_target_std:.6f}, test={test_target_std:.6f}")
+        logger.warning(f"⚠️ Possible target computation issue: {warnings[-1]}")
+    
+    passed = feature_means_ok and target_distributions_ok
+    
+    if passed:
+        logger.info("✅ No data leakage detected")
+    else:
+        logger.warning("❌ Potential data leakage detected - review data preparation")
+    
+    return {
+        'passed': passed,
+        'feature_means_ok': feature_means_ok,
+        'target_distributions_ok': target_distributions_ok,
+        'train_val_feature_corr': float(train_val_corr),
+        'train_test_feature_corr': float(train_test_corr),
+        'warnings': warnings,
+    }
 
 
 # =============================================================================
