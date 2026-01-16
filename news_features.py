@@ -231,7 +231,7 @@ class EconomicEvent:
     """Represents an economic calendar event."""
     title: str
     currency: str
-    impact: str  # 'high', 'medium', 'low'
+    impact: str  # 'high', 'medium', 'low' - use ImpactLevel enum values
     time: datetime
     time_to: int  # Minutes until event
     forecast: Optional[str] = None
