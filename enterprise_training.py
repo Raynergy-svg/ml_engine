@@ -825,6 +825,7 @@ class WalkForwardValidator:
         X: np.ndarray,
         y: np.ndarray,
         fit_kwargs: Dict[str, Any] = None,
+        warm_start_path: str = None,
     ) -> Dict[str, Any]:
         """
         Run full walk-forward cross-validation.
@@ -834,6 +835,7 @@ class WalkForwardValidator:
             X: Features
             y: Labels
             fit_kwargs: Additional kwargs for model.fit()
+            warm_start_path: Path to pre-trained weights for continual learning
         
         Returns:
             Dictionary with per-fold and aggregate metrics
@@ -848,6 +850,14 @@ class WalkForwardValidator:
         for fold, (train_idx, test_idx) in enumerate(self.split(X, y)):
             # Create fresh model
             model = model_fn()
+            
+            # Load pre-trained weights for continual learning (EWC)
+            if warm_start_path:
+                try:
+                    model.load_weights(warm_start_path)
+                    logger.info(f"Fold {fold + 1}: Loaded warm-start weights from {warm_start_path}")
+                except Exception as e:
+                    logger.warning(f"Fold {fold + 1}: Could not load warm-start weights: {e}")
             
             # Train
             X_train, y_train = X[train_idx], y[train_idx]

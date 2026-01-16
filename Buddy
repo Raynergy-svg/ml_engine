@@ -29,8 +29,7 @@ run_py() { "$(get_conda)" run -n "${ENV_NAME}" --no-capture-output python "$@"; 
 cmd_predict() {
     local granularity="H1"
     local instrument=""
-    local execute=""
-    local verbose=""
+    local args=()
     
     # First positional arg is instrument if not a flag
     if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
@@ -42,8 +41,9 @@ cmd_predict() {
         case "$1" in
             -i|--instrument) instrument="$2"; shift 2 ;;
             -g|--granularity) granularity="$2"; shift 2 ;;
-            -x|--execute) execute="True"; shift ;;
-            -v|--verbose) verbose="True"; shift ;;
+            -x|--execute) args+=(--execute); shift ;;
+            -v|--verbose) args+=(--verbose); shift ;;
+            --use-rl-sizer) args+=(--use-rl-sizer); shift ;;
             *) shift ;;
         esac
     done
@@ -51,17 +51,12 @@ cmd_predict() {
     # Default to EUR_USD if no instrument
     instrument="${instrument:-EUR_USD}"
     
-    # Use the new buddy_predict_78 function with 78% model + aggressive sizing
-    run_py -c "
-from main import buddy_predict_78
-buddy_predict_78(
-    '${CONFIG_FILE}',
-    instrument='${instrument}',
-    granularity='${granularity}',
-    execute=${execute:-False},
-    verbose=${verbose:-False},
-)
-"
+    # Use main.py buddy which loads PAIR-SPECIFIC models (not model_78)
+    # Model_78 is for scanner only; single-pair trading uses pair-specific models
+    run_py "${SCRIPT_DIR}/main.py" buddy --config "${CONFIG_FILE}" \
+        --instrument "${instrument}" \
+        --granularity "${granularity}" \
+        "${args[@]+"${args[@]}"}"
 }
 
 cmd_train() {

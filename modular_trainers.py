@@ -94,6 +94,7 @@ class TrainerConfig:
     use_ema_for_inference: bool = True  # Use EMA weights for prediction
     
     # EWC (Elastic Weight Consolidation) for multi-instrument learning
+    # Enabled by default for continual learning. Use --disable-ewc to disable.
     use_ewc: bool = True  # Enable EWC penalty on warm-start
     ewc_lambda: float = 1000.0  # Strength of EWC constraint (λ)
     ewc_gamma: float = 0.95  # Decay for old Fisher values when adding new tasks
@@ -505,6 +506,8 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         warmstart_reset_threshold: float = 0.15,  # If initial gap > 15%, intervene
         weight_perturbation_scale: float = 0.02,  # Noise to break memorization
         reset_optimizer_on_overfit: bool = True,  # Reset momentum on critical overfit
+        # CONTINUAL LEARNING: Previous best accuracy (prevents saving worse models)
+        warm_start_best_acc: float = 0.0,  # Set from loaded checkpoint
     ):
         super().__init__()
         self.checkpoint_dir = Path(checkpoint_dir)
@@ -547,9 +550,10 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         self._initial_weights_perturbed = False
         self._optimizer_reset_count = 0
         
-        # State tracking
-        self.best_val_acc = 0.0
-        self.best_val_acc_clean = 0.0  # Best val_acc with acceptable gap
+        # State tracking - CRITICAL: Initialize from warm-start to prevent saving worse models
+        self.best_val_acc = warm_start_best_acc  # Start from previous best (not 0!)
+        self.best_val_acc_clean = warm_start_best_acc  # Best val_acc with acceptable gap
+        self.warm_start_best_acc = warm_start_best_acc  # Store original for logging
         self.best_epoch = 0
         self.best_epoch_clean = 0
         self.overfit_epochs = 0  # Consecutive epochs with ANY overfitting
@@ -826,7 +830,19 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             self._check_warmstart_overfit(train_acc, val_acc, overfit_gap)
         
         # === STUCK DETECTION: Escalating interventions ===
-        if self.critical_epochs >= 5 and self.critical_epochs % 5 == 0:
+        # CRITICAL: Skip destructive interventions during warm-start to preserve learned weights!
+        # The warm-start recovery code will handle restoring weights if training fails.
+        if self.warm_start_best_acc > 0:
+            # In warm-start mode: DO NOT perturb weights or reset layers
+            # Just let early stopping handle it - we'll restore original weights if needed
+            if self.critical_epochs >= 15 and self.critical_epochs % 15 == 0:
+                self.console.print(
+                    f"  [yellow]⚠️ Warm-start: {self.critical_epochs} epochs without improvement over baseline[/yellow]"
+                )
+                self.console.print(
+                    f"  [yellow]   Continuing training (will restore original weights if no improvement)[/yellow]"
+                )
+        elif self.critical_epochs >= 5 and self.critical_epochs % 5 == 0:
             if not hasattr(self, '_last_perturbation_epoch') or epoch - self._last_perturbation_epoch >= 5:
                 self._last_perturbation_epoch = epoch
                 self.console.print(
@@ -923,7 +939,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         if overfit_gap <= self.overfit_threshold and val_acc >= self.best_val_acc_clean * 0.98:
             self._store_base_weights()
         
-        # === CHECKPOINT: Only save if gap is acceptable ===
+        # === CHECKPOINT: Only save if BETTER than previous AND gap is acceptable ===
         if val_acc > self.best_val_acc_clean and overfit_gap <= self.max_acceptable_gap:
             self.best_val_acc_clean = val_acc
             self.best_epoch_clean = epoch + 1
@@ -931,9 +947,16 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             checkpoint_path = self.checkpoint_dir / f"{self.model_name}_best.keras"
             try:
                 self.model.save(checkpoint_path)
-                self.console.print(
-                    f"  [green]💾 Checkpoint saved: val={val_acc:.1%}, gap={overfit_gap:.1%}[/green]"
-                )
+                if self.warm_start_best_acc > 0:
+                    improvement = val_acc - self.warm_start_best_acc
+                    self.console.print(
+                        f"  [green]💾 Checkpoint saved: val={val_acc:.1%}, gap={overfit_gap:.1%} "
+                        f"(+{improvement:+.1%} from warm-start)[/green]"
+                    )
+                else:
+                    self.console.print(
+                        f"  [green]💾 Checkpoint saved: val={val_acc:.1%}, gap={overfit_gap:.1%}[/green]"
+                    )
             except Exception as e:
                 logger.warning(f"Could not save checkpoint: {e}")
         elif val_acc > self.best_val_acc_clean:
@@ -942,6 +965,33 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
                 f"  [yellow]⚠️ Val improved to {val_acc:.1%} but gap={overfit_gap:.1%} > "
                 f"{self.max_acceptable_gap:.0%} - NOT saving[/yellow]"
             )
+        elif self.warm_start_best_acc > 0 and val_acc < self.warm_start_best_acc:
+            # CONTINUAL LEARNING: Current is worse than warm-start baseline
+            degradation = self.warm_start_best_acc - val_acc
+            if degradation > 0.02:  # Only warn if > 2% degradation
+                self.console.print(
+                    f"  [red]⚠️ DEGRADATION: val={val_acc:.1%} < warm-start baseline={self.warm_start_best_acc:.1%} "
+                    f"(-{degradation:.1%})[/red]"
+                )
+        
+        # === WARM-START EARLY STOP: If no improvement over baseline after 15 epochs ===
+        if self.warm_start_best_acc > 0 and epoch >= 15:
+            if self.best_val_acc < self.warm_start_best_acc:
+                # No improvement over baseline after 15 epochs - stop and revert
+                self.console.print(
+                    f"\n  [bold red]🛑 CONTINUAL LEARNING FAILED: No improvement over baseline[/bold red]"
+                )
+                self.console.print(
+                    f"  [red]   Best achieved: {self.best_val_acc:.1%} < baseline: {self.warm_start_best_acc:.1%}[/red]"
+                )
+                self.console.print(
+                    f"  [yellow]💡 Stopping early. Original model weights preserved.[/yellow]"
+                )
+                self.console.print(
+                    f"  [cyan]   Try: More data, lower LR (--lr 0.00001), or different pair[/cyan]"
+                )
+                self.model.stop_training = True
+                return
         
         # === OVERFIT SEVERITY CLASSIFICATION ===
         if overfit_gap > self.severe_threshold:
@@ -1136,14 +1186,15 @@ class RichEpochCallback(tf.keras.callbacks.Callback):
     - Cyan: Neutral / Info
     """
     
-    def __init__(self, model_name: str = "Model", total_epochs: int = 100):
+    def __init__(self, model_name: str = "Model", total_epochs: int = 100, warm_start_best_acc: float = 0.0):
         super().__init__()
         self.model_name = model_name
         self.total_epochs = total_epochs
-        self.best_val_acc = 0.0
+        self.warm_start_best_acc = warm_start_best_acc
+        self.best_val_acc = warm_start_best_acc  # Start from warm-start baseline, not 0!
         self.best_val_loss = float('inf')
         self.best_epoch = 0
-        self.prev_val_acc = 0.0
+        self.prev_val_acc = warm_start_best_acc  # Start comparison from baseline
         self.prev_val_loss = float('inf')
         self._console = None
     
@@ -1155,7 +1206,11 @@ class RichEpochCallback(tf.keras.callbacks.Callback):
         return self._console
     
     def on_train_begin(self, logs=None):
-        self.console.print(f"[dim]Training {self.model_name} for up to {self.total_epochs} epochs...[/dim]")
+        if self.warm_start_best_acc > 0:
+            self.console.print(f"[dim]Training {self.model_name} for up to {self.total_epochs} epochs...[/dim]")
+            self.console.print(f"  [cyan]🎯 Warm-start baseline: {self.warm_start_best_acc:.1%} (must beat to save)[/cyan]")
+        else:
+            self.console.print(f"[dim]Training {self.model_name} for up to {self.total_epochs} epochs...[/dim]")
     
     def on_epoch_end(self, epoch, logs=None):
         if logs is None:
@@ -1168,17 +1223,29 @@ class RichEpochCallback(tf.keras.callbacks.Callback):
         train_loss = logs.get('loss', 0)
         lr = logs.get('lr', logs.get('learning_rate', 0))
         
-        # Determine if this is best epoch
+        # Determine if this is best epoch (must beat warm-start baseline!)
         is_best = val_acc > self.best_val_acc
         if is_best:
             self.best_val_acc = val_acc
             self.best_val_loss = val_loss
             self.best_epoch = epoch_num
         
-        # Color coding based on performance
-        if is_best:
+        # Color coding based on performance - RELATIVE TO WARM-START BASELINE
+        below_baseline = self.warm_start_best_acc > 0 and val_acc < self.warm_start_best_acc
+        
+        if is_best and not below_baseline:
             acc_color = "bold green"
             status = "⭐ BEST"
+        elif is_best and below_baseline:
+            # New best during this run, but still below warm-start baseline
+            acc_color = "yellow"
+            diff = self.warm_start_best_acc - val_acc
+            status = f"↗ best this run (baseline -{diff:.1%})"
+        elif below_baseline:
+            # Below warm-start baseline
+            acc_color = "red"
+            diff = self.warm_start_best_acc - val_acc
+            status = f"⚠ below baseline ({diff:.1%})"
         elif val_acc >= self.prev_val_acc:
             acc_color = "green"
             status = "↗ improving"
@@ -2567,6 +2634,8 @@ class TransformerDirectionTrainer(BaseTrainer):
         
         # === WARM-START: Load existing weights + EWC + Lineage ===
         self._is_warm_start = False
+        self._warm_start_val_acc = 0.0  # Track previous best to prevent saving worse models
+        self._warm_start_weights = None  # Store original weights for recovery
         effective_lr = self.config.learning_rate
         
         if warm_start_path and Path(warm_start_path).exists():
@@ -2578,6 +2647,10 @@ class TransformerDirectionTrainer(BaseTrainer):
                 if existing_model.count_params() == self.model.count_params():
                     self.model.set_weights(existing_model.get_weights())
                     self._is_warm_start = True
+                    
+                    # CRITICAL: Store original warm-start weights for recovery if training fails
+                    self._warm_start_weights = self.model.get_weights()
+                    
                     logger.info(f"✓ Successfully loaded {self.model.count_params():,} parameters from checkpoint")
                     
                     # WARM-START LR REDUCTION: Use 10x lower LR to preserve learned weights
@@ -2597,6 +2670,12 @@ class TransformerDirectionTrainer(BaseTrainer):
                             self.lineage.metric_history = parent_lineage.metric_history.copy()
                             logger.info(f"📊 Loaded lineage from parent: {parent_lineage.checkpoint_id} "
                                        f"(cumulative epochs: {self.lineage.cumulative_epochs})")
+                        
+                        # CRITICAL: Load previous best accuracy to prevent saving worse models
+                        prev_metrics = meta.get('metrics', {})
+                        self._warm_start_val_acc = prev_metrics.get('val_accuracy', 0.0)
+                        if self._warm_start_val_acc > 0:
+                            logger.info(f"🎯 Previous best val_accuracy: {self._warm_start_val_acc:.1%} (will not save worse)")
                     
                     # LOAD EWC STATE: Load Fisher information from previous training
                     if self._use_ewc:
@@ -2716,6 +2795,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             RichEpochCallback(
                 model_name="Transformer Direction",
                 total_epochs=self.config.epochs,
+                warm_start_best_acc=self._warm_start_val_acc,  # Track baseline for display
             ),
             # Primary: Stop when validation ACCURACY stops improving
             keras.callbacks.EarlyStopping(
@@ -2745,6 +2825,8 @@ class TransformerDirectionTrainer(BaseTrainer):
                 patience_epochs=3,           # Faster intervention
                 auto_adjust_dropout=True,
                 auto_reduce_lr=True,
+                # CONTINUAL LEARNING: Don't save worse models than previous best
+                warm_start_best_acc=self._warm_start_val_acc,
             ),
             # Prediction collapse detection - warns if model predicts mostly one class
             PredictionCollapseCallback(X_val_filtered, y_val_filtered, check_every=5),
@@ -2772,6 +2854,30 @@ class TransformerDirectionTrainer(BaseTrainer):
         )
         
         self.is_trained = True
+        
+        # === WARM-START RECOVERY: Restore original weights if training degraded ===
+        # CRITICAL: Do this BEFORE computing final metrics!
+        weights_restored = False
+        if self._is_warm_start and self._warm_start_weights is not None and self._warm_start_val_acc > 0:
+            # Check current val accuracy using model after EarlyStopping restored "best" training weights
+            current_val_pred = (self.model.predict(X_val_filtered, verbose=0) > 0.5).astype(float)
+            current_val_acc = np.mean(current_val_pred.flatten() == y_val_filtered)
+            
+            logger.info(f"🔍 Post-training check: current_val_acc={current_val_acc:.1%}, warm_start_baseline={self._warm_start_val_acc:.1%}")
+            
+            if current_val_acc < self._warm_start_val_acc - 0.01:  # Allow 1% tolerance
+                # Training degraded - restore original weights
+                from rich.console import Console
+                console = Console()
+                console.print(f"  [bold red]⚠️ WARM-START RECOVERY TRIGGERED[/bold red]")
+                console.print(f"  [red]   Current: {current_val_acc:.1%} < Baseline: {self._warm_start_val_acc:.1%}[/red]")
+                console.print(f"  [yellow]   Restoring original warm-start weights to prevent degradation...[/yellow]")
+                
+                self.model.set_weights(self._warm_start_weights)
+                weights_restored = True
+                
+                console.print(f"  [green]✓ Original weights restored. Model preserved at {self._warm_start_val_acc:.1%} accuracy[/green]")
+                logger.info(f"✓ Warm-start weights restored. Model preserved at {self._warm_start_val_acc:.1%}")
         
         # === COMPUTE EWC FISHER INFORMATION ===
         # After training, compute importance of each weight for this task

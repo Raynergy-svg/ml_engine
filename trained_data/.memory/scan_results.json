@@ -3715,5 +3715,194 @@
     "trend_strength": 0.2720990147271548,
     "gates_passed": false,
     "timestamp": "2026-01-15T13:14:07.907476"
+  },
+  {
+    "pair": "GBP_USD",
+    "direction": "LONG",
+    "confidence": 0.5382800698280334,
+    "volatility_percentile": 0.86,
+    "trend_strength": 0.9381687901016903,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:10:52.216827"
+  },
+  {
+    "pair": "EUR_USD",
+    "direction": "LONG",
+    "confidence": 0.5348964929580688,
+    "volatility_percentile": 0.69,
+    "trend_strength": 1.0,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:10:52.216827"
+  },
+  {
+    "pair": "USD_CHF",
+    "direction": "LONG",
+    "confidence": 0.5221764445304871,
+    "volatility_percentile": 0.695,
+    "trend_strength": 0.631096918856526,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:10:52.216827"
+  },
+  {
+    "pair": "USD_CAD",
+    "direction": "LONG",
+    "confidence": 0.5365935564041138,
+    "volatility_percentile": 0.365,
+    "trend_strength": 0.6118253351546987,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:10:52.216827"
+  },
+  {
+    "pair": "USD_JPY",
+    "direction": "SHORT",
+    "confidence": 0.6293485462665558,
+    "volatility_percentile": 0.15,
+    "trend_strength": 0.19832468234354175,
+    "gates_passed": true,
+    "timestamp": "2026-01-15T18:10:52.216827"
+  },
+  {
+    "pair": "AUD_USD",
+    "direction": "LONG",
+    "confidence": 0.5301632285118103,
+    "volatility_percentile": 0.63,
+    "trend_strength": 0.28660439927915793,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:10:52.216827"
+  },
+  {
+    "pair": "NZD_USD",
+    "direction": "LONG",
+    "confidence": 0.5294150114059448,
+    "volatility_percentile": 0.23,
+    "trend_strength": 0.2099720122779608,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:10:52.216827"
+  },
+  {
+    "pair": "GBP_USD",
+    "direction": "LONG",
+    "confidence": 0.5382800698280334,
+    "volatility_percentile": 0.86,
+    "trend_strength": 0.9381687901016903,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:45:56.043893"
+  },
+  {
+    "pair": "EUR_USD",
+    "direction": "LONG",
+    "confidence": 0.5348964929580688,
+    "volatility_percentile": 0.69,
+    "trend_strength": 1.0,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:45:56.043893"
+  },
+  {
+    "pair": "USD_CHF",
+    "direction": "LONG",
+    "confidence": 0.5221764445304871,
+    "volatility_percentile": 0.695,
+    "trend_strength": 0.631096918856526,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:45:56.043893"
+  },
+  {
+    "pair": "USD_CAD",
+    "direction": "LONG",
+    "confidence": 0.5365935564041138,
+    "volatility_percentile": 0.365,
+    "trend_strength": 0.6118253351546987,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:45:56.043893"
+  },
+  {
+    "pair": "USD_JPY",
+    "direction": "SHORT",
+    "confidence": 0.6293485462665558,
+    "volatility_percentile": 0.15,
+    "trend_strength": 0.19832468234354175,
+    "gates_passed": true,
+    "timestamp": "2026-01-15T18:45:56.043893"
+  },
+  {
+    "pair": "AUD_USD",
+    "direction": "LONG",
+    "confidence": 0.5301632285118103,
+    "volatility_percentile": 0.63,
+    "trend_strength": 0.28660439927915793,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:45:56.043893"
+  },
+  {
+    "pair": "NZD_USD",
+    "direction": "LONG",
+    "confidence": 0.5294150114059448,
+    "volatility_percentile": 0.23,
+    "trend_strength": 0.2099720122779608,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:45:56.043893"
+  },
+  {
+    "pair": "GBP_USD",
+    "direction": "LONG",
+    "confidence": 0.5382800698280334,
+    "volatility_percentile": 0.86,
+    "trend_strength": 0.9381687901016903,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:59:04.998946"
+  },
+  {
+    "pair": "EUR_USD",
+    "direction": "LONG",
+    "confidence": 0.5348964929580688,
+    "volatility_percentile": 0.69,
+    "trend_strength": 1.0,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:59:04.998946"
+  },
+  {
+    "pair": "USD_CHF",
+    "direction": "LONG",
+    "confidence": 0.5221764445304871,
+    "volatility_percentile": 0.695,
+    "trend_strength": 0.631096918856526,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:59:04.998946"
+  },
+  {
+    "pair": "USD_CAD",
+    "direction": "LONG",
+    "confidence": 0.5365935564041138,
+    "volatility_percentile": 0.365,
+    "trend_strength": 0.6118253351546987,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:59:04.998946"
+  },
+  {
+    "pair": "USD_JPY",
+    "direction": "SHORT",
+    "confidence": 0.6293485462665558,
+    "volatility_percentile": 0.15,
+    "trend_strength": 0.19832468234354175,
+    "gates_passed": true,
+    "timestamp": "2026-01-15T18:59:04.998946"
+  },
+  {
+    "pair": "AUD_USD",
+    "direction": "LONG",
+    "confidence": 0.5301632285118103,
+    "volatility_percentile": 0.63,
+    "trend_strength": 0.28660439927915793,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:59:04.998946"
+  },
+  {
+    "pair": "NZD_USD",
+    "direction": "LONG",
+    "confidence": 0.5294150114059448,
+    "volatility_percentile": 0.23,
+    "trend_strength": 0.2099720122779608,
+    "gates_passed": false,
+    "timestamp": "2026-01-15T18:59:04.998946"
   }
 ]

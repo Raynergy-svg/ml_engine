@@ -18,6 +18,11 @@ Gates (both modes):
 - XGBoost momentum fresh OR accelerating
 - RF expected drawdown < threshold
 
+Market Intelligence (NEW):
+- News sentiment analysis via FinBERT
+- Economic calendar integration (blocks trades before/after high-impact events)
+- Online learning from trade outcomes
+
 Position sized for 2% max risk.
 
 IMPORTANT: Uses NORMALIZED features (returns, z-scores, ratios) that are
@@ -36,6 +41,14 @@ import pandas as pd
 
 # Import normalized feature computation from data loaders
 from modular_data_loaders import compute_normalized_features, get_normalized_feature_names
+
+# Import market intelligence module
+try:
+    from market_intelligence import MarketIntelligence
+    MARKET_INTEL_AVAILABLE = True
+except ImportError:
+    MARKET_INTEL_AVAILABLE = False
+    MarketIntelligence = None
 
 # RL position sizer availability is checked lazily to avoid TF/PyTorch GPU conflicts
 # The actual import happens only when use_rl_sizer=True and the model is loaded
@@ -182,6 +195,7 @@ class ModularEnsembleInference:
         config: Optional[InferenceConfig] = None,
         use_rl_sizer: bool = False,
         instrument: Optional[str] = None,  # For pair-specific model loading
+        enable_market_intelligence: bool = True,  # NEW: Enable sentiment/calendar/online learning
     ):
         self.model_dir = Path(model_dir)
         self.config = config or InferenceConfig()
@@ -193,6 +207,22 @@ class ModularEnsembleInference:
         self.xgb = None
         self.rf = None
         self.ridge = None
+        
+        # Market Intelligence (NEW)
+        self.market_intel = None
+        if enable_market_intelligence and MARKET_INTEL_AVAILABLE:
+            try:
+                self.market_intel = MarketIntelligence(
+                    enable_sentiment=True,
+                    enable_calendar=True,
+                    enable_online_learning=True,
+                )
+                logger.info("✓ Market Intelligence enabled (sentiment + calendar + online learning)")
+            except Exception as e:
+                logger.warning(f"Market Intelligence initialization failed: {e}")
+                self.market_intel = None
+        elif enable_market_intelligence and not MARKET_INTEL_AVAILABLE:
+            logger.info("ℹ Market Intelligence not available (install transformers for sentiment)")
         
         # RL Position Sizer (NEW)
         self.rl_sizer: Optional[RLPositionSizer] = None
@@ -857,6 +887,7 @@ class ModularEnsembleInference:
         df: pd.DataFrame,
         equity: Optional[float] = None,
         instrument: Optional[str] = None,
+        headlines: Optional[List[str]] = None,  # NEW: Optional news headlines for sentiment
     ) -> TradeSignal:
         """
         Run inference through all models and apply gates.
@@ -876,6 +907,7 @@ class ModularEnsembleInference:
             df: DataFrame with features (must have all required columns)
             equity: Account equity for position sizing
             instrument: Trading pair (e.g., 'EUR_USD') for liquidity limits
+            headlines: Optional list of news headlines for sentiment analysis
         
         Returns:
             TradeSignal with trade decision and all model outputs
@@ -885,6 +917,51 @@ class ModularEnsembleInference:
         
         # Store instrument for position sizing
         self._current_instrument = instrument
+        
+        # === MARKET INTELLIGENCE PRE-TRADE CHECK (NEW) ===
+        intel_data = {}
+        if self.market_intel and instrument:
+            try:
+                can_trade, block_reason, intel_data = self.market_intel.pre_trade_check(
+                    instrument,
+                    headlines=headlines,
+                )
+                
+                if not can_trade:
+                    # Blocked by economic event or sentiment
+                    logger.info(f"🚫 Trade blocked by market intelligence: {block_reason}")
+                    return TradeSignal(
+                        should_trade=False,
+                        direction=None,
+                        size_lots=0.0,
+                        reason=f"Market Intelligence: {block_reason}",
+                        regime=None,
+                        regime_confidence=0.0,
+                        tcn_direction=None,
+                        tcn_probability=0.5,
+                        ridge_confidence=0.0,
+                        xgb_momentum=0.0,
+                        xgb_acceleration=False,
+                        rf_drawdown_pips=0.0,
+                        rf_drawdown_pct=0.0,
+                        rf_streak_prob=0.0,
+                        metadata={'intel_data': intel_data},
+                    )
+                
+                # Log intelligence insights
+                if 'sentiment' in intel_data:
+                    sent = intel_data['sentiment']
+                    logger.info(f"📰 Sentiment: {sent['aggregate_label']} ({sent['aggregate_score']:+.2f}) "
+                               f"from {sent['num_headlines']} headlines")
+                
+                if 'next_high_impact' in intel_data:
+                    event = intel_data['next_high_impact']
+                    logger.info(f"📅 Next high-impact: {event['name']} ({event['currency']}) "
+                               f"in {int(event['minutes_until'])} minutes")
+            
+            except Exception as e:
+                logger.warning(f"Market intelligence check failed: {e}")
+                intel_data = {'error': str(e)}
         
         # FIRST: Compute normalized features for instrument-agnostic inference
         if 'returns_1' not in df.columns:

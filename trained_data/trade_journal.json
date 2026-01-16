@@ -666,7 +666,36 @@
       "unrealized_pnl": null,
       "current_price": null,
       "last_synced": null
+    },
+    {
+      "trade_id": "575",
+      "timestamp": "2026-01-15T23:55:49.186527+00:00",
+      "instrument": "USD_JPY",
+      "direction": "long",
+      "entry_price": 158.622,
+      "expected_price": 158.622,
+      "units": 400000,
+      "lots": 4.0,
+      "stop_loss": 158.472,
+      "take_profit": 159.122,
+      "trailing_stop": 0.135,
+      "atr": 0.18105739995079823,
+      "tcn_probability": 0.7791740298271179,
+      "ridge_confidence": 41.769186422697054,
+      "xgb_momentum": 0.2118084728717804,
+      "rf_drawdown_pips": 22.788606613504125,
+      "slippage_pips": -0.30000000000143245,
+      "fill_price": 158.619,
+      "status": "open",
+      "exit_price": null,
+      "exit_time": null,
+      "pnl": null,
+      "pnl_pips": null,
+      "exit_reason": null,
+      "unrealized_pnl": null,
+      "current_price": null,
+      "last_synced": null
     }
   ],
-  "last_updated": "2026-01-15T16:35:10.250630+00:00"
+  "last_updated": "2026-01-15T23:55:49.186890+00:00"
 }

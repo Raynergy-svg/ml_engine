@@ -43501,3 +43501,42 @@ Traceback (most recent call last):
               ^^^^^^^^^^^^^
 TypeError: BuddyScanner.scan() got an unexpected keyword argument 'prompt_execute'
 2026-01-15 13:14:07 - buddy_scanner - INFO - [buddy_scanner.py:431] - Actual trading performance: 46.2% (24W/28L)
+2026-01-15 18:10:52 - buddy_scanner - INFO - [buddy_scanner.py:431] - Actual trading performance: 49.1% (28W/29L)
+2026-01-15 18:45:56 - buddy_scanner - INFO - [buddy_scanner.py:431] - Actual trading performance: 49.1% (28W/29L)
+2026-01-15 18:59:04 - buddy_scanner - INFO - [buddy_scanner.py:431] - Actual trading performance: 49.1% (28W/29L)
+2026-01-15 19:05:53 - enterprise_training - INFO - [enterprise_training.py:786] - Walk-forward: 5 folds, min_train=4024, test_period=424, total_samples=10598
+2026-01-15 19:05:53 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 1/5: train=[0:4000] (4000), test=[4024:4448] (424)
+2026-01-15 19:10:58 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 2/5: train=[0:5537] (5537), test=[5561:5985] (424)
+2026-01-15 19:15:18 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 3/5: train=[0:7075] (7075), test=[7099:7523] (424)
+2026-01-15 19:18:04 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 4/5: train=[0:8612] (8612), test=[8636:9060] (424)
+2026-01-15 19:22:13 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 5/5: train=[0:10150] (10150), test=[10174:10598] (424)
+2026-01-15 19:42:57 - enterprise_training - INFO - [enterprise_training.py:786] - Walk-forward: 5 folds, min_train=4024, test_period=424, total_samples=10598
+2026-01-15 19:42:57 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 1/5: train=[0:4000] (4000), test=[4024:4448] (424)
+2026-01-15 19:46:02 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 2/5: train=[0:5537] (5537), test=[5561:5985] (424)
+2026-01-15 19:54:29 - enterprise_training - INFO - [enterprise_training.py:786] - Walk-forward: 5 folds, min_train=4024, test_period=424, total_samples=10598
+2026-01-15 19:54:29 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 1/5: train=[0:4000] (4000), test=[4024:4448] (424)
+2026-01-15 19:57:19 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 2/5: train=[0:5537] (5537), test=[5561:5985] (424)
+2026-01-15 20:00:12 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 3/5: train=[0:7075] (7075), test=[7099:7523] (424)
+2026-01-15 21:49:27 - utils - ERROR - [utils.py:163] - Configuration file not found: 5000
+2026-01-15 21:49:27 - root - ERROR - [main.py:11496] - Command failed: Configuration file not found: 5000
+Traceback (most recent call last):
+  File "/Users/davidcertan/Desktop/ml_engine/main.py", line 11427, in main
+    _dispatch_train_buddy(args, command_map)
+  File "/Users/davidcertan/Desktop/ml_engine/main.py", line 8019, in _dispatch_train_buddy
+    cfg = load_config(args.config)
+          ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/davidcertan/Desktop/ml_engine/utils.py", line 164, in load_config
+    raise FileNotFoundError(f"Configuration file not found: {config_path}")
+FileNotFoundError: Configuration file not found: 5000
+2026-01-15 22:01:38 - enterprise_training - INFO - [enterprise_training.py:786] - Walk-forward: 5 folds, min_train=4024, test_period=172, total_samples=4297
+2026-01-15 22:01:38 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 1/5: train=[0:4000] (4000), test=[4024:4196] (172)
+2026-01-15 22:04:25 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 2/5: train=[0:4025] (4025), test=[4049:4221] (172)
+2026-01-15 22:07:09 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 3/5: train=[0:4050] (4050), test=[4074:4246] (172)
+2026-01-15 22:09:56 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 4/5: train=[0:4075] (4075), test=[4099:4271] (172)
+2026-01-15 22:12:58 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 5/5: train=[0:4101] (4101), test=[4125:4297] (172)
+2026-01-15 22:40:13 - enterprise_training - INFO - [enterprise_training.py:786] - Walk-forward: 5 folds, min_train=4024, test_period=424, total_samples=10598
+2026-01-15 22:40:13 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 1/5: train=[0:4000] (4000), test=[4024:4448] (424)
+2026-01-15 22:42:53 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 2/5: train=[0:5537] (5537), test=[5561:5985] (424)
+2026-01-15 22:45:45 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 3/5: train=[0:7075] (7075), test=[7099:7523] (424)
+2026-01-15 22:48:55 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 4/5: train=[0:8612] (8612), test=[8636:9060] (424)
+2026-01-15 22:52:09 - enterprise_training - INFO - [enterprise_training.py:814] - Fold 5/5: train=[0:10150] (10150), test=[10174:10598] (424)
