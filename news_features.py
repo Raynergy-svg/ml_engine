@@ -526,4 +526,3 @@ def post_trade_update(
         instrument=instrument,
         trade_id=trade_id,
     )
-# — Raynergy-svg —

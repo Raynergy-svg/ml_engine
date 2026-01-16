@@ -384,7 +384,7 @@ class TestEconomicEventDataclass(unittest.TestCase):
         event = EconomicEvent(
             title="Federal Reserve Interest Rate Decision",
             currency="USD",
-            impact="high",
+            impact=ImpactLevel.HIGH,
             time=datetime(2025, 1, 15, 19, 0, tzinfo=timezone.utc),
             time_to=60,
             forecast="5.25%",
@@ -393,7 +393,7 @@ class TestEconomicEventDataclass(unittest.TestCase):
         
         self.assertEqual(event.title, "Federal Reserve Interest Rate Decision")
         self.assertEqual(event.currency, "USD")
-        self.assertEqual(event.impact, "high")
+        self.assertEqual(event.impact, ImpactLevel.HIGH)
         self.assertEqual(event.time_to, 60)
         self.assertEqual(event.forecast, "5.25%")
 
@@ -420,4 +420,3 @@ class TestTradeFeatures(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-# — Raynergy-svg —
