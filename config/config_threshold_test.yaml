@@ -1,0 +1,345 @@
+# =============================================================================
+# IMPROVED Configuration for FX Trading Bot - Training Fixes Applied
+# =============================================================================
+# FIXES APPLIED:
+# 1. Disabled mixed precision (causes issues on M1 Metal)
+# 2. Adjusted Tier-2 TP/SL for M5 timeframe (tighter stops)
+# 3. Increased model capacity (hidden_size 64, num_layers 3)
+# 4. Longer lookahead for direction labels (12 bars)
+# 5. Minimum epochs before early stopping (50)
+# 6. Balanced confidence labels (try both directions)
+# =============================================================================
+
+# ----- PATH CONFIGURATION -----
+paths:
+  data_dir: trained_data/data
+  model_dir: trained_data/models
+  checkpoint_dir: trained_data/checkpoints
+  log_dir: trained_data/logs
+  cache_dir: trained_data/cache
+  viz_dir: trained_data/visualizations
+  tensorboard_dir: trained_data/tensorboard
+
+# ----- DEVICE CONFIGURATION FOR M1 METAL -----
+device: gpu
+
+# ----- DATA CONFIGURATION -----
+data:
+  data_dir: market_data/
+  cache_dir: trained_data/cache
+  required_features:
+    - open
+    - high
+    - low
+    - close
+    - volume
+    - rsi
+    - macd
+    - macd_signal
+    - macd_hist
+    - bb_upper_20
+    - bb_lower_20
+    - bb_width_20
+    - bb_position_20
+    - atr
+    - adx
+    - stoch_k
+    - stoch_d
+    - cci
+    - obv
+    - mfi
+    - williams_r
+    - sma_5
+    - sma_10
+    - sma_20
+    - sma_50
+    - ema_12
+    - ema_26
+    - returns
+    - volatility_20
+    - momentum_10
+    - zscore_20
+    - roc_5
+    - roc_10
+    - roc_20
+
+# ----- SEQUENCE CONFIGURATION -----
+sequence_length: 60
+
+# ----- DIRECTION LABELING -----
+# Look 12 bars ahead (1 hour on M5) for cleaner signals
+direction_lookahead: 12
+# A/B TEST VARIANT: Higher threshold (0.003 = 0.3%) for stricter filtering.
+# Compare results with config_improved.yaml (0.0025) to find optimal balance
+# between label quality and sample count.
+direction_threshold: 0.003  # Min 0.3% move to count as directional (stricter)
+
+# ----- MODEL CONFIGURATION -----
+model:
+  type: ensemble
+  
+  # Feature dimension (will be auto-detected)
+  input_size: 50
+  
+  # Increased capacity
+  hidden_size: 64
+  num_layers: 3
+  
+  # Moderate dropout
+  dropout: 0.3
+  
+  # Keep at 0 for M1 Metal speed
+  recurrent_dropout: 0.0
+  
+  # Kernel regularization (L2)
+  kernel_regularizer: 0.001
+  
+  # TCN-specific
+  kernel_size: 3
+  use_residual: true
+  
+  # Multi-task heads
+  multi_task: true
+  state_classes: 2
+  
+  # Attention heads
+  num_heads: 4
+
+# ----- OPTIMIZER CONFIGURATION -----
+optimizer:
+  type: adamw
+  
+  # Learning rate
+  learning_rate: 0.0003
+  
+  # Weight decay
+  weight_decay: 0.01
+  
+  betas:
+    - 0.9
+    - 0.999
+  
+  # Gradient clipping
+  clipnorm: 1.0
+
+# ----- TRAINING CONFIGURATION -----
+training:
+  epochs: 200
+  
+  # Increased patience
+  early_stopping_patience: 30
+  
+  # Minimum epochs before early stopping
+  min_epochs: 50
+  
+  # M1 optimizations
+  jit_compile: false
+  run_eagerly: false
+  
+  # Batch progress
+  batch_progress_every: 50
+
+# ----- BATCH SIZE -----
+batch_size: 64
+
+# ----- LEARNING RATE SCHEDULE -----
+scheduler:
+  type: cosine_annealing
+  T_max: 50
+  eta_min: 0.00001
+
+# ----- LOSS CONFIGURATION -----
+loss_type: huber
+huber_delta: 1.0
+
+# ----- MULTI-TASK HEAD LOSS WEIGHTS -----
+# Balanced weights
+unified_head_loss_weights:
+  price: 1.0
+  trend: 0.5
+  direction: 5.0
+  risk: 2.0
+  state_logits: 2.0
+
+# ----- FOCAL LOSS FOR DIRECTION -----
+auto_focal_alpha: true
+focal_gamma: 2.0
+direction_loss: focal
+
+# ----- DATA SCALING -----
+enable_data_scaling: true
+normalize_features: true
+
+# ----- MIXED PRECISION -----
+# DISABLED: M1 Metal doesn't support mixed_float16 efficiently
+mixed_precision: false
+
+# ----- VALIDATION -----
+validation_split: 0.15
+
+# ----- EARLY STOPPING -----
+early_stop_monitor: val_loss
+early_stopping_patience: 30
+min_epochs: 50
+
+# ----- REGULARIZATION -----
+noise_std: 0.02
+kernel_regularizer: 0.001
+
+# ----- TENSORBOARD -----
+tensorboard:
+  enabled: true
+  log_dir: trained_data/tensorboard
+  histogram_freq: 1
+  write_graph: true
+  write_images: false
+  profile_batch: 0
+  update_freq: epoch
+
+# ----- FX TRADING CONFIGURATION -----
+fx:
+  enabled: true
+  tier: 1
+  timezone: America/New_York
+  granularity: M5
+  horizon_bars: 1
+  equity: 10000.0
+  instruments:
+    - EUR_USD
+    - GBP_USD
+    - USD_JPY
+  session:
+    start: "08:00"
+    end: "11:30"
+    force_flat_at: "11:55"
+    reset_at: "08:00"
+  limits:
+    max_open_positions: 1
+    max_entries_per_day: 1
+  risk:
+    risk_per_trade_pct: 0.02
+    daily_loss_stop_pct: 0.05
+    atr_stop_mult: 1.5
+    rr_take_profit: 2.0
+  execution:
+    require_confirmation: true
+    practice_only: true
+  costs:
+    max_spread_pips:
+      EUR_USD: 1.0
+      GBP_USD: 1.6
+      USD_JPY: 1.2
+    slippage_pips_min: 0.2
+    slippage_pips_spread_mult: 0.25
+  confidence:
+    low_lt: 0.6
+    high_gte: 0.75
+
+# ----- BUDDY CONFIGURATION -----
+buddy:
+  head_hidden: 64
+  head_layers: 3
+  head_dropout: 0.2
+  dense_hidden: 128
+  dense_dropout: 0.3
+  
+  train_defaults:
+    tier2_calibration_stride: 1  # Label every candle for more data
+    tier2_horizon_candles: 60    # 5 hours on M5 (more time to hit TP)
+    seq_len: 60
+    epochs: 200
+    batch_size: 64
+    lr: 0.0003
+    patience: 30
+    es_monitor: combined
+    combined_w_dir: 0.6
+    combined_w_conf: 0.4
+    steps_per_execution: 10
+    shared_encoder: false
+    fit_verbose: 2
+    mixed_precision: false  # DISABLED for M1 Metal
+    jit_compile: false
+    cache_val: true
+  
+  # FIXED: Tier-2 TP/SL adjusted for M5 timeframe
+  # On M5, price moves are smaller, so use tighter stops
+  # SL=10, TP=20 = 2:1 RR, need 33.3% win rate to break even
+  stop_loss_pips: 10.0    # REDUCED from 30 - tighter for M5
+  take_profit_pips: 20.0  # REDUCED from 60 - tighter for M5
+  tier2_horizon_candles: 60  # 5 hours on M5 (enough time)
+  tier2_spread_fallback_pips: 1.5
+  tier2_tie_break: "sl"
+  risk_per_trade_pct: 0.01
+  
+  tier2:
+    enabled: true
+    p_win_threshold: 0.45
+    use_model_confidence_for_gate: true
+    remove_confidence_gate: false
+    model_conf_threshold: 0.55
+    require_both: true
+    kelly_fraction: 0.15
+    max_risk_per_trade_pct: 0.01
+    force_temperature_scaling: true
+    require_trending: true
+    min_atr_percentile: 0.3
+
+  # ----- TRIPLE BARRIER LABELING -----
+  triple_barrier:
+    enabled: true
+    use_for_direction: true
+    exclude_timeouts: false
+    timeout_weight: 0.3
+    use_best_direction: true  # Try both long/short, pick best outcome
+  
+  # ----- META-LABELING -----
+  meta_labeling:
+    enabled: true
+    n_estimators: 200
+    max_depth: 4
+    learning_rate: 0.1
+    threshold: 0.55
+
+# ----- XGBOOST BASELINE -----
+xgboost:
+  enabled: true
+  run_baseline_check: true
+  n_estimators: 200
+  max_depth: 4
+  learning_rate: 0.1
+  min_child_weight: 3
+  gamma: 0.1
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0.1
+  reg_lambda: 1.0
+  early_stopping_rounds: 50
+
+# ----- MEMORY MONITORING -----
+monitoring:
+  enable_memory_monitoring: true
+  memory_check_interval: 30
+  cpu_memory_threshold: 80
+  log_memory_usage: true
+
+# ----- PERFORMANCE TARGETS -----
+performance:
+  max_mse: 0.1
+  min_accuracy: 0.55
+  min_r2_score: 0.1
+
+# ----- DATA AUGMENTATION -----
+augmentation:
+  enabled: false
+  factor: 2
+  noise_level: 0.01
+  use_mixup: true
+  mixup_alpha: 0.2
+
+# ----- DIAGNOSTIC SETTINGS -----
+diagnostics:
+  enabled: true
+  run_xgboost_baseline: true
+  log_gradient_stats: true
+  log_feature_importance: true
+  save_label_distribution: true

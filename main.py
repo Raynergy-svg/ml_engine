@@ -26,7 +26,7 @@ from rich.live import Live
 from rich.layout import Layout
 from rich.table import Table
 from rich.panel import Panel
-from utils import setup_logging, load_config
+from src.utils import setup_logging, load_config
 
 if TYPE_CHECKING:
     from neural_network_integrator_enhanced import NeuralNetworkIntegrator
@@ -270,7 +270,7 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     import pandas as pd
 
     from fx_paper import candles_to_ohlcv_df
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
 
     client = OandaPracticeClient.from_env()
 
@@ -554,7 +554,7 @@ def launch_buddy_repl_from_wizard(
     to avoid importing `unified_talk` at module import time.
     """
     try:
-        from unified_talk import run_unified_talk, OandaSettings  # type: ignore
+        from src.utils.unified_talk import run_unified_talk, OandaSettings  # type: ignore
     except Exception as e:  # pragma: no cover - runtime guard
         console.print(
             f"[red]Could not import Buddy REPL (missing optional dependency): {e}[/red]"
@@ -2112,8 +2112,8 @@ def _train_buddy_impl(
             console.print()
             
             # Import modular components
-            from modular_data_loaders import load_all_modular_data
-            from modular_trainers import (
+            from src.core.modular_data_loaders import load_all_modular_data
+            from src.training.modular_trainers import (
                 TrainerConfig,
                 TCNTrainer,
                 TransformerDirectionTrainer,
@@ -5181,7 +5181,7 @@ class _FxPaperTradePlan:
 
 
 def _fx_setup_paper_trade(cfg: Dict[str, Any], *, instrument: str, granularity: str, execute: bool):
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
     import fx_guardrails as fxg
 
     policy = _fx_enforce_fx_policy(cfg, instrument=instrument, granularity=granularity)
@@ -5911,7 +5911,7 @@ def buddy(
         for name in ['modular_trainers', 'modular_inference', 'tensorflow', 'absl']:
             _logging.getLogger(name).setLevel(_logging.ERROR)
         
-        from modular_inference import ModularEnsembleInference, InferenceConfig
+        from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
         
         # Load modular ensemble
         ensemble = ModularEnsembleInference()
@@ -5919,7 +5919,7 @@ def buddy(
         
         # Fetch candles for inference
         from fx_paper import candles_to_ohlcv_df
-        from oanda_practice import OandaPracticeClient
+        from src.utils.oanda_practice import OandaPracticeClient
         
         client = OandaPracticeClient.from_env()
         resp = client.get_candles(instrument, granularity=granularity, count=int(candles), price="MBA")
@@ -5952,7 +5952,7 @@ def buddy(
         
         # Execute trade if gates pass
         if signal.trade and execute:
-            from oanda_practice import OandaPracticeClient
+            from src.utils.oanda_practice import OandaPracticeClient
             trader = OandaPracticeClient.from_env()
             
             units = int(signal.size * 100000)  # Convert lots to units
@@ -6168,7 +6168,7 @@ def buddy(
 
     # Fetch candles.
     from fx_paper import candles_to_ohlcv_df
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
 
     client = OandaPracticeClient.from_env()
     resp = client.get_candles(instrument, granularity=granularity, count=int(candles), price="MBA")
@@ -7080,7 +7080,7 @@ def buddy_loop(
     )
 
     from fx_paper import candles_to_ohlcv_df
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
 
     client = OandaPracticeClient.from_env()
     interval_s = _granularity_seconds(granularity)
@@ -7867,7 +7867,7 @@ def buddy_scan(
         logger.setLevel(_logging.ERROR)  # Only show errors
     
     # Initialize scanner
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
     from feature_engineering import FeatureEngineering
     from fx_paper import candles_to_ohlcv_df
     
@@ -7880,7 +7880,7 @@ def buddy_scan(
     
     if modular_ensemble_meta_path.exists():
         try:
-            from modular_inference import ModularEnsembleInference
+            from src.core.modular_inference import ModularEnsembleInference
             modular_ensemble = ModularEnsembleInference()
             modular_ensemble.load_models()
             
@@ -8129,7 +8129,7 @@ def buddy_journal(
     if update:
         console.print("\n[dim]Fetching closed trades from OANDA...[/dim]")
         try:
-            from oanda_practice import OandaPracticeClient
+            from src.utils.oanda_practice import OandaPracticeClient
             client = OandaPracticeClient.from_env()
             updated_count = journal.update_from_oanda(client)
             console.print(f"[green]✓ Updated {updated_count} trades from OANDA[/green]")
@@ -8273,7 +8273,7 @@ def buddy_analyze(
     # Load recent data for analysis
     console.print("[dim]Fetching recent data for analysis...[/dim]")
     
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
     from feature_engineering import FeatureEngineering
     from fx_paper import candles_to_ohlcv_df
     
@@ -8487,7 +8487,7 @@ def _buddy_test_modular_ensemble(
     console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
     
     from fx_paper import candles_to_ohlcv_df
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
     
     client = OandaPracticeClient.from_env()
     resp = client.get_candles(instrument, granularity=granularity, count=fetch_count, price="MBA")
@@ -8501,7 +8501,7 @@ def _buddy_test_modular_ensemble(
     # Load modular ensemble
     _configure_tf_metal(verbose=verbose)
     
-    from modular_inference import ModularEnsembleInference, InferenceConfig
+    from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
     
     ensemble = ModularEnsembleInference()
     ensemble.load_models()
@@ -8867,7 +8867,7 @@ def buddy_test(
     console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
     
     from fx_paper import candles_to_ohlcv_df
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
     
     client = OandaPracticeClient.from_env()
     resp = client.get_candles(instrument, granularity=granularity, count=fetch_count, price="MBA")
