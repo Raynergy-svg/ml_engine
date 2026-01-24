@@ -8,7 +8,8 @@ while [[ -L "$SOURCE" ]]; do
     [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-CONFIG_FILE="${SCRIPT_DIR}/config/config_improved_H1.yaml"
+ROOT_DIR="$(cd -P "${SCRIPT_DIR}/.." && pwd)"
+CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
 ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
 
 get_conda() {
@@ -34,7 +35,7 @@ cmd_predict() {
             *) shift ;;
         esac
     done
-    run_py "${SCRIPT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
+    run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_train() {
@@ -50,7 +51,7 @@ cmd_train() {
             *) shift ;;
         esac
     done
-    run_py "${SCRIPT_DIR}/main.py" train-buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
+    run_py "${ROOT_DIR}/main.py" train-buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_scan() {
@@ -65,7 +66,7 @@ cmd_scan() {
             *) shift ;;
         esac
     done
-    run_py "${SCRIPT_DIR}/main.py" scan --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
+    run_py "${ROOT_DIR}/main.py" scan --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_analyze() {
@@ -78,7 +79,7 @@ cmd_analyze() {
             *) shift ;;
         esac
     done
-    run_py "${SCRIPT_DIR}/main.py" analyze --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+    run_py "${ROOT_DIR}/main.py" analyze --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_journal() {
@@ -91,7 +92,7 @@ cmd_journal() {
             *) shift ;;
         esac
     done
-    run_py "${SCRIPT_DIR}/main.py" journal --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+    run_py "${ROOT_DIR}/main.py" journal --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_test() {
@@ -106,12 +107,12 @@ cmd_test() {
             *) shift ;;
         esac
     done
-    run_py "${SCRIPT_DIR}/main.py" test --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
+    run_py "${ROOT_DIR}/main.py" test --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
-cmd_status() { run_py "${SCRIPT_DIR}/main.py" model-status --config "${CONFIG_FILE}"; }
-cmd_promote() { run_py "${SCRIPT_DIR}/main.py" promote-model --config "${CONFIG_FILE}"; }
-cmd_loop() { run_py "${SCRIPT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --loop --candles 2000; }
+cmd_status() { run_py "${ROOT_DIR}/main.py" model-status --config "${CONFIG_FILE}"; }
+cmd_promote() { run_py "${ROOT_DIR}/main.py" promote-model --config "${CONFIG_FILE}"; }
+cmd_loop() { run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --loop --candles 2000; }
 
 main() {
     [[ $# -eq 0 ]] && { cmd_predict; exit $?; }

@@ -28,7 +28,7 @@ from tensorflow import keras
 from tensorflow.keras import callbacks as keras_callbacks
 from tensorflow.keras import optimizers, losses, metrics
 
-from tensorflow_models import create_tensorflow_model
+from .tensorflow_models import create_tensorflow_model
 
 
 from tensorflow.keras.saving import register_keras_serializable
@@ -1182,7 +1182,7 @@ if __name__ == "__main__":
     print("\nExample usage:")
     print("-"*60)
     print("""
-from tensorflow_engine import TensorFlowEngine
+from src.models.tensorflow_engine import TensorFlowEngine
 
 # Create engine
 engine = TensorFlowEngine(config)
