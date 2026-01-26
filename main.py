@@ -30,7 +30,7 @@ from rich.live import Live
 from rich.layout import Layout
 from rich.table import Table
 from rich.panel import Panel
-from utils import setup_logging, load_config
+from src.utils import setup_logging, load_config
 
 
 @dataclass(frozen=True)
@@ -283,7 +283,7 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     import pandas as pd
 
     from fx_paper import candles_to_ohlcv_df
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
 
     client = OandaPracticeClient.from_env()
 
@@ -764,7 +764,7 @@ def launch_buddy_repl_from_wizard(
     to avoid importing `unified_talk` at module import time.
     """
     try:
-        from unified_talk import run_unified_talk, OandaSettings  # type: ignore
+        from src.utils.unified_talk import run_unified_talk, OandaSettings  # type: ignore
     except Exception as e:  # pragma: no cover - runtime guard
         console.print(
             f"[red]Could not import Buddy REPL (missing optional dependency): {e}[/red]"
@@ -2465,8 +2465,8 @@ def _train_buddy_impl(
             console.print()
             
             # Import modular components
-            from modular_data_loaders import load_all_modular_data
-            from modular_trainers import (
+            from src.core.modular_data_loaders import load_all_modular_data
+            from src.training.modular_trainers import (
                 TrainerConfig,
                 TCNTrainer,
                 TransformerDirectionTrainer,
@@ -5914,7 +5914,7 @@ class _FxPaperTradePlan:
 
 
 def _fx_setup_paper_trade(cfg: Dict[str, Any], *, instrument: str, granularity: str, execute: bool):
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
     import fx_guardrails as fxg
 
     policy = _fx_enforce_fx_policy(cfg, instrument=instrument, granularity=granularity)
@@ -7096,7 +7096,7 @@ def buddy(
         for name in ['modular_trainers', 'modular_inference', 'tensorflow', 'absl']:
             _logging.getLogger(name).setLevel(_logging.ERROR)
         
-        from modular_inference import ModularEnsembleInference, InferenceConfig
+        from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
         
         # Load modular ensemble with pair-specific models
         # Normalizes instrument (e.g., "eur_usd" -> "EUR_USD")
@@ -7129,7 +7129,7 @@ def buddy(
         
         # Fetch candles for inference
         from fx_paper import candles_to_ohlcv_df
-        from oanda_practice import OandaPracticeClient
+        from src.utils.oanda_practice import OandaPracticeClient
         
         client = OandaPracticeClient.from_env()
         resp = client.get_candles(instrument, granularity=granularity, count=int(candles), price="MBA")
@@ -7160,137 +7160,9 @@ def buddy(
         
         signal = result['raw_signal']
         
-        # =====================================================================
-        # INTELLIGENT MODE: Generate LLM-enhanced reasoning
-        # =====================================================================
-        # Build BuddyRawOutput for intelligent mode (used by reasoning AND validation)
-        # =====================================================================
-        buddy_raw = None
-        if llm_initialized and signal:
-            from buddy_intelligent_mode import BuddyRawOutput
-            buddy_raw = BuddyRawOutput(
-                confidence=signal.ridge_confidence,
-                prediction=signal.tcn_probability,
-                probability=signal.tcn_probability,
-                direction='long' if signal.direction == 'long' else 'short',
-                last_price=float(df['close'].iloc[-1]),
-                gate_results={
-                    'tcn_probability': signal.tcn_probability,
-                    'ridge_confidence': signal.ridge_confidence,
-                    'xgb_momentum': signal.xgb_momentum,
-                    'rf_drawdown_pips': signal.rf_drawdown_pips,
-                    'gates_passed': signal.trade,
-                },
-            )
-        
-        # =====================================================================
-        # INTELLIGENT MODE: Generate LLM-enhanced reasoning (optional display)
-        # =====================================================================
-        if (intelligent or explain) and llm_initialized and signal and buddy_raw:
-            try:
-                from buddy_intelligent_mode import (
-                    generate_trade_reasoning,
-                    get_intelligent_mode,
-                )
-                
-                # Gather price/technical context
-                price_data = {
-                    'last_close': float(df['close'].iloc[-1]),
-                    'atr': float(df['atr'].iloc[-1]) if 'atr' in df.columns else None,
-                    'adx': float(df['adx'].iloc[-1]) if 'adx' in df.columns else None,
-                    'rsi': float(df['rsi'].iloc[-1]) if 'rsi' in df.columns else None,
-                    'trend': 'up' if df['close'].iloc[-1] > df['close'].iloc[-20] else 'down',
-                }
-                
-                # Only show verbose reasoning if --explain flag is used
-                if explain:
-                    console.print("[cyan]━━━ REASONING ━━━[/cyan]")
-                    
-                    if intelligent:
-                        intel_mode = get_intelligent_mode()
-                        reasoning_result = intel_mode.get_full_intelligent_analysis(
-                            ticker=instrument,
-                            timeframe=granularity,
-                            buddy_raw=buddy_raw,
-                            price_data=price_data,
-                        )
-                        if reasoning_result.get('reasoning'):
-                            console.print(reasoning_result['reasoning'])
-                    else:
-                        reasoning_result = generate_trade_reasoning(
-                            ticker=instrument,
-                            timeframe=granularity,
-                            buddy_raw=buddy_raw,
-                            price_data=price_data,
-                        )
-                        if reasoning_result.get('reasoning'):
-                            console.print(reasoning_result['reasoning'])
-                    
-                    console.print("[cyan]━━━━━━━━━━━━━━━━━━[/cyan]\n")
-                
-                _lap("intelligent_reasoning")
-                
-            except Exception as e:
-                if verbose:
-                    console.print(f"[yellow]Reasoning generation failed: {e}[/yellow]")
-        
-        # =====================================================================
-        # LLM TRADE VALIDATION - Actually influences the trade decision
-        # Runs even with --no-execute to show what would happen
-        # =====================================================================
-        llm_validation = None
-        if signal.trade and llm_initialized and buddy_raw:
-            try:
-                from buddy_intelligent_mode import validate_trade_with_llm, LLMTradeValidation
-                
-                # Gather context for validation
-                price_data = {
-                    'last_close': float(df['close'].iloc[-1]),
-                    'atr': float(df['atr'].iloc[-1]) if 'atr' in df.columns else None,
-                    'adx': float(df['adx'].iloc[-1]) if 'adx' in df.columns else None,
-                    'rsi': float(df['rsi'].iloc[-1]) if 'rsi' in df.columns else None,
-                    'trend': 'up' if df['close'].iloc[-1] > df['close'].iloc[-20] else 'down',
-                }
-                
-                # Get news sentiment if available
-                news_sentiment = None
-                if 'sentiment_score' in result:
-                    news_sentiment = {
-                        'sentiment': result.get('sentiment_label', 'neutral'),
-                        'score': result.get('sentiment_score', 0),
-                        'headline_count': result.get('headline_count', 0),
-                    }
-                
-                llm_validation = validate_trade_with_llm(
-                    ticker=instrument,
-                    direction=signal.direction,
-                    buddy_raw=buddy_raw,
-                    price_data=price_data,
-                    news_sentiment=news_sentiment,
-                )
-                
-                # Display validation result
-                if llm_validation.approve:
-                    if llm_validation.size_multiplier != 1.0:
-                        console.print(f"[cyan]🧠 LLM: Approved (size {llm_validation.size_multiplier:.1f}x) - {llm_validation.reason}[/cyan]")
-                    else:
-                        console.print(f"[green]🧠 LLM: Approved - {llm_validation.reason}[/green]")
-                else:
-                    console.print(f"[red]🧠 LLM: REJECTED - {llm_validation.reason}[/red]")
-                    if llm_validation.risk_flags:
-                        console.print(f"[red]   Risk flags: {', '.join(llm_validation.risk_flags)}[/red]")
-                
-                _lap("llm_validation")
-                
-            except Exception as e:
-                if verbose:
-                    console.print(f"[yellow]LLM validation failed: {e}[/yellow]")
-                llm_validation = None
-        
-        # Execute trade if gates pass AND LLM approves (or LLM unavailable)
-        llm_approved = llm_validation is None or llm_validation.approve
-        if signal.trade and execute and llm_approved:
-            from oanda_practice import OandaPracticeClient
+        # Execute trade if gates pass
+        if signal.trade and execute:
+            from src.utils.oanda_practice import OandaPracticeClient
             trader = OandaPracticeClient.from_env()
             
             # Apply LLM size adjustment if available
@@ -7535,7 +7407,7 @@ def buddy(
 
     # Fetch candles.
     from fx_paper import candles_to_ohlcv_df
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
 
     client = OandaPracticeClient.from_env()
     resp = client.get_candles(instrument, granularity=granularity, count=int(candles), price="MBA")
@@ -8447,7 +8319,7 @@ def buddy_loop(
     )
 
     from fx_paper import candles_to_ohlcv_df
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
 
     client = OandaPracticeClient.from_env()
     interval_s = _granularity_seconds(granularity)
@@ -9543,7 +9415,7 @@ def _buddy_scan_legacy(
         logger.setLevel(_logging.ERROR)  # Only show errors
     
     # Initialize scanner
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
     from feature_engineering import FeatureEngineering
     from fx_paper import candles_to_ohlcv_df
     
@@ -9556,7 +9428,7 @@ def _buddy_scan_legacy(
     
     if modular_ensemble_meta_path.exists():
         try:
-            from modular_inference import ModularEnsembleInference
+            from src.core.modular_inference import ModularEnsembleInference
             modular_ensemble = ModularEnsembleInference()
             modular_ensemble.load_models()
             
@@ -10651,14 +10523,24 @@ def buddy_journal(
     
     journal = TradeJournal()
     
-    # Connect to OANDA
-    client = None
-    try:
-        from oanda_practice import OandaPracticeClient
-        client = OandaPracticeClient.from_env()
-    except Exception as e:
-        console.print(f"\n[red]✗ Failed to connect to OANDA: {e}[/red]")
-        console.print("[dim]Set OANDA_API_TOKEN and OANDA_ACCOUNT_ID in .env file[/dim]")
+    # Update from OANDA if requested
+    if update:
+        console.print("\n[dim]Fetching closed trades from OANDA...[/dim]")
+        try:
+            from src.utils.oanda_practice import OandaPracticeClient
+            client = OandaPracticeClient.from_env()
+            updated_count = journal.update_from_oanda(client)
+            console.print(f"[green]✓ Updated {updated_count} trades from OANDA[/green]")
+        except Exception as e:
+            console.print(f"[red]Failed to update from OANDA: {e}[/red]")
+    
+    # Get statistics
+    stats = journal.get_statistics(days=days)
+    
+    if stats["total_trades"] == 0:
+        console.print("\n[yellow]No trades found in journal.[/yellow]")
+        console.print("[dim]Trades are logged when using 'buddy predict' with --execute[/dim]")
+        console.print("=" * 70)
         return
     
     # Fetch comprehensive performance data from OANDA
@@ -11014,7 +10896,7 @@ def buddy_analyze(
     # Load recent data for analysis
     console.print("[dim]Fetching recent data for analysis...[/dim]")
     
-    from oanda_practice import OandaPracticeClient
+    from src.utils.oanda_practice import OandaPracticeClient
     from feature_engineering import FeatureEngineering
     from fx_paper import candles_to_ohlcv_df
     
@@ -11192,9 +11074,344 @@ def buddy_analyze(
     console.print("\n" + "=" * 70)
 
 
-# =============================================================================
-# MODEL VALIDATION (Professional Testing)
-# =============================================================================
+def _buddy_test_modular_ensemble(
+    config_path: str,
+    instrument: str,
+    granularity: str,
+    test_candles: int,
+    verbose: bool = False,
+) -> None:
+    """
+    Hindcast test using the modular ensemble (4 independent models with gates).
+    Shows BOTH gated results (production) and raw TCN results (evaluation).
+    """
+    import json
+    import numpy as np
+    
+    console.print("[bold magenta]Using MODULAR ENSEMBLE (4 models with gates)[/bold magenta]")
+    console.print("-" * 60)
+    
+    cfg = load_config(config_path)
+    
+    # Check if instrument was in training set
+    meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
+    if meta_path.exists():
+        import json
+        meta = json.loads(meta_path.read_text())
+        trained_pairs = meta.get("selected_pairs", [])
+        if trained_pairs and instrument not in trained_pairs:
+            console.print(f"\n[bold red]⚠️  WARNING: {instrument} was NOT in the training set![/bold red]")
+            console.print(f"[yellow]Trained pairs: {', '.join(trained_pairs)}[/yellow]")
+            console.print(f"[yellow]Model may not generalize well to {instrument}.[/yellow]")
+            console.print(f"[cyan]For accurate testing, use: buddy test -I {trained_pairs[0]}[/cyan]\n")
+    
+    # Fetch candles
+    fetch_count = test_candles + 300  # Buffer for feature engineering NaN rows
+    console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
+    
+    from fx_paper import candles_to_ohlcv_df
+    from src.utils.oanda_practice import OandaPracticeClient
+    
+    client = OandaPracticeClient.from_env()
+    resp = client.get_candles(instrument, granularity=granularity, count=fetch_count, price="MBA")
+    df_raw = candles_to_ohlcv_df(resp)
+    
+    # Feature engineering
+    from feature_engineering import FeatureEngineering
+    fe = FeatureEngineering()
+    df = fe.create_features(df_raw.copy(), include_all=True)
+    
+    # Load modular ensemble
+    _configure_tf_metal(verbose=verbose)
+    
+    from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
+    
+    ensemble = ModularEnsembleInference()
+    ensemble.load_models()
+    
+    # Run hindcast
+    console.print(f"\n[bold]Testing predictions with modular ensemble...[/bold]\n")
+    
+    closes = df["close"].values
+    pip_size = 0.01 if "JPY" in instrument else 0.0001
+    
+    # Get threshold from MODEL METADATA (not config!) to match how model was trained
+    model_meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
+    model_meta = json.loads(model_meta_path.read_text()) if model_meta_path.exists() else {}
+    model_cfg = model_meta.get("config", {})
+    
+    threshold_pct = model_cfg.get("direction_threshold", 0.0015)  # Default matches training
+    lookahead = model_cfg.get("direction_lookahead", 24)
+    
+    console.print(f"[dim]Using MODEL training settings: threshold={threshold_pct*100:.2f}%, lookahead={lookahead}[/dim]")
+    
+    # Test window - need extra buffer for lookahead
+    test_start = len(df) - test_candles - lookahead - 1
+    test_end = len(df) - lookahead - 1  # Leave room for lookahead measurement
+    
+    # Metrics for GATED trades (production mode)
+    gated_correct = 0
+    gated_wrong = 0
+    gated_wins_pips = []
+    gated_losses_pips = []
+    trades_taken = 0
+    trades_skipped = 0
+    
+    # Metrics for RAW TCN direction (evaluation mode - no gates)
+    raw_correct = 0
+    raw_wrong = 0
+    raw_wins_pips = []
+    raw_losses_pips = []
+    
+    # Metrics for CLEAR signals only (matching training threshold)
+    clear_correct = 0
+    clear_wrong = 0
+    
+    # Track gate failures
+    gate_failures = {"confidence": 0, "momentum": 0, "risk": 0, "no_direction": 0}
+    
+    # Track actual XGBoost outputs for debugging
+    all_momentum_values = []
+    all_acceleration_values = []
+    all_rf_drawdowns = []
+    all_rf_streaks = []
+    
+    console.print(f"[dim]Using lookahead={lookahead} bars, threshold={threshold_pct*100:.2f}% to match training config[/dim]\n")
+    
+    for i in range(test_start, test_end):
+        if i < 60:  # Need at least 60 bars of history
+            continue
+        
+        # Get features up to this point (no lookahead)
+        df_slice = df.iloc[:i+1].copy()
+        
+        # Run modular inference
+        try:
+            signal = ensemble.predict(df_slice)
+        except Exception as e:
+            if verbose:
+                console.print(f"[dim]Prediction failed at {i}: {e}[/dim]")
+            continue
+        
+        # Track XGBoost outputs for debugging
+        all_momentum_values.append(signal.xgb_momentum)
+        all_acceleration_values.append(signal.xgb_acceleration)
+        all_rf_drawdowns.append(signal.rf_drawdown_pips)
+        all_rf_streaks.append(signal.rf_streak_prob)
+        
+        # Get timestamp
+        try:
+            ts = df.index[i]
+            ts_str = ts.strftime("%Y-%m-%d %H:%M") if hasattr(ts, "strftime") else str(ts)[:16]
+        except Exception:
+            ts_str = f"candle_{i}"
+        
+        # Actual movement over LOOKAHEAD period (must match training!)
+        entry_price = closes[i]
+        exit_price = closes[i + lookahead]  # lookahead from config
+        actual_pips = (exit_price - entry_price) / pip_size
+        actual_direction = "↑" if actual_pips > 0 else "↓"
+        
+        # Calculate move percentage (for threshold matching)
+        move_pct = abs(exit_price - entry_price) / entry_price
+        is_clear_move = move_pct >= threshold_pct  # threshold_pct from config
+        
+        # RAW TCN evaluation (ignore gates - just evaluate direction prediction)
+        if signal.tcn_direction is not None:
+            raw_is_correct = (
+                (signal.tcn_direction == 1 and actual_pips > 0) or 
+                (signal.tcn_direction == 0 and actual_pips < 0)
+            )
+            if raw_is_correct:
+                raw_correct += 1
+                raw_wins_pips.append(abs(actual_pips))
+            else:
+                raw_wrong += 1
+                raw_losses_pips.append(abs(actual_pips))
+            
+            # Also track clear-signal accuracy (matching training labels)
+            if is_clear_move:
+                if raw_is_correct:
+                    clear_correct += 1
+                else:
+                    clear_wrong += 1
+        
+        # GATED production evaluation
+        if signal.trade:
+            trades_taken += 1
+            predicted_side = "BUY" if signal.direction == "long" else "SELL"
+            
+            is_correct = (
+                (signal.direction == "long" and actual_pips > 0) or 
+                (signal.direction == "short" and actual_pips < 0)
+            )
+            
+            if is_correct:
+                gated_correct += 1
+                gated_wins_pips.append(abs(actual_pips))
+                status = "[green]✅[/green]"
+            else:
+                gated_wrong += 1
+                gated_losses_pips.append(abs(actual_pips))
+                status = "[red]❌[/red]"
+            
+            # Gate status
+            gates = []
+            gates.append(f"conf={signal.ridge_confidence:.0f}{'✓' if signal.confidence_gate_passed else '✗'}")
+            gates.append(f"mom={signal.xgb_momentum:.2f}{'✓' if signal.momentum_gate_passed else '✗'}")
+            gates.append(f"dd={signal.rf_drawdown_pips:.0f}{'✓' if signal.risk_gate_passed else '✗'}")
+            
+            console.print(
+                f"{ts_str} | {predicted_side:4} [{', '.join(gates)}] | "
+                f"Actual: {actual_direction} {actual_pips:+.1f} pips | {status}"
+            )
+        else:
+            trades_skipped += 1
+            # Track why gate failed
+            if signal.tcn_direction is None:
+                gate_failures["no_direction"] += 1
+            if not signal.confidence_gate_passed:
+                gate_failures["confidence"] += 1
+            if not signal.momentum_gate_passed:
+                gate_failures["momentum"] += 1
+            if not signal.risk_gate_passed:
+                gate_failures["risk"] += 1
+            
+            if verbose:
+                tcn_dir = "LONG" if signal.tcn_direction == 1 else "SHORT" if signal.tcn_direction == 0 else "NONE"
+                console.print(
+                    f"[dim]{ts_str} | TCN:{tcn_dir} conf={signal.ridge_confidence:.0f} "
+                    f"mom={signal.xgb_momentum:.2f} dd={signal.rf_drawdown_pips:.0f} | "
+                    f"Actual: {actual_direction} {actual_pips:+.1f} pips | SKIP[/dim]"
+                )
+    
+    # Calculate metrics
+    gated_total = gated_correct + gated_wrong
+    gated_accuracy = gated_correct / gated_total * 100 if gated_total > 0 else 0
+    gated_avg_win = np.mean(gated_wins_pips) if gated_wins_pips else 0
+    gated_avg_loss = np.mean(gated_losses_pips) if gated_losses_pips else 0
+    
+    raw_total = raw_correct + raw_wrong
+    raw_accuracy = raw_correct / raw_total * 100 if raw_total > 0 else 0
+    raw_avg_win = np.mean(raw_wins_pips) if raw_wins_pips else 0
+    raw_avg_loss = np.mean(raw_losses_pips) if raw_losses_pips else 0
+    
+    # Print results
+    console.print("\n" + "=" * 70)
+    console.print(f"[bold]📊 MODULAR ENSEMBLE HINDCAST RESULTS[/bold]")
+    console.print("=" * 70)
+    
+    # Raw TCN performance (evaluation)
+    console.print(f"\n[bold cyan]TCN Direction (Raw - No Gates):[/bold cyan]")
+    console.print(f"  Predictions:        {raw_total}")
+    console.print(f"  Correct:            {raw_correct} ({raw_accuracy:.1f}%)")
+    console.print(f"  Wrong:              {raw_wrong} ({100-raw_accuracy:.1f}%)")
+    console.print(f"  Avg Win:            +{raw_avg_win:.1f} pips")
+    console.print(f"  Avg Loss:           -{raw_avg_loss:.1f} pips")
+    if raw_total > 0:
+        raw_ev = (raw_correct / raw_total) * raw_avg_win - (raw_wrong / raw_total) * raw_avg_loss
+        console.print(f"  Expected Value:     {raw_ev:+.2f} pips/trade")
+    
+    # Clear signal accuracy (matching training labels - moves >= threshold)
+    clear_total = clear_correct + clear_wrong
+    if clear_total > 0:
+        clear_accuracy = 100 * clear_correct / clear_total
+        console.print(f"\n[bold magenta]Clear Signals Only (>= {threshold_pct*100:.1f}% moves, matching training):[/bold magenta]")
+        console.print(f"  Clear Signals:      {clear_total} ({100*clear_total/raw_total:.1f}% of all)")
+        console.print(f"  Correct:            {clear_correct} ({clear_accuracy:.1f}%)")
+        console.print(f"  Wrong:              {clear_wrong} ({100-clear_accuracy:.1f}%)")
+    
+    # Gated performance (production)
+    console.print(f"\n[bold yellow]Gated Trades (Production Mode):[/bold yellow]")
+    console.print(f"  Trades Taken:       {trades_taken}")
+    console.print(f"  Trades Skipped:     {trades_skipped}")
+    if gated_total > 0:
+        console.print(f"  Correct:            {gated_correct} ({gated_accuracy:.1f}%)")
+        console.print(f"  Wrong:              {gated_wrong} ({100-gated_accuracy:.1f}%)")
+        console.print(f"  Avg Win:            +{gated_avg_win:.1f} pips")
+        console.print(f"  Avg Loss:           -{gated_avg_loss:.1f} pips")
+        gated_ev = (gated_correct / gated_total) * gated_avg_win - (gated_wrong / gated_total) * gated_avg_loss
+        console.print(f"  Expected Value:     {gated_ev:+.2f} pips/trade")
+    else:
+        console.print(f"  [dim]No trades passed gates[/dim]")
+    
+    # Gate filter breakdown
+    console.print(f"\n[bold]Gate Filter Breakdown:[/bold]")
+    console.print(f"  Momentum gate fail: {gate_failures['momentum']} ({gate_failures['momentum']/max(trades_skipped,1)*100:.0f}%)")
+    console.print(f"  Confidence gate fail: {gate_failures['confidence']} ({gate_failures['confidence']/max(trades_skipped,1)*100:.0f}%)")
+    console.print(f"  Risk gate fail:     {gate_failures['risk']} ({gate_failures['risk']/max(trades_skipped,1)*100:.0f}%)")
+    console.print(f"  No TCN direction:   {gate_failures['no_direction']}")
+    
+    # XGBoost momentum statistics (for debugging)
+    if all_momentum_values:
+        import numpy as np
+        mom_arr = np.array(all_momentum_values)
+        accel_arr = np.array(all_acceleration_values)
+        console.print(f"\n[bold]XGBoost Momentum Debug:[/bold]")
+        console.print(f"  Min:  {mom_arr.min():.4f}")
+        console.print(f"  Max:  {mom_arr.max():.4f}")
+        console.print(f"  Mean: {mom_arr.mean():.4f}")
+        console.print(f"  >= 0.5: {(mom_arr >= 0.5).sum()} / {len(mom_arr)} ({100*(mom_arr >= 0.5).mean():.1f}%)")
+        console.print(f"  Acceleration True: {accel_arr.sum()} / {len(accel_arr)} ({100*accel_arr.mean():.1f}%)")
+    
+    # RF Risk statistics (for debugging)
+    if all_rf_drawdowns:
+        rf_dd_arr = np.array(all_rf_drawdowns)
+        rf_streak_arr = np.array(all_rf_streaks)
+        console.print(f"\n[bold]RF Risk Debug:[/bold]")
+        console.print(f"  Drawdown - Min: {rf_dd_arr.min():.1f}, Max: {rf_dd_arr.max():.1f}, Mean: {rf_dd_arr.mean():.1f} pips")
+        console.print(f"  Streak Prob - Min: {rf_streak_arr.min():.3f}, Max: {rf_streak_arr.max():.3f}, Mean: {rf_streak_arr.mean():.3f}")
+        console.print(f"  Drawdown < 30 pips: {(rf_dd_arr < 30).sum()} / {len(rf_dd_arr)} ({100*(rf_dd_arr < 30).mean():.1f}%)")
+        console.print(f"  Streak prob < 0.3: {(rf_streak_arr < 0.3).sum()} / {len(rf_streak_arr)} ({100*(rf_streak_arr < 0.3).mean():.1f}%)")
+    
+    # =========================================================================
+    # TRADE FREQUENCY ANALYSIS (Step 6)
+    # =========================================================================
+    console.print(f"\n[bold cyan]📊 Trade Frequency Analysis:[/bold cyan]")
+    
+    # Calculate trades per day (assuming H1 timeframe: 24 candles/day)
+    candles_per_day = 24 if granularity == "H1" else 288 if granularity == "M5" else 96 if granularity == "M15" else 24
+    test_days = test_candles / candles_per_day
+    trades_per_day = trades_taken / test_days if test_days > 0 else 0
+    
+    console.print(f"  Test Period:      {test_days:.1f} days ({test_candles} candles)")
+    console.print(f"  Trades Taken:     {trades_taken}")
+    console.print(f"  Trades/Day:       {trades_per_day:.2f}")
+    
+    # Trade frequency warnings
+    if trades_per_day < 1:
+        console.print(f"  [yellow]⚠ LOW FREQUENCY: <1 trade/day. Consider relaxing gates:[/yellow]")
+        console.print(f"    - Lower confidence threshold (currently {cfg.get('gates', {}).get('min_confidence', 75)})")
+        console.print(f"    - Lower momentum threshold (currently {cfg.get('gates', {}).get('min_momentum', 0.5)})")
+    elif trades_per_day < 2:
+        console.print(f"  [yellow]⚠ Below target: <2 trades/day. May need to relax gates.[/yellow]")
+    elif trades_per_day > 10:
+        console.print(f"  [yellow]⚠ HIGH FREQUENCY: >{10} trades/day. Consider tightening gates.[/yellow]")
+    else:
+        console.print(f"  [green]✓ Good frequency: {trades_per_day:.1f} trades/day[/green]")
+    
+    # Regime breakdown (if regime info available)
+    # Note: This requires regime classifier to be active
+    console.print(f"\n[bold]Gate Pass Rates:[/bold]")
+    total_candles = test_candles
+    conf_pass_rate = (total_candles - gate_failures['confidence']) / total_candles * 100
+    mom_pass_rate = (total_candles - gate_failures['momentum']) / total_candles * 100
+    risk_pass_rate = (total_candles - gate_failures['risk']) / total_candles * 100
+    console.print(f"  Confidence gate: {conf_pass_rate:.1f}% pass rate")
+    console.print(f"  Momentum gate:   {mom_pass_rate:.1f}% pass rate")
+    console.print(f"  Risk gate:       {risk_pass_rate:.1f}% pass rate")
+    
+    console.print("-" * 70)
+    if raw_accuracy >= 52:
+        console.print(f"[green]✓ TCN direction: {raw_accuracy:.1f}% (above 50% random)[/green]")
+    else:
+        console.print(f"[yellow]⚠ TCN direction: {raw_accuracy:.1f}% (near random)[/yellow]")
+    
+    if trades_taken > 0 and gated_accuracy >= 55:
+        console.print(f"[green]✓ Gated trades: {gated_accuracy:.1f}% accuracy with {trades_taken} trades[/green]")
+    elif trades_taken == 0:
+        console.print(f"[yellow]⚠ Gates too strict - try training with more data or adjust thresholds[/yellow]")
+    console.print("=" * 70)
 
 def buddy_validate(
     config_path: str = DEFAULT_CONFIG_PATH,
@@ -11264,14 +11481,226 @@ def buddy_test(
     console.print("[yellow]⚠️ 'buddy test' is deprecated. Using 'buddy validate' instead.[/yellow]")
     console.print("[dim]For professional validation, use: buddy validate --instrument EUR_USD[/dim]\n")
     
-    buddy_validate(
-        config_path=config_path,
-        instrument=instrument,
-        granularity=granularity,
-        candles=test_candles + 300,  # Add buffer for feature warmup
-        verbose=verbose,
-        **kwargs,
-    )
+    # Load model metadata - prefer candidate if it exists (newer model)
+    meta_path = Path("trained_data") / "models" / BUDDY_META_FILENAME
+    candidate_meta_path = Path("trained_data") / "models" / "buddy_tf_candidate.meta.json"
+    
+    # Prefer candidate model (newer) if it exists
+    if candidate_meta_path.exists():
+        meta_path = candidate_meta_path
+    elif not meta_path.exists():
+        console.print("[red]No trained model found. Run: buddy train --oanda-live[/red]")
+        return
+    
+    meta = json.loads(meta_path.read_text())
+    seq_len = int(meta.get("seq_len", 60))
+    feature_columns = list(meta.get("feature_columns", []))
+    
+    std = meta.get("standardize", {})
+    mu = np.asarray(std.get("mean", []), dtype=np.float32).reshape(1, -1)
+    sigma = np.asarray(std.get("std", []), dtype=np.float32).reshape(1, -1)
+    
+    # Fetch candles: need seq_len + test_candles + buffer for feature engineering NaN rows
+    # Feature engineering drops ~200 rows for rolling calculations
+    fetch_count = seq_len + test_candles + 300
+    
+    console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
+    
+    from fx_paper import candles_to_ohlcv_df
+    from src.utils.oanda_practice import OandaPracticeClient
+    
+    client = OandaPracticeClient.from_env()
+    resp = client.get_candles(instrument, granularity=granularity, count=fetch_count, price="MBA")
+    df_raw = candles_to_ohlcv_df(resp)
+    
+    # Feature engineering
+    from feature_engineering import FeatureEngineering
+    fe = FeatureEngineering()
+    df = fe.create_features(df_raw.copy(), include_all=True)
+    
+    # Ensure we have required columns
+    missing_cols = [c for c in feature_columns if c not in df.columns]
+    for c in missing_cols:
+        df[c] = 0.0
+    
+    # Load model
+    _configure_tf_metal(verbose=verbose)
+    import tensorflow as tf
+    
+    from ml_head_engine import MLEngineHead
+    from mr_engine import MREngineHead
+    from ms_head_engine import MSEngineHead
+    from mt_engine import MTEngineHead
+    from mx_head_engine import MXEngineHead
+    
+    custom_objects = {
+        "MLEngineHead": MLEngineHead,
+        "MREngineHead": MREngineHead,
+        "MSEngineHead": MSEngineHead,
+        "MTEngineHead": MTEngineHead,
+        "MXEngineHead": MXEngineHead,
+    }
+    
+    model_path = meta.get("model_path")
+    model = None
+    
+    # Try loading with different strategies to handle Keras version mismatches
+    try:
+        model = tf.keras.models.load_model(model_path, compile=False, custom_objects=custom_objects)
+    except Exception as e1:
+        if "keras.src.models.functional" in str(e1) or "cannot be imported" in str(e1):
+            # Keras version mismatch - try with safe_mode=False
+            try:
+                model = tf.keras.models.load_model(model_path, compile=False, custom_objects=custom_objects, safe_mode=False)
+            except Exception as e2:
+                console.print(f"[red]Failed to load model (Keras version mismatch)[/red]")
+                console.print(f"[dim]Error: {str(e2)[:200]}[/dim]")
+                console.print("[yellow]The model was saved with a different Keras version.[/yellow]")
+                console.print("[cyan]Solution: Retrain the model with current version:[/cyan]")
+                console.print("[cyan]  buddy train --oanda-live --candles 15000 --granularity H1[/cyan]")
+                return
+        else:
+            console.print(f"[red]Failed to load model: {str(e1)[:200]}[/red]")
+            console.print("[cyan]Solution: Retrain the model: buddy train --oanda-live[/cyan]")
+            return
+    
+    if model is None:
+        console.print("[red]Could not load model[/red]")
+        return
+    
+    # Check if model expects dict input
+    _inputs_struct = getattr(model, "_inputs_struct", None)
+    _expects_features_dict = isinstance(_inputs_struct, dict) and "features" in _inputs_struct
+    
+    def _predict(x_in):
+        if _expects_features_dict:
+            return model({"features": x_in}, training=False)
+        return model(x_in, training=False)
+    
+    # Run hindcast
+    if min_confidence > 0:
+        console.print(f"\n[bold]Testing predictions (min confidence: {min_confidence:.0%})...[/bold]\n")
+    else:
+        console.print(f"\n[bold]Testing predictions...[/bold]\n")
+    
+    results = []
+    x2d = df[feature_columns].values.astype(np.float32)
+    closes = df["close"].values
+    
+    # Test window: from (seq_len) to (len - 1) so we can see next candle
+    test_start = len(df) - test_candles - 1
+    test_end = len(df) - 1
+    
+    correct = 0
+    wrong = 0
+    skipped = 0
+    wins_pips = []
+    losses_pips = []
+    
+    for i in range(test_start, test_end):
+        # Get features for prediction window
+        window_start = i - seq_len
+        if window_start < 0:
+            continue
+        
+        x_window = x2d[window_start:i]
+        if len(x_window) != seq_len:
+            continue
+        
+        # Standardize
+        x_std = (x_window - mu) / np.where(sigma < 1e-6, 1.0, sigma)
+        x_std = np.clip(x_std, -10.0, 10.0).astype(np.float32)
+        x_batch = x_std.reshape(1, seq_len, -1)
+        
+        # Predict
+        pred = _predict(x_batch)
+        p_dir = float(np.asarray(pred["direction"]).reshape(-1)[0])
+        p_conf = float(np.asarray(pred["confidence"]).reshape(-1)[0])
+        
+        predicted_side = "BUY" if p_dir >= 0.5 else "SELL"
+        
+        # Skip if below confidence threshold
+        if p_conf < min_confidence:
+            skipped += 1
+            continue
+        
+        # Actual movement
+        entry_price = closes[i]
+        exit_price = closes[i + 1]
+        pip_size = 0.01 if "JPY" in instrument else 0.0001
+        actual_pips = (exit_price - entry_price) / pip_size
+        
+        actual_direction = "↑" if actual_pips > 0 else "↓"
+        is_correct = (predicted_side == "BUY" and actual_pips > 0) or (predicted_side == "SELL" and actual_pips < 0)
+        
+        # Record result
+        if is_correct:
+            correct += 1
+            wins_pips.append(abs(actual_pips))
+            status = "[green]✅[/green]"
+        else:
+            wrong += 1
+            losses_pips.append(abs(actual_pips))
+            status = "[red]❌[/red]"
+        
+        # Get timestamp
+        try:
+            ts = df.index[i]
+            ts_str = ts.strftime("%Y-%m-%d %H:%M") if hasattr(ts, "strftime") else str(ts)[:16]
+        except Exception:
+            ts_str = f"candle_{i}"
+        
+        # Print result
+        if verbose or len(results) < 10 or not is_correct:
+            conf_color = "green" if p_conf >= 0.6 else "yellow" if p_conf >= 0.5 else "red"
+            console.print(
+                f"{ts_str} | Pred: {predicted_side:4} ({p_dir:.1%}) "
+                f"[{conf_color}]conf={p_conf:.1%}[/{conf_color}] | "
+                f"Actual: {actual_direction} {actual_pips:+.1f} pips | {status}"
+            )
+        
+        results.append({
+            "time": ts_str,
+            "predicted": predicted_side,
+            "direction_prob": p_dir,
+            "confidence": p_conf,
+            "actual_pips": actual_pips,
+            "correct": is_correct,
+        })
+    
+    # Summary
+    total = correct + wrong
+    accuracy = correct / total if total > 0 else 0
+    avg_win = np.mean(wins_pips) if wins_pips else 0
+    avg_loss = np.mean(losses_pips) if losses_pips else 0
+    
+    console.print("\n" + "=" * 60)
+    console.print("[bold]📊 HINDCAST RESULTS[/bold]")
+    console.print("=" * 60)
+    if min_confidence > 0:
+        console.print(f"  Confidence Filter:  >={min_confidence:.0%}")
+        console.print(f"  Skipped (low conf): {skipped}")
+    console.print(f"  Total Predictions:  {total}")
+    console.print(f"  Correct:            [green]{correct}[/green] ({accuracy:.1%})")
+    console.print(f"  Wrong:              [red]{wrong}[/red] ({1-accuracy:.1%})")
+    console.print(f"  Avg Win:            [green]+{avg_win:.1f} pips[/green]")
+    console.print(f"  Avg Loss:           [red]-{avg_loss:.1f} pips[/red]")
+    
+    # Expected value calculation
+    if accuracy > 0 and (avg_win > 0 or avg_loss > 0):
+        ev = (accuracy * avg_win) - ((1 - accuracy) * avg_loss)
+        ev_color = "green" if ev > 0 else "red"
+        console.print(f"  Expected Value:     [{ev_color}]{ev:+.2f} pips/trade[/{ev_color}]")
+    
+    # Verdict
+    console.print("-" * 60)
+    if accuracy >= 0.55:
+        console.print("[green]✅ Model shows edge - suitable for live trading[/green]")
+    elif accuracy >= 0.50:
+        console.print("[yellow]⚠️ Model at breakeven - needs improvement[/yellow]")
+    else:
+        console.print("[red]❌ Model underperforming - retrain recommended[/red]")
+    console.print("=" * 60 + "\n")
 
 
 def model_status(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None:
