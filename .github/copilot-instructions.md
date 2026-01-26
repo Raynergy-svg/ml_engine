@@ -30,6 +30,9 @@ python main.py buddy --instrument USD_JPY --execute
 # Retrain gate models (XGBoost, RF, Ridge) without retraining TCN
 python main.py retrain-gates
 
+# Train RL position sizer manually (if auto-training is disabled)
+python main.py train-rl-sizer --timesteps 500000
+
 # Run tests
 pytest tests/
 ```
@@ -41,6 +44,7 @@ When modifying training code, preserve these optimizations in `BuddyTrainingOpti
 - `mixed_precision: True` - 1.5-2x speedup
 - `recurrent_dropout: 0.0` - **CRITICAL**: non-zero causes massive slowdown on Metal
 - `steps_per_execution: 10` - reduces Python overhead
+- `train_rl_sizer: True` - automatically trains RL position sizer after ensemble
 
 ## Code Patterns
 
@@ -318,14 +322,35 @@ tf.profiler.experimental.stop()
 # Analyze with: tensorboard --logdir logdir
 ```
 
-## 8. RL POSITION SIZING (Activate Existing Code)
+## 8. RL POSITION SIZING (Now Integrated)
 
-The [rl_position_sizing.py](rl_position_sizing.py) is implemented but not used. Integrate:
+The [rl_position_sizing.py](rl_position_sizing.py) is now **automatically trained** after ensemble training completes.
+
+### Automatic Training (Default)
+RL training happens automatically after ensemble training when:
+- `train_rl_sizer: True` in `BuddyTrainingOptions` (default)
+- `training.auto_train_rl: true` in config YAML (default)
+
+### Manual Training
 ```bash
-# Train RL agent after ensemble training
+# Train RL agent manually (if auto-training is disabled)
 python main.py train-rl-sizer --timesteps 500000
+```
 
-# Use in inference
+### Disable Auto-Training
+In `config_m1_optimized.yaml`:
+```yaml
+training:
+  auto_train_rl: false  # Disable automatic RL training
+```
+
+Or via CLI:
+```bash
+python main.py train-buddy --skip-rl --csv market_data/USD_JPY_H1.csv
+```
+
+### Use in Inference
+```bash
 python main.py buddy --instrument USD_JPY --use-rl-sizer --execute
 ```
 

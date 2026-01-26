@@ -15,6 +15,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    from market_intelligence import MarketIntelligence
+except Exception:
+    MarketIntelligence = None
+
 logger = logging.getLogger(__name__)
 
 JOURNAL_PATH = Path("trained_data") / "trade_journal.json"
@@ -46,6 +56,7 @@ class TradeEntry:
     ridge_confidence: float
     xgb_momentum: float
     rf_drawdown_pips: float
+
     
     # Execution
     slippage_pips: float
@@ -63,6 +74,11 @@ class TradeEntry:
     unrealized_pnl: Optional[float] = None
     current_price: Optional[float] = None
     last_synced: Optional[str] = None
+
+    # Online learning payload (optional)
+    feature_vector: Optional[List[float]] = None
+    prediction: Optional[float] = None
+    confidence: Optional[float] = None
 
 
 @dataclass
@@ -116,6 +132,7 @@ class TradeJournal:
     def __init__(self, path: Path = JOURNAL_PATH):
         self.path = path
         self.trades: List[TradeEntry] = []
+        self._market_intel: Optional[MarketIntelligence] = None
         self._load()
     
     def _load(self):
@@ -159,6 +176,9 @@ class TradeJournal:
         ridge_confidence: float,
         xgb_momentum: float,
         rf_drawdown_pips: float,
+        feature_vector: Optional[List[float]] = None,
+        prediction: Optional[float] = None,
+        confidence: Optional[float] = None,
     ) -> TradeEntry:
         """Log a new trade entry."""
         # Calculate slippage
@@ -184,6 +204,9 @@ class TradeJournal:
             ridge_confidence=ridge_confidence,
             xgb_momentum=xgb_momentum,
             rf_drawdown_pips=rf_drawdown_pips,
+            feature_vector=feature_vector,
+            prediction=prediction,
+            confidence=confidence,
             slippage_pips=slippage_pips,
             fill_price=fill_price,
             status="open",
@@ -273,6 +296,12 @@ class TradeJournal:
                     trade.exit_price = exit_price
                     trade.exit_time = close_time
                     trade.exit_reason = exit_reason
+
+                    # Feed online learning buffer
+                    try:
+                        self._record_online_learning(trade)
+                    except Exception as e:
+                        logger.warning(f"Online learning update failed for {trade.trade_id}: {e}")
                     
                     updated += 1
                     logger.info(f"Updated trade {trade.trade_id}: {status} ${pnl:.2f}")
@@ -286,7 +315,7 @@ class TradeJournal:
                     trade.pnl_pips = 0.0
                     trade.exit_reason = "not_found"
                     updated += 1
-                    logger.warning(f"Trade {trade.trade_id} not found in OANDA - marked as cancelled")
+                    logger.info(f"Trade {trade.trade_id} not found in OANDA - marked as cancelled")
                 else:
                     logger.warning(f"Failed to update trade {trade.trade_id}: {e}")
                 continue
@@ -295,6 +324,91 @@ class TradeJournal:
             self._save()
         
         return updated
+
+    def _get_market_intel(self) -> Optional['MarketIntelligence']:
+        if MarketIntelligence is None:
+            return None
+        if self._market_intel is None:
+            self._market_intel = MarketIntelligence(
+                enable_sentiment=False,
+                enable_calendar=False,
+                enable_online_learning=True,
+            )
+        return self._market_intel
+
+    def _record_online_learning(self, trade: TradeEntry) -> None:
+        if np is None:
+            return
+        intel = self._get_market_intel()
+        if intel is None or intel.online_learner is None:
+            return
+
+        # Avoid duplicates
+        if any(t.trade_id == trade.trade_id for t in intel.online_learner.trade_buffer):
+            return
+
+        if not trade.exit_time:
+            return
+
+        entry_time = datetime.fromisoformat(trade.timestamp.replace('Z', '+00:00'))
+        exit_time = datetime.fromisoformat(trade.exit_time.replace('Z', '+00:00'))
+
+        feature_vector = trade.feature_vector or [
+            trade.tcn_probability,
+            trade.ridge_confidence,
+            trade.xgb_momentum,
+            trade.rf_drawdown_pips,
+        ]
+
+        prediction = trade.prediction if trade.prediction is not None else trade.tcn_probability
+        confidence = trade.confidence if trade.confidence is not None else trade.ridge_confidence
+        entry_price = trade.fill_price if trade.fill_price is not None else trade.entry_price
+        exit_price = trade.exit_price if trade.exit_price is not None else entry_price
+        pnl_pips = trade.pnl_pips if trade.pnl_pips is not None else 0.0
+
+        intel.record_trade_outcome(
+            trade_id=trade.trade_id,
+            instrument=trade.instrument,
+            direction=1 if trade.direction == 'long' else 0,
+            entry_time=entry_time,
+            exit_time=exit_time,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            pnl_pips=float(pnl_pips),
+            features=np.array(feature_vector, dtype=float),
+            prediction=float(prediction),
+            confidence=float(confidence),
+        )
+
+    def backfill_online_learning(self) -> int:
+        """Backfill online learning buffer from closed journal trades."""
+        if np is None:
+            return 0
+        intel = self._get_market_intel()
+        if intel is None or intel.online_learner is None:
+            return 0
+
+        existing_ids = {t.trade_id for t in intel.online_learner.trade_buffer}
+        added = 0
+
+        for trade in self.trades:
+            if trade.trade_id in existing_ids:
+                continue
+            if trade.status not in {'win', 'loss', 'breakeven'}:
+                continue
+            if not trade.exit_time:
+                continue
+            if trade.pnl_pips is None:
+                continue
+
+            try:
+                self._record_online_learning(trade)
+                added += 1
+            except Exception as e:
+                logger.warning(f"Backfill failed for {trade.trade_id}: {e}")
+                continue
+
+        return added
     
     def get_open_trades_from_oanda(self, client) -> List[LiveTradeInfo]:
         """Fetch all currently open trades from OANDA with live P/L.

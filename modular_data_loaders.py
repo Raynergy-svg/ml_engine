@@ -296,7 +296,38 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
     df['higher_high_ratio'] = hh_count
     df['lower_low_ratio'] = ll_count
     
-    logger.info(f"Computed {len([c for c in df.columns if c not in ['open', 'high', 'low', 'close', 'volume', 'time']])} normalized features")
+    # =================================================================
+    # CRITICAL: SANITIZE NaN/Inf VALUES
+    # =================================================================
+    # This MUST be done to prevent NaN propagation during training which
+    # causes loss to become NaN and gradient explosion
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    
+    # Replace infinities with NaN first
+    df[numeric_cols] = df[numeric_cols].replace([np.inf, -np.inf], np.nan)
+    
+    # Forward-fill NaN (use most recent valid value)
+    df[numeric_cols] = df[numeric_cols].ffill()
+    
+    # Backward-fill any remaining NaN at the start
+    df[numeric_cols] = df[numeric_cols].bfill()
+    
+    # Final safety: fill any remaining NaN with 0
+    df[numeric_cols] = df[numeric_cols].fillna(0.0)
+    
+    # Verify no NaN/Inf remain
+    nan_count = df[numeric_cols].isna().sum().sum()
+    try:
+        # Convert to float array for isinf check (handles mixed dtypes)
+        numeric_values = df[numeric_cols].values.astype(np.float64)
+        inf_count = np.isinf(numeric_values).sum()
+    except (TypeError, ValueError):
+        # If conversion fails, skip inf check
+        inf_count = 0
+    if nan_count > 0 or inf_count > 0:
+        logger.warning(f"⚠️ Remaining NaN: {nan_count}, Inf: {inf_count} after sanitization")
+    
+    logger.debug(f"Computed {len([c for c in df.columns if c not in ['open', 'high', 'low', 'close', 'volume', 'time']])} normalized features")
     
     return df
 
@@ -677,7 +708,7 @@ def load_direction_data(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
     lookahead: int = 6,
-    threshold: float = 0.005,  # 0.5% minimum move to label as clear signal
+    threshold: float = 0.001,  # 0.1% minimum move (reduced from 0.5% to include more samples)
 ) -> Dict[str, np.ndarray]:
     """
     Load data for direction prediction model (TCN or Transformer).
@@ -913,6 +944,39 @@ def load_direction_data(
     
     logger.info(f"Direction labels: {n_clear_up} up, {n_clear_down} down, {n_unclear} unclear "
                 f"({label_stats['clear_rate']:.1%} clear, {label_stats['up_rate']:.1%} up)")
+    
+    # =========================================================================
+    # CLASS DISTRIBUTION VALIDATION - Prevent training with extreme imbalance
+    # =========================================================================
+    min_class_ratio = 0.1  # Each class must be at least 10% of clear samples
+    min_clear_samples = 100  # Need at least 100 clear samples total
+    
+    if total_clear < min_clear_samples:
+        raise ValueError(
+            f"❌ INSUFFICIENT TRAINING DATA: Only {total_clear} clear samples "
+            f"(need at least {min_clear_samples}). Try:\n"
+            f"  1. Increase training data size (add more candles)\n"
+            f"  2. Lower threshold (current: {threshold:.3%})\n"
+            f"  3. Use threshold=0 to include all samples"
+        )
+    
+    up_ratio = n_clear_up / total_clear
+    down_ratio = n_clear_down / total_clear
+    
+    if up_ratio < min_class_ratio or down_ratio < min_class_ratio:
+        minority_class = "UP" if up_ratio < down_ratio else "DOWN"
+        minority_count = n_clear_up if up_ratio < down_ratio else n_clear_down
+        majority_count = n_clear_down if up_ratio < down_ratio else n_clear_up
+        
+        raise ValueError(
+            f"❌ EXTREME CLASS IMBALANCE: {minority_class} class has only {minority_count} samples "
+            f"({min(up_ratio, down_ratio):.1%}) vs {majority_count} for other class.\n"
+            f"This will cause the model to predict only one direction.\n"
+            f"Try:\n"
+            f"  1. Use more training data (different time periods may have different bias)\n"
+            f"  2. Lower threshold from {threshold:.3%} to include more small moves\n"
+            f"  3. Use threshold=0 for all samples (let the model learn from noise too)"
+        )
     
     result = {
         'X_train': X_train_scaled.astype(np.float32),
@@ -1688,6 +1752,27 @@ def load_all_modular_data(
     logger.info("Computing normalized features for instrument-agnostic training...")
     df_normalized = compute_normalized_features(df)
     logger.info(f"DataFrame now has {len(df_normalized.columns)} columns after normalization")
+    
+    # SECOND: Apply FeatureEngineering to add advanced features
+    # This ensures training uses the same features as inference
+    try:
+        from feature_engineering import FeatureEngineering
+        fe = FeatureEngineering({})
+        # Don't apply candle smoothing (already done by compute_normalized_features if needed)
+        df_fe = fe.create_features(df.copy(), include_all=True, apply_candle_smoothing=False)
+        
+        # Merge features from FeatureEngineering that aren't already present
+        # Use index-based join to handle potential row count differences
+        new_cols = [c for c in df_fe.columns if c not in df_normalized.columns]
+        if new_cols:
+            df_fe_aligned = df_fe[new_cols].reindex(df_normalized.index)
+            df_normalized = pd.concat([df_normalized, df_fe_aligned], axis=1)
+            logger.info(f"Added {len(new_cols)} features from FeatureEngineering, total={len(df_normalized.columns)}")
+    except Exception as e:
+        logger.warning(f"FeatureEngineering failed (features may be incomplete): {e}")
+    
+    # Clean any NaN/inf from merged features
+    df_normalized = df_normalized.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0)
     
     result = {
         'xgboost': load_xgboost_data(df_normalized, split),

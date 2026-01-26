@@ -31,6 +31,7 @@ instrument-agnostic. Models trained on GBP_USD work on USD_JPY, EUR_USD, etc.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,13 +43,47 @@ import pandas as pd
 # Import normalized feature computation from data loaders
 from modular_data_loaders import compute_normalized_features, get_normalized_feature_names
 
+# Import confidence calibration module
+try:
+    from confidence_calibration import (
+        ConfidenceCalibrator,
+        CalibrationConfig,
+        CalibrationResult,
+    )
+    CALIBRATION_AVAILABLE = True
+except ImportError:
+    CALIBRATION_AVAILABLE = False
+    ConfidenceCalibrator = None
+    CalibrationConfig = None
+    CalibrationResult = None
+
+# Import meta-labeling module
+try:
+    from meta_labeling import MetaLabeler, MetaLabelingConfig
+    META_LABELING_AVAILABLE = True
+except ImportError:
+    META_LABELING_AVAILABLE = False
+    MetaLabeler = None
+    MetaLabelingConfig = None
+
 # Import market intelligence module
 try:
-    from market_intelligence import MarketIntelligence
+    from market_intelligence import MarketIntelligence, fetch_forex_news
     MARKET_INTEL_AVAILABLE = True
 except ImportError:
     MARKET_INTEL_AVAILABLE = False
     MarketIntelligence = None
+    fetch_forex_news = None
+
+# Import online retrainer module for drift-triggered retraining
+try:
+    from online_retrainer import OnlineRetrainer, RetrainConfig, create_retrain_callback
+    ONLINE_RETRAINER_AVAILABLE = True
+except ImportError:
+    ONLINE_RETRAINER_AVAILABLE = False
+    OnlineRetrainer = None
+    RetrainConfig = None
+    create_retrain_callback = None
 
 # RL position sizer availability is checked lazily to avoid TF/PyTorch GPU conflicts
 # The actual import happens only when use_rl_sizer=True and the model is loaded
@@ -85,13 +120,13 @@ class InferenceConfig:
     """
     # TCN/Transformer probability gate - CRITICAL: reject coin-flip signals
     # 0.5 = uncertain, 0.55+ = slight edge, 0.60+ = good edge
-    min_tcn_probability: float = 0.55  # Require at least 55% confidence in direction
+    min_tcn_probability: float = 0.60  # Require at least 60% confidence in direction (tightened from 0.55)
     
     # Confidence gate - ADX-based, 50+ is strong trend
-    min_confidence: float = 45.0  # 0-100 scale
+    min_confidence: float = 50.0  # 0-100 scale (tightened from 45)
     
-    # Momentum gate - median momentum is 0.3, so 0.15 catches bottom 30%
-    min_momentum: float = 0.15  # 0-1 scale
+    # Momentum gate - median momentum is 0.3, so 0.20 catches bottom 40%
+    min_momentum: float = 0.20  # 0-1 scale (tightened from 0.15)
     require_fresh_or_accel: bool = True
     
     # Risk gate - ATR-based drawdown (2x ATR, typically 0.5-3%)
@@ -108,30 +143,42 @@ class InferenceConfig:
     # Risk gate bypass: When True AND permissive_mode is True, also bypass the risk gate
     # By default, risk gate is ALWAYS active even in permissive mode for safety
     bypass_risk_gate_in_permissive: bool = False
+
+    # Sentiment gate
+    sentiment_block_enabled: bool = True
+    sentiment_block_threshold: float = 0.60  # Absolute sentiment score to block
+    sentiment_min_headlines: int = 3  # Require minimum headlines before using sentiment
     
-    # Position sizing - RISK-BASED (2% for $101k account)
-    risk_per_trade_pct: float = 0.02  # 2% risk per trade (larger lots)
-    account_equity: float = 101000.0  # User's account balance
+    # Confidence calibration
+    enable_calibration: bool = True  # Apply Platt/Isotonic calibration to raw probabilities
+    calibration_method: str = 'platt'  # 'platt', 'isotonic', or 'none'
+    
+    # Meta-labeling gate - predicts whether primary model's signal will succeed
+    enable_meta_labeling: bool = True  # Use meta-labeler to filter trades
+    min_meta_confidence: float = 0.55  # Minimum meta-confidence to allow trade
+    
+    # Position sizing - RISK-BASED (5% aggressive mode)
+    risk_per_trade_pct: float = 0.05  # 5% risk per trade (~$5k on $100k)
+    account_equity: float = 103000.0  # User's account balance
     pip_value: float = 10.0  # ~$10 per pip per standard lot
     
-    # LIQUIDITY LIMITS - Maximum lots by pair to avoid market impact
-    # Increased limits for $101k account
+    # LIQUIDITY LIMITS - Maximum lots by pair (increased for aggressive trading)
     max_lots_by_pair: dict = None  # Set in __post_init__
     
     def __post_init__(self):
         if self.max_lots_by_pair is None:
             self.max_lots_by_pair = {
-                'EUR_USD': 5.0,   # Most liquid - 5 lots max
-                'USD_JPY': 4.0,   # Very liquid
-                'GBP_USD': 3.0,   # Liquid
-                'USD_CHF': 3.0,
-                'AUD_USD': 3.0,
-                'USD_CAD': 3.0,
-                'NZD_USD': 2.0,   # Less liquid
-                'GBP_JPY': 1.5,   # Cross - illiquid
-                'EUR_GBP': 1.5,
-                'EUR_JPY': 1.5,
-                'DEFAULT': 1.0,   # Unknown pairs
+                'EUR_USD': 50.0,   # Most liquid - 50 lots max
+                'USD_JPY': 40.0,   # Very liquid
+                'GBP_USD': 30.0,   # Liquid
+                'USD_CHF': 30.0,
+                'AUD_USD': 30.0,
+                'USD_CAD': 30.0,
+                'NZD_USD': 20.0,   # Less liquid
+                'GBP_JPY': 15.0,   # Cross
+                'EUR_GBP': 15.0,
+                'EUR_JPY': 15.0,
+                'DEFAULT': 10.0,   # Unknown pairs
             }
 
 
@@ -166,6 +213,10 @@ class TradeSignal:
     momentum_gate_passed: bool = False
     risk_gate_passed: bool = False
     regime_gate_passed: bool = True  # True if not in CHOP regime
+    meta_gate_passed: bool = True  # True if meta-labeler allows trade (or not loaded)
+    
+    # Meta-labeler confidence (predicts trade SUCCESS, not direction)
+    meta_confidence: float = 0.0
     
     # Rejection reason if no trade
     reason: Optional[str] = None
@@ -198,7 +249,10 @@ class ModularEnsembleInference:
         config: Optional[InferenceConfig] = None,
         use_rl_sizer: bool = False,
         instrument: Optional[str] = None,  # For pair-specific model loading
-        enable_market_intelligence: bool = True,  # NEW: Enable sentiment/calendar/online learning
+        enable_market_intelligence: bool = True,  # Enable sentiment/calendar/online learning
+        enable_llm_integration: bool = False,  # Enable LLM-powered enhancements
+        enable_drift_detection: bool = True,  # Enable drift detection and auto-retrain
+        drift_config: Optional[Dict[str, Any]] = None,  # Drift detection config overrides
     ):
         self.model_dir = Path(model_dir)
         self.config = config or InferenceConfig()
@@ -211,16 +265,58 @@ class ModularEnsembleInference:
         self.rf = None
         self.ridge = None
         
-        # Market Intelligence (NEW)
+        # LLM Integration (NEW)
+        self.enable_llm = enable_llm_integration
+        self._llm_sentiment_cache = {}  # Cache LLM sentiment by headlines hash
+        
+        # Drift detection config
+        self.enable_drift_detection = enable_drift_detection
+        self._drift_config_overrides = drift_config or {}
+        
+        # Market Intelligence with drift detection
         self.market_intel = None
         if enable_market_intelligence and MARKET_INTEL_AVAILABLE:
             try:
+                # Create drift config from overrides
+                drift_cfg = None
+                if enable_drift_detection:
+                    from market_intelligence import DriftConfig
+                    drift_cfg = DriftConfig(
+                        feature_drift_threshold=self._drift_config_overrides.get(
+                            'feature_drift_threshold', 0.10
+                        ),
+                        performance_drift_threshold=self._drift_config_overrides.get(
+                            'performance_drift_threshold', 0.05
+                        ),
+                        min_trades_for_drift_check=self._drift_config_overrides.get(
+                            'min_trades_for_drift_check', 20
+                        ),
+                        incremental_retrain_epochs=self._drift_config_overrides.get(
+                            'incremental_retrain_epochs', 3
+                        ),
+                        auto_retrain_on_drift=self._drift_config_overrides.get(
+                            'auto_retrain_on_drift', True
+                        ),
+                        max_retrains_per_day=self._drift_config_overrides.get(
+                            'max_retrains_per_day', 3
+                        ),
+                        cooldown_minutes=self._drift_config_overrides.get(
+                            'cooldown_minutes', 60
+                        ),
+                    )
+                
                 self.market_intel = MarketIntelligence(
                     enable_sentiment=True,
                     enable_calendar=True,
                     enable_online_learning=True,
+                    enable_drift_detection=enable_drift_detection,
+                    drift_config=drift_cfg,
+                    retrain_callback=self._incremental_retrain if enable_drift_detection else None,
                 )
-                logger.info("✓ Market Intelligence enabled (sentiment + calendar + online learning)")
+                features_str = "sentiment + calendar + online learning"
+                if enable_drift_detection:
+                    features_str += " + drift detection"
+                logger.info(f"✓ Market Intelligence enabled ({features_str})")
             except Exception as e:
                 logger.warning(f"Market Intelligence initialization failed: {e}")
                 self.market_intel = None
@@ -231,10 +327,494 @@ class ModularEnsembleInference:
         self.rl_sizer: Optional[RLPositionSizer] = None
         self.use_rl_sizer = use_rl_sizer
         
+        # Confidence Calibrator (NEW)
+        self.calibrator: Optional['ConfidenceCalibrator'] = None
+        self._calibration_loaded = False
+        
+        # Meta-Labeler (predicts trade SUCCESS, not direction)
+        self.meta_labeler: Optional['MetaLabeler'] = None
+        self._meta_labeler_loaded = False
+        
         self.use_regime = False  # Will be set during load_models
         self.use_hybrid = False  # Enable HistGB voting
         self._loaded = False
         self._loaded_instrument = None  # Track which pair's models are loaded
+        
+        # Drift tracking for retrain decisions
+        self._last_features: Optional[np.ndarray] = None
+        self._pending_retrain: bool = False
+        self._retrain_reason: Optional[str] = None
+        
+        # Online retrainer for drift-triggered incremental learning
+        self._online_retrainer: Optional['OnlineRetrainer'] = None
+        if enable_drift_detection and ONLINE_RETRAINER_AVAILABLE:
+            try:
+                retrain_cfg = RetrainConfig(
+                    cooldown_minutes=self._drift_config_overrides.get('cooldown_minutes', 60),
+                    max_retrains_per_day=self._drift_config_overrides.get('max_retrains_per_day', 3),
+                    min_samples_for_retrain=self._drift_config_overrides.get('min_samples_for_retrain', 50),
+                )
+                self._online_retrainer = OnlineRetrainer(config=retrain_cfg)
+                logger.info("✓ OnlineRetrainer initialized for drift-triggered retraining")
+            except Exception as e:
+                logger.warning(f"OnlineRetrainer initialization failed: {e}")
+    
+    # =========================================================================
+    # ONLINE LEARNING & DRIFT DETECTION
+    # =========================================================================
+    
+    def _incremental_retrain(self) -> Dict[str, Any]:
+        """
+        Callback triggered by drift detection to perform incremental retraining.
+        
+        This method is called automatically by the DriftDetectionManager when
+        drift thresholds are exceeded. It uses accumulated replay buffer data
+        (from online learning) to retrain gate models in-process.
+        
+        Returns:
+            Dictionary with retrain status and details
+        """
+        from datetime import datetime
+        
+        result = {
+            'triggered_at': datetime.utcnow().isoformat(),
+            'status': 'pending',
+            'method': None,
+            'details': {},
+        }
+        
+        logger.info("🔄 Drift-triggered incremental retrain starting...")
+        
+        # Method 1: Use OnlineRetrainer with replay buffer (preferred)
+        if self._online_retrainer is not None and ONLINE_RETRAINER_AVAILABLE:
+            try:
+                # Get replay data from market intelligence
+                X_replay, y_replay = None, None
+                if self.market_intel is not None:
+                    X_replay, y_replay = self.market_intel.get_replay_data()
+                    logger.info(f"  Got {len(X_replay) if X_replay is not None else 0} samples from replay buffer")
+                
+                # Trigger in-process retraining
+                retrain_result = self._online_retrainer.trigger_retrain(
+                    X_replay=X_replay,
+                    y_replay=y_replay,
+                    reason="drift_detected",
+                )
+                
+                result['status'] = retrain_result.get('status', 'unknown')
+                result['method'] = 'online_retrainer'
+                result['details'] = retrain_result
+                
+                # Mark model as updated if successful
+                if result['status'] == 'completed':
+                    if self.market_intel is not None:
+                        self.market_intel.mark_model_updated()
+                    logger.info(f"✅ Incremental retrain completed: {retrain_result.get('models_retrained', [])}")
+                elif result['status'] == 'blocked':
+                    logger.info(f"⏳ Retrain blocked: {retrain_result.get('blocked_reason', 'cooldown')}")
+                elif result['status'] == 'skipped':
+                    logger.info(f"⚠️ Retrain skipped: {retrain_result.get('skipped_reason', 'insufficient data')}")
+                else:
+                    logger.warning(f"❌ Retrain failed: {retrain_result}")
+                
+                return result
+                
+            except Exception as e:
+                logger.warning(f"OnlineRetrainer failed: {e}, falling back to subprocess")
+        
+        # Method 2: Fallback to subprocess-based retrain (less ideal)
+        import subprocess
+        import shutil
+        
+        main_script = Path(__file__).parent / "main.py"
+        
+        if main_script.exists():
+            try:
+                logger.info("🔧 Fallback: Triggering retrain-gates subprocess...")
+                
+                cmd = [
+                    shutil.which('python') or 'python',
+                    str(main_script),
+                    'retrain-gates',
+                    '--candles', '3000',
+                ]
+                
+                process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True,
+                )
+                
+                result['status'] = 'triggered_background'
+                result['method'] = 'subprocess_retrain_gates'
+                result['details'] = {
+                    'command': ' '.join(cmd),
+                    'pid': process.pid,
+                }
+                
+                logger.info(f"✓ Background retrain triggered (PID: {process.pid})")
+                
+                if self.market_intel and self.market_intel.drift_manager:
+                    self.market_intel.drift_manager._last_retrain_time = datetime.utcnow()
+                
+            except Exception as e:
+                logger.warning(f"Subprocess retrain failed: {e}")
+                self._pending_retrain = True
+                self._retrain_reason = f"Drift detected, retrain failed: {e}"
+                
+                result['status'] = 'queued'
+                result['method'] = 'manual'
+                result['details'] = {'error': str(e)}
+        else:
+            self._pending_retrain = True
+            self._retrain_reason = "Drift detected, no retrain method available"
+            
+            result['status'] = 'queued'
+            result['method'] = 'manual'
+            result['details'] = {'error': 'No retrain method available'}
+            
+            logger.warning("⚠️ Cannot auto-retrain. Run manually: python main.py retrain-gates")
+        
+        return result
+    
+    def get_retrainer_status(self) -> Dict[str, Any]:
+        """Get the current status of the online retrainer."""
+        if self._online_retrainer is not None:
+            return self._online_retrainer.get_status()
+        return {
+            'available': False,
+            'reason': 'OnlineRetrainer not initialized',
+        }
+    
+    def force_retrain(self, reason: str = "manual") -> Dict[str, Any]:
+        """
+        Force an incremental retrain, bypassing cooldown.
+        
+        Use sparingly - this exists for manual intervention when drift is severe.
+        
+        Args:
+            reason: Why the retrain is being forced
+            
+        Returns:
+            Retrain result dictionary
+        """
+        if self._online_retrainer is None:
+            return {'status': 'error', 'error': 'OnlineRetrainer not available'}
+        
+        X_replay, y_replay = None, None
+        if self.market_intel is not None:
+            X_replay, y_replay = self.market_intel.get_replay_data()
+        
+        return self._online_retrainer.trigger_retrain(
+            X_replay=X_replay,
+            y_replay=y_replay,
+            reason=reason,
+            force=True,
+        )
+    
+    def record_trade_result(
+        self,
+        trade_id: str,
+        instrument: str,
+        direction: str,  # 'long' or 'short'
+        entry_price: float,
+        exit_price: float,
+        pnl_pips: float,
+        prediction: float,
+        confidence: float,
+        features: Optional[np.ndarray] = None,
+        entry_time: Optional['datetime'] = None,
+        exit_time: Optional['datetime'] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Record a completed trade for online learning and drift detection.
+        
+        Call this method after each trade closes to:
+        1. Update the online learning buffer
+        2. Feed drift detection with actual outcomes
+        3. Potentially trigger automatic model retraining
+        
+        Args:
+            trade_id: Unique trade identifier
+            instrument: Trading pair (e.g., 'EUR_USD')
+            direction: Trade direction ('long' or 'short')
+            entry_price: Entry price
+            exit_price: Exit price
+            pnl_pips: Profit/loss in pips
+            prediction: Model's prediction probability at entry
+            confidence: Ridge confidence score at entry
+            features: Feature array at trade entry (for drift detection)
+            entry_time: Trade entry timestamp
+            exit_time: Trade exit timestamp
+            
+        Returns:
+            Dictionary with drift detection result, or None if no drift
+            
+        Example:
+            # After closing a trade:
+            drift_result = ensemble.record_trade_result(
+                trade_id="trade_123",
+                instrument="EUR_USD",
+                direction="long",
+                entry_price=1.0850,
+                exit_price=1.0870,
+                pnl_pips=20.0,
+                prediction=0.72,
+                confidence=65.0,
+                features=last_features,
+            )
+            
+            if drift_result and drift_result.get('drift_detected'):
+                print(f"⚠️ Drift detected: {drift_result['reason']}")
+        """
+        from datetime import datetime
+        
+        if entry_time is None:
+            entry_time = datetime.utcnow()
+        if exit_time is None:
+            exit_time = datetime.utcnow()
+        
+        # Use last stored features if not provided
+        if features is None and self._last_features is not None:
+            features = self._last_features
+        
+        # Create dummy features if still None (for basic tracking)
+        if features is None:
+            features = np.zeros(10, dtype=np.float32)
+        
+        # Convert direction to int
+        direction_int = 1 if direction.lower() == 'long' else 0
+        
+        result = None
+        
+        if self.market_intel is not None:
+            try:
+                drift_result = self.market_intel.record_trade_outcome(
+                    trade_id=trade_id,
+                    instrument=instrument,
+                    direction=direction_int,
+                    entry_time=entry_time,
+                    exit_time=exit_time,
+                    entry_price=entry_price,
+                    exit_price=exit_price,
+                    pnl_pips=pnl_pips,
+                    features=features,
+                    prediction=prediction,
+                    confidence=confidence,
+                )
+                
+                if drift_result is not None:
+                    result = {
+                        'drift_detected': drift_result.drift_detected,
+                        'feature_drift': drift_result.feature_drift,
+                        'performance_drift': drift_result.performance_drift,
+                        'reason': drift_result.reason,
+                        'recommendation': drift_result.recommendation,
+                        'timestamp': drift_result.timestamp,
+                    }
+                    
+                    if drift_result.drift_detected:
+                        logger.warning(
+                            f"📊 Drift detected after trade {trade_id}: "
+                            f"{drift_result.reason} → {drift_result.recommendation}"
+                        )
+                        
+                        # AUTO-TRIGGER: Check if retraining should happen now
+                        if drift_result.recommendation in ('retrain', 'full_retrain'):
+                            retrain_result = self.trigger_retraining_if_needed(async_mode=True)
+                            result['retrain_triggered'] = retrain_result.get('triggered', False)
+                            result['retrain_status'] = retrain_result.get('status', 'unknown')
+                            if retrain_result.get('triggered'):
+                                logger.info(
+                                    f"🔄 Auto-retrain triggered after drift detection: "
+                                    f"{retrain_result.get('result', {}).get('models_retrained', [])}"
+                                )
+                        
+            except Exception as e:
+                logger.warning(f"Failed to record trade for online learning: {e}")
+        
+        return result
+    
+    def get_drift_status(self) -> Dict[str, Any]:
+        """
+        Get current drift detection status and online learning stats.
+        
+        Returns:
+            Dictionary with:
+            - drift_enabled: Whether drift detection is enabled
+            - pending_retrain: Whether a retrain is queued
+            - retrain_reason: Why retrain is pending (if any)
+            - online_learning_stats: Buffer size, accuracy, etc.
+            - drift_stats: Recent drift events, thresholds, etc.
+        """
+        status = {
+            'drift_enabled': self.enable_drift_detection,
+            'pending_retrain': self._pending_retrain,
+            'retrain_reason': self._retrain_reason,
+            'online_learning_stats': None,
+            'drift_stats': None,
+        }
+        
+        if self.market_intel is not None:
+            # Online learning stats
+            if self.market_intel.online_learner is not None:
+                ol = self.market_intel.online_learner
+                status['online_learning_stats'] = {
+                    'buffer_size': len(ol.trade_buffer),
+                    'trades_since_retrain': ol.trades_since_retrain,
+                    'retrain_threshold': ol.retrain_threshold,
+                    'should_retrain': ol.should_retrain(),
+                    'performance': ol.get_performance_stats(),
+                }
+            
+            # Drift detection stats
+            if self.market_intel.drift_manager is not None:
+                status['drift_stats'] = self.market_intel.drift_manager.get_drift_stats()
+        
+        return status
+    
+    def check_and_maybe_retrain(self) -> Optional[Dict[str, Any]]:
+        """
+        Check if model should be retrained and trigger if needed.
+        
+        This is a convenience method to manually check drift status and
+        trigger retraining if thresholds are exceeded.
+        
+        Returns:
+            Retrain result if triggered, None otherwise
+        """
+        if self.market_intel is None:
+            return None
+        
+        should_update, reason = self.market_intel.should_update_model()
+        
+        if should_update:
+            logger.info(f"🔄 Retrain triggered: {reason}")
+            return self._incremental_retrain()
+        
+        return None
+    
+    def trigger_retraining_if_needed(
+        self,
+        force: bool = False,
+        async_mode: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Check drift and trigger model retraining if thresholds exceeded.
+        
+        This is the recommended method to call periodically during inference
+        to ensure models stay adapted to current market conditions.
+        
+        Call this:
+        - After recording trade outcomes
+        - Periodically during idle time (e.g., every hour)
+        - When drift warnings are logged
+        
+        Args:
+            force: Bypass cooldown and daily limits (use sparingly)
+            async_mode: If True, queue for background execution (non-blocking)
+            
+        Returns:
+            Dictionary with:
+            - triggered: Whether retrain was triggered
+            - status: 'not_needed', 'triggered', 'blocked', 'queued', etc.
+            - reason: Explanation
+            - result: Retrain result if triggered
+            
+        Example:
+            # During inference loop
+            result = ensemble.trigger_retraining_if_needed()
+            if result['triggered']:
+                print(f"✓ Models updated: {result['result']['models_retrained']}")
+        """
+        response = {
+            'triggered': False,
+            'status': 'not_needed',
+            'reason': 'No drift detected or drift detection disabled',
+            'result': None,
+        }
+        
+        # Check if drift detection is enabled
+        if not self.enable_drift_detection:
+            response['status'] = 'disabled'
+            response['reason'] = 'Drift detection is disabled'
+            return response
+        
+        if self.market_intel is None:
+            response['status'] = 'unavailable'
+            response['reason'] = 'Market intelligence not initialized'
+            return response
+        
+        # Use MarketIntelligence's trigger method
+        mi_result = self.market_intel.trigger_retraining_if_needed(
+            force=force,
+            queue_if_blocked=async_mode,
+        )
+        
+        response.update(mi_result)
+        
+        # Clear pending flag if retrain was triggered
+        if mi_result.get('triggered', False):
+            self._pending_retrain = False
+            self._retrain_reason = None
+        elif mi_result.get('status') == 'queued':
+            self._pending_retrain = True
+            self._retrain_reason = mi_result.get('reason', 'Drift detected, queued for retrain')
+        
+        return response
+    
+    def process_pending_retrain(self) -> Optional[Dict[str, Any]]:
+        """
+        Process any pending retrain requests that were queued.
+        
+        Call this during idle periods to process queued retrains.
+        
+        Returns:
+            Retrain result if processed, None if nothing pending
+        """
+        if not self._pending_retrain:
+            return None
+        
+        logger.info("🔄 Processing pending retrain request...")
+        result = self.trigger_retraining_if_needed(force=False)
+        
+        if result.get('triggered'):
+            self._pending_retrain = False
+            self._retrain_reason = None
+        
+        return result
+
+    def get_calibration_status(self) -> Dict[str, Any]:
+        """
+        Get the current calibration status for debugging/verification.
+        
+        Returns:
+            Dictionary with calibration status information:
+            - enabled: Whether calibration is enabled in config
+            - calibrator_exists: Whether a calibrator object exists
+            - calibrator_fitted: Whether the calibrator has been trained
+            - method: The calibration method being used
+            - source: Where the calibrator was loaded from (if fitted)
+        """
+        status = {
+            'enabled': self.config.enable_calibration,
+            'calibrator_exists': self.calibrator is not None,
+            'calibrator_fitted': self.calibrator.is_fitted if self.calibrator else False,
+            'method': self.config.calibration_method,
+            'source': None,
+        }
+        
+        if self.calibrator and self.calibrator.is_fitted:
+            # Determine source
+            if self._calibration_loaded:
+                status['source'] = 'loaded_from_file'
+            else:
+                status['source'] = 'unknown'
+        elif self.calibrator and not self.calibrator.is_fitted:
+            status['source'] = 'not_trained'
+        
+        return status
     
     def _get_model_path(self, model_name: str, extension: str = ".keras") -> Path:
         """
@@ -371,6 +951,14 @@ class ModularEnsembleInference:
                 logger.warning("⚠️ RL requested but dependencies not available. Install: pip install gymnasium stable-baselines3")
                 self.rl_sizer = None
         
+        # Load confidence calibration if available
+        if self.config.enable_calibration:
+            self._load_calibration()
+        
+        # Load meta-labeler if available (predicts trade SUCCESS, not direction)
+        if self.config.enable_meta_labeling:
+            self._load_meta_labeler()
+        
         # Auto-detect sklearn version mismatch and enable permissive mode
         self._check_sklearn_version_mismatch()
         
@@ -463,6 +1051,188 @@ class ModularEnsembleInference:
                 logger.info("💡 Run 'python retrain_gates.py' to fix sklearn version mismatch")
         else:
             logger.info(f"✓ All {total_gates} gates compatible with sklearn {current_version}")
+
+    def _load_calibration(self) -> None:
+        """
+        Load confidence calibration from model metadata or standalone calibration file.
+        
+        Calibration sources (in priority order):
+        1. Standalone calibration file: trained_data/models/confidence_calibrator.pkl
+        2. Pair-specific calibration: trained_data/models/{instrument}/confidence_calibrator.pkl
+        3. Calibration data in model metadata: modular_ensemble.meta.json -> calibration
+        4. Calibration data in Transformer metadata: transformer_direction.meta.pkl -> output_calibration
+        """
+        if not CALIBRATION_AVAILABLE:
+            logger.debug("Confidence calibration module not available")
+            return
+        
+        self._calibration_loaded = False
+        self.calibrator = None
+        
+        # Try loading standalone calibration file first
+        calibration_paths = [
+            self.model_dir / "confidence_calibrator.pkl",
+        ]
+        
+        # Add pair-specific path if instrument is set
+        if self.instrument and self.instrument != "GENERIC":
+            calibration_paths.insert(0, self.model_dir / self.instrument / "confidence_calibrator.pkl")
+        
+        for calib_path in calibration_paths:
+            if calib_path.exists():
+                try:
+                    self.calibrator = ConfidenceCalibrator.load(calib_path)
+                    self._calibration_loaded = True
+                    logger.info(f"✓ Confidence calibrator loaded from {calib_path}")
+                    logger.info(f"  Method: {self.calibrator.config.method}, Fitted: {self.calibrator.is_fitted}")
+                    return
+                except Exception as e:
+                    logger.warning(f"Failed to load calibrator from {calib_path}: {e}")
+        
+        # Try loading from model metadata
+        meta_path = self.model_dir / "modular_ensemble.meta.json"
+        if meta_path.exists():
+            try:
+                with open(meta_path) as f:
+                    meta = json.load(f)
+                
+                # Check for calibration data in metadata
+                calib_data = meta.get('calibration')
+                if calib_data and isinstance(calib_data, dict):
+                    # Create calibrator from metadata
+                    config = CalibrationConfig(
+                        method=calib_data.get('method', self.config.calibration_method),
+                        min_confidence_threshold=calib_data.get('min_threshold', 0.5),
+                        max_confidence_threshold=calib_data.get('max_threshold', 0.95),
+                    )
+                    self.calibrator = ConfidenceCalibrator(config)
+                    
+                    # Restore fitted state from metadata if available
+                    if 'platt_params' in calib_data:
+                        # Reconstruct Platt model from saved parameters
+                        from sklearn.linear_model import LogisticRegression
+                        self.calibrator.platt_model = LogisticRegression()
+                        self.calibrator.platt_model.coef_ = np.array([calib_data['platt_params']['coef']])
+                        self.calibrator.platt_model.intercept_ = np.array([calib_data['platt_params']['intercept']])
+                        self.calibrator.platt_model.classes_ = np.array([0, 1])
+                        self.calibrator.is_fitted = True
+                        self._calibration_loaded = True
+                        logger.info(f"✓ Platt calibration loaded from metadata")
+                    
+                    if 'isotonic_params' in calib_data:
+                        # Reconstruct Isotonic model from saved parameters
+                        from sklearn.isotonic import IsotonicRegression
+                        self.calibrator.isotonic_model = IsotonicRegression(out_of_bounds='clip')
+                        self.calibrator.isotonic_model.X_thresholds_ = np.array(calib_data['isotonic_params']['X_thresholds'])
+                        self.calibrator.isotonic_model.y_thresholds_ = np.array(calib_data['isotonic_params']['y_thresholds'])
+                        self.calibrator.isotonic_model.f_ = None  # Will be rebuilt on predict
+                        self.calibrator.is_fitted = True
+                        self._calibration_loaded = True
+                        logger.info(f"✓ Isotonic calibration loaded from metadata")
+                    
+                    return
+            except Exception as e:
+                logger.warning(f"Failed to load calibration from metadata: {e}")
+        
+        # Create default calibrator (unfitted) if calibration enabled but no data found
+        # This allows the _apply_calibration method to gracefully fallback to raw probabilities
+        if self.config.enable_calibration:
+            config = CalibrationConfig(
+                method=self.config.calibration_method,
+                min_confidence_threshold=0.5,
+                max_confidence_threshold=0.95,
+            )
+            self.calibrator = ConfidenceCalibrator(config)
+            # Note: _calibration_loaded stays False, but calibrator.is_fitted is also False
+            # _apply_calibration will check is_fitted and gracefully return raw probability
+            self._calibration_loaded = False  # Explicitly set to indicate no fitted calibrator
+            logger.info(f"ℹ Calibration enabled but no fitted calibrator found - using raw probabilities")
+            logger.info(f"  To enable calibration, train with: python main.py train-buddy --calibrate")
+            logger.info(f"  Or run: python -m confidence_calibration --train --model-dir {self.model_dir}")
+
+    def _load_meta_labeler(self) -> None:
+        """
+        Load meta-labeler model for trade filtering.
+        
+        The meta-labeler predicts whether the primary model's signal will result
+        in a profitable trade. This is DIFFERENT from direction prediction:
+        - Primary model: "Signal is LONG"
+        - Meta-labeler: "This signal has X% chance of being correct"
+        
+        If meta-confidence < threshold, we skip the trade even if direction is clear.
+        
+        Lookup order:
+        1. trained_data/models/{instrument}/meta_labeler.pkl  (pair-specific)
+        2. trained_data/models/meta_labeler.pkl  (generic fallback)
+        """
+        if not META_LABELING_AVAILABLE:
+            logger.debug("Meta-labeling module not available")
+            return
+        
+        self._meta_labeler_loaded = False
+        self.meta_labeler = None
+        
+        # Build list of paths to check
+        meta_labeler_paths = [
+            self.model_dir / "meta_labeler.pkl",
+        ]
+        
+        # Add pair-specific path first if instrument is set
+        if self.instrument and self.instrument != "GENERIC":
+            meta_labeler_paths.insert(0, self.model_dir / self.instrument / "meta_labeler.pkl")
+        
+        for path in meta_labeler_paths:
+            if path.exists():
+                try:
+                    self.meta_labeler = MetaLabeler.load(path)
+                    self._meta_labeler_loaded = True
+                    threshold = self.config.min_meta_confidence
+                    primary_acc = getattr(self.meta_labeler, '_primary_accuracy', 0.5)
+                    logger.info(f"✓ Meta-labeler loaded from {path}")
+                    logger.info(f"  Threshold: {threshold:.0%}, Primary accuracy: {primary_acc:.1%}")
+                    return
+                except Exception as e:
+                    logger.warning(f"Failed to load meta-labeler from {path}: {e}")
+        
+        # No meta-labeler found
+        if self.config.enable_meta_labeling:
+            logger.info("ℹ Meta-labeling enabled but no trained model found")
+            logger.info("  To train: models save meta_labeler.pkl during buddy training")
+
+    def _apply_calibration(self, raw_probability: float, direction: Optional[int] = None) -> tuple[float, bool]:
+        """
+        Apply confidence calibration to raw model probability.
+        
+        Args:
+            raw_probability: Raw probability from TCN/Transformer (0-1)
+            direction: Predicted direction (0=short, 1=long) for directional adjustment
+            
+        Returns:
+            Tuple of (calibrated_probability, was_calibrated)
+        """
+        # Check if calibrator exists and is fitted
+        # We rely on calibrator.is_fitted rather than _calibration_loaded for robustness
+        if self.calibrator is None:
+            return raw_probability, False
+        
+        if not self.calibrator.is_fitted:
+            # Calibrator exists but not trained - graceful fallback to raw probability
+            logger.debug("Calibrator not fitted, using raw probability")
+            return raw_probability, False
+        
+        try:
+            result = self.calibrator.calibrate_confidence(raw_probability)
+            calibrated = result.calibrated_confidence
+            
+            # Log calibration adjustment if significant
+            adjustment = calibrated - raw_probability
+            if abs(adjustment) > 0.02:
+                logger.debug(f"📐 Calibration: {raw_probability:.3f} → {calibrated:.3f} (Δ={adjustment:+.3f})")
+            
+            return calibrated, True
+        except Exception as e:
+            logger.warning(f"Calibration failed, using raw probability: {e}")
+            return raw_probability, False
 
     def _find_features_by_pattern(self, df: pd.DataFrame, patterns: List[str]) -> List[str]:
         """Find features by partial name matching."""
@@ -925,10 +1695,17 @@ class ModularEnsembleInference:
         intel_data = {}
         if self.market_intel and instrument:
             try:
+                if headlines is None and fetch_forex_news is not None:
+                    headlines = fetch_forex_news(instrument)
+                    intel_data['headlines_count'] = len(headlines)
+
                 can_trade, block_reason, intel_data = self.market_intel.pre_trade_check(
                     instrument,
                     headlines=headlines,
                 )
+
+                if headlines is not None and 'headlines_count' not in intel_data:
+                    intel_data['headlines_count'] = len(headlines)
                 
                 if not can_trade:
                     # Blocked by economic event or sentiment
@@ -1048,6 +1825,30 @@ class ModularEnsembleInference:
             except Exception as e:
                 logger.warning(f"HistGB prediction failed: {e}")
         
+        # === APPLY CONFIDENCE CALIBRATION (NEW) ===
+        # Calibrate raw TCN/Transformer probability before gate checks
+        raw_tcn_probability = tcn_probability
+        calibration_applied = False
+        
+        if self.config.enable_calibration and tcn_probability is not None:
+            tcn_probability, calibration_applied = self._apply_calibration(
+                tcn_probability, 
+                direction=tcn_direction
+            )
+            if calibration_applied:
+                logger.debug(f"📐 TCN probability calibrated: {raw_tcn_probability:.3f} → {tcn_probability:.3f}")
+        
+        # Store calibration info in intel_data for reporting
+        intel_data['calibration'] = {
+            'enabled': self.config.enable_calibration,
+            'applied': calibration_applied,
+            'raw_probability': raw_tcn_probability,
+            'calibrated_probability': tcn_probability,
+            'method': self.calibrator.config.method if self.calibrator and self.calibrator.is_fitted else 'none',
+            'calibrator_fitted': self.calibrator.is_fitted if self.calibrator else False,
+            'adjustment': tcn_probability - raw_tcn_probability if calibration_applied else 0.0,
+        }
+        
         # === GET SUPPORTING MODEL PREDICTIONS ===
         try:
             # OPTION A: Use direct formula instead of Ridge model (faster, more reliable)
@@ -1156,19 +1957,19 @@ class ModularEnsembleInference:
             momentum_fresh = xgb_momentum >= self.config.min_momentum
             momentum_gate_passed = momentum_fresh or xgb_acceleration or tcn_strong
             
-            # RISK GATE: More lenient when TCN is confident
-            # The Transformer sees patterns the simple gate models might miss
+            # RISK GATE: Slightly more lenient when TCN is confident (but not too much)
+            # Tightened multipliers to prevent excessive risk in high-drawdown scenarios
             if tcn_very_strong:
-                # Very confident TCN - relax risk thresholds significantly
+                # Very confident TCN - relax risk thresholds modestly
                 risk_gate_passed = (
-                    rf_drawdown_pct <= self.config.max_drawdown_pct * 2.0 and
-                    rf_streak_prob <= self.config.max_streak_prob * 2.0
+                    rf_drawdown_pct <= self.config.max_drawdown_pct * 1.3 and
+                    rf_streak_prob <= self.config.max_streak_prob * 1.3
                 )
             elif tcn_strong:
-                # Strong TCN - relax risk thresholds moderately
+                # Strong TCN - relax risk thresholds slightly
                 risk_gate_passed = (
-                    rf_drawdown_pct <= self.config.max_drawdown_pct * 1.5 and
-                    rf_streak_prob <= self.config.max_streak_prob * 1.5
+                    rf_drawdown_pct <= self.config.max_drawdown_pct * 1.15 and
+                    rf_streak_prob <= self.config.max_streak_prob * 1.15
                 )
             else:
                 # Weak TCN - use strict thresholds
@@ -1227,6 +2028,145 @@ class ModularEnsembleInference:
         # Reject signals where TCN is too uncertain (near 50%)
         tcn_probability_gate_passed = abs(tcn_probability - 0.5) >= (self.config.min_tcn_probability - 0.5)
         
+        # === SENTIMENT GATE (NEW) ===
+        sentiment_gate_passed = True
+        sentiment_reason = None
+        if self.config.sentiment_block_enabled and intel_data:
+            sent = intel_data.get('sentiment')
+            if sent:
+                score = float(sent.get('aggregate_score', 0.0))
+                label = sent.get('aggregate_label', 'neutral')
+                n_headlines = int(sent.get('num_headlines', 0))
+                if n_headlines >= self.config.sentiment_min_headlines and abs(score) >= self.config.sentiment_block_threshold:
+                    # Map sentiment to directional bias
+                    sentiment_dir = 'long' if label == 'bullish' else 'short' if label == 'bearish' else None
+                    if sentiment_dir and direction_str and sentiment_dir != direction_str:
+                        sentiment_gate_passed = False
+                        sentiment_reason = f"sentiment_{label}({score:+.2f})"
+
+        # === DIRECTION FOR GATE CHECKS ===
+        # In direction mode, direction_str is set late, so use tcn_direction for gate checks
+        gate_check_direction = direction_str  # Already set if use_regime=True
+        if gate_check_direction is None and tcn_direction is not None:
+            gate_check_direction = 'long' if tcn_direction == 1 else 'short'
+
+        # === DYNAMIC THRESHOLDS (LLM-powered, edge cases only) ===
+        rsi_low_threshold = 10.0
+        rsi_high_threshold = 90.0
+        adx_trend_threshold = 35.0
+        
+        if self.enable_llm:
+            try:
+                from buddy_intelligent_mode import get_dynamic_thresholds
+                
+                rsi_val_check = df['rsi'].iloc[-1] if 'rsi' in df.columns else 50.0
+                adx_val_check = df['adx'].iloc[-1] if 'adx' in df.columns else 20.0
+                
+                market_context = {
+                    'rsi': rsi_val_check,
+                    'adx': adx_val_check,
+                    'atr_pct': float(df['atr_pct_14'].iloc[-1]) if 'atr_pct_14' in df.columns else None,
+                    'trend': 'up' if df['close'].iloc[-1] > df['close'].iloc[-20] else 'down',
+                    'news_summary': intel_data.get('sentiment', {}).get('aggregate_label', 'No news'),
+                }
+                
+                thresholds = get_dynamic_thresholds(
+                    instrument=instrument or "Unknown",
+                    market_context=market_context,
+                    only_for_edge_cases=True,  # Only call LLM for borderline cases
+                )
+                
+                if thresholds.adjust_thresholds:
+                    rsi_low_threshold = thresholds.rsi_extreme_low
+                    rsi_high_threshold = thresholds.rsi_extreme_high
+                    adx_trend_threshold = thresholds.adx_strong_trend
+                    logger.info(f"🧠 LLM adjusted thresholds: RSI {rsi_low_threshold:.0f}/{rsi_high_threshold:.0f}, ADX {adx_trend_threshold:.0f} - {thresholds.reason}")
+            except ImportError:
+                pass  # LLM module not available
+            except Exception as e:
+                logger.debug(f"LLM threshold adjustment skipped: {e}")
+
+        # === RSI EXTREME GATE ===
+        # Block trades that fight extreme RSI conditions
+        rsi_gate_passed = True
+        rsi_reason = None
+        rsi_val = df['rsi'].iloc[-1] if 'rsi' in df.columns else 50.0
+        
+        # Extreme oversold: block LONG (don't catch falling knife)
+        # Extreme overbought: block SHORT (don't short a rocket)
+        if rsi_val < rsi_low_threshold and gate_check_direction == 'long':
+            rsi_gate_passed = False
+            rsi_reason = f"rsi_extreme_low({rsi_val:.1f})"
+        elif rsi_val > rsi_high_threshold and gate_check_direction == 'short':
+            rsi_gate_passed = False
+            rsi_reason = f"rsi_extreme_high({rsi_val:.1f})"
+        
+        # === TREND CONTRADICTION GATE ===
+        # Block trades against strong established trends
+        trend_gate_passed = True
+        trend_reason = None
+        adx_val = df['adx'].iloc[-1] if 'adx' in df.columns else 0.0
+        
+        if adx_val > adx_trend_threshold:  # Strong trend (threshold may be dynamic)
+            # Determine trend direction from price action
+            price_trend = 'up' if df['close'].iloc[-1] > df['close'].iloc[-20] else 'down'
+            
+            # Block counter-trend trades in strong trends
+            if price_trend == 'down' and gate_check_direction == 'long':
+                trend_gate_passed = False
+                trend_reason = f"trend_contra(ADX={adx_val:.1f},trend=down)"
+            elif price_trend == 'up' and gate_check_direction == 'short':
+                trend_gate_passed = False
+                trend_reason = f"trend_contra(ADX={adx_val:.1f},trend=up)"
+
+        # === META-LABELING GATE (5th GATE - predicts trade SUCCESS) ===
+        # Meta-labeler answers: "Given this signal, should we actually trade?"
+        # This is DIFFERENT from direction - it predicts whether the trade will be PROFITABLE
+        meta_gate_passed = True
+        meta_confidence = 0.0
+        meta_reason = None
+        
+        if self._meta_labeler_loaded and self.meta_labeler is not None:
+            try:
+                # Extract features for meta-labeler (uses same features as TCN + primary probability)
+                meta_features = self._extract_tcn_features(df)
+                
+                # Ensure we have the primary model's probability
+                primary_prob = np.array([[tcn_probability]], dtype=np.float32)
+                
+                # Handle 2D features (single row)
+                if meta_features.ndim == 1:
+                    meta_features = meta_features.reshape(1, -1)
+                elif len(meta_features) > 1:
+                    # Use only the last row
+                    meta_features = meta_features[-1:, :]
+                
+                # Get meta-labeler confidence (probability that primary signal is correct)
+                meta_conf_array = self.meta_labeler.predict_meta_confidence(
+                    meta_features, 
+                    primary_prob.flatten()
+                )
+                meta_confidence = float(meta_conf_array[0]) if len(meta_conf_array) > 0 else 0.0
+                
+                # Check gate threshold
+                meta_gate_passed = meta_confidence >= self.config.min_meta_confidence
+                
+                if not meta_gate_passed:
+                    meta_reason = f"low_meta_conf({meta_confidence:.2f}<{self.config.min_meta_confidence})"
+                
+                logger.debug(
+                    f"🏷️ Meta-labeler: confidence={meta_confidence:.2f}, "
+                    f"threshold={self.config.min_meta_confidence}, passed={meta_gate_passed}"
+                )
+            except Exception as e:
+                logger.warning(f"Meta-labeler prediction failed: {e}")
+                meta_gate_passed = True  # Fail open - don't block trades on error
+                meta_confidence = 0.0
+        else:
+            # No meta-labeler loaded - pass by default
+            meta_gate_passed = True
+            meta_confidence = 0.0
+
         if self.use_regime:
             # All gates for regime mode
             all_gates_passed = (
@@ -1235,7 +2175,11 @@ class ModularEnsembleInference:
                 tcn_probability_gate_passed and
                 confidence_gate_passed and
                 momentum_gate_passed and
-                risk_gate_passed
+                risk_gate_passed and
+                sentiment_gate_passed and
+                rsi_gate_passed and
+                trend_gate_passed and
+                meta_gate_passed  # 5th gate: meta-labeler
             )
         else:
             # DIRECTION MODE (legacy)
@@ -1244,7 +2188,11 @@ class ModularEnsembleInference:
                 tcn_probability_gate_passed and
                 confidence_gate_passed and
                 momentum_gate_passed and
-                risk_gate_passed
+                risk_gate_passed and
+                sentiment_gate_passed and
+                rsi_gate_passed and
+                trend_gate_passed and
+                meta_gate_passed  # 5th gate: meta-labeler
             )
             if all_gates_passed and tcn_direction is not None:
                 direction_str = 'long' if tcn_direction == 1 else 'short'
@@ -1272,6 +2220,14 @@ class ModularEnsembleInference:
                     reasons.append(f"high_drawdown({rf_drawdown_pct:.2%})")
                 if rf_streak_prob > self.config.max_streak_prob:
                     reasons.append(f"streak_risk({rf_streak_prob:.2f})")
+            if not sentiment_gate_passed and sentiment_reason:
+                reasons.append(sentiment_reason)
+            if not rsi_gate_passed and rsi_reason:
+                reasons.append(rsi_reason)
+            if not trend_gate_passed and trend_reason:
+                reasons.append(trend_reason)
+            if not meta_gate_passed and meta_reason:
+                reasons.append(meta_reason)
             reason = ", ".join(reasons)
         
         # === CALCULATE POSITION SIZE ===
@@ -1295,6 +2251,15 @@ class ModularEnsembleInference:
                 ridge_confidence=ridge_confidence,
             )
         
+        # Store features for drift detection when trade result is recorded
+        try:
+            # Use TCN features as the primary feature set for drift tracking
+            self._last_features = self._extract_tcn_features(df)
+            if self._last_features.ndim > 1:
+                self._last_features = self._last_features[-1]  # Keep last row only
+        except Exception:
+            self._last_features = None
+        
         return TradeSignal(
             trade=all_gates_passed,
             direction=direction_str,
@@ -1316,6 +2281,8 @@ class ModularEnsembleInference:
             momentum_gate_passed=momentum_gate_passed,
             risk_gate_passed=risk_gate_passed,
             regime_gate_passed=regime_gate_passed,
+            meta_gate_passed=meta_gate_passed,
+            meta_confidence=meta_confidence,
             reason=reason,
             metadata={'intel_data': intel_data},
         )
@@ -1341,13 +2308,20 @@ class ModularEnsembleInference:
         intel_data = signal.metadata.get('intel_data', {}) if signal.metadata else {}
         
         # Calendar check
-        if 'next_high_impact' in intel_data:
+        if 'calendar_error' in intel_data:
+            gate_checks.append(f"📅 Calendar: feed error ({intel_data['calendar_error']})")
+        elif 'next_high_impact' in intel_data:
             event = intel_data['next_high_impact']
             mins = int(event.get('minutes_until', 999))
             event_name = event.get('name', 'Unknown')
             gate_checks.append(f"📅 Calendar: {event_name} in {mins}m ✓")
         elif self.market_intel:
-            gate_checks.append("📅 Calendar: No events ✓")
+            total = intel_data.get('calendar_events')
+            high = intel_data.get('calendar_high_impact')
+            if total is not None and high is not None:
+                gate_checks.append(f"📅 Calendar: {total} events ({high} high-impact) ✓")
+            else:
+                gate_checks.append("📅 Calendar: No events ✓")
         
         # Sentiment check
         if 'sentiment' in intel_data:
@@ -1360,19 +2334,39 @@ class ModularEnsembleInference:
             else:
                 gate_checks.append("📰 Sentiment: No headlines (skipped)")
         elif self.market_intel and self.market_intel.sentiment is not None:
-            gate_checks.append("📰 Sentiment: Ready (no headlines provided)")
+            headlines_count = intel_data.get('headlines_count')
+            if headlines_count == 0:
+                gate_checks.append("📰 Sentiment: No headlines found (RSS)")
+            else:
+                gate_checks.append("📰 Sentiment: Ready (no headlines provided)")
         
         # Online learning status
         if self.market_intel and self.market_intel.online_learner:
             buffer_size = len(self.market_intel.online_learner.trade_buffer)
             gate_checks.append(f"🔄 Online Learning: {buffer_size}/50 trades buffered")
         
+        # Calibration status (NEW)
+        calib_info = intel_data.get('calibration', {})
+        if calib_info.get('applied'):
+            raw_prob = calib_info.get('raw_probability', 0)
+            cal_prob = calib_info.get('calibrated_probability', 0)
+            method = calib_info.get('method', 'unknown')
+            gate_checks.append(f"📐 Calibration: {method} ({raw_prob:.3f} → {cal_prob:.3f}) ✓")
+        elif self.config.enable_calibration:
+            gate_checks.append("📐 Calibration: Not fitted (using raw)")
+        
         gate_checks.append("")  # Spacer
         
         # TCN direction
         if signal.tcn_direction is not None:
             dir_str = "LONG" if signal.tcn_direction == 1 else "SHORT"
-            gate_checks.append(f"TCN: {dir_str} (prob={signal.tcn_probability:.2f})")
+            # Show both raw and calibrated if calibration was applied
+            calib_info = intel_data.get('calibration', {})
+            if calib_info.get('applied'):
+                raw_prob = calib_info.get('raw_probability', signal.tcn_probability)
+                gate_checks.append(f"TCN: {dir_str} (raw={raw_prob:.2f}, calibrated={signal.tcn_probability:.2f})")
+            else:
+                gate_checks.append(f"TCN: {dir_str} (prob={signal.tcn_probability:.2f})")
         else:
             gate_checks.append("TCN: NO SIGNAL")
         
@@ -1389,6 +2383,13 @@ class ModularEnsembleInference:
         status = "✓" if signal.risk_gate_passed else "✗"
         gate_checks.append(f"RF: drawdown={signal.rf_drawdown_pips:.1f}pips, streak={signal.rf_streak_prob:.2f} {status}")
         
+        # Meta-labeling gate (5th gate - predicts trade SUCCESS)
+        if self._meta_labeler_loaded and self.meta_labeler is not None:
+            status = "✓" if signal.meta_gate_passed else "✗"
+            gate_checks.append(f"Meta: confidence={signal.meta_confidence:.2f} (threshold={self.config.min_meta_confidence}) {status}")
+        elif self.config.enable_meta_labeling:
+            gate_checks.append("Meta: not loaded (skipped)")
+        
         # Final decision
         if signal.trade:
             decision = f"→ TRADE: {signal.direction.upper()}, size={signal.size} lots"
@@ -1404,6 +2405,135 @@ class ModularEnsembleInference:
             'raw_signal': signal,
             'intel_data': intel_data,
         }
+
+
+def train_calibration(
+    model_dir: str = "trained_data/models",
+    validation_predictions: Optional[np.ndarray] = None,
+    validation_outcomes: Optional[np.ndarray] = None,
+    method: str = 'platt',
+    instrument: Optional[str] = None,
+) -> Optional['ConfidenceCalibrator']:
+    """
+    Train and save confidence calibration from validation data.
+    
+    This function should be called after model training to fit the calibrator
+    on validation set predictions and actual outcomes.
+    
+    Args:
+        model_dir: Directory where models are stored
+        validation_predictions: Raw model probabilities on validation set (0-1)
+        validation_outcomes: Actual outcomes (0=loss, 1=win)
+        method: Calibration method ('platt', 'isotonic', or 'both')
+        instrument: Optional instrument for pair-specific calibration
+        
+    Returns:
+        Fitted ConfidenceCalibrator or None if calibration not available
+        
+    Example:
+        # After training, get validation predictions:
+        val_preds = model.predict(X_val)[:, 1]  # Probability of positive class
+        val_outcomes = (y_val == 1).astype(int)  # Actual outcomes
+        
+        # Train calibration:
+        calibrator = train_calibration(
+            model_dir="trained_data/models",
+            validation_predictions=val_preds,
+            validation_outcomes=val_outcomes,
+            method='platt',
+        )
+    """
+    if not CALIBRATION_AVAILABLE:
+        logger.warning("Confidence calibration module not available")
+        return None
+    
+    if validation_predictions is None or validation_outcomes is None:
+        logger.warning("No validation data provided for calibration training")
+        return None
+    
+    if len(validation_predictions) < 20:
+        logger.warning(f"Insufficient validation samples ({len(validation_predictions)}) for calibration. Need at least 20.")
+        return None
+    
+    model_dir = Path(model_dir)
+    
+    # Create calibrator
+    config = CalibrationConfig(
+        method=method,
+        min_confidence_threshold=0.5,
+        max_confidence_threshold=0.95,
+        apply_directional_adjustment=False,  # Pure calibration only
+        apply_win_probability_adjustment=False,
+        apply_trading_context_adjustment=False,
+    )
+    calibrator = ConfidenceCalibrator(config)
+    
+    # Fit calibration
+    try:
+        calibrator.fit(validation_predictions, validation_outcomes)
+        logger.info(f"✓ Calibration fitted using {len(validation_predictions)} samples ({method} method)")
+        
+        # Evaluate calibration quality
+        eval_metrics = calibrator.evaluate_calibration(validation_predictions, validation_outcomes)
+        logger.info(f"  Brier score: {eval_metrics['original_brier_score']:.4f} → {eval_metrics['calibrated_brier_score']:.4f}")
+        logger.info(f"  Improvement: {eval_metrics['relative_improvement']*100:.1f}%")
+        
+    except Exception as e:
+        logger.error(f"Calibration fitting failed: {e}")
+        return None
+    
+    # Save calibrator
+    if instrument and instrument != "GENERIC":
+        save_path = model_dir / instrument / "confidence_calibrator.pkl"
+    else:
+        save_path = model_dir / "confidence_calibrator.pkl"
+    
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    calibrator.save(save_path)
+    logger.info(f"✓ Calibrator saved to {save_path}")
+    
+    # Also save calibration parameters to ensemble metadata for portability
+    meta_path = model_dir / "modular_ensemble.meta.json"
+    if meta_path.exists():
+        try:
+            with open(meta_path, 'r') as f:
+                meta = json.load(f)
+            
+            # Add calibration data
+            calib_meta = {
+                'method': method,
+                'min_threshold': 0.5,
+                'max_threshold': 0.95,
+                'n_samples': len(validation_predictions),
+                'brier_original': float(eval_metrics['original_brier_score']),
+                'brier_calibrated': float(eval_metrics['calibrated_brier_score']),
+            }
+            
+            # Save Platt parameters
+            if calibrator.platt_model is not None:
+                calib_meta['platt_params'] = {
+                    'coef': float(calibrator.platt_model.coef_[0][0]),
+                    'intercept': float(calibrator.platt_model.intercept_[0]),
+                }
+            
+            # Save Isotonic parameters (if used)
+            if calibrator.isotonic_model is not None:
+                calib_meta['isotonic_params'] = {
+                    'X_thresholds': calibrator.isotonic_model.X_thresholds_.tolist(),
+                    'y_thresholds': calibrator.isotonic_model.y_thresholds_.tolist(),
+                }
+            
+            meta['calibration'] = calib_meta
+            
+            with open(meta_path, 'w') as f:
+                json.dump(meta, f, indent=2)
+            
+            logger.info(f"✓ Calibration metadata saved to {meta_path}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to update ensemble metadata with calibration: {e}")
+    
+    return calibrator
 
 
 def run_inference_test():

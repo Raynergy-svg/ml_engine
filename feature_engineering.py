@@ -953,7 +953,7 @@ class FeatureEngineering:
             median_window: Window size for median smoothing
             instrument: Currency pair for news sentiment features (e.g., 'EUR_USD')
         """
-        logger.info("Starting feature engineering...")
+        logger.debug("Starting feature engineering...")
 
         original_shape = df.shape
         original_len = int(original_shape[0])
@@ -1047,15 +1047,15 @@ class FeatureEngineering:
 
         dropped = int(original_len - len(df))
         if dropped > 0:
-            logger.info("Dropped %s rows with NaN after forward-fill", dropped)
+            logger.debug("Dropped %s rows with NaN after forward-fill", dropped)
 
         new_shape = df.shape
-        logger.info(
+        logger.debug(
             "Feature engineering complete: %s -> %s",
             original_shape,
             new_shape,
         )
-        logger.info(
+        logger.debug(
             "Added %s new features",
             int(new_shape[1] - original_shape[1]),
         )

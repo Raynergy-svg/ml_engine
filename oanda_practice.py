@@ -325,17 +325,168 @@ class OandaPracticeClient:
             json=payload,
         )
 
-    def close_trade(self, *, trade_id: str) -> Any:
+    def close_trade(
+        self,
+        *,
+        trade_id: str,
+        ensemble: Optional[Any] = None,  # ModularEnsembleInference for drift tracking
+        prediction: float = 0.5,
+        confidence: float = 50.0,
+        features: Optional[Any] = None,  # np.ndarray
+    ) -> Any:
         """Close a specific trade by trade id (full close).
 
         Uses the v20 endpoint: PUT /accounts/{accountID}/trades/{tradeID}/close
+        Also records trade outcome for online learning and drift detection.
+        
+        Args:
+            trade_id: OANDA trade ID to close
+            ensemble: Optional ModularEnsembleInference instance for drift tracking
+            prediction: Model prediction at trade entry (for drift detection)
+            confidence: Ridge confidence at trade entry (for drift detection)
+            features: Feature array at trade entry (for drift detection)
         """
+        # First, get trade details before closing (for online learning)
+        trade_details = None
+        try:
+            trade_details = self._request(
+                "GET",
+                f"/accounts/{self._config.account_id}/trades/{trade_id}",
+            )
+        except Exception:
+            pass
+        
+        # Close the trade
         payload: Dict[str, Any] = {}
-        return self._request(
+        result = self._request(
             "PUT",
             f"/accounts/{self._config.account_id}/trades/{trade_id}/close",
             json=payload,
         )
+        
+        # Record outcome for online learning with drift detection
+        try:
+            self._record_trade_outcome_for_learning(
+                trade_id, 
+                trade_details, 
+                result,
+                ensemble=ensemble,
+                prediction=prediction,
+                confidence=confidence,
+                features=features,
+            )
+        except Exception:
+            pass  # Don't fail the close if learning recording fails
+        
+        return result
+    
+    def _record_trade_outcome_for_learning(
+        self,
+        trade_id: str,
+        trade_details: Optional[Dict[str, Any]],
+        close_result: Dict[str, Any],
+        ensemble: Optional[Any] = None,  # ModularEnsembleInference instance
+        prediction: float = 0.5,
+        confidence: float = 50.0,
+        features: Optional[Any] = None,  # np.ndarray
+    ) -> None:
+        """Record trade outcome for online learning system.
+        
+        This enables the adaptive learning capability where the system
+        learns from trade outcomes to improve future reasoning.
+        
+        If an ensemble instance is provided, uses its record_trade_result method
+        for proper drift detection integration. Otherwise falls back to creating
+        a new MarketIntelligence instance (loses state).
+        
+        Args:
+            trade_id: OANDA trade ID
+            trade_details: Trade details from OANDA API
+            close_result: Close result from OANDA API
+            ensemble: Optional ModularEnsembleInference instance for drift tracking
+            prediction: Model prediction probability at entry
+            confidence: Ridge confidence score at entry
+            features: Feature array at entry for drift detection
+        """
+        try:
+            # Extract trade info
+            trade = (trade_details or {}).get('trade', {})
+            close_tx = (close_result or {}).get('orderFillTransaction', {})
+            
+            instrument = trade.get('instrument', '')
+            if not instrument:
+                return
+            
+            # Calculate P&L
+            realized_pl = float(close_tx.get('pl', 0) or trade.get('realizedPL', 0))
+            units = abs(int(trade.get('currentUnits', 0) or trade.get('initialUnits', 0)))
+            
+            # Determine direction
+            units_signed = int(trade.get('currentUnits', 0) or trade.get('initialUnits', 0))
+            direction = 'long' if units_signed > 0 else 'short'
+            
+            # Calculate pips
+            open_price = float(trade.get('price', 0))
+            close_price = float(close_tx.get('price', 0))
+            if open_price > 0 and close_price > 0:
+                is_jpy = instrument.endswith('_JPY')
+                pip_mult = 100 if is_jpy else 10000
+                if direction == 'long':
+                    pips = (close_price - open_price) * pip_mult
+                else:
+                    pips = (open_price - close_price) * pip_mult
+            else:
+                pips = realized_pl * 10  # Rough estimate
+            
+            # PREFERRED: Use ensemble's record_trade_result for proper drift detection
+            if ensemble is not None and hasattr(ensemble, 'record_trade_result'):
+                drift_result = ensemble.record_trade_result(
+                    trade_id=trade_id,
+                    instrument=instrument,
+                    direction=direction,
+                    entry_price=open_price,
+                    exit_price=close_price,
+                    pnl_pips=pips,
+                    prediction=prediction,
+                    confidence=confidence,
+                    features=features,
+                )
+                
+                # Log drift detection result
+                if drift_result and drift_result.get('drift_detected'):
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"📊 Drift detected: {drift_result.get('reason')} "
+                        f"→ {drift_result.get('recommendation')}"
+                    )
+                return
+            
+            # FALLBACK: Create new MarketIntelligence instance (loses state)
+            from market_intelligence import MarketIntelligence
+            intel = MarketIntelligence(enable_online_learning=True)
+            if intel.online_learner:
+                # Legacy call - doesn't support full drift detection
+                from datetime import datetime
+                import numpy as np
+                intel.record_trade_outcome(
+                    trade_id=trade_id,
+                    instrument=instrument,
+                    direction=1 if direction == 'long' else 0,
+                    entry_time=datetime.utcnow(),
+                    exit_time=datetime.utcnow(),
+                    entry_price=open_price,
+                    exit_price=close_price,
+                    pnl_pips=pips,
+                    features=features if features is not None else np.zeros(10),
+                    prediction=prediction,
+                    confidence=confidence,
+                )
+                
+        except ImportError:
+            pass  # market_intelligence not available
+        except Exception:
+            pass  # Silently fail - don't disrupt trading
 
     def create_market_order(
         self,

@@ -112,6 +112,110 @@ class BinaryFocalLoss(losses.Loss):
 
 
 @register_keras_serializable()
+class AntiCollapseFocalLoss(losses.Loss):
+    """
+    Enhanced Focal Loss that actively prevents prediction collapse.
+    
+    The problem with standard focal loss:
+    - When a model collapses to predicting one class (e.g., 95% DOWN),
+      the focal weight (1-pt)^gamma REDUCES gradients for the easy DOWN examples,
+      BUT the model still doesn't learn UP because sigmoid saturation prevents gradients.
+    
+    This loss adds three anti-collapse mechanisms:
+    1. Entropy regularization: Penalizes confident predictions, forcing diversity
+    2. Asymmetric alpha: Higher weight for the class being ignored (detected dynamically)
+    3. Gradient floor: Prevents gradients from vanishing completely for minority class
+    
+    Args:
+        gamma: Focusing parameter (default 2.0)
+        base_alpha: Starting class weight for positive class (default 0.5 = balanced)
+        entropy_weight: Weight for entropy regularization (default 0.1)
+        min_gradient_scale: Minimum gradient scale to prevent vanishing (default 0.1)
+        label_smoothing: Label smoothing factor (default 0.05)
+    """
+    
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        base_alpha: float = 0.5,
+        entropy_weight: float = 0.1,
+        min_gradient_scale: float = 0.1,
+        label_smoothing: float = 0.05,
+        name: str = 'anti_collapse_focal_loss',
+        **kwargs
+    ):
+        super().__init__(name=name, **kwargs)
+        self.gamma = gamma
+        self.base_alpha = base_alpha
+        self.entropy_weight = entropy_weight
+        self.min_gradient_scale = min_gradient_scale
+        self.label_smoothing = label_smoothing
+    
+    def call(self, y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+        
+        # Apply label smoothing
+        if self.label_smoothing > 0:
+            y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
+        
+        # Clip predictions (wider range than standard to allow more gradient flow)
+        y_pred = tf.clip_by_value(y_pred, 1e-6, 1 - 1e-6)
+        
+        # === DYNAMIC ALPHA ADJUSTMENT ===
+        # Detect which class is being ignored and boost it
+        mean_pred = tf.reduce_mean(y_pred)
+        # If mean_pred < 0.3, model is biased toward DOWN → boost UP (alpha > 0.5)
+        # If mean_pred > 0.7, model is biased toward UP → boost DOWN (alpha < 0.5)
+        # This creates a self-correcting mechanism
+        dynamic_alpha = self.base_alpha + 0.3 * (0.5 - mean_pred)  # Range: [0.35, 0.65]
+        dynamic_alpha = tf.clip_by_value(dynamic_alpha, 0.2, 0.8)
+        
+        # === FOCAL LOSS COMPONENT ===
+        # Binary cross entropy
+        bce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
+        
+        # Focal weight with alpha adjustment
+        pt = y_true * y_pred + (1 - y_true) * (1 - y_pred)
+        focal_weight = tf.pow(1 - pt, self.gamma)
+        
+        # Apply dynamic alpha
+        alpha_weight = y_true * dynamic_alpha + (1 - y_true) * (1 - dynamic_alpha)
+        focal_weight = focal_weight * alpha_weight
+        
+        # === GRADIENT FLOOR ===
+        # Prevent focal_weight from going too close to zero
+        # This ensures minority class samples always contribute to learning
+        focal_weight = tf.maximum(focal_weight, self.min_gradient_scale)
+        
+        focal_loss = focal_weight * bce
+        
+        # === ENTROPY REGULARIZATION ===
+        # Penalizes confident predictions, encouraging the model to be uncertain
+        # This prevents collapse to one class
+        # H = -p*log(p) - (1-p)*log(1-p), maximized at p=0.5
+        entropy = -y_pred * tf.math.log(y_pred) - (1 - y_pred) * tf.math.log(1 - y_pred)
+        # We want to MAXIMIZE entropy, so we SUBTRACT it from loss (or add negative)
+        # But we only want light regularization, so small weight
+        entropy_penalty = -self.entropy_weight * entropy
+        
+        total_loss = focal_loss + entropy_penalty
+        
+        return tf.reduce_mean(total_loss)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'gamma': self.gamma,
+            'base_alpha': self.base_alpha,
+            'entropy_weight': self.entropy_weight,
+            'min_gradient_scale': self.min_gradient_scale,
+            'label_smoothing': self.label_smoothing,
+        })
+        return config
+
+
+@register_keras_serializable()
 class ModelEMACallback(keras_callbacks.Callback):
     """Exponential Moving Average of model weights for smoother inference.
     

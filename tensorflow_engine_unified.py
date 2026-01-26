@@ -178,7 +178,7 @@ def _match_weights_by_name(model_vars, saved_weights):
                 continue
             saved_norm = _normalize_weight_name(saved_name)
             
-            if saved_norm == var_norm and saved_weight.shape == tuple(var.shape.as_list()):
+            if saved_norm == var_norm and saved_weight.shape == tuple(var.shape):
                 var.assign(saved_weight)
                 used_saved.add(saved_name)
                 matched += 1
@@ -203,7 +203,7 @@ def _match_weights_by_shape_and_pattern(model_vars, saved_weights, used_saved):
     
     matched = 0
     for var in remaining_vars:
-        var_shape = tuple(var.shape.as_list())
+        var_shape = tuple(var.shape)
         var_name = var.name.lower()
         
         if var_shape not in shape_to_saved or not shape_to_saved[var_shape]:
@@ -298,7 +298,7 @@ def _load_weights_from_npz(model, npz_path):
     
     for var in model_vars:
         var_name = var.name
-        var_shape = tuple(var.shape.as_list())
+        var_shape = tuple(var.shape)
         
         # Try to find matching saved weight by name pattern and shape
         best_match = None
@@ -390,7 +390,7 @@ def _match_keras_weights_to_vars(model_vars, weights_dict):
     
     matched = 0
     for var in model_vars:
-        var_shape = tuple(var.shape.as_list())
+        var_shape = tuple(var.shape)
         var_name = var.name.lower()
         
         if var_shape not in shape_to_saved:

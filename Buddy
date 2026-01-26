@@ -42,17 +42,23 @@ cmd_predict() {
             -i|--instrument) instrument="$2"; shift 2 ;;
             -g|--granularity) granularity="$2"; shift 2 ;;
             -x|--execute) args+=(--execute); shift ;;
+            --no-execute) args+=(--no-execute); shift ;;
             -v|--verbose) args+=(--verbose); shift ;;
             --use-rl-sizer) args+=(--use-rl-sizer); shift ;;
-            *) shift ;;
+            --explain) args+=(--explain); shift ;;
+            --intelligent) args+=(--intelligent); shift ;;
+            --no-intelligent) args+=(--no-intelligent); shift ;;
+            --llm-provider) args+=(--llm-provider "$2"); shift 2 ;;
+            --llm-enhance) args+=(--llm-enhance); shift ;;
+            --dry-run) args+=(--dry-run); shift ;;
+            *) args+=("$1"); shift ;;  # Pass through unknown args
         esac
     done
     
     # Default to EUR_USD if no instrument
     instrument="${instrument:-EUR_USD}"
     
-    # Use main.py buddy which loads PAIR-SPECIFIC models (not model_78)
-    # Model_78 is for scanner only; single-pair trading uses pair-specific models
+    # Use main.py buddy which loads pair-specific models
     run_py "${SCRIPT_DIR}/main.py" buddy --config "${CONFIG_FILE}" \
         --instrument "${instrument}" \
         --granularity "${granularity}" \
@@ -69,7 +75,10 @@ cmd_train() {
             -g|--granularity) granularity="$2"; shift 2 ;;
             -m|--model) args+=(--model-type "$2"); shift 2 ;;
             --oanda-live) args+=(--oanda-live); shift ;;
-            *) shift ;;
+            --multi-pair) args+=(--multi-pair); shift ;;
+            --foundation-pairs) args+=(--foundation-pairs "$2"); shift 2 ;;
+            --no-warm-start) args+=(--no-warm-start); shift ;;
+            *) args+=("$1"); shift ;;  # Pass through unknown args instead of discarding
         esac
     done
     run_py "${SCRIPT_DIR}/main.py" train-buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
@@ -84,6 +93,7 @@ cmd_scan() {
             -g|--granularity) granularity="$2"; shift 2 ;;
             --top) args+=(--top "$2"); shift 2 ;;
             -v|--verbose) args+=(--verbose); shift ;;
+            -d|--diversified) args+=(--diversified); shift ;;
             *) shift ;;
         esac
     done

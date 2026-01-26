@@ -66,7 +66,7 @@ sequence_length: 60
 # ----- DIRECTION LABELING -----
 # H4 Strategy: Look further ahead for cleaner signals
 direction_lookahead: 12  # Look 12 bars ahead (2 days on H4, 12 hours on H1)
-direction_threshold: 0.002  # Min 0.2% move to count as directional (filters noise)
+direction_threshold: 0.001  # Min 0.1% move to count as directional (reduced from 0.2% for more samples)
 
 # ----- TARGET PREDICTION HORIZON -----
 # CRITICAL: Predicting 1 candle ahead is essentially noise prediction
@@ -144,6 +144,11 @@ training:
   
   # Batch progress logging (helps see if training is stuck)
   batch_progress_every: 50
+  
+  # RL Position Sizer: Automatically train RL agent after ensemble training
+  # Set to false to disable automatic RL training (can still train manually with train-rl-sizer)
+  auto_train_rl: true
+  rl_timesteps: 500000  # RL training timesteps (500k ~ 10-15 min on M1)
 
 # ----- BATCH SIZE (CRITICAL FOR M1 PERFORMANCE) -----
 # AUTO-TUNED: Best from hyperparameter search (52.34% accuracy)
@@ -260,8 +265,8 @@ fx:
     max_open_positions: 5  # Allow multiple positions for diversification
     max_entries_per_day: 30  # Professional: up to 30 trades/day
   risk:
-    risk_per_trade_pct: 0.02  # 2% risk per trade
-    daily_loss_stop_pct: 0.05  # 5% daily stop
+    risk_per_trade_pct: 0.05  # 5% risk per trade (~$5k on $100k account)
+    daily_loss_stop_pct: 0.15  # 15% daily stop (allows 3 full losses)
     atr_stop_mult: 1.5
     rr_take_profit: 2.0
   execution:

@@ -137,10 +137,10 @@ class ScanConfig:
     high_prob_threshold: float = 0.65  # Probability threshold for bonus TP
     high_prob_tp_bonus: float = 20.0  # Extra pips added when prob > 65%
     
-    # Position sizing - optimized for $101k account
+    # Position sizing - optimized for $101k account (AGGRESSIVE)
     position_sizing_enabled: bool = True
     account_equity: float = 0.0  # 0 = fetch from OANDA live
-    risk_per_trade_pct: float = 0.02  # 2% risk per trade for larger lots
+    risk_per_trade_pct: float = 0.05  # 5% risk per trade (~$5k risk on $100k)
     leverage: int = 50  # 50:1 leverage
     aggressive_mode: bool = True  # Enabled for larger position sizes
     max_trades_per_day: int = 30  # Max 30 trades/day as requested
@@ -176,10 +176,10 @@ class ScanConfig:
             high_prob_tp_bonus=d.get("high_prob_tp_bonus", 20.0),
             position_sizing_enabled=d.get("position_sizing_enabled", True),
             account_equity=d.get("account_equity", 101000.0),
-            risk_per_trade_pct=d.get("risk_per_trade_pct", 0.02),
+            risk_per_trade_pct=d.get("risk_per_trade_pct", 0.05),  # 5% risk
             leverage=d.get("leverage", 50),
-            aggressive_mode=d.get("aggressive_mode", False),
-            max_trades_per_day=d.get("max_trades_per_day", 3),
+            aggressive_mode=d.get("aggressive_mode", True),  # Aggressive by default
+            max_trades_per_day=d.get("max_trades_per_day", 30),
             enable_session_filter=d.get("enable_session_filter", True),
             session_start_utc=d.get("session_start_utc", 8),
             session_end_utc=d.get("session_end_utc", 21),
@@ -294,7 +294,6 @@ class BuddyScanner:
         self._oanda_client = None
         self._feature_engineer = None
         self._modular_ensemble = None
-        self._model_78 = None  # Verified 78% model from Colab
         self._position_sizer = None
         self._risk_manager = None
         self._memory_client = None
@@ -302,11 +301,17 @@ class BuddyScanner:
         self._account_equity = account_equity
         self._use_rl_sizer = use_rl_sizer
         
+        # Multi-pair inference (uses pair-specific models)
+        self._multi_pair_inference = None
+        
         # Cached historical accuracy per pair
         self._historical_accuracy: Dict[str, float] = {}
         
         # Cached returns for correlation analysis
         self._pair_returns: Dict[str, pd.Series] = {}
+        
+        # Correlation details for enhanced warnings
+        self._correlation_details: List[Dict[str, Any]] = []
     
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from YAML."""
@@ -428,7 +433,7 @@ class BuddyScanner:
             total = len(trades)
             win_rate = wins / total if total > 0 else 0.0
             
-            logger.info(f"Actual trading performance: {win_rate:.1%} ({wins}W/{total-wins}L)")
+            logger.debug(f"Actual trading performance: {win_rate:.1%} ({wins}W/{total-wins}L)")
             return win_rate, total
             
         except Exception as e:
@@ -454,26 +459,11 @@ class BuddyScanner:
             self._feature_engineer = FeatureEngineering(cfg.get("feature_engineering", {}))
     
     def _init_modular_ensemble(self) -> bool:
-        """Initialize modular ensemble model. Returns True if loaded."""
+        """Initialize modular ensemble model (legacy fallback). Returns True if loaded."""
         if self._modular_ensemble is not None:
             return True
         
-        # Try 78% verified model FIRST (from Colab A100 training)
-        try:
-            with suppress_logging():
-                from model_78_inference import Model78Inference
-                model_78 = Model78Inference()
-                if model_78.load():
-                    self._model_78 = model_78
-                    self._model_meta = {
-                        "results": {"transformer": {"val_accuracy": model_78.accuracy}}
-                    }
-                    logger.debug(f"Loaded verified 78% model")
-                    return True
-        except Exception as e:
-            logger.debug(f"78% model not available: {e}")
-        
-        # Fallback to modular ensemble
+        # Load modular ensemble as fallback
         meta_path = Path("trained_data/models/modular_ensemble.meta.json")
         if not meta_path.exists():
             return False
@@ -490,6 +480,24 @@ class BuddyScanner:
         except Exception as e:
             logger.warning(f"Could not load modular ensemble: {e}")
             return False
+    
+    def _init_multi_pair_inference(self) -> bool:
+        """Initialize multi-pair inference with pair-specific models."""
+        if self._multi_pair_inference is not None:
+            return True
+        
+        try:
+            with suppress_logging():
+                from multi_pair_inference import MultiPairInference
+                self._multi_pair_inference = MultiPairInference()
+                if self._multi_pair_inference.load():
+                    status = self._multi_pair_inference.get_model_status()
+                    logger.debug(f"Loaded multi-pair inference: {status['loaded_pairs']} pairs")
+                    return True
+        except Exception as e:
+            logger.debug(f"Multi-pair inference not available: {e}")
+        
+        return False
     
     def _init_position_sizer(self):
         """Initialize position sizer."""
@@ -645,22 +653,28 @@ class BuddyScanner:
         ridge_conf = 0.0
         gates_passed = False
         
-        # Use 78% verified model FIRST
-        if self._model_78 is not None:
+        # Try multi-pair inference FIRST (uses pair-specific trained models)
+        if self._init_multi_pair_inference():
             try:
                 with suppress_logging():
-                    direction, prob = self._model_78.predict(df_raw, pair)
+                    # Pass df_feat (already has features) - the model will use them directly
+                    direction, prob = self._multi_pair_inference.predict(df_raw, pair, df_feat=df_feat)
                     confidence = prob
                     tcn_conf = prob * 100
                     ridge_conf = prob * 100
-                    # Gates pass if confidence >= min_gate_confidence (stricter than min_confidence)
-                    # This improves WR by only taking higher-confidence trades
                     gates_passed = confidence >= self._scan_config.min_gate_confidence
+                    
+                    # Log which model was used
+                    status = self._multi_pair_inference.get_model_status()
+                    pair_info = status.get("models", {}).get(pair, {})
+                    if pair_info.get("loaded"):
+                        logger.debug(f"Used pair-specific model for {pair}: {pair_info.get('accuracy', 0):.1%}")
+                    
                     return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed
             except Exception as e:
-                logger.warning(f"78% model inference failed for {pair}: {e}")
+                logger.warning(f"Multi-pair inference failed for {pair}: {e}")
         
-        # Fallback to modular ensemble
+        # Fallback to modular ensemble (legacy)
         if self._modular_ensemble is not None:
             try:
                 with suppress_logging():
@@ -778,7 +792,7 @@ class BuddyScanner:
         if confidence >= self._scan_config.high_prob_threshold:
             tp_bonus = self._scan_config.high_prob_tp_bonus
             tp_pips = tp_pips + tp_bonus
-            logger.info(f"High probability ({confidence:.1%}) - TP bonus +{tp_bonus} pips → {tp_pips:.1f} pips")
+            logger.debug(f"High probability ({confidence:.1%}) - TP bonus +{tp_bonus} pips → {tp_pips:.1f} pips")
         
         confidence_level = "medium"
         
@@ -908,20 +922,174 @@ class BuddyScanner:
             # Calculate correlation matrix
             corr_matrix = returns_df.corr()
             
-            # Check for high correlations (>0.8)
+            # Build confidence lookup for recommendations
+            conf_lookup = {r.pair: r.confidence for r in results}
+            
+            # Check for high correlations (>0.7 for more sensitivity)
             for i, pair1 in enumerate(pairs_with_data):
                 for pair2 in pairs_with_data[i+1:]:
                     if pair1 in corr_matrix.columns and pair2 in corr_matrix.columns:
                         corr = corr_matrix.loc[pair1, pair2]
-                        if abs(corr) > 0.8:
-                            warnings_dict[pair1] = f"High correlation ({corr:.2f}) with {pair2}"
-                            warnings_dict[pair2] = f"High correlation ({corr:.2f}) with {pair1}"
+                        if abs(corr) > 0.7:
+                            # Determine correlation type
+                            corr_type = "positive" if corr > 0 else "negative (inverse)"
+                            
+                            # Find higher confidence pair
+                            conf1 = conf_lookup.get(pair1, 0)
+                            conf2 = conf_lookup.get(pair2, 0)
+                            better_pair = pair1 if conf1 >= conf2 else pair2
+                            worse_pair = pair2 if conf1 >= conf2 else pair1
+                            
+                            warnings_dict[pair1] = f"{corr_type} corr ({corr:+.2f}) with {pair2}"
+                            warnings_dict[pair2] = f"{corr_type} corr ({corr:+.2f}) with {pair1}"
+                            
+                            # Store detailed info for display
+                            if not hasattr(self, '_correlation_details'):
+                                self._correlation_details = []
+                            self._correlation_details.append({
+                                'pair1': pair1,
+                                'pair2': pair2,
+                                'corr': corr,
+                                'type': corr_type,
+                                'prefer': better_pair,
+                                'conf1': conf1,
+                                'conf2': conf2,
+                            })
             
         except Exception as e:
             logger.warning(f"Correlation analysis failed: {e}")
         
         return warnings_dict
     
+    def _apply_diversification_filter(
+        self,
+        results: List[EnhancedScanResult],
+    ) -> List[EnhancedScanResult]:
+        """
+        Filter results to only show the best pair from each correlation cluster.
+        
+        Uses Union-Find to group correlated pairs, then keeps only the highest
+        confidence pair from each group.
+        
+        Args:
+            results: List of scan results
+            
+        Returns:
+            Filtered list with only one pair per correlation cluster
+        """
+        if not hasattr(self, '_correlation_details') or not self._correlation_details:
+            return results
+        
+        # Build correlation clusters using Union-Find
+        pair_to_cluster: Dict[str, str] = {}
+        
+        def find(pair: str) -> str:
+            if pair not in pair_to_cluster:
+                pair_to_cluster[pair] = pair
+            if pair_to_cluster[pair] != pair:
+                pair_to_cluster[pair] = find(pair_to_cluster[pair])
+            return pair_to_cluster[pair]
+        
+        def union(p1: str, p2: str):
+            r1, r2 = find(p1), find(p2)
+            if r1 != r2:
+                pair_to_cluster[r1] = r2
+        
+        # Group correlated pairs
+        for detail in self._correlation_details:
+            union(detail['pair1'], detail['pair2'])
+        
+        # Build clusters
+        clusters: Dict[str, List[EnhancedScanResult]] = {}
+        unclustered: List[EnhancedScanResult] = []
+        
+        for result in results:
+            if result.pair in pair_to_cluster:
+                root = find(result.pair)
+                if root not in clusters:
+                    clusters[root] = []
+                clusters[root].append(result)
+            else:
+                unclustered.append(result)
+        
+        # Keep only best from each cluster
+        filtered: List[EnhancedScanResult] = []
+        for root, cluster_results in clusters.items():
+            # Sort by confidence (gates_passed first, then confidence)
+            cluster_results.sort(key=lambda x: (x.gates_passed, x.confidence), reverse=True)
+            best = cluster_results[0]
+            
+            # Mark that this was chosen from a cluster
+            if len(cluster_results) > 1:
+                filtered_pairs = [r.pair for r in cluster_results[1:]]
+                best.correlation_warning = f"✓ Best of cluster ({', '.join(filtered_pairs)} filtered)"
+            
+            filtered.append(best)
+        
+        # Add unclustered pairs
+        filtered.extend(unclustered)
+        
+        # Re-sort by overall score
+        filtered.sort(key=lambda x: x.overall_score, reverse=True)
+        
+        return filtered
+    
+    def _apply_correlation_position_sizing(
+        self,
+        results: List[EnhancedScanResult],
+    ) -> List[EnhancedScanResult]:
+        """
+        Reduce position size for correlated pairs to maintain total portfolio risk.
+        
+        If multiple correlated pairs are tradeable, reduce each position by the
+        number of correlated pairs (e.g., 2 correlated = 50% each, 3 = 33% each).
+        
+        Args:
+            results: List of scan results
+            
+        Returns:
+            Results with adjusted position sizes
+        """
+        if not hasattr(self, '_correlation_details') or not self._correlation_details:
+            return results
+        
+        # Build correlation map: pair -> list of correlated pairs
+        corr_map: Dict[str, List[str]] = {}
+        for detail in self._correlation_details:
+            p1, p2 = detail['pair1'], detail['pair2']
+            if p1 not in corr_map:
+                corr_map[p1] = []
+            if p2 not in corr_map:
+                corr_map[p2] = []
+            corr_map[p1].append(p2)
+            corr_map[p2].append(p1)
+        
+        # Count tradeable correlated pairs for each result
+        tradeable_pairs = {r.pair for r in results if r.gates_passed}
+        
+        for result in results:
+            if not result.gates_passed:
+                continue
+            
+            if result.pair in corr_map:
+                # Count how many correlated pairs are also tradeable
+                correlated_tradeable = [p for p in corr_map[result.pair] if p in tradeable_pairs]
+                
+                if correlated_tradeable:
+                    # Reduce position size: 1/(1 + num_correlated)
+                    # 1 correlated = 50%, 2 = 33%, etc.
+                    reduction_factor = 1.0 / (1 + len(correlated_tradeable))
+                    original_lots = result.recommended_lots
+                    result.recommended_lots = round(original_lots * reduction_factor, 2)
+                    
+                    # Update warning to show reduction
+                    if result.correlation_warning:
+                        result.correlation_warning += f" | lots reduced {reduction_factor:.0%}"
+                    else:
+                        result.correlation_warning = f"lots reduced {reduction_factor:.0%} (corr with {', '.join(correlated_tradeable)})"
+        
+        return results
+
     def _check_model_drift(self) -> Tuple[bool, float, float]:
         """
         Check for model drift.
@@ -1116,6 +1284,7 @@ class BuddyScanner:
         top_n: int = 5,
         verbose: bool = True,
         prompt_train: bool = False,
+        diversified: bool = False,
     ) -> List[EnhancedScanResult]:
         """
         Scan multiple pairs in parallel.
@@ -1126,6 +1295,7 @@ class BuddyScanner:
             top_n: Number of top results to return
             verbose: Print progress and results
             prompt_train: Prompt to train on best pair (deprecated, default False)
+            diversified: If True, auto-filter correlated pairs (only best from each cluster)
             
         Returns:
             List of EnhancedScanResult sorted by overall_score
@@ -1135,6 +1305,8 @@ class BuddyScanner:
             self._load_config()
             self._init_memory_client()
             model_loaded = self._init_modular_ensemble()
+            # Initialize multi-pair inference (uses pair-specific models)
+            self._init_multi_pair_inference()
         
         # CRITICAL: Fetch live account data for proper position sizing
         # This pulls: NAV (for position sizing), trades today, remaining trade slots
@@ -1151,40 +1323,39 @@ class BuddyScanner:
         pair_list = pairs or MAJOR_PAIRS
         
         if verbose and console:
-            console.print("\n" + "=" * 70)
-            console.print("[bold cyan]📡 BUDDY SCANNER v2.0[/bold cyan]")
-            console.print("=" * 70)
-            
-            # Show account info with live balance
-            console.print(f"\n[bold]💰 ACCOUNT STATUS[/bold]")
-            if equity_updated:
-                console.print(f"   [green]✓ Live Balance:[/green] ${nav:,.2f} (fetched from OANDA)")
-            else:
-                console.print(f"   [dim]Balance:[/dim] ${nav:,.2f}")
-            
-            console.print(f"   [dim]Trades Today:[/dim] {trades_today}/{self._scan_config.max_trades_per_day}")
-            if trades_remaining <= 5:
-                console.print(f"   [yellow]Trades Remaining:[/yellow] {trades_remaining}")
-            else:
-                console.print(f"   [green]Trades Remaining:[/green] {trades_remaining}")
-            console.print(f"   [dim]Risk per Trade:[/dim] {self._scan_config.risk_per_trade_pct:.1%}")
-            
-            # Calculate example position size for display
-            example_risk_amount = nav * self._scan_config.risk_per_trade_pct
-            console.print(f"   [dim]Max Risk Amount:[/dim] ${example_risk_amount:,.2f} per trade")
             console.print()
             
+            # Compact header with key info
+            if equity_updated:
+                console.print(f"[bold cyan]📡 BUDDY SCANNER[/bold cyan] | ${nav:,.0f} | {trades_remaining} trades left | {self._scan_config.risk_per_trade_pct:.0%} risk")
+            else:
+                console.print(f"[bold cyan]📡 BUDDY SCANNER[/bold cyan] | ${nav:,.0f} | {trades_remaining} trades left")
+            
             if model_loaded:
-                val_acc = 0
-                if self._model_meta:
-                    if "results" in self._model_meta:
-                        val_acc = self._model_meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0)
-                    if val_acc == 0 and "models" in self._model_meta:
-                        val_acc = self._model_meta.get("models", {}).get("direction", {}).get("metrics", {}).get("val_accuracy", 0)
-                console.print(f"[green]✓ MODEL_78_v2[/green] ({val_acc:.1%} accuracy) | {len(pair_list)} pairs | {granularity}")
+                # Check if using multi-pair inference
+                if self._multi_pair_inference is not None:
+                    status = self._multi_pair_inference.get_model_status()
+                    if status.get("loaded_pairs", 0) > 0:
+                        accs = [m.get("accuracy", 0) for m in status.get("models", {}).values() if m.get("loaded")]
+                        avg_acc = sum(accs) / len(accs) if accs else 0
+                        best_pair = max(status.get("models", {}).items(), key=lambda x: x[1].get("accuracy", 0) if x[1].get("loaded") else 0)
+                        best_acc = best_pair[1].get("accuracy", 0)
+                        console.print(f"[green]✓ {status['loaded_pairs']} models[/green] | avg {avg_acc:.0%} | best {best_pair[0].replace('_','/')} ({best_acc:.0%}) | {granularity}")
+                    else:
+                        val_acc = 0
+                        if self._model_meta:
+                            if "results" in self._model_meta:
+                                val_acc = self._model_meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0)
+                        console.print(f"[green]✓ MODEL[/green] ({val_acc:.0%}) | {len(pair_list)} pairs | {granularity}")
+                else:
+                    val_acc = 0
+                    if self._model_meta:
+                        if "results" in self._model_meta:
+                            val_acc = self._model_meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0)
+                    console.print(f"[green]✓ MODEL[/green] ({val_acc:.0%}) | {len(pair_list)} pairs | {granularity}")
             else:
                 console.print(f"[dim]Technical indicators | {len(pair_list)} pairs | {granularity}[/dim]")
-            console.print("-" * 70)
+            console.print("-" * 60)
             
             # Session hours check with user prompt
             from datetime import datetime, timezone
@@ -1278,6 +1449,13 @@ class BuddyScanner:
             if result.pair in corr_warnings:
                 result.correlation_warning = corr_warnings[result.pair]
         
+        # DIVERSIFICATION: Auto-filter and position size reduction
+        if diversified:
+            results = self._apply_diversification_filter(results)
+        else:
+            # Even without --diversified, reduce position size for correlated pairs
+            results = self._apply_correlation_position_sizing(results)
+        
         # Check for model drift
         drift_detected, current_acc, baseline_acc = self._check_model_drift()
         if drift_detected:
@@ -1286,7 +1464,7 @@ class BuddyScanner:
         
         # Display results
         if verbose and console:
-            self._display_results(results, top_n, model_loaded, drift_detected, current_acc, baseline_acc)
+            self._display_results(results, top_n, model_loaded, drift_detected, current_acc, baseline_acc, diversified)
         
         # Store scan results in memory (silently)
         if self._memory_client is not None:
@@ -1308,16 +1486,15 @@ class BuddyScanner:
         drift_detected: bool,
         current_acc: float,
         baseline_acc: float,
+        diversified: bool = False,
     ):
         """Display scan results in formatted table."""
         if not console:
             return
         
-        console.print("\n" + "=" * 70)
-        model_label = "MODEL_78_v2" if model_loaded else "Technical"
-        console.print(f"[bold green]📊 SCAN RESULTS ({model_label}) - Top {min(top_n, len(results))}[/bold green]")
-        console.print(f"[dim]Account: ${self._scan_config.account_equity:,.0f} | Risk: {self._scan_config.risk_per_trade_pct:.0%}/trade | Leverage: {self._scan_config.leverage}:1[/dim]")
-        console.print("=" * 70)
+        console.print()
+        mode_label = " [cyan]DIVERSIFIED[/cyan]" if diversified else ""
+        console.print(f"[bold]RESULTS[/bold]{mode_label}")
         
         # Separate tradeable and needs-training pairs
         tradeable_results = [r for r in results[:top_n] if r.gates_passed]
@@ -1325,144 +1502,98 @@ class BuddyScanner:
         
         # === SECTION 1: TRADEABLE PAIRS ===
         if tradeable_results:
-            console.print(f"\n[bold green]✅ TRADEABLE NOW ({len(tradeable_results)} pairs)[/bold green]")
-            table = Table(show_header=True, header_style="bold cyan")
-            table.add_column("#", style="dim", width=3)
+            console.print(f"\n[green]✅ TRADEABLE ({len(tradeable_results)})[/green]")
+            table = Table(show_header=True, header_style="bold", box=None, padding=(0, 1))
             table.add_column("Pair", style="bold")
-            table.add_column("Signal", justify="center")
+            table.add_column("Dir", justify="center")
             table.add_column("Conf", justify="right")
-            table.add_column("Model", justify="center")
             table.add_column("Lots", justify="right")
             table.add_column("SL/TP", justify="right")
-            table.add_column("Est. $", justify="right")
+            table.add_column("Est.$", justify="right")
             
-            for i, r in enumerate(tradeable_results, 1):
+            for r in tradeable_results:
                 signal_color = "green" if r.direction == "LONG" else "red"
-                
-                # Model status indicator
-                if r.has_pair_model:
-                    if r.model_accuracy and r.model_accuracy > 0.65:
-                        model_display = f"[green]✓{r.model_accuracy:.0%}[/green]"
-                    else:
-                        model_display = f"[yellow]✓{r.model_accuracy:.0%}[/yellow]" if r.model_accuracy else "[yellow]✓[/yellow]"
-                else:
-                    model_display = "[dim]generic[/dim]"
                 
                 sl_tp = f"{r.sl_pips:.0f}/{r.tp_pips:.0f}" if r.sl_pips > 0 else "-"
                 lots_display = f"{r.recommended_lots:.2f}" if r.recommended_lots > 0 else "-"
                 pip_value = 10.0 if not r.pair.endswith("JPY") else 7.5
                 est_return = r.recommended_lots * r.tp_pips * pip_value if r.tp_pips > 0 else 0
-                est_display = f"[green]+${est_return:,.0f}[/green]" if est_return > 0 else "-"
+                est_display = f"+${est_return:,.0f}" if est_return > 0 else "-"
                 
                 table.add_row(
-                    str(i),
                     r.pair.replace("_", "/"),
                     f"[{signal_color}]{r.direction}[/{signal_color}]",
                     f"{r.confidence:.0%}",
-                    model_display,
                     lots_display,
                     sl_tp,
                     est_display,
                 )
             console.print(table)
         else:
-            console.print(f"\n[yellow]⚠️ NO TRADEABLE PAIRS - All gates failed[/yellow]")
+            console.print(f"\n[yellow]No tradeable pairs[/yellow]")
         
-        # === SECTION 2: NON-TRADEABLE (Gates Failed) ===
+        # === SECTION 2: NON-TRADEABLE (Gates Failed) - Compact ===
         non_tradeable = [r for r in results[:top_n] if not r.gates_passed]
         if non_tradeable:
-            console.print(f"\n[bold yellow]⚠️ GATES FAILED ({len(non_tradeable)} pairs)[/bold yellow]")
-            table2 = Table(show_header=True, header_style="dim")
-            table2.add_column("Pair", style="dim")
-            table2.add_column("Signal", justify="center")
-            table2.add_column("Conf", justify="right")
-            table2.add_column("Model", justify="center")
-            table2.add_column("Reason", justify="left")
-            
-            for r in non_tradeable:
-                signal_color = "dim green" if r.direction == "LONG" else "dim red"
-                model_display = "[green]✓[/green]" if r.has_pair_model else "[dim]generic[/dim]"
-                
-                # Determine why gates failed
-                reason = []
-                if r.confidence < 0.55:
-                    reason.append(f"low conf ({r.confidence:.0%})")
-                if r.tcn_confidence < 55:
-                    reason.append(f"TCN weak")
-                if r.ridge_confidence < 45:
-                    reason.append(f"Ridge weak")
-                reason_str = ", ".join(reason) if reason else "gate thresholds"
-                
-                table2.add_row(
-                    r.pair.replace("_", "/"),
-                    f"[{signal_color}]{r.direction}[/{signal_color}]",
-                    f"[dim]{r.confidence:.0%}[/dim]",
-                    model_display,
-                    f"[dim]{reason_str}[/dim]",
-                )
-            console.print(table2)
+            # Just show a brief list
+            failed_list = ", ".join([f"{r.pair.replace('_','/')}({r.confidence:.0%})" for r in non_tradeable[:5]])
+            if len(non_tradeable) > 5:
+                failed_list += f" +{len(non_tradeable)-5} more"
+            console.print(f"\n[dim]Gates failed: {failed_list}[/dim]")
         
-        # === SECTION 3: NEEDS TRAINING ===
-        if needs_training:
-            console.print(f"\n[bold magenta]📚 NEEDS TRAINING ({len(needs_training)} pairs)[/bold magenta]")
-            console.print("[dim]Run: buddy train -I <PAIR> to train these pairs[/dim]")
-            table3 = Table(show_header=True, header_style="magenta")
-            table3.add_column("Pair")
-            table3.add_column("Reason")
-            table3.add_column("Command")
-            
-            for r in needs_training:
-                reason = r.training_reason or "No model"
-                cmd = f"buddy train -I {r.pair}"
-                table3.add_row(r.pair.replace("_", "/"), reason, f"[cyan]{cmd}[/cyan]")
-            console.print(table3)
+        # === SECTION 3: NEEDS TRAINING - skip if none ===
+        # Removed verbose training suggestions
         
         # === SECTION 4: WARNINGS ===
         if drift_detected:
-            console.print(f"\n[bold yellow]⚠️ MODEL DRIFT DETECTED[/bold yellow] (current: {current_acc:.1%}, baseline: {baseline_acc:.1%})")
-            console.print("[dim]Consider retraining the model[/dim]")
+            console.print(f"\n[yellow]⚠️ Model drift ({current_acc:.0%} vs {baseline_acc:.0%})[/yellow]")
         
         corr_pairs = [r.pair for r in results[:top_n] if r.correlation_warning]
         if corr_pairs:
-            console.print(f"\n[yellow]⚠️ Correlation Warning:[/yellow] {', '.join(corr_pairs)}")
-            console.print("[dim]Consider diversifying to reduce correlated exposure[/dim]")
+            console.print(f"\n[yellow]⚠️ Correlated:[/yellow] {', '.join(p.replace('_', '/') for p in corr_pairs)}")
+            
+            # Show condensed correlation info
+            if hasattr(self, '_correlation_details') and self._correlation_details:
+                # Only show top 2 correlations to keep it brief
+                for detail in self._correlation_details[:2]:
+                    p1, p2 = detail['pair1'].replace('_', '/'), detail['pair2'].replace('_', '/')
+                    corr = detail['corr']
+                    prefer = detail['prefer'].replace('_', '/')
+                    corr_type = "inv" if corr < 0 else "pos"
+                    console.print(f"  [dim]{p1}↔{p2} ({corr_type} {abs(corr):.0%}) → prefer {prefer}[/dim]")
+                
+                if len(self._correlation_details) > 2:
+                    console.print(f"  [dim]...and {len(self._correlation_details) - 2} more[/dim]")
+                
+                self._correlation_details = []
         
-        # === SECTION 5: SUMMARY & PROJECTIONS ===
+        # === SECTION 5: SUMMARY ===
         if results:
-            longs = [r for r in results if r.direction == "LONG" and r.gates_passed]
-            shorts = [r for r in results if r.direction == "SHORT" and r.gates_passed]
             tradeable = [r for r in results if r.gates_passed]
             
             if tradeable:
-                console.print(f"\n[bold]🎯 QUICK SUMMARY[/bold]")
+                best = max(tradeable, key=lambda x: x.overall_score)
+                console.print(f"\n[bold]→ {best.direction} {best.pair.replace('_', '/')}[/bold] @ {best.confidence:.0%} | {best.recommended_lots:.2f} lots")
+                console.print(f"  [dim]buddy -I {best.pair} --execute[/dim]")
             
-            if longs:
-                best_long = max(longs, key=lambda x: x.overall_score)
-                console.print(f"  [green]Best LONG:[/green]  {best_long.pair.replace('_', '/')} (conf: {best_long.confidence:.0%}, lots: {best_long.recommended_lots:.2f})")
-            
-            if shorts:
-                best_short = max(shorts, key=lambda x: x.overall_score)
-                console.print(f"  [red]Best SHORT:[/red] {best_short.pair.replace('_', '/')} (conf: {best_short.confidence:.0%}, lots: {best_short.recommended_lots:.2f})")
-            
-            # Compounding projection based on ACTUAL trading performance
+            # Compact compounding projection
             if tradeable:
                 max_trades = self._scan_config.max_trades_per_day
                 trades_to_use = tradeable[:max_trades]
                 
-                # CRITICAL: Use ACTUAL win rate from OANDA, not model accuracy
                 actual_wr, actual_trades = self._fetch_actual_win_rate()
-                if actual_trades >= 10:  # Only use if we have enough data
+                if actual_trades >= 10:
                     avg_win_rate = actual_wr
-                    wr_source = f"actual ({actual_trades} trades)"
+                    wr_source = f"{actual_trades}t"
                 else:
                     # Fall back to backtest or conservative estimate
                     backtest_wrs = [r.backtest_win_rate for r in trades_to_use if r.backtest_win_rate is not None]
                     if backtest_wrs:
                         avg_win_rate = sum(backtest_wrs) / len(backtest_wrs)
-                        wr_source = "backtest"
+                        wr_source = "bt"
                     else:
-                        avg_win_rate = 0.50  # Conservative default, NOT 78%
-                        wr_source = "conservative"
+                        avg_win_rate = 0.50
+                        wr_source = "est"
                 
                 # Calculate avg SL and TP from actual trades
                 avg_tp = sum(r.tp_pips for r in trades_to_use) / len(trades_to_use) if trades_to_use else 30
@@ -1470,122 +1601,152 @@ class BuddyScanner:
                 avg_lots = sum(r.recommended_lots for r in trades_to_use) / len(trades_to_use) if trades_to_use else 5.0
                 rr_ratio = avg_tp / avg_sl if avg_sl > 0 else 1.5
                 
-                # Expected value per trade: (WR × TP) - ((1-WR) × SL)
-                pip_value = 10.0  # $10 per pip per lot
+                # Expected value per trade
+                pip_value = 10.0
                 avg_win_usd = avg_lots * avg_tp * pip_value
                 avg_loss_usd = avg_lots * avg_sl * pip_value
                 ev_per_trade = (avg_win_rate * avg_win_usd) - ((1 - avg_win_rate) * avg_loss_usd)
                 
-                # Daily estimate: trades/day × EV (assume avg 3 quality setups)
-                quality_trades_per_day = min(3, len(trades_to_use))  # Conservative: 3 quality trades/day
+                # Breakeven calculation
+                breakeven_wr = 1 / (1 + rr_ratio)
+                
+                # Single line projection
+                quality_trades_per_day = min(3, len(trades_to_use))
                 net_daily = ev_per_trade * quality_trades_per_day
                 daily_pct = (net_daily / self._scan_config.account_equity) * 100
+                projected_6mo = self._scan_config.account_equity * ((1 + daily_pct/100) ** 130)
                 
-                # Project to 6 months (130 trading days)
-                trading_days_6mo = 130
-                projected_6mo = self._scan_config.account_equity * ((1 + daily_pct/100) ** trading_days_6mo)
-                
-                # H1 candles in 6 months for reference
-                candles_6mo = 24 * 180  # ~4320 H1 candles
-                
-                # Color-code win rate based on source
-                if wr_source.startswith("actual"):
-                    wr_color = "yellow" if avg_win_rate < 0.5 else "green"
-                else:
-                    wr_color = "dim"
-                
-                # Calculate breakeven win rate for current R:R
-                breakeven_wr = 1 / (1 + rr_ratio)  # e.g., 1.5:1 R:R needs 40% WR to break even
-                
-                console.print(f"\n[bold cyan]📈 COMPOUNDING PROJECTION[/bold cyan] ([{wr_color}]{avg_win_rate:.0%} WR[/{wr_color}] {wr_source}, {quality_trades_per_day} trades/day)")
-                console.print(f"  Avg Trade: {avg_lots:.1f} lots, SL:{avg_sl:.0f}/TP:{avg_tp:.0f} pips (R:R {rr_ratio:.1f}:1)")
-                
-                # Color-code EV properly (red if negative, yellow if near zero, green if positive)
-                if ev_per_trade < -10:
-                    ev_color = "red"
-                    ev_sign = "-"
-                    ev_display = abs(ev_per_trade)
-                elif ev_per_trade < 50:
-                    ev_color = "yellow"
-                    ev_sign = "+" if ev_per_trade >= 0 else "-"
-                    ev_display = abs(ev_per_trade)
-                else:
-                    ev_color = "green"
-                    ev_sign = "+"
-                    ev_display = ev_per_trade
-                
-                # Same for daily
-                if net_daily < -10:
-                    daily_color = "red"
-                    daily_sign = "-"
-                    daily_display = abs(net_daily)
-                elif net_daily < 50:
-                    daily_color = "yellow"
-                    daily_sign = "+" if net_daily >= 0 else "-"
-                    daily_display = abs(net_daily)
-                else:
-                    daily_color = "green"
-                    daily_sign = "+"
-                    daily_display = net_daily
-                
-                console.print(f"  EV/Trade:  [{ev_color}]{ev_sign}${ev_display:,.0f}[/{ev_color}] | Daily: [{daily_color}]{daily_sign}${daily_display:,.0f}[/{daily_color}] ({daily_pct:+.2f}%)")
-                
-                # Show breakeven analysis
-                if avg_win_rate < breakeven_wr - 0.02:
-                    console.print(f"  [bold red]⚠️ NEGATIVE EDGE:[/bold red] {avg_win_rate:.0%} WR < {breakeven_wr:.0%} breakeven for {rr_ratio:.1f}:1 R:R")
-                elif avg_win_rate < breakeven_wr + 0.05:
-                    console.print(f"  [yellow]⚠️ Near breakeven:[/yellow] {avg_win_rate:.0%} WR ≈ {breakeven_wr:.0%} breakeven for {rr_ratio:.1f}:1 R:R")
-                else:
-                    console.print(f"  [green]✓ Positive edge:[/green] {avg_win_rate:.0%} WR > {breakeven_wr:.0%} breakeven for {rr_ratio:.1f}:1 R:R")
-                
-                # 6-month projection with proper coloring
-                if projected_6mo < self._scan_config.account_equity * 0.95:
-                    proj_color = "red"
-                elif projected_6mo < self._scan_config.account_equity * 1.2:
-                    proj_color = "yellow"
-                else:
-                    proj_color = "green"
-                    
-                console.print(f"  6-Month:   [bold {proj_color}]${projected_6mo:,.0f}[/bold {proj_color}] ({trading_days_6mo} trading days, ~{candles_6mo:,} H1 candles)")
-                if projected_6mo >= 1_000_000:
-                    console.print(f"  [bold yellow]🎯 $1M TARGET: ACHIEVABLE[/bold yellow]")
-                else:
-                    needed_daily = ((1_000_000 / self._scan_config.account_equity) ** (1/trading_days_6mo) - 1) * 100
-                    console.print(f"  [yellow]Need {needed_daily:.2f}%/day for $1M (current: {daily_pct:+.2f}%)[/yellow]")
-                
-                # Actionable recommendation when EV is zero or negative
-                if ev_per_trade < 100:  # Show recommendation if EV is less than $100/trade
-                    needed_wr = breakeven_wr + 0.10  # 10% above breakeven for decent edge
-                    console.print(f"\n  [bold yellow]💡 RECOMMENDATION:[/bold yellow]")
-                    if ev_per_trade < 0:
-                        console.print(f"     [red]NEGATIVE EDGE - Consider pausing live trading[/red]")
-                    elif ev_per_trade < 50:
-                        console.print(f"     [yellow]MARGINAL EDGE - Profitability not guaranteed[/yellow]")
-                    console.print(f"     Option 1: Improve WR to {needed_wr:.0%}+ (currently {avg_win_rate:.0%})")
-                    needed_rr = (1 - avg_win_rate) / avg_win_rate  # R:R needed for current WR to break even
-                    console.print(f"     Option 2: Improve R:R to {needed_rr:.1f}:1+ (currently {rr_ratio:.1f}:1)")
-                    console.print(f"     Option 3: Use higher-confidence signals only (>60%)")
-        
-        # === SECTION 6: ACTION COMMANDS ===
-        console.print("\n" + "=" * 70)
-        console.print("[bold cyan]📋 NEXT STEPS[/bold cyan]")
-        
-        tradeable = [r for r in results if r.gates_passed]
-        needs_train = [r for r in results if r.needs_training]
-        
-        if tradeable:
-            console.print(f"\n[green]To execute trades:[/green]")
-            for r in tradeable[:3]:  # Show top 3 tradeable
-                console.print(f"  buddy -I {r.pair} --execute")
-        
-        if needs_train:
-            console.print(f"\n[magenta]To train missing models:[/magenta]")
-            for r in needs_train[:3]:  # Show top 3 needing training
-                console.print(f"  buddy train -I {r.pair}")
-        
-        console.print(f"\n[dim]View journal: buddy journal[/dim]")
-        console.print("=" * 70)
+                # Compact output
+                ev_sign = "+" if ev_per_trade >= 0 else ""
+                edge_status = "✓" if avg_win_rate > breakeven_wr else "⚠"
+                console.print(f"\n[dim]{edge_status} {avg_win_rate:.0%} WR ({wr_source}) | R:R {rr_ratio:.1f}:1 | EV {ev_sign}${ev_per_trade:.0f}/trade | 6mo→${projected_6mo:,.0f}[/dim]")
     
+    def scan_continuous(
+        self,
+        pairs: Optional[List[str]] = None,
+        granularity: str = "H1",
+        interval_minutes: int = 5,
+        auto_execute: bool = False,
+        top_n: int = 5,
+    ):
+        """
+        Continuous scanning with idle-time retraining.
+        
+        Runs scan in a loop, sleeping between iterations.
+        During idle periods, checks for and runs gate retraining.
+        
+        Args:
+            pairs: List of pairs to scan (default: MAJOR_PAIRS)
+            granularity: Timeframe
+            interval_minutes: Minutes between scans
+            auto_execute: Automatically execute passing trades
+            top_n: Number of top results to return
+        """
+        import time
+        import signal
+        
+        # Handle Ctrl+C gracefully
+        running = True
+        def signal_handler(sig, frame):
+            nonlocal running
+            running = False
+            if console:
+                console.print("\n[yellow]Stopping continuous scan...[/yellow]")
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        
+        scan_count = 0
+        
+        if console:
+            console.print(f"\n[bold cyan]🔄 CONTINUOUS SCAN MODE[/bold cyan]")
+            console.print(f"[dim]Scanning every {interval_minutes} minutes. Press Ctrl+C to stop.[/dim]")
+            console.print("=" * 70)
+        
+        while running:
+            scan_count += 1
+            
+            try:
+                if console:
+                    from datetime import datetime
+                    now = datetime.now().strftime("%H:%M:%S")
+                    console.print(f"\n[bold]── Scan #{scan_count} at {now} ──[/bold]")
+                
+                # Run scan
+                results = self.scan(
+                    pairs=pairs,
+                    granularity=granularity,
+                    top_n=top_n,
+                    verbose=True,
+                    prompt_train=False,
+                )
+                
+                # Auto-execute if enabled
+                if auto_execute and results:
+                    tradeable = [r for r in results if r.gates_passed]
+                    if tradeable:
+                        if console:
+                            console.print(f"\n[green]Auto-executing {len(tradeable)} trade(s)...[/green]")
+                        self._execute_trades(tradeable, granularity)
+                
+                # Idle period - check for retraining
+                self._idle_maintenance()
+                
+            except Exception as e:
+                logger.error(f"Scan error: {e}")
+                if console:
+                    console.print(f"[red]Scan error: {e}[/red]")
+            
+            if running:
+                # Sleep with progress indication
+                if console:
+                    console.print(f"\n[dim]Next scan in {interval_minutes} minutes...[/dim]")
+                
+                # Sleep in small increments to allow Ctrl+C
+                for _ in range(interval_minutes * 60):
+                    if not running:
+                        break
+                    time.sleep(1)
+        
+        if console:
+            console.print(f"\n[green]✓ Continuous scan stopped after {scan_count} scans[/green]")
+    
+    def _idle_maintenance(self):
+        """Run maintenance tasks during idle periods (between scans)."""
+        try:
+            from market_intelligence import MarketIntelligence
+            
+            # Check for pending retraining
+            intel = MarketIntelligence(
+                enable_sentiment=False,
+                enable_calendar=False,
+                enable_online_learning=True,
+            )
+            
+            if intel.should_update_model():
+                if console:
+                    console.print("[dim]🔄 Running idle-time gate retraining...[/dim]")
+                
+                # Run synchronously during idle (plenty of time)
+                import subprocess
+                import sys
+                
+                result = subprocess.run(
+                    [sys.executable, "retrain_gates.py", "--candles", "3000"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,
+                )
+                
+                if result.returncode == 0:
+                    intel.mark_model_updated()
+                    if console:
+                        console.print("[green]✅ Gate models retrained[/green]")
+                else:
+                    logger.warning(f"Idle retrain failed: {result.stderr[:200]}")
+                    
+        except Exception as e:
+            logger.debug(f"Idle maintenance failed: {e}")
+
     def _prompt_execute_trades(
         self,
         tradeable: List[EnhancedScanResult],
@@ -1738,7 +1899,7 @@ class BuddyScanner:
                                     "sl": sl_price,
                                     "tp": tp_price,
                                     "trade_id": trade_id,
-                                    "model": "MODEL_78_v2",
+                                    "model": "pair_specific",
                                     "granularity": granularity,
                                     "account_balance": nav,
                                 })
@@ -1754,9 +1915,79 @@ class BuddyScanner:
                 console.print(f"\n[bold green]✓ {executed}/{len(trades)} trade(s) executed[/bold green]")
                 console.print(f"[dim]Trades remaining today: {trades_remaining - executed}[/dim]")
                 console.print("[dim]Use 'buddy journal' to track positions[/dim]")
+                
+                # Sync journal and check for background retraining
+                self._sync_and_check_retrain(client)
             
         except Exception as e:
             console.print(f"[red]✗ Execution failed: {e}[/red]")
+    
+    def _sync_and_check_retrain(self, oanda_client=None):
+        """Sync trade journal with OANDA and trigger background retraining if needed."""
+        try:
+            from trade_journal import TradeJournal
+            from market_intelligence import MarketIntelligence
+            
+            # Sync journal with OANDA
+            journal = TradeJournal()
+            if oanda_client is None:
+                self._init_oanda_client()
+                oanda_client = self._oanda_client
+            
+            updated = journal.update_from_oanda(oanda_client)
+            if updated > 0:
+                logger.info(f"Journal synced: {updated} trade(s) updated")
+            
+            # Check if retraining needed
+            intel = MarketIntelligence(
+                enable_sentiment=False,
+                enable_calendar=False,
+                enable_online_learning=True,
+            )
+            
+            if intel.should_update_model():
+                self._trigger_background_retrain()
+                intel.mark_model_updated()
+                
+        except Exception as e:
+            logger.debug(f"Journal sync/retrain check failed: {e}")
+    
+    def _trigger_background_retrain(self):
+        """Spawn background thread to retrain gate models."""
+        import threading
+        
+        def _retrain_gates_background():
+            """Background gate retraining task."""
+            try:
+                logger.info("🔄 Background gate retraining started...")
+                
+                import subprocess
+                import sys
+                
+                # Run retrain_gates.py as subprocess
+                result = subprocess.run(
+                    [sys.executable, "retrain_gates.py", "--candles", "3000"],
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 min timeout
+                )
+                
+                if result.returncode == 0:
+                    logger.info("✅ Background gate retraining complete")
+                else:
+                    logger.warning(f"Gate retraining failed: {result.stderr[:200]}")
+                    
+            except subprocess.TimeoutExpired:
+                logger.warning("Gate retraining timed out (5 min)")
+            except Exception as e:
+                logger.warning(f"Background retrain failed: {e}")
+        
+        # Spawn daemon thread (won't block main process)
+        thread = threading.Thread(target=_retrain_gates_background, daemon=True)
+        thread.start()
+        
+        if console:
+            console.print("[dim]🔄 Background gate retraining triggered (50+ trades since last retrain)[/dim]")
 
     def _prompt_training(
         self,

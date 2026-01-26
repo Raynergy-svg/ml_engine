@@ -56,6 +56,165 @@ M1_OPTIMAL_BATCH_SIZES = [64, 128, 256]  # Powers of 2 work best
 
 
 # =============================================================================
+# Custom Loss Functions for Direction Prediction
+# =============================================================================
+
+@register_keras_serializable()
+class AntiCollapseFocalLoss(keras.losses.Loss):
+    """
+    Enhanced Focal Loss that actively prevents prediction collapse.
+    
+    The problem: Models collapse to predicting one class (e.g., all 0.47 = SHORT).
+    
+    Previous entropy regularization was WRONG: it pushed predictions toward 0.5,
+    which means all predictions cluster around the decision boundary = 100% one class.
+    
+    This version uses VARIANCE REGULARIZATION instead:
+    1. Focal loss for class imbalance
+    2. Variance penalty: Penalizes when batch predictions have LOW variance
+       (i.e., when model outputs similar values for all inputs)
+    3. Dynamic alpha: Higher weight for ignored class
+    4. Gradient floor: Ensures minority class contributes gradients
+    
+    Args:
+        gamma: Focusing parameter (default 2.0)
+        base_alpha: Starting class weight for positive class (default 0.5 = balanced)
+        variance_weight: Weight for variance penalty (default 0.1) - penalizes constant outputs
+        min_gradient_scale: Minimum gradient scale to prevent vanishing (default 0.1)
+        label_smoothing: Label smoothing factor (default 0.05)
+    """
+    
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        base_alpha: float = 0.5,
+        entropy_weight: float = 0.1,  # Kept for backward compat, now controls variance
+        min_gradient_scale: float = 0.1,
+        label_smoothing: float = 0.05,
+        name: str = 'anti_collapse_focal_loss',
+        **kwargs
+    ):
+        super().__init__(name=name, **kwargs)
+        self.gamma = gamma
+        self.base_alpha = base_alpha
+        self.variance_weight = entropy_weight  # Repurposed: now variance weight
+        self.min_gradient_scale = min_gradient_scale
+        self.label_smoothing = label_smoothing
+    
+    def call(self, y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+        
+        # Apply label smoothing
+        if self.label_smoothing > 0:
+            y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
+        
+        # Clip predictions (wider range than standard to allow more gradient flow)
+        y_pred = tf.clip_by_value(y_pred, 1e-6, 1 - 1e-6)
+        
+        # === DYNAMIC ALPHA ADJUSTMENT ===
+        # Detect which class is being ignored and boost it
+        mean_pred = tf.reduce_mean(y_pred)
+        # If mean_pred < 0.3, model is biased toward DOWN → boost UP (alpha > 0.5)
+        # If mean_pred > 0.7, model is biased toward UP → boost DOWN (alpha < 0.5)
+        # This creates a self-correcting mechanism
+        dynamic_alpha = self.base_alpha + 0.3 * (0.5 - mean_pred)  # Range: [0.35, 0.65]
+        dynamic_alpha = tf.clip_by_value(dynamic_alpha, 0.2, 0.8)
+        
+        # === FOCAL LOSS COMPONENT ===
+        # Binary cross entropy
+        bce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
+        
+        # Focal weight with alpha adjustment
+        pt = y_true * y_pred + (1 - y_true) * (1 - y_pred)
+        focal_weight = tf.pow(1 - pt, self.gamma)
+        
+        # Apply dynamic alpha
+        alpha_weight = y_true * dynamic_alpha + (1 - y_true) * (1 - dynamic_alpha)
+        focal_weight = focal_weight * alpha_weight
+        
+        # === GRADIENT FLOOR ===
+        # Prevent focal_weight from going too close to zero
+        # This ensures minority class samples always contribute to learning
+        focal_weight = tf.maximum(focal_weight, self.min_gradient_scale)
+        
+        focal_loss = focal_weight * bce
+        
+        # === VARIANCE REGULARIZATION (replaces entropy) ===
+        # Penalize LOW variance in predictions across the batch
+        # If all predictions are ~0.47, variance is near 0 → add penalty
+        # This forces the model to have diverse outputs, not collapse to constant
+        pred_variance = tf.math.reduce_variance(y_pred)
+        # Target variance: 0.04 (std=0.2) means predictions spread from 0.3 to 0.7
+        target_variance = 0.04
+        # Penalty increases as variance drops below target
+        variance_penalty = self.variance_weight * tf.maximum(target_variance - pred_variance, 0.0)
+        
+        total_loss = tf.reduce_mean(focal_loss) + variance_penalty
+        
+        return total_loss
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'gamma': self.gamma,
+            'base_alpha': self.base_alpha,
+            'entropy_weight': self.variance_weight,  # Keep param name for compat
+            'min_gradient_scale': self.min_gradient_scale,
+            'label_smoothing': self.label_smoothing,
+        })
+        return config
+
+
+@register_keras_serializable()
+class BinaryFocalLoss(keras.losses.Loss):
+    """
+    Standard Binary Focal Loss for addressing class imbalance.
+    
+    Paper: "Focal Loss for Dense Object Detection" (Lin et al., 2017)
+    """
+    
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        alpha: float = 0.25,
+        label_smoothing: float = 0.0,
+        name: str = 'binary_focal_loss',
+        **kwargs
+    ):
+        super().__init__(name=name, **kwargs)
+        self.gamma = gamma
+        self.alpha = alpha
+        self.label_smoothing = label_smoothing
+    
+    def call(self, y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+        if self.label_smoothing > 0:
+            y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
+        
+        y_pred = tf.clip_by_value(y_pred, 1e-7, 1 - 1e-7)
+        bce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
+        pt = y_true * y_pred + (1 - y_true) * (1 - y_pred)
+        focal_weight = tf.pow(1 - pt, self.gamma)
+        
+        if self.alpha is not None:
+            alpha_weight = y_true * self.alpha + (1 - y_true) * (1 - self.alpha)
+            focal_weight = focal_weight * alpha_weight
+        
+        return tf.reduce_mean(focal_weight * bce)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'gamma': self.gamma,
+            'alpha': self.alpha,
+            'label_smoothing': self.label_smoothing,
+        })
+        return config
+
+
+# =============================================================================
 # Custom Layers
 # =============================================================================
 

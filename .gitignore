@@ -1,4 +1,4 @@
-sx2__pycache__/
+__pycache__/
 .venv/
 env/
 venv/
@@ -28,8 +28,39 @@ cache/
 output/
 .pytest_cache/
 .ruff_cache/
-trained_data/cache/
-trained_data/logs/
-trained_data/visualizations/
 node_modules
+
+# ===========================================
+# Machine-specific artifacts (DO NOT COMMIT)
+# ===========================================
+
+# Trained models (large binary files)
+*.pkl
+*.keras
+*.h5
+*.onnx
+*.pt
+*.pth
+*.zip
+*.npz
+*.npy
+
+# Training data & caches
+trained_data/
+market_data/*.csv
+
+# Calendar/API caches
+*_cache/
+
+# Debug/test outputs
+debug_*.txt
+train_*.txt
+*_output.txt
+validate_*.txt
+
+# Training reports (auto-generated)
+training_report_*.md
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
 4

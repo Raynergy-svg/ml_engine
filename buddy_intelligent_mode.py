@@ -256,6 +256,147 @@ Timeframe: {timeframe}
     }
 
 
+# =============================================================================
+# TRADE VALIDATION - LLM actually influences decisions
+# =============================================================================
+
+LLM_TRADE_VALIDATOR_SYSTEM = """You are a risk-aware FX trade validator. Your job is to review a proposed trade and decide if it should proceed.
+
+You will receive:
+1. The ML model's recommendation (direction, confidence, gate statuses)
+2. Current market context (price, ATR, RSI, ADX, trend)
+3. Any available news/sentiment data
+
+Your response MUST be valid JSON with these exact fields:
+{
+  "approve": true/false,
+  "size_multiplier": 0.5 to 1.5 (adjust position size: 0.5=half, 1.0=normal, 1.5=increase),
+  "reason": "Brief explanation",
+  "risk_flags": ["list", "of", "concerns"] or []
+}
+
+APPROVAL GUIDELINES:
+- APPROVE if model confidence is reasonable and no major red flags
+- REDUCE SIZE (0.5-0.8) if mixed signals or moderate risk
+- REJECT if:
+  * Extreme RSI (<5 or >95) going against the extreme
+  * Major news event imminent for this currency
+  * Model direction contradicts strong trend (ADX>50)
+  * Multiple conflicting signals
+
+Be decisive. Don't reject good setups. Only reject clear problems."""
+
+
+@dataclass 
+class LLMTradeValidation:
+    """Result of LLM trade validation."""
+    approve: bool
+    size_multiplier: float  # 0.5 to 1.5
+    reason: str
+    risk_flags: List[str]
+    
+    @classmethod
+    def default_approve(cls) -> "LLMTradeValidation":
+        """Return default approval (used when LLM unavailable)."""
+        return cls(approve=True, size_multiplier=1.0, reason="LLM unavailable", risk_flags=[])
+    
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "LLMTradeValidation":
+        """Create from dict (parsed JSON)."""
+        return cls(
+            approve=d.get("approve", True),
+            size_multiplier=max(0.5, min(1.5, float(d.get("size_multiplier", 1.0)))),
+            reason=d.get("reason", ""),
+            risk_flags=d.get("risk_flags", []),
+        )
+
+
+def validate_trade_with_llm(
+    ticker: str,
+    direction: str,
+    buddy_raw: BuddyRawOutput,
+    price_data: Optional[Dict[str, Any]] = None,
+    news_sentiment: Optional[Dict[str, Any]] = None,
+) -> LLMTradeValidation:
+    """Use LLM to validate a trade before execution.
+    
+    This is the key integration point where LLM actually influences trading.
+    
+    Args:
+        ticker: Instrument (e.g., "USD_JPY")
+        direction: Proposed direction ("long" or "short")
+        buddy_raw: Full model output
+        price_data: Technical indicators
+        news_sentiment: Any news/sentiment data
+        
+    Returns:
+        LLMTradeValidation with approve/reject and size adjustment
+    """
+    # Build concise prompt
+    prompt = f"""PROPOSED TRADE: {direction.upper()} {ticker}
+
+MODEL OUTPUT:
+- Direction: {direction}
+- Confidence: {buddy_raw.confidence:.1f}%
+- Probability: {buddy_raw.probability:.1%}
+"""
+    
+    if buddy_raw.gate_results:
+        prompt += f"- Gates: {json.dumps(buddy_raw.gate_results, indent=2)}\n"
+    
+    if price_data:
+        prompt += f"""
+MARKET CONTEXT:
+- Price: {price_data.get('last_close', 'N/A')}
+- ATR: {price_data.get('atr', 'N/A')}
+- RSI: {price_data.get('rsi', 'N/A')}
+- ADX: {price_data.get('adx', 'N/A')}
+- Trend: {price_data.get('trend', 'N/A')}
+"""
+    
+    if news_sentiment:
+        prompt += f"""
+NEWS/SENTIMENT:
+- Sentiment: {news_sentiment.get('sentiment', 'N/A')} ({news_sentiment.get('score', 0):+.2f})
+- Headlines: {news_sentiment.get('headline_count', 0)}
+"""
+    
+    prompt += "\nRespond with JSON only:"
+    
+    response = llm_call(
+        prompt=prompt,
+        system_prompt=LLM_TRADE_VALIDATOR_SYSTEM,
+        temperature=0.1,  # Low temp for consistent decisions
+    )
+    
+    if response is None:
+        logger.warning("LLM validation unavailable, defaulting to approve")
+        return LLMTradeValidation.default_approve()
+    
+    # Parse JSON response
+    try:
+        # Extract JSON from response (handle markdown code blocks)
+        import re
+        json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group())
+            return LLMTradeValidation.from_dict(result)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"Failed to parse LLM validation response: {e}")
+    
+    # Fallback: try to infer from text
+    response_lower = response.lower()
+    if "reject" in response_lower or "do not" in response_lower or '"approve": false' in response_lower:
+        return LLMTradeValidation(
+            approve=False,
+            size_multiplier=0.0,
+            reason="LLM recommended rejection (parsing failed)",
+            risk_flags=["parse_error"],
+        )
+    
+    return LLMTradeValidation.default_approve()
+
+
 def _extract_trade_call(response: str) -> str:
     """Extract trade call from response with explicit pattern matching.
     
@@ -493,6 +634,331 @@ def _extract_modality_weights(text: str) -> Dict[str, float]:
         weights["sentiment"] = float(sentiment_match.group(1)) / 100
     
     return weights
+
+
+# =============================================================================
+# 3.5 DEEP LLM INTEGRATION - Under the Hood Enhancements
+# =============================================================================
+
+LLM_SENTIMENT_AGGREGATOR_SYSTEM = """You are a financial news analyst. Your job is to read multiple headlines about a currency pair and provide a single, coherent sentiment assessment.
+
+Do NOT just average scores. Actually READ the headlines and understand the narrative.
+
+Consider:
+1. Are headlines consistent or contradictory?
+2. Is this event-driven (specific catalyst) or general flow?
+3. Which headlines are most impactful?
+4. Is there a dominant theme (e.g., "central bank hawkish", "risk-off", "data beat")?
+
+Respond with JSON only:
+{
+  "direction": "strong_bullish" | "bullish" | "neutral" | "bearish" | "strong_bearish",
+  "confidence": 0-100,
+  "theme": "Brief description of the dominant narrative",
+  "contradictions": true/false,
+  "event_driven": true/false,
+  "key_headline": "The most important headline"
+}"""
+
+
+LLM_THRESHOLD_ADVISOR_SYSTEM = """You are a trading risk advisor. Given current market conditions, suggest whether standard gate thresholds should be adjusted.
+
+Standard thresholds:
+- RSI extreme: <10 (oversold) or >90 (overbought)
+- ADX strong trend: >35
+- TCN probability minimum: 0.55
+
+You can suggest:
+- TIGHTER thresholds (more conservative) if conditions are risky
+- LOOSER thresholds (more permissive) if conditions are favorable
+- NO CHANGE if standard is appropriate
+
+Respond with JSON only:
+{
+  "adjust_thresholds": true/false,
+  "rsi_extreme_low": 10,
+  "rsi_extreme_high": 90,
+  "adx_strong_trend": 35,
+  "tcn_min_probability": 0.55,
+  "reason": "Brief explanation"
+}"""
+
+
+@dataclass
+class LLMSentimentAnalysis:
+    """Result of LLM-powered sentiment aggregation."""
+    direction: str  # strong_bullish, bullish, neutral, bearish, strong_bearish
+    confidence: int  # 0-100
+    theme: str
+    contradictions: bool
+    event_driven: bool
+    key_headline: Optional[str] = None
+    raw_score: float = 0.0  # -1 to +1 for compatibility
+    
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "LLMSentimentAnalysis":
+        """Create from parsed JSON."""
+        direction = d.get("direction", "neutral")
+        # Convert direction to raw_score
+        score_map = {
+            "strong_bullish": 0.8,
+            "bullish": 0.4,
+            "neutral": 0.0,
+            "bearish": -0.4,
+            "strong_bearish": -0.8,
+        }
+        return cls(
+            direction=direction,
+            confidence=int(d.get("confidence", 50)),
+            theme=d.get("theme", ""),
+            contradictions=bool(d.get("contradictions", False)),
+            event_driven=bool(d.get("event_driven", False)),
+            key_headline=d.get("key_headline"),
+            raw_score=score_map.get(direction, 0.0),
+        )
+    
+    @classmethod
+    def neutral(cls) -> "LLMSentimentAnalysis":
+        """Return neutral sentiment (fallback)."""
+        return cls(
+            direction="neutral",
+            confidence=50,
+            theme="No analysis available",
+            contradictions=False,
+            event_driven=False,
+            raw_score=0.0,
+        )
+
+
+def aggregate_sentiment_with_llm(
+    headlines: List[str],
+    instrument: str,
+    existing_scores: Optional[List[float]] = None,
+) -> LLMSentimentAnalysis:
+    """Use LLM to aggregate multiple headlines into coherent sentiment.
+    
+    This is smarter than averaging per-headline scores because:
+    1. LLM understands contradictions ("bulls vs bears")
+    2. LLM identifies dominant themes
+    3. LLM weights by importance
+    
+    Args:
+        headlines: List of news headlines
+        instrument: Currency pair (e.g., "USD_JPY")
+        existing_scores: Optional per-headline scores for reference
+        
+    Returns:
+        LLMSentimentAnalysis with holistic sentiment assessment
+    """
+    if not headlines:
+        return LLMSentimentAnalysis.neutral()
+    
+    # Build prompt with headlines
+    headline_text = "\n".join(f"- {h}" for h in headlines[:15])  # Limit to 15
+    
+    prompt = f"""Analyze these headlines for {instrument}:
+
+{headline_text}
+
+"""
+    if existing_scores:
+        avg_score = sum(existing_scores) / len(existing_scores)
+        prompt += f"(Per-headline sentiment avg: {avg_score:+.2f})\n"
+    
+    prompt += "\nProvide your holistic sentiment assessment as JSON:"
+    
+    response = llm_call(
+        prompt=prompt,
+        system_prompt=LLM_SENTIMENT_AGGREGATOR_SYSTEM,
+        temperature=0.1,
+    )
+    
+    if response is None:
+        logger.debug("LLM sentiment aggregation unavailable")
+        return LLMSentimentAnalysis.neutral()
+    
+    # Parse JSON response
+    try:
+        import re
+        json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group())
+            return LLMSentimentAnalysis.from_dict(result)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"Failed to parse LLM sentiment response: {e}")
+    
+    return LLMSentimentAnalysis.neutral()
+
+
+@dataclass
+class DynamicThresholds:
+    """Dynamic gate thresholds suggested by LLM."""
+    adjust_thresholds: bool
+    rsi_extreme_low: float = 10.0
+    rsi_extreme_high: float = 90.0
+    adx_strong_trend: float = 35.0
+    tcn_min_probability: float = 0.55
+    reason: str = ""
+    
+    @classmethod
+    def default(cls) -> "DynamicThresholds":
+        """Return standard thresholds (no adjustment)."""
+        return cls(adjust_thresholds=False, reason="Using standard thresholds")
+    
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "DynamicThresholds":
+        """Create from parsed JSON."""
+        return cls(
+            adjust_thresholds=bool(d.get("adjust_thresholds", False)),
+            rsi_extreme_low=float(d.get("rsi_extreme_low", 10.0)),
+            rsi_extreme_high=float(d.get("rsi_extreme_high", 90.0)),
+            adx_strong_trend=float(d.get("adx_strong_trend", 35.0)),
+            tcn_min_probability=float(d.get("tcn_min_probability", 0.55)),
+            reason=d.get("reason", ""),
+        )
+
+
+def get_dynamic_thresholds(
+    instrument: str,
+    market_context: Dict[str, Any],
+    only_for_edge_cases: bool = True,
+) -> DynamicThresholds:
+    """Ask LLM whether gate thresholds should be adjusted.
+    
+    This is called ONLY for edge cases to minimize LLM calls:
+    - RSI in 8-15 or 85-92 range (near extreme thresholds)
+    - ADX in 30-40 range (near trend threshold)
+    
+    Args:
+        instrument: Currency pair
+        market_context: Dict with rsi, adx, atr_pct, news_summary
+        only_for_edge_cases: If True, only call LLM for borderline cases
+        
+    Returns:
+        DynamicThresholds with possibly adjusted values
+    """
+    rsi = market_context.get('rsi', 50.0)
+    adx = market_context.get('adx', 20.0)
+    
+    # Only call LLM for edge cases to save cost/latency
+    if only_for_edge_cases:
+        rsi_edge = (8 <= rsi <= 15) or (85 <= rsi <= 92)
+        adx_edge = 30 <= adx <= 40
+        
+        if not (rsi_edge or adx_edge):
+            return DynamicThresholds.default()
+    
+    prompt = f"""Current market conditions for {instrument}:
+
+- RSI: {rsi:.1f}
+- ADX: {adx:.1f}
+- Volatility (ATR%): {market_context.get('atr_pct', 'N/A')}
+- Recent News: {market_context.get('news_summary', 'None')}
+- Trend: {market_context.get('trend', 'Unknown')}
+
+Should standard gate thresholds be adjusted?
+
+Note: This is an edge case because {"RSI is near threshold" if 8 <= rsi <= 15 or 85 <= rsi <= 92 else "ADX is near threshold"}.
+
+Respond with JSON:"""
+
+    response = llm_call(
+        prompt=prompt,
+        system_prompt=LLM_THRESHOLD_ADVISOR_SYSTEM,
+        temperature=0.1,
+    )
+    
+    if response is None:
+        return DynamicThresholds.default()
+    
+    # Parse JSON response
+    try:
+        import re
+        json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group())
+            thresholds = DynamicThresholds.from_dict(result)
+            
+            # Sanity checks - don't allow crazy values
+            thresholds.rsi_extreme_low = max(5, min(20, thresholds.rsi_extreme_low))
+            thresholds.rsi_extreme_high = max(80, min(95, thresholds.rsi_extreme_high))
+            thresholds.adx_strong_trend = max(25, min(50, thresholds.adx_strong_trend))
+            thresholds.tcn_min_probability = max(0.50, min(0.70, thresholds.tcn_min_probability))
+            
+            return thresholds
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"Failed to parse LLM threshold response: {e}")
+    
+    return DynamicThresholds.default()
+
+
+def enrich_trade_context(
+    instrument: str,
+    direction: str,
+    price_data: Dict[str, Any],
+    online_memory: Optional["OnlineLearningMemory"] = None,
+) -> Dict[str, Any]:
+    """Enrich trade context with LLM-generated insights.
+    
+    This runs ONCE before trade validation to add:
+    1. Historical pattern recognition
+    2. Time-of-day insights
+    3. Memory-based adjustments
+    
+    Args:
+        instrument: Currency pair
+        direction: Proposed direction
+        price_data: Technical indicators
+        online_memory: Past trade lessons
+        
+    Returns:
+        Enriched context dict
+    """
+    context = {
+        "time_insight": _get_time_insight(instrument),
+        "pattern_note": None,
+        "memory_adjustment": None,
+    }
+    
+    # Add memory-based insight if available
+    if online_memory and online_memory.trades:
+        recent_similar = [
+            t for t in online_memory.trades[-20:]
+            if t.get("instrument") == instrument and t.get("direction") == direction
+        ]
+        if recent_similar:
+            wins = sum(1 for t in recent_similar if t.get("outcome") == "win")
+            total = len(recent_similar)
+            win_rate = wins / total if total > 0 else 0.5
+            
+            if win_rate < 0.35:
+                context["memory_adjustment"] = f"Recent {direction} on {instrument}: {wins}/{total} wins. Consider size reduction."
+            elif win_rate > 0.65:
+                context["memory_adjustment"] = f"Recent {direction} on {instrument}: {wins}/{total} wins. Setup looks favorable."
+    
+    return context
+
+
+def _get_time_insight(instrument: str) -> Optional[str]:
+    """Get time-based trading insight."""
+    from datetime import datetime
+    
+    now = datetime.utcnow()
+    hour = now.hour
+    
+    # Session insights
+    if 0 <= hour < 7:  # Asian session
+        if "JPY" in instrument or "AUD" in instrument or "NZD" in instrument:
+            return "Asian session - primary session for this pair"
+        return "Asian session - lower liquidity for majors"
+    elif 7 <= hour < 12:  # London morning
+        return "London session - peak EUR/GBP liquidity"
+    elif 12 <= hour < 17:  # US/London overlap
+        return "US/London overlap - highest liquidity"
+    elif 17 <= hour < 21:  # US afternoon
+        return "US session - watch for late-day reversals"
+    else:  # Late US/early Asia
+        return "Session transition - wider spreads possible"
 
 
 # =============================================================================
@@ -918,6 +1384,222 @@ class ModelImprovement:
     expected_impact: str
     implementation_ease: str  # easy, medium, hard
     test_plan: str
+    confidence: float = 0.5  # 0-1 confidence in the suggestion
+    sharpe_delta: float = 0.0  # Expected Sharpe ratio improvement
+
+
+@dataclass
+class GatedApprovalResult:
+    """Result of gated auto-approval for suggestions."""
+    approved: List[ModelImprovement]
+    pending_review: List[ModelImprovement]
+    rejected: List[ModelImprovement]
+    applied_changes: List[Dict[str, Any]]
+    changelog: List[str]
+
+
+def filter_hyperparam_suggestions(
+    improvements: List[ModelImprovement],
+) -> tuple[List[ModelImprovement], List[ModelImprovement]]:
+    """Filter improvements into hyperparams (auto-approvable) and others (manual review).
+    
+    Args:
+        improvements: List of model improvements
+        
+    Returns:
+        Tuple of (hyperparam suggestions, other suggestions)
+    """
+    hyperparams = []
+    others = []
+    
+    for imp in improvements:
+        if imp.category.lower() in ("hyperparam", "hyperparameter", "parameter"):
+            hyperparams.append(imp)
+        else:
+            others.append(imp)
+    
+    return hyperparams, others
+
+
+def check_approval_gates(
+    improvement: ModelImprovement,
+    min_confidence: float = 0.7,
+    min_sharpe_delta: float = 0.05,  # 5% improvement
+) -> tuple[bool, str]:
+    """Check if a hyperparam improvement passes approval gates.
+    
+    Gates:
+    1. confidence > 0.7
+    2. sharpe_delta > 5%
+    3. implementation_ease == "easy"
+    
+    Args:
+        improvement: The improvement to check
+        min_confidence: Minimum confidence threshold (default 0.7)
+        min_sharpe_delta: Minimum Sharpe improvement (default 5%)
+        
+    Returns:
+        Tuple of (passed, reason)
+    """
+    # Gate 1: Confidence check
+    if improvement.confidence < min_confidence:
+        return False, f"Confidence {improvement.confidence:.1%} < {min_confidence:.1%}"
+    
+    # Gate 2: Expected Sharpe improvement
+    if improvement.sharpe_delta < min_sharpe_delta:
+        return False, f"Sharpe delta {improvement.sharpe_delta:.1%} < {min_sharpe_delta:.1%}"
+    
+    # Gate 3: Implementation ease
+    if improvement.implementation_ease.lower() != "easy":
+        return False, f"Implementation ease '{improvement.implementation_ease}' != 'easy'"
+    
+    return True, "All gates passed"
+
+
+def apply_hyperparam_to_config(
+    suggestion: str,
+    config_path: Path,
+) -> tuple[bool, str, Dict[str, Any]]:
+    """Parse and apply a hyperparam suggestion to config file.
+    
+    Args:
+        suggestion: The suggestion text (e.g., "Increase learning rate to 0.001")
+        config_path: Path to the YAML config file
+        
+    Returns:
+        Tuple of (success, message, changes_dict)
+    """
+    import re
+    import yaml
+    
+    # Common hyperparam patterns
+    patterns = {
+        r"(?:learning[_\s]?rate|lr)[:\s]+(?:to[:\s]+)?(\d+\.?\d*(?:e[+-]?\d+)?)": ("lr", float),
+        r"(?:batch[_\s]?size)[:\s]+(?:to[:\s]+)?(\d+)": ("batch_size", int),
+        r"(?:epochs?)[:\s]+(?:to[:\s]+)?(\d+)": ("epochs", int),
+        r"(?:seq(?:uence)?[_\s]?len(?:gth)?)[:\s]+(?:to[:\s]+)?(\d+)": ("seq_len", int),
+        r"(?:patience)[:\s]+(?:to[:\s]+)?(\d+)": ("patience", int),
+        r"(?:dropout)[:\s]+(?:to[:\s]+)?(\d+\.?\d*)": ("dropout", float),
+        r"(?:hidden[_\s]?size)[:\s]+(?:to[:\s]+)?(\d+)": ("hidden_size", int),
+    }
+    
+    changes = {}
+    suggestion_lower = suggestion.lower()
+    
+    for pattern, (param_name, param_type) in patterns.items():
+        match = re.search(pattern, suggestion_lower)
+        if match:
+            try:
+                value = param_type(match.group(1))
+                changes[param_name] = value
+            except (ValueError, IndexError):
+                continue
+    
+    if not changes:
+        return False, "Could not parse hyperparam from suggestion", {}
+    
+    # Read and update config
+    try:
+        if not config_path.exists():
+            return False, f"Config file not found: {config_path}", {}
+        
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f) or {}
+        
+        # Navigate to buddy.train_defaults section
+        if 'buddy' not in config:
+            config['buddy'] = {}
+        if 'train_defaults' not in config['buddy']:
+            config['buddy']['train_defaults'] = {}
+        
+        # Apply changes
+        applied = {}
+        for param, value in changes.items():
+            old_value = config['buddy']['train_defaults'].get(param)
+            config['buddy']['train_defaults'][param] = value
+            applied[param] = {'old': old_value, 'new': value}
+        
+        # Write back
+        with open(config_path, 'w') as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        
+        return True, f"Applied {len(applied)} changes", applied
+        
+    except Exception as e:
+        return False, f"Failed to update config: {e}", {}
+
+
+def gated_auto_approve_suggestions(
+    improvements: List[ModelImprovement],
+    config_path: Optional[Path] = None,
+    auto_apply: bool = False,
+    min_confidence: float = 0.7,
+    min_sharpe_delta: float = 0.05,
+) -> GatedApprovalResult:
+    """Process suggestions through gated auto-approval.
+    
+    Only hyperparam suggestions that pass all gates are auto-approved.
+    Architecture, feature, and training suggestions require manual review.
+    
+    Args:
+        improvements: List of model improvements
+        config_path: Path to config file (for auto-apply)
+        auto_apply: Whether to actually apply approved changes
+        min_confidence: Minimum confidence threshold
+        min_sharpe_delta: Minimum Sharpe improvement threshold
+        
+    Returns:
+        GatedApprovalResult with approved, pending, rejected lists
+    """
+    # Separate hyperparams from others
+    hyperparams, others = filter_hyperparam_suggestions(improvements)
+    
+    approved = []
+    rejected = []
+    applied_changes = []
+    changelog = []
+    
+    # Process hyperparams through gates
+    for imp in hyperparams:
+        passed, reason = check_approval_gates(
+            imp,
+            min_confidence=min_confidence,
+            min_sharpe_delta=min_sharpe_delta,
+        )
+        
+        if passed:
+            approved.append(imp)
+            changelog.append(f"✓ APPROVED: {imp.suggestion} ({reason})")
+            
+            # Auto-apply if requested and config path provided
+            if auto_apply and config_path:
+                success, msg, changes = apply_hyperparam_to_config(
+                    imp.suggestion,
+                    config_path,
+                )
+                if success:
+                    applied_changes.append({
+                        'suggestion': imp.suggestion,
+                        'changes': changes,
+                    })
+                    changelog.append(f"  → Applied: {changes}")
+                else:
+                    changelog.append(f"  → Failed to apply: {msg}")
+        else:
+            rejected.append(imp)
+            changelog.append(f"✗ REJECTED: {imp.suggestion} - {reason}")
+    
+    # Others require manual review
+    for imp in others:
+        changelog.append(f"⏸ PENDING REVIEW ({imp.category}): {imp.suggestion}")
+    
+    return GatedApprovalResult(
+        approved=approved,
+        pending_review=others,
+        rejected=rejected,
+        applied_changes=applied_changes,
+        changelog=changelog,
+    )
 
 
 def suggest_model_improvements(
@@ -978,12 +1660,27 @@ def suggest_model_improvements(
         data = json.loads(clean_response)
         
         for item in data.get("improvements", []):
+            # Extract confidence and sharpe_delta from expected_impact if possible
+            confidence = item.get("confidence", 0.5)
+            sharpe_delta = item.get("sharpe_delta", 0.0)
+            
+            # Try to parse sharpe improvement from expected_impact text
+            expected_impact = item.get("expected_impact", "")
+            if sharpe_delta == 0.0 and expected_impact:
+                import re
+                # Look for patterns like "5% improvement", "+10% sharpe", etc.
+                sharpe_match = re.search(r"(\d+(?:\.\d+)?)\s*%\s*(?:improvement|increase|gain|sharpe)", expected_impact.lower())
+                if sharpe_match:
+                    sharpe_delta = float(sharpe_match.group(1)) / 100
+            
             improvements.append(ModelImprovement(
                 category=item.get("category", "unknown"),
                 suggestion=item.get("suggestion", ""),
-                expected_impact=item.get("expected_impact", ""),
+                expected_impact=expected_impact,
                 implementation_ease=item.get("implementation_ease", "medium"),
                 test_plan=item.get("test_plan", ""),
+                confidence=confidence,
+                sharpe_delta=sharpe_delta,
             ))
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse meta-learning response: {e}")

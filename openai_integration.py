@@ -1,3 +1,35 @@
+"""
+================================================================================
+DEPRECATION NOTICE - openai_integration.py
+================================================================================
+Status: PARTIALLY ACTIVE - Used by main.py for `openai-tune` command
+
+This module is still used by:
+- main.py (lines 6333-6375): `openai-tune` CLI command
+- tests/test_quant_critic.py: Unit tests for quant critic functionality
+
+However, llm_providers.py is the preferred module for LLM operations:
+- Supports multiple backends (Claude, OpenAI, Ollama)
+- Has automatic provider selection based on available API keys
+- More modern architecture with retry logic and better error handling
+
+MIGRATION PATH:
+- For new LLM integrations, use llm_providers.py instead
+- The query_quant_critic() and improve_trading_rationale() functions are unique
+  to this module and should be migrated to llm_providers.py if still needed
+- autotune_configurations() uses Optuna and could be moved to a dedicated
+  hyperparameter tuning module
+
+UNIQUE FUNCTIONS TO PRESERVE:
+- query_quant_critic(): Provides trading rationale critique (active, has tests)
+- improve_trading_rationale(): Convenience wrapper for quant critic
+- autotune_configurations(): Optuna-based hyperparameter tuning
+- query_for_auto_configuration(): GPT-based config suggestions
+
+DO NOT DELETE: Still has active usages in main.py
+================================================================================
+"""
+
 import os
 import json
 import time

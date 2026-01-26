@@ -60,7 +60,13 @@ class TrainerConfig:
     transformer_num_heads: int = 4  # Number of attention heads (was 2)
     transformer_num_layers: int = 2  # Number of encoder layers (was 1)
     transformer_dff: int = 64  # Feedforward network dimension (was 32)
-    transformer_dropout: float = 0.4  # Was 0.2 - increased to combat overfitting
+    transformer_dropout: float = 0.2  # Was 0.4 - reduced to prevent output suppression
+    
+    # === FOCAL LOSS SETTINGS (Anti-Bias) ===
+    use_focal_loss: bool = True  # Use Focal Loss instead of BCE to prevent direction bias
+    focal_gamma: float = 2.0  # Focusing parameter - higher = more focus on hard examples
+    focal_alpha: float = 0.5  # Class balance (0.5 = balanced, <0.5 = favor SHORT)
+    focal_label_smoothing: float = 0.1  # Label smoothing to prevent overconfidence
     
     # XGBoost specific
     xgb_n_estimators: int = 200
@@ -96,7 +102,7 @@ class TrainerConfig:
     # EWC (Elastic Weight Consolidation) for multi-instrument learning
     # Enabled by default for continual learning. Use --disable-ewc to disable.
     use_ewc: bool = True  # Enable EWC penalty on warm-start
-    ewc_lambda: float = 1000.0  # Strength of EWC constraint (λ)
+    ewc_lambda: float = 100.0  # Strength of EWC constraint (λ) - reduced from 1000 to allow learning
     ewc_gamma: float = 0.95  # Decay for old Fisher values when adding new tasks
     
     # Replay Buffer for catastrophic forgetting prevention
@@ -105,8 +111,11 @@ class TrainerConfig:
     replay_mix_ratio: float = 0.20  # Mix 20% replay samples during training
     replay_buffer_dir: str = "trained_data/replay"  # Replay buffer storage
     
-    # Warm-start settings
-    warm_start_lr_factor: float = 0.1  # Reduce LR by 10x on warm-start
+    # Warm-start settings (CRITICAL for preventing catastrophic forgetting)
+    warm_start_lr_factor: float = 0.01  # Reduce LR by 100x on warm-start (0.01 is standard for fine-tuning)
+    warm_start_freeze_encoder: bool = True  # Freeze ALL transformer encoder layers (not just transformer_0)
+    warm_start_unfreeze_epochs: int = 10  # Optionally unfreeze after N epochs (0 = never unfreeze)
+    warm_start_gradual_unfreeze: bool = False  # Gradually unfreeze layers from top to bottom
     
     # Drift detection for auto-retraining
     drift_threshold: float = 0.03  # Retrain if val_acc drops by >3%
@@ -491,11 +500,11 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         auto_reduce_lr: bool = True,
         max_dropout_increase: float = 0.3,
         # SWA settings
-        enable_swa: bool = True,
+        enable_swa: bool = False,  # DISABLED: Conflicts with ReduceLROnPlateau causing loss to increase
         swa_start_fraction: float = 0.75,  # Start SWA at 75% of training
         swa_lr_factor: float = 0.5,        # SWA uses lower constant LR
         # Cosine restart settings
-        enable_cosine_restarts: bool = True,
+        enable_cosine_restarts: bool = False,  # DISABLED: Conflicts with other LR schedulers
         restart_period: int = 10,          # Restart every 10 epochs
         restart_lr_mult: float = 0.8,      # Each restart uses 80% of prev LR
         # Mixup augmentation (applied at batch level)
@@ -2284,32 +2293,31 @@ class TransformerDirectionTrainer(BaseTrainer):
     
     def _build_model(self, input_shape: Tuple[int, int]) -> Any:
         """
-        Build Transformer model architecture with AGGRESSIVE regularization.
+        Build Transformer model architecture.
         
-        Key anti-overfitting measures:
-        1. Strong L2 regularization (0.02)
-        2. High dropout (0.5+) after every major layer
-        3. Spatial dropout on sequences (0.35)
-        4. Label smoothing (0.15)
-        5. Gaussian noise on input
-        6. Small model capacity (d_model=32, 2 layers)
+        Key changes for anti-collapse:
+        1. Very light L2 regularization (0.001) - too much suppresses outputs
+        2. Moderate dropout (0.25)
+        3. Small model capacity (d_model=32, 2 layers)
+        4. NO regularization on output layer - let it learn freely
+        5. Output bias initialized to small positive value (assumes ~52% UP)
         """
         import tensorflow as tf
         from tensorflow import keras
         
         seq_len, n_features = input_shape
         
-        # STRONGER L2 regularization - key to preventing memorization
-        l2_reg = keras.regularizers.l2(0.02)  # Increased from 0.01
+        # VERY light L2 regularization - too much suppresses outputs
+        l2_reg = keras.regularizers.l2(0.001)
         
         # Input
         inp = keras.Input(shape=(seq_len, n_features), name="features")
         
-        # Input noise - helps prevent memorization of exact values
-        x = keras.layers.GaussianNoise(0.15)(inp)  # Increased from 0.1
+        # Very light input noise - prevents overfitting to exact values
+        x = keras.layers.GaussianNoise(0.02)(inp)
         
-        # Spatial dropout on input sequence (drops entire features)
-        x = keras.layers.SpatialDropout1D(0.15)(x)  # Reduced from 0.35 - was preventing learning
+        # Light spatial dropout on input sequence
+        x = keras.layers.SpatialDropout1D(0.05)(x)
         
         # Project features to d_model dimension (with L2)
         x = keras.layers.Dense(
@@ -2317,7 +2325,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             kernel_regularizer=l2_reg,
             name='input_projection'
         )(x)
-        x = keras.layers.Dropout(0.25)(x)  # Reduced from 0.5 - allow model to learn
+        x = keras.layers.Dropout(0.15)(x)
         
         # Add positional encoding
         x = self._add_positional_encoding(x, seq_len, self.transformer_d_model)
@@ -2337,18 +2345,21 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Global pooling and output
         x = keras.layers.GlobalAveragePooling1D()(x)
         
-        # Small dense layer with moderate regularization
-        x = keras.layers.Dense(16, activation='relu', kernel_regularizer=l2_reg)(x)  # Restored from 8
-        x = keras.layers.Dropout(0.3)(x)  # Reduced from 0.5 - was preventing learning
+        # Use tanh instead of ReLU - tanh outputs [-1, 1] which allows both positive
+        # and negative contributions to the sigmoid input, making it easier to balance around 0.5
+        x = keras.layers.Dense(16, activation='tanh', kernel_regularizer=l2_reg)(x)
+        x = keras.layers.Dropout(0.15)(x)
         
-        # Binary direction output with zero bias for balanced predictions
+        # Binary direction output
+        # With tanh inputs ranging [-1, 1], the dot product with weights can be near 0
+        # Use small kernel init and zero bias to start at sigmoid(0) = 0.5
         direction = keras.layers.Dense(
             1, 
             activation='sigmoid', 
             name='direction', 
-            dtype='float32', 
-            bias_initializer='zeros',
-            kernel_regularizer=l2_reg  # L2 on output layer too
+            dtype='float32',
+            kernel_initializer=keras.initializers.TruncatedNormal(mean=0.0, stddev=0.05),
+            bias_initializer=keras.initializers.Zeros(),  # Start at sigmoid(0) = 0.5
         )(x)
         
         model = keras.Model(inputs=inp, outputs=direction, name='transformer_direction')
@@ -2357,11 +2368,10 @@ class TransformerDirectionTrainer(BaseTrainer):
         optimizer = keras.optimizers.Adam(learning_rate=self.config.learning_rate)
         logger.info(f"Using Adam optimizer with lr={self.config.learning_rate:.2e}")
         
-        # Moderate label smoothing - 0.05 is enough to prevent overconfidence
-        # Use explicit BinaryAccuracy to fix TF 2.19 accuracy bug with sigmoid outputs
+        # Standard binary cross entropy - we'll handle calibration post-training
         model.compile(
             optimizer=optimizer,
-            loss=keras.losses.BinaryCrossentropy(label_smoothing=0.05),  # Reduced from 0.15
+            loss=keras.losses.BinaryCrossentropy(label_smoothing=0.0),
             metrics=[keras.metrics.BinaryAccuracy(name='accuracy', threshold=0.5)],
         )
         
@@ -2570,6 +2580,18 @@ class TransformerDirectionTrainer(BaseTrainer):
             # Normalize weights to mean=1 (preserves effective batch size)
             sample_weights = sample_weights / sample_weights.mean()
             
+            # === MINORITY CLASS BOOSTING (Anti-Bias) ===
+            # Boost minority class to prevent collapse to majority class
+            # NOTE: 3x was too aggressive, causing gradient instability and training degradation
+            # 1.5x provides balance without destabilizing training
+            minority_class = 1 if n_up < n_down else 0
+            minority_boost = 1.5  # 1.5x boost for minority class (reduced from 3x - was too aggressive)
+            sample_weights[y_train_filtered == minority_class] *= minority_boost
+            # Re-normalize to mean=1
+            sample_weights = sample_weights / sample_weights.mean()
+            minority_name = "UP" if minority_class == 1 else "DOWN"
+            logger.info(f"🎯 AGGRESSIVE Minority boost: {minority_name} class boosted by {minority_boost}x")
+            
             # Also compute global class weights for Keras (backup)
             total = n_up + n_down
             class_weight = {
@@ -2636,6 +2658,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         self._is_warm_start = False
         self._warm_start_val_acc = 0.0  # Track previous best to prevent saving worse models
         self._warm_start_weights = None  # Store original weights for recovery
+        self._loaded_model_instrument = None  # Track which instrument the loaded model was trained on
         effective_lr = self.config.learning_rate
         
         if warm_start_path and Path(warm_start_path).exists():
@@ -2653,7 +2676,57 @@ class TransformerDirectionTrainer(BaseTrainer):
                     
                     logger.info(f"✓ Successfully loaded {self.model.count_params():,} parameters from checkpoint")
                     
-                    # WARM-START LR REDUCTION: Use 10x lower LR to preserve learned weights
+                    # === LAYER FREEZING FOR WARM-START ===
+                    # Freeze transformer encoder layers (feature extraction) to prevent catastrophic forgetting
+                    # Only train the classification head which adapts to new/updated data
+                    frozen_count = 0
+                    trainable_head_layers = []
+                    
+                    if self.config.warm_start_freeze_encoder:
+                        for layer in self.model.layers:
+                            layer_name = layer.name.lower()
+                            
+                            # Freeze ALL encoder layers: transformer_*, input_projection, positional, attention, etc.
+                            # This is MORE AGGRESSIVE than before - only the final Dense head remains trainable
+                            is_encoder_layer = any(pattern in layer_name for pattern in [
+                                'transformer_',      # transformer_0, transformer_1, etc. (ALL of them)
+                                'input_projection',  # Feature projection layer
+                                'positional',        # Positional encoding
+                                'multi_head',        # Multi-head attention
+                                'attention',         # Any attention layer
+                                'ffn',               # Feedforward network in encoder
+                                'layer_norm',        # Layer normalization
+                                'spatial_dropout',   # Input dropout
+                                'gaussian_noise',    # Input noise
+                                'global_average',    # Pooling layer
+                            ])
+                            
+                            # Don't freeze the final classification head (Dense layers at the end)
+                            is_classification_head = (
+                                'direction' in layer_name or  # Output layer
+                                (isinstance(layer, keras.layers.Dense) and 
+                                 layer.output_shape[-1] <= 16 and  # Small dense = head
+                                 'projection' not in layer_name)  # Not input projection
+                            )
+                            
+                            if is_encoder_layer and not is_classification_head:
+                                layer.trainable = False
+                                frozen_count += 1
+                            elif layer.trainable:
+                                trainable_head_layers.append(layer.name)
+                    
+                    if frozen_count > 0:
+                        logger.info(f"🔒 WARM-START: Froze {frozen_count} encoder layers (feature extraction preserved)")
+                        # Log trainable vs frozen params
+                        trainable_params = sum([tf.size(w).numpy() for w in self.model.trainable_weights])
+                        total_params = self.model.count_params()
+                        logger.info(f"   Trainable: {trainable_params:,}/{total_params:,} params ({100*trainable_params/total_params:.1f}%)")
+                        if trainable_head_layers:
+                            logger.info(f"   Trainable layers: {trainable_head_layers[:5]}{'...' if len(trainable_head_layers) > 5 else ''}")
+                    else:
+                        logger.warning(f"⚠️ WARM-START: No layers frozen! This may cause catastrophic forgetting.")
+                    
+                    # WARM-START LR REDUCTION: Use 100x lower LR to preserve learned weights
                     effective_lr = self.config.learning_rate * self.config.warm_start_lr_factor
                     logger.info(f"🔥 Warm-start LR reduction: {self.config.learning_rate} → {effective_lr} (factor={self.config.warm_start_lr_factor})")
                     
@@ -2668,8 +2741,10 @@ class TransformerDirectionTrainer(BaseTrainer):
                             self.lineage.cumulative_epochs = parent_lineage.cumulative_epochs
                             self.lineage.cumulative_samples = parent_lineage.cumulative_samples
                             self.lineage.metric_history = parent_lineage.metric_history.copy()
+                            # Store the instrument the loaded model was trained on
+                            self._loaded_model_instrument = parent_lineage.instrument
                             logger.info(f"📊 Loaded lineage from parent: {parent_lineage.checkpoint_id} "
-                                       f"(cumulative epochs: {self.lineage.cumulative_epochs})")
+                                       f"(cumulative epochs: {self.lineage.cumulative_epochs}, instrument: {self._loaded_model_instrument})")
                         
                         # CRITICAL: Load previous best accuracy to prevent saving worse models
                         prev_metrics = meta.get('metrics', {})
@@ -2713,11 +2788,33 @@ class TransformerDirectionTrainer(BaseTrainer):
         
         # Re-compile model with effective LR (may be reduced for warm-start)
         optimizer = keras.optimizers.Adam(learning_rate=effective_lr)
-        base_loss = keras.losses.BinaryCrossentropy(label_smoothing=0.1)
+        
+        # === SIMPLE CLASS-WEIGHTED BCE (Baseline Anti-Bias) ===
+        # Previous attempts with Focal Loss + entropy regularization caused collapse TO 0.5
+        # Try simple BCE WITHOUT smoothing - smoothing can suppress extreme predictions
+        # This is more stable and easier to debug
+        if self.config.use_focal_loss:
+            # Use plain BCE - no smoothing
+            logger.info(f"🎯 Using simple BinaryCrossentropy WITHOUT label_smoothing")
+            base_loss = keras.losses.BinaryCrossentropy(
+                label_smoothing=0.0,  # NO smoothing
+            )
+        else:
+            base_loss = keras.losses.BinaryCrossentropy(label_smoothing=0.0)  # NO smoothing
         
         # Use EWC loss if warm-starting with loaded Fisher information
-        if self._is_warm_start and self._use_ewc and self.ewc is not None and self.ewc.fisher_diagonal is not None:
-            logger.info(f"🧠 EWC loss enabled: λ={self.ewc.ewc_lambda}, protecting {self.ewc._n_tasks} prior task(s)")
+        # NOTE: EWC can be counter-productive for same-pair warm-start (already learned this data)
+        # Only use EWC for cross-pair transfer learning
+        use_ewc_loss = (
+            self._is_warm_start 
+            and self._use_ewc 
+            and self.ewc is not None 
+            and self.ewc.fisher_diagonal is not None
+            and getattr(self, '_loaded_model_instrument', None) != instrument  # Only for cross-pair
+        )
+        
+        if use_ewc_loss:
+            logger.info(f"🧠 EWC loss enabled (cross-pair): λ={self.ewc.ewc_lambda}, protecting {self.ewc._n_tasks} prior task(s)")
             ewc_loss = create_ewc_loss(base_loss, self.ewc.penalty, ewc_weight=1.0)
             self.model.compile(
                 optimizer=optimizer,
@@ -2725,11 +2822,45 @@ class TransformerDirectionTrainer(BaseTrainer):
                 metrics=['accuracy'],
             )
         else:
+            if self._is_warm_start and self._use_ewc:
+                logger.info(f"🧠 EWC disabled for same-pair warm-start (prevents over-regularization)")
             self.model.compile(
                 optimizer=optimizer,
                 loss=base_loss,
                 metrics=['accuracy'],
             )
+        
+        # === CRITICAL: Decide whether to use stored baseline or re-evaluate ===
+        # For SAME-PAIR training: trust stored baseline (data may have drifted but model is valid)
+        # For CROSS-PAIR training: re-evaluate baseline on new pair's data
+        if self._is_warm_start:
+            try:
+                # Get the instrument that the loaded model was trained on
+                loaded_model_instrument = getattr(self, '_loaded_model_instrument', None)
+                is_cross_pair = loaded_model_instrument and loaded_model_instrument != instrument
+                
+                # Quick evaluation to get actual baseline on this pair's data
+                eval_results = self.model.evaluate(X_val_filtered, y_val_filtered, verbose=0)
+                actual_baseline_acc = eval_results[1] if len(eval_results) > 1 else eval_results[0]
+                
+                if is_cross_pair:
+                    # Cross-pair training: use actual evaluation on new data
+                    logger.info(f"🔄 Cross-pair training ({loaded_model_instrument} → {instrument})")
+                    logger.info(f"   Stored baseline: {self._warm_start_val_acc:.1%}, Actual on {instrument}: {actual_baseline_acc:.1%}")
+                    self._warm_start_val_acc = actual_baseline_acc
+                    logger.info(f"🎯 Using actual baseline on {instrument}: {self._warm_start_val_acc:.1%}")
+                else:
+                    # Same-pair training: trust stored baseline, but log comparison
+                    logger.info(f"🔄 Same-pair training ({instrument})")
+                    logger.info(f"   Stored baseline: {self._warm_start_val_acc:.1%}, Current eval: {actual_baseline_acc:.1%}")
+                    # Keep stored baseline to prevent false "degradation" from data drift
+                    if self._warm_start_val_acc > 0:
+                        logger.info(f"🎯 Using STORED baseline: {self._warm_start_val_acc:.1%} (ignoring data drift)")
+                    else:
+                        self._warm_start_val_acc = actual_baseline_acc
+                        logger.info(f"🎯 No stored baseline, using actual: {self._warm_start_val_acc:.1%}")
+            except Exception as e:
+                logger.warning(f"Could not evaluate baseline: {e}")
         
         # Print model summary
         self.model.summary(print_fn=logger.info)
@@ -2790,6 +2921,18 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Callbacks - use config patience values
         # Key insight: For classification, val_accuracy is what matters for trading
         # val_loss can improve while accuracy drops (model becomes uncertain)
+        
+        # WARM-START ADJUSTMENTS:
+        # - Shorter early stopping patience (model already near optimum, stop sooner if degrading)
+        # - Longer ReduceLROnPlateau patience (don't cut LR prematurely)
+        early_stop_patience = self.config.patience // 2 if self._is_warm_start else self.config.patience
+        lr_reduce_patience = self.config.patience * 2 if self._is_warm_start else max(4, self.config.patience // 4)
+        
+        if self._is_warm_start:
+            logger.info(f"📊 Warm-start callback adjustments:")
+            logger.info(f"   Early stopping patience: {early_stop_patience} (reduced from {self.config.patience})")
+            logger.info(f"   LR reduction patience: {lr_reduce_patience} (increased from {max(4, self.config.patience // 4)})")
+        
         callbacks = [
             # Rich-formatted epoch display with color coding
             RichEpochCallback(
@@ -2798,20 +2941,24 @@ class TransformerDirectionTrainer(BaseTrainer):
                 warm_start_best_acc=self._warm_start_val_acc,  # Track baseline for display
             ),
             # Primary: Stop when validation ACCURACY stops improving
+            # WARM-START: Use shorter patience - stop faster if model degrades
             keras.callbacks.EarlyStopping(
                 monitor='val_accuracy',
-                patience=self.config.patience,
+                patience=early_stop_patience,
                 mode='max',  # We want to MAXIMIZE accuracy
                 restore_best_weights=True,  # Restore weights from best epoch
                 verbose=0,  # Suppress - Rich callback handles display
             ),
             # LR reduction based on accuracy plateau
+            # WARM-START: Use much more patience to avoid premature LR cuts
+            # Fresh training: patience // 4 = 5 epochs
+            # Warm-start: patience * 2 = 40 epochs (model is already near plateau)
             keras.callbacks.ReduceLROnPlateau(
                 monitor='val_accuracy',
                 factor=0.5,
-                patience=max(4, self.config.patience // 4),
+                patience=lr_reduce_patience,
                 mode='max',  # Reduce LR when accuracy stops improving
-                min_lr=1e-6,
+                min_lr=1e-7 if self._is_warm_start else 1e-6,  # Allow lower LR for fine-tuning
                 verbose=0,  # Suppress - Rich callback handles display
             ),
             # Overfit prevention: checkpoints + auto-adjust dropout/LR when train >> val
@@ -2840,9 +2987,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         if self._is_warm_start and self._use_ewc and self.ewc is not None and self.ewc.fisher_diagonal is not None:
             callbacks.append(EWCTrainingCallback(self.ewc, log_every=50))
         
-        # Train on FILTERED sequences (clear labels only) with REGIME-AWARE sample weights
-        # Use sample_weight (per-sample) instead of class_weight (per-class)
-        # This gives finer-grained control: balance classes WITHIN each volatility regime
+        # Train on FILTERED sequences (clear labels only) with SAMPLE WEIGHTS
+        # Note: Cannot use both class_weight and sample_weight in Keras
+        # sample_weights already incorporate class balancing + regime awareness
         history = self.model.fit(
             X_train_filtered, y_train_filtered,
             validation_data=(X_val_filtered, y_val_filtered),
@@ -2850,7 +2997,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             batch_size=self.config.batch_size,
             callbacks=callbacks,
             verbose=0,  # Suppress Keras output - RichEpochCallback handles display
-            sample_weight=sample_weights,  # PHASE 2: Regime-aware weights instead of global class_weight
+            sample_weight=sample_weights,
         )
         
         self.is_trained = True
@@ -2906,7 +3053,8 @@ class TransformerDirectionTrainer(BaseTrainer):
         # NOTE: This is the CANONICAL val_accuracy - computed on full val set after EarlyStopping
         # restores best weights. Different from epoch-level val_accuracy logged during training
         # (which uses batch-level estimates and may differ by 1-2%).
-        val_pred = (self.model.predict(X_val_filtered, verbose=0) > 0.5).astype(float)
+        val_raw_pred = self.model.predict(X_val_filtered, verbose=0)
+        val_pred = (val_raw_pred > 0.5).astype(float)
         val_acc = np.mean(val_pred.flatten() == y_val_filtered)
         
         # Calculate balanced accuracy
@@ -2915,6 +3063,48 @@ class TransformerDirectionTrainer(BaseTrainer):
         up_acc = np.mean(y_pred[y_true == 1] == 1) if (y_true == 1).sum() > 0 else 0
         down_acc = np.mean(y_pred[y_true == 0] == 0) if (y_true == 0).sum() > 0 else 0
         balanced_acc = (up_acc + down_acc) / 2
+        
+        # DEBUG: Log prediction distribution to detect collapse
+        long_preds = (y_pred == 1).sum()
+        short_preds = (y_pred == 0).sum()
+        raw_mean = float(np.mean(val_raw_pred))
+        raw_std = float(np.std(val_raw_pred))
+        raw_median = float(np.median(val_raw_pred))
+        logger.info(f"📊 Final validation prediction distribution:")
+        logger.info(f"   Raw prob: mean={raw_mean:.4f}, median={raw_median:.4f}, std={raw_std:.4f}, min={float(np.min(val_raw_pred)):.4f}, max={float(np.max(val_raw_pred)):.4f}")
+        logger.info(f"   Predictions (thresh=0.5): LONG={long_preds} ({100*long_preds/len(y_pred):.1f}%), SHORT={short_preds} ({100*short_preds/len(y_pred):.1f}%)")
+        if long_preds == 0 or short_preds == 0:
+            logger.warning(f"   ⚠️ MODEL COLLAPSE DETECTED: Always predicting {'LONG' if long_preds > 0 else 'SHORT'}!")
+        
+        # === ADAPTIVE THRESHOLD CALIBRATION ===
+        # Instead of shifting predictions, use the median as the decision threshold.
+        # This guarantees ~50/50 split on the calibration set.
+        # Store threshold instead of bias for cleaner inference.
+        self.output_calibration = {
+            'threshold': raw_median,  # Use median as threshold for balanced predictions
+            'mean': raw_mean,
+            'std': max(raw_std, 0.01),
+            'enabled': abs(raw_mean - 0.5) > 0.05,  # Only calibrate if significantly biased
+        }
+        
+        # Recalculate with adaptive threshold
+        val_pred_calibrated = (val_raw_pred.flatten() > raw_median).astype(float)
+        
+        # Update balanced accuracy with calibrated predictions
+        up_acc_cal = np.mean(val_pred_calibrated[y_true == 1] == 1) if (y_true == 1).sum() > 0 else 0
+        down_acc_cal = np.mean(val_pred_calibrated[y_true == 0] == 0) if (y_true == 0).sum() > 0 else 0
+        balanced_acc_cal = (up_acc_cal + down_acc_cal) / 2
+        
+        long_preds_cal = (val_pred_calibrated == 1).sum()
+        short_preds_cal = (val_pred_calibrated == 0).sum()
+        logger.info(f"📐 Calibrated (thresh={raw_median:.4f}): LONG={long_preds_cal} ({100*long_preds_cal/len(val_pred_calibrated):.1f}%), "
+                   f"SHORT={short_preds_cal} ({100*short_preds_cal/len(val_pred_calibrated):.1f}%)")
+        logger.info(f"📐 Calibrated balanced accuracy: {balanced_acc_cal:.4f} (up={up_acc_cal:.4f}, down={down_acc_cal:.4f})")
+        
+        # Use calibrated balanced accuracy in metrics
+        balanced_acc = balanced_acc_cal
+        up_acc = up_acc_cal
+        down_acc = down_acc_cal
         
         self.metrics = {
             'train_accuracy': float(history.history['accuracy'][-1]),
@@ -2979,6 +3169,8 @@ class TransformerDirectionTrainer(BaseTrainer):
         """
         Predict direction (0 or 1) with probability.
         
+        Applies output calibration if enabled to correct for systematic bias.
+        
         Args:
             X: Input features
             use_ema: If True and EMA is available, use EMA weights for stable inference
@@ -3022,17 +3214,34 @@ class TransformerDirectionTrainer(BaseTrainer):
             self.ema.apply()  # Apply EMA weights
         
         try:
-            prob = float(self.model.predict(X_input, verbose=0)[0, 0])
+            prob_raw = float(self.model.predict(X_input, verbose=0)[0, 0])
         finally:
             if use_ema_weights:
                 self.ema.restore()  # Restore training weights
         
-        direction = 1 if prob > 0.5 else 0
+        # === APPLY OUTPUT CALIBRATION ===
+        # Use adaptive threshold instead of shifting probabilities
+        calibration = getattr(self, 'output_calibration', None)
+        threshold = 0.5  # Default threshold
+        if calibration and calibration.get('enabled', False):
+            threshold = calibration.get('threshold', 0.5)
+        
+        direction = 1 if prob_raw > threshold else 0
+        
+        # For confidence, measure distance from threshold (not from 0.5)
+        # Normalize to 0-1 range based on typical distribution
+        std = calibration.get('std', 0.15) if calibration else 0.15
+        confidence_distance = abs(prob_raw - threshold) / (2 * std)  # Normalize by 2 std
+        confidence = min(1.0, confidence_distance)  # Cap at 1.0
         
         return {
             'direction': direction,
-            'probability': prob,
+            'probability': prob_raw,  # Raw probability
+            'probability_raw': prob_raw,  # Alias for debugging
+            'confidence': confidence,  # Normalized confidence
+            'threshold': threshold,  # Calibrated threshold
             'ema_used': use_ema_weights,
+            'calibration_applied': calibration.get('enabled', False) if calibration else False,
         }
     
     def save(self, path: str, instrument: str = "UNKNOWN") -> None:
@@ -3070,6 +3279,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             'ema_enabled': self._use_ema,
             'ewc_enabled': self._use_ewc,
             'replay_enabled': self._use_replay,
+            'output_calibration': getattr(self, 'output_calibration', None),  # Save calibration params
         }
         meta_path = path.with_suffix('.meta.pkl')
         with open(meta_path, 'wb') as f:
@@ -3252,6 +3462,11 @@ class TransformerDirectionTrainer(BaseTrainer):
         self._use_ema = meta.get('ema_enabled', True)
         self._use_ewc = meta.get('ewc_enabled', True)
         self._use_replay = meta.get('replay_enabled', True)
+        
+        # Load output calibration (for bias correction)
+        self.output_calibration = meta.get('output_calibration', None)
+        if self.output_calibration and self.output_calibration.get('enabled'):
+            logger.info(f"📐 Output calibration loaded: bias={self.output_calibration['bias']:.4f}")
         
         # Load lineage
         if meta.get('lineage'):

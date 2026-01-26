@@ -26,13 +26,13 @@ class PositionSizingConfig:
     """Configuration for dynamic position sizing."""
     
     # Base risk per trade as percentage of account equity
-    risk_per_trade_pct: float = 0.02  # 2% for $101k account (larger lots)
+    risk_per_trade_pct: float = 0.05  # 5% for aggressive trading ($5k risk on $100k)
     
     # Minimum confidence threshold for any position
     min_confidence_threshold: float = 0.5
     
     # Maximum position size as multiple of base position
-    max_position_multiplier: float = 5.0  # Allow up to 5x base for high confidence
+    max_position_multiplier: float = 10.0  # Allow up to 10x base for high confidence
     
     # Confidence bands for position sizing
     low_confidence_band: tuple[float, float] = (0.5, 0.60)
@@ -40,15 +40,15 @@ class PositionSizingConfig:
     high_confidence_band: tuple[float, float] = (0.75, 1.0)
     
     # Position size multipliers for each confidence band
-    low_confidence_multiplier: float = 1.0  # Full position even at low confidence
-    medium_confidence_multiplier: float = 1.5  # 1.5x for medium
-    high_confidence_multiplier: float = 2.5  # 2.5x for high confidence
+    low_confidence_multiplier: float = 1.5  # 1.5x even at low confidence
+    medium_confidence_multiplier: float = 2.5  # 2.5x for medium
+    high_confidence_multiplier: float = 4.0  # 4x for high confidence
     
     # Maximum position size as percentage of account equity
-    max_position_pct: float = 0.15  # 15% max per trade
+    max_position_pct: float = 0.30  # 30% max per trade (aggressive)
     
     # Minimum position size (to avoid very small trades)
-    min_position_size: int = 10000  # 10k units minimum (0.1 lots)
+    min_position_size: int = 100000  # 100k units minimum (1.0 lots)
 
 
 @dataclass
@@ -229,17 +229,15 @@ class DynamicPositionSizer:
     
     def _apply_position_constraints(self, position_size: int, account_equity: float, instrument: str) -> int:
         """Apply position size constraints."""
-        # Maximum position size based on account equity
-        max_position_from_equity = int(account_equity * self.config.max_position_pct / 1000) * 1000
+        # Maximum position size based on account equity (30% of equity)
+        # For $100k account = 3,000,000 units = 30 lots max
+        max_position_from_equity = int(account_equity * self.config.max_position_pct * 100)  # In units
         
-        # Maximum position size based on configuration
-        base_position = self.config.min_position_size
-        max_position_from_config = int(base_position * self.config.max_position_multiplier)
+        # No artificial config cap - let equity-based limit control it
+        # This allows proper scaling with account size
         
         # Apply constraints
-        max_allowed_position = min(max_position_from_equity, max_position_from_config)
-        
-        constrained_position = min(position_size, max_allowed_position)
+        constrained_position = min(position_size, max_position_from_equity)
         constrained_position = max(constrained_position, self.config.min_position_size)
         
         return constrained_position
@@ -333,25 +331,22 @@ def create_conservative_position_sizer() -> DynamicPositionSizer:
 
 
 def create_aggressive_position_sizer() -> DynamicPositionSizer:
-    """Create an aggressive position sizer for the $100K → $1M strategy.
+    """Create an aggressive position sizer for high-value trading.
     
-    Uses higher risk per trade and position multipliers based on Kelly Criterion
-    optimization for high win-rate systems (78%+).
-    
-    WARNING: Only use after validating win rate with 20+ trades.
+    Targets $2k+ per trade with appropriate risk.
     """
     config = PositionSizingConfig(
-        risk_per_trade_pct=0.05,  # 5% risk per trade (based on adjusted Kelly)
-        min_confidence_threshold=0.65,  # Higher threshold for aggressive sizing
-        max_position_multiplier=5.0,  # Allow larger position scaling
-        low_confidence_band=(0.65, 0.75),
-        medium_confidence_band=(0.75, 0.85),
-        high_confidence_band=(0.85, 1.0),
-        low_confidence_multiplier=0.5,    # 50% at low confidence
-        medium_confidence_multiplier=1.5,  # 150% at medium confidence
-        high_confidence_multiplier=3.0,    # 300% at high confidence
-        max_position_pct=0.20,  # 20% max position (aggressive)
-        min_position_size=10000  # Minimum 0.1 lots
+        risk_per_trade_pct=0.05,  # 5% risk per trade
+        min_confidence_threshold=0.50,  # Accept 50%+ confidence
+        max_position_multiplier=10.0,  # Allow large position scaling
+        low_confidence_band=(0.50, 0.60),
+        medium_confidence_band=(0.60, 0.75),
+        high_confidence_band=(0.75, 1.0),
+        low_confidence_multiplier=1.5,    # 1.5x at low confidence
+        medium_confidence_multiplier=2.5,  # 2.5x at medium confidence
+        high_confidence_multiplier=4.0,    # 4x at high confidence
+        max_position_pct=0.30,  # 30% max position (very aggressive)
+        min_position_size=100000  # Minimum 1.0 lots
     )
     return DynamicPositionSizer(config)
 

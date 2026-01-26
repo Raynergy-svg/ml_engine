@@ -291,7 +291,7 @@ class DataLoader:
 
         logger.info("Features shape: %s, Target shape: %s", x.shape, y.shape)
 
-        # Scale features
+        # Initialize scaler (fit AFTER split to prevent data leakage)
         if scaler_type == "standard":
             self.scaler = StandardScaler()
         elif scaler_type == "minmax":
@@ -301,10 +301,8 @@ class DataLoader:
         else:
             self.scaler = StandardScaler()
 
-        x_scaled = self.scaler.fit_transform(x)
-
-        # Create sequences
-        x_seq, y_seq = self._create_sequences(x_scaled, y, sequence_length)
+        # Create sequences BEFORE scaling (we'll scale after split)
+        x_seq, y_seq = self._create_sequences(x, y, sequence_length)
 
         logger.info(
             "Created sequences: X=%s, y=%s",
@@ -333,16 +331,33 @@ class DataLoader:
             random_state=random_state,
         )
 
+        # =====================================================================
+        # CRITICAL FIX: Fit scaler ONLY on training data to prevent data leakage
+        # The scaler learns statistics (mean/std) from validation/test if fit on all data
+        # This causes inflated training metrics that don't generalize
+        # =====================================================================
+        # Reshape for scaler: (n_samples, seq_len, features) -> (n_samples * seq_len, features)
+        train_shape = x_train.shape
+        x_train_flat = x_train.reshape(-1, train_shape[-1])
+        
+        # Fit scaler on training data ONLY
+        self.scaler.fit(x_train_flat)
+        
+        # Transform all splits using train-fitted scaler
+        x_train_scaled = self.scaler.transform(x_train_flat).reshape(train_shape)
+        x_val_scaled = self.scaler.transform(x_val.reshape(-1, train_shape[-1])).reshape(x_val.shape)
+        x_test_scaled = self.scaler.transform(x_test.reshape(-1, train_shape[-1])).reshape(x_test.shape)
+
         logger.info(
-            "Train: %s, Val: %s, Test: %s",
-            x_train.shape,
-            x_val.shape,
-            x_test.shape,
+            "Train: %s, Val: %s, Test: %s (scaler fit on train only)",
+            x_train_scaled.shape,
+            x_val_scaled.shape,
+            x_test_scaled.shape,
         )
 
         self.feature_names = feature_cols
 
-        return x_train, y_train, x_val, y_val, x_test, y_test
+        return x_train_scaled, y_train, x_val_scaled, y_val, x_test_scaled, y_test
 
     def _create_sequences(
         self, x: np.ndarray, y: np.ndarray, sequence_length: int

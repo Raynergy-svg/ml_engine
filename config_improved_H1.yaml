@@ -264,7 +264,7 @@ buddy:
     jit_compile: false
     cache_val: true
     no_train_smoothing: true  # CRITICAL: Disable M5 resampling for H1 data
-    top_features: 20  # Use only top 20 most important features (prevents overfitting)
+    # top_features: 20  # DISABLED: Conflicts with warm-start. Use --all-features (enabled by default)
     
     # REGIME MODEL SETTINGS (replaces direction prediction)
     use_transformer: true      # Use Transformer architecture
@@ -358,7 +358,7 @@ diagnostics:
 
 # ----- BUDDY SCANNER SETTINGS -----
 # Configuration for buddy scan command
-# TARGET: $100k → $1M in 6 months (10x, ~1.8%/day compound)
+# TARGET: Aggressive trading for $2k+ per trade
 scan:
   # Number of candles to fetch for analysis
   lookback_candles: 200
@@ -382,10 +382,10 @@ scan:
   position_sizing_enabled: true
   
   # Account equity: 0 = fetch live balance from OANDA (recommended for compounding)
-  account_equity: 0  # 0 = use live OANDA balance ($101k)
+  account_equity: 0  # 0 = use live OANDA balance
   
-  # Risk per trade percentage - 2% for larger lots
-  risk_per_trade_pct: 0.02  # 2% risk per trade for larger lots
+  # Risk per trade percentage - 5% for aggressive trading (~$5k on $100k)
+  risk_per_trade_pct: 0.05  # 5% risk per trade (larger lots, ~$2k+ profit potential)
   
   # Leverage ratio
   leverage: 50
@@ -393,7 +393,7 @@ scan:
   # Aggressive mode - enabled for larger position sizes
   aggressive_mode: true
   
-  # Tight SL/TP for quick trades (user requested)
+  # Tight SL/TP for quick trades
   min_sl_pips: 15.0
   max_sl_pips: 15.0  # Fixed 15 pip SL
   min_tp_pips: 20.0
@@ -401,7 +401,7 @@ scan:
   high_prob_threshold: 0.65  # Bonus TP if prob > 65%
   high_prob_tp_bonus: 20.0   # +20 pips bonus for high prob
   
-  # Max trades per day limit (user requested up to 30)
+  # Max trades per day limit
   max_trades_per_day: 30
   
   # Default pairs to scan (if none specified)

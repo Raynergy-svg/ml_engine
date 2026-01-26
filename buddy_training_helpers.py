@@ -259,7 +259,7 @@ def _load_multi_pair_data(
     """Load and concatenate data from multiple currency pairs.
     
     This enables multi-pair foundation model training by:
-    1. Fetching historical data for each pair from OANDA
+    1. Fetching historical data for each pair from OANDA (with pagination for >5000)
     2. Normalizing features to make them instrument-agnostic
     3. Concatenating all data with shuffle for training
     
@@ -278,16 +278,71 @@ def _load_multi_pair_data(
     except Exception as e:
         raise RuntimeError(f"Failed to connect to OANDA: {e}")
     
+    # OANDA max is 5000 candles per request
+    MAX_CANDLES_PER_REQUEST = 5000
+    
     all_dfs = []
     
     for pair in pairs:
         try:
-            # Fetch data
-            df = oanda.get_candles(pair, granularity, count=candles_per_pair)
+            pair_rows = []
+            remaining = candles_per_pair
+            to_time = None  # Start from most recent
             
-            if df is None or len(df) < 100:
+            # Fetch in batches if needed
+            while remaining > 0:
+                batch_size = min(remaining, MAX_CANDLES_PER_REQUEST)
+                
+                # Build request params
+                params = {
+                    "granularity": granularity,
+                    "count": batch_size,
+                    "price": "MBA",
+                }
+                if to_time:
+                    params["to_time"] = to_time
+                
+                response = oanda.get_candles(pair, **params)
+                
+                candles = response.get("candles", [])
+                if not candles:
+                    break
+                
+                for c in candles:
+                    mid = c.get("mid", {})
+                    row = {
+                        "time": c.get("time"),
+                        "open": float(mid.get("o", 0)),
+                        "high": float(mid.get("h", 0)),
+                        "low": float(mid.get("l", 0)),
+                        "close": float(mid.get("c", 0)),
+                        "volume": int(c.get("volume", 0)),
+                    }
+                    pair_rows.append(row)
+                
+                # Update for next batch - use oldest candle's time
+                if len(candles) > 0:
+                    to_time = candles[0].get("time")  # Oldest candle in this batch
+                
+                remaining -= len(candles)
+                
+                # If we got fewer candles than requested, we've hit the end
+                if len(candles) < batch_size:
+                    break
+            
+            if not pair_rows:
                 if console:
-                    console.print(f"  [yellow]⚠ {pair}: insufficient data ({len(df) if df is not None else 0} rows)[/yellow]")
+                    console.print(f"  [yellow]⚠ {pair}: no candles returned[/yellow]")
+                continue
+            
+            df = pd.DataFrame(pair_rows)
+            df["time"] = pd.to_datetime(df["time"])
+            df = df.sort_values("time").reset_index(drop=True)
+            df = df.drop_duplicates(subset=["time"])  # Remove any duplicates from pagination
+            
+            if len(df) < 100:
+                if console:
+                    console.print(f"  [yellow]⚠ {pair}: insufficient data ({len(df)} rows)[/yellow]")
                 continue
             
             # Add pair identifier (optional, for conditioning)
@@ -324,6 +379,15 @@ def _load_multi_pair_data(
     
     # Concatenate all DataFrames
     combined = pd.concat(all_dfs, ignore_index=True)
+    
+    # Drop the time column to avoid duplicate index issues in feature engineering
+    # Time-based features are not meaningful for shuffled multi-pair data anyway
+    if 'time' in combined.columns:
+        combined = combined.drop(columns=['time'])
+    
+    # Drop the pair column too (was for debugging, not needed for training)
+    if 'pair' in combined.columns:
+        combined = combined.drop(columns=['pair'])
     
     # Shuffle to mix pairs (important for training)
     combined = combined.sample(frac=1.0, random_state=42).reset_index(drop=True)
