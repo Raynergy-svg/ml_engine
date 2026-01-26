@@ -1,21 +1,8 @@
-<p align="center">
-  <h1 align="center">ML Engine</h1>
-  <p align="center">
-    <strong>Modular Ensemble FX Trading Bot</strong>
-  </p>
-  <p align="center">
-    A professional-grade machine learning system for Forex trading with multi-model ensemble architecture, optimized for Apple Silicon.
-  </p>
-</p>
+# ML Engine
 
-<p align="center">
-  <a href="#features">Features</a> •
-  <a href="#architecture">Architecture</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#usage">Usage</a> •
-  <a href="#configuration">Configuration</a> •
-  <a href="#documentation">Documentation</a>
-</p>
+**Multi-Model Ensemble FX Trading System**
+
+A professional-grade machine learning system for Forex trading with a 4-model gated ensemble architecture, optimized for Apple Silicon (M1/M2/M3) and Intel Macs.
 
 ---
 
@@ -27,90 +14,83 @@
 
 ---
 
-## Features
+## System Overview
 
-| Feature | Description |
-|---------|-------------|
-| **Multi-Model Ensemble** | TCN/Transformer + XGBoost + RandomForest + Ridge working together |
-| **Market Regime Detection** | Automatic classification of trend, chop, and mean-revert conditions |
-| **Confidence Calibration** | Platt/Isotonic scaling aligns model confidence with actual win rates |
-| **Dynamic Risk Management** | Confidence-based SL/TP adjustments and position sizing |
-| **Walk-Forward Validation** | Time-series cross-validation preventing look-ahead bias |
-| **Triple Barrier Labeling** | Professional trade outcome classification |
-| **M1/M2/M3 Metal Optimization** | Native TensorFlow Metal GPU acceleration |
-| **OANDA Integration** | End-to-end trade execution via OANDA v20 API |
-| **Real-time Dashboard** | Rich CLI visualization for monitoring |
+| Component | Value |
+|-----------|-------|
+| **Timeframe** | H1 (Hourly) - default |
+| **Primary Model** | Transformer (direction prediction) |
+| **Gate Models** | XGBoost, RandomForest, Ridge |
+| **Default Pairs** | EUR_USD, GBP_USD, USD_JPY, USD_CHF, AUD_USD, USD_CAD, NZD_USD |
+| **Risk Per Trade** | 2-5% configurable |
+| **SL/TP** | 15 pip SL / 30 pip TP (default) |
+| **Account Integration** | OANDA v20 API (practice & live) |
 
 ---
 
-## Architecture
+## How It Works
+
+### 4-Model Gated Ensemble
+
+The system uses **four independent models** that must ALL pass before executing a trade:
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              main.py (CLI)                                  │
-│                         Command Dispatcher & Orchestrator                   │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-          ┌───────────────────────────┼───────────────────────────┐
-          ▼                           ▼                           ▼
-┌─────────────────────┐   ┌─────────────────────┐   ┌─────────────────────┐
-│    Data Layer       │   │    Model Layer      │   │   Training Layer    │
-├─────────────────────┤   ├─────────────────────┤   ├─────────────────────┤
-│ • oanda_practice    │   │ • tensorflow_models │   │ • modular_trainers  │
-│ • data_loader       │   │ • custom_losses     │   │ • tensorflow_engine │
-│ • feature_engineering│  │ • ensemble_model    │   │ • walkforward_valid │
-│ • modular_data_loaders│ │ • xgboost_model     │   │ • dynamic_thresholds│
-└─────────────────────┘   └─────────────────────┘   └─────────────────────┘
-          │                           │                           │
-          └───────────────────────────┼───────────────────────────┘
-                                      ▼
                     ┌─────────────────────────────────┐
-                    │        Inference & Risk         │
-                    ├─────────────────────────────────┤
-                    │ • modular_inference (gated)     │
-                    │ • fx_guardrails (Tier-1 rules)  │
-                    │ • risk_management (SL/TP)       │
-                    │ • position_sizing (Kelly-based) │
-                    │ • confidence_calibration        │
+                    │   TRANSFORMER (Direction)       │
+                    │   Predicts: Long/Short          │
+                    │   Threshold: ≥60% probability   │
+                    └─────────────┬───────────────────┘
+                                  │
+        ┌─────────────────────────┼─────────────────────────┐
+        ▼                         ▼                         ▼
+┌───────────────┐       ┌───────────────┐       ┌───────────────┐
+│    RIDGE      │       │   XGBOOST     │       │ RANDOMFOREST  │
+│  (Confidence) │       │  (Momentum)   │       │    (Risk)     │
+│  ADX-based    │       │  Percentile   │       │  ATR-based    │
+│  Min: 50/100  │       │  Min: 0.20    │       │  Max: 2.5%    │
+└───────────────┘       └───────────────┘       └───────────────┘
+        │                         │                         │
+        └─────────────────────────┼─────────────────────────┘
+                                  ▼
+                    ┌─────────────────────────────────┐
+                    │     ALL GATES MUST PASS         │
+                    │                                 │
+                    │  ✅ Transformer prob ≥ 60%      │
+                    │  ✅ Ridge confidence ≥ 50       │
+                    │  ✅ XGBoost momentum ≥ 0.20     │
+                    │  ✅ RF drawdown ≤ 2.5%          │
+                    │                                 │
+                    │        ↓ TRADE EXECUTED ↓       │
                     └─────────────────────────────────┘
 ```
 
-### Ensemble Components
+### Gate Thresholds (Default)
 
-| Model | Task | Framework | Purpose |
-|-------|------|-----------|---------|
-| **TCN/Transformer** | Direction | TensorFlow | Primary trend prediction |
-| **XGBoost** | Momentum | XGBoost | Strength and acceleration |
-| **RandomForest** | Risk | scikit-learn | Drawdown probability |
-| **Ridge** | Confidence | scikit-learn | Trade confidence scoring |
-| **HistGradientBoosting** | Hybrid | scikit-learn | Voting ensemble member |
+| Gate | Model | Metric | Threshold | Purpose |
+|------|-------|--------|-----------|---------|
+| **Direction** | Transformer | Probability | ≥ 60% | Primary trend signal |
+| **Confidence** | Ridge | ADX Score | ≥ 50/100 | Trend strength filter |
+| **Momentum** | XGBoost | Percentile | ≥ 0.20 | Fresh/accelerating moves |
+| **Risk** | RandomForest | ATR Drawdown | ≤ 2.5% | Max expected pullback |
 
-### Gated Decision Logic
+### Additional Filters
 
-Trades are only executed when **all gates pass**:
-1. ✅ Ridge confidence > threshold (default: 75%)
-2. ✅ XGBoost momentum is fresh or accelerating
-3. ✅ RandomForest expected drawdown < risk tolerance
-4. ✅ FX guardrails (session window, spread filter, daily limits)
+- **Meta-Labeling**: ML model predicting if trade will succeed (min 55% confidence)
+- **Market Intelligence**: News sentiment via FinBERT (blocks conflicting sentiment)
+- **FX Guardrails**: Session windows, spread filters, daily limits
 
 ---
 
-## Installation
+## Quick Start
 
-### Prerequisites
-
-- **Python**: 3.9 or later
-- **Conda**: Recommended (Miniforge for Apple Silicon)
-- **TA-Lib**: Required for technical indicators
-
-### Quick Start
+### 1. Installation
 
 ```bash
-# Clone the repository
+# Clone repository
 git clone https://github.com/Raynergy-svg/ml_engine.git
 cd ml_engine
 
-# Create and activate environment (Conda recommended for M1/M2/M3)
+# Create conda environment
 conda create -n tf-metal python=3.11
 conda activate tf-metal
 
@@ -121,121 +101,111 @@ brew install ta-lib
 pip install -r requirements.txt
 ```
 
-### Apple Silicon Optimization
+### 2. Configure OANDA API
 
-For M1/M2/M3 Macs, TensorFlow Metal is automatically installed:
-
+Create `.env` file:
 ```bash
-# Verify Metal GPU support
-python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+OANDA_API_TOKEN=your_practice_api_token
+OANDA_ACCOUNT_ID=your_account_id
 ```
 
-### Environment Variables
-
-Create a `.env` file for OANDA credentials:
+### 3. Train a Model
 
 ```bash
-OANDA_API_TOKEN=your_api_token
-OANDA_ACCOUNT_ID=your_account_id
+# Train on EUR_USD H1 data (fetches 15k candles from OANDA)
+./bin/Buddy train -i EUR_USD
+
+# Train from local CSV
+./bin/Buddy train -i EUR_USD --csv market_data/EUR_USD_H1.csv
+```
+
+### 4. Run Inference
+
+```bash
+# Predict on EUR_USD (dry run)
+./bin/Buddy EUR_USD
+
+# Execute trade if gates pass
+./bin/Buddy EUR_USD -x
+
+# Scan all pairs for opportunities
+./bin/Buddy scan
 ```
 
 ---
 
-## Usage
+## CLI Commands
 
-### Training
+### Buddy Script (`./bin/Buddy`)
 
-```bash
-# Train with default settings (H1 timeframe)
-python main.py buddy train
+| Command | Description | Example |
+|---------|-------------|---------|
+| `./bin/Buddy [PAIR]` | Predict direction (dry run) | `./bin/Buddy EUR_USD` |
+| `./bin/Buddy [PAIR] -x` | Predict + execute trade | `./bin/Buddy USD_JPY -x` |
+| `./bin/Buddy train -i PAIR` | Train model for pair | `./bin/Buddy train -i GBP_USD` |
+| `./bin/Buddy scan` | Scan all pairs | `./bin/Buddy scan` |
+| `./bin/Buddy status` | Show model status | `./bin/Buddy status` |
+| `./bin/Buddy journal` | View trade journal | `./bin/Buddy journal` |
 
-# Train with custom config
-python main.py buddy train --config config_tuned.yaml
-
-# Train for specific pair
-python main.py buddy train --pair EUR_USD
-
-# Train with OANDA live data fetch
-python main.py buddy train --oanda-fetch
-```
-
-### Inference & Trading
+### Main.py Commands
 
 ```bash
-# Scan for trading opportunities
-python main.py buddy scan
+# Training
+python main.py train-buddy --instrument EUR_USD --candles 15000 --oanda-live
 
-# Check bot status
-python main.py buddy status
+# Inference
+python main.py buddy --instrument EUR_USD --execute
 
-# Run interactive mode
-python main.py buddy --config config_tuned.yaml
-```
+# Scan pairs
+python main.py scan --pairs EUR_USD,GBP_USD,USD_JPY
 
-### Walk-Forward Validation
+# Retrain gate models only (XGBoost, RF, Ridge)
+python main.py retrain-gates
 
-```bash
-# Run time-series cross-validation
-python scripts/run_walkforward_ci.py --folds 5 --window expanding
-```
-
-### Testing
-
-```bash
-# Run all tests
-pytest tests/ -v
-
-# Run with coverage
-pytest tests/ --cov=. --cov-report=html
+# Model status
+python main.py model-status
 ```
 
 ---
 
 ## Configuration
 
-### Key Configuration Files
-
-| File | Purpose |
-|------|---------|
-| `config_tuned.yaml` | Production-ready settings |
-| `config_m1_optimized.yaml` | Apple Silicon optimized |
-| `config_improved_H1.yaml` | H1 timeframe specific |
-
-### Example Configuration
+### Key Settings (`config/config_improved_H1.yaml`)
 
 ```yaml
-# Model Architecture
-model:
-  type: tcn                    # tcn | lstm | transformer | tft
-  hidden_size: 32
+# Timeframe
+fx:
+  granularity: H1              # Hourly candles
+
+# Direction labeling (training)
+direction_lookahead: 24        # 24 hours lookahead
+direction_threshold: 0.003     # 0.3% min move for label
+
+# Model architecture
+transformer:
+  d_model: 32
+  num_heads: 4
   num_layers: 2
   dropout: 0.4
 
-# Training (M1 Optimized)
+# Training
 training:
-  batch_size: 128              # Optimal for Metal GPU
   epochs: 200
-  learning_rate: 0.0005
-  early_stopping_patience: 15
-  mixed_precision: true        # FP16 acceleration
+  early_stopping_patience: 40
+  batch_size: 64
+  learning_rate: 0.0003
 
-# Sequence Settings
-data:
-  sequence_length: 60
-  target_shift: 12
-  direction_lookahead: 12
+# Risk management
+buddy:
+  stop_loss_pips: 15.0         # 15 pip stop loss
+  take_profit_pips: 30.0       # 30 pip take profit
+  risk_per_trade_pct: 0.02     # 2% risk per trade
 
-# Risk Management
-risk:
-  max_daily_loss_pct: 2.0
-  max_position_risk_pct: 1.0
-  confidence_threshold: 0.75
-
-# OANDA Integration
-oanda:
-  environment: practice        # practice | live
-  default_instrument: EUR_USD
-  granularity: H1
+# Scanning (aggressive mode)
+scan:
+  risk_per_trade_pct: 0.05     # 5% risk for larger lots
+  min_confidence: 0.53         # 53%+ confidence filter
+  aggressive_mode: true
 ```
 
 ---
@@ -244,50 +214,167 @@ oanda:
 
 ```
 ml_engine/
-├── 📂 Core
-│   ├── main.py                      # CLI entry point (~8800 lines)
-│   ├── modular_trainers.py          # Specialized model trainers
-│   ├── modular_inference.py         # Gated inference pipeline
-│   └── modular_data_loaders.py      # Feature preparation
-│
-├── 📂 Models
-│   ├── tensorflow_models.py         # Neural architectures (TCN, LSTM, TFT)
-│   ├── tensorflow_engine.py         # Training pipeline
-│   ├── custom_losses.py             # BinaryFocalLoss, MADL
-│   ├── xgboost_model.py             # Gradient boosting wrapper
-│   └── ensemble_model.py            # Ensemble stacking
-│
-├── 📂 Risk & Trading
-│   ├── fx_guardrails.py             # Tier-1 trading rules
-│   ├── risk_management.py           # Dynamic SL/TP
-│   ├── position_sizing.py           # Kelly-based sizing
-│   └── triple_barrier.py            # Trade labeling
-│
-├── 📂 Validation
-│   ├── walkforward_validation.py    # Time-series CV
-│   ├── confidence_calibration.py    # Probability calibration
-│   └── dynamic_thresholds.py        # Adaptive thresholds
-│
-├── 📂 Features
-│   ├── feature_engineering.py       # Technical indicators
-│   ├── data_loader.py               # Data preprocessing
-│   └── candle_smoothing.py          # Noise reduction
-│
-├── 📂 Integration
-│   ├── oanda_practice.py            # OANDA v20 API client
-│   ├── openai_integration.py        # LLM reasoning (optional)
-│   └── tracing_setup.py             # Observability
-│
-├── 📂 Config
-│   ├── config_tuned.yaml
-│   ├── config_m1_optimized.yaml
-│   └── requirements.txt
-│
-├── 📂 tests/                        # 18+ test modules
-├── 📂 scripts/                      # Utility scripts
-├── 📂 docs/                         # Additional documentation
-└── 📂 trained_data/                 # Model artifacts
+├── bin/
+│   └── Buddy                    # Main CLI script
+├── config/
+│   ├── config_improved_H1.yaml  # H1 timeframe config (default)
+│   └── config_m1_optimized.yaml # Apple Silicon optimized
+├── src/
+│   ├── core/
+│   │   ├── modular_inference.py # Gated ensemble inference
+│   │   └── modular_data_loaders.py
+│   ├── models/
+│   │   ├── tensorflow_models.py # Transformer, TCN, TFT
+│   │   ├── tensorflow_engine.py # Training pipeline
+│   │   └── ensemble_model.py    # Ensemble stacking
+│   ├── training/
+│   │   ├── modular_trainers.py  # Model trainers
+│   │   ├── buddy_training_helpers.py
+│   │   └── walkforward_validation.py
+│   ├── risk/
+│   │   ├── fx_guardrails.py     # Trading rules
+│   │   ├── position_sizing.py   # Kelly-based sizing
+│   │   └── triple_barrier.py    # Trade labeling
+│   └── utils/
+│       ├── oanda_practice.py    # OANDA API client
+│       └── trade_journal.py     # Trade logging
+├── main.py                      # CLI entry point
+├── market_data/                 # Downloaded price data
+└── trained_data/models/         # Trained model artifacts
 ```
+
+---
+
+## Performance Metrics
+
+### Training Metrics
+
+| Metric | Description | Target |
+|--------|-------------|--------|
+| `val_direction_accuracy` | Direction prediction accuracy | > 55% |
+| `val_confidence_mae` | Confidence calibration error | < 0.15 |
+| `val_combined` | Weighted direction + confidence | > 0.60 |
+
+### Inference Metrics
+
+| Metric | Description |
+|--------|-------------|
+| `tcn_probability` | Transformer direction confidence (0-1) |
+| `ridge_confidence` | ADX-based trend strength (0-100) |
+| `xgb_momentum` | Momentum percentile (0-1) |
+| `rf_drawdown_pct` | Expected drawdown (%) |
+| `meta_confidence` | Meta-labeler success probability |
+
+### Example Output
+
+```
+╭──────────────────────────────────────────────────────────────────╮
+│ EUR_USD Prediction                                               │
+├──────────────────────────────────────────────────────────────────┤
+│ Direction: LONG                                                  │
+│ Transformer Prob: 67.3%                                          │
+│ Ridge Confidence: 72/100                                         │
+│ XGBoost Momentum: 0.45 (accelerating)                            │
+│ RF Drawdown: 1.8%                                                │
+│ Meta Confidence: 62%                                             │
+├──────────────────────────────────────────────────────────────────┤
+│ ✅ ALL GATES PASSED                                              │
+│ Position Size: 0.5 lots                                          │
+│ Stop Loss: 15 pips                                               │
+│ Take Profit: 30 pips                                             │
+╰──────────────────────────────────────────────────────────────────╯
+```
+
+---
+
+## Platform Support
+
+### Apple Silicon (M1/M2/M3)
+
+Automatically optimized with TensorFlow Metal:
+
+```bash
+# Verify GPU
+python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
+# Expected: [PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
+```
+
+| Setting | Optimized Value | Impact |
+|---------|-----------------|--------|
+| `model_type` | `transformer` | Best for H1 patterns |
+| `batch_size` | `64-128` | Optimal GPU utilization |
+| `recurrent_dropout` | `0.0` | **CRITICAL**: Non-zero causes massive slowdown |
+| `mixed_precision` | `false` | Metal doesn't fully support FP16 |
+
+### Intel Mac
+
+Uses `ml_engine_py312` conda environment:
+
+```bash
+conda env create -f environment_intel_mac.yml
+conda activate ml_engine_py312
+```
+
+---
+
+## Model Files
+
+After training, models are saved to `trained_data/models/`:
+
+| File | Description |
+|------|-------------|
+| `transformer_direction.keras` | Transformer direction model |
+| `transformer_direction.meta.pkl` | Scalers and metadata |
+| `xgb_momentum.pkl` | XGBoost momentum gate |
+| `ridge_confidence.pkl` | Ridge confidence gate |
+| `rf_risk.pkl` | RandomForest risk gate |
+| `modular_ensemble.meta.json` | Ensemble configuration |
+
+Pair-specific models are stored in `trained_data/models/{PAIR}/`.
+
+---
+
+## Advanced Features
+
+### Market Intelligence
+
+```bash
+# Enable news sentiment blocking
+python main.py buddy --intelligent --instrument EUR_USD
+```
+
+- Fetches forex news via web scraping
+- Analyzes sentiment with FinBERT
+- Blocks trades conflicting with strong sentiment
+
+### RL Position Sizer
+
+```bash
+# Train RL agent for position sizing
+python main.py train-rl-sizer --timesteps 500000
+
+# Use in inference
+python main.py buddy --use-rl-sizer --instrument EUR_USD
+```
+
+### Walk-Forward Validation
+
+```bash
+# Time-series cross-validation
+python -c "from src.training.walkforward_validation import run_walk_forward; run_walk_forward()"
+```
+
+---
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `conda not found` | Install Miniforge: `brew install miniforge` |
+| GPU not detected | Verify TF-Metal: `pip install tensorflow-metal` |
+| OANDA errors | Check `.env` credentials and account status |
+| Missing model | Train first: `./bin/Buddy train -i EUR_USD` |
+| Slow training | Set `recurrent_dropout: 0.0` in config |
 
 ---
 
@@ -295,69 +382,21 @@ ml_engine/
 
 | Document | Description |
 |----------|-------------|
-| [PROJECT_ARCHITECTURE.md](PROJECT_ARCHITECTURE.md) | Detailed system architecture |
-| [CONFIDENCE_SYSTEM_DOCUMENTATION.md](CONFIDENCE_SYSTEM_DOCUMENTATION.md) | Confidence calibration system |
-| [FX_TIER1_GUARDRAILS_PLAN.md](FX_TIER1_GUARDRAILS_PLAN.md) | Trading safety rules |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
-| [docs/CACHE_SYSTEM.md](docs/CACHE_SYSTEM.md) | Caching implementation |
+| [docs/PROJECT_ARCHITECTURE.md](docs/PROJECT_ARCHITECTURE.md) | System architecture |
+| [docs/CONFIDENCE_SYSTEM_DOCUMENTATION.md](docs/CONFIDENCE_SYSTEM_DOCUMENTATION.md) | Calibration details |
+| [docs/FX_TIER1_GUARDRAILS_PLAN.md](docs/FX_TIER1_GUARDRAILS_PLAN.md) | Trading rules |
+| [.github/copilot-instructions.md](.github/copilot-instructions.md) | Development guide |
 
 ---
 
-## Technical Stack
-
-### Core Dependencies
-
-```
-tensorflow>=2.15.0          # Deep learning
-tensorflow-metal>=1.0.0     # Apple Silicon GPU
-xgboost                     # Gradient boosting
-scikit-learn>=1.3.0         # Traditional ML
-pandas>=2.0.0               # Data manipulation
-numpy>=1.24.0               # Numerical computing
-ta-lib>=0.4.26              # Technical analysis
-rich>=13.4.0                # CLI visualization
-wandb>=0.15.0               # Experiment tracking
-```
-
-### Model Architectures
-
-- **TCN**: Temporal Convolutional Network (2-3x faster than LSTM on Metal)
-- **Transformer**: Self-attention for sequence modeling
-- **TFT**: Temporal Fusion Transformer for multi-horizon forecasting
-- **LSTM**: Legacy support with attention mechanism
-
----
-
-## Performance Optimizations
-
-### Apple Silicon (M1/M2/M3)
-
-| Setting | Optimized Value | Impact |
-|---------|-----------------|--------|
-| `model_type` | `tcn` | 2-3x faster than LSTM |
-| `batch_size` | `128` | Better GPU utilization |
-| `mixed_precision` | `true` | 1.5-2x speedup |
-| `steps_per_execution` | `10` | Reduced Python overhead |
-
-### Training Tips
-
-1. **Use TCN** for fastest training on Apple Silicon
-2. **Enable mixed precision** for memory efficiency
-3. **Batch size 128** is optimal for Metal GPU
-4. **Early stopping** with patience 15-20 prevents overfitting
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## Testing
 
 ```bash
-# Run tests before submitting PR
+# Run all tests
 pytest tests/ -v
 
-# Check code style
-ruff check .
+# Run specific test
+pytest tests/test_buddy_intelligent_mode.py -v
 ```
 
 ---
