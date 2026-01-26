@@ -46,5 +46,6 @@
     "chat.tools.terminal.autoApprove": {
         "./Buddy": true
     },
-    "idf.pythonInstallPath": "/Users/davidcertan/miniforge3/bin/python"
+    "idf.pythonInstallPath": "/Users/davidcertan/miniforge3/bin/python",
+    "robotcode.disableExtension": true
 }
