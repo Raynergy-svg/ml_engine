@@ -65,6 +65,12 @@ cmd_train() {
             --multi-pair) args+=(--multi-pair); shift ;;
             --foundation-pairs) args+=(--foundation-pairs "$2"); shift 2 ;;
             --no-warm-start) args+=(--no-warm-start); shift ;;
+            --fine-tune|--warm-start) args+=(--warm-start); shift ;;  # Fine-tune = warm-start from existing model
+            --init-from) args+=(--init-from "$2"); shift 2 ;;  # Initialize from specific checkpoint
+            -v|--verbose) args+=(--verbose); shift ;;
+            --enterprise) args+=(--enterprise); shift ;;
+            --cv-folds) args+=(--cv-folds "$2"); shift 2 ;;
+            --bootstrap) args+=(--bootstrap); shift ;;
             *) args+=("$1"); shift ;;  # Pass through unknown args instead of discarding
         esac
     done

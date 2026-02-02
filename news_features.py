@@ -198,11 +198,11 @@ def add_sentiment_features(
             scores = [_sentiment_to_score(r) for r in results]
         else:
             # Fallback to simple sentiment
-            from text_features import simple_sentiment_score
+            from src.utils.text_features import simple_sentiment_score
             scores = [simple_sentiment_score(h) for h in news]
     else:
         # Use simple lexicon-based sentiment
-        from text_features import simple_sentiment_score
+        from src.utils.text_features import simple_sentiment_score
         scores = [simple_sentiment_score(h) for h in news]
     
     # Compute aggregate features

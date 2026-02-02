@@ -1505,7 +1505,7 @@ def _train_buddy_impl(
     except Exception:
         _setup_tracing = None
 
-    from buddy_training_helpers import _buddy_setup_training_environment
+    from src.training.buddy_training_helpers import _buddy_setup_training_environment
 
     # When debugging perf, show whether Metal GPU is actually visible.
     mp_enabled = _buddy_setup_training_environment(
@@ -1621,7 +1621,7 @@ def _train_buddy_impl(
     except Exception:
         pass
 
-    from buddy_training_helpers import _buddy_load_and_validate_csv, _load_multi_pair_data
+    from src.training.buddy_training_helpers import _buddy_load_and_validate_csv, _load_multi_pair_data
 
     # Check for multi-pair foundation training mode
     multi_pair_mode = bool(options.multi_pair)
@@ -1759,7 +1759,7 @@ def _train_buddy_impl(
         ))
     elif train_smoothing:
         try:
-            from candle_smoothing import resample_5min_ohlcv_and_ema_close
+            from src.data.candle_smoothing import resample_5min_ohlcv_and_ema_close
 
             df = resample_5min_ohlcv_and_ema_close(
                 df,

@@ -5603,14 +5603,6 @@
         "documentation": {}
     },
     {
-        "label": "ReasoningEngine",
-        "importPath": "reasoning_enhanced",
-        "description": "reasoning_enhanced",
-        "isExtraImport": true,
-        "detail": "reasoning_enhanced",
-        "documentation": {}
-    },
-    {
         "label": "NeuralNetworkIntegrator",
         "importPath": "neural_network_integrator_enhanced",
         "description": "neural_network_integrator_enhanced",
@@ -8605,58 +8597,58 @@
     },
     {
         "label": "hashed_ngram_features",
-        "importPath": "text_features",
-        "description": "text_features",
+        "importPath": "src.utils.text_features",
+        "description": "src.utils.text_features",
         "isExtraImport": true,
-        "detail": "text_features",
+        "detail": "src.utils.text_features",
         "documentation": {}
     },
     {
         "label": "text_feature_summary",
-        "importPath": "text_features",
-        "description": "text_features",
+        "importPath": "src.utils.text_features",
+        "description": "src.utils.text_features",
         "isExtraImport": true,
-        "detail": "text_features",
+        "detail": "src.utils.text_features",
         "documentation": {}
     },
     {
         "label": "simple_sentiment_score",
-        "importPath": "text_features",
-        "description": "text_features",
+        "importPath": "src.utils.text_features",
+        "description": "src.utils.text_features",
         "isExtraImport": true,
-        "detail": "text_features",
+        "detail": "src.utils.text_features",
         "documentation": {}
     },
     {
         "label": "simple_sentiment_score",
-        "importPath": "text_features",
-        "description": "text_features",
+        "importPath": "src.utils.text_features",
+        "description": "src.utils.text_features",
         "isExtraImport": true,
-        "detail": "text_features",
+        "detail": "src.utils.text_features",
         "documentation": {}
     },
     {
         "label": "resample_5min_ohlcv_and_ema_close",
-        "importPath": "candle_smoothing",
-        "description": "candle_smoothing",
+        "importPath": "src.data.candle_smoothing",
+        "description": "src.data.candle_smoothing",
         "isExtraImport": true,
-        "detail": "candle_smoothing",
+        "detail": "src.data.candle_smoothing",
         "documentation": {}
     },
     {
         "label": "resample_5min_ohlcv_and_ema_close",
-        "importPath": "candle_smoothing",
-        "description": "candle_smoothing",
+        "importPath": "src.data.candle_smoothing",
+        "description": "src.data.candle_smoothing",
         "isExtraImport": true,
-        "detail": "candle_smoothing",
+        "detail": "src.data.candle_smoothing",
         "documentation": {}
     },
     {
         "label": "resample_5min_ohlcv_and_ema_close",
-        "importPath": "candle_smoothing",
-        "description": "candle_smoothing",
+        "importPath": "src.data.candle_smoothing",
+        "description": "src.data.candle_smoothing",
         "isExtraImport": true,
-        "detail": "candle_smoothing",
+        "detail": "src.data.candle_smoothing",
         "documentation": {}
     },
     {
@@ -9110,106 +9102,106 @@
     },
     {
         "label": "ExperimentConfig",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "ExperimentTracker",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "TrainingExperiment",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "WalkForwardConfig",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "WalkForwardValidator",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "StatisticalValidator",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "ResourceMonitor",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "ReproducibilityManager",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "DataValidator",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "DataValidationResult",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "setup_enterprise_logging",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "MLFLOW_AVAILABLE",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
         "label": "SCIPY_AVAILABLE",
-        "importPath": "enterprise_training",
-        "description": "enterprise_training",
+        "importPath": "src.training.enterprise_training",
+        "description": "src.training.enterprise_training",
         "isExtraImport": true,
-        "detail": "enterprise_training",
+        "detail": "src.training.enterprise_training",
         "documentation": {}
     },
     {
@@ -9286,6 +9278,14 @@
         "description": "dotenv",
         "isExtraImport": true,
         "detail": "dotenv",
+        "documentation": {}
+    },
+    {
+        "label": "ReasoningEngine",
+        "importPath": "src.utils.reasoning_enhanced",
+        "description": "src.utils.reasoning_enhanced",
+        "isExtraImport": true,
+        "detail": "src.utils.reasoning_enhanced",
         "documentation": {}
     },
     {
@@ -10105,10 +10105,10 @@
     },
     {
         "label": "MarketDataLoader",
-        "importPath": "data_loader",
-        "description": "data_loader",
+        "importPath": "src.data.data_loader",
+        "description": "src.data.data_loader",
         "isExtraImport": true,
-        "detail": "data_loader",
+        "detail": "src.data.data_loader",
         "documentation": {}
     },
     {
