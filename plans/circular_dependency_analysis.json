@@ -1,0 +1,15 @@
+{
+  "summary": {
+    "total_circular_dependencies": 0,
+    "direct_cycles": 0,
+    "indirect_cycles": 0,
+    "self_referential": 0,
+    "modules_involved": [],
+    "critical_issues": 0,
+    "high_issues": 0,
+    "medium_issues": 0,
+    "low_issues": 0
+  },
+  "circular_dependencies": [],
+  "modules_by_cycle_count": {}
+}
