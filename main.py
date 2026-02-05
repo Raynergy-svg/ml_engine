@@ -29,65 +29,7 @@ from cli.commands import (
 
 def main() -> None:
     """Main CLI entry point."""
-    parser = create_argument_parser()
-
-    # (The installed `buddy` launcher calls: python main.py buddy ...)
-    if _maybe_run_buddy_interactive_wizard(default_config=DEFAULT_CONFIG_PATH):
-        return
-
-    if len(sys.argv) == 1:
-        parser.print_help()
-        sys.exit(0)
-
-    args = parser.parse_args()
-
-    _normalize_command_args(args)
-
-    # If user requested direct REPL, handle it immediately (before heavy dispatch).
-    if _maybe_launch_buddy_repl(args):
-        return
-
-    command_map = {
-        "train": train_buddy,  # Short alias
-        "train-buddy": train_buddy,
-        "retrain-gates": retrain_gates,
-        "train-rl-sizer": train_rl_sizer,
-        "buddy": buddy,
-        "Buddy": buddy,
-        "promote-model": promote_model,
-        "model-status": model_status,
-        "test": buddy_test,  # Legacy - redirects to validate
-        "validate": buddy_validate,  # Professional validation
-        "scan": buddy_scan,
-        "analyze": buddy_analyze,
-        "journal": buddy_journal,
-        "monitor": buddy_monitor,
-        "suggest-improvements": suggest_improvements,
-    }
-
-    try:
-        if args.command in ("train", "train-buddy"):
-            _dispatch_train_buddy(args, command_map)
-        elif args.command == "retrain-gates":
-            # Retrain sklearn gates only (XGBoost, RF, Ridge)
-            # Keeps Transformer direction model unchanged
-            retrain_gates(
-                config_path=args.config,
-                pairs=getattr(args, "pairs", None),
-                granularity=str(getattr(args, "granularity", "H1")),
-                candles=int(getattr(args, "candles", 5000)),
-                verbose=bool(getattr(args, "verbose", False)),
-            )
-        elif args.command == "train-rl-sizer":
-            # Train RL position sizing agent
-            train_rl_sizer(
-                config_path=args.config,
-                timesteps=int(getattr(args, "timesteps", 500_000)),
-                episodes=getattr(args, "rl_episodes", None),
-                pairs=getattr(args, "pairs", None),
-                granularity=str(getattr(args, "granularity", "H1")),
-                candles=int(getattr(args, "candles", 5000)),
-                verbose=bool(getattr(args, "verbose", False)),
+    parser = create_argument_parser(DEFAULT_CONFIG_PATH)
             )
         elif args.command in {"buddy", "Buddy"}:
             _dispatch_buddy(args, command_map)
