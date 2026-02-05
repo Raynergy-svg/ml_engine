@@ -594,7 +594,7 @@ class BuddyScanner:
         self._init_oanda_client()
         
         try:
-            from fx_paper import candles_to_ohlcv_df
+            from src.utils.fx_paper import candles_to_ohlcv_df
             resp = self._oanda_client.get_candles(
                 pair, granularity=granularity, count=count, price="MBA"
             )
@@ -1899,8 +1899,8 @@ class BuddyScanner:
         console.print(f"[dim]Trades today after execution: {trades_today + len(trades)}/{max_trades}[/dim]")
         
         try:
-            from oanda_practice import OandaPracticeClient
-            from fx_paper import pip_size
+            from src.utils.oanda_practice import OandaPracticeClient
+            from src.utils.fx_paper import pip_size
             from datetime import datetime
             
             client = OandaPracticeClient.from_env()
