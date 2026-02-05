@@ -10,6 +10,7 @@ This module contains commands for:
 from __future__ import annotations
 
 import json
+import sys
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -283,37 +284,52 @@ def buddy_journal(
         import_trades: If True, import untracked open trades into journal
     """
     from datetime import datetime
-    from trade_journal import TradeJournal
+    from src.utils.trade_journal import TradeJournal
+    from src.utils.oanda_practice import OandaPracticeClient
     from rich.table import Table
     from rich.panel import Panel
     from rich.columns import Columns
     from rich.text import Text
     
     journal = TradeJournal()
+    client = OandaPracticeClient.from_env()
     
-    # Update from OANDA if requested
     if update:
-        console.print("\n[dim]Fetching closed trades from OANDA...[/dim]")
+        console.print("\n[dim]Syncing local journal with OANDA...[/dim]")
         try:
-            from src.utils.oanda_practice import OandaPracticeClient
-            client = OandaPracticeClient.from_env()
-            updated_count = journal.update_from_oanda(client)
-            console.print(f"[green]✓ Updated {updated_count} trades from OANDA[/green]")
+            sync_results = journal.sync_open_trades(client)
+            closed_updated = sync_results.get('closed_updated', 0)
+            open_updated = sync_results.get('open_updated', 0)
+            if closed_updated > 0 or open_updated > 0:
+                console.print(f"[green]✓ Local journal synced ({closed_updated} closed, {open_updated} open)[/green]")
+            else:
+                console.print("[dim]No journal updates from OANDA[/dim]")
         except Exception as e:
-            console.print(f"[red]Failed to update from OANDA: {e}[/red]")
+            console.print(f"[red]Failed to sync journal from OANDA: {e}[/red]")
+    
+    if import_trades:
+        console.print("\n[dim]Importing untracked open trades from OANDA...[/dim]")
+        try:
+            imported = journal.import_untracked_trades(client)
+            if imported > 0:
+                console.print(f"[green]✓ Imported {imported} trades into local journal[/green]")
+            else:
+                console.print("[dim]No untracked open trades found[/dim]")
+        except Exception as e:
+            console.print(f"[red]Failed to import open trades: {e}[/red]")
     
     # Get statistics
     stats = journal.get_statistics(days=days)
     
     if stats["total_trades"] == 0:
-        console.print("\n[yellow]No trades found in journal.[/yellow]")
-        console.print("[dim]Trades are logged when using 'buddy predict' with --execute[/dim]")
+        console.print("\n[red]No trades found in journal.[/red]")
+        console.print("[dim]Journal entries are created when the predictions command runs with --execute.[/dim]")
         console.print("=" * 70)
-        return
+        sys.exit(1)
     
     # Fetch comprehensive performance data from OANDA
     console.print("\n[dim]Fetching account data from OANDA...[/dim]")
-    perf_data = journal.get_full_performance_stats(client, days=days if days != 30 else None)
+    perf_data = journal.get_full_performance_stats(client, days=days)
     
     account = perf_data.get('account')
     open_trades = perf_data.get('open_trades', [])
@@ -375,7 +391,7 @@ def buddy_journal(
             "Margin Usage:",
             f"[{margin_color}]{margin_pct:.1f}%[/{margin_color}]",
             "Open Positions:",
-            f"{account.open_trade_count}",
+            f"{account.open_position_count}",
         )
         
         console.print(Panel(
@@ -393,18 +409,18 @@ def buddy_journal(
         pnl_color = "green" if total_unrealized >= 0 else "red"
         
         open_table = Table(show_header=True, header_style="bold white", box=None)
-        open_table.add_column("ID", style="dim", width=6)
+        open_table.add_column("Trade ID", style="dim")
         open_table.add_column("Pair", width=9)
-        open_table.add_column("Dir", justify="center", width=4)
+        open_table.add_column("Direction", justify="center", width=7)
         open_table.add_column("Units", justify="right", width=10)
-        open_table.add_column("Entry", justify="right", width=10)
-        open_table.add_column("SL", justify="right", width=10)
-        open_table.add_column("TP", justify="right", width=10)
-        open_table.add_column("P/L", justify="right", width=12)
+        open_table.add_column("Entry Price", justify="right", width=12)
+        open_table.add_column("Stop Loss", justify="right", width=12)
+        open_table.add_column("Take Profit", justify="right", width=12)
+        open_table.add_column("Unrealized P/L", justify="right", width=14)
         
         for trade in open_trades:
             direction_style = "green" if trade.direction == "long" else "red"
-            direction_symbol = "⬆" if trade.direction == "long" else "⬇"
+            direction_text = "LONG" if trade.direction == "long" else "SHORT"
             
             pnl = trade.unrealized_pnl
             trade_pnl_color = "green" if pnl >= 0 else "red"
@@ -418,7 +434,7 @@ def buddy_journal(
             open_table.add_row(
                 str(trade.trade_id),
                 trade.instrument.replace("_", "/"),
-                f"[{direction_style}]{direction_symbol}[/{direction_style}]",
+                f"[{direction_style}]{direction_text}[/{direction_style}]",
                 f"{trade.units:,}",
                 f"{trade.entry_price:{price_fmt}}",
                 sl_str,
@@ -474,11 +490,12 @@ def buddy_journal(
         perf_lines.append("")
         avg_win = stats.get('avg_win', 0)
         avg_loss = stats.get('avg_loss', 0)
-        rr_ratio = avg_win / avg_loss if avg_loss > 0 else 0
+        rr_ratio = avg_win / avg_loss if avg_loss > 0 else float('inf')
+        rr_text = f"{rr_ratio:.2f}" if rr_ratio != float('inf') else "∞"
         
         perf_lines.append(f"  Avg Win:          [green]${avg_win:,.2f}[/green]")
         perf_lines.append(f"  Avg Loss:         [red]${avg_loss:,.2f}[/red]")
-        perf_lines.append(f"  Risk/Reward:      {rr_ratio:.2f}")
+        perf_lines.append(f"  Risk/Reward:      {rr_text}")
         perf_lines.append(f"  Max Drawdown:     [red]${stats.get('max_drawdown', 0):,.2f}[/red]")
         
         # Streak info
@@ -502,7 +519,7 @@ def buddy_journal(
             
             # Sort by P/L
             sorted_instruments = sorted(by_instrument.items(), key=lambda x: x[1]['pnl'], reverse=True)
-            for instr, data in sorted_instruments[:6]:  # Top 6
+            for instr, data in sorted_instruments:
                 total = data['wins'] + data['losses']
                 wr = data['wins'] / total * 100 if total > 0 else 0
                 instr_pnl_color = "green" if data['pnl'] >= 0 else "red"
@@ -539,7 +556,7 @@ def buddy_journal(
         history_table.add_column("Exit", justify="right", width=10)
         history_table.add_column("P/L", justify="right", width=12)
         
-        for trade in closed_trades[:20]:  # Show last 20
+        for trade in closed_trades:
             direction_style = "green" if trade.direction == "long" else "red"
             direction_symbol = "⬆" if trade.direction == "long" else "⬇"
             
@@ -567,33 +584,10 @@ def buddy_journal(
         
         console.print(Panel(
             history_table,
-            title=f"[bold white]📋 RECENT TRADE HISTORY (Last {min(20, len(closed_trades))})[/bold white]",
+            title=f"[bold white]📋 RECENT TRADE HISTORY ({len(closed_trades)} trades)[/bold white]",
             border_style="white",
             padding=(0, 1),
         ))
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # SYNC LOCAL JOURNAL (if requested)
-    # ═══════════════════════════════════════════════════════════════════════════
-    if update:
-        console.print()
-        console.print("[dim]Syncing local journal...[/dim]")
-        try:
-            sync_results = journal.sync_open_trades(client)
-            closed_updated = sync_results.get('closed_updated', 0)
-            open_updated = sync_results.get('open_updated', 0)
-            
-            if closed_updated > 0 or open_updated > 0:
-                console.print(f"[green]✓ Local journal synced ({closed_updated} closed, {open_updated} open)[/green]")
-            
-            # Import untracked trades if requested
-            untracked = sync_results.get('untracked_trades', [])
-            if untracked and import_trades:
-                imported = journal.import_untracked_trades(client)
-                if imported > 0:
-                    console.print(f"[green]✓ Imported {imported} trades into local journal[/green]")
-        except Exception as e:
-            console.print(f"[yellow]Local journal sync failed: {e}[/yellow]")
     
     # ═══════════════════════════════════════════════════════════════════════════
     # FOOTER
