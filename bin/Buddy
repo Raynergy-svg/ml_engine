@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-VERSION="2.2.0"
+VERSION="2.3.0"
 SOURCE="${BASH_SOURCE[0]}"
 while [[ -L "$SOURCE" ]]; do
     DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
@@ -9,8 +9,19 @@ while [[ -L "$SOURCE" ]]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 ROOT_DIR="$(cd -P "${SCRIPT_DIR}/.." && pwd)"
-CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
-ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
+
+# Auto-detect architecture: Intel (x86_64) vs Apple Silicon (arm64)
+if [[ "$(uname -m)" == "x86_64" ]]; then
+    # Intel Mac: Use CPU-optimized config and intel conda env
+    CONFIG_FILE="${ROOT_DIR}/config/config_intel_optimized.yaml"
+    ENV_NAME="${BUDDY_CONDA_ENV:-intel}"
+    INTEL_MAC_FLAGS="--no-mixed-precision"
+else
+    # Apple Silicon (M1/M2/M3): Use Metal-optimized config and tf-metal conda env
+    CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
+    ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
+    INTEL_MAC_FLAGS=""
+fi
 
 get_conda() {
     for p in "${HOME}/miniforge3/bin/conda" "${HOME}/miniconda3/bin/conda"; do
@@ -53,7 +64,7 @@ cmd_predict() {
 }
 
 cmd_train() {
-    local granularity="H1"  # Default to H1 to match config_improved_H1.yaml
+    local granularity="H1"  # Default to H1 to match config
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -65,9 +76,25 @@ cmd_train() {
             --multi-pair) args+=(--multi-pair); shift ;;
             --foundation-pairs) args+=(--foundation-pairs "$2"); shift 2 ;;
             --no-warm-start) args+=(--no-warm-start); shift ;;
+            --fine-tune|--warm-start) args+=(--warm-start); shift ;;  # Fine-tune = warm-start from existing model
+            --init-from) args+=(--init-from "$2"); shift 2 ;;  # Initialize from specific checkpoint
+            -v|--verbose) args+=(--verbose); shift ;;
+            --enterprise) args+=(--enterprise); shift ;;
+            --cv-folds) args+=(--cv-folds "$2"); shift 2 ;;
+            --bootstrap) args+=(--bootstrap); shift ;;
+            # Intel Mac optimization flags
+            --batch-size) args+=(--batch-size "$2"); shift 2 ;;
+            --workers) args+=(--workers "$2"); shift 2 ;;
+            --no-mixed-precision) args+=(--no-mixed-precision); shift ;;
+            --mixed-precision) INTEL_MAC_FLAGS=""; shift ;;  # Override Intel default
+            # TCN Volatility Regime training (4-class: LOW/NORMAL/HIGH/EXTREME)
+            --train-volatility-regime|--train-vol-regime) args+=(--train-volatility-regime); shift ;;
+            --no-volatility-regime) args+=(--no-volatility-regime); shift ;;
             *) args+=("$1"); shift ;;  # Pass through unknown args instead of discarding
         esac
     done
+    # Append Intel Mac flags if set (--no-mixed-precision for x86_64)
+    [[ -n "${INTEL_MAC_FLAGS:-}" ]] && args+=(${INTEL_MAC_FLAGS})
     run_py "${ROOT_DIR}/main.py" train-buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
@@ -81,6 +108,7 @@ cmd_scan() {
             --top) args+=(--top "$2"); shift 2 ;;
             -v|--verbose) args+=(--verbose); shift ;;
             -d|--diversified) args+=(--diversified); shift ;;
+            --force) args+=(--force); shift ;;
             *) shift ;;
         esac
     done

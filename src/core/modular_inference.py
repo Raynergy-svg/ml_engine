@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -85,26 +86,82 @@ except ImportError:
     RetrainConfig = None
     create_retrain_callback = None
 
+# Import learned confidence model (Phase 3: Scanner Accuracy)
+try:
+    from src.scanner.learned_confidence import LearnedConfidenceModel, CONFIDENCE_FEATURES
+    LEARNED_CONFIDENCE_AVAILABLE = True
+except ImportError:
+    LEARNED_CONFIDENCE_AVAILABLE = False
+    LearnedConfidenceModel = None
+    CONFIDENCE_FEATURES = None
+
 # RL position sizer availability is checked lazily to avoid TF/PyTorch GPU conflicts
 # The actual import happens only when use_rl_sizer=True and the model is loaded
+# NOTE: stable_baselines3 import can take 9-10+ seconds due to PyTorch dependencies
 RL_AVAILABLE = True  # We assume it's available, actual check is deferred
 RLPositionSizer = None  # Lazy loaded
 RL_MODEL_PATH = Path("trained_data/models/rl_position_sizer.zip")
+RL_IMPORT_TIMEOUT = 30.0  # seconds - skip if import takes longer than this
 
-def _lazy_load_rl_sizer():
-    """Lazy load RLPositionSizer to avoid TF/PyTorch GPU conflicts at import time."""
+def _lazy_load_rl_sizer(timeout: float = RL_IMPORT_TIMEOUT):
+    """
+    Lazy load RLPositionSizer to avoid TF/PyTorch GPU conflicts at import time.
+    
+    This import can take 9-10+ seconds due to PyTorch/stable-baselines3 dependencies.
+    If import takes longer than timeout, we skip RL sizer and use heuristic sizing.
+    
+    Args:
+        timeout: Maximum seconds to wait for import (default: 30s)
+        
+    Returns:
+        Tuple of (RLPositionSizer class, is_available)
+    """
     global RLPositionSizer, RL_AVAILABLE
     if RLPositionSizer is not None:
         return RLPositionSizer, RL_AVAILABLE
-    try:
-        from rl_position_sizing import RLPositionSizer as _RLPositionSizer, RL_MODEL_PATH as _RL_MODEL_PATH
-        RLPositionSizer = _RLPositionSizer
-        RL_AVAILABLE = True
-        return RLPositionSizer, RL_AVAILABLE
-    except ImportError:
+    
+    import time
+    import logging
+    import threading
+    _logger = logging.getLogger(__name__)
+    
+    # Use a thread to allow timeout
+    result = {'sizer': None, 'available': False, 'error': None}
+    
+    def _import_rl():
+        try:
+            from rl_position_sizing import RLPositionSizer as _RLPositionSizer
+            result['sizer'] = _RLPositionSizer
+            result['available'] = True
+        except ImportError as e:
+            result['error'] = str(e)
+    
+    t0 = time.perf_counter()
+    _logger.info("    → Importing rl_position_sizing (may take 10-15s due to PyTorch)...")
+    
+    import_thread = threading.Thread(target=_import_rl, daemon=True)
+    import_thread.start()
+    import_thread.join(timeout=timeout)
+    
+    elapsed = time.perf_counter() - t0
+    
+    if import_thread.is_alive():
+        _logger.warning(f"    → rl_position_sizing import timed out after {timeout:.0f}s, using heuristic sizing")
+        _logger.info("    💡 Tip: Disable RL sizer with --no-rl-sizer for faster startup")
         RL_AVAILABLE = False
-        RLPositionSizer = None
         return None, False
+    
+    if result['available'] and result['sizer'] is not None:
+        RLPositionSizer = result['sizer']
+        RL_AVAILABLE = True
+        _logger.info(f"    → rl_position_sizing imported in {elapsed:.1f}s")
+        return RLPositionSizer, RL_AVAILABLE
+    
+    if result['error']:
+        _logger.warning(f"    → rl_position_sizing import failed: {result['error']}")
+    
+    RL_AVAILABLE = False
+    return None, False
 
 logger = logging.getLogger(__name__)
 
@@ -316,12 +373,12 @@ class ModularEnsembleInference:
                 features_str = "sentiment + calendar + online learning"
                 if enable_drift_detection:
                     features_str += " + drift detection"
-                logger.info(f"✓ Market Intelligence enabled ({features_str})")
+                logger.debug(f"Market Intelligence enabled ({features_str})")
             except Exception as e:
                 logger.warning(f"Market Intelligence initialization failed: {e}")
                 self.market_intel = None
         elif enable_market_intelligence and not MARKET_INTEL_AVAILABLE:
-            logger.info("ℹ Market Intelligence not available (install transformers for sentiment)")
+            logger.debug("Market Intelligence not available (install transformers for sentiment)")
         
         # RL Position Sizer (NEW)
         self.rl_sizer: Optional[RLPositionSizer] = None
@@ -330,6 +387,10 @@ class ModularEnsembleInference:
         # Confidence Calibrator (NEW)
         self.calibrator: Optional['ConfidenceCalibrator'] = None
         self._calibration_loaded = False
+        
+        # Learned Confidence Model (Phase 3: Scanner Accuracy)
+        self.learned_confidence: Optional['LearnedConfidenceModel'] = None
+        self._learned_confidence_loaded = False
         
         # Meta-Labeler (predicts trade SUCCESS, not direction)
         self.meta_labeler: Optional['MetaLabeler'] = None
@@ -345,6 +406,9 @@ class ModularEnsembleInference:
         self._pending_retrain: bool = False
         self._retrain_reason: Optional[str] = None
         
+        # Thread safety for model loading
+        self._load_lock = threading.Lock()
+        
         # Online retrainer for drift-triggered incremental learning
         self._online_retrainer: Optional['OnlineRetrainer'] = None
         if enable_drift_detection and ONLINE_RETRAINER_AVAILABLE:
@@ -355,7 +419,7 @@ class ModularEnsembleInference:
                     min_samples_for_retrain=self._drift_config_overrides.get('min_samples_for_retrain', 50),
                 )
                 self._online_retrainer = OnlineRetrainer(config=retrain_cfg)
-                logger.info("✓ OnlineRetrainer initialized for drift-triggered retraining")
+                logger.debug("OnlineRetrainer initialized")
             except Exception as e:
                 logger.warning(f"OnlineRetrainer initialization failed: {e}")
     
@@ -838,6 +902,9 @@ class ModularEnsembleInference:
         """
         Load all 4 models from disk.
         
+        Thread-safe: Uses lock to prevent duplicate loading when called
+        from multiple threads (e.g., scanner parallel execution).
+        
         Args:
             instrument: Optional instrument (e.g., 'EUR_USD') to load pair-specific models.
                        If None, uses self.instrument or loads generic models.
@@ -846,125 +913,152 @@ class ModularEnsembleInference:
         1. trained_data/models/{instrument}/ (pair-specific)
         2. trained_data/models/ (generic fallback)
         """
-        # Update instrument if provided
-        if instrument:
-            self.instrument = instrument
-        import warnings
-        from modular_trainers import (
-            TCNTrainer, TransformerDirectionTrainer, TransformerRegimeTrainer,
-            XGBoostTrainer, RandomForestTrainer, RidgeTrainer,
-            HistGradientBoostingDirectionTrainer
-        )
+        # Thread-safe check: if already loaded, return immediately
+        if self._loaded and (instrument is None or instrument == self._loaded_instrument):
+            return
         
-        # Suppress XGBoost version warnings (models serialized with older versions)
-        warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
-        warnings.filterwarnings('ignore', message='.*serialized model.*')
-        warnings.filterwarnings('ignore', message='.*older version of XGBoost.*')
-        
-        # Suppress sklearn version warnings (common when loading across versions)
-        try:
-            from sklearn.exceptions import InconsistentVersionWarning
-            warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
-        except ImportError:
-            pass
-        warnings.filterwarnings('ignore', message='.*InconsistentVersionWarning.*')
-        warnings.filterwarnings('ignore', message='.*unpickle estimator.*')
-        
-        pair_info = f" for {self.instrument}" if self.instrument and self.instrument != "GENERIC" else ""
-        logger.info(f"Loading modular ensemble models{pair_info}...")
-        
-        # Use pair-specific paths with fallback to generic
-        regime_path = self._get_model_path("transformer_regime", ".keras")
-        transformer_path = self._get_model_path("transformer_direction", ".keras")
-        tcn_path = self._get_model_path("tcn_direction", ".keras")
-        histgb_path = self._get_model_path("histgb_direction", ".pkl")
-        
-        if regime_path.exists():
-            # REGIME MODE
-            self.regime_model = TransformerRegimeTrainer()
-            self.regime_model.load(str(regime_path))
-            self.use_regime = True
-            logger.info(f"✓ Transformer REGIME model loaded from {regime_path}")
-        elif transformer_path.exists():
-            # DIRECTION MODE (Transformer)
-            self.tcn = TransformerDirectionTrainer()
-            self.tcn.load(str(transformer_path))
-            self.use_regime = False
-            logger.info(f"✓ Transformer direction model loaded from {transformer_path}")
-        elif tcn_path.exists():
-            # DIRECTION MODE (TCN legacy)
-            self.tcn = TCNTrainer()
-            self.tcn.load(str(tcn_path))
-            self.use_regime = False
-            logger.info(f"✓ TCN direction model loaded from {tcn_path}")
-        else:
-            logger.warning(f"No direction/regime model found for {self.instrument or 'generic'}")
-        
-        # Load HistGB for hybrid voting (if available)
-        if histgb_path.exists():
-            self.histgb = HistGradientBoostingDirectionTrainer()
-            self.histgb.load(str(histgb_path))
-            self.use_hybrid = True
-            logger.info(f"✓ HistGB baseline loaded from {histgb_path}")
-        else:
-            self.use_hybrid = False
-            logger.info("ℹ HistGB not found - single-model mode")
-        
-        # XGBoost (use pair-specific path)
-        xgb_path = self._get_model_path("xgb_momentum", ".pkl")
-        if xgb_path.exists():
-            self.xgb = XGBoostTrainer()
-            self.xgb.load(str(xgb_path))
-            logger.info(f"✓ XGBoost loaded from {xgb_path}")
-        else:
-            logger.warning(f"XGBoost model not found at {xgb_path}")
-        
-        # Random Forest (use pair-specific path)
-        rf_path = self._get_model_path("rf_risk", ".pkl")
-        if rf_path.exists():
-            self.rf = RandomForestTrainer()
-            self.rf.load(str(rf_path))
-            logger.info(f"✓ Random Forest loaded from {rf_path}")
-        else:
-            logger.warning(f"Random Forest model not found at {rf_path}")
-        
-        # Ridge (use pair-specific path)
-        ridge_path = self._get_model_path("ridge_confidence", ".pkl")
-        if ridge_path.exists():
-            self.ridge = RidgeTrainer()
-            self.ridge.load(str(ridge_path))
-            logger.info(f"✓ Ridge loaded from {ridge_path}")
-        else:
-            logger.warning(f"Ridge model not found at {ridge_path}")
-        
-        # RL Position Sizer (lazy loaded to avoid TF/PyTorch GPU conflicts)
-        if self.use_rl_sizer:
-            RLSizer, rl_available = _lazy_load_rl_sizer()
-            if rl_available and RLSizer is not None:
-                self.rl_sizer = RLSizer()
-                if self.rl_sizer.load():
-                    logger.info("✓ RL Position Sizer loaded")
-                else:
-                    logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
-                    self.rl_sizer = None
+        # Acquire lock to prevent concurrent loading from multiple threads
+        with self._load_lock:
+            # Double-check after acquiring lock (another thread may have loaded)
+            if self._loaded and (instrument is None or instrument == self._loaded_instrument):
+                return
+            
+            # Update instrument if provided
+            if instrument:
+                self.instrument = instrument
+            
+            import warnings
+            from modular_trainers import (
+                TCNTrainer, TransformerDirectionTrainer, TransformerRegimeTrainer,
+                XGBoostTrainer, RandomForestTrainer, RidgeTrainer,
+                HistGradientBoostingDirectionTrainer
+            )
+            
+            # Suppress XGBoost version warnings (models serialized with older versions)
+            warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
+            warnings.filterwarnings('ignore', message='.*serialized model.*')
+            warnings.filterwarnings('ignore', message='.*older version of XGBoost.*')
+            
+            # Suppress sklearn version warnings (common when loading across versions)
+            try:
+                from sklearn.exceptions import InconsistentVersionWarning
+                warnings.filterwarnings('ignore', category=InconsistentVersionWarning)
+            except ImportError:
+                pass
+            warnings.filterwarnings('ignore', message='.*InconsistentVersionWarning.*')
+            warnings.filterwarnings('ignore', message='.*unpickle estimator.*')
+            
+            pair_info = f" for {self.instrument}" if self.instrument and self.instrument != "GENERIC" else ""
+            logger.debug(f"Loading ensemble models{pair_info}...")
+            
+            # Use pair-specific paths with fallback to generic
+            regime_path = self._get_model_path("transformer_regime", ".keras")
+            transformer_path = self._get_model_path("transformer_direction", ".keras")
+            tcn_path = self._get_model_path("tcn_direction", ".keras")
+            histgb_path = self._get_model_path("histgb_direction", ".pkl")
+            
+            if regime_path.exists():
+                # REGIME MODE
+                self.regime_model = TransformerRegimeTrainer()
+                self.regime_model.load(str(regime_path))
+                self.use_regime = True
+                logger.debug(f"Transformer REGIME loaded")
+            elif transformer_path.exists():
+                # DIRECTION MODE (Transformer)
+                self.tcn = TransformerDirectionTrainer()
+                self.tcn.load(str(transformer_path))
+                self.use_regime = False
+                logger.debug(f"Transformer direction loaded")
+            elif tcn_path.exists():
+                # DIRECTION MODE (TCN legacy)
+                self.tcn = TCNTrainer()
+                self.tcn.load(str(tcn_path))
+                self.use_regime = False
+                logger.debug(f"TCN direction loaded")
             else:
-                logger.warning("⚠️ RL requested but dependencies not available. Install: pip install gymnasium stable-baselines3")
-                self.rl_sizer = None
-        
-        # Load confidence calibration if available
-        if self.config.enable_calibration:
-            self._load_calibration()
-        
-        # Load meta-labeler if available (predicts trade SUCCESS, not direction)
-        if self.config.enable_meta_labeling:
-            self._load_meta_labeler()
-        
-        # Auto-detect sklearn version mismatch and enable permissive mode
-        self._check_sklearn_version_mismatch()
-        
-        self._loaded = True
-        self._loaded_instrument = self.instrument
-        logger.info(f"Modular ensemble loaded{pair_info}.")
+                logger.warning(f"No direction/regime model found for {self.instrument or 'generic'}")
+            
+            # Load HistGB for hybrid voting (if available)
+            if histgb_path.exists():
+                self.histgb = HistGradientBoostingDirectionTrainer()
+                self.histgb.load(str(histgb_path))
+                self.use_hybrid = True
+                logger.debug(f"HistGB baseline loaded")
+            else:
+                self.use_hybrid = False
+                logger.debug("HistGB not found - single-model mode")
+            
+            # XGBoost (use pair-specific path)
+            xgb_path = self._get_model_path("xgb_momentum", ".pkl")
+            if xgb_path.exists():
+                self.xgb = XGBoostTrainer()
+                self.xgb.load(str(xgb_path))
+                logger.debug(f"XGBoost loaded")
+            else:
+                logger.warning(f"XGBoost model not found at {xgb_path}")
+            
+            # Random Forest (use pair-specific path)
+            rf_path = self._get_model_path("rf_risk", ".pkl")
+            if rf_path.exists():
+                self.rf = RandomForestTrainer()
+                self.rf.load(str(rf_path))
+                logger.debug(f"Random Forest loaded")
+            else:
+                logger.warning(f"Random Forest model not found at {rf_path}")
+            
+            # Ridge (use pair-specific path)
+            ridge_path = self._get_model_path("ridge_confidence", ".pkl")
+            if ridge_path.exists():
+                self.ridge = RidgeTrainer()
+                self.ridge.load(str(ridge_path))
+                logger.debug(f"Ridge loaded")
+            else:
+                logger.warning(f"Ridge model not found at {ridge_path}")
+            
+            # RL Position Sizer (lazy loaded to avoid TF/PyTorch GPU conflicts)
+            if self.use_rl_sizer:
+                import time
+                t_rl_start = time.perf_counter()
+                logger.info("🔄 RL Position Sizer: loading dependencies...")
+                
+                RLSizer, rl_available = _lazy_load_rl_sizer()
+                t_rl_import = time.perf_counter()
+                logger.info(f"  ⏱️ RL dependencies imported in {t_rl_import - t_rl_start:.2f}s")
+                
+                if rl_available and RLSizer is not None:
+                    logger.info("  🔄 Creating RL sizer instance...")
+                    self.rl_sizer = RLSizer()
+                    t_rl_create = time.perf_counter()
+                    logger.info(f"  ⏱️ RL instance created in {t_rl_create - t_rl_import:.2f}s")
+                    
+                    logger.info("  🔄 Loading RL model from disk...")
+                    if self.rl_sizer.load():
+                        t_rl_load = time.perf_counter()
+                        logger.info(f"✓ RL Position Sizer loaded (total: {t_rl_load - t_rl_start:.2f}s)")
+                    else:
+                        logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
+                        self.rl_sizer = None
+                else:
+                    logger.warning("⚠️ RL requested but dependencies not available. Install: pip install gymnasium stable-baselines3")
+                    self.rl_sizer = None
+            
+            # Load confidence calibration if available
+            if self.config.enable_calibration:
+                self._load_calibration()
+            
+            # Load learned confidence model if available (Phase 3: Scanner Accuracy)
+            self._load_learned_confidence()
+            
+            # Load meta-labeler if available (predicts trade SUCCESS, not direction)
+            if self.config.enable_meta_labeling:
+                self._load_meta_labeler()
+            
+            # Auto-detect sklearn version mismatch and enable permissive mode
+            self._check_sklearn_version_mismatch()
+            
+            self._loaded = True
+            self._loaded_instrument = self.instrument
+            logger.info(f"Modular ensemble loaded{pair_info}.")
     
     def _check_sklearn_version_mismatch(self) -> None:
         """
@@ -1149,6 +1243,46 @@ class ModularEnsembleInference:
             logger.info(f"ℹ Calibration enabled but no fitted calibrator found - using raw probabilities")
             logger.info(f"  To enable calibration, train with: python main.py train-buddy --calibrate")
             logger.info(f"  Or run: python -m confidence_calibration --train --model-dir {self.model_dir}")
+
+    def _load_learned_confidence(self) -> None:
+        """
+        Load learned confidence model (Phase 3: Scanner Accuracy).
+        
+        This model replaces the heuristic _compute_confidence_direct() formula
+        with weights learned from actual trade outcomes.
+        
+        Lookup order:
+        1. trained_data/models/{instrument}/learned_confidence.pkl  (pair-specific)
+        2. trained_data/models/learned_confidence.pkl  (generic fallback)
+        """
+        if not LEARNED_CONFIDENCE_AVAILABLE:
+            logger.debug("Learned confidence module not available")
+            return
+        
+        self._learned_confidence_loaded = False
+        self.learned_confidence = None
+        
+        # Build list of paths to check
+        learned_paths = []
+        if self.instrument and self.instrument != "GENERIC":
+            learned_paths.append(self.model_dir / self.instrument / "learned_confidence.pkl")
+        learned_paths.append(self.model_dir / "learned_confidence.pkl")
+        
+        for path in learned_paths:
+            if path.exists():
+                try:
+                    self.learned_confidence = LearnedConfidenceModel.load(path)
+                    if self.learned_confidence.is_fitted:
+                        self._learned_confidence_loaded = True
+                        logger.info(f"✓ Learned confidence model loaded (CV R²={self.learned_confidence.training_stats.get('cv_score', 0):.3f})")
+                        return
+                    else:
+                        logger.debug(f"Learned confidence model at {path} is not fitted")
+                        self.learned_confidence = None
+                except Exception as e:
+                    logger.debug(f"Failed to load learned confidence from {path}: {e}")
+        
+        logger.debug("No fitted learned confidence model found - using heuristic formula")
 
     def _load_meta_labeler(self) -> None:
         """
@@ -1491,10 +1625,12 @@ class ModularEnsembleInference:
         """
         Compute confidence score directly from indicators (0-100 scale).
         
-        This bypasses the ElasticNet model and uses the formula directly,
-        which is faster and avoids learning a synthetic target.
+        Phase 3 Enhancement: If a learned confidence model is available,
+        use it instead of the heuristic formula. The learned model was
+        trained on actual trade outcomes and should provide more accurate
+        confidence estimates.
         
-        Formula weights:
+        Heuristic formula weights (fallback):
         - ADX (40%): Trend strength - higher = more confident
         - Volatility (20%): Moderate vol = high confidence
         - RSI (15%): Not extreme = high confidence
@@ -1519,6 +1655,18 @@ class ModularEnsembleInference:
         atr_pct = float(atr_pct) if not np.isnan(atr_pct) else 0.01
         bb_pos = float(bb_pos) if not np.isnan(bb_pos) else 0.5
         volume_ratio = float(volume_ratio) if not np.isnan(volume_ratio) else 1.0
+        
+        # Phase 3: Try learned confidence model first
+        if self._learned_confidence_loaded and self.learned_confidence is not None:
+            try:
+                features = np.array([adx, rsi, atr_pct, bb_pos, volume_ratio])
+                learned_conf = self.learned_confidence.predict(features)
+                # Scale to 0-100 range (learned model outputs 0-1)
+                confidence = 15 + learned_conf * 80
+                logger.debug(f"Using learned confidence: {learned_conf:.3f} -> {confidence:.1f}")
+                return float(confidence)
+            except Exception as e:
+                logger.debug(f"Learned confidence prediction failed, using heuristic: {e}")
         
         # ADX score (40%) - higher ADX = more confident trend
         # Use percentile-based scaling: 15-35 is typical range

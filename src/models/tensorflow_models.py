@@ -145,12 +145,21 @@ class AntiCollapseFocalLoss(keras.losses.Loss):
         # If all predictions are ~0.47, variance is near 0 → add penalty
         # This forces the model to have diverse outputs, not collapse to constant
         pred_variance = tf.math.reduce_variance(y_pred)
-        # Target variance: 0.04 (std=0.2) means predictions spread from 0.3 to 0.7
-        target_variance = 0.04
-        # Penalty increases as variance drops below target
-        variance_penalty = self.variance_weight * tf.maximum(target_variance - pred_variance, 0.0)
+        # Target variance: 0.06 (std=0.245) means predictions spread from 0.25 to 0.75
+        # Increased from 0.04 for stronger anti-collapse
+        target_variance = 0.06
+        # Penalty increases as variance drops below target - use squared penalty for stronger effect
+        variance_gap = tf.maximum(target_variance - pred_variance, 0.0)
+        variance_penalty = self.variance_weight * tf.square(variance_gap) * 25.0  # Amplified squared penalty
         
-        total_loss = tf.reduce_mean(focal_loss) + variance_penalty
+        # === CLASS BALANCE PENALTY ===
+        # Additional penalty when predictions are too skewed (>80% one class)
+        mean_pred = tf.reduce_mean(y_pred)
+        # Ideal mean is 0.5 (balanced). Penalize deviation beyond 0.3 from center
+        balance_gap = tf.maximum(tf.abs(mean_pred - 0.5) - 0.3, 0.0)
+        balance_penalty = self.variance_weight * balance_gap * 0.5
+        
+        total_loss = tf.reduce_mean(focal_loss) + variance_penalty + balance_penalty
         
         return total_loss
     
@@ -1653,6 +1662,289 @@ class TFTCNPredictor(Model):
             }
         else:
             return self.fc(x, training=training)
+
+
+# =============================================================================
+# TCN VOLATILITY DUAL-HEAD MODEL - Forward Volatility Prediction
+# =============================================================================
+
+@register_keras_serializable()
+class TCNVolatilityDualHead(Model):
+    """
+    Dual-head TCN for forward volatility regime prediction.
+    
+    Predicts FUTURE volatility (not current) with two output heads:
+    1. Classification head: 4-class (QUIET_NEXT/STABLE_NEXT/ACTIVE_NEXT/EXTREME_NEXT)
+    2. Regression head: % change in volatility (backup/tiebreaker)
+    
+    Combined loss: 0.7 * CategoricalFocalCrossentropy + 0.3 * MSE
+    
+    Architecture:
+    - Shared TCN encoder (5 residual blocks, dilation 2^i)
+    - Global average pooling
+    - Two separate dense heads
+    
+    Key improvements over basic TCN:
+    - Focal loss for class imbalance
+    - Dual-head for regression fallback when classification uncertain
+    - Anti-collapse mechanisms (variance monitoring)
+    """
+    
+    def __init__(
+        self,
+        n_features: int,
+        seq_len: int = 60,
+        n_classes: int = 4,
+        num_filters: int = 64,
+        kernel_size: int = 5,
+        num_residual_blocks: int = 5,
+        dilation_base: int = 2,
+        dropout: float = 0.2,
+        l2_reg: float = 0.001,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        
+        self.n_features = n_features
+        self.seq_len = seq_len
+        self.n_classes = n_classes
+        self.num_filters = num_filters
+        self.kernel_size = kernel_size
+        self.num_residual_blocks = num_residual_blocks
+        self.dilation_base = dilation_base
+        self.dropout_rate = dropout
+        
+        # L2 regularizer
+        self.l2_regularizer = regularizers.L2(l2_reg) if l2_reg > 0 else None
+        
+        # Input regularization
+        self.noise = layers.GaussianNoise(0.02)
+        self.spatial_dropout = layers.SpatialDropout1D(dropout * 0.5)
+        
+        # Initial projection
+        self.input_projection = layers.Conv1D(
+            filters=num_filters,
+            kernel_size=1,
+            padding='same',
+            kernel_regularizer=self.l2_regularizer,
+            name='input_projection'
+        )
+        
+        # Residual blocks
+        self.residual_blocks = []
+        for i in range(num_residual_blocks):
+            dilation_rate = dilation_base ** i
+            block = self._build_residual_block(
+                num_filters, kernel_size, dilation_rate, dropout, i
+            )
+            self.residual_blocks.append(block)
+        
+        # Global pooling
+        self.global_pool = layers.GlobalAveragePooling1D(name='global_pool')
+        
+        # Shared dense layer
+        self.shared_dense = layers.Dense(
+            64, activation='relu',
+            kernel_regularizer=self.l2_regularizer,
+            name='shared_fc'
+        )
+        self.shared_dropout = layers.Dropout(dropout)
+        
+        # Classification head (4-class)
+        self.class_fc1 = layers.Dense(
+            32, activation='relu',
+            kernel_regularizer=self.l2_regularizer,
+            name='class_fc1'
+        )
+        self.class_dropout = layers.Dropout(dropout)
+        self.class_output = layers.Dense(
+            n_classes, activation='softmax',
+            dtype='float32',
+            name='class_output'
+        )
+        
+        # Regression head (% vol change)
+        self.reg_fc1 = layers.Dense(
+            32, activation='relu',
+            kernel_regularizer=self.l2_regularizer,
+            name='reg_fc1'
+        )
+        self.reg_dropout = layers.Dropout(dropout)
+        self.reg_output = layers.Dense(
+            1, activation='linear',
+            dtype='float32',
+            name='reg_output'
+        )
+    
+    def _build_residual_block(self, filters, kernel_size, dilation_rate, dropout, idx):
+        """Build a single residual block with dilated causal convolution."""
+        return {
+            'conv1': layers.Conv1D(
+                filters, kernel_size,
+                padding='causal',
+                dilation_rate=dilation_rate,
+                kernel_regularizer=self.l2_regularizer,
+                name=f'res{idx}_conv1'
+            ),
+            'bn1': layers.BatchNormalization(name=f'res{idx}_bn1'),
+            'conv2': layers.Conv1D(
+                filters, kernel_size,
+                padding='causal',
+                dilation_rate=dilation_rate,
+                kernel_regularizer=self.l2_regularizer,
+                name=f'res{idx}_conv2'
+            ),
+            'bn2': layers.BatchNormalization(name=f'res{idx}_bn2'),
+            'dropout': layers.Dropout(dropout),
+        }
+    
+    def call(self, inputs, training=None):
+        # Input shape: (batch, seq_len, n_features)
+        x = self.noise(inputs, training=training)
+        x = self.spatial_dropout(x, training=training)
+        
+        # Initial projection
+        x = self.input_projection(x)
+        
+        # Residual blocks
+        for block in self.residual_blocks:
+            residual = x
+            
+            # First conv + BN + ReLU
+            out = block['conv1'](x)
+            out = block['bn1'](out, training=training)
+            out = tf.nn.relu(out)
+            
+            # Second conv + BN + dropout
+            out = block['conv2'](out)
+            out = block['bn2'](out, training=training)
+            out = block['dropout'](out, training=training)
+            
+            # Residual connection
+            x = tf.nn.relu(residual + out)
+        
+        # Global pooling
+        x = self.global_pool(x)
+        
+        # Shared dense
+        shared = self.shared_dense(x)
+        shared = self.shared_dropout(shared, training=training)
+        
+        # Classification head
+        class_features = self.class_fc1(shared)
+        class_features = self.class_dropout(class_features, training=training)
+        class_output = self.class_output(class_features)
+        
+        # Regression head
+        reg_features = self.reg_fc1(shared)
+        reg_features = self.reg_dropout(reg_features, training=training)
+        reg_output = self.reg_output(reg_features)
+        
+        return {
+            'classification': class_output,  # (batch, n_classes)
+            'regression': reg_output,         # (batch, 1)
+        }
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'n_features': self.n_features,
+            'seq_len': self.seq_len,
+            'n_classes': self.n_classes,
+            'num_filters': self.num_filters,
+            'kernel_size': self.kernel_size,
+            'num_residual_blocks': self.num_residual_blocks,
+            'dilation_base': self.dilation_base,
+            'dropout': self.dropout_rate,
+        })
+        return config
+    
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+
+@register_keras_serializable()
+class DualHeadLoss(keras.losses.Loss):
+    """
+    Combined loss for dual-head volatility model.
+    
+    Loss = classification_weight * focal_loss + regression_weight * mse_loss
+    
+    Default weights: 0.7 classification + 0.3 regression
+    """
+    
+    def __init__(
+        self,
+        classification_weight: float = 0.7,
+        regression_weight: float = 0.3,
+        focal_gamma: float = 2.0,
+        focal_alpha: Optional[List[float]] = None,
+        name: str = 'dual_head_loss',
+        **kwargs
+    ):
+        super().__init__(name=name, **kwargs)
+        self.classification_weight = classification_weight
+        self.regression_weight = regression_weight
+        self.focal_gamma = focal_gamma
+        # Default alpha: boost QUIET (0) and EXTREME (3), which are often minority
+        self.focal_alpha = focal_alpha or [0.35, 0.25, 0.25, 0.15]
+    
+    def call(self, y_true, y_pred):
+        """
+        Compute combined loss.
+        
+        Args:
+            y_true: Dict with 'classification' (one-hot) and 'regression' targets
+            y_pred: Dict with 'classification' and 'regression' predictions
+        """
+        # Classification loss (categorical focal cross-entropy)
+        y_class_true = y_true['classification']
+        y_class_pred = y_pred['classification']
+        
+        # Clip predictions
+        y_class_pred = tf.clip_by_value(y_class_pred, 1e-7, 1 - 1e-7)
+        
+        # Cross entropy
+        ce = -y_class_true * tf.math.log(y_class_pred)
+        
+        # Focal weight
+        pt = tf.reduce_sum(y_class_true * y_class_pred, axis=-1, keepdims=True)
+        focal_weight = tf.pow(1 - pt, self.focal_gamma)
+        
+        # Alpha weighting per class
+        alpha = tf.constant(self.focal_alpha, dtype=tf.float32)
+        alpha_weight = tf.reduce_sum(y_class_true * alpha, axis=-1, keepdims=True)
+        
+        focal_loss = tf.reduce_mean(alpha_weight * focal_weight * tf.reduce_sum(ce, axis=-1))
+        
+        # Regression loss (MSE)
+        y_reg_true = y_true['regression']
+        y_reg_pred = y_pred['regression']
+        mse_loss = tf.reduce_mean(tf.square(y_reg_true - y_reg_pred))
+        
+        # Variance regularization to prevent mode collapse
+        # Penalize when prediction variance per class drops below threshold
+        pred_variance = tf.math.reduce_variance(y_class_pred, axis=0)
+        min_variance = 0.04  # Minimum acceptable variance per class
+        variance_penalty = 0.1 * tf.reduce_mean(tf.maximum(min_variance - pred_variance, 0.0))
+        
+        # Combined loss
+        total_loss = (self.classification_weight * focal_loss + 
+                     self.regression_weight * mse_loss +
+                     variance_penalty)
+        
+        return total_loss
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'classification_weight': self.classification_weight,
+            'regression_weight': self.regression_weight,
+            'focal_gamma': self.focal_gamma,
+            'focal_alpha': self.focal_alpha,
+        })
+        return config
 
 
 @register_keras_serializable()

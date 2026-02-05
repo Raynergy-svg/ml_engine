@@ -1108,7 +1108,7 @@ class OnlineLearner:
                         actual_outcome=item['actual_outcome'],
                     ))
                 
-                logger.info(f"Loaded {len(self.trade_buffer)} trades from buffer")
+                logger.debug(f"Loaded {len(self.trade_buffer)} trades from buffer")
             except Exception as e:
                 logger.warning(f"Failed to load trade buffer: {e}")
     
@@ -1859,7 +1859,7 @@ class MarketIntelligence:
         # Track enabled features
         self.enable_drift_detection = enable_drift_detection
         
-        logger.info(
+        logger.debug(
             f"MarketIntelligence initialized: "
             f"sentiment={enable_sentiment}, calendar={enable_calendar}, "
             f"online_learning={enable_online_learning}, "

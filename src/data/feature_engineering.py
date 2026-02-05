@@ -15,8 +15,8 @@ from typing import List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from text_features import simple_sentiment_score
-from candle_smoothing import resample_5min_ohlcv_and_ema_close
+from src.utils.text_features import simple_sentiment_score
+from src.data.candle_smoothing import resample_5min_ohlcv_and_ema_close
 
 logger = logging.getLogger(__name__)
 

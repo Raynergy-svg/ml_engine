@@ -1,0 +1,805 @@
+{
+  "summary": {
+    "total_packages": 45,
+    "unique_packages": 45,
+    "total_specifications": 67,
+    "version_conflicts": 17,
+    "unconstrained_deps": 1,
+    "deprecated_packages": 1,
+    "version_patterns": {
+      "total_packages": 45,
+      "pinned_count": 44,
+      "range_count": 22,
+      "unconstrained_count": 1
+    }
+  },
+  "version_conflicts": [
+    {
+      "package": "numpy",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==1.26.4",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=1.24.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "medium",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "pandas",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==2.3.3",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=2.0.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "medium",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "scikit-learn",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==1.8.0",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=1.3.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "medium",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "scipy",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==1.11.4",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=1.11.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "tensorflow",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": ">=2.16,<2.19",
+          "constraint_type": "range",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": "==2.15.1",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "medium",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "tensorboard",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": ">=2.16",
+          "constraint_type": "range",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=2.13.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "xgboost",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==2.0.3",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=2.0.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "medium",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "matplotlib",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==3.10.8",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=3.7.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "plotly",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==6.5.0",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=5.14.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "rich",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==14.2.0",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=13.4.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "tqdm",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==4.67.1",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=4.65.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "python-dotenv",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==1.2.1",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=1.0.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "requests",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==2.32.5",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=2.31.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "aiohttp",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==3.13.2",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=3.8.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "psutil",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==7.1.3",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=5.9.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "pytest",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==9.0.2",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": ">=7.4.0",
+          "constraint_type": "range",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "low",
+      "recommendation": "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+    },
+    {
+      "package": "ipykernel",
+      "conflicting_versions": [
+        {
+          "file": "requirements.txt",
+          "version": "==7.1.0",
+          "constraint_type": "pinned",
+          "file_type": "pip"
+        },
+        {
+          "file": "requirements_tf_metal.txt",
+          "version": "",
+          "constraint_type": "unconstrained",
+          "file_type": "pip"
+        }
+      ],
+      "severity": "medium",
+      "recommendation": "Ensure consistent version specification across all dependency files."
+    }
+  ],
+  "unconstrained_dependencies": [
+    {
+      "package": "ipykernel",
+      "files": [
+        "requirements_tf_metal.txt"
+      ],
+      "risk": "low"
+    }
+  ],
+  "deprecated_packages": [
+    {
+      "package": "ipython",
+      "version": "==9.8.0",
+      "replacement": "Still maintained, but consider ipykernel for notebook environments",
+      "files": [
+        "requirements.txt"
+      ]
+    }
+  ],
+  "dependency_tree": {
+    "numpy": {
+      "version": "==1.26.4",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "pandas": {
+      "version": "==2.3.3",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "scikit-learn": {
+      "version": "==1.8.0",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "scipy": {
+      "version": "==1.11.4",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "joblib": {
+      "version": "==1.5.3",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "tensorflow": {
+      "version": ">=2.16,<2.19",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "tensorflow-metal": {
+      "version": "==1.1.0",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "tensorboard": {
+      "version": ">=2.16",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range"
+      ]
+    },
+    "xgboost": {
+      "version": "==2.0.3",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "lightgbm": {
+      "version": ">=4.0.0",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range"
+      ]
+    },
+    "statsmodels": {
+      "version": ">=0.14.0  # ARIMA hybrid forecasting for ensemble",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range"
+      ]
+    },
+    "pyarrow": {
+      "version": "==22.0.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "h5py": {
+      "version": "==3.15.1",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "matplotlib": {
+      "version": "==3.10.8",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "plotly": {
+      "version": "==6.5.0",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "pillow": {
+      "version": "==12.0.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "rich": {
+      "version": "==14.2.0",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "tqdm": {
+      "version": "==4.67.1",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "click": {
+      "version": "==8.3.1",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "PyYAML": {
+      "version": "==6.0.3",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "python-dotenv": {
+      "version": "==1.2.1",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "mlflow": {
+      "version": "==3.8.1",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "structlog": {
+      "version": "==25.5.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "Flask": {
+      "version": "==3.1.2",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "flask-cors": {
+      "version": "==6.0.2",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "requests": {
+      "version": "==2.32.5",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "aiohttp": {
+      "version": "==3.13.2",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "uvicorn": {
+      "version": "==0.40.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "fastapi": {
+      "version": "==0.128.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "gunicorn": {
+      "version": "==23.0.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "psutil": {
+      "version": "==7.1.3",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "pytest": {
+      "version": "==9.0.2",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "range",
+        "pinned"
+      ]
+    },
+    "SQLAlchemy": {
+      "version": "==2.0.45",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "redis": {
+      "version": "==7.1.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "ipykernel": {
+      "version": "==7.1.0",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned",
+        "unconstrained"
+      ]
+    },
+    "ipython": {
+      "version": "==9.8.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "opentelemetry-api": {
+      "version": "==1.27.0",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "opentelemetry-sdk": {
+      "version": "==1.27.0",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "opentelemetry-exporter-otlp-proto-http": {
+      "version": "==1.27.0",
+      "files": [
+        "requirements_tf_metal.txt",
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "pydantic": {
+      "version": "==2.12.5",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "python-dateutil": {
+      "version": "==2.9.0.post0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "typing_extensions": {
+      "version": "==4.15.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "packaging": {
+      "version": "==25.0",
+      "files": [
+        "requirements.txt"
+      ],
+      "constraint_types": [
+        "pinned"
+      ]
+    },
+    "pyyaml": {
+      "version": ">=6.0",
+      "files": [
+        "requirements_tf_metal.txt"
+      ],
+      "constraint_types": [
+        "range"
+      ]
+    },
+    "pandera": {
+      "version": "[pandas]>=0.18.0",
+      "files": [
+        "requirements-validation.txt"
+      ],
+      "constraint_types": [
+        "range"
+      ]
+    }
+  }
+}

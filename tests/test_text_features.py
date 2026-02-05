@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from data_loader import MarketDataLoader
-from text_features import simple_sentiment_score
+from src.data.data_loader import MarketDataLoader
+from src.utils.text_features import simple_sentiment_score
 
 
 class TestSimpleSentimentScore(unittest.TestCase):

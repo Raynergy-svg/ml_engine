@@ -175,7 +175,13 @@ def _buddy_setup_training_environment(
     console: _ConsoleLike,
     setup_tracing: Callable[[], Any] | None = None,
 ):
-    """Setup TF environment, tracing, and mixed precision."""
+    """Setup TF environment, tracing, and mixed precision.
+    
+    Note: Mixed precision (float16) is only enabled on Apple Silicon (arm64).
+    Intel Macs (x86_64) always use float32 as they lack GPU acceleration for FP16.
+    """
+    import platform
+    
     configure_tf_metal(verbose=bool(timing), force_cpu=force_cpu)
 
     if setup_tracing is not None:
@@ -185,7 +191,9 @@ def _buddy_setup_training_environment(
             pass
 
     mp_enabled = False
-    if mixed_precision:
+    is_apple_silicon = platform.system() == "Darwin" and platform.machine() == "arm64"
+    
+    if mixed_precision and is_apple_silicon:
         try:
             import tensorflow as tf
 
@@ -197,6 +205,11 @@ def _buddy_setup_training_environment(
                 "[yellow]Mixed precision enable failed[/yellow]:",
                 e,
             )
+    elif mixed_precision and not is_apple_silicon:
+        console.print(
+            "[yellow]Mixed precision skipped[/yellow]: "
+            f"not supported on {platform.machine()} (Intel/x86_64 uses float32)"
+        )
 
     return mp_enabled
 

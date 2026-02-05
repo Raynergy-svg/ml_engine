@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 import joblib
 
 from src.data.feature_engineering import FeatureEngineering
-from text_features import hashed_ngram_features, text_feature_summary
+from src.utils.text_features import hashed_ngram_features, text_feature_summary
 
 logger = logging.getLogger(__name__)
 
