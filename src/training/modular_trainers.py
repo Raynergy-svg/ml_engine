@@ -3638,8 +3638,12 @@ class TransformerDirectionTrainer(BaseTrainer):
         elif warm_start_path:
             logger.info(f"No checkpoint found at {warm_start_path}. Starting fresh training.")
         
-        # Re-compile model with effective LR (may be reduced for warm-start)
-        optimizer = keras.optimizers.Adam(learning_rate=effective_lr)
+        # Re-compile model with effective LR and gradient clipping (may be reduced for warm-start)
+        # Gradient clipping prevents exploding gradients that can cause prediction collapse
+        optimizer = keras.optimizers.Adam(
+            learning_rate=effective_lr,
+            clipnorm=1.0  # Clip gradients to prevent explosion → collapse
+        )
         
         # === FOCAL LOSS SETTINGS ===
         # AntiCollapseFocalLoss prevents: direction bias, probability collapse to 0.5
@@ -3648,9 +3652,10 @@ class TransformerDirectionTrainer(BaseTrainer):
             base_loss = AntiCollapseFocalLoss(
                 gamma=self.config.focal_gamma,
                 base_alpha=self.config.focal_alpha,
+                entropy_weight=0.2,  # Increased variance penalty weight for anti-collapse
                 label_smoothing=0.0,  # NO smoothing - hurts binary classification
             )
-            logger.info(f"🎯 Using AntiCollapseFocalLoss (gamma={self.config.focal_gamma}, alpha={self.config.focal_alpha})")
+            logger.info(f"🎯 Using AntiCollapseFocalLoss (gamma={self.config.focal_gamma}, alpha={self.config.focal_alpha}, variance_weight=0.2)")
         else:
             base_loss = keras.losses.BinaryCrossentropy(label_smoothing=0.0)
             logger.info("📊 Using BinaryCrossentropy (no focal loss)")
@@ -3737,15 +3742,20 @@ class TransformerDirectionTrainer(BaseTrainer):
                 if self.ema_callback:
                     self.ema_callback.update()
         
-        # === PREDICTION COLLAPSE DETECTION CALLBACK ===
-        # Detects if model collapses to predicting all one class
+        # === PREDICTION COLLAPSE DETECTION & RECOVERY CALLBACK ===
+        # Detects if model collapses to predicting all one class and takes corrective action
         class PredictionCollapseCallback(keras.callbacks.Callback):
-            def __init__(self, X_val, y_val, check_every=5):
+            def __init__(self, X_val, y_val, check_every=5, max_recovery_attempts=3):
                 super().__init__()
                 self.X_val = X_val
                 self.y_val = y_val
                 self.check_every = check_every
                 self.collapse_warned = False
+                self.collapse_epochs = 0  # Consecutive collapse epochs
+                self.recovery_attempts = 0
+                self.max_recovery_attempts = max_recovery_attempts
+                self.best_weights = None
+                self.best_balance = 0.5  # Best prediction balance (0.5 = perfectly balanced)
             
             def on_epoch_end(self, epoch, logs=None):
                 if (epoch + 1) % self.check_every != 0:
@@ -3757,15 +3767,57 @@ class TransformerDirectionTrainer(BaseTrainer):
                 pred_up_pct = pred_classes.mean() * 100
                 pred_down_pct = 100 - pred_up_pct
                 
-                # Check for collapse (>95% same prediction)
-                if pred_up_pct > 95 or pred_down_pct > 95:
+                # Track prediction balance (0.5 = perfect, 0 or 1 = collapsed)
+                current_balance = min(pred_up_pct, pred_down_pct) / 50  # 0-1 scale
+                
+                # Save best balanced weights
+                if current_balance > self.best_balance and current_balance > 0.3:
+                    self.best_balance = current_balance
+                    self.best_weights = self.model.get_weights()
+                
+                # Check for collapse (>90% same prediction - more aggressive detection)
+                if pred_up_pct > 90 or pred_down_pct > 90:
+                    self.collapse_epochs += 1
+                    dominant = "UP" if pred_up_pct > 90 else "DOWN"
+                    
                     if not self.collapse_warned:
-                        dominant = "UP" if pred_up_pct > 95 else "DOWN"
                         logger.warning(f"⚠️ PREDICTION COLLAPSE at epoch {epoch+1}: "
                                       f"Model predicts {pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN "
                                       f"(all {dominant})")
                         self.collapse_warned = True
+                    
+                    # === RECOVERY ACTION: After 2 consecutive collapse checks ===
+                    if self.collapse_epochs >= 2 and self.recovery_attempts < self.max_recovery_attempts:
+                        self.recovery_attempts += 1
+                        logger.warning(f"🔧 COLLAPSE RECOVERY attempt {self.recovery_attempts}/{self.max_recovery_attempts}")
+                        
+                        # Strategy 1: Restore best balanced weights if available
+                        if self.best_weights is not None:
+                            logger.info("  → Restoring best balanced weights")
+                            self.model.set_weights(self.best_weights)
+                        else:
+                            # Strategy 2: Perturb output layer to break symmetry
+                            logger.info("  → Perturbing output layer weights")
+                            weights = self.model.get_weights()
+                            # Add noise to last layer weights only
+                            weights[-2] = weights[-2] + np.random.normal(0, 0.1, weights[-2].shape)
+                            weights[-1] = np.array([0.0])  # Reset bias to neutral
+                            self.model.set_weights(weights)
+                        
+                        # Reduce learning rate to stabilize
+                        current_lr = float(self.model.optimizer.learning_rate)
+                        new_lr = current_lr * 0.5
+                        self.model.optimizer.learning_rate.assign(new_lr)
+                        logger.info(f"  → Reduced learning rate: {current_lr:.2e} → {new_lr:.2e}")
+                        
+                        self.collapse_epochs = 0  # Reset counter after recovery
+                    
+                    # If all recovery attempts exhausted, stop training
+                    elif self.collapse_epochs >= 4 and self.recovery_attempts >= self.max_recovery_attempts:
+                        logger.error(f"❌ STOPPING: Prediction collapse persists after {self.max_recovery_attempts} recovery attempts")
+                        self.model.stop_training = True
                 else:
+                    self.collapse_epochs = 0
                     self.collapse_warned = False
                     if epoch > 0 and (epoch + 1) % 10 == 0:
                         logger.info(f"📊 Prediction distribution at epoch {epoch+1}: "
@@ -3829,8 +3881,8 @@ class TransformerDirectionTrainer(BaseTrainer):
                 # CONTINUAL LEARNING: Don't save worse models than previous best
                 warm_start_best_acc=self._warm_start_val_acc,
             ),
-            # Prediction collapse detection - warns if model predicts mostly one class
-            PredictionCollapseCallback(X_val_filtered, y_val_filtered, check_every=5),
+            # Prediction collapse detection with auto-recovery - check every 3 epochs for faster response
+            PredictionCollapseCallback(X_val_filtered, y_val_filtered, check_every=3, max_recovery_attempts=3),
         ]
         
         # Add EMA update callback if enabled

@@ -145,12 +145,21 @@ class AntiCollapseFocalLoss(keras.losses.Loss):
         # If all predictions are ~0.47, variance is near 0 → add penalty
         # This forces the model to have diverse outputs, not collapse to constant
         pred_variance = tf.math.reduce_variance(y_pred)
-        # Target variance: 0.04 (std=0.2) means predictions spread from 0.3 to 0.7
-        target_variance = 0.04
-        # Penalty increases as variance drops below target
-        variance_penalty = self.variance_weight * tf.maximum(target_variance - pred_variance, 0.0)
+        # Target variance: 0.06 (std=0.245) means predictions spread from 0.25 to 0.75
+        # Increased from 0.04 for stronger anti-collapse
+        target_variance = 0.06
+        # Penalty increases as variance drops below target - use squared penalty for stronger effect
+        variance_gap = tf.maximum(target_variance - pred_variance, 0.0)
+        variance_penalty = self.variance_weight * tf.square(variance_gap) * 25.0  # Amplified squared penalty
         
-        total_loss = tf.reduce_mean(focal_loss) + variance_penalty
+        # === CLASS BALANCE PENALTY ===
+        # Additional penalty when predictions are too skewed (>80% one class)
+        mean_pred = tf.reduce_mean(y_pred)
+        # Ideal mean is 0.5 (balanced). Penalize deviation beyond 0.3 from center
+        balance_gap = tf.maximum(tf.abs(mean_pred - 0.5) - 0.3, 0.0)
+        balance_penalty = self.variance_weight * balance_gap * 0.5
+        
+        total_loss = tf.reduce_mean(focal_loss) + variance_penalty + balance_penalty
         
         return total_loss
     
