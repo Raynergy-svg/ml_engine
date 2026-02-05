@@ -324,6 +324,47 @@ def _train_buddy_impl(
     except Exception:
         pass
 
+    # =========================================================================
+    # PHASE 1: CONFIGURATION PANEL
+    # =========================================================================
+    # Display instrument, granularity, and data source information
+    training_instrument = "GENERIC"
+    training_granularity = "H1"
+    data_source = "CSV file"
+    candles_requested = 5000
+    
+    if oanda_fetch is not None:
+        try:
+            training_instrument = str(getattr(oanda_fetch, "instrument", "USD_JPY"))
+            training_granularity = str(getattr(oanda_fetch, "granularity", "H1"))
+            candles_requested = int(getattr(oanda_fetch, "candles", 5000))
+            data_source = f"OANDA live fetch ({candles_requested:,} candles)"
+        except Exception:
+            pass
+    elif csv_path:
+        # Try to extract instrument from CSV path
+        from cli.io_utils import _extract_instrument_from_csv_path
+        training_instrument = _extract_instrument_from_csv_path(csv_path)
+        data_source = f"CSV file: {Path(csv_path).name}"
+        # Try to extract granularity from filename
+        import re
+        gran_match = re.search(r'_(M\d+|H\d+|D|W)(?:_|\.)', str(csv_path).upper())
+        if gran_match:
+            training_granularity = gran_match.group(1)
+    
+    console.print()
+    console.print(Panel(
+        f"[bold]Training Configuration[/bold]\n\n"
+        f"[dim]Instrument:[/dim] {training_instrument}\n"
+        f"[dim]Granularity:[/dim] {training_granularity}\n"
+        f"[dim]Data Source:[/dim] {data_source}\n"
+        f"[dim]Model Type:[/dim] {model_type or 'ensemble'}\n"
+        f"[dim]Epochs:[/dim] {epochs}  [dim]Batch Size:[/dim] {batch_size}  [dim]Learning Rate:[/dim] {lr}",
+        title="⚙️  Configuration",
+        border_style="cyan",
+    ))
+    console.print()
+
     from buddy_training_helpers import _buddy_load_and_validate_csv, _load_multi_pair_data
 
     # Check for multi-pair foundation training mode
@@ -431,6 +472,9 @@ def _train_buddy_impl(
         extra = f" + median(close,w={median_window})" if median_window else ""
         console.print(f"Training noise reduction enabled: resample->M5{extra} + EMA(14) close")
 
+    # =========================================================================
+    # PHASE 3: FEATURE ENGINEERING
+    # =========================================================================
     # Feature engineering (numeric only).
     if all_features:
         t_fe = time.perf_counter()
@@ -454,10 +498,10 @@ def _train_buddy_impl(
         elapsed_fe = time.perf_counter() - t_fe
         console.print(Panel(
             f"[bold]Feature Engineering Complete[/bold]\n\n"
-            f"[dim]Smoothing:[/dim] {bool(train_smoothing)}  [dim]Median Window:[/dim] {median_window}\n"
-            f"[dim]Output:[/dim] {int(len(df)):,} rows × {int(df.shape[1])} columns\n"
-            f"[dim]Time:[/dim] {elapsed_fe:.2f}s",
-            title="⚙️ Feature Engineering",
+            f"[dim]Smoothing:[/dim] {bool(train_smoothing)}  [dim]Median Window:[/dim] {median_window or 'None'}\n"
+            f"[dim]Output:[/dim] [green]{int(len(df)):,} rows × {int(df.shape[1])} columns[/green]\n"
+            f"[dim]Elapsed Time:[/dim] {elapsed_fe:.2f}s",
+            title="⚙️  Feature Engineering",
             border_style="blue",
         ))
     elif train_smoothing:
@@ -2165,6 +2209,51 @@ def _train_buddy_impl(
                     console.print(f"[yellow]Enterprise validation error: {e}[/yellow]")
                     import traceback
                     traceback.print_exc()
+            
+            # =========================================================================
+            # PHASE 7: TRAINING COMPLETE SUMMARY
+            # =========================================================================
+            console.print()
+            console.print()
+            
+            # Calculate total training time
+            try:
+                import time
+                total_time_seconds = time.perf_counter() - t_fe if 't_fe' in dir() else 0
+                total_time_str = f"{total_time_seconds:.1f}s"
+                if total_time_seconds > 60:
+                    total_time_str = f"{total_time_seconds/60:.1f}m"
+            except Exception:
+                total_time_str = "N/A"
+            
+            # Build saved models list
+            saved_models_text = ""
+            if use_regime:
+                saved_models_text += f"  • transformer_regime.keras\n"
+            else:
+                model_name = "transformer_direction.keras" if use_transformer else "tcn_direction.keras"
+                saved_models_text += f"  • {model_name}\n"
+            saved_models_text += f"  • xgb_momentum.pkl\n"
+            saved_models_text += f"  • rf_risk.pkl\n"
+            saved_models_text += f"  • ridge_confidence.pkl\n"
+            saved_models_text += f"  • modular_ensemble.meta.json"
+            
+            # Create summary panel
+            summary_panel = Panel(
+                f"[bold green]Training Complete ✓[/bold green]\n\n"
+                f"[bold]Saved Models:[/bold]\n{saved_models_text}\n\n"
+                f"[bold]Location:[/bold] [cyan]{model_dir}[/cyan]\n"
+                f"[bold]Instrument:[/bold] {training_instrument}\n"
+                f"[bold]Total Time:[/bold] {total_time_str}\n\n"
+                f"[bold yellow]Next Steps:[/bold yellow]\n"
+                f"  Run [cyan]buddy {training_instrument}[/cyan] to test inference\n"
+                f"  Or [cyan]buddy {training_instrument} -x[/cyan] to execute trades",
+                title="🎉 Training Summary",
+                border_style="green",
+                padding=(1, 2),
+            )
+            console.print(summary_panel)
+            console.print()
             
             return
         
