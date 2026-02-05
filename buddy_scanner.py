@@ -319,7 +319,7 @@ class BuddyScanner:
             return self._cfg
         
         with suppress_logging():
-            from utils import load_config
+            from src.utils import load_config
             self._cfg = load_config(self.config_path)
         
         # Load scan-specific config
@@ -445,7 +445,7 @@ class BuddyScanner:
         if self._oanda_client is not None:
             return
         
-        from oanda_practice import OandaPracticeClient
+        from src.utils.oanda_practice import OandaPracticeClient
         self._oanda_client = OandaPracticeClient.from_env()
     
     def _init_feature_engineer(self):
@@ -455,7 +455,7 @@ class BuddyScanner:
         
         cfg = self._load_config()
         with suppress_logging():
-            from feature_engineering import FeatureEngineering
+            from src.data.feature_engineering import FeatureEngineering
             self._feature_engineer = FeatureEngineering(cfg.get("feature_engineering", {}))
     
     def _init_modular_ensemble(self) -> bool:
@@ -470,7 +470,7 @@ class BuddyScanner:
         
         try:
             with suppress_logging():
-                from modular_inference import ModularEnsembleInference
+                from src.core.modular_inference import ModularEnsembleInference
                 self._modular_ensemble = ModularEnsembleInference(use_rl_sizer=self._use_rl_sizer)
                 self._modular_ensemble.load_models()
             
@@ -506,7 +506,7 @@ class BuddyScanner:
         
         try:
             with suppress_logging():
-                from position_sizing import (
+                from src.risk.position_sizing import (
                     DynamicPositionSizer, PositionSizingConfig,
                     create_aggressive_position_sizer, create_kelly_position_sizer
                 )
@@ -544,7 +544,7 @@ class BuddyScanner:
         
         try:
             with suppress_logging():
-                from risk_management import ConfidenceBasedRiskManager, RiskManagementConfig
+                from src.risk.risk_management import ConfidenceBasedRiskManager, RiskManagementConfig
                 self._risk_manager = ConfidenceBasedRiskManager(RiskManagementConfig())
         except ImportError:
             pass  # Silent - risk management not available
@@ -943,9 +943,7 @@ class BuddyScanner:
                             warnings_dict[pair1] = f"{corr_type} corr ({corr:+.2f}) with {pair2}"
                             warnings_dict[pair2] = f"{corr_type} corr ({corr:+.2f}) with {pair1}"
                             
-                            # Store detailed info for display
-                            if not hasattr(self, '_correlation_details'):
-                                self._correlation_details = []
+                            # Store detailed info for display - ALWAYS clear at start of scan
                             self._correlation_details.append({
                                 'pair1': pair1,
                                 'pair2': pair2,
@@ -1090,29 +1088,56 @@ class BuddyScanner:
         
         return results
 
-    def _check_model_drift(self) -> Tuple[bool, float, float]:
+    def _check_model_drift(self, pair: str, recent_accuracy: Optional[float] = None) -> Tuple[bool, float, float]:
         """
-        Check for model drift.
+        Check for model drift by comparing recent performance to baseline.
         
+        Args:
+            pair: Currency pair being checked
+            recent_accuracy: Recent accuracy from quick backtest (if available)
+            
         Returns:
-            Tuple of (drift_detected, current_acc, baseline_acc)
+            Tuple of (drift_detected, current_accuracy, baseline_accuracy)
         """
-        if self._model_meta is None:
-            return False, 0.0, 0.0
+        # Get baseline from model metadata
+        baseline_acc = 0.55  # Default baseline (55% = above random)
         
-        # Get baseline accuracy from meta
-        baseline_acc = 0.0
-        if "results" in self._model_meta:
-            baseline_acc = self._model_meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0)
-        if baseline_acc == 0 and "models" in self._model_meta:
-            baseline_acc = self._model_meta.get("models", {}).get("direction", {}).get("metrics", {}).get("val_accuracy", 0)
+        # Try to load baseline from pair-specific model metadata
+        try:
+            model_path = Path("trained_data/models") / pair / "transformer_direction.meta.pkl"
+            if model_path.exists():
+                import pickle
+                with open(model_path, 'rb') as f:
+                    meta = pickle.load(f)
+                    baseline_acc = meta.get('val_accuracy', 0.55)
+        except Exception:
+            # Check global model meta
+            if self._model_meta is not None:
+                if "results" in self._model_meta:
+                    baseline_acc = self._model_meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0.55)
+                elif "models" in self._model_meta:
+                    baseline_acc = self._model_meta.get("models", {}).get("direction", {}).get("metrics", {}).get("val_accuracy", 0.55)
         
-        # For now, we use the same baseline (real drift detection would compare live performance)
-        # This is a placeholder - in production you'd track live accuracy
-        current_acc = baseline_acc  # Placeholder
+        # Use recent_accuracy if provided, otherwise try to get from historical accuracy
+        current_acc = recent_accuracy if recent_accuracy is not None else self._historical_accuracy.get(pair, baseline_acc)
         
+        # If we have actual live performance data from memory client, use it
+        if self._memory_client is not None and recent_accuracy is None:
+            try:
+                pair_stats = self._memory_client.get_pair_stats(pair)
+                if pair_stats and 'win_rate' in pair_stats:
+                    live_win_rate = pair_stats['win_rate']
+                    if live_win_rate > 0:
+                        current_acc = live_win_rate
+            except Exception:
+                pass
+        
+        # Calculate drift
         drift = abs(current_acc - baseline_acc)
         drift_detected = drift > self._scan_config.drift_threshold
+        
+        if drift_detected:
+            logger.info(f"Drift detected for {pair}: {current_acc:.1%} vs baseline {baseline_acc:.1%} (drift: {drift:.1%})")
         
         return drift_detected, current_acc, baseline_acc
     
@@ -1300,6 +1325,9 @@ class BuddyScanner:
         Returns:
             List of EnhancedScanResult sorted by overall_score
         """
+        # Clear correlation details from previous scan
+        self._correlation_details = []
+        
         # Initialize components (suppress all logging)
         with suppress_logging():
             self._load_config()
@@ -1410,9 +1438,13 @@ class BuddyScanner:
                             pair = futures[future]
                             progress.update(task, advance=1, description=f"{pair}")
                             
-                            result = future.result()
-                            if result is not None:
-                                results.append(result)
+                            try:
+                                result = future.result()
+                                if result is not None:
+                                    results.append(result)
+                            except Exception as e:
+                                logger.error(f"Error scanning {pair}: {e}")
+                                console.print(f"[red]✗ {pair} - {str(e)[:50]}[/red]")
         else:
             # Non-verbose parallel scan
             with suppress_logging():
@@ -1423,9 +1455,13 @@ class BuddyScanner:
                     }
                     
                     for future in as_completed(futures):
-                        result = future.result()
-                        if result is not None:
-                            results.append(result)
+                        pair = futures[future]
+                        try:
+                            result = future.result()
+                            if result is not None:
+                                results.append(result)
+                        except Exception as e:
+                            logger.error(f"Error scanning {pair}: {e}")
         
         # Sort by overall score
         results.sort(key=lambda x: x.overall_score, reverse=True)
@@ -1456,8 +1492,17 @@ class BuddyScanner:
             # Even without --diversified, reduce position size for correlated pairs
             results = self._apply_correlation_position_sizing(results)
         
-        # Check for model drift
-        drift_detected, current_acc, baseline_acc = self._check_model_drift()
+        # Check for model drift on top results (use backtest win rate if available)
+        drift_detected = False
+        current_acc = 0.0
+        baseline_acc = 0.0
+        if results:
+            # Check drift on best result
+            best_result = results[0]
+            drift_detected, current_acc, baseline_acc = self._check_model_drift(
+                best_result.pair,
+                recent_accuracy=best_result.backtest_win_rate
+            )
         if drift_detected:
             for result in results:
                 result.drift_warning = True
@@ -1726,23 +1771,32 @@ class BuddyScanner:
                 if console:
                     console.print("[dim]🔄 Running idle-time gate retraining...[/dim]")
                 
-                # Run synchronously during idle (plenty of time)
-                import subprocess
-                import sys
-                
-                result = subprocess.run(
-                    [sys.executable, "retrain_gates.py", "--candles", "3000"],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                )
-                
-                if result.returncode == 0:
+                # Import and run retrain_gates function directly
+                try:
+                    from cli.commands import retrain_gates
+                    retrain_gates(self.config_path)
                     intel.mark_model_updated()
                     if console:
                         console.print("[green]✅ Gate models retrained[/green]")
-                else:
-                    logger.warning(f"Idle retrain failed: {result.stderr[:200]}")
+                except ImportError:
+                    # Fallback to subprocess if cli.commands not available
+                    import subprocess
+                    import sys
+                    
+                    result = subprocess.run(
+                        [sys.executable, "-c", 
+                         "from cli.commands import retrain_gates; retrain_gates('config/config_improved_H1.yaml')"],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+                    
+                    if result.returncode == 0:
+                        intel.mark_model_updated()
+                        if console:
+                            console.print("[green]✅ Gate models retrained[/green]")
+                    else:
+                        logger.warning(f"Idle retrain failed: {result.stderr[:200]}")
                     
         except Exception as e:
             logger.debug(f"Idle maintenance failed: {e}")
