@@ -233,40 +233,41 @@ def identify_patterns(trade_history: List[Trade]) -> List[str]:
 
 ---
 
-## Phase 5: Pre-Trade Risk Assessment (High Value)
+## Phase 5: Pre-Trade Risk Assessment (High Value) ✓ IMPLEMENTED
 
-### 5.1 Economic Calendar Intelligence
-**Where:** `market_intelligence.py` → `EconomicCalendar`
+### 5.1 Economic Calendar Intelligence ✓
+**Where:** `market_intelligence.py` → `assess_event_risk()`
 
 **Current:** Shows events, blocks trades near high-impact
 **Enhanced:** LLM interprets expected vs actual, impact direction
 
 ```python
-def assess_event_risk(events: List[EconomicEvent], instrument: str) -> dict:
+def assess_event_risk(events: List[EconomicEvent], instrument: str) -> EventRiskAssessment:
     """LLM assesses upcoming event risk."""
-    prompt = f"""
-    Upcoming events affecting {instrument}:
-    {format_events(events)}
-    
-    Current time: {datetime.now()}
-    
-    1. Should we avoid trading right now? (yes/no)
-    2. If event already happened, what was market reaction direction?
-    3. Expected volatility level? (low/medium/high/extreme)
-    4. Bias introduced? (bullish/bearish/none)
-    
-    JSON: {{"avoid_trade": false, "volatility": "medium", "bias": "none", "reason": "..."}}
-    """
+    # Returns EventRiskAssessment with:
+    # - avoid_trade: bool
+    # - volatility: 'low'|'medium'|'high'|'extreme'
+    # - bias: 'bullish'|'bearish'|'none'
+    # - surprise_direction: 'beat'|'miss'|'inline' (for past events)
 ```
 
-### 5.2 Multi-Factor Risk Score
-**Where:** New function feeding into gate decisions
+### 5.2 Multi-Factor Risk Score ✓
+**Where:** `market_intelligence.py` → `compute_llm_risk_score()`
 
 ```python
-def compute_llm_risk_score(context: dict) -> float:
+def compute_llm_risk_score(context: dict) -> MultiFactorRiskScore:
     """LLM computes 0-100 risk score considering ALL factors."""
-    # Combines: volatility, news, calendar, drawdown, time of day, etc.
+    # Returns MultiFactorRiskScore with:
+    # - score: 0-100 overall risk
+    # - volatility_risk, event_risk, drawdown_risk, sentiment_risk, time_of_day_risk
+    # - recommendation: 'trade'|'reduce_size'|'avoid'
+    # - size_multiplier: 0.25-1.0
 ```
+
+### 5.3 Integration ✓
+**Where:** `buddy_intelligent_mode.py` → `validate_trade_with_risk_assessment()`
+
+Combines event risk, multi-factor risk score, and LLM validation into a single function.
 
 ---
 
