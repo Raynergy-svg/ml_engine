@@ -39,6 +39,29 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class TransactionCosts:
+    """Transaction cost model for backtesting."""
+    spread_pips: float = 1.0
+    slippage_pips: float = 0.5
+    commission_pct: float = 0.0  # Percentage of notional
+    pip_value: float = 10.0  # Value of 1 pip for standard lot
+
+
+@dataclass
+class MonteCarloResult:
+    """Result from Monte Carlo simulation."""
+    mean_sharpe: float
+    std_sharpe: float
+    percentile_5: float
+    percentile_95: float
+    confidence_interval_95: Tuple[float, float]
+    all_sharpe_ratios: np.ndarray
+    all_total_returns: np.ndarray
+    probability_positive_sharpe: float
+    probability_positive_return: float
+
+
+@dataclass
 class WalkForwardResult:
     """Result from a single walk-forward fold."""
     fold: int
@@ -709,6 +732,257 @@ def train_direction_with_walkforward(
 
 
 # =============================================================================
+# Monte Carlo Simulation
+# =============================================================================
+
+def apply_transaction_costs(
+    returns: np.ndarray,
+    positions: np.ndarray,
+    costs: TransactionCosts,
+) -> np.ndarray:
+    """
+    Apply transaction costs to returns based on position changes.
+    
+    Args:
+        returns: Array of price returns
+        positions: Array of positions (1=long, 0=flat, -1=short)
+        costs: TransactionCosts object
+    
+    Returns:
+        Adjusted returns after transaction costs
+    """
+    adjusted_returns = returns.copy()
+    
+    # Calculate position changes (trades)
+    position_changes = np.diff(positions, prepend=0)
+    trades = np.abs(position_changes)
+    
+    # Spread cost (paid on every trade)
+    spread_cost_pct = (costs.spread_pips * costs.pip_value) / 100000  # Assuming 100k notional
+    
+    # Slippage cost (paid on every trade)
+    slippage_cost_pct = (costs.slippage_pips * costs.pip_value) / 100000
+    
+    # Total cost per trade
+    total_cost_pct = spread_cost_pct + slippage_cost_pct + costs.commission_pct
+    
+    # Subtract costs where trades occur
+    cost_impact = trades * total_cost_pct
+    adjusted_returns = adjusted_returns - cost_impact[:len(adjusted_returns)]
+    
+    return adjusted_returns
+
+
+def monte_carlo_simulation(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    prices: np.ndarray,
+    n_simulations: int = 1000,
+    costs: Optional[TransactionCosts] = None,
+    confidence_noise: float = 0.05,
+    random_seed: Optional[int] = None,
+) -> MonteCarloResult:
+    """
+    Run Monte Carlo simulation to estimate confidence intervals for trading performance.
+    
+    This simulates the impact of:
+    1. Prediction uncertainty (adding noise to probabilities)
+    2. Transaction costs and slippage
+    3. Random market conditions (bootstrapping)
+    
+    Args:
+        y_true: True direction labels (0/1 or -1/1)
+        y_pred: Predicted probabilities
+        prices: Price series for return calculations
+        n_simulations: Number of Monte Carlo runs
+        costs: TransactionCosts object (None = no costs)
+        confidence_noise: Std dev of noise to add to predictions
+        random_seed: Random seed for reproducibility
+    
+    Returns:
+        MonteCarloResult with statistics
+    """
+    if random_seed is not None:
+        np.random.seed(random_seed)
+    
+    if costs is None:
+        costs = TransactionCosts()
+    
+    # Convert to binary
+    y_true_binary = (np.array(y_true) > 0).astype(int)
+    
+    # Calculate returns
+    returns = np.diff(prices) / prices[:-1]
+    returns = returns[:min(len(returns), len(y_pred))]
+    y_pred = y_pred[:len(returns)]
+    y_true_binary = y_true_binary[:len(returns)]
+    
+    sharpe_ratios = []
+    total_returns = []
+    
+    for _ in range(n_simulations):
+        # Add noise to predictions (simulate uncertainty)
+        noisy_pred = y_pred + np.random.normal(0, confidence_noise, len(y_pred))
+        noisy_pred = np.clip(noisy_pred, 0, 1)
+        
+        # Bootstrap sampling (simulate different market samples)
+        bootstrap_idx = np.random.choice(len(returns), len(returns), replace=True)
+        boot_returns = returns[bootstrap_idx]
+        boot_pred = noisy_pred[bootstrap_idx]
+        
+        # Generate positions based on predictions
+        positions = (boot_pred > 0.5).astype(int)
+        
+        # Calculate strategy returns
+        strategy_returns = boot_returns * (2 * positions - 1)
+        
+        # Apply transaction costs
+        strategy_returns = apply_transaction_costs(
+            strategy_returns,
+            positions,
+            costs,
+        )
+        
+        # Calculate metrics
+        if np.std(strategy_returns) > 0:
+            sharpe = np.sqrt(252) * np.mean(strategy_returns) / np.std(strategy_returns)
+        else:
+            sharpe = 0.0
+        
+        total_return = np.prod(1 + strategy_returns) - 1
+        
+        sharpe_ratios.append(sharpe)
+        total_returns.append(total_return)
+    
+    sharpe_array = np.array(sharpe_ratios)
+    returns_array = np.array(total_returns)
+    
+    # Calculate statistics
+    mean_sharpe = float(np.mean(sharpe_array))
+    std_sharpe = float(np.std(sharpe_array))
+    percentile_5 = float(np.percentile(sharpe_array, 5))
+    percentile_95 = float(np.percentile(sharpe_array, 95))
+    
+    prob_positive_sharpe = float(np.mean(sharpe_array > 0))
+    prob_positive_return = float(np.mean(returns_array > 0))
+    
+    return MonteCarloResult(
+        mean_sharpe=mean_sharpe,
+        std_sharpe=std_sharpe,
+        percentile_5=percentile_5,
+        percentile_95=percentile_95,
+        confidence_interval_95=(percentile_5, percentile_95),
+        all_sharpe_ratios=sharpe_array,
+        all_total_returns=returns_array,
+        probability_positive_sharpe=prob_positive_sharpe,
+        probability_positive_return=prob_positive_return,
+    )
+
+
+def run_monte_carlo_walkforward(
+    model_fn,
+    X: np.ndarray,
+    y: np.ndarray,
+    prices: np.ndarray,
+    n_splits: int = 5,
+    n_simulations: int = 1000,
+    costs: Optional[TransactionCosts] = None,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    Run walk-forward validation with Monte Carlo simulation for each fold.
+    
+    Args:
+        model_fn: Function that returns a compiled model
+        X: Features
+        y: Targets
+        prices: Price series
+        n_splits: Number of walk-forward splits
+        n_simulations: Monte Carlo simulations per fold
+        costs: Transaction costs
+        **kwargs: Additional arguments for walk-forward
+    
+    Returns:
+        Dictionary with walk-forward results and Monte Carlo statistics
+    """
+    import tensorflow as tf
+    
+    # Run standard walk-forward
+    wf_summary = run_walkforward_analysis(
+        model_fn, X, y, prices, n_splits=n_splits, **kwargs
+    )
+    
+    # Run Monte Carlo on each fold
+    mc_results = []
+    validator = WalkForwardValidator(n_splits=n_splits)
+    
+    for fold, (train_idx, val_idx, test_idx) in enumerate(validator.split(X)):
+        logger.info(f"Running Monte Carlo for fold {fold + 1}/{n_splits}...")
+        
+        X_test = X[test_idx]
+        y_test = y[test_idx] if not isinstance(y, dict) else y['direction'][test_idx]
+        prices_test = prices[test_idx]
+        
+        # Train model for this fold
+        model = model_fn()
+        X_train = X[train_idx]
+        y_train = y[train_idx] if not isinstance(y, dict) else {k: v[train_idx] for k, v in y.items()}
+        X_val = X[val_idx]
+        y_val = y[val_idx] if not isinstance(y, dict) else {k: v[val_idx] for k, v in y.items()}
+        
+        model.fit(X_train, y_train, validation_data=(X_val, y_val), verbose=0, epochs=50)
+        
+        # Get predictions
+        y_pred = model.predict(X_test, verbose=0)
+        if isinstance(y_pred, dict):
+            y_pred = y_pred.get('direction', y_pred)
+        
+        # Run Monte Carlo
+        mc_result = monte_carlo_simulation(
+            y_test.flatten(),
+            y_pred.flatten(),
+            prices_test,
+            n_simulations=n_simulations,
+            costs=costs,
+        )
+        
+        mc_results.append({
+            'fold': fold + 1,
+            'mean_sharpe': mc_result.mean_sharpe,
+            'sharpe_ci_95': mc_result.confidence_interval_95,
+            'prob_positive_sharpe': mc_result.probability_positive_sharpe,
+            'prob_positive_return': mc_result.probability_positive_return,
+        })
+        
+        logger.info(
+            f"  Fold {fold + 1} MC: Sharpe {mc_result.mean_sharpe:.3f} "
+            f"(95% CI: {mc_result.confidence_interval_95[0]:.3f} - {mc_result.confidence_interval_95[1]:.3f})"
+        )
+        
+        # Clean up
+        del model
+        tf.keras.backend.clear_session()
+    
+    # Aggregate Monte Carlo results
+    all_sharpes = [r['mean_sharpe'] for r in mc_results]
+    aggregate_prob_positive = np.mean([r['prob_positive_sharpe'] for r in mc_results])
+    
+    logger.info(f"\n{'='*60}")
+    logger.info("Monte Carlo Aggregate Results")
+    logger.info(f"{'='*60}")
+    logger.info(f"Mean Sharpe across folds: {np.mean(all_sharpes):.3f} ± {np.std(all_sharpes):.3f}")
+    logger.info(f"Probability of positive Sharpe: {aggregate_prob_positive:.1%}")
+    
+    return {
+        'walkforward_summary': wf_summary,
+        'monte_carlo_results': mc_results,
+        'aggregate_sharpe_mean': np.mean(all_sharpes),
+        'aggregate_sharpe_std': np.std(all_sharpes),
+        'probability_profitable': aggregate_prob_positive,
+    }
+
+
+# =============================================================================
 # Testing
 # =============================================================================
 
@@ -747,5 +1021,29 @@ if __name__ == "__main__":
     for name, value in metrics.items():
         print(f"  {name}: {value:.4f}")
     
+    # Test Monte Carlo simulation
+    print("\nMonte Carlo Simulation Test:")
+    mc_result = monte_carlo_simulation(
+        y_true, y_pred, prices,
+        n_simulations=100,
+        costs=TransactionCosts(spread_pips=1.0, slippage_pips=0.5),
+        random_seed=42,
+    )
+    print(f"  Mean Sharpe: {mc_result.mean_sharpe:.4f} ± {mc_result.std_sharpe:.4f}")
+    print(f"  95% CI: [{mc_result.confidence_interval_95[0]:.4f}, {mc_result.confidence_interval_95[1]:.4f}]")
+    print(f"  P(positive Sharpe): {mc_result.probability_positive_sharpe:.2%}")
+    print(f"  P(positive return): {mc_result.probability_positive_return:.2%}")
+    
+    # Test transaction costs
+    print("\nTransaction Costs Test:")
+    returns_test = np.array([0.01, -0.005, 0.008, -0.003, 0.012])
+    positions_test = np.array([1, 1, 0, 1, 1])
+    costs_test = TransactionCosts(spread_pips=1.0, slippage_pips=0.5)
+    adjusted = apply_transaction_costs(returns_test, positions_test, costs_test)
+    print(f"  Original returns: {returns_test}")
+    print(f"  Adjusted returns: {adjusted}")
+    print(f"  Cost impact: {returns_test - adjusted}")
+    
     print("\n✓ Walk-forward validation module ready")
+
 
