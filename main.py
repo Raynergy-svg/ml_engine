@@ -7143,7 +7143,7 @@ def buddy(
     all_features: bool = True,
     verbose: bool = False,
     aggressive_scaling: bool = False,  # Enable $100K→$1M strategy
-    use_rl_sizer: bool = True,  # Use RL-based position sizing (default: enabled)
+    use_rl_sizer: bool = True,  # Use RL-based position sizing. Set False for faster startup (~10s saved)
     intelligent: bool = False,  # Enable LLM-enhanced intelligent mode
     explain: bool = False,  # Generate detailed trade reasoning
     llm_provider: str = "auto",  # LLM provider: ollama|claude|openai|auto
@@ -7157,6 +7157,7 @@ def buddy(
             - Smart order execution (limit orders, split orders)  
             - Intraday compounding
             - Circuit breakers (drawdown limits, losing streaks)
+        use_rl_sizer: Enable RL-based position sizing. Disable (--no-use-rl-sizer) for ~10s faster startup
         intelligent: Enable LLM-enhanced intelligent mode
         explain: Generate detailed trade reasoning
         llm_provider: LLM provider (ollama|claude|openai|auto)

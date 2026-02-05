@@ -97,24 +97,71 @@ except ImportError:
 
 # RL position sizer availability is checked lazily to avoid TF/PyTorch GPU conflicts
 # The actual import happens only when use_rl_sizer=True and the model is loaded
+# NOTE: stable_baselines3 import can take 9-10+ seconds due to PyTorch dependencies
 RL_AVAILABLE = True  # We assume it's available, actual check is deferred
 RLPositionSizer = None  # Lazy loaded
 RL_MODEL_PATH = Path("trained_data/models/rl_position_sizer.zip")
+RL_IMPORT_TIMEOUT = 30.0  # seconds - skip if import takes longer than this
 
-def _lazy_load_rl_sizer():
-    """Lazy load RLPositionSizer to avoid TF/PyTorch GPU conflicts at import time."""
+def _lazy_load_rl_sizer(timeout: float = RL_IMPORT_TIMEOUT):
+    """
+    Lazy load RLPositionSizer to avoid TF/PyTorch GPU conflicts at import time.
+    
+    This import can take 9-10+ seconds due to PyTorch/stable-baselines3 dependencies.
+    If import takes longer than timeout, we skip RL sizer and use heuristic sizing.
+    
+    Args:
+        timeout: Maximum seconds to wait for import (default: 30s)
+        
+    Returns:
+        Tuple of (RLPositionSizer class, is_available)
+    """
     global RLPositionSizer, RL_AVAILABLE
     if RLPositionSizer is not None:
         return RLPositionSizer, RL_AVAILABLE
-    try:
-        from rl_position_sizing import RLPositionSizer as _RLPositionSizer, RL_MODEL_PATH as _RL_MODEL_PATH
-        RLPositionSizer = _RLPositionSizer
-        RL_AVAILABLE = True
-        return RLPositionSizer, RL_AVAILABLE
-    except ImportError:
+    
+    import time
+    import logging
+    import threading
+    _logger = logging.getLogger(__name__)
+    
+    # Use a thread to allow timeout
+    result = {'sizer': None, 'available': False, 'error': None}
+    
+    def _import_rl():
+        try:
+            from rl_position_sizing import RLPositionSizer as _RLPositionSizer
+            result['sizer'] = _RLPositionSizer
+            result['available'] = True
+        except ImportError as e:
+            result['error'] = str(e)
+    
+    t0 = time.perf_counter()
+    _logger.info("    → Importing rl_position_sizing (may take 10-15s due to PyTorch)...")
+    
+    import_thread = threading.Thread(target=_import_rl, daemon=True)
+    import_thread.start()
+    import_thread.join(timeout=timeout)
+    
+    elapsed = time.perf_counter() - t0
+    
+    if import_thread.is_alive():
+        _logger.warning(f"    → rl_position_sizing import timed out after {timeout:.0f}s, using heuristic sizing")
+        _logger.info("    💡 Tip: Disable RL sizer with --no-rl-sizer for faster startup")
         RL_AVAILABLE = False
-        RLPositionSizer = None
         return None, False
+    
+    if result['available'] and result['sizer'] is not None:
+        RLPositionSizer = result['sizer']
+        RL_AVAILABLE = True
+        _logger.info(f"    → rl_position_sizing imported in {elapsed:.1f}s")
+        return RLPositionSizer, RL_AVAILABLE
+    
+    if result['error']:
+        _logger.warning(f"    → rl_position_sizing import failed: {result['error']}")
+    
+    RL_AVAILABLE = False
+    return None, False
 
 logger = logging.getLogger(__name__)
 
@@ -970,11 +1017,24 @@ class ModularEnsembleInference:
             
             # RL Position Sizer (lazy loaded to avoid TF/PyTorch GPU conflicts)
             if self.use_rl_sizer:
+                import time
+                t_rl_start = time.perf_counter()
+                logger.info("🔄 RL Position Sizer: loading dependencies...")
+                
                 RLSizer, rl_available = _lazy_load_rl_sizer()
+                t_rl_import = time.perf_counter()
+                logger.info(f"  ⏱️ RL dependencies imported in {t_rl_import - t_rl_start:.2f}s")
+                
                 if rl_available and RLSizer is not None:
+                    logger.info("  🔄 Creating RL sizer instance...")
                     self.rl_sizer = RLSizer()
+                    t_rl_create = time.perf_counter()
+                    logger.info(f"  ⏱️ RL instance created in {t_rl_create - t_rl_import:.2f}s")
+                    
+                    logger.info("  🔄 Loading RL model from disk...")
                     if self.rl_sizer.load():
-                        logger.info("✓ RL Position Sizer loaded")
+                        t_rl_load = time.perf_counter()
+                        logger.info(f"✓ RL Position Sizer loaded (total: {t_rl_load - t_rl_start:.2f}s)")
                     else:
                         logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
                         self.rl_sizer = None

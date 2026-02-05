@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import pickle
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -35,7 +36,13 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-# Optional dependencies
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# Optional dependencies - can take 5-10s to import due to PyTorch
+# ============================================================================
+_import_start = time.perf_counter()
+
 try:
     import gymnasium as gym
     from gymnasium import spaces
@@ -54,7 +61,9 @@ except ImportError:
     PPO = None
     SB3_AVAILABLE = False
 
-logger = logging.getLogger(__name__)
+_import_time = time.perf_counter() - _import_start
+if _import_time > 5.0:
+    logger.info(f"rl_position_sizing dependencies loaded in {_import_time:.1f}s (PyTorch is slow to import)")
 
 # Model save path
 RL_MODEL_PATH = Path("trained_data/models/rl_position_sizer.zip")
