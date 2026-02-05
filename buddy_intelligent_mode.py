@@ -397,6 +397,103 @@ NEWS/SENTIMENT:
     return LLMTradeValidation.default_approve()
 
 
+def validate_trade_with_risk_assessment(
+    ticker: str,
+    direction: str,
+    buddy_raw: BuddyRawOutput,
+    price_data: Optional[Dict[str, Any]] = None,
+    news_sentiment: Optional[Dict[str, Any]] = None,
+    market_intel: Optional[Any] = None,
+) -> LLMTradeValidation:
+    """Enhanced trade validation with Phase 5 pre-trade risk assessment.
+    
+    This combines:
+    1. Event risk assessment (economic calendar + LLM)
+    2. Multi-factor risk score
+    3. LLM trade validation
+    
+    Args:
+        ticker: Instrument (e.g., "USD_JPY")
+        direction: Proposed direction ("long" or "short")
+        buddy_raw: Full model output
+        price_data: Technical indicators
+        news_sentiment: Any news/sentiment data
+        market_intel: Optional MarketIntelligence instance
+        
+    Returns:
+        LLMTradeValidation with comprehensive risk-aware decision
+    """
+    risk_flags = []
+    size_multiplier = 1.0
+    
+    # 1. Run pre-trade risk assessment if market_intel available
+    if market_intel is not None:
+        try:
+            # Build context for risk assessment
+            risk_context = {}
+            if price_data:
+                risk_context.update({
+                    'volatility': price_data.get('atr', 0.0),
+                    'atr_pct': price_data.get('atr_pct', price_data.get('atr', 0.0) / price_data.get('last_close', 1.0)),
+                    'rsi': price_data.get('rsi', 50.0),
+                    'adx': price_data.get('adx', 20.0),
+                })
+            if news_sentiment:
+                risk_context['sentiment'] = news_sentiment.get('score', 0.0)
+            
+            can_trade, risk_score, event_risk = market_intel.assess_pre_trade_risk(
+                instrument=ticker,
+                market_context=risk_context,
+                proposed_direction=direction,
+                llm_call_fn=llm_call,
+            )
+            
+            # Check event risk
+            if event_risk and event_risk.avoid_trade:
+                return LLMTradeValidation(
+                    approve=False,
+                    size_multiplier=0.0,
+                    reason=event_risk.reason,
+                    risk_flags=["economic_event"],
+                )
+            
+            # Apply risk score to size multiplier
+            size_multiplier = risk_score.size_multiplier
+            risk_flags.extend(risk_score.factors)
+            
+            # Block if risk score too high
+            if risk_score.recommendation == "avoid":
+                return LLMTradeValidation(
+                    approve=False,
+                    size_multiplier=0.0,
+                    reason=f"Risk score too high ({risk_score.score:.0f}/100): {', '.join(risk_flags)}",
+                    risk_flags=risk_flags,
+                )
+                
+        except Exception as e:
+            logger.debug(f"Risk assessment error: {e}")
+    
+    # 2. Run standard LLM validation
+    validation = validate_trade_with_llm(
+        ticker=ticker,
+        direction=direction,
+        buddy_raw=buddy_raw,
+        price_data=price_data,
+        news_sentiment=news_sentiment,
+    )
+    
+    # 3. Combine size multipliers
+    final_size = validation.size_multiplier * size_multiplier
+    final_flags = list(set(validation.risk_flags + risk_flags))
+    
+    return LLMTradeValidation(
+        approve=validation.approve,
+        size_multiplier=max(0.25, min(1.5, final_size)),  # Clamp to valid range
+        reason=validation.reason,
+        risk_flags=final_flags,
+    )
+
+
 def _extract_trade_call(response: str) -> str:
     """Extract trade call from response with explicit pattern matching.
     

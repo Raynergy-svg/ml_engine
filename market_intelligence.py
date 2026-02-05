@@ -650,6 +650,386 @@ class EconomicCalendar:
 
 
 # =============================================================================
+# PHASE 5: PRE-TRADE RISK ASSESSMENT (LLM-Enhanced)
+# =============================================================================
+
+@dataclass
+class EventRiskAssessment:
+    """Result of LLM-powered event risk assessment."""
+    avoid_trade: bool
+    volatility: str  # 'low', 'medium', 'high', 'extreme'
+    bias: str  # 'bullish', 'bearish', 'none'
+    reason: str
+    event_name: Optional[str] = None
+    minutes_until: Optional[float] = None
+    surprise_direction: Optional[str] = None  # For past events: 'beat', 'miss', 'inline'
+    
+    @classmethod
+    def safe(cls) -> "EventRiskAssessment":
+        """Return safe assessment (no events to worry about)."""
+        return cls(
+            avoid_trade=False,
+            volatility="low",
+            bias="none",
+            reason="No significant events affecting this pair",
+        )
+    
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any], event: Optional[EconomicEvent] = None) -> "EventRiskAssessment":
+        """Create from parsed JSON."""
+        return cls(
+            avoid_trade=bool(d.get("avoid_trade", False)),
+            volatility=d.get("volatility", "medium"),
+            bias=d.get("bias", "none"),
+            reason=d.get("reason", ""),
+            event_name=event.name if event else None,
+            minutes_until=event.minutes_until if event else None,
+            surprise_direction=d.get("surprise_direction"),
+        )
+
+
+@dataclass
+class MultiFactorRiskScore:
+    """Comprehensive risk score combining all factors."""
+    score: float  # 0-100 (higher = more risk)
+    volatility_risk: float  # 0-100
+    event_risk: float  # 0-100
+    drawdown_risk: float  # 0-100
+    sentiment_risk: float  # 0-100
+    time_of_day_risk: float  # 0-100
+    recommendation: str  # 'trade', 'reduce_size', 'avoid'
+    size_multiplier: float  # 0.25 to 1.0
+    factors: List[str]  # List of risk factors
+    
+    @classmethod
+    def low_risk(cls) -> "MultiFactorRiskScore":
+        """Return low risk assessment (safe to trade)."""
+        return cls(
+            score=20.0,
+            volatility_risk=20.0,
+            event_risk=10.0,
+            drawdown_risk=20.0,
+            sentiment_risk=20.0,
+            time_of_day_risk=20.0,
+            recommendation="trade",
+            size_multiplier=1.0,
+            factors=[],
+        )
+
+
+def _format_events_for_prompt(events: List[EconomicEvent]) -> str:
+    """Format events list for LLM prompt."""
+    if not events:
+        return "No upcoming events"
+    
+    lines = []
+    for e in events[:5]:  # Limit to 5 events
+        time_str = f"{int(e.minutes_until)}min" if e.minutes_until > 0 else f"{int(-e.minutes_until)}min ago"
+        actual_str = f" (Actual: {e.actual})" if e.actual else ""
+        forecast_str = f" vs Forecast: {e.forecast}" if e.forecast else ""
+        lines.append(f"- [{e.currency}] {e.name} ({e.impact}) in {time_str}{actual_str}{forecast_str}")
+    
+    return "\n".join(lines)
+
+
+LLM_EVENT_RISK_SYSTEM = """You are an FX economic event risk analyst. Assess how upcoming or recent economic events affect trading safety.
+
+Consider:
+1. Time until event (avoid 30min before, 15min after high-impact)
+2. If event already happened, assess the surprise direction (beat/miss/inline)
+3. Expected volatility level
+4. Directional bias introduced by the event
+
+Respond with JSON only:
+{
+  "avoid_trade": true/false,
+  "volatility": "low" | "medium" | "high" | "extreme",
+  "bias": "bullish" | "bearish" | "none",
+  "surprise_direction": "beat" | "miss" | "inline" | null,
+  "reason": "Brief explanation"
+}"""
+
+
+def assess_event_risk(
+    events: List[EconomicEvent],
+    instrument: str,
+    llm_call_fn: Optional[Callable] = None,
+) -> EventRiskAssessment:
+    """
+    Use LLM to assess risk from upcoming/recent economic events.
+    
+    This is Phase 5.1 from LLM_INTEGRATION_PLAN.md.
+    
+    Args:
+        events: List of economic events affecting the instrument
+        instrument: Currency pair (e.g., "USD_JPY")
+        llm_call_fn: Optional LLM call function (defaults to trying buddy_intelligent_mode)
+        
+    Returns:
+        EventRiskAssessment with avoid_trade, volatility, bias, reason
+    """
+    # Quick return if no events
+    if not events:
+        return EventRiskAssessment.safe()
+    
+    # Filter to relevant events (next 2 hours or just happened)
+    relevant = [e for e in events if -30 <= e.minutes_until <= 120]
+    if not relevant:
+        return EventRiskAssessment.safe()
+    
+    # Check for high-impact events first (quick rule-based check)
+    high_impact = [e for e in relevant if e.is_high_impact]
+    for e in high_impact:
+        if 0 <= e.minutes_until <= 30:
+            return EventRiskAssessment(
+                avoid_trade=True,
+                volatility="extreme",
+                bias="none",
+                reason=f"High-impact event '{e.name}' in {int(e.minutes_until)} minutes",
+                event_name=e.name,
+                minutes_until=e.minutes_until,
+            )
+        if -15 <= e.minutes_until < 0:
+            return EventRiskAssessment(
+                avoid_trade=True,
+                volatility="extreme",
+                bias="none",
+                reason=f"High-impact event '{e.name}' just occurred {int(-e.minutes_until)} minutes ago",
+                event_name=e.name,
+                minutes_until=e.minutes_until,
+            )
+    
+    # For edge cases (30-60 min before, or medium-impact), use LLM if available
+    if llm_call_fn is None:
+        try:
+            from buddy_intelligent_mode import llm_call
+            llm_call_fn = llm_call
+        except ImportError:
+            # No LLM available, use rule-based assessment
+            for e in relevant:
+                if e.is_high_impact and e.minutes_until <= 60:
+                    return EventRiskAssessment(
+                        avoid_trade=False,
+                        volatility="high",
+                        bias="none",
+                        reason=f"High-impact event '{e.name}' in {int(e.minutes_until)} minutes - trade with caution",
+                        event_name=e.name,
+                        minutes_until=e.minutes_until,
+                    )
+            return EventRiskAssessment.safe()
+    
+    # Build LLM prompt
+    events_formatted = _format_events_for_prompt(relevant)
+    prompt = f"""Assess event risk for {instrument}:
+
+Current time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
+
+Upcoming/Recent Events:
+{events_formatted}
+
+Should I avoid trading right now? Respond with JSON:"""
+
+    response = llm_call_fn(
+        prompt=prompt,
+        system_prompt=LLM_EVENT_RISK_SYSTEM,
+        temperature=0.1,
+    )
+    
+    if response is None:
+        # Fallback to rule-based
+        return EventRiskAssessment.safe()
+    
+    # Parse JSON response
+    try:
+        import re
+        json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+        if json_match:
+            result = json.loads(json_match.group())
+            closest_event = min(relevant, key=lambda e: abs(e.minutes_until))
+            return EventRiskAssessment.from_dict(result, closest_event)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"Failed to parse LLM event risk response: {e}")
+    
+    return EventRiskAssessment.safe()
+
+
+LLM_RISK_SCORE_SYSTEM = """You are a comprehensive FX trading risk assessor. Compute an overall risk score (0-100) considering ALL factors.
+
+Factors to consider:
+1. Market volatility (ATR, recent range)
+2. Economic events (upcoming/recent)
+3. Recent drawdown/streak
+4. Sentiment alignment/contradiction
+5. Time of day (session, liquidity)
+
+Risk score interpretation:
+- 0-25: Low risk - trade normally
+- 25-50: Moderate risk - consider smaller size
+- 50-75: High risk - reduce size significantly or avoid
+- 75-100: Extreme risk - do not trade
+
+Respond with JSON only:
+{
+  "score": 0-100,
+  "volatility_risk": 0-100,
+  "event_risk": 0-100,
+  "drawdown_risk": 0-100,
+  "sentiment_risk": 0-100,
+  "time_of_day_risk": 0-100,
+  "recommendation": "trade" | "reduce_size" | "avoid",
+  "size_multiplier": 0.25 to 1.0,
+  "factors": ["list", "of", "concerns"]
+}"""
+
+
+def compute_llm_risk_score(
+    context: Dict[str, Any],
+    llm_call_fn: Optional[Callable] = None,
+) -> MultiFactorRiskScore:
+    """
+    Use LLM to compute comprehensive 0-100 risk score considering ALL factors.
+    
+    This is Phase 5.2 from LLM_INTEGRATION_PLAN.md.
+    
+    Args:
+        context: Dict containing:
+            - instrument: Currency pair
+            - volatility: ATR or volatility measure
+            - events: List of upcoming events or event summary
+            - recent_drawdown: Recent drawdown percentage
+            - sentiment: Sentiment score (-1 to 1)
+            - rsi: Current RSI
+            - adx: Current ADX
+            - time_of_day: Current hour (UTC)
+            - recent_win_rate: Optional recent win rate
+        llm_call_fn: Optional LLM call function
+        
+    Returns:
+        MultiFactorRiskScore with comprehensive risk assessment
+    """
+    # Quick risk calculation without LLM
+    score = 20.0  # Base score
+    factors = []
+    
+    # Volatility risk
+    volatility = context.get('volatility', 0.0)
+    atr_pct = context.get('atr_pct', volatility)
+    volatility_risk = min(100, atr_pct * 2000)  # 5% ATR = 100 risk
+    if atr_pct > 0.02:
+        factors.append(f"High volatility ({atr_pct:.1%})")
+    
+    # Event risk
+    event_risk = 10.0
+    events = context.get('events', [])
+    event_summary = context.get('event_summary', '')
+    if events or 'high-impact' in str(event_summary).lower():
+        event_risk = 60.0
+        factors.append("High-impact event nearby")
+    
+    # Drawdown risk
+    drawdown_risk = 20.0
+    recent_dd = context.get('recent_drawdown', 0.0)
+    if recent_dd > 0.03:
+        drawdown_risk = min(100, recent_dd * 2000)
+        factors.append(f"Recent drawdown ({recent_dd:.1%})")
+    
+    # Sentiment risk (contradiction = high risk)
+    sentiment_risk = 20.0
+    sentiment = context.get('sentiment', 0.0)
+    direction = context.get('proposed_direction', 'long')
+    if (direction == 'long' and sentiment < -0.5) or (direction == 'short' and sentiment > 0.5):
+        sentiment_risk = 70.0
+        factors.append("Sentiment contradicts direction")
+    
+    # Time of day risk
+    time_risk = 20.0
+    hour = context.get('time_of_day', datetime.utcnow().hour)
+    if 21 <= hour or hour < 1:  # Late US/early Asia gap
+        time_risk = 40.0
+        factors.append("Low liquidity session")
+    
+    # Compute overall score
+    score = (volatility_risk * 0.25 + event_risk * 0.25 + drawdown_risk * 0.20 + 
+             sentiment_risk * 0.15 + time_risk * 0.15)
+    
+    # Try LLM for edge cases (score 40-70 range)
+    if llm_call_fn is None and 40 <= score <= 70:
+        try:
+            from buddy_intelligent_mode import llm_call
+            llm_call_fn = llm_call
+        except ImportError:
+            pass
+    
+    if llm_call_fn is not None and 40 <= score <= 70:
+        prompt = f"""Compute risk score for {context.get('instrument', 'FX pair')}:
+
+Context:
+- Volatility (ATR%): {atr_pct:.2%}
+- RSI: {context.get('rsi', 'N/A')}
+- ADX: {context.get('adx', 'N/A')}
+- Events: {event_summary or 'None imminent'}
+- Sentiment: {sentiment:+.2f}
+- Proposed Direction: {direction}
+- Recent Drawdown: {recent_dd:.1%}
+- Time (UTC): {hour}:00
+
+Current rule-based score: {score:.0f}
+Identified factors: {factors}
+
+Provide your assessment as JSON:"""
+
+        response = llm_call_fn(
+            prompt=prompt,
+            system_prompt=LLM_RISK_SCORE_SYSTEM,
+            temperature=0.1,
+        )
+        
+        if response:
+            try:
+                import re
+                json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
+                if json_match:
+                    result = json.loads(json_match.group())
+                    return MultiFactorRiskScore(
+                        score=float(result.get('score', score)),
+                        volatility_risk=float(result.get('volatility_risk', volatility_risk)),
+                        event_risk=float(result.get('event_risk', event_risk)),
+                        drawdown_risk=float(result.get('drawdown_risk', drawdown_risk)),
+                        sentiment_risk=float(result.get('sentiment_risk', sentiment_risk)),
+                        time_of_day_risk=float(result.get('time_of_day_risk', time_risk)),
+                        recommendation=result.get('recommendation', 'trade'),
+                        size_multiplier=max(0.25, min(1.0, float(result.get('size_multiplier', 1.0)))),
+                        factors=result.get('factors', factors),
+                    )
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.debug(f"Failed to parse LLM risk score: {e}")
+    
+    # Return rule-based score
+    recommendation = "trade"
+    size_mult = 1.0
+    if score > 75:
+        recommendation = "avoid"
+        size_mult = 0.0
+    elif score > 50:
+        recommendation = "reduce_size"
+        size_mult = 0.5
+    elif score > 35:
+        size_mult = 0.75
+    
+    return MultiFactorRiskScore(
+        score=score,
+        volatility_risk=volatility_risk,
+        event_risk=event_risk,
+        drawdown_risk=drawdown_risk,
+        sentiment_risk=sentiment_risk,
+        time_of_day_risk=time_risk,
+        recommendation=recommendation,
+        size_multiplier=size_mult,
+        factors=factors,
+    )
+
+
+# =============================================================================
 # ONLINE LEARNING (INCREMENTAL UPDATES)
 # =============================================================================
 
@@ -1739,6 +2119,55 @@ class MarketIntelligence:
         y = np.concatenate(y_parts)
         
         return X, y
+    
+    def assess_pre_trade_risk(
+        self,
+        instrument: str,
+        market_context: Optional[Dict[str, Any]] = None,
+        proposed_direction: str = "long",
+        llm_call_fn: Optional[Callable] = None,
+    ) -> Tuple[bool, MultiFactorRiskScore, Optional[EventRiskAssessment]]:
+        """
+        Comprehensive pre-trade risk assessment (Phase 5).
+        
+        Combines:
+        1. Economic event risk assessment (LLM-enhanced)
+        2. Multi-factor risk score (volatility, sentiment, time, etc.)
+        
+        Args:
+            instrument: Currency pair
+            market_context: Dict with volatility, RSI, ADX, sentiment, etc.
+            proposed_direction: 'long' or 'short'
+            llm_call_fn: Optional LLM call function
+            
+        Returns:
+            Tuple of (can_trade, risk_score, event_risk)
+        """
+        market_context = market_context or {}
+        market_context['instrument'] = instrument
+        market_context['proposed_direction'] = proposed_direction
+        
+        # 1. Assess event risk
+        event_risk = None
+        if self.calendar:
+            events = self.calendar.fetch_events(instrument, hours_ahead=4)
+            event_risk = assess_event_risk(events, instrument, llm_call_fn)
+            
+            # Block trade if event risk says avoid
+            if event_risk.avoid_trade:
+                return False, MultiFactorRiskScore.low_risk(), event_risk
+            
+            # Add event info to context
+            market_context['events'] = events
+            market_context['event_summary'] = event_risk.reason
+        
+        # 2. Compute multi-factor risk score
+        risk_score = compute_llm_risk_score(market_context, llm_call_fn)
+        
+        # 3. Determine if we should trade
+        can_trade = risk_score.recommendation != "avoid"
+        
+        return can_trade, risk_score, event_risk
 
 
 # =============================================================================
