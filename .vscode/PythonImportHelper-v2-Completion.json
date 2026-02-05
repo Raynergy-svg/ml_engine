@@ -18708,7 +18708,7 @@
         "kind": 2,
         "importPath": "main",
         "description": "main",
-        "peekOfCode": "def main() -> None:\n    \"\"\"Main CLI entry point.\"\"\"\n    parser = create_argument_parser()\n    # (The installed `buddy` launcher calls: python main.py buddy ...)\n    if _maybe_run_buddy_interactive_wizard(default_config=DEFAULT_CONFIG_PATH):\n        return\n    if len(sys.argv) == 1:\n        parser.print_help()\n        sys.exit(0)\n    args = parser.parse_args()",
+        "peekOfCode": "def main() -> None:\n    \"\"\"Main CLI entry point.\"\"\"\n    parser = create_argument_parser(DEFAULT_CONFIG_PATH)\n            )\n        elif args.command in {\"buddy\", \"Buddy\"}:\n            _dispatch_buddy(args, command_map)\n        elif args.command == \"promote-model\":\n            promote_model(args.config)\n        elif args.command == \"model-status\":\n            model_status(args.config)",
         "detail": "main",
         "documentation": {}
     },
