@@ -1237,9 +1237,14 @@ class BuddyScanner:
             # Compute features
             df = self._compute_features(df_raw)
             
-            # Store returns for correlation analysis
+            # Store returns for correlation analysis (with validation)
             if "close" in df.columns:
-                self._pair_returns[pair] = df["close"].pct_change().dropna()
+                returns = df["close"].pct_change().dropna()
+                # Validate: must have at least 20 data points and no all-NaN
+                if len(returns) >= 20 and not returns.isna().all():
+                    self._pair_returns[pair] = returns
+                else:
+                    logger.debug(f"Insufficient return data for {pair}: {len(returns)} points")
             
             # Run inference (pass both raw and featured for 78% model compatibility)
             direction, confidence, tcn_conf, ridge_conf, gates_passed = self._run_inference(df_raw, df, pair)
