@@ -296,6 +296,7 @@ def _initialize_registry_with_imports() -> None:
         TransformerDirectionTrainer,
         TransformerRegimeTrainer,
         TCNTrainer,
+        TCNVolatilityRegimeTrainer,  # NEW: Research-backed TCN for 4-class volatility regime
         XGBoostTrainer,
         RandomForestTrainer,
         RidgeTrainer,
@@ -321,7 +322,8 @@ def _initialize_registry_with_imports() -> None:
     MODEL_REGISTRY['tcn_direction'].trainer_class = TCNTrainer
     MODEL_REGISTRY['tcn_direction'].data_loader_func = load_tcn_data
 
-    MODEL_REGISTRY['tcn_volatility_regime'].trainer_class = TCNTrainer
+    # TCN Volatility Regime: Uses specialized trainer with research-backed architecture
+    MODEL_REGISTRY['tcn_volatility_regime'].trainer_class = TCNVolatilityRegimeTrainer
     MODEL_REGISTRY['tcn_volatility_regime'].data_loader_func = load_volatility_regime_data
 
     MODEL_REGISTRY['transformer_regime'].trainer_class = TransformerRegimeTrainer

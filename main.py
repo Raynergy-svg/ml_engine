@@ -947,10 +947,18 @@ def _buddy_interactive_wizard(*, default_config: str = DEFAULT_CONFIG_PATH) -> N
 
 def _configure_predict_output(verbose: bool) -> None:
     """Reduce log/warning noise for interactive predict runs."""
+    import os
+    import warnings
+    
+    # Suppress TensorFlow C++ logs
+    os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+    
+    # Suppress TensorFlow retracing warnings
+    warnings.filterwarnings("ignore", message=".*triggered tf.function retracing.*")
+    warnings.filterwarnings("ignore", message=".*reduce_retracing.*")
+    
     if verbose:
         return
-
-    import warnings
 
     # Keep common third-party warnings from drowning out the prediction output.
     # (Seen on macOS system Python where ssl is LibreSSL.)
@@ -971,8 +979,16 @@ def _configure_predict_output(verbose: bool) -> None:
     for name in (
         "utils",
         "reasoning_enhanced",
+        "src.training.modular_trainers",
+        "src.core.modular_inference",
+        "modular_trainers",
+        "modular_inference",
+        "tensorflow",
+        "absl",
     ):
-        logging.getLogger(name).setLevel(logging.WARNING)
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.ERROR)
+        logger.propagate = False
 
 
 def _tf_env_flag(name: str) -> str | None:
@@ -2486,6 +2502,9 @@ def _train_buddy_impl(
             regime_lookback = transformer_cfg.get("regime_lookback", 20)  # 20 bars lookback
             regime_lookahead = transformer_cfg.get("regime_lookahead", 12)  # 12 bars lookahead
             
+            # Check if TCN Volatility Regime is enabled
+            tcn_regime_enabled = cfg.get("tcn_regime", {}).get("enabled", False)
+            
             # Model architecture table
             arch_table = Table(show_header=True, header_style="bold cyan", box=None)
             arch_table.add_column("Model", style="white", width=15)
@@ -2504,6 +2523,10 @@ def _train_buddy_impl(
                 arch_table.add_row("XGBoost", "Momentum Analysis", "momentum_score, acceleration")
                 arch_table.add_row("Random Forest", "Risk Assessment", "expected_drawdown, streak_prob")
                 arch_table.add_row("Ridge", "Confidence Scoring", "confidence (0-100)")
+            
+            # Add TCN Forward Volatility if enabled
+            if tcn_regime_enabled:
+                arch_table.add_row("TCN Forward Vol", "Volatility Prediction", "QUIET_NEXT / STABLE_NEXT / ACTIVE_NEXT / EXTREME_NEXT")
             
             console.print(Panel(arch_table, title="[bold]Model Architecture[/bold]", border_style="yellow"))
             console.print()
@@ -2990,6 +3013,132 @@ def _train_buddy_impl(
                 console.print("[yellow]🔥 Hybrid voting ENABLED: Transformer + HistGB will vote together[/yellow]")
             
             # ============================================================
+            # TRAIN TCN FORWARD VOLATILITY (Optional - for entry timing)
+            # ============================================================
+            # Forward-looking volatility regime classifier (predicts FUTURE regime)
+            # Success criteria: >70% accuracy, >0.60 F1 minority, no collapse to single class
+            tcn_regime_cfg = cfg.get("tcn_regime", {})
+            train_tcn_regime = tcn_regime_cfg.get("enabled", False)
+            tcn_regime_metrics = None
+            
+            if train_tcn_regime:
+                console.print()
+                console.print(Panel(
+                    "[bold]Training TCN Forward Volatility Classifier[/bold]\n\n"
+                    "[dim]Architecture:[/dim] Dilated causal convolutions with dual-head (classification + regression)\n"
+                    "[dim]Classes:[/dim] QUIET_NEXT (0), STABLE_NEXT (1), ACTIVE_NEXT (2), EXTREME_NEXT (3)\n"
+                    "[dim]Purpose:[/dim] Entry timing filter - only trade when STABLE_NEXT or ACTIVE_NEXT predicted\n\n"
+                    "[bold cyan]Forward-Looking Design:[/bold cyan]\n"
+                    "  • 48-bar lookahead (2 days for H1)\n"
+                    "  • Predicts FUTURE volatility regime, not current\n"
+                    "  • Dual-head: classification + regression fallback\n\n"
+                    "[bold cyan]Success Criteria:[/bold cyan]\n"
+                    "  • >70% overall accuracy\n"
+                    "  • >0.60 F1-score for all classes (no collapse)\n"
+                    "  • All 4 classes represented in predictions",
+                    title="Step 5 (TCN Forward Volatility)",
+                    border_style="magenta",
+                ))
+                
+                try:
+                    # Import TCN Volatility Regime trainer
+                    from src.training.modular_trainers import TCNVolatilityRegimeTrainer
+                    from src.core.modular_data_loaders import load_forward_volatility_data
+                    
+                    # Load forward-looking volatility regime data
+                    console.print("[dim]Loading forward volatility regime data (48-bar lookahead)...[/dim]")
+                    vol_regime_data = load_forward_volatility_data(
+                        df_normalized if 'df_normalized' in dir() else feature_df,
+                        split=(train_frac, val_frac, test_frac),
+                        seq_len=seq_len,
+                        lookahead_bars=tcn_regime_cfg.get("lookahead_bars", 48),
+                        quiet_percentile=tcn_regime_cfg.get("quiet_percentile", 25),
+                        stable_percentile=tcn_regime_cfg.get("stable_percentile", 60),
+                        active_percentile=tcn_regime_cfg.get("active_percentile", 85),
+                    )
+                    
+                    # Show dataset info for TCN Regime (consistent with ensemble summary)
+                    n_train = len(vol_regime_data['X_train'])
+                    n_val = len(vol_regime_data['X_val'])
+                    n_features = len(vol_regime_data.get('feature_names', []))
+                    stats = vol_regime_data.get('label_stats', {})
+                    dist_str = f"Q={stats.get('QUIET_NEXT', 0):.0%} S={stats.get('STABLE_NEXT', 0):.0%} A={stats.get('ACTIVE_NEXT', 0):.0%} E={stats.get('EXTREME_NEXT', 0):.0%}"
+                    console.print(f"[cyan]📊 TCN Forward Vol: Train={n_train:,}, Val={n_val:,}, Features={n_features}, {dist_str}[/cyan]")
+                    
+                    # Create TCN config with research-backed parameters
+                    tcn_config = TrainerConfig(
+                        epochs=tcn_regime_cfg.get("epochs", 150),
+                        batch_size=tcn_regime_cfg.get("batch_size", batch_size),
+                        learning_rate=tcn_regime_cfg.get("learning_rate", 0.001),
+                        patience=tcn_regime_cfg.get("early_stopping_patience", 25),
+                        verbose=int(fit_verbose),
+                        checkpoint_dir=str(pair_paths['pair_dir'] / "checkpoints") if training_instrument != "GENERIC" else "trained_data/checkpoints",
+                        # TCN-specific settings from config
+                        tcn_kernel_size=tcn_regime_cfg.get("kernel_size", 5),
+                        tcn_num_filters=tcn_regime_cfg.get("num_filters", 64),
+                        tcn_num_residual_blocks=tcn_regime_cfg.get("num_residual_blocks", 5),
+                        tcn_dilation_base=tcn_regime_cfg.get("dilation_base", 2),
+                        tcn_dropout=tcn_regime_cfg.get("dropout", 0.2),
+                        tcn_weight_norm=tcn_regime_cfg.get("weight_norm", True),
+                    )
+                    
+                    # Train TCN Volatility Regime
+                    tcn_regime_trainer = TCNVolatilityRegimeTrainer(tcn_config)
+                    tcn_regime_metrics = tcn_regime_trainer.train(
+                        vol_regime_data['X_train'], vol_regime_data['y_train'],
+                        vol_regime_data['X_val'], vol_regime_data['y_val'],
+                        feature_names=vol_regime_data.get('feature_names', []),
+                        class_weights=vol_regime_data.get('class_weights'),
+                    )
+                    
+                    # Save model
+                    tcn_regime_path = pair_paths['pair_dir'] / "tcn_volatility_regime.keras"
+                    tcn_regime_trainer.save(str(tcn_regime_path))
+                    if training_instrument != "GENERIC":
+                        tcn_regime_trainer.save(str(model_dir / "tcn_volatility_regime.keras"))
+                    all_metrics['tcn_regime'] = tcn_regime_metrics
+                    
+                    # Check success criteria
+                    success_cfg = tcn_regime_cfg.get("success_criteria", {})
+                    min_acc = success_cfg.get("min_accuracy", 0.70)
+                    min_f1 = success_cfg.get("min_f1_all_classes", 0.60)
+                    
+                    val_acc = tcn_regime_metrics.get('val_accuracy', 0)
+                    f1_quiet = tcn_regime_metrics.get('f1_QUIET_NEXT', 0)
+                    f1_stable = tcn_regime_metrics.get('f1_STABLE_NEXT', 0)
+                    f1_active = tcn_regime_metrics.get('f1_ACTIVE_NEXT', 0)
+                    f1_extreme = tcn_regime_metrics.get('f1_EXTREME_NEXT', 0)
+                    class_balance = tcn_regime_metrics.get('class_balance', {})
+                    
+                    # Display results with success criteria check
+                    console.print(f"\n[bold]TCN Forward Volatility Results:[/bold]")
+                    acc_status = "✓" if val_acc >= min_acc else "✗"
+                    console.print(f"  [{acc_status == '✓' and 'green' or 'red'}]{acc_status}[/] Accuracy: {val_acc:.1%} (target: ≥{min_acc:.0%})")
+                    
+                    f1_min = min(f1_quiet, f1_stable, f1_active, f1_extreme)
+                    f1_status = "✓" if f1_min >= min_f1 else "✗"
+                    console.print(f"  [{f1_status == '✓' and 'green' or 'red'}]{f1_status}[/] F1 All Classes: Q={f1_quiet:.2f} S={f1_stable:.2f} A={f1_active:.2f} E={f1_extreme:.2f} (target: all ≥{min_f1:.2f})")
+                    
+                    # Check for prediction collapse (no class < 5% of predictions)
+                    collapse_check = all(v >= 0.05 for v in class_balance.values()) if class_balance else True
+                    collapse_status = "✓" if collapse_check else "✗"
+                    if class_balance:
+                        bal_str = " ".join([f"{k[:1]}={v:.0%}" for k, v in class_balance.items()])
+                        console.print(f"  [{collapse_status == '✓' and 'green' or 'red'}]{collapse_status}[/] No Collapse: {bal_str} (target: all ≥5%)")
+                    
+                    if acc_status == "✓" and f1_status == "✓" and collapse_status == "✓":
+                        console.print("[bold green]✓ ALL SUCCESS CRITERIA MET![/bold green]")
+                    else:
+                        console.print("[yellow]⚠ Some criteria not met - consider more training data or hyperparameter tuning[/yellow]")
+                    
+                    console.print(f"[cyan]💾 TCN Volatility Regime saved to: {tcn_regime_path}[/cyan]")
+                    
+                except Exception as e:
+                    import traceback
+                    console.print(f"[red]✗ TCN Volatility Regime training failed: {e}[/red]")
+                    console.print(f"[dim]{traceback.format_exc()}[/dim]")
+            
+            # ============================================================
             # SAVE METADATA
             # ============================================================
             if use_regime:
@@ -3112,6 +3261,14 @@ def _train_buddy_impl(
             perf_table.add_row("", "L1 Ratio", f"{ridge_metrics.get('best_l1_ratio', 0.5):.2f}")
             perf_table.add_row("", "Features (sparse)", f"{ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
             
+            # Add TCN Regime metrics if trained
+            if tcn_regime_metrics is not None:
+                perf_table.add_row("TCN Regime", "Val Accuracy", f"{tcn_regime_metrics.get('val_accuracy', 0):.1%}")
+                perf_table.add_row("", "F1 Macro", f"{tcn_regime_metrics.get('val_f1_macro', 0):.3f}")
+                perf_table.add_row("", "F1 HIGH", f"{tcn_regime_metrics.get('val_f1_high', 0):.3f}")
+                perf_table.add_row("", "F1 EXTREME", f"{tcn_regime_metrics.get('val_f1_extreme', 0):.3f}")
+                perf_table.add_row("", "HIGH/EXT Recall", f"{tcn_regime_metrics.get('high_extreme_accuracy', 0):.1%}")
+            
             console.print(Panel(perf_table, border_style="green"))
             console.print()
             
@@ -3123,6 +3280,8 @@ def _train_buddy_impl(
             artifacts_table.add_row("Momentum", str(pair_paths['xgboost']))
             artifacts_table.add_row("Risk", str(pair_paths['rf']))
             artifacts_table.add_row("Confidence", str(pair_paths['ridge']))
+            if tcn_regime_metrics is not None:
+                artifacts_table.add_row("TCN Regime", str(pair_paths['pair_dir'] / "tcn_volatility_regime.keras"))
             artifacts_table.add_row("Metadata", str(meta_path))
             
             console.print(Panel(artifacts_table, title="[bold]Saved Artifacts[/bold]", border_style="blue"))
@@ -3143,7 +3302,7 @@ def _train_buddy_impl(
                 ))
                 
                 try:
-                    from enterprise_training import (
+                    from src.training.enterprise_training import (
                         StatisticalValidator,
                         WalkForwardValidator,
                         WalkForwardConfig,
@@ -3168,35 +3327,78 @@ def _train_buddy_impl(
                         # Get validation predictions from direction model
                         if not use_regime and hasattr(dir_trainer, 'model') and dir_trainer.model is not None:
                             try:
-                                # Ensure input shape is set for predict
-                                X_val = np.asarray(dir_data['X_val'])
-                                val_preds = dir_trainer.model.predict(X_val, verbose=0)
-                                if len(val_preds.shape) > 1:
-                                    val_preds = val_preds[:, 0] if val_preds.shape[1] == 1 else val_preds
-                                val_preds_binary = (val_preds > 0.5).astype(int).flatten()
-                                val_labels = dir_data['y_val'].flatten()
+                                # Get validation data - raw is 2D, need to create sequences
+                                X_val_raw = np.asarray(dir_data['X_val'])
+                                y_val_raw = np.asarray(dir_data['y_val']).flatten()
+                                w_val_raw = np.asarray(dir_data.get('w_val', np.ones(len(y_val_raw))))
                                 
-                                bootstrap_results = stat_validator.bootstrap_confidence_interval(
-                                    val_labels, val_preds_binary,
-                                    metric_fn=lambda y, p: np.mean(y == p),
-                                    n_bootstrap=bootstrap_samples,
+                                # Get seq_len from trainer (it creates sequences internally)
+                                seq_len = getattr(dir_trainer, 'seq_len', 60)
+                                
+                                # Create sequences just like the trainer does
+                                def create_sequences(X, y, w, seq_len):
+                                    X_seq, y_seq, w_seq = [], [], []
+                                    for i in range(len(X) - seq_len):
+                                        X_seq.append(X[i:i+seq_len])
+                                        y_seq.append(y[i+seq_len-1])
+                                        w_seq.append(w[i+seq_len-1])
+                                    return np.array(X_seq), np.array(y_seq), np.array(w_seq)
+                                
+                                X_val_seq, y_val_seq, w_val_seq = create_sequences(
+                                    X_val_raw, y_val_raw, w_val_raw, seq_len
                                 )
                                 
-                                validation_results.add_row(
-                                    "Bootstrap CI (95%)",
-                                    f"{bootstrap_results['mean']:.2%}",
-                                    f"[{bootstrap_results['ci_lower']:.2%}, {bootstrap_results['ci_upper']:.2%}]"
-                                )
+                                # Filter to only clear labels (weight > 0)
+                                clear_mask = w_val_seq > 0
+                                X_val_filtered = X_val_seq[clear_mask]
+                                y_val_filtered = y_val_seq[clear_mask]
                                 
-                                # Add to metrics
-                                dir_metrics['bootstrap_ci_lower'] = bootstrap_results['ci_lower']
-                                dir_metrics['bootstrap_ci_upper'] = bootstrap_results['ci_upper']
-                                dir_metrics['bootstrap_mean'] = bootstrap_results['mean']
+                                if len(X_val_filtered) > 0:
+                                    # Predict in batch
+                                    val_preds = dir_trainer.model(X_val_filtered, training=False)
+                                    
+                                    # Convert TensorFlow tensor to numpy
+                                    if hasattr(val_preds, 'numpy'):
+                                        val_preds = val_preds.numpy()
+                                    val_preds = np.asarray(val_preds)
+                                    
+                                    # Handle different model output shapes
+                                    if val_preds.ndim > 1:
+                                        if val_preds.shape[1] == 1:
+                                            val_preds = val_preds.flatten()
+                                        else:
+                                            val_preds = val_preds[:, 1] if val_preds.shape[1] == 2 else val_preds[:, 0]
+                                    val_preds_binary = (val_preds > 0.5).astype(int).flatten()
+                                    
+                                    bootstrap_results = stat_validator.bootstrap_confidence_interval(
+                                        metric_fn=lambda y, p: np.mean(y == p),
+                                        y_true=y_val_filtered,
+                                        y_pred=val_preds_binary,
+                                        n_bootstrap=bootstrap_samples,
+                                    )
+                                    
+                                    validation_results.add_row(
+                                        "Bootstrap CI (95%)",
+                                        f"{bootstrap_results['mean']:.2%}",
+                                        f"[{bootstrap_results['ci_lower']:.2%}, {bootstrap_results['ci_upper']:.2%}]"
+                                    )
+                                    
+                                    # Add to metrics
+                                    dir_metrics['bootstrap_ci_lower'] = bootstrap_results['ci_lower']
+                                    dir_metrics['bootstrap_ci_upper'] = bootstrap_results['ci_upper']
+                                    dir_metrics['bootstrap_mean'] = bootstrap_results['mean']
+                                else:
+                                    validation_results.add_row(
+                                        "Bootstrap CI (95%)",
+                                        "[yellow]Skipped[/yellow]",
+                                        "[dim]No clear validation labels after filtering[/dim]"
+                                    )
                             except Exception as bootstrap_err:
+                                logger.warning(f"Bootstrap CI failed: {bootstrap_err}")
                                 validation_results.add_row(
                                     "Bootstrap CI (95%)",
                                     "[yellow]Skipped[/yellow]",
-                                    f"[dim]Model shape incompatible[/dim]"
+                                    f"[dim]{bootstrap_err}[/dim]"
                                 )
                     
                     # 2. Walk-Forward Cross-Validation (if enabled and data sufficient)
@@ -3212,30 +3414,56 @@ def _train_buddy_impl(
                         )
                         wf_validator = WalkForwardValidator(wf_config)
                         
-                        # Combine train+val for CV evaluation
+                        # Combine train+val for CV evaluation (raw 2D data)
                         X_full = np.vstack([dir_data['X_train'], dir_data['X_val']])
                         y_full = np.concatenate([dir_data['y_train'].flatten(), dir_data['y_val'].flatten()])
+                        w_full = np.concatenate([
+                            dir_data.get('w_train', np.ones(len(dir_data['y_train']))).flatten(),
+                            dir_data.get('w_val', np.ones(len(dir_data['y_val']))).flatten()
+                        ])
+                        
+                        # Get seq_len from trainer
+                        cv_seq_len = getattr(dir_trainer, 'seq_len', 60)
                         
                         cv_scores = []
                         with console.status("[bold cyan]Running Walk-Forward CV (evaluation only)...", spinner="dots"):
                             for fold_idx, (train_idx, val_idx) in enumerate(wf_validator.split(X_full)):
-                                X_cv_val = X_full[val_idx]
-                                y_cv_val = y_full[val_idx]
+                                # Get the raw 2D data for this fold
+                                X_cv_val_raw = X_full[val_idx]
+                                y_cv_val_raw = y_full[val_idx]
+                                w_cv_val_raw = w_full[val_idx]
                                 
                                 # EVALUATE the trained model on each fold's validation window
-                                # No retraining - just measure generalization across time
                                 try:
-                                    # Use the already-trained dir_trainer model
-                                    # Model expects 3D input (batch, seq_len, features)
-                                    if len(X_cv_val.shape) == 3:
-                                        y_pred = dir_trainer.model.predict(X_cv_val, verbose=0)
-                                        y_pred_binary = (y_pred > 0.5).astype(float).flatten()
-                                        fold_acc = np.mean(y_pred_binary == y_cv_val)
+                                    # Skip if not enough data for sequences
+                                    if len(X_cv_val_raw) <= cv_seq_len:
+                                        logger.debug(f"CV fold {fold_idx+1} skipped: insufficient data for sequences")
+                                        continue
+                                    
+                                    # Create sequences from 2D data
+                                    X_seq, y_seq, w_seq = [], [], []
+                                    for i in range(len(X_cv_val_raw) - cv_seq_len):
+                                        X_seq.append(X_cv_val_raw[i:i+cv_seq_len])
+                                        y_seq.append(y_cv_val_raw[i+cv_seq_len-1])
+                                        w_seq.append(w_cv_val_raw[i+cv_seq_len-1])
+                                    X_cv_seq = np.array(X_seq)
+                                    y_cv_seq = np.array(y_seq)
+                                    w_cv_seq = np.array(w_seq)
+                                    
+                                    # Filter to clear labels only
+                                    clear_mask = w_cv_seq > 0
+                                    X_cv_filtered = X_cv_seq[clear_mask]
+                                    y_cv_filtered = y_cv_seq[clear_mask]
+                                    
+                                    if len(X_cv_filtered) > 0:
+                                        y_pred = dir_trainer.model(X_cv_filtered, training=False)
+                                        if hasattr(y_pred, 'numpy'):
+                                            y_pred = y_pred.numpy()
+                                        y_pred = np.asarray(y_pred)
+                                        y_pred_binary = (y_pred.flatten() > 0.5).astype(float)
+                                        fold_acc = np.mean(y_pred_binary == y_cv_filtered)
                                         cv_scores.append(fold_acc)
-                                    else:
-                                        logger.warning(f"CV fold {fold_idx+1} skipped: expected 3D input, got {len(X_cv_val.shape)}D")
                                 except Exception as e:
-                                    # Silently skip CV folds that fail - model shape may be incompatible
                                     logger.debug(f"CV fold {fold_idx+1} evaluation failed: {e}")
                         
                         if cv_scores:
@@ -3379,30 +3607,54 @@ def _train_buddy_impl(
                     if train_rl_sizer_enabled:
                         # Prepare RL training data from ensemble training
                         try:
-                            # Get features from direction data (most complete feature set)
-                            rl_features = np.vstack([
-                                dir_data['X_train'],
-                                dir_data['X_val'],
-                            ]).astype(np.float32)
+                            # Direction data is 2D from load_direction_data
+                            # We need to create sequences for model prediction
+                            X_train_dir = np.asarray(dir_data['X_train'])
+                            X_val_dir = np.asarray(dir_data['X_val'])
+                            
+                            # Get seq_len from trainer
+                            rl_seq_len = getattr(dir_trainer, 'seq_len', 60)
+                            
+                            # Create sequences from 2D data
+                            def create_seqs(X, seq_len):
+                                seqs = []
+                                for i in range(len(X) - seq_len):
+                                    seqs.append(X[i:i+seq_len])
+                                return np.array(seqs)
+                            
+                            X_train_seq = create_seqs(X_train_dir, rl_seq_len) if X_train_dir.ndim == 2 else X_train_dir
+                            X_val_seq = create_seqs(X_val_dir, rl_seq_len) if X_val_dir.ndim == 2 else X_val_dir
+                            
+                            # For RL features, use last timestep of each sequence
+                            if X_train_seq.ndim == 3:
+                                rl_features = np.vstack([
+                                    X_train_seq[:, -1, :],  # Last timestep of each sequence
+                                    X_val_seq[:, -1, :],
+                                ]).astype(np.float32)
+                            else:
+                                # Fallback: use raw 2D data
+                                rl_features = np.vstack([
+                                    X_train_dir,
+                                    X_val_dir,
+                                ]).astype(np.float32)
                             
                             # Get ensemble predictions by combining trained models
-                            # Load and predict using trained direction and confidence models
+                            # Use model's direct prediction on the sequenced data
                             rl_direction_probs = np.zeros(len(rl_features))
                             rl_confidences = np.zeros(len(rl_features))
                             
                             # Predict with direction model (Transformer/TCN)
                             try:
-                                if use_transformer:
-                                    dir_preds = dir_trainer.predict(rl_features)
+                                # Use the 3D sequence data we created above
+                                X_full_seq = np.vstack([X_train_seq, X_val_seq])
+                                raw_preds = dir_trainer.model(X_full_seq, training=False)
+                                if hasattr(raw_preds, 'numpy'):
+                                    raw_preds = raw_preds.numpy()
+                                raw_preds = np.asarray(raw_preds)
+                                if raw_preds.ndim > 1:
+                                    rl_direction_probs = raw_preds.flatten()
                                 else:
-                                    dir_preds = dir_trainer.predict(rl_features)
-                                # Extract direction probability
-                                if isinstance(dir_preds, dict):
-                                    rl_direction_probs = dir_preds.get('direction_prob', np.full(len(rl_features), 0.5))
-                                elif hasattr(dir_preds, 'flatten'):
-                                    rl_direction_probs = dir_preds.flatten()
-                                else:
-                                    rl_direction_probs = np.array(dir_preds).flatten()
+                                    rl_direction_probs = raw_preds
                             except Exception as e:
                                 console.print(f"[dim]Using default direction probs: {e}[/dim]")
                                 rl_direction_probs = np.full(len(rl_features), 0.5)
@@ -3410,13 +3662,12 @@ def _train_buddy_impl(
                             # Predict with ridge confidence model
                             try:
                                 ridge_feats = np.vstack([
-                                    ridge_data['X_train'],
-                                    ridge_data['X_val'],
+                                    np.asarray(ridge_data['X_train']),
+                                    np.asarray(ridge_data['X_val']),
                                 ]).astype(np.float32)
-                                conf_preds = ridge_trainer.predict(ridge_feats)
-                                if isinstance(conf_preds, dict):
-                                    rl_confidences = conf_preds.get('confidence', np.full(len(ridge_feats), 50.0))
-                                elif hasattr(conf_preds, 'flatten'):
+                                # Ridge model expects 2D input, predict in batch
+                                conf_preds = ridge_trainer.model.predict(ridge_feats)
+                                if hasattr(conf_preds, 'flatten'):
                                     rl_confidences = conf_preds.flatten()
                                 else:
                                     rl_confidences = np.array(conf_preds).flatten()
@@ -3426,8 +3677,13 @@ def _train_buddy_impl(
                                 console.print(f"[dim]Using default confidences: {e}[/dim]")
                                 rl_confidences = np.full(len(rl_features), 0.5)
                             
-                            # Ensure arrays are same length
+                            # Ensure arrays are same length (different models have different sequence lengths)
                             min_len = min(len(rl_direction_probs), len(rl_confidences), len(rl_features))
+                            
+                            # Also ensure we don't exceed the price data length
+                            price_len = len(feature_df['close'].values)
+                            min_len = min(min_len, price_len)
+                            
                             rl_direction_probs = rl_direction_probs[:min_len]
                             rl_confidences = rl_confidences[:min_len]
                             rl_features = rl_features[:min_len]
@@ -3452,7 +3708,9 @@ def _train_buddy_impl(
                                 prices=rl_prices,
                             )
                         except Exception as e:
+                            import traceback
                             console.print(f"[yellow]RL data preparation failed: {e}[/yellow]")
+                            console.print(f"[dim]{traceback.format_exc()}[/dim]")
                             console.print("[dim]Skipping RL position sizer training[/dim]")
                     
                 except ImportError as e:
@@ -9081,96 +9339,213 @@ def buddy_scan(
     verbose: bool = False,
     prompt_train: bool = False,
     diversified: bool = False,
+    force: bool = False,
+    validate_signals: bool = False,
     **kwargs: Any,
 ) -> list:
     """
     Scan multiple FX pairs to find the best trading opportunities.
     
-    UPGRADED v2.0: Now uses BuddyScanner with:
+    UPGRADED v3.0: Now uses consolidated src.scanner with:
+    - TCN Volatility Regime as REQUIRED first gate (HIGH/EXTREME only)
+    - Joint-trained models from trained_data/models/joint/
+    - ALL confidence values 0-1 internally, displayed as %
+    - Confidence-tiered position multipliers (0.5x/1.0x/2.0x)
     - Parallel pair scanning (4x faster)
-    - Integrated position sizing (lots, SL/TP)
-    - 50-candle quick backtesting
-    - Drift detection with retraining prompts
-    - Correlation analysis for diversification
-    - Historical accuracy tracking
-    - Shows tradeable pairs vs needs training
+    - ATR-based SL/TP (H1: 1.5x SL, 3.0x TP)
+    - Trade journal sync for retraining
     
-    Uses pair-specific models for predictions:
-    - Transformer direction model for signal
-    - XGBoost momentum for confirmation  
-    - Ridge confidence scoring
-    - RF risk assessment
+    Requires:
+    - TCN Volatility Regime model (fails with ScannerError if missing)
+    - Joint models: python main.py train-joint
     
-    Falls back to technical indicators if model unavailable.
+    Gate thresholds (0-1 scale):
+    - min_tcn_probability: 0.60
+    - min_confidence: 0.50
+    - min_momentum: 0.20
+    - max_drawdown_pct: 0.025
     
     NOTE: Scanner only displays results. Use 'buddy -I <PAIR> --execute' to trade.
     
     Args:
         diversified: If True, auto-filter to show only best pair per correlation cluster
     """
+    # Suppress noisy loggers for clean scanner output
+    _configure_predict_output(verbose=False)
+    
     try:
-        # Use new enhanced BuddyScanner
-        from buddy_scanner import BuddyScanner, EnhancedScanResult
-        from pair_scanner import PairAnalysis
+        # Use consolidated src.scanner
+        from src.scanner import Scanner, ScannerConfig, ScanResult, PairAnalysis, ScannerError
         
         # Don't override account_equity unless explicitly passed
-        # Let config file value be used by default
         explicit_equity = kwargs.get("account_equity")
-        use_rl_sizer = kwargs.get("use_rl_sizer", True)  # RL sizer enabled by default
         
-        scanner = BuddyScanner(
-            config_path=config_path,
-            account_equity=explicit_equity,  # None = use config
-            use_rl_sizer=use_rl_sizer,
-        )
+        config = ScannerConfig()
+        if explicit_equity is not None:
+            config.account_equity = explicit_equity
+        
+        # Allow forcing scan outside trading hours
+        if force:
+            config.session_filter_enabled = False
+        
+        scanner = Scanner(config=config)
         
         # Parse pairs
         pair_list = None
         if pairs:
             pair_list = [p.strip().upper().replace("/", "_") for p in pairs.split(",")]
         
-        # Run enhanced scan (display only, no execution prompt)
-        results = scanner.scan(
-            pairs=pair_list,
-            granularity=granularity,
-            top_n=top_n,
-            verbose=True,  # Always verbose for CLI
-            prompt_train=prompt_train,
-            diversified=diversified,
-        )
+        # Run scan (may raise ScannerError if TCN missing)
+        result: ScanResult = scanner.scan(pairs=pair_list)
+        
+        # Filter to top_n (tradeable property returns sorted by score)
+        top_results = result.tradeable[:top_n] if result.tradeable else []
+        
+        # Display results
+        if verbose or True:  # Always verbose for CLI
+            _display_scan_results_v3(result, top_results, diversified, validate_signals=validate_signals)
         
         # Convert to legacy format for backward compatibility
         legacy_results = []
-        for r in results:
-            # Create PairAnalysis-compatible object
-            analysis = PairAnalysis(
-                pair=r.pair,
-                direction=r.direction,
-                confidence=r.confidence,
-                volatility_percentile=r.volatility_percentile,
-                trend_strength=r.trend_strength,
-                optimal_entry_score=r.entry_score,
-                historical_accuracy=r.historical_accuracy,
-                current_price=r.current_price,
-                atr=r.atr,
-                timestamp=r.timestamp,
-            )
-            legacy_results.append((analysis, r.gates_passed))
+        for r in top_results:
+            legacy_results.append((r, r.gates_passed))
         
         return legacy_results
         
     except ImportError as e:
-        # Fallback to legacy implementation if buddy_scanner not available
-        console.print(f"[yellow]⚠ BuddyScanner not available ({e}), using legacy scan[/yellow]")
-        return _buddy_scan_legacy(
-            config_path=config_path,
-            pairs=pairs,
-            granularity=granularity,
-            top_n=top_n,
-            verbose=verbose,
-            prompt_train=prompt_train,
-            **kwargs,
-        )
+        console.print(f"[red]✗ Scanner import failed: {e}[/red]")
+        console.print("[yellow]Run: python main.py train-joint to train required models[/yellow]")
+        return []
+    except Exception as e:
+        # Check if it's ScannerError (TCN missing)
+        if "ScannerError" in type(e).__name__ or "TCN" in str(e):
+            console.print(f"[red]✗ Scanner failed: {e}[/red]")
+            console.print("[yellow]TCN Volatility Regime model is REQUIRED.[/yellow]")
+            console.print("[yellow]Run: python main.py train-joint to train required models[/yellow]")
+        else:
+            console.print(f"[red]✗ Scan error: {e}[/red]")
+        return []
+
+
+def _display_scan_results_v3(
+    result: "ScanResult", 
+    top_results: list, 
+    diversified: bool = False,
+    validate_signals: bool = False,
+) -> None:
+    """Display scan results with v3 format (0-1 confidence as %).
+    
+    Args:
+        validate_signals: If True, show historical backtest validation for each signal
+    """
+    from rich.table import Table
+    from rich.panel import Panel
+    
+    # Header
+    tcn_status = "[green]●[/green]" if result.tcn_model_loaded else "[red]●[/red]"
+    joint_status = "[green]●[/green]" if result.joint_models_used else "[dim]○[/dim]"
+    
+    header = f"TCN {tcn_status}  Joint {joint_status}  │  Scanned: {len(result.analyses)}  Tradeable: [bold]{len(result.tradeable)}[/bold]"
+    
+    console.print()
+    console.print(Panel(header, title="[bold cyan]FX Scanner[/bold cyan]", border_style="cyan", padding=(0, 1)))
+    
+    # Helper to format regime names
+    def _format_regime(name: str) -> str:
+        regime_map = {
+            "QUIET_NEXT": "Quiet",
+            "STABLE_NEXT": "Stable",
+            "ACTIVE_NEXT": "Active",
+            "EXTREME_NEXT": "Extreme",
+        }
+        return regime_map.get(name, name)
+    
+    if not top_results:
+        # Compact blocked pairs summary
+        if result.analyses:
+            blocked_reasons = {}
+            for p in result.analyses:
+                # Use block_reason if set, otherwise construct from gate status
+                if p.block_reason:
+                    reason = p.block_reason
+                elif not p.volatility_gate_passed:
+                    regime_nice = _format_regime(p.volatility_regime_name or "Unknown")
+                    reason = f"{regime_nice} regime (low opportunity)"
+                else:
+                    # Volatility gate passed but other gates failed
+                    reason = _format_regime(p.volatility_regime_name or "Unknown")
+                # Simplify reason
+                if "Regime:" in reason:
+                    reason = reason.replace("Regime: ", "")
+                # Clean up any remaining _NEXT suffixes
+                reason = reason.replace("_NEXT", "")
+                if reason not in blocked_reasons:
+                    blocked_reasons[reason] = []
+                blocked_reasons[reason].append(p.pair)
+            
+            lines = []
+            for reason, pairs in blocked_reasons.items():
+                if len(pairs) <= 3:
+                    lines.append(f"  [dim]{reason}:[/dim] {', '.join(pairs)}")
+                else:
+                    lines.append(f"  [dim]{reason}:[/dim] {', '.join(pairs[:3])} +{len(pairs)-3}")
+            
+            if lines:
+                console.print("\n[yellow]No opportunities[/yellow]")
+                for line in lines[:4]:  # Max 4 lines
+                    console.print(line)
+        else:
+            console.print("[yellow]No opportunities[/yellow]")
+        return
+    
+    # Compact results table
+    table = Table(show_header=True, header_style="bold", box=None, padding=(0, 1))
+    table.add_column("Pair", style="cyan", no_wrap=True)
+    table.add_column("Dir", justify="center")
+    table.add_column("Conf", justify="right")
+    table.add_column("Regime")
+    table.add_column("Size", justify="right")
+    table.add_column("SL/TP", justify="right")
+    
+    for r in top_results:
+        dir_str = "[green]▲[/green]" if r.direction == "LONG" else "[red]▼[/red]"
+        conf_pct = r.format_confidence_pct() if hasattr(r, 'format_confidence_pct') else f"{r.confidence*100:.0f}%"
+        
+        # Format regime name with color
+        regime_raw = r.volatility_regime_name or "-"
+        regime_styled = {
+            "QUIET_NEXT": "[dim]Quiet[/dim]",
+            "STABLE_NEXT": "[cyan]Stable[/cyan]",
+            "ACTIVE_NEXT": "[green]Active[/green]",
+            "EXTREME_NEXT": "[yellow]Extreme[/yellow]",
+        }
+        regime_str = regime_styled.get(regime_raw, _format_regime(regime_raw))
+        
+        mult_str = f"{r.position_multiplier:.1f}x" if r.position_multiplier else "1.0x"
+        sl_tp = f"{r.sl_pips:.0f}/{r.tp_pips:.0f}" if r.sl_pips else "-"
+        
+        table.add_row(r.pair, dir_str, conf_pct, regime_str, mult_str, sl_tp)
+    
+    console.print(table)
+    
+    # Show validation statistics if requested
+    if validate_signals and top_results:
+        console.print()
+        console.print("[bold]📊 Signal Validation:[/bold]")
+        for r in top_results:
+            # Check if backtest data available
+            if hasattr(r, 'backtest_win_rate') and r.backtest_win_rate is not None:
+                wr = r.backtest_win_rate * 100
+                n = getattr(r, 'backtest_trades', 0) or 0
+                wr_color = "green" if wr >= 50 else ("yellow" if wr >= 40 else "red")
+                calibrated = "✓" if getattr(r, 'tcn_calibrated', False) else "○"
+                raw_prob = getattr(r, 'tcn_probability_raw', r.tcn_probability) or 0
+                console.print(
+                    f"  {r.pair}: [{wr_color}]{wr:.0f}% win rate[/{wr_color}] ({n} trades)  "
+                    f"│ raw={raw_prob*100:.0f}% cal={calibrated}"
+                )
+            else:
+                console.print(f"  {r.pair}: [dim]No backtest data[/dim]")
 
 
 def buddy_predict_78(
@@ -9204,131 +9579,141 @@ def buddy_predict_78(
     instrument = instrument.upper().replace("/", "_")
     
     console.print("\n" + "=" * 60)
-    console.print("[bold cyan]📊 BUDDY PREDICT (78% Model)[/bold cyan]")
+    console.print("[bold cyan]📊 BUDDY PREDICT v3.0 (TCN Volatility Regime)[/bold cyan]")
     console.print("=" * 60)
     
-    # Use BuddyScanner for consistent results with scan
+    # Use consolidated src.scanner for consistent results
     try:
-        from buddy_scanner import BuddyScanner
+        from src.scanner import Scanner, ScannerConfig, ScanResult, ExecutionManager, ExecutionConfig, ScannerError
         
-        scanner = BuddyScanner(config_path=config_path)
+        config = ScannerConfig()
+        scanner = Scanner(config=config)
         
         # Run scan for just this one pair
-        results = scanner.scan(
-            pairs=[instrument],
-            granularity=granularity,
-            top_n=1,
-            verbose=False,
-            prompt_train=False,
-        )
+        result: ScanResult = scanner.scan(pairs=[instrument])
         
-        if not results:
+        if not result.analyses:
             console.print(f"[red]✗ No prediction for {instrument}[/red]")
             return None
         
-        r = results[0]
+        r = result.analyses[0]  # First (only) pair
         
-        # Get live account equity from scanner (uses compounding!)
-        account_equity = scanner._scan_config.account_equity
+        # Get live account equity
+        account_equity = config.account_equity
+        if account_equity == 0:
+            # Fetch from execution manager
+            exec_mgr = ExecutionManager()
+            nav, _, _ = exec_mgr.get_account_status()
+            account_equity = nav
         
     except Exception as e:
-        console.print(f"[red]✗ Scanner error: {e}[/red]")
-        import traceback
-        traceback.print_exc()
+        if "ScannerError" in type(e).__name__ or "TCN" in str(e):
+            console.print(f"[red]✗ Scanner failed: {e}[/red]")
+            console.print("[yellow]TCN Volatility Regime model is REQUIRED.[/yellow]")
+            console.print("[yellow]Run: python main.py train-joint to train required models[/yellow]")
+        else:
+            console.print(f"[red]✗ Scanner error: {e}[/red]")
+            import traceback
+            traceback.print_exc()
         return None
     
-    # Display prediction (matches scan format)
-    console.print(f"[green]✓ Pair Model[/green] ({instrument})")
+    # Display prediction (v3 format with 0-1 confidence as %)
+    console.print(f"[green]✓ Joint Model[/green] ({instrument})")
     console.print(f"[dim]Data: {granularity} timeframe | Compounding Equity: ${account_equity:,.2f}[/dim]")
+    console.print(f"[dim]Volatility Regime: {r.volatility_regime_name}[/dim]")
     console.print("-" * 60)
     
     signal_color = "green" if r.direction == "LONG" else "red"
     signal_emoji = "🟢" if r.direction == "LONG" else "🔴"
     
+    # Format confidence as percentage
+    conf_pct = r.format_confidence_pct() if hasattr(r, 'format_confidence_pct') else f"{r.confidence*100:.0f}%"
+    
     console.print(f"\n{signal_emoji} [bold {signal_color}]{r.direction}[/bold {signal_color}] {instrument.replace('_', '/')}")
-    console.print(f"   Confidence: [{signal_color}]{r.confidence:.1%}[/{signal_color}]")
+    console.print(f"   Confidence: [{signal_color}]{conf_pct}[/{signal_color}]")
     console.print(f"   Entry:      {r.current_price:.5f}")
     
     # Calculate actual SL/TP prices
     from fx_paper import pip_size
     pip = pip_size(instrument)
     
-    if r.direction == "LONG":
-        sl_price = r.current_price - (r.sl_pips * pip)
-        tp_price = r.current_price + (r.tp_pips * pip)
-    else:
-        sl_price = r.current_price + (r.sl_pips * pip)
-        tp_price = r.current_price - (r.tp_pips * pip)
+    sl_pips = r.stop_loss_pips or config.min_sl_pips
+    tp_pips = r.take_profit_pips or config.min_tp_pips
     
-    console.print(f"   SL:         {sl_price:.5f} ({r.sl_pips:.0f} pips)")
-    console.print(f"   TP:         {tp_price:.5f} ({r.tp_pips:.0f} pips)")
-    console.print(f"   R:R:        1:{r.tp_pips/r.sl_pips:.1f}" if r.sl_pips > 0 else "   R:R:        N/A")
+    if r.direction == "LONG":
+        sl_price = r.current_price - (sl_pips * pip)
+        tp_price = r.current_price + (tp_pips * pip)
+    else:
+        sl_price = r.current_price + (sl_pips * pip)
+        tp_price = r.current_price - (tp_pips * pip)
+    
+    console.print(f"   SL:         {sl_price:.5f} ({sl_pips:.0f} pips)")
+    console.print(f"   TP:         {tp_price:.5f} ({tp_pips:.0f} pips)")
+    console.print(f"   R:R:        1:{tp_pips/sl_pips:.1f}" if sl_pips > 0 else "   R:R:        N/A")
     console.print()
     
-    # Position sizing
-    units = int(r.recommended_lots * 100000)
+    # Position sizing with multiplier
+    position_multiplier = r.position_multiplier or config.get_position_multiplier(r.confidence)
+    recommended_lots = (r.position_size_units or 0) / 100000
+    units = r.position_size_units or 0
     pip_value = 10.0 if not instrument.endswith("JPY") else 7.5
-    est_profit = r.recommended_lots * r.tp_pips * pip_value
-    est_loss = r.recommended_lots * r.sl_pips * pip_value
+    est_profit = recommended_lots * tp_pips * pip_value
+    est_loss = recommended_lots * sl_pips * pip_value
+    risk_pct = est_loss / account_equity if account_equity > 0 else 0
     
-    console.print(f"   [bold]Position: {r.recommended_lots:.2f} lots[/bold] ({units:,} units)")
-    console.print(f"   Risk:       ${est_loss:,.0f} ({r.risk_pct:.0%} of ${account_equity:,.0f})")
+    console.print(f"   [bold]Position: {recommended_lots:.2f} lots[/bold] ({units:,} units)")
+    console.print(f"   Multiplier: {position_multiplier:.1f}x")
+    console.print(f"   Risk:       ${est_loss:,.0f} ({risk_pct:.1%} of ${account_equity:,.0f})")
     console.print(f"   Target:     [green]+${est_profit:,.0f}[/green]")
     console.print("-" * 60)
     
-    # Gate check
-    if r.gates_passed:
-        console.print(f"[green]✓ GATES PASSED[/green] (conf {r.confidence:.0%})")
+    # Gate check with volatility regime
+    if r.gates_passed and r.volatility_gate_passed:
+        console.print(f"[green]✓ ALL GATES PASSED[/green] (conf {conf_pct}, regime {r.volatility_regime_name})")
+    elif not r.volatility_gate_passed:
+        console.print(f"[yellow]⚠ VOLATILITY GATE BLOCKED[/yellow] (regime {r.volatility_regime_name} - need HIGH/EXTREME)")
     else:
-        console.print(f"[yellow]⚠ GATES NOT PASSED[/yellow] (conf {r.confidence:.0%})")
+        console.print(f"[yellow]⚠ GATES NOT PASSED[/yellow] (conf {conf_pct})")
+    
+    # EXTREME regime warning
+    if r.extreme_warning:
+        console.print(f"[bold red]⚠ EXTREME VOLATILITY - Use caution![/bold red]")
     
     # Execute trade if requested
-    if execute and r.gates_passed and r.recommended_lots > 0:
-        console.print("\n[bold]Executing trade...[/bold]")
+    if execute and r.gates_passed and r.volatility_gate_passed and units > 0:
+        console.print("\n[bold]Executing trade via ExecutionManager...[/bold]")
         try:
-            from oanda_practice import OandaPracticeClient
-            client = OandaPracticeClient.from_env()
+            # Use ExecutionManager for consistent execution with journal sync
+            exec_config = ExecutionConfig()
+            exec_mgr = ExecutionManager(config=exec_config)
             
-            result = client.create_market_order(
-                instrument=instrument,
-                units=units if r.direction == "LONG" else -units,
-                take_profit_price=round(tp_price, 5),
-                stop_loss_price=round(sl_price, 5),
+            exec_result = exec_mgr.execute_trade(
+                pair=instrument,
+                direction=r.direction,
+                confidence=r.confidence,
+                current_price=r.current_price,
+                atr=r.atr or 0.0,
+                sl_pips=sl_pips,
+                tp_pips=tp_pips,
+                lots=recommended_lots,
+                position_multiplier=position_multiplier,
             )
             
-            if result and "orderFillTransaction" in result:
-                fill = result["orderFillTransaction"]
-                fill_price = float(fill.get("price", r.current_price))
-                trade_id = fill.get("tradeOpened", {}).get("tradeID", "N/A")
-                console.print(f"[green]✓ FILLED[/green] @ {fill_price:.5f} (Trade #{trade_id})")
-                
-                # Log to journal
-                try:
-                    from memory_client import MLEngineMemory
-                    mem = MLEngineMemory()
-                    mem.log_trade({
-                        "timestamp": datetime.now().isoformat(),
-                        "instrument": instrument,
-                        "direction": r.direction,
-                        "confidence": r.confidence,
-                        "lots": r.recommended_lots,
-                        "entry": fill_price,
-                        "sl": sl_price,
-                        "tp": tp_price,
-                        "trade_id": trade_id,
-                        "model": "pair_specific",
-                    })
-                    console.print("[dim]📓 Trade logged[/dim]")
-                except Exception:
-                    pass
+            if exec_result.success:
+                console.print(f"[green]✓ FILLED[/green] @ {exec_result.fill_price:.5f} (Trade #{exec_result.trade_id})")
+                console.print(f"[dim]Position multiplier: {exec_result.position_multiplier:.1f}x[/dim]")
+                if exec_result.journal_synced:
+                    console.print("[dim]📓 Trade logged to journal[/dim]")
             else:
-                console.print(f"[yellow]Order result: {result}[/yellow]")
+                console.print(f"[red]✗ Execution failed: {exec_result.error}[/red]")
                 
         except Exception as e:
             console.print(f"[red]✗ Execution failed: {e}[/red]")
+    elif execute and not r.volatility_gate_passed:
+        console.print(f"[yellow]⚠ Trade not executed - volatility regime {r.volatility_regime_name} (need HIGH/EXTREME)[/yellow]")
     elif execute and not r.gates_passed:
         console.print("[yellow]⚠ Trade not executed - gates not passed[/yellow]")
-    elif execute and r.recommended_lots <= 0:
+    elif execute and units <= 0:
         console.print("[yellow]⚠ Trade not executed - no position size calculated[/yellow]")
     
     console.print("=" * 60 + "\n")
@@ -9337,14 +9722,19 @@ def buddy_predict_78(
         "instrument": instrument,
         "direction": r.direction,
         "confidence": r.confidence,
-        "lots": r.recommended_lots,
+        "confidence_pct": conf_pct,
+        "lots": recommended_lots,
+        "position_multiplier": position_multiplier,
+        "volatility_regime": r.volatility_regime,
+        "volatility_regime_name": r.volatility_regime_name,
+        "extreme_warning": r.extreme_warning,
         "entry": r.current_price,
         "sl": sl_price,
         "tp": tp_price,
-        "sl_pips": r.sl_pips,
-        "tp_pips": r.tp_pips,
+        "sl_pips": sl_pips,
+        "tp_pips": tp_pips,
         "gates_passed": r.gates_passed,
-        "score": r.overall_score,
+        "volatility_gate_passed": r.volatility_gate_passed,
     }
 
 
@@ -10259,6 +10649,610 @@ def retrain_gates(
     ))
 
 
+def train_confidence_model(
+    *,
+    journal_path: str | None = None,
+    model_dir: str = "trained_data/models",
+    min_trades: int = 50,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """
+    Train learned confidence model from trade journal outcomes.
+    
+    Phase 3: Scanner Accuracy - Replaces fixed heuristic weights with
+    learned weights from actual trade outcomes.
+    
+    Args:
+        journal_path: Path to trade journal (default: trained_data/trade_journal.json)
+        model_dir: Directory to save model
+        min_trades: Minimum closed trades required (default: 50)
+        verbose: Show detailed output
+    """
+    from pathlib import Path
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich import box
+    
+    # Header
+    console.print()
+    console.print(Panel.fit(
+        "[bold cyan]Train Learned Confidence Model[/bold cyan]\n"
+        "[dim]Phase 3: Scanner Accuracy[/dim]",
+        border_style="cyan"
+    ))
+    
+    # Validate paths
+    journal_path = Path(journal_path) if journal_path else Path("trained_data/trade_journal.json")
+    model_path = Path(model_dir) / "learned_confidence.pkl"
+    
+    if not journal_path.exists():
+        console.print(f"[red]❌ Trade journal not found: {journal_path}[/red]")
+        console.print("[dim]The journal is created automatically when you trade with buddy.[/dim]")
+        return
+    
+    # Load journal
+    try:
+        from src.utils.trade_journal import TradeJournal
+        journal = TradeJournal(str(journal_path))
+    except Exception as e:
+        console.print(f"[red]❌ Failed to load journal: {e}[/red]")
+        return
+    
+    # Count closed trades
+    closed_trades = [t for t in journal.trades if getattr(t, 'status', None) in ('win', 'loss')]
+    total_trades = len(journal.trades)
+    
+    console.print(f"[bold]Trade Journal:[/bold] {journal_path}")
+    console.print(f"[bold]Total trades:[/bold] {total_trades}")
+    console.print(f"[bold]Closed trades:[/bold] {len(closed_trades)}")
+    
+    if len(closed_trades) < min_trades:
+        console.print()
+        console.print(f"[yellow]⚠️ Insufficient closed trades: {len(closed_trades)}/{min_trades}[/yellow]")
+        console.print(f"[dim]Need {min_trades - len(closed_trades)} more closed trades to train.[/dim]")
+        console.print()
+        console.print("[bold]How to accumulate trades:[/bold]")
+        console.print("  1. Run buddy predictions with --execute")
+        console.print("  2. Wait for trades to close (hit SL/TP)")
+        console.print("  3. Run 'buddy journal --sync' to update outcomes")
+        console.print(f"  4. Re-run this command when you have {min_trades}+ trades")
+        return
+    
+    # Import and train model
+    try:
+        from src.scanner.learned_confidence import (
+            LearnedConfidenceModel,
+            extract_confidence_features_from_trade,
+        )
+        import numpy as np
+        
+        # Extract features and outcomes
+        features_list = []
+        outcomes_list = []
+        
+        for trade in closed_trades:
+            feats = extract_confidence_features_from_trade(trade)
+            if feats is not None:
+                features_list.append(feats)
+                outcomes_list.append(1.0 if trade.status == 'win' else 0.0)
+        
+        if len(features_list) < min_trades:
+            console.print(f"[yellow]⚠️ Only {len(features_list)} trades had extractable features.[/yellow]")
+            return
+        
+        console.print(f"[bold]Extractable features:[/bold] {len(features_list)} trades")
+        console.print()
+        
+        # Train model
+        with console.status("[bold cyan]Training ElasticNet model...[/bold cyan]"):
+            features = np.array(features_list)
+            outcomes = np.array(outcomes_list)
+            
+            model = LearnedConfidenceModel()
+            stats = model.fit(features, outcomes)
+        
+        # Save model
+        model.save(model_path)
+        
+        # Display results
+        console.print()
+        table = Table(title="Training Results", box=box.ROUNDED)
+        table.add_column("Metric", style="bold")
+        table.add_column("Value", justify="right")
+        
+        table.add_row("Training samples", f"{stats['n_samples']}")
+        table.add_row("CV R² Score", f"{stats['cv_score']:.4f} ± {stats['cv_std']:.4f}")
+        table.add_row("Alpha (regularization)", f"{stats['alpha']:.4f}")
+        table.add_row("Features", f"{stats['n_features']}")
+        
+        console.print(table)
+        
+        # Feature importance
+        if stats.get('feature_importance'):
+            console.print()
+            console.print("[bold]Feature Weights:[/bold]")
+            for name, weight in sorted(stats['feature_importance'].items(), key=lambda x: abs(x[1]), reverse=True):
+                bar = "█" * int(abs(weight) * 20)
+                sign = "+" if weight >= 0 else "-"
+                console.print(f"  {name:15} {sign}{abs(weight):6.3f} {bar}")
+        
+        console.print()
+        console.print(Panel(
+            f"[bold green]✓ Model saved to {model_path}[/bold green]\n\n"
+            "[dim]The learned model will be used automatically when running buddy predictions.[/dim]\n"
+            "[dim]It replaces the fixed heuristic confidence calculation.[/dim]",
+            title="Success",
+            border_style="green"
+        ))
+        
+    except Exception as e:
+        console.print(f"[red]❌ Training failed: {e}[/red]")
+        if verbose:
+            import traceback
+            traceback.print_exc()
+
+
+def recalibrate_scanner(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    verbose: bool = False,
+) -> None:
+    """
+    Recalibrate the Platt scaling model from trade journal outcomes.
+    
+    This re-trains the confidence calibrator using actual win/loss outcomes
+    from the trade journal, creating a feedback loop that improves calibration
+    accuracy over time.
+    
+    Requires at least 20 closed trades in the journal.
+    """
+    from rich.console import Console
+    from rich.panel import Panel
+    
+    console = Console()
+    console.print()
+    console.print(Panel(
+        "[bold cyan]Recalibrating Confidence Calibrator from Trade Journal[/bold cyan]",
+        expand=False
+    ))
+    console.print()
+    
+    try:
+        from src.risk.confidence_calibration import recalibrate_from_journal
+        
+        calibrator = recalibrate_from_journal(
+            model_dir="trained_data/models/joint",
+            min_trades=20,
+            verbose=True,
+        )
+        
+        if calibrator is None:
+            console.print("[yellow]⚠️ Recalibration did not complete. See warnings above.[/yellow]")
+        else:
+            console.print()
+            console.print("[bold green]✓ Recalibration complete![/bold green]")
+            console.print("[dim]The scanner will now use updated calibration.[/dim]")
+            
+    except Exception as e:
+        console.print(f"[red]❌ Recalibration failed: {e}[/red]")
+        if verbose:
+            import traceback
+            traceback.print_exc()
+
+
+def train_tcn_regime(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    pairs: str | None = None,
+    granularity: str = "H1",
+    candles: int = 5000,
+    epochs: int = 150,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """
+    Train TCN Forward Volatility model for scanner entry timing.
+    
+    This trains the 4-class FORWARD-LOOKING volatility regime classifier:
+    - QUIET_NEXT (0): Expect low volatility - no trades
+    - STABLE_NEXT (1): Expect moderate volatility - good entries
+    - ACTIVE_NEXT (2): Expect high volatility - best entries
+    - EXTREME_NEXT (3): Expect extreme volatility - no trades (news events)
+    
+    The scanner REQUIRES this model to filter entries.
+    Uses 48-bar lookahead to predict FUTURE volatility regime.
+    
+    Args:
+        config_path: Path to config file
+        pairs: Comma-separated pairs to train on (default: major pairs)
+        granularity: Candle timeframe (default: H1)
+        candles: Number of candles per pair (default: 5000)
+        epochs: Max training epochs (default: 150)
+        verbose: Show detailed logs
+    """
+    import time
+    from datetime import datetime
+    from pathlib import Path
+    import pandas as pd
+    import numpy as np
+    
+    from rich.panel import Panel
+    from rich.progress import track
+    
+    # Load config first to get pairs and settings
+    actual_config_path = Path(config_path)
+    if not actual_config_path.exists():
+        for try_path in ["config/config_intel_optimized.yaml", "config/config_improved_H1.yaml"]:
+            if Path(try_path).exists():
+                actual_config_path = Path(try_path)
+                break
+    
+    cfg = load_config(str(actual_config_path)) if actual_config_path.exists() else {}
+    joint_cfg = cfg.get("joint_tcn_regime", {})
+    
+    # Major pairs: prefer joint config, then CLI arg, then default
+    DEFAULT_PAIRS = [
+        "EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF",
+        "AUD_USD", "USD_CAD", "NZD_USD",
+        "EUR_GBP", "EUR_JPY", "GBP_JPY",
+    ]
+    
+    # CLI arg > config > default
+    if pairs:
+        pair_list = [p.strip() for p in pairs.split(",")]
+    elif joint_cfg.get("pairs"):
+        pair_list = joint_cfg["pairs"]
+    else:
+        pair_list = DEFAULT_PAIRS
+    
+    # Use config candles_per_pair if not overridden by CLI
+    effective_candles = candles if candles != 5000 else joint_cfg.get("candles_per_pair", candles)
+    
+    console.print(Panel(
+        f"[bold]Training TCN Forward Volatility Model (Joint Multi-Pair)[/bold]\n\n"
+        f"Config: {actual_config_path}\n"
+        f"Pairs: {', '.join(pair_list)}\n"
+        f"Candles per pair: {effective_candles:,}\n"
+        f"Granularity: {granularity}\n"
+        f"Epochs: {epochs}\n\n"
+        "[bold cyan]Forward-Looking Classes (48-bar lookahead):[/bold cyan]\n"
+        "  • QUIET_NEXT (0): Skip - expect insufficient movement\n"
+        "  • STABLE_NEXT (1): Trade - expect moderate volatility\n"
+        "  • ACTIVE_NEXT (2): Trade - expect high volatility (best entries)\n"
+        "  • EXTREME_NEXT (3): Skip - expect news event risk\n\n"
+        "[dim]Scanner requires STABLE_NEXT or ACTIVE_NEXT for entries[/dim]",
+        title="🎯 TCN Forward Volatility Training (Scanner)",
+        border_style="magenta"
+    ))
+    
+    # Step 1: Fetch data from OANDA
+    console.print("\n[bold]Step 1: Fetching data from OANDA...[/bold]")
+    
+    OANDA_MAX_CANDLES = 5000
+    
+    try:
+        from src.utils.oanda_practice import OandaPracticeClient
+        oanda = OandaPracticeClient.from_env()
+    except Exception as e:
+        console.print(f"[red]Failed to connect to OANDA: {e}[/red]")
+        return
+    
+    all_dfs = []
+    
+    for pair in track(pair_list, description="Fetching pairs..."):
+        try:
+            pair_dfs = []
+            remaining = effective_candles
+            last_time = None
+            
+            while remaining > 0:
+                batch_size = min(remaining, OANDA_MAX_CANDLES)
+                params = {'granularity': granularity, 'count': batch_size}
+                if last_time:
+                    params['to_time'] = last_time  # Use to_time, not to
+                
+                response = oanda.get_candles(pair, **params)
+                candles_raw = response.get('candles', [])
+                
+                if not candles_raw:
+                    break
+                
+                rows = []
+                for c in candles_raw:
+                    mid = c.get('mid', {})
+                    rows.append({
+                        'time': c.get('time'),
+                        'open': float(mid.get('o', 0)),
+                        'high': float(mid.get('h', 0)),
+                        'low': float(mid.get('l', 0)),
+                        'close': float(mid.get('c', 0)),
+                        'volume': int(c.get('volume', 0)),
+                    })
+                
+                batch_df = pd.DataFrame(rows)
+                pair_dfs.append(batch_df)
+                last_time = candles_raw[0].get('time')
+                remaining -= len(candles_raw)
+                
+                if remaining > 0:
+                    time.sleep(0.2)
+            
+            if pair_dfs:
+                df = pd.concat(pair_dfs, ignore_index=True)
+                df = df.drop_duplicates(subset=['time']).sort_values('time').reset_index(drop=True)
+                df['pair'] = pair
+                all_dfs.append(df)
+                console.print(f"  ✓ {pair}: {len(df):,} candles")
+                
+        except Exception as e:
+            console.print(f"  ✗ {pair}: {e}")
+    
+    if not all_dfs:
+        console.print("[red]No data fetched. Check OANDA connection.[/red]")
+        return
+    
+    # Combine all pairs
+    combined_df = pd.concat(all_dfs, ignore_index=True)
+    console.print(f"\n[cyan]Total: {len(combined_df):,} candles from {len(all_dfs)} pairs[/cyan]")
+    
+    # Step 2: Compute features
+    console.print("\n[bold]Step 2: Computing features...[/bold]")
+    
+    from src.core.modular_data_loaders import compute_normalized_features
+    
+    feature_df = compute_normalized_features(combined_df.copy())
+    console.print(f"  ✓ Generated {len(feature_df.columns)} features")
+    
+    # Step 3: Create FORWARD-LOOKING volatility regime labels
+    console.print("\n[bold]Step 3: Creating forward-looking volatility regime labels...[/bold]")
+    
+    # Use joint_tcn_regime config section (for scanner), fallback to tcn_regime (ensemble)
+    # Note: cfg and joint_cfg already loaded above
+    tcn_cfg = cfg.get("tcn_regime", {})
+    
+    # Prefer joint_tcn_regime settings, fallback to tcn_regime
+    lookahead_bars = joint_cfg.get("lookahead_bars", tcn_cfg.get("lookahead_bars", 48))
+    quiet_percentile = joint_cfg.get("quiet_percentile", tcn_cfg.get("quiet_percentile", 20))
+    stable_percentile = joint_cfg.get("stable_percentile", tcn_cfg.get("stable_percentile", 45))
+    active_percentile = joint_cfg.get("active_percentile", tcn_cfg.get("active_percentile", 70))
+    
+    console.print(f"  [cyan]Using config: {actual_config_path}[/cyan]")
+    console.print(f"  [cyan]Config section: {'joint_tcn_regime' if joint_cfg else 'tcn_regime'}[/cyan]")
+    console.print(f"  Lookahead: {lookahead_bars} bars")
+    console.print(f"  Percentiles: QUIET<{quiet_percentile}, STABLE<{stable_percentile}, ACTIVE<{active_percentile}, EXTREME>={active_percentile}")
+    
+    # Calculate ATR for volatility measurement (use period != 14 to avoid label leakage)
+    high = feature_df['high'] if 'high' in feature_df.columns else combined_df['high']
+    low = feature_df['low'] if 'low' in feature_df.columns else combined_df['low']
+    close = feature_df['close'] if 'close' in feature_df.columns else combined_df['close']
+    
+    tr = np.maximum(high - low, np.abs(high - close.shift(1)), np.abs(low - close.shift(1)))
+    atr_20 = tr.rolling(20).mean()  # Use period 20, not 14
+    
+    # FORWARD-LOOKING: Calculate FUTURE average ATR (next lookahead_bars)
+    future_atr = atr_20.shift(-lookahead_bars).rolling(lookahead_bars, min_periods=1).mean()
+    
+    # Calculate % change in volatility (current vs future)
+    current_atr = atr_20.rolling(lookahead_bars).mean()
+    vol_change = (future_atr - current_atr) / (current_atr + 1e-10)
+    
+    # Calculate global percentile thresholds from the % change distribution
+    vol_change_clean = vol_change.dropna()
+    quiet_thresh = np.percentile(vol_change_clean, quiet_percentile)
+    stable_thresh = np.percentile(vol_change_clean, stable_percentile)
+    active_thresh = np.percentile(vol_change_clean, active_percentile)
+    
+    console.print(f"  Vol change thresholds: QUIET<{quiet_thresh:.3f}, STABLE<{stable_thresh:.3f}, ACTIVE<{active_thresh:.3f}")
+    
+    # Assign forward-looking regime labels
+    regime_labels = np.ones(len(feature_df), dtype=int)  # Default: STABLE_NEXT (1)
+    regime_labels[vol_change < quiet_thresh] = 0   # QUIET_NEXT
+    regime_labels[(vol_change >= stable_thresh) & (vol_change < active_thresh)] = 2  # ACTIVE_NEXT
+    regime_labels[vol_change >= active_thresh] = 3  # EXTREME_NEXT
+    
+    # Handle NaN from lookahead
+    regime_labels[-lookahead_bars:] = -1  # Will be dropped
+    
+    feature_df['regime_label'] = regime_labels
+    feature_df['vol_change_target'] = vol_change  # Regression target
+    
+    # Drop rows with invalid labels
+    valid_mask = feature_df['regime_label'] >= 0
+    feature_df = feature_df[valid_mask].copy()
+    
+    # Show distribution
+    regime_counts = feature_df['regime_label'].value_counts().sort_index()
+    regime_names = {0: 'QUIET_NEXT', 1: 'STABLE_NEXT', 2: 'ACTIVE_NEXT', 3: 'EXTREME_NEXT'}
+    console.print("  Forward-looking regime distribution:")
+    for regime_id in sorted(regime_names.keys()):
+        count = regime_counts.get(regime_id, 0)
+        pct = count / len(feature_df) * 100
+        console.print(f"    {regime_names[regime_id]}: {count:,} ({pct:.1f}%)")
+    
+    # Step 4: Prepare training data
+    console.print("\n[bold]Step 4: Preparing training data...[/bold]")
+    
+    seq_len = cfg.get("model", {}).get("seq_len", 60)
+    
+    # Get feature columns - exclude label leakage (atr_pct_14 used to create labels)
+    exclude_cols = ['time', 'pair', 'regime_label', 'vol_change_target', 'timestamp', 'date', 'atr_pct_14']
+    feature_cols = [c for c in feature_df.columns if c not in exclude_cols and feature_df[c].dtype in ['float64', 'float32', 'int64']]
+    
+    # Clean data
+    feature_df_clean = feature_df[feature_cols + ['regime_label', 'vol_change_target']].replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0)
+    
+    X_data = feature_df_clean[feature_cols].values
+    y_class = feature_df_clean['regime_label'].values.astype(int)
+    y_reg_raw = feature_df_clean['vol_change_target'].values
+    
+    # CRITICAL: Standardize features - different features have vastly different scales
+    from sklearn.preprocessing import StandardScaler
+    feature_scaler = StandardScaler()
+    X_data_scaled = feature_scaler.fit_transform(X_data)
+    console.print(f"  Feature scaling applied: {len(feature_cols)} features standardized (mean=0, std=1)")
+    
+    # Scale regression targets to prevent MSE explosion
+    # Clip to ±3 std and normalize to [-1, 1] range
+    y_reg_mean = np.nanmean(y_reg_raw)
+    y_reg_std = np.nanstd(y_reg_raw) + 1e-10
+    y_reg = np.clip((y_reg_raw - y_reg_mean) / y_reg_std, -3.0, 3.0) / 3.0  # Normalize to [-1, 1]
+    console.print(f"  Regression targets: raw range [{y_reg_raw.min():.4f}, {y_reg_raw.max():.4f}] → scaled [{y_reg.min():.4f}, {y_reg.max():.4f}]")
+    
+    # Use scaled data for sequences
+    X_data = X_data_scaled
+    
+    # Create sequences
+    X_seq = []
+    y_class_seq = []
+    y_reg_seq = []
+    
+    for i in range(seq_len, len(X_data)):
+        X_seq.append(X_data[i-seq_len:i])
+        y_class_seq.append(y_class[i])
+        y_reg_seq.append(y_reg[i])
+    
+    X_seq = np.array(X_seq)
+    y_class_seq = np.array(y_class_seq)
+    y_reg_seq = np.array(y_reg_seq)
+    
+    # Train/val split (80/20)
+    split_idx = int(len(X_seq) * 0.8)
+    X_train, X_val = X_seq[:split_idx], X_seq[split_idx:]
+    y_train_class, y_val_class = y_class_seq[:split_idx], y_class_seq[split_idx:]
+    y_train_reg, y_val_reg = y_reg_seq[:split_idx], y_reg_seq[split_idx:]
+    
+    console.print(f"  ✓ Sequences: Train={len(X_train):,}, Val={len(X_val):,}")
+    console.print(f"  ✓ Shape: {X_train.shape}")
+    
+    # Compute sample weights based on volatility change magnitude
+    abs_vol_change = np.abs(y_train_reg)
+    sample_weight_scale = joint_cfg.get("sample_weight_scale", tcn_cfg.get("sample_weight_scale", 2.0))
+    max_sample_weight = joint_cfg.get("max_sample_weight", tcn_cfg.get("max_sample_weight", 5.0))
+    sample_weights = 1.0 + abs_vol_change * sample_weight_scale
+    sample_weights = np.minimum(sample_weights, max_sample_weight)  # Cap to prevent instability
+    sample_weights = sample_weights / sample_weights.mean()  # Normalize
+    console.print(f"  ✓ Sample weights: min={sample_weights.min():.2f}, max={sample_weights.max():.2f}, cap={max_sample_weight}")
+    
+    # Compute class weights
+    from sklearn.utils.class_weight import compute_class_weight
+    classes = np.unique(y_train_class)
+    weights = compute_class_weight('balanced', classes=classes, y=y_train_class)
+    class_weights = dict(zip(classes.astype(int), weights))
+    console.print(f"  ✓ Class weights: {class_weights}")
+    
+    # Step 5: Train TCN model
+    console.print("\n[bold]Step 5: Training TCN Forward Volatility (Joint Multi-Pair)...[/bold]")
+    
+    from src.training.modular_trainers import TCNVolatilityRegimeTrainer, TrainerConfig
+    
+    # Use joint_tcn_regime settings, fallback to tcn_regime
+    effective_cfg = joint_cfg if joint_cfg else tcn_cfg
+    
+    trainer_config = TrainerConfig(
+        epochs=epochs,
+        batch_size=effective_cfg.get("batch_size", 32),
+        learning_rate=effective_cfg.get("learning_rate", 0.0005),  # Conservative default
+        patience=effective_cfg.get("early_stopping_patience", 25),
+        verbose=1 if verbose else 2,
+        checkpoint_dir="trained_data/checkpoints",
+        tcn_kernel_size=effective_cfg.get("kernel_size", 5),
+        tcn_num_filters=effective_cfg.get("num_filters", 64),
+        tcn_num_residual_blocks=effective_cfg.get("num_residual_blocks", 5),
+        tcn_dilation_base=effective_cfg.get("dilation_base", 2),
+        tcn_dropout=effective_cfg.get("dropout", 0.2),
+        tcn_weight_norm=effective_cfg.get("weight_norm", True),
+    )
+    
+    console.print(f"  [dim]LR: {trainer_config.learning_rate}, Batch: {trainer_config.batch_size}, Epochs: {epochs}[/dim]")
+    
+    trainer = TCNVolatilityRegimeTrainer(trainer_config)
+    
+    # Pass class labels and regression targets separately
+    metrics = trainer.train(
+        X_train, y_train_class,
+        X_val, y_val_class,
+        feature_names=feature_cols,
+        class_weights=class_weights,
+        sample_weights=sample_weights,
+        y_train_reg=y_train_reg,
+        y_val_reg=y_val_reg,
+    )
+    
+    # Step 6: Save model and scaler
+    console.print("\n[bold]Step 6: Saving model and scaler...[/bold]")
+    
+    # Use joint config model_dir if specified
+    model_dir_str = effective_cfg.get("model_dir", "trained_data/models/joint")
+    model_name = effective_cfg.get("model_name", "tcn_volatility_regime.keras")
+    model_dir = Path(model_dir_str)
+    model_dir.mkdir(parents=True, exist_ok=True)
+    
+    model_path = model_dir / model_name
+    trainer.save(str(model_path))
+    
+    # Save feature scaler for inference
+    import pickle
+    scaler_path = model_dir / "tcn_feature_scaler.pkl"
+    with open(scaler_path, 'wb') as f:
+        pickle.dump({
+            'scaler': feature_scaler,
+            'feature_cols': feature_cols,
+            'y_reg_mean': y_reg_mean,
+            'y_reg_std': y_reg_std,
+        }, f)
+    
+    # Also save to root models dir for backward compat
+    root_model_path = Path("trained_data/models") / model_name
+    trainer.save(str(root_model_path))
+    root_scaler_path = Path("trained_data/models") / "tcn_feature_scaler.pkl"
+    with open(root_scaler_path, 'wb') as f:
+        pickle.dump({
+            'scaler': feature_scaler,
+            'feature_cols': feature_cols,
+            'y_reg_mean': y_reg_mean,
+            'y_reg_std': y_reg_std,
+        }, f)
+    
+    console.print(f"  ✓ Model saved to: {model_path}")
+    console.print(f"  ✓ Scaler saved to: {scaler_path}")
+    console.print(f"  ✓ Model saved to: {root_model_path}")
+    console.print(f"  ✓ Scaler saved to: {root_scaler_path}")
+    
+    # Summary
+    val_acc = metrics.get('val_accuracy', 0)
+    f1_quiet = metrics.get('val_f1_quiet', 0)
+    f1_stable = metrics.get('val_f1_stable', 0)
+    f1_active = metrics.get('val_f1_active', 0)
+    f1_extreme = metrics.get('val_f1_extreme', 0)
+    f1_macro = metrics.get('val_f1_macro', 0)
+    active_extreme_det = metrics.get('active_extreme_detection', 0)
+    
+    # Check for collapse
+    all_present = metrics.get('all_classes_present', True)
+    collapse_status = "[green]✓ No collapse[/green]" if all_present else "[red]⚠ Prediction collapse detected[/red]"
+    
+    console.print("\n" + "=" * 60)
+    console.print(Panel(
+        f"[bold green]TCN Forward Volatility Trained![/bold green]\n\n"
+        f"[bold]Validation Accuracy:[/bold] {val_acc:.1%}\n"
+        f"[bold]F1 Macro:[/bold] {f1_macro:.3f}\n"
+        f"[bold]F1 Scores:[/bold]\n"
+        f"  QUIET_NEXT:   {f1_quiet:.2f}\n"
+        f"  STABLE_NEXT:  {f1_stable:.2f}\n"
+        f"  ACTIVE_NEXT:  {f1_active:.2f}\n"
+        f"  EXTREME_NEXT: {f1_extreme:.2f}\n"
+        f"[bold]Active/Extreme Detection:[/bold] {active_extreme_det:.1%}\n\n"
+        f"{collapse_status}\n\n"
+        f"[dim]Model saved to: {model_path}[/dim]\n\n"
+        f"[cyan]Scanner will now use this model for entry timing.[/cyan]\n"
+        f"[cyan]STABLE_NEXT and ACTIVE_NEXT regimes allow trading.[/cyan]\n"
+        f"[cyan]Run 'buddy scan' to test.[/cyan]",
+        title="✅ Complete",
+        border_style="green"
+    ))
+
+
 def suggest_improvements(
     config_path: str = DEFAULT_CONFIG_PATH,
     *,
@@ -10742,6 +11736,42 @@ def buddy_journal(
                     f"  {instr.replace('_', '/'):<10} {data['wins']}W/{data['losses']}L "
                     f"({wr:.0f}%) [{instr_pnl_color}]${data['pnl']:+,.2f}[/{instr_pnl_color}]"
                 )
+        
+        # Calibration accuracy analysis
+        calibration_trades = [
+            t for t in journal.trades 
+            if t.status in ("win", "loss") and t.tcn_probability is not None
+        ]
+        if len(calibration_trades) >= 10:
+            import numpy as np
+            probs = np.array([t.tcn_probability for t in calibration_trades])
+            outcomes = np.array([1 if t.status == "win" else 0 for t in calibration_trades])
+            
+            # Brier score (lower is better)
+            brier = np.mean((probs - outcomes) ** 2)
+            
+            # Calibration by bin
+            perf_lines.append("")
+            perf_lines.append(f"[bold]🎯 Calibration Accuracy[/bold]")
+            perf_lines.append("")
+            
+            # Show Brier score
+            brier_color = "green" if brier < 0.2 else ("yellow" if brier < 0.3 else "red")
+            perf_lines.append(f"  Brier Score:      [{brier_color}]{brier:.3f}[/{brier_color}] (lower is better)")
+            
+            # Bin trades by confidence
+            bins = [(0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 1.0)]
+            for low, high in bins:
+                mask = (probs >= low) & (probs < high)
+                n_in_bin = mask.sum()
+                if n_in_bin >= 3:
+                    actual_wr = outcomes[mask].mean() * 100
+                    expected_wr = probs[mask].mean() * 100
+                    diff = actual_wr - expected_wr
+                    diff_color = "green" if abs(diff) < 10 else ("yellow" if abs(diff) < 20 else "red")
+                    perf_lines.append(
+                        f"  {int(low*100)}-{int(high*100)}% conf:    n={n_in_bin:2d}  actual={actual_wr:.0f}%  expected={expected_wr:.0f}%  [{diff_color}]Δ={diff:+.0f}%[/{diff_color}]"
+                    )
         
         console.print(Panel(
             "\n".join(perf_lines),
@@ -11904,7 +12934,10 @@ EXAMPLES:
             "train",
             "train-buddy",
             "retrain-gates",
+            "train-tcn-regime",
             "train-rl-sizer",
+            "train-confidence-model",  # Phase 3: Scanner Accuracy
+            "recalibrate",  # Phase 4: Calibration Feedback Loop
             "buddy",
             "Buddy",
             "promote-model",
@@ -11917,7 +12950,7 @@ EXAMPLES:
             "trade-analysis",
             "suggest-improvements",
         ],
-        help="Command: scan (multi-pair) | buddy (single-pair) | train | validate | journal | suggest-improvements",
+        help="Command: scan (multi-pair) | buddy (single-pair) | train | validate | journal | recalibrate",
     )
     parser.add_argument(
         "--config",
@@ -12195,6 +13228,17 @@ EXAMPLES:
         "-d",
         action="store_true",
         help="For scan: auto-filter correlated pairs (only show best from each correlation cluster)",
+    )
+    parser.add_argument(
+        "--validate-signals",
+        action="store_true",
+        dest="validate_signals",
+        help="For scan: show historical backtest validation for each signal",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="For scan: bypass trading hours check (run outside 8-21 UTC)",
     )
     parser.add_argument(
         "--last",
@@ -12618,7 +13662,10 @@ EXAMPLES:
         "train": train_buddy,  # Short alias
         "train-buddy": train_buddy,
         "retrain-gates": retrain_gates,
+        "train-tcn-regime": train_tcn_regime,
         "train-rl-sizer": train_rl_sizer,
+        "train-confidence-model": train_confidence_model,  # Phase 3: Scanner Accuracy
+        "recalibrate": recalibrate_scanner,  # Phase 4: Calibration Feedback Loop
         "buddy": buddy,
         "Buddy": buddy,
         "promote-model": promote_model,
@@ -12644,6 +13691,16 @@ EXAMPLES:
                 candles=int(getattr(args, "candles", 5000)),
                 verbose=bool(getattr(args, "verbose", False)),
             )
+        elif args.command == "train-tcn-regime":
+            # Train TCN Volatility Regime model for scanner
+            train_tcn_regime(
+                config_path=args.config,
+                pairs=getattr(args, "pairs", None),
+                granularity=str(getattr(args, "granularity", "H1")),
+                candles=int(getattr(args, "candles", None) or 5000),
+                epochs=int(getattr(args, "epochs", None) or 150),
+                verbose=bool(getattr(args, "verbose", False)),
+            )
         elif args.command == "train-rl-sizer":
             # Train RL position sizing agent
             train_rl_sizer(
@@ -12653,6 +13710,18 @@ EXAMPLES:
                 pairs=getattr(args, "pairs", None),
                 granularity=str(getattr(args, "granularity", "H1")),
                 candles=int(getattr(args, "candles", 5000)),
+                verbose=bool(getattr(args, "verbose", False)),
+            )
+        elif args.command == "train-confidence-model":
+            # Train learned confidence model from trade journal
+            train_confidence_model(
+                config_path=args.config,
+                verbose=bool(getattr(args, "verbose", False)),
+            )
+        elif args.command == "recalibrate":
+            # Recalibrate Platt scaling from trade journal outcomes
+            recalibrate_scanner(
+                config_path=args.config,
                 verbose=bool(getattr(args, "verbose", False)),
             )
         elif args.command in {"buddy", "Buddy"}:
@@ -12684,26 +13753,31 @@ EXAMPLES:
             watch_mode = bool(getattr(args, "watch", False))
             
             if watch_mode:
-                # Continuous watch mode
-                from buddy_scanner import BuddyScanner
-                
-                scanner = BuddyScanner(
-                    config_path=args.config,
-                    use_rl_sizer=bool(getattr(args, "use_rl_sizer", False)),
-                )
-                
-                pairs_str = getattr(args, "pairs", None)
-                pair_list = None
-                if pairs_str:
-                    pair_list = [p.strip().upper().replace("/", "_") for p in pairs_str.split(",")]
-                
-                scanner.scan_continuous(
-                    pairs=pair_list,
-                    granularity=str(getattr(args, "granularity", "H1")),
-                    interval_minutes=int(getattr(args, "interval", 5)),
-                    auto_execute=bool(getattr(args, "auto_execute", False)),
-                    top_n=int(getattr(args, "top", 5)),
-                )
+                # Continuous watch mode using consolidated scanner
+                try:
+                    from src.scanner import Scanner, ScannerConfig
+                    
+                    config = ScannerConfig()
+                    scanner = Scanner(config=config)
+                    
+                    pairs_str = getattr(args, "pairs", None)
+                    pair_list = None
+                    if pairs_str:
+                        pair_list = [p.strip().upper().replace("/", "_") for p in pairs_str.split(",")]
+                    
+                    scanner.scan_watch(
+                        pairs=pair_list,
+                        granularity=str(getattr(args, "granularity", "H1")),
+                        interval_seconds=int(getattr(args, "interval", 5)) * 60,
+                        max_iterations=0,  # 0 = infinite
+                    )
+                except Exception as e:
+                    if "ScannerError" in type(e).__name__ or "TCN" in str(e):
+                        console.print(f"[red]✗ Scanner failed: {e}[/red]")
+                        console.print("[yellow]TCN Volatility Regime model is REQUIRED.[/yellow]")
+                        console.print("[yellow]Run: python main.py train-joint to train required models[/yellow]")
+                    else:
+                        console.print(f"[red]✗ Watch mode error: {e}[/red]")
             else:
                 # Single scan
                 buddy_scan(
@@ -12713,9 +13787,9 @@ EXAMPLES:
                     top_n=int(getattr(args, "top", 5)),
                     verbose=bool(getattr(args, "verbose", False)),
                     prompt_train=not bool(getattr(args, "no_train", False)),
-                    no_execute=bool(getattr(args, "skip_execute", False)),
-                    use_rl_sizer=bool(getattr(args, "use_rl_sizer", False)),
                     diversified=bool(getattr(args, "diversified", False)),
+                    force=bool(getattr(args, "force", False)),
+                    validate_signals=bool(getattr(args, "validate_signals", False)),
                 )
         elif args.command == "trade-analysis":
             # Trade analysis command

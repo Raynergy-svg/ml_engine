@@ -214,3 +214,7 @@ __all__ = [
     "PairAnalysis",
     "ScannerError",
 ]
+
+
+# ============================================================================
+# ORIGINAL IMPLEMENTATION BELOW (kept for reference, not used)

@@ -3,6 +3,12 @@ Scanner Engine Module.
 
 Core scanning logic using ThreadPoolExecutor for parallel pair analysis.
 Handles data fetching, feature engineering, and incremental caching.
+
+IMPORTANT:
+- Uses JOINT models exclusively (trained_data/models/joint/)
+- TCN Volatility Regime is REQUIRED and evaluated FIRST
+- ALL confidence values use 0-1 scale internally
+- Fails with ScannerError if TCN model missing
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from .config import ScannerConfig, load_yaml_config
-from .gates import GateEvaluator
+from .gates import GateEvaluator, ScannerError, _format_confidence_pct
 from .results import PairAnalysis, ScanResult
 from .execution import ExecutionManager, ExecutionConfig, ExecutionResult
 from .analysis import QuickBacktester, CorrelationAnalyzer, DriftDetector
@@ -56,6 +62,7 @@ class Scanner:
         # Lazy-loaded components
         self._gate_evaluator: Optional[GateEvaluator] = None
         self._feature_engineer = None
+        self._use_full_fe: bool = False  # Whether using full FeatureEngineering class
         self._modular_ensemble = None
         self._executor: Optional[ExecutionManager] = None
         
@@ -66,11 +73,18 @@ class Scanner:
         self._volatility_filter: Optional[VolatilityFilter] = None
         self._diversification_filter: Optional[DiversificationFilter] = None
         
+        # TCN model status (set during _init_gate_evaluator)
+        self._tcn_loaded: bool = False
+        
         # Incremental caching
         self._last_scan_times: Dict[str, float] = {}
         self._last_prices: Dict[str, float] = {}
         self._cached_results: Dict[str, PairAnalysis] = {}
         self._pair_returns: Dict[str, pd.Series] = {}
+        
+        # Thread safety for component initialization
+        import threading
+        self._init_lock = threading.Lock()
         
         # Load config
         self._load_yaml_config()
@@ -133,58 +147,64 @@ class Scanner:
             return False
     
     def _init_gate_evaluator(self) -> bool:
-        """Initialize gate evaluator with JOINT models (preferred) or per-pair fallback.
+        """Initialize gate evaluator with JOINT models (REQUIRED).
         
-        Scanner prefers joint-trained models from:
+        Thread-safe: Uses lock to prevent duplicate loading from parallel threads.
+        
+        Scanner uses JOINT-TRAINED models exclusively from:
         trained_data/models/joint/
         
-        Falls back to per-pair models if joint models not available.
+        TCN Volatility Regime model is REQUIRED. If missing, raises ScannerError.
         
         Returns:
             True if gates loaded successfully
+            
+        Raises:
+            ScannerError: If joint directory or TCN model missing
         """
         if self._gate_evaluator is not None:
             return self._gate_evaluator.is_loaded
         
-        model_dir = Path(self.config.model_dir)
-        joint_dir = model_dir / "joint"
-        
-        # Check if joint models exist
-        use_joint_only = getattr(self.config, 'use_joint_models_only', True)
-        require_tcn = getattr(self.config, 'require_tcn_volatility', True)
-        
-        # If joint directory doesn't exist, fall back to per-pair models
-        if use_joint_only and not joint_dir.exists():
-            logger.warning(
-                f"Joint model directory not found: {joint_dir}\n"
-                f"Falling back to per-pair models. For best results, run:\n"
-                f"  python main.py train-joint --instruments EUR_USD,GBP_USD,USD_JPY"
-            )
-            use_joint_only = False
-            require_tcn = False  # Can't require TCN if using fallback
-        
-        # Check if TCN model exists in joint dir - if not, don't require it
-        tcn_path = joint_dir / "tcn_volatility_regime.keras"
-        if use_joint_only and require_tcn and not tcn_path.exists():
-            logger.warning(
-                f"TCN Volatility Regime model not found in joint directory.\n"
-                f"Scanner will run without volatility filtering.\n"
-                f"To train TCN model, run: python main.py train-joint --instruments EUR_USD,GBP_USD,USD_JPY"
-            )
-            require_tcn = False
-        
-        self._gate_evaluator = GateEvaluator(model_dir, use_joint_only=use_joint_only)
-        
-        try:
-            status = self._gate_evaluator.load_models(require_tcn=require_tcn)
-            return any(status.values())
-        except FileNotFoundError as e:
-            logger.warning(f"Model loading issue: {e}")
-            # Still return False but don't raise - allow scan to continue with reduced functionality
-            return False
+        with self._init_lock:
+            # Double-check after acquiring lock
+            if self._gate_evaluator is not None:
+                return self._gate_evaluator.is_loaded
+            
+            model_dir = Path(self.config.model_dir)
+            
+            # Scanner REQUIRES joint models
+            use_joint_only = self.config.use_joint_models_only
+            require_tcn = self.config.require_tcn_volatility
+            extreme_warning = self.config.extreme_regime_warning
+            
+            self._gate_evaluator = GateEvaluator(model_dir, use_joint_only=use_joint_only)
+            
+            try:
+                status = self._gate_evaluator.load_models(
+                    require_tcn=require_tcn,
+                    extreme_regime_warning=extreme_warning,
+                )
+                
+                # Track TCN status for ScanResult
+                self._tcn_loaded = status.get("tcn_volatility", False)
+                
+                return any(status.values())
+                
+            except ScannerError:
+                # Re-raise ScannerError (missing TCN model)
+                raise
+            except FileNotFoundError as e:
+                # Convert to ScannerError for consistent handling
+                raise ScannerError(str(e)) from e
     
     def _init_feature_engineer(self) -> bool:
         """Initialize feature engineering module.
+        
+        Thread-safe: Uses lock to prevent duplicate initialization.
+        
+        Uses full FeatureEngineering class from src/data/feature_engineering.py
+        to compute all features expected by trained models (80+ features).
+        Falls back to compute_normalized_features if unavailable.
         
         Returns:
             True if initialized successfully
@@ -192,20 +212,35 @@ class Scanner:
         if self._feature_engineer is not None:
             return True
         
-        try:
-            from src.core.modular_data_loaders import compute_normalized_features
-            # Store function reference directly
-            self._feature_engineer = compute_normalized_features
-            return True
-        except ImportError:
-            logger.debug("compute_normalized_features not available")
-            return False
-        except Exception as e:
-            logger.warning(f"Failed to initialize feature engineer: {e}")
-            return False
+        with self._init_lock:
+            # Double-check after acquiring lock
+            if self._feature_engineer is not None:
+                return True
+            
+            try:
+                # Try full feature engineering first (80+ features)
+                from src.data.feature_engineering import FeatureEngineering
+                self._feature_engineer = FeatureEngineering()
+                self._use_full_fe = True
+                return True
+            except ImportError:
+                logger.debug("FeatureEngineering not available, falling back to normalized features")
+                try:
+                    from src.core.modular_data_loaders import compute_normalized_features
+                    self._feature_engineer = compute_normalized_features
+                    self._use_full_fe = False
+                    return True
+                except ImportError:
+                    logger.debug("compute_normalized_features not available")
+                    return False
+            except Exception as e:
+                logger.warning(f"Failed to initialize feature engineer: {e}")
+                return False
     
     def _init_modular_ensemble(self) -> bool:
         """Initialize modular ensemble for direction prediction.
+        
+        Thread-safe: Uses lock to prevent duplicate loading from parallel threads.
         
         Returns:
             True if ensemble loaded successfully
@@ -213,21 +248,39 @@ class Scanner:
         if self._modular_ensemble is not None:
             return True
         
-        try:
-            from src.core.modular_inference import ModularEnsembleInference
+        with self._init_lock:
+            # Double-check after acquiring lock
+            if self._modular_ensemble is not None:
+                return True
             
-            self._modular_ensemble = ModularEnsembleInference(
-                model_dir=str(self.config.model_dir),
-            )
-            # Check if at least the main direction model loaded
-            return self._modular_ensemble.tcn is not None or self._modular_ensemble.histgb is not None
-            
-        except ImportError:
-            logger.debug("ModularEnsembleInference not available")
-            return False
-        except Exception as e:
-            logger.warning(f"Failed to initialize ensemble: {e}")
-            return False
+            try:
+                from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
+                
+                # Use permissive thresholds for scanner - allow more opportunities through
+                # The scanner is just for discovery; actual risk is managed at execution
+                scanner_config = InferenceConfig(
+                    min_tcn_probability=0.48,    # Lower to allow uncertain signals through
+                    min_confidence=30.0,          # Very permissive confidence threshold
+                    min_momentum=0.10,            # Very permissive momentum
+                    max_drawdown_pct=0.05,        # 5% max drawdown
+                    max_streak_prob=0.98,         # Almost disable streak check
+                    min_meta_confidence=0.45,     # Lower meta threshold
+                    permissive_mode=False,        # Keep validation active
+                )
+                
+                self._modular_ensemble = ModularEnsembleInference(
+                    model_dir=str(self.config.model_dir),
+                    config=scanner_config,
+                )
+                # Check if at least the main direction model loaded
+                return self._modular_ensemble.tcn is not None or self._modular_ensemble.histgb is not None
+                
+            except ImportError:
+                logger.debug("ModularEnsembleInference not available")
+                return False
+            except Exception as e:
+                logger.warning(f"Failed to initialize ensemble: {e}")
+                return False
     
     def _init_analysis_tools(self) -> None:
         """Initialize analysis and filter components."""
@@ -326,6 +379,10 @@ class Scanner:
     def _compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute technical features for analysis.
         
+        Uses full FeatureEngineering class when available to compute all 80+
+        features expected by the trained models. Falls back to basic features
+        if necessary.
+        
         Args:
             df: Raw OHLCV DataFrame
             
@@ -346,8 +403,28 @@ class Scanner:
             return df.ffill().bfill().fillna(0)
         
         try:
-            # _feature_engineer is now compute_normalized_features function
-            df_feat = self._feature_engineer(df.copy())
+            df_feat = df.copy()
+            
+            # Check if using full FeatureEngineering class vs simple function
+            if getattr(self, '_use_full_fe', False):
+                # Full feature engineering: add technical indicators + statistical features
+                df_feat = self._feature_engineer.add_technical_indicators(df_feat)
+                df_feat = self._feature_engineer.add_statistical_features(df_feat)
+                # Also compute normalized features for consistency
+                try:
+                    from src.core.modular_data_loaders import compute_normalized_features
+                    # Merge normalized features (they're more robust for cross-pair inference)
+                    df_norm = compute_normalized_features(df.copy())
+                    # Add only columns that don't already exist
+                    for col in df_norm.columns:
+                        if col not in df_feat.columns:
+                            df_feat[col] = df_norm[col]
+                except ImportError:
+                    pass
+            else:
+                # Simple function (compute_normalized_features)
+                df_feat = self._feature_engineer(df_feat)
+            
             df_feat = df_feat.replace([np.inf, -np.inf], np.nan)
             df_feat = df_feat.ffill().bfill().fillna(0.0)
             return df_feat
@@ -360,11 +437,13 @@ class Scanner:
         df_raw: pd.DataFrame,
         df_feat: pd.DataFrame,
         pair: str,
-    ) -> Tuple[str, float, float, float, bool, Optional[int]]:
+    ) -> Dict[str, Any]:
         """Run model inference on features.
         
         IMPORTANT: TCN Volatility Regime is evaluated FIRST as a global filter.
-        If volatility is LOW or NORMAL, gates_passed is False regardless of other signals.
+        If volatility is LOW or NORMAL, ALL trades are blocked regardless of other signals.
+        
+        ALL confidence values returned in 0-1 scale.
         
         Args:
             df_raw: Raw OHLCV data
@@ -372,27 +451,56 @@ class Scanner:
             pair: Instrument name
             
         Returns:
-            Tuple of (direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime)
+            Dict with inference results including:
+            - direction: str
+            - confidence: float (0-1)
+            - tcn_conf: float (0-1)
+            - ridge_conf: float (0-1)
+            - gates_passed: bool
+            - volatility_regime: int (0-3)
+            - volatility_regime_name: str
+            - regime_confidence: float (0-1)
+            - extreme_warning: bool
+            - volatility_gate_passed: bool
         """
-        direction = "LONG"
-        confidence = 0.5
-        tcn_conf = 0.0
-        ridge_conf = 0.0
-        gates_passed = False
-        volatility_regime = None
+        result = {
+            "direction": "LONG",
+            "confidence": 0.5,
+            "tcn_conf": 0.0,
+            "tcn_conf_raw": 0.0,  # Raw uncalibrated probability
+            "tcn_calibrated": False,  # True if calibration was applied
+            "has_calibrator": False,  # True if calibrator is loaded
+            "ridge_conf": 0.0,
+            "gates_passed": False,
+            "volatility_regime": 0,
+            "volatility_regime_name": "UNKNOWN",
+            "regime_confidence": 0.0,
+            "extreme_warning": False,
+            "volatility_gate_passed": False,
+        }
         
-        # === FIRST: Check TCN Volatility Regime (GLOBAL GATE) ===
+        # === FIRST: Check TCN Forward Volatility (REQUIRED GLOBAL GATE) ===
+        # Predicts FUTURE volatility regime (48-bar lookahead)
+        # ALLOW: STABLE_NEXT (1), ACTIVE_NEXT (2)
+        # BLOCK: QUIET_NEXT (0), EXTREME_NEXT (3)
         if self._init_gate_evaluator() and self._gate_evaluator is not None:
             if self._gate_evaluator.tcn_volatility_available:
-                regime, _vol_conf, vol_allowed = self._gate_evaluator.evaluate_volatility_regime(df_feat)
-                volatility_regime = regime
+                regime, vol_conf, is_opportunity = self._gate_evaluator.evaluate_volatility_regime(df_feat)
                 
-                if not vol_allowed:
-                    # LOW or NORMAL volatility - block ALL trades
-                    regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
-                    logger.info(f"{pair}: Blocked by TCN Volatility Regime ({regime_names[regime]})")
-                    return direction, confidence, tcn_conf, ridge_conf, False, volatility_regime
-            # If TCN not available, just skip the volatility check (don't block)
+                result["volatility_regime"] = regime
+                result["volatility_regime_name"] = GateEvaluator.REGIME_NAMES[regime] if 0 <= regime <= 3 else "UNKNOWN"
+                result["regime_confidence"] = vol_conf
+                result["volatility_gate_passed"] = is_opportunity
+                result["extreme_warning"] = (regime == GateEvaluator.REGIME_EXTREME_NEXT)
+                
+                if not is_opportunity:
+                    # QUIET_NEXT or EXTREME_NEXT volatility predicted - block ALL trades
+                    logger.debug(f"{pair}: Blocked by TCN ({result['volatility_regime_name']})")
+                    return result
+            else:
+                # TCN model not loaded but required - should have raised ScannerError earlier
+                logger.error(f"{pair}: TCN Forward Volatility model not available - blocking trade")
+                return result
         
         # === SECOND: Evaluate direction and other gates ===
         # Try modular ensemble first
@@ -401,19 +509,29 @@ class Scanner:
                 signal = self._modular_ensemble.predict(df_feat)
                 
                 if signal.tcn_direction is not None:
-                    direction = "LONG" if signal.tcn_direction == 1 else "SHORT"
-                    tcn_conf = abs(signal.tcn_probability - 0.5) * 200
-                    ridge_conf = signal.ridge_confidence
-                    confidence = max(tcn_conf, ridge_conf) / 100
-                    gates_passed = signal.trade
+                    result["direction"] = "LONG" if signal.tcn_direction == 1 else "SHORT"
+                    result["tcn_conf"] = abs(signal.tcn_probability - 0.5) * 2  # 0-1 scale
+                    # Normalize ridge_confidence if it's in 0-100 scale
+                    ridge_val = signal.ridge_confidence
+                    result["ridge_conf"] = ridge_val / 100 if ridge_val > 1 else ridge_val
+                    result["confidence"] = max(result["tcn_conf"], result["ridge_conf"])
+                    result["gates_passed"] = signal.trade and result["volatility_gate_passed"]
+                    # Capture rejection reason from inference pipeline
+                    if not signal.trade and signal.reason:
+                        result["block_reason"] = signal.reason
                 elif signal.direction is not None:
-                    direction = signal.direction.upper()
-                    confidence = signal.confidence if signal.confidence > 0 else 0.5
-                    ridge_conf = signal.ridge_confidence
-                    tcn_conf = confidence * 100
-                    gates_passed = signal.trade
+                    result["direction"] = signal.direction.upper()
+                    result["confidence"] = signal.confidence if signal.confidence > 0 else 0.5
+                    ridge_val = signal.ridge_confidence
+                    result["ridge_conf"] = ridge_val / 100 if ridge_val > 1 else ridge_val
+                    result["tcn_conf"] = result["confidence"]
+                    result["gates_passed"] = signal.trade and result["volatility_gate_passed"]
+                    # Capture rejection reason from inference pipeline
+                    if not signal.trade and signal.reason:
+                        result["block_reason"] = signal.reason
                 
-                return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed, volatility_regime
+                result["confidence"] = min(result["confidence"], 0.95)
+                return result
                 
             except Exception as e:
                 logger.debug(f"{pair}: Ensemble inference failed - {e}")
@@ -422,26 +540,30 @@ class Scanner:
         if self._init_gate_evaluator() and self._gate_evaluator is not None:
             try:
                 # Pass full DataFrame for Transformer (needs sequence)
-                # but last row features for XGB/Ridge/RF
                 gate_result = self._gate_evaluator.evaluate_all_gates(
-                    df_feat,  # Full DataFrame for Transformer sequence
-                    min_confidence=self.config.min_confidence,
+                    df_feat,
+                    min_confidence=self.config.min_confidence,  # Now 0-1
                     min_momentum=self.config.min_momentum,
                     max_drawdown_pct=self.config.max_drawdown_pct,
+                    instrument=pair,
                 )
                 
-                confidence = gate_result["momentum"]
-                ridge_conf = gate_result["confidence"]
-                gates_passed = gate_result["all_passed"]
+                result["confidence"] = gate_result["momentum"]
+                result["ridge_conf"] = gate_result["confidence"]  # Now 0-1
+                result["gates_passed"] = gate_result["all_passed"] and result["volatility_gate_passed"]
                 
                 # Use direction from gates if Transformer provided it
                 if gate_result.get("transformer_direction"):
-                    direction = gate_result["transformer_direction"]
-                    tcn_conf = gate_result.get("transformer_prob", 0.5) * 100
+                    result["direction"] = gate_result["transformer_direction"]
+                    result["tcn_conf"] = gate_result.get("transformer_prob", 0.5)
+                    # Track calibration status (new fields from Phase 1)
+                    result["tcn_conf_raw"] = gate_result.get("transformer_prob_raw", result["tcn_conf"])
+                    result["tcn_calibrated"] = gate_result.get("transformer_calibrated", False)
+                    result["has_calibrator"] = gate_result.get("has_calibrator", False)
                 elif "rsi" in df_feat.columns:
                     # Fallback to RSI-based direction
                     rsi = df_feat["rsi"].iloc[-1]
-                    direction = "LONG" if rsi < 50 else "SHORT"
+                    result["direction"] = "LONG" if rsi < 50 else "SHORT"
                 
             except Exception as e:
                 logger.debug(f"{pair}: Gate evaluation failed - {e}")
@@ -450,17 +572,17 @@ class Scanner:
         if "rsi" in df_feat.columns:
             rsi = df_feat["rsi"].iloc[-1]
             if rsi < 30:
-                direction = "LONG"
-                confidence = 0.5 + (30 - rsi) / 60
+                result["direction"] = "LONG"
+                result["confidence"] = min(0.5 + (30 - rsi) / 60, 0.95)
             elif rsi > 70:
-                direction = "SHORT"
-                confidence = 0.5 + (rsi - 70) / 60
+                result["direction"] = "SHORT"
+                result["confidence"] = min(0.5 + (rsi - 70) / 60, 0.95)
             elif "macd" in df_feat.columns:
                 macd = df_feat["macd"].iloc[-1]
-                direction = "LONG" if macd > 0 else "SHORT"
-                confidence = 0.5 + min(abs(macd) * 10, 0.2)
+                result["direction"] = "LONG" if macd > 0 else "SHORT"
+                result["confidence"] = min(0.5 + min(abs(macd) * 10, 0.2), 0.95)
         
-        return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed, volatility_regime
+        return result
     
     def _calculate_metrics(
         self,
@@ -551,6 +673,8 @@ class Scanner:
         Returns:
             PairAnalysis or None on failure
         """
+        start_time = time.time()
+        
         try:
             # Check session timing
             if self.config.session_filter_enabled:
@@ -559,7 +683,7 @@ class Scanner:
                         pair=pair,
                         direction="HOLD",
                         confidence=0.0,
-                        error="Outside trading session",
+                        block_reason="Outside trading session",
                     )
             
             # Fetch data
@@ -589,12 +713,10 @@ class Scanner:
                 self._pair_returns[pair] = df_feat["close"].pct_change().dropna()
             
             # Check minimum volatility
-            # compute_normalized_features produces atr_pct_14, convert to absolute ATR
             pip_value = self.config.pip_values.get(pair, 0.0001)
             if "atr" in df_feat.columns:
                 atr = df_feat["atr"].iloc[-1]
             elif "atr_pct_14" in df_feat.columns and "close" in df_raw.columns:
-                # Convert percentage ATR back to absolute
                 atr = df_feat["atr_pct_14"].iloc[-1] * df_raw["close"].iloc[-1]
             else:
                 atr = 0.0
@@ -605,63 +727,144 @@ class Scanner:
                     pair=pair,
                     direction="HOLD",
                     confidence=0.0,
-                    error=f"Low volatility (ATR={atr_pips:.1f} pips)",
+                    atr=atr,
+                    atr_pips=atr_pips,
+                    block_reason=f"Low volatility (ATR={atr_pips:.1f} pips < {self.config.min_atr_pips})",
                 )
             
             # Run inference (TCN Volatility Regime is checked FIRST inside)
-            direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime = self._run_inference(
-                df_raw, df_feat, pair
-            )
+            inference = self._run_inference(df_raw, df_feat, pair)
             
             # Calculate metrics
             metrics = self._calculate_metrics(df_feat, pair)
             
-            # Calculate position sizing
-            sl_pips = self.config.sl_pips
-            tp_pips = self.config.tp_pips
+            # Calculate ATR-based SL/TP with clamps (H1 optimal settings)
+            sl_pips = max(
+                self.config.min_sl_pips,
+                min(atr_pips * self.config.atr_sl_multiplier, self.config.max_sl_pips)
+            )
+            tp_pips = max(
+                self.config.min_tp_pips,
+                min(atr_pips * self.config.atr_tp_multiplier, self.config.max_tp_pips)
+            )
             
-            # Kelly-based position sizing (simplified)
-            risk_pct = self.config.risk_per_trade_pct
-            if confidence > 0.65:
-                # Higher confidence = slightly larger position
-                risk_pct = min(risk_pct * 1.25, 0.03)
+            # Apply high probability TP bonus
+            if inference["confidence"] >= self.config.high_prob_threshold:
+                tp_pips += self.config.high_prob_tp_bonus
             
-            # Build error message if volatility regime blocked the trade
-            error_msg = None
-            regime_name = "UNKNOWN"
-            if volatility_regime is not None:
-                regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
-                regime_name = regime_names[volatility_regime] if 0 <= volatility_regime <= 3 else "UNKNOWN"
-                if volatility_regime < getattr(self.config, 'min_volatility_regime', 2):
-                    error_msg = f"Blocked: {regime_name} volatility regime"
+            # Calculate position multiplier based on confidence tier
+            position_multiplier = self.config.get_position_multiplier(inference["confidence"])
             
-            # Create analysis result
+            # Calculate position size
+            risk_pct = self.config.risk_per_trade_pct * position_multiplier
+            
+            # Run quick backtest for signal validation (Phase 2: Scanner Accuracy)
+            backtest_result = None
+            backtest_win_rate = 0.0
+            backtest_pnl = 0.0
+            backtest_sharpe = 0.0
+            backtest_passed = True  # Default pass if backtest disabled
+            
+            if self.config.require_backtest and inference["direction"] in ("LONG", "SHORT"):
+                # Initialize backtester if needed
+                if self._backtester is None:
+                    self._backtester = QuickBacktester(
+                        window=self.config.backtest_window,
+                        min_trades=self.config.min_backtest_trades,
+                        granularity=self.config.granularity,
+                    )
+                
+                # Run backtest
+                backtest_result = self._backtester.run(
+                    df_raw,
+                    inference["direction"],
+                    window=self.config.backtest_window,
+                )
+                
+                if backtest_result.success:
+                    backtest_win_rate = backtest_result.win_rate
+                    backtest_pnl = backtest_result.total_pnl
+                    backtest_sharpe = backtest_result.sharpe
+                    backtest_passed = backtest_win_rate >= self.config.min_backtest_win_rate
+            
+            # Build block reason
+            # Priority: volatility gate > backtest gate > internal gate failures
+            block_reason = None
+            if not inference["volatility_gate_passed"]:
+                # QUIET_NEXT (0) or EXTREME_NEXT (3) blocks trades
+                block_reason = f"Blocked: {inference['volatility_regime_name']} predicted volatility (not an opportunity)"
+            elif not backtest_passed:
+                # Backtest gate failed (Phase 2: Scanner Accuracy)
+                block_reason = f"Backtest win rate too low ({backtest_win_rate:.0%} < {self.config.min_backtest_win_rate:.0%})"
+            elif not inference["gates_passed"]:
+                # Other gates failed (confidence, momentum, risk, etc.)
+                if inference.get("block_reason"):
+                    block_reason = inference["block_reason"]
+                else:
+                    # Build reason from gate status
+                    failed_gates = []
+                    if inference["confidence"] < self.config.min_momentum:
+                        failed_gates.append(f"low momentum ({inference['confidence']:.0%})")
+                    if inference["ridge_conf"] < self.config.min_confidence:
+                        failed_gates.append(f"low confidence ({inference['ridge_conf']:.0%})")
+                    if inference["direction"] == "HOLD":
+                        failed_gates.append("no direction")
+                    if failed_gates:
+                        block_reason = "Failed gates: " + ", ".join(failed_gates)
+                    else:
+                        block_reason = "Internal gates not passed"
+            
+            scan_time_ms = (time.time() - start_time) * 1000
+            
+            # Create analysis result with all enhanced fields
             result = PairAnalysis(
                 pair=pair,
-                direction=direction,
-                confidence=confidence,
-                tcn_confidence=tcn_conf,
-                ridge_confidence=ridge_conf,
-                momentum=confidence,  # Use as proxy
-                momentum_acceleration=gates_passed,
-                momentum_passed=confidence >= self.config.min_momentum,
-                confidence_score=ridge_conf,
-                confidence_passed=ridge_conf >= self.config.min_confidence,
-                drawdown=0.02,  # Placeholder
-                risk_passed=True,  # Simplified
-                gates_passed=gates_passed,
+                direction=inference["direction"],
+                confidence=inference["confidence"],
+                gates_passed=inference["gates_passed"],
+                
+                # TCN Forward Volatility (FIRST GATE) - predicts FUTURE regime
+                volatility_regime=inference["volatility_regime"],
+                volatility_regime_name=inference["volatility_regime_name"],
+                regime_confidence=inference["regime_confidence"],
+                extreme_warning=inference["extreme_warning"],
+                volatility_gate_passed=inference["volatility_gate_passed"],
+                
+                # Gate details (ALL 0-1 SCALE)
+                tcn_confidence=inference["tcn_conf"],
+                tcn_probability=inference["tcn_conf"],
+                tcn_probability_raw=inference.get("tcn_conf_raw", inference["tcn_conf"]),
+                tcn_calibrated=inference.get("tcn_calibrated", False),
+                ridge_confidence=inference["ridge_conf"],
+                confidence_score=inference["ridge_conf"],
+                momentum=inference["confidence"],
+                xgb_momentum=inference["confidence"],
+                momentum_passed=inference["confidence"] >= self.config.min_momentum,
+                confidence_passed=inference["ridge_conf"] >= self.config.min_confidence,
+                
+                # Market data
                 current_price=metrics["current_price"],
                 atr=metrics["atr"],
                 atr_pips=atr_pips,
                 volatility_percentile=metrics["volatility_percentile"],
                 trend_strength=metrics["trend_strength"],
                 entry_score=metrics["entry_score"],
+                
+                # Position sizing (ATR-based with H1 optimal settings)
                 sl_pips=sl_pips,
                 tp_pips=tp_pips,
                 risk_pct=risk_pct,
+                position_multiplier=position_multiplier,
+                
+                # Backtest results (Phase 2: Scanner Accuracy)
+                backtest_win_rate=backtest_win_rate,
+                backtest_pnl=backtest_pnl,
+                backtest_sharpe=backtest_sharpe,
+                
+                # Status
+                block_reason=block_reason,
+                scan_time_ms=scan_time_ms,
                 scan_time=datetime.now(timezone.utc),
-                volatility_regime=regime_name,  # TCN volatility regime as string
-                error=error_msg,
             )
             
             # Cache result
@@ -741,7 +944,7 @@ class Scanner:
                         error=str(e),
                     ))
         
-        # Build scan result
+        # Build scan result with enhanced metadata
         model_type = "technical"
         if self._modular_ensemble is not None:
             model_type = "ensemble"
@@ -752,6 +955,10 @@ class Scanner:
             analyses=analyses,
             model_type=model_type,
             granularity=self.config.granularity,
+            tcn_model_loaded=self._tcn_loaded,
+            joint_models_used=self.config.use_joint_models_only,
+            account_equity=self.config.account_equity,
+            daily_limit=self.config.max_trades_per_day,
         )
     
     def scan_with_analysis(
