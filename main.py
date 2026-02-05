@@ -11074,6 +11074,185 @@ def buddy_analyze(
     console.print("\n" + "=" * 70)
 
 
+def buddy_monitor(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    show_alerts: bool = False,
+    show_drift: bool = False,
+    generate_report: bool = False,
+    drift_limit: int = 20,
+    **kwargs: Any,
+) -> None:
+    """
+    Display monitoring dashboard showing system health, alerts, and model drift.
+    
+    Shows:
+    - Alert summary (critical/warning/info)
+    - Recent model drift metrics
+    - Performance baseline comparison
+    - Recommendations for action
+    
+    Args:
+        config_path: Path to config file
+        show_alerts: Show detailed alert list
+        show_drift: Show model drift history
+        generate_report: Generate full monitoring report
+        drift_limit: Number of drift history entries to show
+    """
+    from src.utils.monitoring import MonitoringSystem, create_monitoring_report, AlertLevel
+    from datetime import datetime
+    
+    cfg = load_config(config_path)
+    monitor = MonitoringSystem(cfg)
+    
+    if generate_report:
+        # Generate full report
+        console.print("\n[bold cyan]📊 Generating Monitoring Report...[/bold cyan]")
+        report_path = create_monitoring_report(monitor)
+        console.print(f"[green]✓[/green] Report saved to: {report_path}")
+        return
+    
+    if show_alerts:
+        # Show detailed alerts
+        console.print("\n" + "=" * 80)
+        console.print("[bold yellow]⚠️  ALERTS[/bold yellow]".center(80))
+        console.print("=" * 80)
+        
+        alerts = monitor.get_alerts()
+        if not alerts:
+            console.print("\n[green]✅ No alerts - system healthy[/green]")
+        else:
+            # Group by category
+            by_category = {}
+            for alert in alerts:
+                if alert.category not in by_category:
+                    by_category[alert.category] = []
+                by_category[alert.category].append(alert)
+            
+            for category, cat_alerts in sorted(by_category.items()):
+                console.print(f"\n[bold]{category.upper().replace('_', ' ')}[/bold]")
+                for alert in cat_alerts:
+                    icon = "🔴" if alert.level == AlertLevel.CRITICAL else "⚠️" if alert.level == AlertLevel.WARNING else "ℹ️"
+                    timestamp = datetime.fromisoformat(alert.timestamp).strftime('%Y-%m-%d %H:%M:%S')
+                    console.print(f"  {icon} [{timestamp}] {alert.message}")
+        
+        console.print("\n" + "=" * 80)
+        return
+    
+    if show_drift:
+        # Show drift history
+        console.print("\n" + "=" * 80)
+        console.print("[bold cyan]📈 MODEL DRIFT HISTORY[/bold cyan]".center(80))
+        console.print("=" * 80)
+        
+        if not monitor.drift_history:
+            console.print("\n[yellow]⚠️  No drift history available[/yellow]")
+            console.print("Model drift tracking will start after first predictions")
+        else:
+            from rich.table import Table
+            
+            table = Table(show_header=True, header_style="bold magenta")
+            table.add_column("Timestamp", style="dim", width=20)
+            table.add_column("Confidence", justify="right")
+            table.add_column("Drift Score", justify="right")
+            table.add_column("Status", justify="center")
+            
+            recent = monitor.drift_history[-drift_limit:]
+            for metrics in recent:
+                timestamp = datetime.fromisoformat(metrics.timestamp).strftime('%Y-%m-%d %H:%M')
+                status = "[red]🔴 ALERT[/red]" if metrics.alert_triggered else "[green]✅ OK[/green]"
+                
+                table.add_row(
+                    timestamp,
+                    f"{metrics.confidence_mean:.3f}",
+                    f"{metrics.feature_drift_score:.3f}",
+                    status,
+                )
+            
+            console.print(table)
+        
+        console.print("\n" + "=" * 80)
+        return
+    
+    # Default: Show dashboard
+    console.print("\n" + "=" * 80)
+    console.print("[bold cyan]📊 FX TRADING BOT - MONITORING DASHBOARD[/bold cyan]".center(80))
+    console.print("=" * 80)
+    
+    # Get dashboard data
+    data = monitor.get_dashboard_data()
+    timestamp = datetime.fromisoformat(data['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+    
+    console.print(f"\n[dim]Last Updated: {timestamp}[/dim]\n")
+    
+    # Alert Summary
+    from rich.table import Table
+    
+    alert_table = Table(title="Alert Summary", show_header=True)
+    alert_table.add_column("Level", style="bold")
+    alert_table.add_column("Count", justify="right")
+    
+    alerts = data['alerts']
+    alert_table.add_row("[red]Critical[/red]", str(alerts['critical']))
+    alert_table.add_row("[yellow]Warning[/yellow]", str(alerts['warning']))
+    alert_table.add_row("[cyan]Info[/cyan]", str(alerts['info']))
+    alert_table.add_row("[bold]Total[/bold]", str(alerts['total']))
+    
+    console.print(alert_table)
+    
+    # Recent alerts
+    recent_alerts = monitor.get_alerts()[-5:]
+    if recent_alerts:
+        console.print("\n[bold]Recent Alerts:[/bold]")
+        for alert in recent_alerts:
+            icon = "🔴" if alert.level == AlertLevel.CRITICAL else "⚠️" if alert.level == AlertLevel.WARNING else "ℹ️"
+            ts = datetime.fromisoformat(alert.timestamp).strftime('%H:%M:%S')
+            console.print(f"  {icon} [{ts}] {alert.category}: {alert.message}")
+    
+    # Model Health
+    console.print("\n[bold cyan]Model Health[/bold cyan]")
+    recent_drift = data['recent_drift']
+    if recent_drift:
+        latest = recent_drift[-1]
+        status = "[red]🔴 DRIFT DETECTED[/red]" if latest['alert_triggered'] else "[green]✅ Healthy[/green]"
+        
+        health_table = Table(show_header=False)
+        health_table.add_column("Metric", style="bold")
+        health_table.add_column("Value")
+        
+        health_table.add_row("Status", status)
+        health_table.add_row("Confidence", f"{latest['confidence_mean']:.3f}")
+        health_table.add_row("Drift Score", f"{latest['drift_score']:.3f}")
+        
+        console.print(health_table)
+    else:
+        console.print("[dim]  No drift data available yet[/dim]")
+    
+    # Performance Baseline
+    baseline = data.get('baseline_metrics')
+    if baseline and baseline.get('win_rate'):
+        console.print("\n[bold cyan]Performance Baseline[/bold cyan]")
+        baseline_table = Table(show_header=False)
+        baseline_table.add_column("Metric", style="bold")
+        baseline_table.add_column("Value")
+        
+        baseline_table.add_row("Win Rate", f"{baseline['win_rate']:.1%}")
+        baseline_table.add_row("Sharpe Ratio", f"{baseline.get('sharpe_ratio', 0):.2f}")
+        
+        console.print(baseline_table)
+    
+    # Recommendations
+    console.print("\n[bold yellow]💡 Quick Actions[/bold yellow]")
+    console.print("  • buddy monitor --alerts     - View detailed alerts")
+    console.print("  • buddy monitor --drift      - Check model drift history")
+    console.print("  • buddy monitor --report     - Generate full report")
+    
+    if alerts['critical'] > 0:
+        console.print("\n[red]⚠️  CRITICAL ALERTS DETECTED - Review immediately![/red]")
+    
+    console.print("\n" + "=" * 80)
+
+
 def _buddy_test_modular_ensemble(
     config_path: str,
     instrument: str,
@@ -11888,12 +12067,15 @@ COMMAND REFERENCE:
   scan        Scan ALL pairs → shows tradeable + needs training
   buddy       Single-pair inference → execute one trade
   train       Train model for specific pair
+  monitor     Show monitoring dashboard and alerts
   
 EXAMPLES:
   buddy scan                     # Scan all majors, show recommendations
   buddy -I EUR_USD --execute     # Single EUR_USD trade
   buddy train -I AUD_USD         # Train model for AUD_USD
   buddy journal                  # View trade journal
+  buddy monitor                  # Show monitoring dashboard
+  buddy monitor --alerts         # Show detailed alerts
 """,
     )
     parser.add_argument(
@@ -11916,8 +12098,9 @@ EXAMPLES:
             "journal",
             "trade-analysis",
             "suggest-improvements",
+            "monitor",
         ],
-        help="Command: scan (multi-pair) | buddy (single-pair) | train | validate | journal | suggest-improvements",
+        help="Command: scan (multi-pair) | buddy (single-pair) | train | validate | journal | monitor | suggest-improvements",
     )
     parser.add_argument(
         "--config",
@@ -12577,6 +12760,29 @@ EXAMPLES:
         help="Disable EWC (Elastic Weight Consolidation) for continual learning. EWC is enabled by default.",
     )
     
+    # Monitoring arguments
+    parser.add_argument(
+        "--monitor-alerts",
+        action="store_true",
+        help="For monitor command: show detailed alerts",
+    )
+    parser.add_argument(
+        "--monitor-drift",
+        action="store_true",
+        help="For monitor command: show model drift history",
+    )
+    parser.add_argument(
+        "--monitor-report",
+        action="store_true",
+        help="For monitor command: generate full monitoring report",
+    )
+    parser.add_argument(
+        "--monitor-limit",
+        type=int,
+        default=20,
+        help="For monitor command: limit for drift history display (default: 20)",
+    )
+    
     # Multi-pair pre-training arguments
     parser.add_argument(
         "--multi-pair",
@@ -12628,6 +12834,7 @@ EXAMPLES:
         "scan": buddy_scan,
         "analyze": buddy_analyze,
         "journal": buddy_journal,
+        "monitor": buddy_monitor,
         "suggest-improvements": suggest_improvements,
     }
 
@@ -12749,6 +12956,14 @@ EXAMPLES:
                 days=int(getattr(args, "days", 30)),
                 verbose=bool(getattr(args, "verbose", False)),
                 import_trades=bool(getattr(args, "import_trades", False)),
+            )
+        elif args.command == "monitor":
+            buddy_monitor(
+                args.config,
+                show_alerts=bool(getattr(args, "monitor_alerts", False)),
+                show_drift=bool(getattr(args, "monitor_drift", False)),
+                generate_report=bool(getattr(args, "monitor_report", False)),
+                drift_limit=int(getattr(args, "monitor_limit", 20)),
             )
         elif args.command == "suggest-improvements":
             suggest_improvements(
