@@ -213,7 +213,7 @@ def buddy_predict_78(
     console.print(f"   Entry:      {r.current_price:.5f}")
     
     # Calculate actual SL/TP prices
-    from fx_paper import pip_size
+    from src.utils.fx_paper import pip_size
     pip = pip_size(instrument)
     
     if r.direction == "LONG":
@@ -328,7 +328,7 @@ def _buddy_scan_legacy(
     from rich.table import Table
     
     # Import train_buddy here to avoid circular imports
-    from cli.commands import train_buddy
+    from cli.training import train_buddy
     
     console.print("\n" + "=" * 70)
     console.print(f"[bold cyan]📡 MULTI-PAIR SCANNER[/bold cyan]")
@@ -345,7 +345,7 @@ def _buddy_scan_legacy(
     _utils_logger.setLevel(_utils_prev)
     
     # Parse pairs
-    from pair_scanner import MAJOR_PAIRS, PairAnalysis
+    from src.utils.pair_scanner import MAJOR_PAIRS, PairAnalysis
     
     if pairs:
         pair_list = [p.strip().upper().replace("/", "_") for p in pairs.split(",")]
@@ -382,8 +382,8 @@ def _buddy_scan_legacy(
     
     # Initialize scanner
     from src.utils.oanda_practice import OandaPracticeClient
-    from feature_engineering import FeatureEngineering
-    from fx_paper import candles_to_ohlcv_df
+    from src.data.feature_engineering import FeatureEngineering
+    from src.utils.fx_paper import candles_to_ohlcv_df
     
     client = OandaPracticeClient.from_env()
     fe = FeatureEngineering(cfg.get("feature_engineering", {}))
