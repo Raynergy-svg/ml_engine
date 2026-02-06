@@ -109,7 +109,9 @@ cmd_scan() {
             -v|--verbose) args+=(--verbose); shift ;;
             -d|--diversified) args+=(--diversified); shift ;;
             --force) args+=(--force); shift ;;
-            *) shift ;;
+            --use-rl-sizer) args+=(--use-rl-sizer); shift ;;
+            --no-rl-sizer) args+=(--no-use-rl-sizer); shift ;;
+            *) args+=("$1"); shift ;;
         esac
     done
     run_py "${ROOT_DIR}/main.py" scan --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
@@ -157,6 +159,25 @@ cmd_test() {
     run_py "${ROOT_DIR}/main.py" test --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
 }
 
+cmd_find() {
+    local granularity="H1"
+    local args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -i|-I|--instrument) args+=(--instrument "$2"); shift 2 ;;
+            -g|--granularity) granularity="$2"; shift 2 ;;
+            -c|--candles|--max-candles) args+=(--max-candles "$2"); shift 2 ;;
+            --min|--min-candles) args+=(--min-candles "$2"); shift 2 ;;
+            --step) args+=(--step "$2"); shift 2 ;;
+            --cv-folds) args+=(--cv-folds "$2"); shift 2 ;;
+            --no-auto-train) args+=(--no-auto-train); shift ;;
+            -v|--verbose) args+=(--verbose); shift ;;
+            *) args+=("$1"); shift ;;
+        esac
+    done
+    run_py "${ROOT_DIR}/main.py" find-candles --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
+}
+
 cmd_status() { run_py "${ROOT_DIR}/main.py" model-status --config "${CONFIG_FILE}"; }
 cmd_promote() { run_py "${ROOT_DIR}/main.py" promote-model --config "${CONFIG_FILE}"; }
 cmd_loop() { run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --loop --candles 2000; }
@@ -171,10 +192,11 @@ main() {
         analyze|a) cmd_analyze "$@" ;;
         test) cmd_test "$@" ;;
         journal|j) cmd_journal "$@" ;;
+        find|f) cmd_find "$@" ;;
         status|s) cmd_status ;;
         promote) cmd_promote ;;
         loop|l) cmd_loop ;;
-        help|-h|--help) echo "buddy <predict|train|scan|analyze|test|journal|status|loop>" ;;
+        help|-h|--help) echo "buddy <predict|train|scan|find|analyze|test|journal|status|loop>" ;;
         *) cmd_predict "${cmd}" "$@" ;;
     esac
 }

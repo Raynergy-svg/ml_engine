@@ -47,11 +47,23 @@ def suppress_logging():
     # Suppress TensorFlow
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     
-    # Loggers to quiet
+    # Loggers to quiet — include both plain and src.* prefixed names,
+    # plus root and any other noisy loggers.
     loggers_to_quiet = [
-        'utils', 'modular_trainers', 'modular_inference', 'feature_engineering',
-        'modular_data_loaders', 'tensorflow', 'absl', 'xgboost', 'oanda_practice',
-        'position_sizing', 'risk_management', 'memory_client', 'fx_paper',
+        'root',
+        'utils', 'src.utils', 'src.utils.utils', 'src.utils.oanda_practice',
+        'modular_trainers', 'src.training.modular_trainers',
+        'modular_inference', 'src.core.modular_inference',
+        'feature_engineering', 'src.data.feature_engineering',
+        'modular_data_loaders', 'src.core.modular_data_loaders',
+        'tensorflow', 'tf', 'absl', 'h5py',
+        'xgboost',
+        'oanda_practice',
+        'position_sizing', 'src.risk.position_sizing',
+        'risk_management', 'src.risk.risk_management',
+        'memory_client', 'fx_paper',
+        'multi_pair_inference',
+        'buddy_scanner',
     ]
     
     # Store original levels
@@ -59,12 +71,18 @@ def suppress_logging():
     for name in loggers_to_quiet:
         log = logging.getLogger(name)
         original_levels[name] = log.level
-        log.setLevel(logging.ERROR)
+        log.setLevel(logging.CRITICAL)
+    
+    # Also suppress the root logger's console output
+    root_logger = logging.getLogger()
+    original_root_level = root_logger.level
+    root_logger.setLevel(logging.CRITICAL)
     
     try:
         yield
     finally:
         # Restore original levels
+        root_logger.setLevel(original_root_level)
         for name, level in original_levels.items():
             logging.getLogger(name).setLevel(level)
 
@@ -77,7 +95,21 @@ try:
     from rich.prompt import Confirm
     console = Console()
 except ImportError:
-    console = None
+    Table = None
+    Panel = None
+    Progress = None
+    Confirm = None
+
+    class _FallbackConsole:
+        """Minimal fallback when rich is not installed."""
+        def print(self, *args, **kwargs):
+            # Strip rich markup tags for plain output
+            import re
+            text = " ".join(str(a) for a in args)
+            text = re.sub(r'\[/?[^\]]*\]', '', text)
+            print(text)
+
+    console = _FallbackConsole()
 
 # Major FX pairs
 MAJOR_PAIRS = [
@@ -117,7 +149,7 @@ class ScanConfig:
     parallel_workers: int = 4
     backtest_window: int = 50
     auto_retrain_prompt: bool = True
-    drift_threshold: float = 0.03
+    drift_threshold: float = 0.10  # Only flag if accuracy DROPS >10% below baseline
     min_confidence: float = 0.52  # 52%+ (above random)
     min_gate_confidence: float = 0.55  # 55%+ required for gates to pass
     
@@ -137,13 +169,13 @@ class ScanConfig:
     high_prob_threshold: float = 0.65  # Probability threshold for bonus TP
     high_prob_tp_bonus: float = 20.0  # Extra pips added when prob > 65%
     
-    # Position sizing - optimized for $101k account (AGGRESSIVE)
+    # Position sizing - safer defaults (override in config YAML for aggressive)
     position_sizing_enabled: bool = True
     account_equity: float = 0.0  # 0 = fetch from OANDA live
-    risk_per_trade_pct: float = 0.05  # 5% risk per trade (~$5k risk on $100k)
+    risk_per_trade_pct: float = 0.02  # 2% risk per trade (industry standard)
     leverage: int = 50  # 50:1 leverage
-    aggressive_mode: bool = True  # Enabled for larger position sizes
-    max_trades_per_day: int = 30  # Max 30 trades/day as requested
+    aggressive_mode: bool = False  # Disabled by default — enable in config for larger sizes
+    max_trades_per_day: int = 10  # Conservative daily limit
     
     # Session filter (UTC hours)
     enable_session_filter: bool = True
@@ -161,7 +193,7 @@ class ScanConfig:
             parallel_workers=d.get("parallel_workers", 4),
             backtest_window=d.get("backtest_window", 50),
             auto_retrain_prompt=d.get("auto_retrain_prompt", True),
-            drift_threshold=d.get("drift_threshold", 0.03),
+            drift_threshold=d.get("drift_threshold", 0.10),
             min_confidence=d.get("min_confidence", 0.52),
             min_gate_confidence=d.get("min_gate_confidence", 0.55),
             atr_period=d.get("atr_period", 14),
@@ -175,11 +207,11 @@ class ScanConfig:
             high_prob_threshold=d.get("high_prob_threshold", 0.65),
             high_prob_tp_bonus=d.get("high_prob_tp_bonus", 20.0),
             position_sizing_enabled=d.get("position_sizing_enabled", True),
-            account_equity=d.get("account_equity", 101000.0),
-            risk_per_trade_pct=d.get("risk_per_trade_pct", 0.05),  # 5% risk
+            account_equity=d.get("account_equity", 0.0),
+            risk_per_trade_pct=d.get("risk_per_trade_pct", 0.02),  # 2% risk (safe default)
             leverage=d.get("leverage", 50),
-            aggressive_mode=d.get("aggressive_mode", True),  # Aggressive by default
-            max_trades_per_day=d.get("max_trades_per_day", 30),
+            aggressive_mode=d.get("aggressive_mode", False),  # Safe default
+            max_trades_per_day=d.get("max_trades_per_day", 10),
             enable_session_filter=d.get("enable_session_filter", True),
             session_start_utc=d.get("session_start_utc", 8),
             session_end_utc=d.get("session_end_utc", 21),
@@ -1132,12 +1164,15 @@ class BuddyScanner:
             except Exception:
                 pass
         
-        # Calculate drift
-        drift = abs(current_acc - baseline_acc)
-        drift_detected = drift > self._scan_config.drift_threshold
+        # Calculate drift — only flag DEGRADATION (current < baseline)
+        # Positive drift (model improving) is not a problem
+        degradation = baseline_acc - current_acc  # positive = worse, negative = better
+        drift_detected = degradation > self._scan_config.drift_threshold
         
         if drift_detected:
-            logger.info(f"Drift detected for {pair}: {current_acc:.1%} vs baseline {baseline_acc:.1%} (drift: {drift:.1%})")
+            logger.info(f"Drift detected for {pair}: {current_acc:.1%} vs baseline {baseline_acc:.1%} (degradation: {degradation:.1%})")
+        elif current_acc > baseline_acc:
+            logger.debug(f"Model improving for {pair}: {current_acc:.1%} vs baseline {baseline_acc:.1%} (+{current_acc - baseline_acc:.1%})")
         
         return drift_detected, current_acc, baseline_acc
     
@@ -1315,6 +1350,7 @@ class BuddyScanner:
         verbose: bool = True,
         prompt_train: bool = False,
         diversified: bool = False,
+        force: bool = False,
     ) -> List[EnhancedScanResult]:
         """
         Scan multiple pairs in parallel.
@@ -1326,6 +1362,7 @@ class BuddyScanner:
             verbose: Print progress and results
             prompt_train: Prompt to train on best pair (deprecated, default False)
             diversified: If True, auto-filter correlated pairs (only best from each cluster)
+            force: Bypass trading hours check
             
         Returns:
             List of EnhancedScanResult sorted by overall_score
@@ -1358,120 +1395,105 @@ class BuddyScanner:
         if verbose and console:
             console.print()
             
-            # Compact header with key info
-            if equity_updated:
-                console.print(f"[bold cyan]📡 BUDDY SCANNER[/bold cyan] | ${nav:,.0f} | {trades_remaining} trades left | {self._scan_config.risk_per_trade_pct:.0%} risk")
-            else:
-                console.print(f"[bold cyan]📡 BUDDY SCANNER[/bold cyan] | ${nav:,.0f} | {trades_remaining} trades left")
+            # ── Clean header ──
+            from datetime import datetime, timezone
+            now_utc = datetime.now(timezone.utc)
+            current_utc_hour = now_utc.hour
+            time_str = now_utc.strftime("%H:%M UTC")
             
+            # Model info line
+            model_info = ""
             if model_loaded:
-                # Check if using multi-pair inference
                 if self._multi_pair_inference is not None:
                     status = self._multi_pair_inference.get_model_status()
                     if status.get("loaded_pairs", 0) > 0:
                         accs = [m.get("accuracy", 0) for m in status.get("models", {}).values() if m.get("loaded")]
                         avg_acc = sum(accs) / len(accs) if accs else 0
-                        best_pair = max(status.get("models", {}).items(), key=lambda x: x[1].get("accuracy", 0) if x[1].get("loaded") else 0)
-                        best_acc = best_pair[1].get("accuracy", 0)
-                        console.print(f"[green]✓ {status['loaded_pairs']} models[/green] | avg {avg_acc:.0%} | best {best_pair[0].replace('_','/')} ({best_acc:.0%}) | {granularity}")
+                        model_info = f"{status['loaded_pairs']} models loaded  avg {avg_acc:.0%}"
                     else:
-                        val_acc = 0
-                        if self._model_meta:
-                            if "results" in self._model_meta:
-                                val_acc = self._model_meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0)
-                        console.print(f"[green]✓ MODEL[/green] ({val_acc:.0%}) | {len(pair_list)} pairs | {granularity}")
+                        val_acc = self._model_meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0) if self._model_meta and "results" in self._model_meta else 0
+                        model_info = f"model {val_acc:.0%}"
                 else:
-                    val_acc = 0
-                    if self._model_meta:
-                        if "results" in self._model_meta:
-                            val_acc = self._model_meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0)
-                    console.print(f"[green]✓ MODEL[/green] ({val_acc:.0%}) | {len(pair_list)} pairs | {granularity}")
+                    val_acc = self._model_meta.get("results", {}).get("transformer", {}).get("val_accuracy", 0) if self._model_meta and "results" in self._model_meta else 0
+                    model_info = f"model {val_acc:.0%}"
             else:
-                console.print(f"[dim]Technical indicators | {len(pair_list)} pairs | {granularity}[/dim]")
-            console.print("-" * 60)
+                model_info = "technical indicators only"
             
-            # Session hours check with user prompt
-            from datetime import datetime, timezone
-            current_utc_hour = datetime.now(timezone.utc).hour
+            risk_str = f"  {self._scan_config.risk_per_trade_pct:.0%} risk" if equity_updated else ""
+            console.print(f"[bold]Buddy Scanner[/bold]  ${nav:,.0f}  {trades_remaining} trades remaining{risk_str}  {time_str}")
+            console.print(f"[dim]{model_info}  {len(pair_list)} pairs  {granularity}[/dim]")
+            
+            # Session hours check
             in_session = self._scan_config.session_start_utc <= current_utc_hour <= self._scan_config.session_end_utc
             
-            if not in_session and self._scan_config.enable_session_filter:
+            if not in_session and self._scan_config.enable_session_filter and not force:
                 console.print()
-                console.print("[bold yellow]⚠️  OUTSIDE OPTIMAL TRADING HOURS[/bold yellow]")
-                console.print(f"[yellow]Current time: {current_utc_hour}:00 UTC[/yellow]")
-                console.print(f"[dim]Best practice for H1: Trade during London/NY session (08:00-21:00 UTC)[/dim]")
-                console.print(f"[dim]Reason: Higher liquidity = better fills, cleaner price action[/dim]")
+                console.print("[yellow]Outside optimal trading hours[/yellow]")
+                console.print(f"[dim]London/NY session (08:00–21:00 UTC) offers better liquidity and cleaner price action.[/dim]")
                 console.print()
                 
-                # Prompt user using standard input (more reliable than rich console.input)
                 try:
                     import sys
-                    sys.stdout.write("\033[93mContinue scanning anyway? [y/N]: \033[0m")
+                    sys.stdout.write("Continue scanning? [y/N] ")
                     sys.stdout.flush()
                     response = sys.stdin.readline().strip().lower()
                     if response not in ('y', 'yes'):
-                        console.print("[dim]Scan cancelled. Try again during London/NY hours for best results.[/dim]")
+                        console.print("[dim]Scan cancelled.[/dim]")
                         return []
-                    console.print("[green]Proceeding with scan...[/green]")
-                    console.print("-" * 70)
-                    # Disable the per-pair session filter since user chose to proceed
                     self._scan_config.enable_session_filter = False
                 except (EOFError, KeyboardInterrupt):
                     console.print("\n[dim]Scan cancelled.[/dim]")
                     return []
+            elif force and not in_session:
+                console.print("[dim]Outside optimal hours (--force)[/dim]")
+                self._scan_config.enable_session_filter = False
+            
+            console.print()
         
         # Scan pairs in parallel (with logging suppressed)
         results: List[EnhancedScanResult] = []
+        scan_timeout = 45  # seconds per pair
+        completed_count = 0
+        total_pairs = len(pair_list)
+
+        import sys as _sys
         
-        if verbose and console:
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[progress.description]{task.description}"),
-                console=console,
-                transient=True,
-            ) as progress:
-                task = progress.add_task("Scanning...", total=len(pair_list))
-                
-                with suppress_logging():
-                    with ThreadPoolExecutor(max_workers=self._scan_config.parallel_workers) as executor:
-                        futures = {
-                            executor.submit(self._scan_pair, pair, granularity): pair
-                            for pair in pair_list
-                        }
-                        
-                        for future in as_completed(futures):
-                            pair = futures[future]
-                            progress.update(task, advance=1, description=f"{pair}")
-                            
-                            try:
-                                result = future.result()
-                                if result is not None:
-                                    results.append(result)
-                            except Exception as e:
-                                logger.error(f"Error scanning {pair}: {e}")
-                                console.print(f"[red]✗ {pair} - {str(e)[:50]}[/red]")
-        else:
-            # Non-verbose parallel scan
-            with suppress_logging():
-                with ThreadPoolExecutor(max_workers=self._scan_config.parallel_workers) as executor:
-                    futures = {
-                        executor.submit(self._scan_pair, pair, granularity): pair
-                        for pair in pair_list
-                    }
-                    
-                    for future in as_completed(futures):
-                        pair = futures[future]
-                        try:
-                            result = future.result()
-                            if result is not None:
-                                results.append(result)
-                        except Exception as e:
-                            logger.error(f"Error scanning {pair}: {e}")
+        # ── Progress: compact animated line ──
+        _sys.stdout.write(f"  Scanning {total_pairs} pairs...")
+        _sys.stdout.flush()
+
+        with suppress_logging():
+            with ThreadPoolExecutor(max_workers=self._scan_config.parallel_workers) as executor:
+                futures = {
+                    executor.submit(self._scan_pair, pair, granularity): pair
+                    for pair in pair_list
+                }
+
+                for future in as_completed(futures, timeout=scan_timeout * total_pairs):
+                    pair = futures[future]
+                    completed_count += 1
+                    try:
+                        result = future.result(timeout=scan_timeout)
+                        if result is not None:
+                            results.append(result)
+                    except TimeoutError:
+                        future.cancel()
+                    except Exception:
+                        pass
+                    _sys.stdout.write(f"\r  Scanning {total_pairs} pairs... {completed_count}/{total_pairs}")
+                    _sys.stdout.flush()
+
+        _sys.stdout.write(f"\r  Scanning {total_pairs} pairs... done{' ' * 10}\n")
+        _sys.stdout.flush()
         
         # Sort by overall score
         results.sort(key=lambda x: x.overall_score, reverse=True)
         
         # Run backtest on top 3 (silently)
+        bt_count = min(3, len(results))
+        if bt_count > 0:
+            _sys.stdout.write(f"  Backtesting top {bt_count}...")
+            _sys.stdout.flush()
         for i, result in enumerate(results[:3]):
             with suppress_logging():
                 df_raw = self._fetch_pair_data(result.pair, granularity, self._scan_config.backtest_window + 60)
@@ -1483,6 +1505,9 @@ class BuddyScanner:
                     result.backtest_win_rate = win_rate
                     result.backtest_sharpe = sharpe
                     result.backtest_trades = trades
+        if bt_count > 0:
+            _sys.stdout.write(" done\n")
+            _sys.stdout.flush()
         
         # Calculate correlations and add warnings
         corr_warnings = self._calculate_correlations(results)
@@ -1538,95 +1563,111 @@ class BuddyScanner:
         baseline_acc: float,
         diversified: bool = False,
     ):
-        """Display scan results in formatted table."""
+        """Display scan results in a clean, professional format."""
         if not console:
             return
         
         console.print()
-        mode_label = " [cyan]DIVERSIFIED[/cyan]" if diversified else ""
-        console.print(f"[bold]RESULTS[/bold]{mode_label}")
         
-        # Separate tradeable and needs-training pairs
+        # Separate tradeable and non-tradeable
         tradeable_results = [r for r in results[:top_n] if r.gates_passed]
-        needs_training = [r for r in results[:top_n] if r.needs_training]
-        
-        # === SECTION 1: TRADEABLE PAIRS ===
-        if tradeable_results:
-            console.print(f"\n[green]✅ TRADEABLE ({len(tradeable_results)})[/green]")
-            table = Table(show_header=True, header_style="bold", box=None, padding=(0, 1))
-            table.add_column("Pair", style="bold")
-            table.add_column("Dir", justify="center")
-            table.add_column("Conf", justify="right")
-            table.add_column("Lots", justify="right")
-            table.add_column("SL/TP", justify="right")
-            table.add_column("Est.$", justify="right")
-            
-            for r in tradeable_results:
-                signal_color = "green" if r.direction == "LONG" else "red"
-                
-                sl_tp = f"{r.sl_pips:.0f}/{r.tp_pips:.0f}" if r.sl_pips > 0 else "-"
-                lots_display = f"{r.recommended_lots:.2f}" if r.recommended_lots > 0 else "-"
-                pip_value = 10.0 if not r.pair.endswith("JPY") else 7.5
-                est_return = r.recommended_lots * r.tp_pips * pip_value if r.tp_pips > 0 else 0
-                est_display = f"+${est_return:,.0f}" if est_return > 0 else "-"
-                
-                table.add_row(
-                    r.pair.replace("_", "/"),
-                    f"[{signal_color}]{r.direction}[/{signal_color}]",
-                    f"{r.confidence:.0%}",
-                    lots_display,
-                    sl_tp,
-                    est_display,
-                )
-            console.print(table)
-        else:
-            console.print(f"\n[yellow]No tradeable pairs[/yellow]")
-        
-        # === SECTION 2: NON-TRADEABLE (Gates Failed) - Compact ===
         non_tradeable = [r for r in results[:top_n] if not r.gates_passed]
+        
+        # ── Tradeable pairs ──
+        if tradeable_results:
+            if diversified:
+                console.print(f"[bold green]Opportunities ({len(tradeable_results)})[/bold green]  [dim]diversified[/dim]")
+            else:
+                console.print(f"[bold green]Opportunities ({len(tradeable_results)})[/bold green]")
+            console.print()
+            
+            if Table is not None:
+                table = Table(show_header=True, header_style="bold dim", box=None, padding=(0, 2), show_edge=False)
+                table.add_column("Pair", style="bold white", min_width=9)
+                table.add_column("Signal", justify="center", min_width=6)
+                table.add_column("Confidence", justify="right", min_width=10)
+                table.add_column("Size", justify="right", min_width=7)
+                table.add_column("SL / TP", justify="right", min_width=9)
+                table.add_column("Est. P&L", justify="right", min_width=9)
+                
+                for r in tradeable_results:
+                    sig_color = "green" if r.direction == "LONG" else "red"
+                    sig_icon = "▲" if r.direction == "LONG" else "▼"
+                    
+                    sl_tp = f"{r.sl_pips:.0f} / {r.tp_pips:.0f}" if r.sl_pips > 0 else "—"
+                    lots_str = f"{r.recommended_lots:.2f} lot" if r.recommended_lots > 0 else "—"
+                    pip_value = 10.0 if not r.pair.endswith("JPY") else 7.5
+                    est_return = r.recommended_lots * r.tp_pips * pip_value if r.tp_pips > 0 else 0
+                    est_str = f"[green]+${est_return:,.0f}[/green]" if est_return > 0 else "—"
+                    
+                    # Confidence bar: visual indicator
+                    conf_pct = f"{r.confidence:.0%}"
+                    
+                    table.add_row(
+                        r.pair.replace("_", "/"),
+                        f"[{sig_color}]{sig_icon} {r.direction}[/{sig_color}]",
+                        conf_pct,
+                        lots_str,
+                        sl_tp,
+                        est_str,
+                    )
+                console.print(table)
+            else:
+                for r in tradeable_results:
+                    sig = "▲" if r.direction == "LONG" else "▼"
+                    console.print(f"  {r.pair.replace('_', '/'):<9}  {sig} {r.direction:<5}  {r.confidence:.0%}  {r.recommended_lots:.2f} lot  SL {r.sl_pips:.0f} / TP {r.tp_pips:.0f}")
+        else:
+            console.print("[dim]No tradeable opportunities found.[/dim]")
+        
+        # ── Gates failed (compact) ──
         if non_tradeable:
-            # Just show a brief list
-            failed_list = ", ".join([f"{r.pair.replace('_','/')}({r.confidence:.0%})" for r in non_tradeable[:5]])
-            if len(non_tradeable) > 5:
-                failed_list += f" +{len(non_tradeable)-5} more"
-            console.print(f"\n[dim]Gates failed: {failed_list}[/dim]")
+            pairs_str = "  ".join(
+                f"{r.pair.replace('_', '/')} {r.confidence:.0%}"
+                for r in non_tradeable[:6]
+            )
+            extra = f"  +{len(non_tradeable) - 6} more" if len(non_tradeable) > 6 else ""
+            console.print(f"\n[dim]Below threshold:  {pairs_str}{extra}[/dim]")
         
-        # === SECTION 3: NEEDS TRAINING - skip if none ===
-        # Removed verbose training suggestions
-        
-        # === SECTION 4: WARNINGS ===
+        # ── Warnings (grouped) ──
+        warnings_lines = []
         if drift_detected:
-            console.print(f"\n[yellow]⚠️ Model drift ({current_acc:.0%} vs {baseline_acc:.0%})[/yellow]")
+            degradation_pct = baseline_acc - current_acc
+            warnings_lines.append(f"Model degradation detected — current {current_acc:.0%} vs baseline {baseline_acc:.0%} ({degradation_pct:.1%} drop, retrain recommended)")
         
         corr_pairs = [r.pair for r in results[:top_n] if r.correlation_warning]
-        if corr_pairs:
-            console.print(f"\n[yellow]⚠️ Correlated:[/yellow] {', '.join(p.replace('_', '/') for p in corr_pairs)}")
+        if corr_pairs and hasattr(self, '_correlation_details') and self._correlation_details:
+            corr_summary_parts = []
+            for detail in self._correlation_details[:3]:
+                p1 = detail['pair1'].replace('_', '/')
+                p2 = detail['pair2'].replace('_', '/')
+                corr = detail['corr']
+                prefer = detail['prefer'].replace('_', '/')
+                corr_label = "inv" if corr < 0 else "pos"
+                corr_summary_parts.append(f"{p1}↔{p2} ({corr_label} {abs(corr):.0%}, prefer {prefer})")
             
-            # Show condensed correlation info
-            if hasattr(self, '_correlation_details') and self._correlation_details:
-                # Only show top 2 correlations to keep it brief
-                for detail in self._correlation_details[:2]:
-                    p1, p2 = detail['pair1'].replace('_', '/'), detail['pair2'].replace('_', '/')
-                    corr = detail['corr']
-                    prefer = detail['prefer'].replace('_', '/')
-                    corr_type = "inv" if corr < 0 else "pos"
-                    console.print(f"  [dim]{p1}↔{p2} ({corr_type} {abs(corr):.0%}) → prefer {prefer}[/dim]")
-                
-                if len(self._correlation_details) > 2:
-                    console.print(f"  [dim]...and {len(self._correlation_details) - 2} more[/dim]")
-                
-                self._correlation_details = []
+            remaining = len(self._correlation_details) - 3
+            if remaining > 0:
+                corr_summary_parts.append(f"+{remaining} more")
+            
+            warnings_lines.append(f"Correlated pairs: {', '.join(corr_summary_parts)}")
+            self._correlation_details = []
         
-        # === SECTION 5: SUMMARY ===
+        if warnings_lines:
+            console.print()
+            for line in warnings_lines:
+                console.print(f"[yellow]  {line}[/yellow]")
+        
+        # ── Recommendation ──
         if results:
             tradeable = [r for r in results if r.gates_passed]
             
             if tradeable:
                 best = max(tradeable, key=lambda x: x.overall_score)
-                console.print(f"\n[bold]→ {best.direction} {best.pair.replace('_', '/')}[/bold] @ {best.confidence:.0%} | {best.recommended_lots:.2f} lots")
-                console.print(f"  [dim]buddy -I {best.pair} --execute[/dim]")
+                sig_icon = "▲" if best.direction == "LONG" else "▼"
+                console.print(f"\n[bold]{sig_icon} {best.direction} {best.pair.replace('_', '/')}[/bold]  {best.confidence:.0%} confidence  {best.recommended_lots:.2f} lot")
+                console.print(f"[dim]  Run:  buddy -I {best.pair} --execute[/dim]")
             
-            # Compact compounding projection
+            # ── Edge statistics ──
             if tradeable:
                 max_trades = self._scan_config.max_trades_per_day
                 trades_to_use = tradeable[:max_trades]
@@ -1634,42 +1675,38 @@ class BuddyScanner:
                 actual_wr, actual_trades = self._fetch_actual_win_rate()
                 if actual_trades >= 10:
                     avg_win_rate = actual_wr
-                    wr_source = f"{actual_trades}t"
+                    wr_source = f"{actual_trades} trades"
                 else:
-                    # Fall back to backtest or conservative estimate
                     backtest_wrs = [r.backtest_win_rate for r in trades_to_use if r.backtest_win_rate is not None]
                     if backtest_wrs:
                         avg_win_rate = sum(backtest_wrs) / len(backtest_wrs)
-                        wr_source = "bt"
+                        wr_source = "backtest"
                     else:
                         avg_win_rate = 0.50
-                        wr_source = "est"
+                        wr_source = "estimate"
                 
-                # Calculate avg SL and TP from actual trades
                 avg_tp = sum(r.tp_pips for r in trades_to_use) / len(trades_to_use) if trades_to_use else 30
                 avg_sl = sum(r.sl_pips for r in trades_to_use) / len(trades_to_use) if trades_to_use else 20
                 avg_lots = sum(r.recommended_lots for r in trades_to_use) / len(trades_to_use) if trades_to_use else 5.0
                 rr_ratio = avg_tp / avg_sl if avg_sl > 0 else 1.5
                 
-                # Expected value per trade
                 pip_value = 10.0
                 avg_win_usd = avg_lots * avg_tp * pip_value
                 avg_loss_usd = avg_lots * avg_sl * pip_value
                 ev_per_trade = (avg_win_rate * avg_win_usd) - ((1 - avg_win_rate) * avg_loss_usd)
                 
-                # Breakeven calculation
                 breakeven_wr = 1 / (1 + rr_ratio)
-                
-                # Single line projection
                 quality_trades_per_day = min(3, len(trades_to_use))
                 net_daily = ev_per_trade * quality_trades_per_day
-                daily_pct = (net_daily / self._scan_config.account_equity) * 100
-                projected_6mo = self._scan_config.account_equity * ((1 + daily_pct/100) ** 130)
+                equity = self._scan_config.account_equity if self._scan_config.account_equity > 0 else 10000
+                daily_pct = (net_daily / equity) * 100
+                projected_6mo = equity * ((1 + daily_pct / 100) ** 130)
                 
-                # Compact output
                 ev_sign = "+" if ev_per_trade >= 0 else ""
-                edge_status = "✓" if avg_win_rate > breakeven_wr else "⚠"
-                console.print(f"\n[dim]{edge_status} {avg_win_rate:.0%} WR ({wr_source}) | R:R {rr_ratio:.1f}:1 | EV {ev_sign}${ev_per_trade:.0f}/trade | 6mo→${projected_6mo:,.0f}[/dim]")
+                edge_icon = "●" if avg_win_rate > breakeven_wr else "○"
+                console.print(f"\n[dim]  {edge_icon} {avg_win_rate:.0%} win rate ({wr_source})  R:R {rr_ratio:.1f}:1  EV {ev_sign}${ev_per_trade:.0f}/trade  6mo → ${projected_6mo:,.0f}[/dim]")
+        
+        console.print()
     
     def scan_continuous(
         self,
@@ -1790,7 +1827,7 @@ class BuddyScanner:
                     
                     result = subprocess.run(
                         [sys.executable, "-c", 
-                         "from cli.commands import retrain_gates; retrain_gates('config/config_improved_H1.yaml')"],
+                         f"from cli.commands import retrain_gates; retrain_gates('{self.config_path}')"],
                         capture_output=True,
                         text=True,
                         timeout=300,

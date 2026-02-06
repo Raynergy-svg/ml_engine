@@ -7,11 +7,13 @@ import traceback
 def test_import(module_path, items=None):
     """Test importing a module or specific items from it."""
     try:
+        import importlib
+        mod = importlib.import_module(module_path)
         if items:
-            exec(f"from {module_path} import {', '.join(items)}")
+            for item in items:
+                getattr(mod, item)
             print(f"✓ from {module_path} import {', '.join(items)}")
         else:
-            exec(f"import {module_path}")
             print(f"✓ import {module_path}")
         return True
     except Exception as e:

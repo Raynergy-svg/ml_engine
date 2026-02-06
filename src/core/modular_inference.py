@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -1019,28 +1020,32 @@ class ModularEnsembleInference:
             if self.use_rl_sizer:
                 import time
                 t_rl_start = time.perf_counter()
-                logger.info("🔄 RL Position Sizer: loading dependencies...")
                 
-                RLSizer, rl_available = _lazy_load_rl_sizer()
-                t_rl_import = time.perf_counter()
-                logger.info(f"  ⏱️ RL dependencies imported in {t_rl_import - t_rl_start:.2f}s")
-                
-                if rl_available and RLSizer is not None:
-                    logger.info("  🔄 Creating RL sizer instance...")
-                    self.rl_sizer = RLSizer()
-                    t_rl_create = time.perf_counter()
-                    logger.info(f"  ⏱️ RL instance created in {t_rl_create - t_rl_import:.2f}s")
-                    
-                    logger.info("  🔄 Loading RL model from disk...")
-                    if self.rl_sizer.load():
-                        t_rl_load = time.perf_counter()
-                        logger.info(f"✓ RL Position Sizer loaded (total: {t_rl_load - t_rl_start:.2f}s)")
-                    else:
-                        logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
-                        self.rl_sizer = None
-                else:
-                    logger.warning("⚠️ RL requested but dependencies not available. Install: pip install gymnasium stable-baselines3")
+                # PPO.load() (PyTorch) deadlocks when TensorFlow is already
+                # initialized in the same process — a known TF/PyTorch conflict
+                # on Intel Macs. Skip RL loading when TF is active.
+                _tf_loaded = 'tensorflow' in sys.modules
+                if _tf_loaded:
+                    logger.warning("⚠️ RL Position Sizer skipped (TF already loaded — PPO.load deadlocks). Using heuristic sizing.")
                     self.rl_sizer = None
+                else:
+                    logger.info("🔄 RL Position Sizer: loading dependencies...")
+                    RLSizer, rl_available = _lazy_load_rl_sizer()
+                    t_rl_import = time.perf_counter()
+                    logger.info(f"  ⏱️ RL dependencies imported in {t_rl_import - t_rl_start:.2f}s")
+                    
+                    if rl_available and RLSizer is not None:
+                        self.rl_sizer = RLSizer()
+                        logger.info("  🔄 Loading RL model from disk...")
+                        if self.rl_sizer.load():
+                            t_rl_load = time.perf_counter()
+                            logger.info(f"✓ RL Position Sizer loaded (total: {t_rl_load - t_rl_start:.2f}s)")
+                        else:
+                            logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
+                            self.rl_sizer = None
+                    else:
+                        logger.warning("⚠️ RL requested but dependencies not available. Install: pip install gymnasium stable-baselines3")
+                        self.rl_sizer = None
             
             # Load confidence calibration if available
             if self.config.enable_calibration:

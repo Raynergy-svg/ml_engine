@@ -18,6 +18,7 @@ from cli.commands import (
 )
 from cli.fx_trading import fx_paper_trade, generate_dashboard
 from cli.wizard import _buddy_interactive_wizard
+from cli.candle_optimizer import find_optimal_candles
 
 __all__ = [
     # Config
@@ -37,4 +38,6 @@ __all__ = [
     'fx_paper_trade', 'generate_dashboard',
     # Wizard
     '_buddy_interactive_wizard',
+    # Candle Optimizer
+    'find_optimal_candles',
 ]

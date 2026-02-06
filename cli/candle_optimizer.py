@@ -1,0 +1,564 @@
+#!/usr/bin/env python3
+"""Optimal candle-count finder for ML Engine Trading Bot.
+
+Searches for the best number of historical candles to train on for a given
+instrument by running lightweight walk-forward cross-validation at each
+candidate count and ranking them with a composite score.
+
+Usage (shell):
+    buddy find -i EUR_USD
+    buddy find -i USD_JPY --min 5000 --max 20000 --step 5000
+
+Usage (Python):
+    python main.py find-candles --instrument EUR_USD
+
+The composite score blends:
+    40%  Balanced accuracy   (class-balanced directional accuracy)
+    25%  Stability           (1 - CV of accuracy across folds)
+    20%  Sharpe ratio        (risk-adjusted strategy returns)
+    15%  Profit factor       (gross profit / gross loss)
+"""
+from __future__ import annotations
+
+import gc
+import logging
+import shutil
+import tempfile
+import time
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import numpy as np
+import pandas as pd
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Table
+
+from cli.config import OandaFetchOptions
+from cli.io_utils import (
+    DEFAULT_CONFIG_PATH,
+    _normalize_instrument,
+    _oanda_fetch_to_csv,
+    _validate_instrument,
+    console,
+    logger,
+)
+from src.utils import load_config
+
+__all__ = ["find_optimal_candles"]
+
+
+# ---------------------------------------------------------------------------
+# Composite scoring
+# ---------------------------------------------------------------------------
+
+def _compute_composite_score(metrics: Dict[str, float]) -> float:
+    """Return a 0-100 composite score from walk-forward metrics.
+
+    Weights:
+        40%  balanced accuracy  (already 0-1)
+        25%  stability          max(0, 1 - CV)  where CV = std/mean
+        20%  sharpe ratio       clip(sharpe / 2, 0, 1)
+        15%  profit factor      clip((pf - 1) / 2, 0, 1)
+    """
+    bal_acc = float(metrics.get("mean_balanced_accuracy", 0.0))
+    stability_cv = float(metrics.get("stability_score", 1.0))
+    sharpe = float(metrics.get("sharpe_ratio", 0.0))
+    pf = float(metrics.get("profit_factor", 1.0))
+
+    bal_score = np.clip(bal_acc, 0.0, 1.0)
+    stab_score = np.clip(1.0 - stability_cv, 0.0, 1.0)
+    sharpe_score = np.clip(sharpe / 2.0, 0.0, 1.0)
+    pf_score = np.clip((pf - 1.0) / 2.0, 0.0, 1.0)
+
+    composite = (
+        0.40 * bal_score
+        + 0.25 * stab_score
+        + 0.20 * sharpe_score
+        + 0.15 * pf_score
+    )
+    return round(float(composite) * 100, 2)
+
+
+# ---------------------------------------------------------------------------
+# Per-count evaluation
+# ---------------------------------------------------------------------------
+
+def _evaluate_candle_count(
+    config_path: str,
+    instrument: str,
+    granularity: str,
+    candle_count: int,
+    n_folds: int = 3,
+    seq_len: int = 60,
+    *,
+    progress_cb=None,
+) -> Optional[Dict[str, Any]]:
+    """Fetch *candle_count* candles and run lightweight walk-forward CV.
+
+    Returns a metrics dict or ``None`` if the evaluation failed.
+    """
+    import tensorflow as tf
+
+    from src.core.modular_data_loaders import compute_normalized_features, load_direction_data
+    from src.training.modular_trainers import TrainerConfig, TransformerDirectionTrainer
+    from src.training.walkforward_validation import (
+        WalkForwardValidator,
+        calculate_trading_metrics,
+    )
+
+    cfg = load_config(config_path)
+
+    # --- fetch data --------------------------------------------------------
+    try:
+        opts = OandaFetchOptions(
+            instrument=instrument,
+            granularity=granularity,
+            candles=candle_count,
+            price="MBA",
+        )
+        csv_path = _oanda_fetch_to_csv(opts)
+        df = pd.read_csv(csv_path)
+    except Exception as exc:
+        logger.warning("Fetch failed for %s candles: %s", candle_count, exc)
+        return None
+
+    if df is None or len(df) < 500:
+        logger.warning("Insufficient data for %s candles (%d rows)", candle_count, len(df) if df is not None else 0)
+        return None
+
+    # --- features ----------------------------------------------------------
+    try:
+        if "returns_1" not in df.columns:
+            df = compute_normalized_features(df)
+
+        direction_cfg = cfg.get("direction", {})
+        lookahead = int(direction_cfg.get("lookahead", cfg.get("direction_lookahead", 24)))
+        threshold = float(direction_cfg.get("threshold", cfg.get("direction_threshold", 0.003)))
+
+        data = load_direction_data(df, lookahead=lookahead, threshold=threshold)
+    except Exception as exc:
+        logger.warning("Feature prep failed for %s candles: %s", candle_count, exc)
+        return None
+
+    X_train = data["X_train"]
+    y_train = data["y_train"]
+    w_train = data.get("w_train")
+    X_val = data["X_val"]
+    y_val = data["y_val"]
+
+    # We need enough clear labels for walk-forward folds
+    clear_mask_train = (y_train != 0.5) if w_train is None else (w_train > 0)
+    n_clear = int(np.sum(clear_mask_train))
+    feature_names = data.get("feature_names", [])
+
+    if n_clear < 300:
+        logger.warning("Only %d clear samples for %s candles — skipping", n_clear, candle_count)
+        return None
+
+    # Combine train+val for walk-forward splitting
+    X_all = np.concatenate([X_train, X_val], axis=0)
+    y_all = np.concatenate([y_train, y_val], axis=0)
+    w_all = np.concatenate([w_train, data.get("w_val", np.ones(len(y_val)))], axis=0) if w_train is not None else None
+
+    # --- walk-forward CV ---------------------------------------------------
+    n_features = X_all.shape[1]
+
+    # Create sequences for Transformer input
+    def _make_sequences(X_flat: np.ndarray, y_flat: np.ndarray, w_flat: Optional[np.ndarray], sl: int):
+        """Create (samples, seq_len, features) sequences from flat arrays."""
+        n = len(X_flat)
+        if n <= sl:
+            return None, None, None
+        seqs, labs, wts = [], [], []
+        for i in range(sl, n):
+            seqs.append(X_flat[i - sl : i])
+            labs.append(y_flat[i])
+            if w_flat is not None:
+                wts.append(w_flat[i])
+        return np.array(seqs), np.array(labs), np.array(wts) if wts else None
+
+    effective_seq_len = min(seq_len, len(X_all) // 4)
+    if effective_seq_len < 10:
+        logger.warning("Sequence length too short for %s candles — skipping", candle_count)
+        return None
+
+    validator = WalkForwardValidator(
+        n_splits=n_folds,
+        train_size=0.60,
+        val_size=0.15,
+        test_size=0.10,
+        gap=max(10, effective_seq_len),
+        mode="expanding",
+        min_train_size=200,
+    )
+
+    fold_bal_accs: List[float] = []
+    fold_sharpes: List[float] = []
+    fold_pfs: List[float] = []
+
+    # Lightweight trainer config (fast epochs, small model)
+    trainer_cfg = TrainerConfig(
+        epochs=40,
+        batch_size=64,
+        learning_rate=0.0005,
+        patience=10,
+        min_epochs=10,
+        verbose=0,
+        transformer_d_model=32,
+        transformer_num_heads=4,
+        transformer_num_layers=2,
+        transformer_dropout=0.2,
+        use_focal_loss=True,
+        use_ema=False,
+        use_ewc=False,
+        use_replay_buffer=False,
+    )
+
+    tmp_dir = tempfile.mkdtemp(prefix="candle_opt_")
+    trainer_cfg = replace(trainer_cfg, checkpoint_dir=tmp_dir)
+
+    try:
+        for fold_idx, (train_idx, val_idx, test_idx) in enumerate(validator.split(X_all)):
+            if progress_cb:
+                progress_cb(fold_idx + 1, n_folds)
+
+            X_tr_seq, y_tr_seq, w_tr_seq = _make_sequences(X_all[train_idx], y_all[train_idx], w_all[train_idx] if w_all is not None else None, effective_seq_len)
+            X_va_seq, y_va_seq, _ = _make_sequences(X_all[val_idx], y_all[val_idx], w_all[val_idx] if w_all is not None else None, effective_seq_len)
+
+            if X_tr_seq is None or X_va_seq is None or len(X_tr_seq) < 100 or len(X_va_seq) < 30:
+                continue
+
+            try:
+                trainer = TransformerDirectionTrainer(trainer_cfg)
+                metrics = trainer.train(X_tr_seq, y_tr_seq, X_va_seq, y_va_seq, feature_names=feature_names, w_train=w_tr_seq)
+
+                bal_acc = float(metrics.get("val_balanced_accuracy", metrics.get("val_accuracy", 0.0)))
+                fold_bal_accs.append(bal_acc)
+
+                # Trading metrics from validation predictions
+                try:
+                    val_preds = trainer.model.predict(X_va_seq, verbose=0).flatten()
+                    close_prices = df["close"].values
+                    # Use a slice of prices matching validation window
+                    val_start = val_idx[0] + effective_seq_len
+                    val_end = min(val_start + len(val_preds), len(close_prices))
+                    price_slice = close_prices[val_start:val_end]
+                    if len(price_slice) >= len(val_preds):
+                        price_slice = price_slice[: len(val_preds)]
+                    elif len(val_preds) > len(price_slice):
+                        val_preds = val_preds[: len(price_slice)]
+                    
+                    if len(val_preds) > 1 and len(price_slice) > 1:
+                        trading = calculate_trading_metrics(y_va_seq[: len(val_preds)], val_preds, price_slice)
+                        fold_sharpes.append(float(trading.get("sharpe_ratio", 0.0)))
+                        fold_pfs.append(float(trading.get("profit_factor", 1.0)))
+                    else:
+                        fold_sharpes.append(0.0)
+                        fold_pfs.append(1.0)
+                except Exception:
+                    fold_sharpes.append(0.0)
+                    fold_pfs.append(1.0)
+            except Exception as exc:
+                logger.debug("Fold %d failed for %s candles: %s", fold_idx, candle_count, exc)
+                continue
+            finally:
+                tf.keras.backend.clear_session()
+                gc.collect()
+
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    if len(fold_bal_accs) < 2:
+        logger.warning("Too few successful folds (%d) for %s candles", len(fold_bal_accs), candle_count)
+        return None
+
+    mean_bal = float(np.mean(fold_bal_accs))
+    std_bal = float(np.std(fold_bal_accs))
+    stability = std_bal / mean_bal if mean_bal > 0 else 999.0
+
+    result: Dict[str, Any] = {
+        "candles": candle_count,
+        "rows_fetched": len(df),
+        "clear_samples": n_clear,
+        "n_features": n_features,
+        "folds_completed": len(fold_bal_accs),
+        "mean_balanced_accuracy": mean_bal,
+        "std_balanced_accuracy": std_bal,
+        "stability_score": stability,
+        "sharpe_ratio": float(np.mean(fold_sharpes)) if fold_sharpes else 0.0,
+        "profit_factor": float(np.mean(fold_pfs)) if fold_pfs else 1.0,
+    }
+    result["composite_score"] = _compute_composite_score(result)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Results display
+# ---------------------------------------------------------------------------
+
+def _display_results(
+    results: List[Dict[str, Any]],
+    instrument: str,
+    granularity: str,
+) -> Optional[Dict[str, Any]]:
+    """Print a Rich table of results and return the best candidate."""
+    if not results:
+        console.print("[red]No valid results to display.[/red]")
+        return None
+
+    # Sort by composite score descending
+    ranked = sorted(results, key=lambda r: r.get("composite_score", 0), reverse=True)
+    best = ranked[0]
+
+    table = Table(
+        title=f"Candle Optimization Results — {instrument} ({granularity})",
+        show_lines=True,
+    )
+    table.add_column("Rank", justify="center", style="dim", width=5)
+    table.add_column("Candles", justify="right", style="cyan")
+    table.add_column("Rows", justify="right")
+    table.add_column("Clear Samples", justify="right")
+    table.add_column("Bal. Acc", justify="right")
+    table.add_column("Stability", justify="right")
+    table.add_column("Sharpe", justify="right")
+    table.add_column("Profit Factor", justify="right")
+    table.add_column("Score", justify="right", style="bold")
+
+    for rank, r in enumerate(ranked, 1):
+        is_best = r is best
+        score_str = f"[bold green]{r['composite_score']:.1f} ★[/bold green]" if is_best else f"{r['composite_score']:.1f}"
+        candle_str = f"[bold green]{r['candles']:,}[/bold green]" if is_best else f"{r['candles']:,}"
+        stab_val = r.get("stability_score", 999)
+        stab_color = "green" if stab_val < 0.10 else "yellow" if stab_val < 0.20 else "red"
+        stab_str = f"[{stab_color}]{stab_val:.3f}[/{stab_color}]"
+
+        table.add_row(
+            str(rank),
+            candle_str,
+            f"{r.get('rows_fetched', 0):,}",
+            f"{r.get('clear_samples', 0):,}",
+            f"{r['mean_balanced_accuracy']:.2%}",
+            stab_str,
+            f"{r.get('sharpe_ratio', 0):.3f}",
+            f"{r.get('profit_factor', 1):.3f}",
+            score_str,
+        )
+
+    console.print()
+    console.print(table)
+    console.print()
+
+    # Summary panel
+    console.print(Panel(
+        f"[bold green]Optimal: {best['candles']:,} candles[/bold green]  "
+        f"(score {best['composite_score']:.1f}/100)\n\n"
+        f"[dim]Balanced Accuracy:[/dim]  {best['mean_balanced_accuracy']:.2%} ± {best['std_balanced_accuracy']:.2%}\n"
+        f"[dim]Stability (CV):[/dim]     {best['stability_score']:.4f}\n"
+        f"[dim]Sharpe Ratio:[/dim]       {best['sharpe_ratio']:.3f}\n"
+        f"[dim]Profit Factor:[/dim]      {best['profit_factor']:.3f}\n"
+        f"[dim]Clear Samples:[/dim]      {best['clear_samples']:,}",
+        title=f"★  Best Configuration for {instrument}",
+        border_style="green",
+    ))
+
+    return best
+
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
+
+def find_optimal_candles(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    instrument: str,
+    granularity: str = "H1",
+    min_candles: int = 3000,
+    max_candles: int = 30000,
+    step: int = 3000,
+    n_folds: int = 3,
+    auto_train: bool = True,
+    verbose: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """Search for the optimal training candle count for *instrument*.
+
+    Iterates over candidate candle counts from *min_candles* to *max_candles*
+    (inclusive) in steps of *step*.  For each count a lightweight 3-fold
+    walk-forward cross-validation is executed.  Results are ranked by a
+    composite score.
+
+    If *auto_train* is ``True`` (default), the full ``train_buddy`` pipeline
+    is launched automatically with the winning candle count.
+
+    Returns:
+        The best result dict, or ``None`` if all evaluations failed.
+    """
+    instrument = _normalize_instrument(instrument)
+    _validate_instrument(instrument)
+
+    cfg = load_config(config_path)
+    seq_len = int(cfg.get("buddy", {}).get("train_defaults", {}).get("seq_len", 60))
+
+    candidates = list(range(min_candles, max_candles + 1, step))
+    if not candidates:
+        console.print("[red]No candidate candle counts. Check --min-candles / --max-candles / --step.[/red]")
+        return None
+
+    console.print(Panel(
+        f"[bold]Instrument:[/bold]    {instrument}\n"
+        f"[bold]Granularity:[/bold]   {granularity}\n"
+        f"[bold]Candidates:[/bold]    {', '.join(f'{c:,}' for c in candidates)}\n"
+        f"[bold]CV Folds:[/bold]      {n_folds}\n"
+        f"[bold]Seq Length:[/bold]    {seq_len}\n"
+        f"[bold]Auto-Train:[/bold]    {'Yes' if auto_train else 'No'}",
+        title="Candle Optimizer",
+        border_style="cyan",
+    ))
+
+    results: List[Dict[str, Any]] = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        main_task = progress.add_task(
+            "Testing candle counts…",
+            total=len(candidates),
+        )
+
+        for idx, count in enumerate(candidates):
+            progress.update(
+                main_task,
+                description=f"[cyan]{count:,}[/cyan] candles — fetching & evaluating…",
+            )
+
+            def _fold_cb(fold: int, total: int):
+                progress.update(
+                    main_task,
+                    description=f"[cyan]{count:,}[/cyan] candles — fold {fold}/{total}",
+                )
+
+            t0 = time.perf_counter()
+            result = _evaluate_candle_count(
+                config_path=config_path,
+                instrument=instrument,
+                granularity=granularity,
+                candle_count=count,
+                n_folds=n_folds,
+                seq_len=seq_len,
+                progress_cb=_fold_cb,
+            )
+            elapsed = time.perf_counter() - t0
+
+            if result is not None:
+                result["elapsed_sec"] = round(elapsed, 1)
+                results.append(result)
+                console.print(
+                    f"  [green]✓[/green] {count:,} candles — "
+                    f"score {result['composite_score']:.1f}  "
+                    f"bal_acc {result['mean_balanced_accuracy']:.2%}  "
+                    f"({elapsed:.0f}s)"
+                )
+            else:
+                console.print(f"  [yellow]✗[/yellow] {count:,} candles — skipped (insufficient data or failed)")
+
+            progress.advance(main_task)
+
+            # Small pause to be friendly to OANDA rate limits
+            if idx < len(candidates) - 1:
+                time.sleep(1.0)
+
+    # --- Display results ---------------------------------------------------
+    best = _display_results(results, instrument, granularity)
+
+    if best is None:
+        console.print("[red]All candidate counts failed. Try a different range or check your OANDA credentials.[/red]")
+        return None
+
+    # --- Auto-train --------------------------------------------------------
+    if auto_train:
+        console.print()
+        console.print(
+            f"[bold cyan]Auto-training with optimal {best['candles']:,} candles…[/bold cyan]"
+        )
+        console.print()
+
+        try:
+            from cli.commands import _dispatch_train_buddy
+
+            # Build a minimal args dict that _dispatch_train_buddy expects
+            train_args: Dict[str, Any] = {
+                "command": "train-buddy",
+                "config": config_path,
+                "instrument": instrument,
+                "granularity": granularity,
+                "candles": best["candles"],
+                "oanda_live": True,
+                "verbose": verbose,
+                # Let defaults fill the rest
+                "csv": None,
+                "model_type": None,
+                "seq_len": None,
+                "epochs": None,
+                "batch_size": None,
+                "lr": None,
+                "patience": None,
+                "enterprise": False,
+                "cv_folds": None,
+                "bootstrap": False,
+                "bootstrap_samples": None,
+                "multi_pair": False,
+                "foundation_pairs": None,
+                "warm_start": False,
+                "no_warm_start": False,
+                "init_from": None,
+                "es_monitor": None,
+                "combined_w_dir": None,
+                "combined_w_conf": None,
+                "top_features": None,
+                "feature_curriculum": None,
+                "curriculum_ks": None,
+                "pca_components": None,
+                "train_smoothing": None,
+                "median_window": None,
+                "vol_norm_window": None,
+                "min_volume": None,
+                "spread_filter": False,
+                "spread_pctl": None,
+                "spread_mult": None,
+                "no_mixed_precision": False,
+                "mixed_precision": None,
+                "workers": None,
+                "train_volatility_regime": False,
+                "no_volatility_regime": False,
+                "tier2_stop_loss_pips": None,
+                "tier2_take_profit_pips": None,
+                "tier2_spread_fallback_pips": None,
+                "tier2_horizon_candles": None,
+                "tier2_tie_break": None,
+                "tier2_calibration_bins": None,
+                "tier2_calibration_stride": None,
+            }
+
+            _dispatch_train_buddy(train_args, command_handlers={})
+        except Exception as exc:
+            console.print(f"[red]Auto-train failed:[/red] {exc}")
+            console.print(
+                f"[dim]You can train manually:[/dim]  "
+                f"buddy train -i {instrument} -c {best['candles']}"
+            )
+
+    return best
