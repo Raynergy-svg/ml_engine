@@ -339,12 +339,12 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     oanda_df.to_csv(out_path, index=False)
     console.print(Panel(
-        f"[bold]OANDA Data Retrieved[/bold]\n\n"
+        f"[bold]Market Data Retrieved Successfully[/bold]\n\n"
         f"[dim]Timestamp:[/dim] {now_utc_str}\n"
-        f"[dim]Candle Range:[/dim] {candle_range_str}\n"
-        f"[dim]Rows:[/dim] {len(oanda_df):,}\n"
-        f"[dim]Saved to:[/dim] {out_path}",
-        title="✓ Data Fetched",
+        f"[dim]Temporal Range:[/dim] {candle_range_str}\n"
+        f"[dim]Observations:[/dim] {len(oanda_df):,} candles\n"
+        f"[dim]Storage:[/dim] {out_path}",
+        title="✓ OANDA API",
         border_style="green",
     ))
     return str(out_path)
