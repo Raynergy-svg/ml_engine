@@ -32,7 +32,7 @@ from cli.calibration import (
     _tier2_temperature_scale_prob, _tier2_interpolate_points,
 )
 from cli.io_utils import (
-    console, logger, DEFAULT_CONFIG_PATH,
+    console, logger, DEFAULT_CONFIG_PATH, DEFAULT_CURRICULUM_KS,
     _oanda_fetch_to_csv, _validate_instrument, _normalize_instrument,
     _meta_path_for_checkpoint, BUDDY_META_FILENAME, _load_buddy_checkpoint,
     _get_pair_model_paths, _migrate_keras2_to_keras3, _extract_instrument_from_csv_path,
@@ -208,7 +208,7 @@ def _train_buddy_impl(
     except Exception:
         _setup_tracing = None
 
-    from buddy_training_helpers import _buddy_setup_training_environment
+    from src.training.buddy_training_helpers import _buddy_setup_training_environment
 
     # When debugging perf, show whether Metal GPU is actually visible.
     mp_enabled = _buddy_setup_training_environment(
@@ -365,7 +365,7 @@ def _train_buddy_impl(
     ))
     console.print()
 
-    from buddy_training_helpers import _buddy_load_and_validate_csv, _load_multi_pair_data
+    from src.training.buddy_training_helpers import _buddy_load_and_validate_csv, _load_multi_pair_data
 
     # Check for multi-pair foundation training mode
     multi_pair_mode = bool(options.multi_pair)
@@ -2218,8 +2218,8 @@ def _train_buddy_impl(
             
             # Calculate total training time
             try:
-                import time
-                total_time_seconds = time.perf_counter() - t_fe if 't_fe' in dir() else 0
+                import time as _time
+                total_time_seconds = _time.perf_counter() - t_fe if 't_fe' in dir() else 0
                 total_time_str = f"{total_time_seconds:.1f}s"
                 if total_time_seconds > 60:
                     total_time_str = f"{total_time_seconds/60:.1f}m"

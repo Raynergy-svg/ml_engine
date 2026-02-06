@@ -23,7 +23,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.live import Live
 
-from cli.config import BuddyTrainingOptions, OandaFetchOptions
+from cli.config import BuddyTrainingOptions, BuddyTrainingAdvancedOptions, OandaFetchOptions
 from cli.io_utils import (
     console, logger, DEFAULT_CONFIG_PATH, VALID_OANDA_INSTRUMENTS,
     _validate_instrument, _normalize_instrument, _get_pair_model_paths,

@@ -21,17 +21,14 @@ The composite score blends:
 from __future__ import annotations
 
 import gc
-import logging
 import shutil
 import tempfile
 import time
 from dataclasses import replace
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from rich.console import Console
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -51,6 +48,7 @@ from cli.io_utils import (
     console,
     logger,
 )
+from src.training.modular_trainers import TrainerConfig
 from src.utils import load_config
 
 __all__ = ["find_optimal_candles"]
@@ -92,28 +90,28 @@ def _compute_composite_score(metrics: Dict[str, float]) -> float:
 # Per-count evaluation
 # ---------------------------------------------------------------------------
 
-def _evaluate_candle_count(
+def _make_sequences(x_flat: np.ndarray, y_flat: np.ndarray, w_flat: Optional[np.ndarray], sl: int):
+    """Create (samples, seq_len, features) sequences from flat arrays."""
+    n = len(x_flat)
+    if n <= sl:
+        return None, None, None
+    seqs, labs, wts = [], [], []
+    for i in range(sl, n):
+        seqs.append(x_flat[i - sl : i])
+        labs.append(y_flat[i])
+        if w_flat is not None:
+            wts.append(w_flat[i])
+    return np.array(seqs), np.array(labs), np.array(wts) if wts else None
+
+
+def _fetch_and_prepare_data(
     config_path: str,
     instrument: str,
     granularity: str,
     candle_count: int,
-    n_folds: int = 3,
-    seq_len: int = 60,
-    *,
-    progress_cb=None,
-) -> Optional[Dict[str, Any]]:
-    """Fetch *candle_count* candles and run lightweight walk-forward CV.
-
-    Returns a metrics dict or ``None`` if the evaluation failed.
-    """
-    import tensorflow as tf
-
+) -> Optional[tuple[pd.DataFrame, Dict[str, Any], int, List[str]]]:
+    """Fetch data and compute features. Returns (df, data, n_clear, feature_names) or None."""
     from src.core.modular_data_loaders import compute_normalized_features, load_direction_data
-    from src.training.modular_trainers import TrainerConfig, TransformerDirectionTrainer
-    from src.training.walkforward_validation import (
-        WalkForwardValidator,
-        calculate_trading_metrics,
-    )
 
     cfg = load_config(config_path)
 
@@ -149,14 +147,14 @@ def _evaluate_candle_count(
         logger.warning("Feature prep failed for %s candles: %s", candle_count, exc)
         return None
 
-    X_train = data["X_train"]
+    x_train = data["X_train"]
     y_train = data["y_train"]
     w_train = data.get("w_train")
-    X_val = data["X_val"]
+    x_val = data["X_val"]
     y_val = data["y_val"]
 
     # We need enough clear labels for walk-forward folds
-    clear_mask_train = (y_train != 0.5) if w_train is None else (w_train > 0)
+    clear_mask_train = ~np.isclose(y_train, 0.5) if w_train is None else (w_train > 0)
     n_clear = int(np.sum(clear_mask_train))
     feature_names = data.get("feature_names", [])
 
@@ -165,53 +163,150 @@ def _evaluate_candle_count(
         return None
 
     # Combine train+val for walk-forward splitting
-    X_all = np.concatenate([X_train, X_val], axis=0)
+    x_all = np.concatenate([x_train, x_val], axis=0)
     y_all = np.concatenate([y_train, y_val], axis=0)
     w_all = np.concatenate([w_train, data.get("w_val", np.ones(len(y_val)))], axis=0) if w_train is not None else None
+    
+    data["X_all"] = x_all
+    data["y_all"] = y_all
+    data["w_all"] = w_all
+    
+    return df, data, n_clear, feature_names
 
-    # --- walk-forward CV ---------------------------------------------------
-    n_features = X_all.shape[1]
 
-    # Create sequences for Transformer input
-    def _make_sequences(X_flat: np.ndarray, y_flat: np.ndarray, w_flat: Optional[np.ndarray], sl: int):
-        """Create (samples, seq_len, features) sequences from flat arrays."""
-        n = len(X_flat)
-        if n <= sl:
-            return None, None, None
-        seqs, labs, wts = [], [], []
-        for i in range(sl, n):
-            seqs.append(X_flat[i - sl : i])
-            labs.append(y_flat[i])
-            if w_flat is not None:
-                wts.append(w_flat[i])
-        return np.array(seqs), np.array(labs), np.array(wts) if wts else None
+def _process_fold(
+    fold_idx: int,
+    train_idx: np.ndarray,
+    val_idx: np.ndarray,
+    x_all: np.ndarray,
+    y_all: np.ndarray,
+    w_all: Optional[np.ndarray],
+    df: pd.DataFrame,
+    feature_names: List[str],
+    trainer_cfg: TrainerConfig,
+    effective_seq_len: int,
+) -> tuple[Optional[float], Optional[float], Optional[float]]:
+    """Process a single fold. Returns (bal_acc, sharpe, pf) or (None, None, None)."""
+    import tensorflow as tf
+    from src.training.modular_trainers import TransformerDirectionTrainer
+    from src.training.walkforward_validation import calculate_trading_metrics
 
-    effective_seq_len = min(seq_len, len(X_all) // 4)
+    # Pass raw 2D data — the trainer handles scaling + sequencing internally
+    x_train = x_all[train_idx]
+    y_train = y_all[train_idx]
+    w_train = w_all[train_idx] if w_all is not None else None
+    x_val = x_all[val_idx]
+    y_val = y_all[val_idx]
+    w_val = w_all[val_idx] if w_all is not None else None
+
+    # Need enough raw samples for the trainer to create sequences
+    if len(x_train) < effective_seq_len + 100 or len(x_val) < effective_seq_len + 30:
+        return None, None, None
+
+    try:
+        trainer = TransformerDirectionTrainer(trainer_cfg)
+        metrics = trainer.train(x_train, y_train, x_val, y_val, feature_names=feature_names, w_train=w_train, w_val=w_val)
+        bal_acc = float(metrics.get("val_balanced_accuracy", metrics.get("val_accuracy", 0.0)))
+
+        # Trading metrics from validation predictions
+        try:
+            # Build val sequences the same way the trainer does for prediction
+            from sklearn.preprocessing import StandardScaler
+            scaler = trainer.scaler if hasattr(trainer, 'scaler') and trainer.scaler is not None else StandardScaler().fit(x_train)
+            x_val_scaled = scaler.transform(x_val)
+            seq_len = trainer.seq_len if hasattr(trainer, 'seq_len') else effective_seq_len
+            x_val_seqs = []
+            y_val_seqs = []
+            for i in range(seq_len, len(x_val_scaled)):
+                x_val_seqs.append(x_val_scaled[i - seq_len:i])
+                y_val_seqs.append(y_val[i])
+            if len(x_val_seqs) < 2:
+                raise ValueError("Not enough val sequences")
+            x_val_seqs = np.array(x_val_seqs)
+            y_val_seqs = np.array(y_val_seqs)
+
+            val_preds = trainer.model.predict(x_val_seqs, verbose=0).flatten()
+            close_prices = df["close"].values
+            val_start = val_idx[0] + seq_len
+            val_end = min(val_start + len(val_preds), len(close_prices))
+            price_slice = close_prices[val_start:val_end]
+
+            n_common = min(len(val_preds), len(price_slice))
+            val_preds = val_preds[:n_common]
+            price_slice = price_slice[:n_common]
+            y_val_seqs = y_val_seqs[:n_common]
+
+            if n_common > 1:
+                trading = calculate_trading_metrics(y_val_seqs, val_preds, price_slice)
+                sharpe = float(trading.get("sharpe_ratio", 0.0))
+                pf = float(trading.get("profit_factor", 1.0))
+            else:
+                sharpe, pf = 0.0, 1.0
+        except Exception:
+            sharpe, pf = 0.0, 1.0
+
+        return bal_acc, sharpe, pf
+    except Exception as exc:
+        logger.warning("Fold %d processing failed: %s", fold_idx, exc, exc_info=True)
+        return None, None, None
+    finally:
+        tf.keras.backend.clear_session()
+        gc.collect()
+
+
+def _evaluate_candle_count(
+    config_path: str,
+    instrument: str,
+    granularity: str,
+    candle_count: int,
+    n_folds: int = 3,
+    seq_len: int = 60,
+    *,
+    progress_cb=None,
+) -> Optional[Dict[str, Any]]:
+    """Fetch *candle_count* candles and run lightweight walk-forward CV.
+
+    Returns a metrics dict or ``None`` if the evaluation failed.
+    """
+    from src.training.walkforward_validation import WalkForwardValidator
+
+    # --- fetch and prepare -----------------------------------------------
+    prep_result = _fetch_and_prepare_data(config_path, instrument, granularity, candle_count)
+    if prep_result is None:
+        return None
+
+    df, data, n_clear, feature_names = prep_result
+    x_all = data["X_all"]
+    y_all = data["y_all"]
+    w_all = data["w_all"]
+    n_features = x_all.shape[1]
+
+    # --- validate sequence length ------------------------------------------
+    effective_seq_len = min(seq_len, len(x_all) // 4)
     if effective_seq_len < 10:
         logger.warning("Sequence length too short for %s candles — skipping", candle_count)
         return None
 
+    # --- create validator --------------------------------------------------
+    # Sizes must be small enough for n_folds expanding windows to fit:
+    # train_size*N + (n_folds-1)*fold_size + gap + val + test <= N
     validator = WalkForwardValidator(
         n_splits=n_folds,
-        train_size=0.60,
-        val_size=0.15,
-        test_size=0.10,
-        gap=max(10, effective_seq_len),
+        train_size=0.50,
+        val_size=0.08,
+        test_size=0.05,
+        gap=max(10, effective_seq_len // 2),
         mode="expanding",
         min_train_size=200,
     )
 
-    fold_bal_accs: List[float] = []
-    fold_sharpes: List[float] = []
-    fold_pfs: List[float] = []
-
-    # Lightweight trainer config (fast epochs, small model)
+    # --- setup trainer config ----------------------------------------------
     trainer_cfg = TrainerConfig(
-        epochs=40,
+        epochs=15,
         batch_size=64,
         learning_rate=0.0005,
-        patience=10,
-        min_epochs=10,
+        patience=5,
+        min_epochs=5,
         verbose=0,
         transformer_d_model=32,
         transformer_num_heads=4,
@@ -226,59 +321,31 @@ def _evaluate_candle_count(
     tmp_dir = tempfile.mkdtemp(prefix="candle_opt_")
     trainer_cfg = replace(trainer_cfg, checkpoint_dir=tmp_dir)
 
+    # --- walk-forward CV ---------------------------------------------------
+    fold_bal_accs: List[float] = []
+    fold_sharpes: List[float] = []
+    fold_pfs: List[float] = []
+
     try:
-        for fold_idx, (train_idx, val_idx, test_idx) in enumerate(validator.split(X_all)):
+        for fold_idx, (train_idx, val_idx, test_idx) in enumerate(validator.split(x_all)):
             if progress_cb:
                 progress_cb(fold_idx + 1, n_folds)
 
-            X_tr_seq, y_tr_seq, w_tr_seq = _make_sequences(X_all[train_idx], y_all[train_idx], w_all[train_idx] if w_all is not None else None, effective_seq_len)
-            X_va_seq, y_va_seq, _ = _make_sequences(X_all[val_idx], y_all[val_idx], w_all[val_idx] if w_all is not None else None, effective_seq_len)
-
-            if X_tr_seq is None or X_va_seq is None or len(X_tr_seq) < 100 or len(X_va_seq) < 30:
-                continue
-
-            try:
-                trainer = TransformerDirectionTrainer(trainer_cfg)
-                metrics = trainer.train(X_tr_seq, y_tr_seq, X_va_seq, y_va_seq, feature_names=feature_names, w_train=w_tr_seq)
-
-                bal_acc = float(metrics.get("val_balanced_accuracy", metrics.get("val_accuracy", 0.0)))
+            bal_acc, sharpe, pf = _process_fold(
+                fold_idx, train_idx, val_idx, x_all, y_all, w_all,
+                df, feature_names, trainer_cfg, effective_seq_len,
+            )
+            
+            if bal_acc is not None:
                 fold_bal_accs.append(bal_acc)
-
-                # Trading metrics from validation predictions
-                try:
-                    val_preds = trainer.model.predict(X_va_seq, verbose=0).flatten()
-                    close_prices = df["close"].values
-                    # Use a slice of prices matching validation window
-                    val_start = val_idx[0] + effective_seq_len
-                    val_end = min(val_start + len(val_preds), len(close_prices))
-                    price_slice = close_prices[val_start:val_end]
-                    if len(price_slice) >= len(val_preds):
-                        price_slice = price_slice[: len(val_preds)]
-                    elif len(val_preds) > len(price_slice):
-                        val_preds = val_preds[: len(price_slice)]
-                    
-                    if len(val_preds) > 1 and len(price_slice) > 1:
-                        trading = calculate_trading_metrics(y_va_seq[: len(val_preds)], val_preds, price_slice)
-                        fold_sharpes.append(float(trading.get("sharpe_ratio", 0.0)))
-                        fold_pfs.append(float(trading.get("profit_factor", 1.0)))
-                    else:
-                        fold_sharpes.append(0.0)
-                        fold_pfs.append(1.0)
-                except Exception:
-                    fold_sharpes.append(0.0)
-                    fold_pfs.append(1.0)
-            except Exception as exc:
-                logger.debug("Fold %d failed for %s candles: %s", fold_idx, candle_count, exc)
-                continue
-            finally:
-                tf.keras.backend.clear_session()
-                gc.collect()
-
+                fold_sharpes.append(sharpe)
+                fold_pfs.append(pf)
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    if len(fold_bal_accs) < 2:
-        logger.warning("Too few successful folds (%d) for %s candles", len(fold_bal_accs), candle_count)
+    # --- aggregate results -------------------------------------------------
+    if len(fold_bal_accs) < 1:
+        logger.warning("No successful folds for %s candles", candle_count)
         return None
 
     mean_bal = float(np.mean(fold_bal_accs))
@@ -338,7 +405,12 @@ def _display_results(
         score_str = f"[bold green]{r['composite_score']:.1f} ★[/bold green]" if is_best else f"{r['composite_score']:.1f}"
         candle_str = f"[bold green]{r['candles']:,}[/bold green]" if is_best else f"{r['candles']:,}"
         stab_val = r.get("stability_score", 999)
-        stab_color = "green" if stab_val < 0.10 else "yellow" if stab_val < 0.20 else "red"
+        if stab_val < 0.10:
+            stab_color = "green"
+        elif stab_val < 0.20:
+            stab_color = "yellow"
+        else:
+            stab_color = "red"
         stab_str = f"[{stab_color}]{stab_val:.3f}[/{stab_color}]"
 
         table.add_row(
@@ -445,7 +517,7 @@ def find_optimal_candles(
                 description=f"[cyan]{count:,}[/cyan] candles — fetching & evaluating…",
             )
 
-            def _fold_cb(fold: int, total: int):
+            def _fold_cb(fold: int, total: int, count: int = count):
                 progress.update(
                     main_task,
                     description=f"[cyan]{count:,}[/cyan] candles — fold {fold}/{total}",
@@ -497,10 +569,12 @@ def find_optimal_candles(
         console.print()
 
         try:
+            from types import SimpleNamespace
             from cli.commands import _dispatch_train_buddy
+            from cli.training import train_buddy
 
-            # Build a minimal args dict that _dispatch_train_buddy expects
-            train_args: Dict[str, Any] = {
+            # Build a minimal args namespace that _dispatch_train_buddy expects
+            train_args_dict: Dict[str, Any] = {
                 "command": "train-buddy",
                 "config": config_path,
                 "instrument": instrument,
@@ -551,9 +625,12 @@ def find_optimal_candles(
                 "tier2_tie_break": None,
                 "tier2_calibration_bins": None,
                 "tier2_calibration_stride": None,
+                "seed": 42,
+                "run_tag": None,
             }
 
-            _dispatch_train_buddy(train_args, command_handlers={})
+            train_args = SimpleNamespace(**train_args_dict)
+            _dispatch_train_buddy(train_args, {"train-buddy": train_buddy})
         except Exception as exc:
             console.print(f"[red]Auto-train failed:[/red] {exc}")
             console.print(

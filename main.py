@@ -1474,9 +1474,15 @@ class CommandDispatcher:
     
     def _handle_train(self, args: CommandArgs) -> None:
         """Handle the train command."""
+        import argparse
         from cli import _dispatch_train_buddy
-        
-        _dispatch_train_buddy(args, self._command_handlers)
+        from cli.training import train_buddy
+
+        # _dispatch_train_buddy expects argparse.Namespace (attribute access)
+        ns = argparse.Namespace(**args)
+        # command_map must point to train_buddy, NOT _handle_train (avoids recursion)
+        cmd_map = {"train-buddy": train_buddy}
+        _dispatch_train_buddy(ns, cmd_map)
     
     def _handle_retrain_gates(self, args: CommandArgs) -> None:
         """Handle the retrain-gates command."""

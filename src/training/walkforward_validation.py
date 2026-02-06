@@ -209,14 +209,14 @@ class WalkForwardValidator:
             
             # Validation period (after gap)
             val_start = train_end + self.gap
-            val_end = val_start + val_samples
+            val_end = min(val_start + val_samples, n_samples)
             
             # Test period (after validation)
             test_start = val_end
             test_end = min(test_start + test_samples, n_samples)
             
             # Ensure we have valid ranges
-            if val_start >= n_samples or test_end > n_samples:
+            if val_start >= n_samples or val_end - val_start < 1 or test_end - test_start < 1:
                 break
             
             train_idx = np.arange(train_start, train_end)
