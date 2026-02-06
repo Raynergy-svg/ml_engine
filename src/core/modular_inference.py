@@ -2059,7 +2059,7 @@ class ModularEnsembleInference:
                 logger.debug(f"Ridge gate ACTIVE: confidence={ridge_confidence:.1f}, passed={confidence_gate_passed}")
             else:
                 confidence_gate_passed = True
-                logger.debug(f"Ridge gate BYPASSED: {self._gate_issues.get('ridge', 'not loaded')}")
+                logger.warning(f"⚠️  Ridge gate BYPASSED (permissive mode): {self._gate_issues.get('ridge', 'not loaded')}")
             
             # Momentum gate: use XGBoost if available, else pass
             if self._gate_status.get('xgboost', False) and self.xgb is not None:
@@ -2068,12 +2068,12 @@ class ModularEnsembleInference:
                 logger.debug(f"XGBoost gate ACTIVE: momentum={xgb_momentum:.3f}, accel={xgb_acceleration}, passed={momentum_gate_passed}")
             else:
                 momentum_gate_passed = True
-                logger.debug(f"XGBoost gate BYPASSED: {self._gate_issues.get('xgboost', 'not loaded')}")
+                logger.warning(f"⚠️  XGBoost gate BYPASSED (permissive mode): {self._gate_issues.get('xgboost', 'not loaded')}")
             
             # Risk gate: use RF if available AND not explicitly bypassed
             if self.config.bypass_risk_gate_in_permissive:
                 risk_gate_passed = True
-                logger.debug("Risk gate BYPASSED: bypass_risk_gate_in_permissive=True")
+                logger.warning("⚠️  Risk gate BYPASSED (permissive mode): bypass_risk_gate_in_permissive=True")
             elif self._gate_status.get('random_forest', False) and self.rf is not None:
                 risk_gate_passed = (
                     rf_drawdown_pct <= self.config.max_drawdown_pct and
@@ -2086,10 +2086,10 @@ class ModularEnsembleInference:
                 if 'atr_pct_14' in df.columns:
                     atr_pct = df['atr_pct_14'].iloc[-1]
                     risk_gate_passed = atr_pct <= 0.02  # Max 2% ATR
-                    logger.debug(f"RF gate BYPASSED, using ATR fallback: atr={atr_pct:.4f}, passed={risk_gate_passed}")
+                    logger.warning(f"⚠️  RF gate BYPASSED (permissive mode), using ATR fallback: atr={atr_pct:.4f}, passed={risk_gate_passed}")
                 else:
                     risk_gate_passed = True  # No ATR available, trust Transformer
-                    logger.debug(f"RF gate BYPASSED: {self._gate_issues.get('random_forest', 'not loaded')}, no ATR fallback")
+                    logger.warning(f"⚠️  RF gate BYPASSED (permissive mode): {self._gate_issues.get('random_forest', 'not loaded')}, no ATR fallback")
         else:
             # TCN confidence = how far from 0.5 (uncertain)
             # 0.5 -> 0%, 0.6 -> 20%, 0.7 -> 40%, 0.8 -> 60%, 0.9 -> 80%, 1.0 -> 100%
