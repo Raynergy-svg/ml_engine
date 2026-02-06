@@ -482,7 +482,7 @@ def _train_buddy_impl(
                 cols = init_meta.get("feature_columns")
                 if isinstance(cols, list) and cols:
                     init_feature_columns = [str(c) for c in cols]
-                    console.print(f"Using feature_columns from init_from metadata: {meta_p}")
+                    console.print(f"[dim]Loading feature schema from checkpoint metadata:[/dim] {meta_p}")
         except Exception as e:
             console.print(f"[yellow]Warm-start metadata unavailable:[/yellow] {e}")
 
@@ -721,7 +721,7 @@ def _train_buddy_impl(
         # sklearn returns float64; cast back to float32 to avoid doubling memory.
         train_feats = pca_model.transform(train_feats).astype(np.float32)
         val_feats = pca_model.transform(val_feats).astype(np.float32)
-        console.print(f"PCA enabled: {orig_feature_dim} -> {train_feats.shape[1]}")
+        console.print(f"[dim]Dimensionality reduction active:[/dim] {orig_feature_dim} → {train_feats.shape[1]} features via PCA")
 
     meta_warnings: list[str] = []
 
@@ -1009,7 +1009,7 @@ def _train_buddy_impl(
                         m = np.zeros((int(self._mask_var.shape[0]),), dtype=np.float32)
                         m[np.asarray(self._order[:k], dtype=np.int32)] = 1.0
                         self._mask_var.assign(m)
-                        console.print(f"[dim]Curriculum[/dim]: stage {stage+1}/{len(self._ks)} -> top {k} features")
+                        console.print(f"[dim]Progressive training:[/dim] Stage {stage+1}/{len(self._ks)} • Top {k} features activated")
 
                     def on_train_begin(self, logs=None):
                         self._apply(0)
@@ -1117,7 +1117,7 @@ def _train_buddy_impl(
     if shared_encoder and init_from:
         raise ValueError("--shared-encoder cannot be used with --warm-start/--init-from")
     if init_from:
-        console.print(f"Warm-starting from checkpoint: {init_from}")
+        console.print(f"[cyan]Warm-start configuration:[/cyan] Loading pre-trained weights from {init_from}")
         model = _load_buddy_checkpoint(model_path=str(init_from), seq_len=int(seq_len), feature_dim=int(feature_dim))
     else:
         head_hidden = int(cfg.get("buddy", {}).get("head_hidden", 64))
@@ -1229,7 +1229,7 @@ def _train_buddy_impl(
                 # Take first n_samples rows to match train+val
                 n_samples = len(train_feats) + len(val_feats)
                 feature_df = df.iloc[:n_samples].copy()
-                console.print(f"  [green]✓[/green] Using RAW data (n={len(feature_df):,})")
+                console.print(f"  [green]✓[/green] Raw features selected (n={len(feature_df):,} observations)")
             elif 'ohlc_df' in dir() and ohlc_df is not None:
                 # Fallback to ohlc_df which has OHLCV columns
                 feature_df = ohlc_df.copy()
@@ -1243,10 +1243,10 @@ def _train_buddy_impl(
                     fe_modular = FeatureEngineering(cfg.get("feature_engineering", {}))
                     feature_df = fe_modular.create_features(feature_df, include_all=True)
                 
-                console.print(f"  [green]✓[/green] Using OHLCV data (n={len(feature_df):,})")
+                console.print(f"  [green]✓[/green] OHLCV features selected (n={len(feature_df):,} observations)")
             else:
                 # Last resort: use standardized features (not ideal but functional)
-                console.print("  [yellow]⚠ Using pre-standardized features - may cause scale mismatch![/yellow]")
+                console.print("  [yellow]⚠ Pre-standardized features detected - potential scale inconsistency![/yellow]")
                 all_feats = np.vstack([train_feats, val_feats])
                 feature_df = pd.DataFrame(all_feats, columns=feature_columns)
                 
@@ -1417,13 +1417,13 @@ def _train_buddy_impl(
             # Show continual learning config in a compact panel
             if not disable_cl:
                 cl_info = (
-                    f"[bold]Continual Learning Active[/bold]\n\n"
-                    f"[dim]Instrument:[/dim] {training_instrument}  [dim]Granularity:[/dim] {training_granularity}\n"
-                    f"[dim]EMA:[/dim] α={ema_alpha}, freq={ema_update_freq}\n"
-                    f"[dim]EWC:[/dim] λ={ewc_lambda}, γ={ewc_gamma}\n"
-                    f"[dim]Replay:[/dim] {replay_capacity_ratio:.0%} capacity, {replay_mix_ratio:.0%} mix"
+                    f"[bold]Continual Learning Framework Active[/bold]\n\n"
+                    f"[dim]Instrument:[/dim] {training_instrument} • [dim]Timeframe:[/dim] {training_granularity}\n"
+                    f"[dim]Exponential Moving Average:[/dim] α={ema_alpha}, update frequency={ema_update_freq}\n"
+                    f"[dim]Elastic Weight Consolidation:[/dim] λ={ewc_lambda}, γ={ewc_gamma}\n"
+                    f"[dim]Experience Replay:[/dim] {replay_capacity_ratio:.0%} buffer capacity, {replay_mix_ratio:.0%} mix ratio"
                 )
-                console.print(Panel(cl_info, title="🔄 Adaptive Learning", border_style="magenta"))
+                console.print(Panel(cl_info, title="🔄 Progressive Feature Training", border_style="magenta"))
             console.print()
             
             # Configure trainers with Transformer settings
@@ -1676,7 +1676,7 @@ def _train_buddy_impl(
                     "[dim]Objective:[/dim] Hybrid voting ensemble with Transformer (consensus-based filtering)\n"
                     "[dim]Architecture:[/dim] Histogram-based gradient boosting for high-speed training\n"
                     "[dim]Trade-off:[/dim] Higher precision, reduced signal frequency",
-                    title="Step 5 (Optional)",
+                    title="Step 5 (Optional) • Ensemble Voting",
                     border_style="magenta",
                 ))
                 
@@ -2209,7 +2209,7 @@ def _train_buddy_impl(
             # Save XGBoost model
             xgb_model_path = model_dir / f"buddy_xgb{suffix}.pkl"
             xgb_model.save(xgb_model_path)
-            console.print(f"Saved: {xgb_model_path}")
+            console.print(f"[dim]Model artifact:[/dim] {xgb_model_path}")
             
             # Save metadata
             meta = {
@@ -2228,7 +2228,7 @@ def _train_buddy_impl(
             with open(candidate_meta_path.with_suffix('.xgb.meta.json'), "w") as f:
                 json.dump(meta, f, indent=2)
             
-            console.print(f"Saved: {candidate_meta_path.with_suffix('.xgb.meta.json')}")
+            console.print(f"[dim]Metadata saved:[/dim] {candidate_meta_path.with_suffix('.xgb.meta.json')}")
             
             # Continue to meta-labeling if enabled (don't return early)
             xgboost_primary_model = xgb_model
@@ -2298,7 +2298,7 @@ def _train_buddy_impl(
                     else:
                         meta_labeler_path = model_dir / f"buddy_xgb_meta{suffix}.pkl"
                         labeler.save(meta_labeler_path)
-                        console.print(f"Saved: {meta_labeler_path}")
+                        console.print(f"[dim]Meta-labeler saved:[/dim] {meta_labeler_path}")
                         
                         meta["meta_labeling"] = {
                             "enabled": True,
@@ -2328,10 +2328,10 @@ def _train_buddy_impl(
                 try:
                     console.print()
                     console.print(Panel(
-                        "[bold cyan]🤖 RL Position Sizer Training[/bold cyan]\n\n"
-                        "[dim]Training RL agent to learn optimal position sizing based on[/dim]\n"
-                        "[dim]XGBoost ensemble predictions and market conditions.[/dim]",
-                        title="RL Training",
+                        "[bold cyan]🤖 Reinforcement Learning • Position Sizing[/bold cyan]\n\n"
+                        "[dim]Training intelligent agent to optimize position sizes based on[/dim]\n"
+                        "[dim]ensemble predictions and real-time market conditions.[/dim]",
+                        title="Adaptive Position Sizing",
                         border_style="cyan",
                     ))
                     
@@ -3731,7 +3731,7 @@ def _train_buddy_impl(
                 meta_labeler_path_obj = model_dir / f"buddy_meta{suffix}.pkl"
                 labeler.save(meta_labeler_path_obj)
                 meta_labeler_path = str(meta_labeler_path_obj)
-                console.print(f"Saved: {meta_labeler_path}")
+                console.print(f"[dim]Meta-labeler saved:[/dim] {meta_labeler_path}")
             
         except Exception as e:
             console.print(f"[yellow]Meta-labeling failed[/yellow]: {e}")
@@ -3827,8 +3827,8 @@ def _train_buddy_impl(
         } if meta_labeling_enabled else None,
     }
     meta_path.write_text(json.dumps(meta, indent=2))
-    console.print(f"Saved: {model_path}")
-    console.print(f"Saved: {meta_path}")
+    console.print(f"[dim]Model artifact:[/dim] {model_path}")
+    console.print(f"[dim]Metadata saved:[/dim] {meta_path}")
 
     # ==========================================================================
     # RL Position Sizer Training (automatic after ensemble training)
@@ -3841,10 +3841,10 @@ def _train_buddy_impl(
         try:
             console.print()
             console.print(Panel(
-                "[bold cyan]🤖 RL Position Sizer Training[/bold cyan]\n\n"
-                "[dim]Training RL agent to learn optimal position sizing based on[/dim]\n"
+                "[bold cyan]🤖 Reinforcement Learning • Position Sizing[/bold cyan]\n\n"
+                "[dim]Training intelligent agent to learn optimal position sizing based on[/dim]\n"
                 "[dim]ensemble predictions and market conditions.[/dim]",
-                title="RL Training",
+                title="Adaptive Position Sizing",
                 border_style="cyan",
             ))
             
