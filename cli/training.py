@@ -1661,6 +1661,79 @@ def _train_buddy_impl(
             console.print(f"[cyan]💾 Ridge saved to: {pair_paths['ridge']}[/cyan]")
             
             # ============================================================
+            # TRAIN META-LABELER (Gate 5 - Trade Success Predictor)
+            # ============================================================
+            # Meta-labeler predicts: "Given this signal, should we actually trade?"
+            # This is DIFFERENT from direction - it predicts whether the trade will be PROFITABLE
+            train_meta_labeler_flag = cfg.get("buddy", {}).get("train_defaults", {}).get("train_meta_labeler", True)
+            meta_labeler_metrics = None
+            
+            if train_meta_labeler_flag and not use_regime:
+                console.print()
+                console.print(Panel(
+                    "[bold]Training Meta-Labeler (Gate 5)[/bold]\n\n"
+                    "[dim]Purpose:[/dim] Predict trade success probability (not just direction)\n"
+                    "[dim]Input:[/dim] Primary model probability + market features\n"
+                    "[dim]Output:[/dim] Trade success confidence (0-1)\n"
+                    "[dim]Gate:[/dim] Blocks trades when meta-confidence < 0.55",
+                    title="Step 5/5",
+                    border_style="magenta",
+                ))
+                
+                try:
+                    from src.training.meta_labeling import train_meta_labeler, MetaLabelingConfig
+                    
+                    # Get primary model predictions on validation set
+                    if use_transformer:
+                        val_probs = dir_trainer.model.predict(dir_data['X_val'], verbose=0)
+                        if val_probs.ndim > 1:
+                            val_probs = val_probs[:, -1] if val_probs.shape[1] > 1 else val_probs.flatten()
+                        else:
+                            val_probs = val_probs.flatten()
+                    else:
+                        # TCN model
+                        val_probs = dir_trainer.model.predict(dir_data['X_val'], verbose=0).flatten()
+                    
+                    # Train meta-labeler
+                    meta_config = MetaLabelingConfig(
+                        use_xgboost=True,
+                        n_estimators=100,
+                        max_depth=2,
+                        learning_rate=0.05,
+                        min_confidence_threshold=0.55,
+                        use_reduced_features=True,  # Prevent overfitting
+                    )
+                    
+                    meta_labeler, meta_labeler_metrics = train_meta_labeler(
+                        X_train=dir_data['X_train'],
+                        y_train=dir_data['y_train'],
+                        primary_probs_train=dir_trainer.model.predict(dir_data['X_train'], verbose=0).flatten() if use_transformer else dir_trainer.model.predict(dir_data['X_train'], verbose=0).flatten(),
+                        X_val=dir_data['X_val'],
+                        y_val=dir_data['y_val'],
+                        primary_probs_val=val_probs,
+                        config=meta_config,
+                    )
+                    
+                    # Save to both pair-specific and generic paths
+                    meta_labeler_path = pair_paths['pair_dir'] / "meta_labeler.pkl"
+                    meta_labeler.save(meta_labeler_path)
+                    if training_instrument != "GENERIC":
+                        meta_labeler.save(model_dir / "meta_labeler.pkl")
+                    
+                    all_metrics['meta_labeler'] = meta_labeler_metrics
+                    
+                    console.print(f"[green]✓ Meta-Labeler complete: val_auc={meta_labeler_metrics.get('val_auc', 0):.3f}, precision={meta_labeler_metrics.get('val_precision', 0):.1%}, recall={meta_labeler_metrics.get('val_recall', 0):.1%}[/green]")
+                    console.print(f"[cyan]💾 Meta-Labeler saved to: {meta_labeler_path}[/cyan]")
+                    console.print(f"[yellow]🏷️ Gate 5 ENABLED: Trade success filtering at {meta_config.min_confidence_threshold:.0%} confidence[/yellow]")
+                    
+                except ImportError as e:
+                    console.print(f"[yellow]⚠ Meta-labeler training skipped: {e}[/yellow]")
+                    meta_labeler_metrics = None
+                except Exception as e:
+                    console.print(f"[red]✗ Meta-labeler training failed: {e}[/red]")
+                    meta_labeler_metrics = None
+            
+            # ============================================================
             # TRAIN HISTGB (Optional - for hybrid voting with Transformer)
             # ============================================================
             train_histgb = cfg.get("buddy", {}).get("train_defaults", {}).get("train_histgb", False)
@@ -1763,12 +1836,26 @@ def _train_buddy_impl(
                         "features": ridge_data['feature_names'],
                     },
                 },
+            }
+            
+            # Add meta-labeler to metadata if trained
+            if meta_labeler_metrics is not None:
+                meta["models"]["meta_labeler"] = {
+                    "path": str(pair_paths['pair_dir'] / "meta_labeler.pkl"),
+                    "purpose": "trade_success_prediction",
+                    "output": "success_probability (0-1)",
+                    "metrics": meta_labeler_metrics,
+                    "threshold": 0.55,
+                }
+            
+            meta.update({
                 "inference_gates": {
                     "min_confidence": 75,
                     "min_momentum_or_accel": True,
                     "max_drawdown_pips": 30,
                     "max_streak_prob": 0.3,
                     "risk_per_trade_pct": 0.02,
+                    "min_meta_confidence": 0.55 if meta_labeler_metrics is not None else None,
                 },
                 "data_split": {
                     "train_frac": train_frac,
@@ -1815,6 +1902,12 @@ def _train_buddy_impl(
             perf_table.add_row("", "L1 Ratio", f"{ridge_metrics.get('best_l1_ratio', 0.5):.2f}")
             perf_table.add_row("", "Features (sparse)", f"{ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
             
+            # Add meta-labeler metrics if available
+            if meta_labeler_metrics is not None:
+                perf_table.add_row("Meta-Labeler", "Val AUC", f"{meta_labeler_metrics.get('val_auc', 0):.3f}")
+                perf_table.add_row("", "Precision", f"{meta_labeler_metrics.get('val_precision', 0):.1%}")
+                perf_table.add_row("", "Recall", f"{meta_labeler_metrics.get('val_recall', 0):.1%}")
+            
             console.print(Panel(perf_table, border_style="green"))
             console.print()
             
@@ -1826,6 +1919,8 @@ def _train_buddy_impl(
             artifacts_table.add_row("Momentum", str(pair_paths['xgboost']))
             artifacts_table.add_row("Risk", str(pair_paths['rf']))
             artifacts_table.add_row("Confidence", str(pair_paths['ridge']))
+            if meta_labeler_metrics is not None:
+                artifacts_table.add_row("Meta-Labeler", str(pair_paths['pair_dir'] / "meta_labeler.pkl"))
             artifacts_table.add_row("Metadata", str(meta_path))
             
             console.print(Panel(artifacts_table, title="[bold]Saved Artifacts[/bold]", border_style="blue"))
