@@ -429,7 +429,7 @@ def _train_buddy_impl(
     # - If feature engineering is disabled, apply it here so Buddy still trains on de-noised candles.
     if train_smoothing:
         extra = f" + median(close,w={median_window})" if median_window else ""
-        console.print(f"Training noise reduction enabled: resample->M5{extra} + EMA(14) close")
+        console.print(f"Noise reduction enabled: M5 resampling{extra} + 14-period EMA smoothing")
 
     # Feature engineering (numeric only).
     if all_features:
@@ -453,11 +453,11 @@ def _train_buddy_impl(
         
         elapsed_fe = time.perf_counter() - t_fe
         console.print(Panel(
-            f"[bold]Feature Engineering Complete[/bold]\n\n"
-            f"[dim]Smoothing:[/dim] {bool(train_smoothing)}  [dim]Median Window:[/dim] {median_window}\n"
-            f"[dim]Output:[/dim] {int(len(df)):,} rows × {int(df.shape[1])} columns\n"
-            f"[dim]Time:[/dim] {elapsed_fe:.2f}s",
-            title="⚙️ Feature Engineering",
+            f"[bold]Feature Engineering Pipeline Complete[/bold]\n\n"
+            f"[dim]Noise Reduction:[/dim] {bool(train_smoothing)} • Median Window: {median_window}\n"
+            f"[dim]Output Dimensionality:[/dim] {int(len(df)):,} observations × {int(df.shape[1])} features\n"
+            f"[dim]Processing Time:[/dim] {elapsed_fe:.2f}s",
+            title="⚙️  Feature Engineering",
             border_style="blue",
         ))
     elif train_smoothing:
@@ -471,7 +471,7 @@ def _train_buddy_impl(
                 median_window=median_window,
             )
         except Exception as e:
-            console.print(f"[yellow]Training noise reduction skipped[/yellow]: {e}")
+            console.print(f"[yellow]Noise reduction deferred:[/yellow] {e}")
 
     init_feature_columns: list[str] | None = None
     if init_from:
@@ -484,7 +484,7 @@ def _train_buddy_impl(
                     init_feature_columns = [str(c) for c in cols]
                     console.print(f"Using feature_columns from init_from metadata: {meta_p}")
         except Exception as e:
-            console.print(f"[yellow]Warm-start meta load skipped[/yellow]: {e}")
+            console.print(f"[yellow]Warm-start metadata unavailable:[/yellow] {e}")
 
     numeric_df = df.select_dtypes(include=["number"]).copy()
     if numeric_df.empty:
@@ -503,9 +503,9 @@ def _train_buddy_impl(
         missing_cols = [c for c in init_feature_columns if c not in numeric_df.columns]
         extra_cols = [c for c in numeric_df.columns if c not in set(init_feature_columns)]
         if missing_cols:
-            console.print(f"[yellow]Warm-start[/yellow]: {len(missing_cols)} missing features will be filled with 0.0")
+            console.print(f"[yellow]Warm-start adjustment:[/yellow] {len(missing_cols)} missing features initialized to zero")
         if extra_cols:
-            console.print(f"[yellow]Warm-start[/yellow]: {len(extra_cols)} extra features will be dropped")
+            console.print(f"[yellow]Warm-start adjustment:[/yellow] {len(extra_cols)} extraneous features removed")
         numeric_df = numeric_df.reindex(columns=init_feature_columns, fill_value=0.0)
 
     # Drop rows with NaNs created by rolling indicators.
@@ -571,7 +571,7 @@ def _train_buddy_impl(
                     f"[cyan]✓ Feature Selection Applied:[/cyan] Retained {len(keep)} / {int(len(ranked_cols))} ranked features based on predictive power"
                 )
         except Exception as e:
-            console.print(f"[yellow]Feature ranking skipped[/yellow]: {e}")
+            console.print(f"[yellow]Feature ranking unavailable:[/yellow] {e}")
             ranked_cols = None
 
     feats = numeric_df.to_numpy(dtype=np.float32)
@@ -687,7 +687,7 @@ def _train_buddy_impl(
                 f"horizon={int(tier2_horizon_candles)} stride={int(label_stride)} | {int(n_sim)} samples in {time.perf_counter() - t_tier2_label:.2f}s"
             )
         except Exception as e:
-            console.print(f"[yellow]Tier-2 confidence labeling failed[/yellow]: {e}")
+            console.print(f"[yellow]Tier-2 calibration failed:[/yellow] {e}")
             conf_y_all = np.zeros((int(n),), dtype=np.float32)
             conf_w_all = np.zeros((int(n),), dtype=np.float32)
 
@@ -729,7 +729,7 @@ def _train_buddy_impl(
     if feature_curriculum and pca_components_eff is not None:
         msg = "PCA + feature curriculum are incompatible (curriculum ranks original features, PCA changes dimensions)."
         if ignore_input_mismatches:
-            console.print(f"[yellow]Warning[/yellow]: {msg} Disabling curriculum due to --ignore-input-mismatches.")
+            console.print(f"[yellow]Configuration Advisory:[/yellow] {msg} Feature curriculum disabled due to --ignore-input-mismatches.")
             meta_warnings.append(f"{msg} Curriculum disabled due to --ignore-input-mismatches.")
             feature_curriculum = False
         else:
@@ -959,7 +959,7 @@ def _train_buddy_impl(
     curriculum_cb = None
     if feature_curriculum:
         if not ranked_cols:
-            console.print("[yellow]Feature curriculum requested but ranking unavailable; disabling curriculum.[/yellow]")
+            console.print("[yellow]Feature curriculum unavailable: feature ranking data not present; progressive training disabled.[/yellow]")
         else:
             try:
                 # Rank indices aligned to current feature_columns.
@@ -1037,7 +1037,7 @@ def _train_buddy_impl(
                     ks_schedule=ks_final,
                 )
             except Exception as e:
-                console.print(f"[yellow]Feature curriculum init failed[/yellow]: {e}")
+                console.print(f"[yellow]Feature curriculum initialization failed:[/yellow] {e}")
                 feature_mask_var = None
                 curriculum_cb = None
 
@@ -1385,7 +1385,8 @@ def _train_buddy_impl(
             elif has_generic_model and warm_start_enabled:
                 is_warm_start = True
                 warm_start_path = model_dir / "transformer_direction.keras"
-                console.print(f"[yellow]⚡ Initial training for {training_instrument} (warm-start from generic model)[/yellow]")
+                console.print(f"[yellow]⚡ Initial training session for {training_instrument}[/yellow]")
+                console.print(f"[dim]Transfer learning: Warm-start from generic cross-pair foundation[/dim]")
             else:
                 is_warm_start = False
                 warm_start_path = None
@@ -1671,9 +1672,10 @@ def _train_buddy_impl(
             if train_histgb and not use_regime:
                 console.print()
                 console.print(Panel(
-                    "[bold]Training HistGB (Hybrid Voting Baseline)[/bold]\n\n"
-                    "[dim]Purpose:[/dim] Hybrid voting with Transformer → trade only when BOTH AGREE\n"
-                    "[dim]Expected:[/dim] Higher precision at cost of fewer trades",
+                    "[bold]Histogram Gradient Boosting Baseline[/bold]\n\n"
+                    "[dim]Objective:[/dim] Hybrid voting ensemble with Transformer (consensus-based filtering)\n"
+                    "[dim]Architecture:[/dim] Histogram-based gradient boosting for high-speed training\n"
+                    "[dim]Trade-off:[/dim] Higher precision, reduced signal frequency",
                     title="Step 5 (Optional)",
                     border_style="magenta",
                 ))
@@ -1690,9 +1692,9 @@ def _train_buddy_impl(
                     histgb_trainer.save(str(model_dir / "histgb_direction.pkl"))
                 all_metrics['histgb'] = histgb_metrics
                 
-                console.print(f"[green]✓ HistGB complete: val_accuracy={histgb_metrics['val_accuracy']:.1%}, balanced={histgb_metrics.get('val_balanced_accuracy', 0):.1%}[/green]")
-                console.print(f"[cyan]💾 HistGB saved to: {pair_paths['histgb']}[/cyan]")
-                console.print("[yellow]🔥 Hybrid voting ENABLED: Transformer + HistGB will vote together[/yellow]")
+                console.print(f"[green]✓ Histogram gradient boosting complete:[/green] Validation accuracy={histgb_metrics['val_accuracy']:.1%} • Balanced={histgb_metrics.get('val_balanced_accuracy', 0):.1%}")
+                console.print(f"[dim]Model saved:[/dim] {pair_paths['histgb']}")
+                console.print("[yellow]🔥 Hybrid Voting Enabled:[/yellow] Transformer and HistGB consensus required for trade execution")
             
             # ============================================================
             # SAVE METADATA
@@ -2158,14 +2160,14 @@ def _train_buddy_impl(
                                 prices=rl_prices,
                             )
                         except Exception as e:
-                            console.print(f"[yellow]RL data preparation failed: {e}[/yellow]")
-                            console.print("[dim]Skipping RL position sizer training[/dim]")
+                            console.print(f"[yellow]Position sizer data preparation failed:[/yellow] {e}")
+                            console.print("[dim]Deferring RL position sizer training[/dim]")
                     
                 except ImportError as e:
-                    console.print(f"[yellow]Enterprise features unavailable: {e}[/yellow]")
-                    console.print("[dim]Install with: pip install mlflow structlog[/dim]")
+                    console.print(f"[yellow]Enterprise validation framework unavailable:[/yellow] {e}")
+                    console.print("[dim]Install dependencies: pip install mlflow structlog[/dim]")
                 except Exception as e:
-                    console.print(f"[yellow]Enterprise validation error: {e}[/yellow]")
+                    console.print(f"[yellow]Enterprise validation encountered an error:[/yellow] {e}")
                     import traceback
                     traceback.print_exc()
             
@@ -2291,7 +2293,7 @@ def _train_buddy_impl(
                         console.print(f"Threshold tuned: {best_thresh:.2f} -> +{thresh_improvement*100:.1f}% improvement")
                     
                     if overfit_gap > 0.20:
-                        console.print(f"[yellow]⚠️ Meta-labeler rejected (gap {overfit_gap:.1%} > 20%)[/yellow]")
+                        console.print(f"[yellow]⚠️ Meta-labeler quality control:[/yellow] Overfitting detected (gap {overfit_gap:.1%} exceeds 20% threshold)")
                         meta["meta_labeling"] = {"enabled": False, "reason": f"overfitting_gap_{overfit_gap:.1%}"}
                     else:
                         meta_labeler_path = model_dir / f"buddy_xgb_meta{suffix}.pkl"
@@ -2312,7 +2314,7 @@ def _train_buddy_impl(
                         json.dump(meta, f, indent=2)
                     
                 except Exception as e:
-                    console.print(f"[yellow]Meta-labeling failed[/yellow]: {e}")
+                    console.print(f"[yellow]Meta-labeling pipeline failed:[/yellow] {e}")
                     import traceback
                     traceback.print_exc()
             
@@ -2359,7 +2361,7 @@ def _train_buddy_impl(
                     )
                     
                 except Exception as e:
-                    console.print(f"[yellow]⚠ RL position sizer training failed: {e}[/yellow]")
+                    console.print(f"[yellow]⚠ Position sizing agent training failed:[/yellow] {e}")
                     console.print("[dim]XGBoost training completed successfully - RL training is optional.[/dim]")
                     import traceback
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
@@ -2434,7 +2436,7 @@ def _train_buddy_impl(
         optimizer = adam_cls(learning_rate=float(lr), clipnorm=1.0)
         optimizer_name = f"{adam_cls.__module__}.{adam_cls.__name__}"
         try:
-            console.print("[yellow]Warning[/yellow]: tf.keras.optimizers.legacy.Adam unavailable; falling back to non-legacy Adam")
+            console.print("[yellow]Optimizer fallback:[/yellow] Legacy Adam optimizer unavailable; using standard Adam implementation")
         except Exception:
             pass
     try:
@@ -2599,8 +2601,8 @@ def _train_buddy_impl(
 
     if monitor == "combined" and not has_conf_labels:
         console.print(
-            "[yellow]Warning[/yellow]: --es-monitor combined requested but confidence labels are absent "
-            "(--no-tier2-calibrate or no labeled samples). Falling back to --es-monitor direction."
+            "[yellow]Configuration Advisory:[/yellow] Combined early-stopping metric requested but confidence labels unavailable "
+            "(--no-tier2-calibrate or insufficient labeled samples). Reverting to direction-based monitoring."
         )
         monitor = "direction"
 

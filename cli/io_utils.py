@@ -363,7 +363,7 @@ def _migrate_keras2_to_keras3(model_path: str, seq_len: int, feature_dim: int, c
     import tempfile
     import shutil
 
-    console.print("[yellow]Attempting Keras 2→3 migration...[/yellow]")
+    console.print("[yellow]Initiating Keras 2.x → 3.x model migration...[/yellow]")
 
     # Try to extract weights from the .keras file (it's a zip)
     with tempfile.TemporaryDirectory() as tmpdir:
