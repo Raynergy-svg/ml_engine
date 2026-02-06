@@ -1225,13 +1225,20 @@ def _train_buddy_impl(
             )
             
             # Get model configuration from config
+            # CRITICAL FIX: Read from buddy.train_defaults, not transformer
+            buddy_cfg = cfg.get("buddy", {})
+            train_defaults = buddy_cfg.get("train_defaults", {})
             transformer_cfg = cfg.get("transformer", {})
-            use_transformer = transformer_cfg.get("use_transformer", True)  # Default to Transformer
-            use_regime = transformer_cfg.get("use_regime", False)  # NEW: Use regime classification
-            direction_threshold = cfg.get("direction_threshold", 0.005)  # 0.5% min move
-            direction_lookahead = cfg.get("direction_lookahead", 12)  # 12 hours lookahead
-            regime_lookback = transformer_cfg.get("regime_lookback", 20)  # 20 bars lookback
-            regime_lookahead = transformer_cfg.get("regime_lookahead", 12)  # 12 bars lookahead
+            
+            # Read use_regime from buddy.train_defaults (primary) or transformer (fallback)
+            use_transformer = train_defaults.get("use_transformer", transformer_cfg.get("use_transformer", True))
+            use_regime = train_defaults.get("use_regime", transformer_cfg.get("use_regime", False))
+            regime_lookback = train_defaults.get("regime_lookback", transformer_cfg.get("regime_lookback", 20))
+            regime_lookahead = train_defaults.get("regime_lookahead", transformer_cfg.get("regime_lookahead", 12))
+            
+            # Direction settings (legacy, only used if use_regime: false)
+            direction_threshold = train_defaults.get("direction_threshold", cfg.get("direction_threshold", 0.005))
+            direction_lookahead = train_defaults.get("direction_lookahead", cfg.get("direction_lookahead", 12))
             
             # Model architecture table - Enhanced professional formatting
             arch_table = Table(show_header=True, header_style="bold cyan", box=None)
