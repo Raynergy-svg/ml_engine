@@ -1836,19 +1836,6 @@ def _train_buddy_impl(
                         "features": ridge_data['feature_names'],
                     },
                 },
-            }
-            
-            # Add meta-labeler to metadata if trained
-            if meta_labeler_metrics is not None:
-                meta["models"]["meta_labeler"] = {
-                    "path": str(pair_paths['pair_dir'] / "meta_labeler.pkl"),
-                    "purpose": "trade_success_prediction",
-                    "output": "success_probability (0-1)",
-                    "metrics": meta_labeler_metrics,
-                    "threshold": 0.55,
-                }
-            
-            meta.update({
                 "inference_gates": {
                     "min_confidence": 75,
                     "min_momentum_or_accel": True,
@@ -1865,6 +1852,17 @@ def _train_buddy_impl(
                 },
                 "trained_at": datetime.now().isoformat(),
             }
+            
+            # Add meta-labeler to metadata if trained
+            if meta_labeler_metrics is not None:
+                meta["models"]["meta_labeler"] = {
+                    "path": str(pair_paths['pair_dir'] / "meta_labeler.pkl"),
+                    "purpose": "trade_success_prediction",
+                    "output": "success_probability (0-1)",
+                    "metrics": meta_labeler_metrics,
+                    "threshold": 0.55,
+                }
+            
             
             meta_path = model_dir / "modular_ensemble.meta.json"
             with open(meta_path, "w") as f:
