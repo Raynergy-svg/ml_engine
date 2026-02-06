@@ -761,6 +761,7 @@ def load_direction_data(
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
     lookahead: int = 6,
     threshold: float = 0.001,  # 0.1% minimum move (reduced from 0.5% to include more samples)
+    locked_feature_names: Optional[List[str]] = None,
 ) -> Dict[str, np.ndarray]:
     """
     Load data for direction prediction model (TCN or Transformer).
@@ -777,6 +778,8 @@ def load_direction_data(
         split: (train_frac, val_frac, test_frac)
         lookahead: Number of bars ahead for direction label
         threshold: Minimum price change (as fraction) to assign clear label
+        locked_feature_names: If provided, use these exact features (for warm-start consistency).
+            Features not found in df are zero-filled. Skips dynamic feature selection.
     
     Returns:
         Dict with X_train, y_train, w_train (weights), X_val, y_val, w_val, 
@@ -801,6 +804,31 @@ def load_direction_data(
     features = [f for f in features if not any(x in f.lower() for x in ['target', 'label', 'future', 'forward'])]
     
     # =========================================================================
+    # LOCKED FEATURE NAMES: Use exact features from previous model for warm-start
+    # This guarantees identical feature ordering between training sessions
+    # =========================================================================
+    if locked_feature_names is not None and len(locked_feature_names) > 0:
+        available = set(df.columns)
+        n_found = sum(1 for f in locked_feature_names if f in available)
+        n_missing = len(locked_feature_names) - n_found
+        
+        if n_found < len(locked_feature_names) // 2:
+            logger.warning(f"⚠️ Locked features: only {n_found}/{len(locked_feature_names)} found in data. "
+                          f"Falling back to dynamic selection.")
+        else:
+            if n_missing > 0:
+                missing = [f for f in locked_feature_names if f not in available]
+                logger.warning(f"⚠️ Locked features: {n_missing} missing features will be zero-filled: "
+                              f"{missing[:5]}{'...' if n_missing > 5 else ''}")
+                # Add missing columns as zeros
+                for f in missing:
+                    df[f] = 0.0
+            
+            features = list(locked_feature_names)
+            logger.info(f"🔒 Using {len(features)} locked features from previous model "
+                       f"({n_found} found, {n_missing} zero-filled)")
+    
+    # =========================================================================
     # SMART FEATURE SELECTION: Keep top ~60 uncorrelated features
     # =========================================================================
     # VARIANCE-BASED FEATURE SELECTION (no look-ahead bias)
@@ -808,7 +836,12 @@ def load_direction_data(
     max_features = 80  # Use more features since we're not overfitting to target
     correlation_threshold = 0.80  # Remove features correlated > 80%
     
-    if len(features) > max_features:
+    # Skip dynamic selection if features are already locked from previous model
+    features_already_locked = (locked_feature_names is not None and 
+                                len(locked_feature_names) > 0 and
+                                features == list(locked_feature_names))
+    
+    if len(features) > max_features and not features_already_locked:
         logger.info(f"Selecting top {max_features} uncorrelated features from {len(features)}...")
         
         # Build numeric feature matrix
@@ -2003,68 +2036,46 @@ def load_rf_data(
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
     
-    # Calculate risk targets based on CURRENT VOLATILITY (learnable!)
-    # Instead of future drawdown, use ATR-scaled risk which IS predictable
+    # Calculate risk targets based on ACTUAL FORWARD DRAWDOWN (no target leakage)
+    # Previous approach used atr_pct * 2 which is trivially recoverable from input features.
+    # Now we compute actual max adverse excursion over the next `drawdown_horizon` bars.
     close = df['close'].values.astype(np.float64)
     high = df['high'].values.astype(np.float64)
     low = df['low'].values.astype(np.float64)
     n = len(close)
+    drawdown_horizon = 24  # Look ahead 24 bars (1 day for H1)
     
-    # Get ATR as base for expected drawdown (this IS learnable from features)
-    atr_pct = None
-    if 'atr_pct_14' in df.columns:
-        atr_pct = df['atr_pct_14'].values.astype(np.float64)
-        # Check if it's valid (not all zeros/NaN)
-        valid_mask = ~np.isnan(atr_pct) & (atr_pct > 0)
-        if np.sum(valid_mask) < 10:
-            atr_pct = None
-        else:
-            # atr_pct_14 should be decimal (e.g., 0.001 = 0.1%)
-            # Typical forex ATR% is 0.0003-0.005 (3-50 bps per bar)
-            mean_val = np.nanmean(np.abs(atr_pct[valid_mask]))
-            logger.info(f"RF: Raw atr_pct_14 mean: {mean_val:.6f}")
-            
-            # If mean > 0.1 (10%), values might be in percentage form (need /100)
-            # If mean > 1.0, definitely wrong scale
-            if mean_val > 0.1:
-                atr_pct = atr_pct / 100.0  # Convert to decimal
-                logger.info(f"RF: Converted atr_pct_14 from percentage to decimal")
-            
-            # Robust outlier handling: cap at 99th percentile (max ~5% for forex)
-            valid_atr = atr_pct[valid_mask]
-            p99 = min(np.nanpercentile(valid_atr, 99), 0.05)  # Cap at 5%
-            p01 = np.nanpercentile(valid_atr, 1)
-            atr_pct = np.clip(atr_pct, p01, p99)
-            
-            logger.info(f"RF: Using atr_pct_14, range: {np.nanmin(atr_pct):.6f} to {np.nanmax(atr_pct):.6f}, mean: {np.nanmean(atr_pct):.6f}")
+    # Compute actual forward max drawdown for each bar
+    # For LONG: max drawdown = (entry - min_low_ahead) / entry  
+    # For SHORT: max drawdown = (max_high_ahead - entry) / entry
+    # Use the WORST case (max of both directions)
+    expected_drawdown_pct = np.zeros(n, dtype=np.float32)
+    for i in range(n - drawdown_horizon):
+        entry = close[i]
+        if entry <= 0:
+            continue
+        future_lows = low[i+1:i+1+drawdown_horizon]
+        future_highs = high[i+1:i+1+drawdown_horizon]
+        
+        # Max adverse for long position
+        long_drawdown = (entry - np.min(future_lows)) / entry
+        # Max adverse for short position
+        short_drawdown = (np.max(future_highs) - entry) / entry
+        # Take the worst case
+        expected_drawdown_pct[i] = max(long_drawdown, short_drawdown)
     
-    if atr_pct is None:
-        # Calculate ATR percentage manually - more robust version
-        logger.info("RF: Computing ATR manually (atr_pct_14 not available or invalid)")
-        prev_close = np.roll(close, 1)
-        prev_close[0] = close[0]
-        
-        tr = np.maximum.reduce([
-            high - low,
-            np.abs(high - prev_close),
-            np.abs(low - prev_close)
-        ])
-        
-        # Rolling ATR using cumsum for efficiency
-        atr = np.zeros(n, dtype=np.float64)
-        for i in range(n):
-            if i < 14:
-                atr[i] = np.mean(tr[:i+1]) if i > 0 else tr[0]
-            else:
-                atr[i] = np.mean(tr[i-13:i+1])
-        
-        # Convert to percentage
-        atr_pct = atr / np.maximum(close, 1e-8)
-        logger.info(f"RF: ATR pct range: {np.nanmin(atr_pct):.6f} to {np.nanmax(atr_pct):.6f}")
+    # Fill last `drawdown_horizon` bars with rolling mean
+    if n > drawdown_horizon + 100:
+        fill_val = np.mean(expected_drawdown_pct[n-drawdown_horizon-100:n-drawdown_horizon])
+    else:
+        fill_val = np.mean(expected_drawdown_pct[:max(1, n-drawdown_horizon)])
+    expected_drawdown_pct[n-drawdown_horizon:] = fill_val
     
-    # Expected drawdown = 2x ATR (typical stop loss distance)
-    # Scaled to 0-1 range: 2% drawdown -> 0.02
-    expected_drawdown_pct = np.clip(atr_pct * 2, 0.0001, 0.10).astype(np.float32)  # Min 1bp, cap at 10%
+    # Clip to realistic range
+    expected_drawdown_pct = np.clip(expected_drawdown_pct, 0.0001, 0.10).astype(np.float32)
+    
+    logger.info(f"RF: Forward drawdown range [{np.min(expected_drawdown_pct):.4f}, "
+                f"{np.max(expected_drawdown_pct):.4f}], mean={np.mean(expected_drawdown_pct):.4f}")
     
     # Streak probability based on recent volatility trend
     # High volatility increasing = higher streak probability
@@ -2435,6 +2446,7 @@ def load_all_modular_data(
     use_regime: bool = False,
     regime_lookback: int = 20,
     regime_lookahead: int = 12,
+    locked_feature_names: Optional[List[str]] = None,
 ) -> Dict[str, Dict[str, np.ndarray]]:
     """
     Load data for all 4 models at once.
@@ -2450,6 +2462,7 @@ def load_all_modular_data(
         use_regime: If True, load regime data instead of direction data
         regime_lookback: Bars to look back for regime detection
         regime_lookahead: Bars ahead to confirm regime
+        locked_feature_names: If provided, use these exact direction features (for warm-start consistency)
     
     Returns:
         Dict with 'direction'/'regime', 'xgboost', 'rf', 'ridge' keys, each containing
@@ -2497,7 +2510,8 @@ def load_all_modular_data(
     else:
         # DIRECTION MODE: Transformer predicts binary direction (legacy)
         logger.info("Using DIRECTION prediction mode (binary)")
-        direction_data = load_direction_data(df_normalized, split, direction_lookahead, direction_threshold)
+        direction_data = load_direction_data(df_normalized, split, direction_lookahead, direction_threshold,
+                                              locked_feature_names=locked_feature_names)
         result['direction'] = direction_data
         result['tcn'] = direction_data  # Alias for backward compat
     

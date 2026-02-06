@@ -1342,6 +1342,34 @@ def _train_buddy_impl(
             val_frac = val_frac / sum_frac * 0.9
             test_frac = 0.1
             
+            # ============================================================
+            # FEATURE LOCKING: Load feature names from existing model for warm-start consistency
+            # This prevents non-deterministic feature selection from breaking warm-start
+            # ============================================================
+            locked_feature_names = None
+            _model_dir = Path("trained_data/models")
+            _use_transformer = (options.model_type or "transformer") != "tcn"
+            _pair_meta = _model_dir / training_instrument / "transformer_direction.meta.pkl"
+            _generic_meta = _model_dir / "transformer_direction.meta.pkl"
+            
+            _warm_start_cfg = cfg.get("buddy", {}).get("train_defaults", {}).get("warm_start", True)
+            if _warm_start_cfg:
+                # Try pair-specific meta first, then generic
+                for _meta_path in [_pair_meta, _generic_meta]:
+                    if _meta_path.exists():
+                        try:
+                            import pickle as _pkl
+                            with open(_meta_path, 'rb') as _f:
+                                _meta = _pkl.load(_f)
+                            _saved_features = _meta.get('feature_names')
+                            if _saved_features and len(_saved_features) > 0:
+                                locked_feature_names = list(_saved_features)
+                                console.print(f"[cyan]🔒 Feature locking: {len(locked_feature_names)} features "
+                                            f"from {_meta_path.parent.name} model[/cyan]")
+                                break
+                        except Exception as _e:
+                            console.print(f"[dim]Could not load feature names from {_meta_path}: {_e}[/dim]")
+            
             all_data = load_all_modular_data(
                 feature_df, 
                 split=(train_frac, val_frac, test_frac),
@@ -1350,6 +1378,7 @@ def _train_buddy_impl(
                 use_regime=use_regime,
                 regime_lookback=regime_lookback,
                 regime_lookahead=regime_lookahead,
+                locked_feature_names=locked_feature_names,
             )
             
             # Restore logging level
@@ -1729,17 +1758,91 @@ def _train_buddy_impl(
                 
                 try:
                     from src.training.meta_labeling import train_meta_labeler, MetaLabelingConfig
+                    import numpy as _np
                     
-                    # Get primary model predictions on validation set
-                    if use_transformer:
-                        val_probs = dir_trainer.model.predict(dir_data['X_val'], verbose=0)
-                        if val_probs.ndim > 1:
-                            val_probs = val_probs[:, -1] if val_probs.shape[1] > 1 else val_probs.flatten()
-                        else:
-                            val_probs = val_probs.flatten()
+                    def _safe_predict(model, X, batch_size=512):
+                        """Predict with fallback for Keras 3 TensorShape issues.
+                        
+                        Keras 3 model.predict() can fail with 'as_list() is not
+                        defined on an unknown TensorShape' when the in-memory
+                        model's output shape becomes unknown after EWC/EMA/save
+                        state changes.  Fall back to direct model.__call__() in
+                        batches, which bypasses the shape-inference pipeline.
+                        """
+                        try:
+                            return model.predict(X, verbose=0)
+                        except (ValueError, AttributeError) as e:
+                            if 'as_list' not in str(e) and 'TensorShape' not in str(e):
+                                raise
+                            # Batched direct call — avoids predict()'s output-shape inference
+                            results = []
+                            for i in range(0, len(X), batch_size):
+                                batch = X[i:i + batch_size]
+                                out = model(batch, training=False)
+                                results.append(
+                                    out.numpy() if hasattr(out, 'numpy') else _np.asarray(out)
+                                )
+                            return _np.concatenate(results, axis=0)
+                    
+                    def _make_sequences(X_2d, scaler, seq_len):
+                        """Scale 2D features and create 3D sliding-window sequences.
+                        
+                        Mirrors TransformerDirectionTrainer.train() logic:
+                        scale → sliding window → 3D array.
+                        Returns (X_seq, valid_indices) where valid_indices are the
+                        target indices (end of each window) so that we can align
+                        labels and weights.
+                        """
+                        X_scaled = scaler.transform(X_2d.reshape(-1, X_2d.shape[-1]))
+                        seqs = []
+                        indices = []
+                        for i in range(len(X_scaled) - seq_len):
+                            seqs.append(X_scaled[i:i + seq_len])
+                            indices.append(i + seq_len - 1)
+                        return _np.array(seqs, dtype=_np.float32), _np.array(indices)
+                    
+                    # Convert 2D raw features → 3D sequences using trainer's scaler
+                    scaler = dir_trainer.scaler
+                    seq_len = dir_trainer.seq_len
+                    
+                    X_val_seq, val_idx = _make_sequences(dir_data['X_val'], scaler, seq_len)
+                    X_train_seq, train_idx = _make_sequences(dir_data['X_train'], scaler, seq_len)
+                    
+                    # Align labels to sequence targets
+                    y_val_seq = dir_data['y_val'][val_idx]
+                    y_train_seq = dir_data['y_train'][train_idx]
+                    
+                    # Filter to clear-label samples only (w > 0).
+                    # The transformer was trained on filtered data; including unclear
+                    # labels (w=0, y≈0.5) causes misleadingly low primary accuracy
+                    # because y=0.5 gets rounded to 1 in meta-label computation.
+                    w_train_raw = dir_data.get('w_train')
+                    w_val_raw = dir_data.get('w_val')
+                    if w_train_raw is not None:
+                        w_train_seq = w_train_raw[train_idx]
+                        train_clear = w_train_seq > 0
+                        X_train_seq = X_train_seq[train_clear]
+                        y_train_seq = y_train_seq[train_clear]
+                        logger.info(f"Meta-labeler: filtered train {train_clear.sum()}/{len(train_clear)} clear-label sequences")
+                    if w_val_raw is not None:
+                        w_val_seq = w_val_raw[val_idx]
+                        val_clear = w_val_seq > 0
+                        X_val_seq = X_val_seq[val_clear]
+                        y_val_seq = y_val_seq[val_clear]
+                        logger.info(f"Meta-labeler: filtered val {val_clear.sum()}/{len(val_clear)} clear-label sequences")
+                    
+                    # Get primary model predictions (on 3D sequences)
+                    val_probs = _safe_predict(dir_trainer.model, X_val_seq)
+                    if val_probs.ndim > 1:
+                        val_probs = val_probs[:, -1] if val_probs.shape[1] > 1 else val_probs.flatten()
                     else:
-                        # TCN model
-                        val_probs = dir_trainer.model.predict(dir_data['X_val'], verbose=0).flatten()
+                        val_probs = val_probs.flatten()
+                    
+                    train_probs = _safe_predict(dir_trainer.model, X_train_seq)
+                    if train_probs.ndim > 1:
+                        train_probs = train_probs[:, -1] if train_probs.shape[1] > 1 else train_probs.flatten()
+                    else:
+                        train_probs = train_probs.flatten()
                     
                     # Train meta-labeler
                     meta_config = MetaLabelingConfig(
@@ -1752,11 +1855,11 @@ def _train_buddy_impl(
                     )
                     
                     meta_labeler, meta_labeler_metrics = train_meta_labeler(
-                        X_train=dir_data['X_train'],
-                        y_train=dir_data['y_train'],
-                        primary_probs_train=dir_trainer.model.predict(dir_data['X_train'], verbose=0).flatten() if use_transformer else dir_trainer.model.predict(dir_data['X_train'], verbose=0).flatten(),
-                        X_val=dir_data['X_val'],
-                        y_val=dir_data['y_val'],
+                        X_train=X_train_seq,
+                        y_train=y_train_seq,
+                        primary_probs_train=train_probs,
+                        X_val=X_val_seq,
+                        y_val=y_val_seq,
                         primary_probs_val=val_probs,
                         config=meta_config,
                     )
@@ -1769,7 +1872,12 @@ def _train_buddy_impl(
                     
                     all_metrics['meta_labeler'] = meta_labeler_metrics
                     
-                    console.print(f"[green]✓ Meta-Labeler complete: val_auc={meta_labeler_metrics.get('val_auc', 0):.3f}, precision={meta_labeler_metrics.get('val_precision', 0):.1%}, recall={meta_labeler_metrics.get('val_recall', 0):.1%}[/green]")
+                    _m_train = meta_labeler_metrics.get('meta_train_accuracy', 0)
+                    _m_val = meta_labeler_metrics.get('meta_val_accuracy', 0)
+                    _m_auc = meta_labeler_metrics.get('val_auc', 0)
+                    _m_gap = meta_labeler_metrics.get('overfitting_gap', 0)
+                    _auc_str = f", val_auc={_m_auc:.3f}" if _m_auc > 0 else ""
+                    console.print(f"[green]✓ Meta-Labeler complete: train={_m_train:.1%}, val={_m_val:.1%}{_auc_str}, gap={_m_gap:.1%}[/green]")
                     console.print(f"[cyan]💾 Meta-Labeler saved to: {meta_labeler_path}[/cyan]")
                     console.print(f"[yellow]🏷️ Gate 5 ENABLED: Trade success filtering at {meta_config.min_confidence_threshold:.0%} confidence[/yellow]")
                     

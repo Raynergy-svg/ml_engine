@@ -117,9 +117,11 @@ class AntiCollapseFocalLoss(keras.losses.Loss):
         mean_pred = tf.reduce_mean(y_pred)
         # If mean_pred < 0.3, model is biased toward DOWN → boost UP (alpha > 0.5)
         # If mean_pred > 0.7, model is biased toward UP → boost DOWN (alpha < 0.5)
-        # This creates a self-correcting mechanism
-        dynamic_alpha = self.base_alpha + 0.3 * (0.5 - mean_pred)  # Range: [0.35, 0.65]
-        dynamic_alpha = tf.clip_by_value(dynamic_alpha, 0.2, 0.8)
+        # Aggressive swing: 0.5 coefficient (was 0.3) → range [0.15, 0.85] for extreme collapse
+        collapse_severity = 2.0 * tf.abs(mean_pred - 0.5)  # 0-1 scale: how collapsed
+        alpha_coefficient = 0.3 + 0.4 * collapse_severity  # Ramp from 0.3 to 0.7 as collapse worsens
+        dynamic_alpha = self.base_alpha + alpha_coefficient * (0.5 - mean_pred)
+        dynamic_alpha = tf.clip_by_value(dynamic_alpha, 0.10, 0.90)
         
         # === FOCAL LOSS COMPONENT ===
         # Binary cross entropy
@@ -145,19 +147,20 @@ class AntiCollapseFocalLoss(keras.losses.Loss):
         # If all predictions are ~0.47, variance is near 0 → add penalty
         # This forces the model to have diverse outputs, not collapse to constant
         pred_variance = tf.math.reduce_variance(y_pred)
-        # Target variance: 0.06 (std=0.245) means predictions spread from 0.25 to 0.75
-        # Increased from 0.04 for stronger anti-collapse
-        target_variance = 0.06
+        # Target variance: 0.08 (std≈0.28) means predictions spread from ~0.22 to ~0.78
+        # Increased from 0.06 for stronger anti-collapse
+        target_variance = 0.08
         # Penalty increases as variance drops below target - use squared penalty for stronger effect
         variance_gap = tf.maximum(target_variance - pred_variance, 0.0)
-        variance_penalty = self.variance_weight * tf.square(variance_gap) * 25.0  # Amplified squared penalty
+        # Scale penalty by collapse severity: gentle when balanced, aggressive when collapsed
+        variance_scale = 50.0 + 200.0 * collapse_severity  # 50-250x based on how collapsed
+        variance_penalty = self.variance_weight * tf.square(variance_gap) * variance_scale
         
         # === CLASS BALANCE PENALTY ===
-        # Additional penalty when predictions are too skewed (>80% one class)
-        mean_pred = tf.reduce_mean(y_pred)
-        # Ideal mean is 0.5 (balanced). Penalize deviation beyond 0.3 from center
-        balance_gap = tf.maximum(tf.abs(mean_pred - 0.5) - 0.3, 0.0)
-        balance_penalty = self.variance_weight * balance_gap * 0.5
+        # Additional penalty when predictions are too skewed (>70% one class)
+        # Lowered threshold from 0.30 to 0.20 for earlier intervention
+        balance_gap = tf.maximum(tf.abs(mean_pred - 0.5) - 0.20, 0.0)
+        balance_penalty = self.variance_weight * tf.square(balance_gap) * 5.0  # Quadratic ramp
         
         total_loss = tf.reduce_mean(focal_loss) + variance_penalty + balance_penalty
         

@@ -226,13 +226,13 @@ class EMACallback:
         self.decay = decay
         self.update_every = update_every
         self.step_counter = 0
-        self.ema_weights = None
+        self.ema_weights = None  # Dict[str, np.ndarray] keyed by weight name
         self.backup_weights = None
         self._initialized = False
         
     def _initialize_ema(self):
-        """Initialize EMA weights as copy of current model weights."""
-        self.ema_weights = [w.numpy().copy() for w in self.model.trainable_weights]
+        """Initialize EMA weights as copy of current model weights, keyed by name."""
+        self.ema_weights = {w.name: w.numpy().copy() for w in self.model.trainable_weights}
         self._initialized = True
         logger.info(f"📊 EMA initialized with {len(self.ema_weights)} weight tensors (decay={self.decay})")
     
@@ -253,11 +253,23 @@ class EMACallback:
             return
         
         # EMA update: θ_ema = α * θ_ema + (1-α) * θ_current
-        for i, w in enumerate(self.model.trainable_weights):
-            self.ema_weights[i] = (
-                self.decay * self.ema_weights[i] + 
-                (1 - self.decay) * w.numpy()
-            )
+        # Match by name to handle frozen/unfrozen layer changes
+        for w in self.model.trainable_weights:
+            current_val = w.numpy()
+            if w.name in self.ema_weights:
+                stored = self.ema_weights[w.name]
+                if stored.shape == current_val.shape:
+                    self.ema_weights[w.name] = (
+                        self.decay * stored + 
+                        (1 - self.decay) * current_val
+                    )
+                else:
+                    # Shape changed (e.g., layer rebuilt) — re-initialize this weight
+                    logger.debug(f"EMA shape mismatch for {w.name}: stored={stored.shape} vs current={current_val.shape}, re-initializing")
+                    self.ema_weights[w.name] = current_val.copy()
+            else:
+                # New trainable weight (e.g., layer was unfrozen) — initialize from current
+                self.ema_weights[w.name] = current_val.copy()
     
     def apply(self):
         """Apply EMA weights to model (for inference). Backs up current weights."""
@@ -266,33 +278,71 @@ class EMACallback:
             return
         
         # Backup current (training) weights
-        self.backup_weights = [w.numpy().copy() for w in self.model.trainable_weights]
+        self.backup_weights = {w.name: w.numpy().copy() for w in self.model.trainable_weights}
         
-        # Apply EMA weights
-        for w, ema_w in zip(self.model.trainable_weights, self.ema_weights):
-            w.assign(ema_w)
+        # Apply EMA weights by name (safe with frozen layers, validates shape)
+        for w in self.model.trainable_weights:
+            if w.name in self.ema_weights:
+                stored = self.ema_weights[w.name]
+                if stored.shape == tuple(w.shape):
+                    w.assign(stored)
+                else:
+                    logger.debug(f"EMA apply: skipping {w.name} shape mismatch")
     
     def restore(self):
         """Restore original training weights after inference."""
         if self.backup_weights is None:
             return
         
-        for w, backup_w in zip(self.model.trainable_weights, self.backup_weights):
-            w.assign(backup_w)
+        for w in self.model.trainable_weights:
+            if w.name in self.backup_weights:
+                w.assign(self.backup_weights[w.name])
         
         self.backup_weights = None
     
     def get_ema_weights(self) -> List[np.ndarray]:
-        """Get EMA weights for saving."""
+        """Get EMA weights for saving (as list for backward compat, with names)."""
         if not self._initialized:
             self._initialize_ema()
+        # Return as dict for named storage
         return self.ema_weights
     
-    def set_ema_weights(self, weights: List[np.ndarray]):
-        """Load EMA weights from checkpoint."""
-        self.ema_weights = [w.copy() for w in weights]
+    def set_ema_weights(self, weights):
+        """Load EMA weights from checkpoint. Handles both dict and legacy list format."""
+        if isinstance(weights, dict):
+            # Validate shapes against current model weights
+            current_shapes = {w.name: w.shape for w in self.model.trainable_weights}
+            valid_weights = {}
+            mismatched = 0
+            for name, arr in weights.items():
+                if name in current_shapes and tuple(arr.shape) == tuple(current_shapes[name]):
+                    valid_weights[name] = arr.copy()
+                else:
+                    mismatched += 1
+            
+            if mismatched > 0:
+                logger.warning(f"⚠️ EMA: {mismatched} weight tensors had shape mismatches — "
+                             f"those will be re-initialized from current model weights")
+            
+            # Fill in any missing weights from current model
+            for w in self.model.trainable_weights:
+                if w.name not in valid_weights:
+                    valid_weights[w.name] = w.numpy().copy()
+            
+            self.ema_weights = valid_weights
+        elif isinstance(weights, list):
+            # Legacy format: positional list — unsafe to map by index due to potential 
+            # frozen/unfrozen layer changes. Instead, re-initialize from current weights.
+            logger.warning(f"⚠️ EMA legacy list format ({len(weights)} tensors) — "
+                         f"re-initializing from current model weights for safety")
+            self._initialize_ema()
+            return
+        else:
+            logger.warning("Unknown EMA weights format, re-initializing")
+            self._initialize_ema()
+            return
         self._initialized = True
-        logger.info(f"📊 EMA weights loaded ({len(weights)} tensors)")
+        logger.info(f"📊 EMA weights loaded ({len(self.ema_weights)} tensors)")
 
 
 # =============================================================================
@@ -1173,7 +1223,10 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
                 return
             
             # Get learning_rate attribute - may be a Variable, callable, or float
-            lr_attr = getattr(optimizer, 'learning_rate', None) or getattr(optimizer, 'lr', None)
+            # NOTE: Do NOT use `or` here — Keras Variables raise on bool() coercion
+            lr_attr = getattr(optimizer, 'learning_rate', None)
+            if lr_attr is None:
+                lr_attr = getattr(optimizer, 'lr', None)
             if lr_attr is None:
                 logger.warning("Optimizer has no learning_rate attribute")
                 return
@@ -1509,6 +1562,7 @@ class ReplayBuffer:
         self.X_buffer: Optional[np.ndarray] = None
         self.y_buffer: Optional[np.ndarray] = None
         self.w_buffer: Optional[np.ndarray] = None  # Sample weights
+        self.feature_names: Optional[List[str]] = None  # Track feature names for cross-session alignment
         self.metadata: Dict[str, Any] = {}
         
         self._sample_count = 0
@@ -1519,6 +1573,7 @@ class ReplayBuffer:
         y: np.ndarray,
         w: Optional[np.ndarray] = None,
         data_id: Optional[str] = None,
+        feature_names: Optional[List[str]] = None,
     ):
         """
         Add samples to replay buffer using reservoir sampling.
@@ -1528,7 +1583,11 @@ class ReplayBuffer:
             y: Labels
             w: Optional sample weights
             data_id: Identifier for this data batch (e.g., instrument_date)
+            feature_names: Feature names corresponding to X's last axis
         """
+        # Track feature names for future alignment
+        if feature_names is not None:
+            self.feature_names = list(feature_names)
         capacity = int(len(X) * self.capacity_ratio)
         if capacity < 10:
             capacity = min(len(X), 100)  # Minimum buffer size
@@ -1577,12 +1636,17 @@ class ReplayBuffer:
     def get_replay_samples(
         self,
         n_new_samples: int,
+        current_feature_names: Optional[List[str]] = None,
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Get replay samples to mix with new training data.
         
         Args:
             n_new_samples: Number of new training samples
+            current_feature_names: Feature names of current training data.
+                If provided and buffer has stored feature names, will remap
+                columns by name (zero-fill missing, drop extra) instead of
+                discarding on dimension mismatch.
             
         Returns:
             (X_replay, y_replay, w_replay) or (None, None, None) if buffer empty
@@ -1600,13 +1664,73 @@ class ReplayBuffer:
         # Random sample from buffer
         indices = np.random.choice(len(self.X_buffer), n_replay, replace=False)
         
+        X_out = self.X_buffer[indices].copy()
+        y_out = self.y_buffer[indices].copy()
+        w_out = self.w_buffer[indices].copy() if self.w_buffer is not None else None
+        
+        # Remap features by name if we have names for both buffer and current data
+        if (current_feature_names is not None 
+                and self.feature_names is not None 
+                and X_out.shape[-1] != len(current_feature_names)):
+            X_out = self._remap_features(X_out, self.feature_names, current_feature_names)
+            if X_out is None:
+                logger.warning("📦 Feature remapping failed — discarding replay samples")
+                return None, None, None
+        
         logger.info(f"📦 Providing {n_replay} replay samples ({self.mix_ratio*100:.0f}% of {n_new_samples})")
         
-        return (
-            self.X_buffer[indices].copy(),
-            self.y_buffer[indices].copy(),
-            self.w_buffer[indices].copy() if self.w_buffer is not None else None,
-        )
+        return X_out, y_out, w_out
+    
+    @staticmethod
+    def _remap_features(
+        X: np.ndarray,
+        src_names: List[str],
+        dst_names: List[str],
+    ) -> Optional[np.ndarray]:
+        """
+        Remap X from src_names ordering to dst_names ordering.
+        
+        - Shared features are copied by name.
+        - Features in dst but not in src are zero-filled.
+        - Features in src but not in dst are dropped.
+        
+        Works for both 2D (samples, features) and 3D (samples, seq_len, features).
+        
+        Returns None if fewer than 50% of dst features can be matched.
+        """
+        src_set = set(src_names)
+        dst_set = set(dst_names)
+        shared = src_set & dst_set
+        
+        match_ratio = len(shared) / len(dst_names) if dst_names else 0
+        if match_ratio < 0.50:
+            logger.warning(f"📦 Replay buffer: only {len(shared)}/{len(dst_names)} features overlap "
+                          f"({match_ratio:.0%}) — too low, discarding buffer")
+            return None
+        
+        # Build index mapping: dst_col_idx -> src_col_idx (or -1 if missing)
+        src_idx = {name: i for i, name in enumerate(src_names)}
+        mapping = [src_idx.get(name, -1) for name in dst_names]
+        
+        # Allocate output (zero-filled for missing features)
+        if X.ndim == 3:
+            out = np.zeros((X.shape[0], X.shape[1], len(dst_names)), dtype=X.dtype)
+            for dst_i, src_i in enumerate(mapping):
+                if src_i >= 0:
+                    out[:, :, dst_i] = X[:, :, src_i]
+        elif X.ndim == 2:
+            out = np.zeros((X.shape[0], len(dst_names)), dtype=X.dtype)
+            for dst_i, src_i in enumerate(mapping):
+                if src_i >= 0:
+                    out[:, dst_i] = X[:, src_i]
+        else:
+            logger.warning(f"📦 Unexpected buffer shape {X.shape} — cannot remap")
+            return None
+        
+        n_new = len(dst_set - shared)
+        n_dropped = len(src_set - shared)
+        logger.info(f"📦 Replay feature remap: {len(shared)} shared, {n_new} zero-filled, {n_dropped} dropped")
+        return out
     
     def save(self, instrument: str):
         """Save replay buffer to disk."""
@@ -1625,19 +1749,22 @@ class ReplayBuffer:
             w=self.w_buffer,
         )
         
-        # Save metadata
+        # Save metadata (including feature names for cross-session alignment)
         meta = {
             'capacity_ratio': self.capacity_ratio,
             'mix_ratio': self.mix_ratio,
             'sample_count': self._sample_count,
             'buffer_size': len(self.X_buffer),
+            'n_features': self.X_buffer.shape[-1] if self.X_buffer.ndim >= 2 else None,
+            'feature_names': self.feature_names,
             'saved_at': datetime.now().isoformat(),
             **self.metadata,
         }
         with open(save_dir / "buffer_meta.json", 'w') as f:
             json.dump(meta, f, indent=2)
         
-        logger.info(f"📦 Replay buffer saved to {save_dir} ({len(self.X_buffer)} samples)")
+        logger.info(f"📦 Replay buffer saved to {save_dir} ({len(self.X_buffer)} samples, "
+                     f"{len(self.feature_names) if self.feature_names else '?'} features)")
     
     def load(self, instrument: str) -> bool:
         """Load replay buffer from disk."""
@@ -1653,15 +1780,17 @@ class ReplayBuffer:
         self.y_buffer = data['y']
         self.w_buffer = data.get('w')
         
-        # Load metadata
+        # Load metadata (including feature names)
         meta_path = load_dir / "buffer_meta.json"
         if meta_path.exists():
             with open(meta_path, 'r') as f:
                 meta = json.load(f)
             self._sample_count = meta.get('sample_count', len(self.X_buffer))
+            self.feature_names = meta.get('feature_names')
             self.metadata = meta
         
-        logger.info(f"📦 Replay buffer loaded: {len(self.X_buffer)} samples from {instrument}")
+        logger.info(f"📦 Replay buffer loaded: {len(self.X_buffer)} samples from {instrument} "
+                     f"({len(self.feature_names) if self.feature_names else '?'} features)")
         return True
 
 
@@ -3469,13 +3598,15 @@ class TransformerDirectionTrainer(BaseTrainer):
             
             # Load existing buffer if available
             if self.replay_buffer.load(instrument):
-                # Get replay samples to mix with training data
-                X_replay, y_replay, w_replay = self.replay_buffer.get_replay_samples(len(X_train_filtered))
+                # Get replay samples — pass current feature names for name-based remapping
+                X_replay, y_replay, w_replay = self.replay_buffer.get_replay_samples(
+                    len(X_train_filtered),
+                    current_feature_names=self.feature_names,
+                )
                 
                 if X_replay is not None and len(X_replay) > 0:
-                    # Check dimension compatibility before mixing
-                    if X_replay.shape[2] == X_train_filtered.shape[2]:
-                        # Mix replay samples with new training data
+                    if X_replay.shape[-1] == X_train_filtered.shape[-1]:
+                        # Dimensions match (exact or after remapping) — mix in
                         X_train_filtered = np.vstack([X_train_filtered, X_replay])
                         y_train_filtered = np.concatenate([y_train_filtered, y_replay])
                         
@@ -3484,20 +3615,16 @@ class TransformerDirectionTrainer(BaseTrainer):
                         
                         logger.info(f"📦 Mixed {len(X_replay)} replay samples, new train size: {len(X_train_filtered)}")
                     else:
-                        logger.warning(f"⚠️ Replay buffer feature mismatch: buffer has {X_replay.shape[2]} features, "
-                                      f"current data has {X_train_filtered.shape[2]}. Resetting replay buffer.")
-                        # Reset buffer to accept new feature dimension
-                        self.replay_buffer.X_buffer = None
-                        self.replay_buffer.y_buffer = None
-                        self.replay_buffer.w_buffer = None
-                        self.replay_buffer._sample_count = 0
+                        logger.warning(f"⚠️ Replay buffer shape still mismatched after remap: "
+                                      f"buffer={X_replay.shape[-1]}, current={X_train_filtered.shape[-1]}. Skipping replay.")
             
-            # Add current training data to buffer for future sessions
+            # Add current training data to buffer for future sessions (with feature names)
             self.replay_buffer.add_samples(
                 X_train_filtered, 
                 y_train_filtered, 
                 sample_weights,
-                data_id=f"{instrument}_{self.lineage.checkpoint_id}"
+                data_id=f"{instrument}_{self.lineage.checkpoint_id}",
+                feature_names=self.feature_names,
             )
         
         # Compute data hash for lineage tracking
@@ -3518,15 +3645,44 @@ class TransformerDirectionTrainer(BaseTrainer):
                 logger.info(f"🔥 WARM-START: Loading weights from {warm_start_path}")
                 existing_model = keras.models.load_model(warm_start_path, compile=False)
                 
-                # Check if architectures match
+                # === WEIGHT TRANSFER: Try exact match first, then partial layer-by-layer ===
                 if existing_model.count_params() == self.model.count_params():
+                    # Fast path: exact architecture match
                     self.model.set_weights(existing_model.get_weights())
                     self._is_warm_start = True
-                    
-                    # CRITICAL: Store original warm-start weights for recovery if training fails
                     self._warm_start_weights = self.model.get_weights()
+                    logger.info(f"✓ Exact match: loaded {self.model.count_params():,} parameters from checkpoint")
+                else:
+                    # Partial transfer: match layers by name, transfer where shapes align
+                    logger.info(f"⚡ Architecture mismatch: checkpoint={existing_model.count_params():,} params, "
+                               f"new={self.model.count_params():,}. Attempting partial weight transfer...")
                     
-                    logger.info(f"✓ Successfully loaded {self.model.count_params():,} parameters from checkpoint")
+                    old_weights_by_name = {}
+                    for layer in existing_model.layers:
+                        if layer.weights:
+                            for w in layer.weights:
+                                old_weights_by_name[w.name] = w.numpy()
+                    
+                    transferred = 0
+                    skipped = 0
+                    for layer in self.model.layers:
+                        for w in layer.weights:
+                            if w.name in old_weights_by_name:
+                                old_w = old_weights_by_name[w.name]
+                                if old_w.shape == w.shape:
+                                    w.assign(old_w)
+                                    transferred += 1
+                                else:
+                                    skipped += 1
+                                    logger.debug(f"  Shape mismatch for {w.name}: old={old_w.shape} vs new={w.shape}")
+                    
+                    if transferred > 0:
+                        self._is_warm_start = True
+                        self._warm_start_weights = self.model.get_weights()
+                        logger.info(f"✓ Partial transfer: {transferred} weight tensors loaded, "
+                                   f"{skipped} skipped (shape mismatch)")
+                    else:
+                        logger.warning(f"⚠️ No compatible layers found for transfer. Starting fresh.")
                     
                     # === LAYER FREEZING FOR WARM-START ===
                     # Freeze transformer encoder layers (feature extraction) to prevent catastrophic forgetting
@@ -3629,9 +3785,6 @@ class TransformerDirectionTrainer(BaseTrainer):
                             )
                             self.ema.set_ema_weights(ema_data['ema_weights'])
                             logger.info("📊 EMA weights loaded from checkpoint")
-                else:
-                    logger.warning(f"Architecture mismatch: checkpoint has {existing_model.count_params():,} params, "
-                                 f"new model has {self.model.count_params():,}. Starting fresh.")
                 del existing_model
             except Exception as e:
                 logger.warning(f"Could not load warm-start checkpoint: {e}. Starting fresh.")
@@ -3661,27 +3814,44 @@ class TransformerDirectionTrainer(BaseTrainer):
             logger.info("📊 Using BinaryCrossentropy (no focal loss)")
         
         # Use EWC loss if warm-starting with loaded Fisher information
-        # NOTE: EWC can be counter-productive for same-pair warm-start (already learned this data)
-        # Only use EWC for cross-pair transfer learning
-        use_ewc_loss = (
-            self._is_warm_start 
+        # For cross-pair: full EWC lambda to protect prior pair's knowledge
+        # For same-pair: reduced EWC lambda (0.1x) to allow adaptation while preventing catastrophic forgetting
+        is_cross_pair_ws = (
+            self._is_warm_start  
             and self._use_ewc 
             and self.ewc is not None 
             and self.ewc.fisher_diagonal is not None
-            and getattr(self, '_loaded_model_instrument', None) != instrument  # Only for cross-pair
+            and getattr(self, '_loaded_model_instrument', None) != instrument
         )
+        is_same_pair_ws = (
+            self._is_warm_start  
+            and self._use_ewc 
+            and self.ewc is not None 
+            and self.ewc.fisher_diagonal is not None
+            and getattr(self, '_loaded_model_instrument', None) == instrument
+        )
+        use_ewc_loss = is_cross_pair_ws or is_same_pair_ws
         
         if use_ewc_loss:
-            logger.info(f"🧠 EWC loss enabled (cross-pair): λ={self.ewc.ewc_lambda}, protecting {self.ewc._n_tasks} prior task(s)")
-            ewc_loss = create_ewc_loss(base_loss, self.ewc.penalty, ewc_weight=1.0)
+            if is_same_pair_ws:
+                # Same-pair: reduce lambda to allow learning while preventing catastrophic forgetting
+                ewc_weight = 0.1
+                logger.info(f"🧠 EWC loss enabled (same-pair): λ={self.ewc.ewc_lambda}×{ewc_weight}, "
+                           f"protecting {self.ewc._n_tasks} prior task(s) with reduced constraint")
+            else:
+                ewc_weight = 1.0
+                logger.info(f"🧠 EWC loss enabled (cross-pair): λ={self.ewc.ewc_lambda}, "
+                           f"protecting {self.ewc._n_tasks} prior task(s)")
+            ewc_loss = create_ewc_loss(base_loss, self.ewc.penalty, ewc_weight=ewc_weight)
             self.model.compile(
                 optimizer=optimizer,
                 loss=ewc_loss,
                 metrics=['accuracy'],
             )
         else:
-            if self._is_warm_start and self._use_ewc:
-                logger.info(f"🧠 EWC disabled for same-pair warm-start (prevents over-regularization)")
+            if self._is_warm_start and self._use_ewc and self.ewc is not None:
+                if self.ewc.fisher_diagonal is None:
+                    logger.info(f"🧠 EWC disabled: no Fisher information from prior training")
             self.model.compile(
                 optimizer=optimizer,
                 loss=base_loss,
@@ -3745,10 +3915,11 @@ class TransformerDirectionTrainer(BaseTrainer):
         # === PREDICTION COLLAPSE DETECTION & RECOVERY CALLBACK ===
         # Detects if model collapses to predicting all one class and takes corrective action
         class PredictionCollapseCallback(keras.callbacks.Callback):
-            def __init__(self, X_val, y_val, check_every=5, max_recovery_attempts=3):
+            def __init__(self, X_val, y_val, y_train=None, check_every=2, max_recovery_attempts=3):
                 super().__init__()
                 self.X_val = X_val
                 self.y_val = y_val
+                self.y_train = y_train  # Needed for class-ratio bias reset
                 self.check_every = check_every
                 self.collapse_warned = False
                 self.collapse_epochs = 0  # Consecutive collapse epochs
@@ -3756,6 +3927,14 @@ class TransformerDirectionTrainer(BaseTrainer):
                 self.max_recovery_attempts = max_recovery_attempts
                 self.best_weights = None
                 self.best_balance = 0.5  # Best prediction balance (0.5 = perfectly balanced)
+                self._initial_lr = None  # Store original LR for recovery
+            
+            def on_train_begin(self, logs=None):
+                """Store initial LR so recovery resets to original * 0.5, not compounded."""
+                try:
+                    self._initial_lr = float(self.model.optimizer.learning_rate)
+                except Exception:
+                    self._initial_lr = None
             
             def on_epoch_end(self, epoch, logs=None):
                 if (epoch + 1) % self.check_every != 0:
@@ -3796,19 +3975,30 @@ class TransformerDirectionTrainer(BaseTrainer):
                             logger.info("  → Restoring best balanced weights")
                             self.model.set_weights(self.best_weights)
                         else:
-                            # Strategy 2: Perturb output layer to break symmetry
-                            logger.info("  → Perturbing output layer weights")
+                            # Strategy 2: Reset output bias to log(class_ratio) and perturb weights
+                            logger.info("  → Resetting output layer bias + perturbing weights")
                             weights = self.model.get_weights()
                             # Add noise to last layer weights only
                             weights[-2] = weights[-2] + np.random.normal(0, 0.1, weights[-2].shape)
-                            weights[-1] = np.array([0.0])  # Reset bias to neutral
+                            # Reset bias to log(p_up / p_down) — informed prior instead of 0
+                            if self.y_train is not None:
+                                p_up = max(np.mean(self.y_train), 0.01)
+                                bias_init = float(np.log(p_up / (1.0 - p_up)))
+                                bias_init = np.clip(bias_init, -1.0, 1.0)  # Bound to reasonable range
+                            else:
+                                bias_init = 0.0  # Neutral if no training labels
+                            weights[-1] = np.array([bias_init])
                             self.model.set_weights(weights)
+                            logger.info(f"  → Output bias reset to {bias_init:.4f}")
                         
-                        # Reduce learning rate to stabilize
-                        current_lr = float(self.model.optimizer.learning_rate)
-                        new_lr = current_lr * 0.5
+                        # Reset LR to initial * 0.5 (not compounding 0.5^n of current)
+                        if self._initial_lr is not None:
+                            new_lr = self._initial_lr * 0.5
+                        else:
+                            current_lr = float(self.model.optimizer.learning_rate)
+                            new_lr = current_lr * 0.5
                         self.model.optimizer.learning_rate.assign(new_lr)
-                        logger.info(f"  → Reduced learning rate: {current_lr:.2e} → {new_lr:.2e}")
+                        logger.info(f"  → Learning rate reset to {new_lr:.2e}")
                         
                         self.collapse_epochs = 0  # Reset counter after recovery
                     
@@ -3881,8 +4071,8 @@ class TransformerDirectionTrainer(BaseTrainer):
                 # CONTINUAL LEARNING: Don't save worse models than previous best
                 warm_start_best_acc=self._warm_start_val_acc,
             ),
-            # Prediction collapse detection with auto-recovery - check every 3 epochs for faster response
-            PredictionCollapseCallback(X_val_filtered, y_val_filtered, check_every=3, max_recovery_attempts=3),
+            # Prediction collapse detection with auto-recovery - check every 2 epochs for faster response
+            PredictionCollapseCallback(X_val_filtered, y_val_filtered, y_train=y_train_filtered, check_every=2, max_recovery_attempts=3),
         ]
         
         # Add EMA update callback if enabled
@@ -3934,6 +4124,8 @@ class TransformerDirectionTrainer(BaseTrainer):
         
         # === COMPUTE EWC FISHER INFORMATION ===
         # After training, compute importance of each weight for this task
+        # CRITICAL: Temporarily unfreeze ALL layers for Fisher computation so that
+        # encoder weights (which contain transferable knowledge) get importance scores
         if self._use_ewc:
             if self.ewc is None:
                 self.ewc = EWCPenalty(
@@ -3941,8 +4133,24 @@ class TransformerDirectionTrainer(BaseTrainer):
                     ewc_lambda=self.config.ewc_lambda,
                     gamma=self.config.ewc_gamma,
                 )
+            
+            # Save frozen state and unfreeze all layers for Fisher computation
+            frozen_layers = {}
+            for layer in self.model.layers:
+                if not layer.trainable:
+                    frozen_layers[layer.name] = False
+                    layer.trainable = True
+            
+            if frozen_layers:
+                logger.info(f"🧠 EWC: Temporarily unfroze {len(frozen_layers)} layers for Fisher computation")
+            
             self.ewc.compute_fisher(X_train_filtered, y_train_filtered, n_samples=1000)
             self.lineage.ewc_n_tasks = self.ewc._n_tasks
+            
+            # Restore frozen state
+            for layer in self.model.layers:
+                if layer.name in frozen_layers:
+                    layer.trainable = False
         
         # === FINAL EMA UPDATE ===
         if self._use_ema and self.ema is not None:
@@ -5679,6 +5887,13 @@ def train_all_modular(
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     
+    # Create pair-specific directory if instrument specified
+    if instrument and instrument != "GENERIC":
+        pair_dir = save_dir / instrument
+        pair_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        pair_dir = save_dir
+    
     trainers = {}
     
     # Determine warm-start checkpoint path
@@ -5738,7 +5953,11 @@ def train_all_modular(
                 instrument=instrument,
                 data_range=data_range,
             )
-            dir_trainer.save(str(save_dir / "transformer_direction.keras"))
+            # Save to pair-specific path
+            dir_trainer.save(str(pair_dir / "transformer_direction.keras"))
+            # Also save to generic path for backward compatibility
+            if pair_dir != save_dir:
+                dir_trainer.save(str(save_dir / "transformer_direction.keras"))
             trainers['direction'] = dir_trainer
             trainers['transformer'] = dir_trainer  # Alias
         else:
@@ -5748,7 +5967,9 @@ def train_all_modular(
                 dir_data['X_val'], dir_data['y_val'],
                 feature_names=dir_data.get('feature_names'),
             )
-            dir_trainer.save(str(save_dir / "tcn_direction.keras"))
+            dir_trainer.save(str(pair_dir / "tcn_direction.keras"))
+            if pair_dir != save_dir:
+                dir_trainer.save(str(save_dir / "tcn_direction.keras"))
             trainers['direction'] = dir_trainer
             trainers['tcn'] = dir_trainer  # Alias
     
@@ -5763,7 +5984,9 @@ def train_all_modular(
         xgb_data['X_val'], xgb_data['y_val'],
         feature_names=xgb_data.get('feature_names'),
     )
-    xgb_trainer.save(str(save_dir / "xgb_momentum.pkl"))
+    xgb_trainer.save(str(pair_dir / "xgb_momentum.pkl"))
+    if pair_dir != save_dir:
+        xgb_trainer.save(str(save_dir / "xgb_momentum.pkl"))
     trainers['xgboost'] = xgb_trainer
     
     # 3. Random Forest
@@ -5777,7 +6000,9 @@ def train_all_modular(
         rf_data['X_val'], rf_data['y_val'],
         feature_names=rf_data.get('feature_names'),
     )
-    rf_trainer.save(str(save_dir / "rf_risk.pkl"))
+    rf_trainer.save(str(pair_dir / "rf_risk.pkl"))
+    if pair_dir != save_dir:
+        rf_trainer.save(str(save_dir / "rf_risk.pkl"))
     trainers['rf'] = rf_trainer
     
     # 4. Ridge
@@ -5791,7 +6016,9 @@ def train_all_modular(
         ridge_data['X_val'], ridge_data['y_val'],
         feature_names=ridge_data.get('feature_names'),
     )
-    ridge_trainer.save(str(save_dir / "ridge_confidence.pkl"))
+    ridge_trainer.save(str(pair_dir / "ridge_confidence.pkl"))
+    if pair_dir != save_dir:
+        ridge_trainer.save(str(save_dir / "ridge_confidence.pkl"))
     trainers['ridge'] = ridge_trainer
     
     # 5. HistGradientBoosting (Optional - for hybrid voting)
@@ -5808,7 +6035,9 @@ def train_all_modular(
                 dir_data['X_val'], dir_data['y_val'],
                 feature_names=dir_data.get('feature_names'),
             )
-            histgb_trainer.save(str(save_dir / "histgb_direction.pkl"))
+            histgb_trainer.save(str(pair_dir / "histgb_direction.pkl"))
+            if pair_dir != save_dir:
+                histgb_trainer.save(str(save_dir / "histgb_direction.pkl"))
             trainers['histgb'] = histgb_trainer
             logger.info("✓ HistGB trained for hybrid voting with Transformer")
         else:
