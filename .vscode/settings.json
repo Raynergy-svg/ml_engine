@@ -48,5 +48,6 @@
     },
     "idf.pythonInstallPath": "/Users/davidcertan/miniforge3/bin/python",
     "robotcode.disableExtension": true,
-    "python-envs.defaultPackageManager": "ms-python.python:conda"
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "diffEditor.maxComputationTime": 0
 }
