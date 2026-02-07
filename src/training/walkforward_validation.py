@@ -109,6 +109,61 @@ def load_model_metadata(model_path: str) -> dict:
 
 
 @dataclass
+class WalkForwardConfig:
+    """Configuration for walk-forward cross-validation.
+    
+    This class encapsulates all settings for walk-forward validation,
+    making it easy to load from YAML config and pass to training functions.
+    """
+    enabled: bool = True                     # Enable walk-forward validation
+    mode: str = "rolling"                    # "rolling" (sliding) or "expanding"
+    n_splits: int = 5                        # Number of folds
+    train_size: float = 0.60                 # Training window size
+    val_size: float = 0.10                   # Validation size
+    test_size: float = 0.10                  # Test/holdout size
+    gap: int = 24                            # Gap between train/val (prevent leakage)
+    min_train_size: int = 2000               # Minimum training samples per fold
+    
+    # Purged K-Fold settings
+    use_purged_kfold: bool = True            # Use purged cross-validation
+    purge_gap: int = 24                      # Purge samples near test
+    embargo_gap: int = 12                    # Embargo after train
+    
+    # Model retraining per fold
+    retrain_per_fold: bool = True            # Retrain model for each fold
+    aggregate_method: str = "best"           # "best", "average", or "ensemble"
+    
+    # Regime-aware validation
+    ensure_regime_balance: bool = False      # Ensure each fold has all regimes
+    min_samples_per_regime: int = 50         # Min samples per regime in fold
+    
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> 'WalkForwardConfig':
+        """Create WalkForwardConfig from dictionary (e.g., from YAML)."""
+        return cls(**{k: v for k, v in config_dict.items() if k in cls.__dataclass_fields__})
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            'enabled': self.enabled,
+            'mode': self.mode,
+            'n_splits': self.n_splits,
+            'train_size': self.train_size,
+            'val_size': self.val_size,
+            'test_size': self.test_size,
+            'gap': self.gap,
+            'min_train_size': self.min_train_size,
+            'use_purged_kfold': self.use_purged_kfold,
+            'purge_gap': self.purge_gap,
+            'embargo_gap': self.embargo_gap,
+            'retrain_per_fold': self.retrain_per_fold,
+            'aggregate_method': self.aggregate_method,
+            'ensure_regime_balance': self.ensure_regime_balance,
+            'min_samples_per_regime': self.min_samples_per_regime,
+        }
+
+
+@dataclass
 class WalkForwardResult:
     """Result from a single walk-forward fold."""
     fold: int

@@ -260,6 +260,31 @@ min_epochs: 60
 noise_std: 0.02
 kernel_regularizer: 0.001
 
+# ----- WALK-FORWARD CROSS-VALIDATION -----
+# Robust time-series validation to prevent look-ahead bias
+walkforward:
+  enabled: true                    # Enable walk-forward validation
+  mode: "rolling"                  # "rolling" (sliding window) or "expanding" (growing window)
+  n_splits: 5                      # Number of folds
+  train_size: 0.60                 # Training window size (60% of data for rolling)
+  val_size: 0.10                   # Validation size (10%)
+  test_size: 0.10                  # Test/holdout size (10%)
+  gap: 24                          # Gap between train/val (24 H1 bars = 1 day)
+  min_train_size: 2000             # Minimum training samples per fold
+  
+  # Purged K-Fold settings (advanced)
+  use_purged_kfold: true           # Use purged cross-validation
+  purge_gap: 24                    # Purge samples near test (24 H1 bars = 1 day)
+  embargo_gap: 12                  # Embargo after train (12 H1 bars = 12 hours)
+  
+  # Model retraining per fold
+  retrain_per_fold: true           # Retrain model for each fold (recommended)
+  aggregate_method: "best"         # "best", "average", or "ensemble"
+  
+  # Regime-aware validation
+  ensure_regime_balance: false     # Ensure each fold has all regimes (experimental)
+  min_samples_per_regime: 50       # Min samples per regime in each fold
+
 # ----- TENSORBOARD -----
 tensorboard:
   enabled: true
