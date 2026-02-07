@@ -896,6 +896,17 @@ class TransformerEncoderLayer(layers.Layer):
 
         self.dropout = layers.Dropout(dropout)
 
+    def build(self, input_shape):
+        """Build sublayers with the given input shape."""
+        # MHA in Keras 3.x: build(query_shape, value_shape, key_shape=None)
+        # For self-attention, query == value == key shape
+        self.mha.build(input_shape, input_shape)
+        self.ffn.build(input_shape)
+        self.layernorm1.build(input_shape)
+        self.layernorm2.build(input_shape)
+        self.dropout.build(input_shape)
+        super().build(input_shape)
+
     def call(self, x, training=None):
         # Self-attention with residual
         attn_out = self.mha(x, x, training=training)

@@ -46,65 +46,92 @@ class PairModel:
         self.base_path = base_path
         
         # Model components
-        self.transformer = None
+        self.transformer = None       # Raw Keras model (kept for backward compat)
+        self.trainer = None           # TransformerDirectionTrainer (preferred predict path)
         self.xgb_momentum = None
         self.rf_risk = None
         self.ridge_confidence = None
         self.scaler = None
         self.meta = None
+        self.feature_names = []
+        self.seq_len = 60
         
         # Metrics
         self.accuracy = 0.0
         self.is_loaded = False
         
     def load(self) -> bool:
-        """Load all model components for this pair."""
+        """Load all model components for this pair.
+        
+        Uses TransformerDirectionTrainer for the Keras model to ensure:
+        - Custom layers are properly registered before loading
+        - Multi-strategy loading (standard, tf.keras, safe_mode, rebuild)
+        - Output calibration and EMA weights are loaded
+        - Consistent prediction behavior with modular_inference.py
+        """
         try:
-            import keras
-            
             pair_dir = self.base_path / self.pair
             if not pair_dir.exists():
                 logger.debug(f"No model directory for {self.pair}")
                 return False
             
-            # Load transformer
+            # Load transformer using TransformerDirectionTrainer
+            # This ensures custom Keras layers are registered and all loading
+            # strategies (standard, tf.keras, safe_mode, rebuild) are tried
             tf_path = pair_dir / "transformer_direction.keras"
-            if tf_path.exists():
-                self.transformer = keras.models.load_model(str(tf_path), compile=False)
-            else:
+            if not tf_path.exists():
                 # Try checkpoints
                 ckpt_path = pair_dir / "checkpoints" / "transformer_direction_best.keras"
                 if ckpt_path.exists():
-                    self.transformer = keras.models.load_model(str(ckpt_path), compile=False)
+                    tf_path = ckpt_path
                 else:
                     logger.warning(f"No transformer for {self.pair}")
                     return False
             
+            # Import here to avoid circular imports and ensure custom layers registered
+            from src.training.modular_trainers import TransformerDirectionTrainer
+            self.trainer = TransformerDirectionTrainer()
+            self.trainer.load(str(tf_path), instrument=self.pair)
+            self.transformer = self.trainer.model  # Keep backward compat reference
+            
+            # Get feature names, scaler, seq_len from the trainer (authoritative source)
+            self.feature_names = self.trainer.feature_names or []
+            self.seq_len = self.trainer.seq_len or 60
+            self.scaler = self.trainer.scaler
+            
+            # Get accuracy from trainer metrics
+            if hasattr(self.trainer, 'metrics') and self.trainer.metrics:
+                self.accuracy = self.trainer.metrics.get(
+                    'best_val_accuracy',
+                    self.trainer.metrics.get('val_accuracy', 0.55)
+                )
+            
             # Load gate models
             xgb_path = pair_dir / "xgb_momentum.pkl"
             if xgb_path.exists():
-                self.xgb_momentum = pickle.load(open(xgb_path, 'rb'))
+                with open(xgb_path, 'rb') as f:
+                    self.xgb_momentum = pickle.load(f)
             
             rf_path = pair_dir / "rf_risk.pkl"
             if rf_path.exists():
-                self.rf_risk = pickle.load(open(rf_path, 'rb'))
+                with open(rf_path, 'rb') as f:
+                    self.rf_risk = pickle.load(f)
             
             ridge_path = pair_dir / "ridge_confidence.pkl"
             if ridge_path.exists():
-                self.ridge_confidence = pickle.load(open(ridge_path, 'rb'))
+                with open(ridge_path, 'rb') as f:
+                    self.ridge_confidence = pickle.load(f)
             
-            # Load meta for accuracy info
+            # Load meta for additional info
             meta_path = pair_dir / "transformer_direction.meta.pkl"
             if meta_path.exists():
-                self.meta = pickle.load(open(meta_path, 'rb'))
-                # Get accuracy from metrics dict
-                metrics = self.meta.get('metrics', {})
-                self.accuracy = metrics.get('best_val_accuracy', 
-                                           metrics.get('val_accuracy', 0.55))
-                # Also store feature names and scaler
-                self.feature_names = self.meta.get('feature_names', [])
-                self.seq_len = self.meta.get('seq_len', 60)
-                self.scaler = self.meta.get('scaler', None)
+                with open(meta_path, 'rb') as f:
+                    self.meta = pickle.load(f)
+                # Override accuracy from meta if trainer didn't have it
+                if self.accuracy <= 0.55:
+                    metrics = self.meta.get('metrics', {})
+                    self.accuracy = metrics.get('best_val_accuracy', 
+                                               metrics.get('val_accuracy', 0.55))
             
             self.is_loaded = True
             logger.debug(f"Loaded model for {self.pair}: {self.accuracy:.1%}")
@@ -316,7 +343,11 @@ class MultiPairInference:
         pm: PairModel,
         df_feat: Optional[pd.DataFrame] = None,
     ) -> Tuple[str, float]:
-        """Predict using a pair-specific model with proper feature handling."""
+        """Predict using a pair-specific model with proper feature handling.
+        
+        Uses TransformerDirectionTrainer.predict() when available for consistency
+        with modular_inference.py (same calibration, EMA weights, thresholds).
+        """
         try:
             # Use pre-computed features if available, otherwise compute
             if df_feat is not None and len(df_feat) > 0:
@@ -327,7 +358,6 @@ class MultiPairInference:
             # Get model's expected features and scaler from meta
             feature_names = getattr(pm, 'feature_names', None) or []
             seq_len = getattr(pm, 'seq_len', 60)
-            scaler = getattr(pm, 'scaler', None)
             
             # Check if we have enough data
             if len(df_features) < seq_len:
@@ -367,10 +397,24 @@ class MultiPairInference:
             # Clean input
             X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
             
-            # Apply scaler if available (trained model expects scaled features)
+            # === USE TRAINER PREDICT for consistency with modular_inference ===
+            # This ensures: calibrated thresholds, EMA weights, proper scaling
+            if pm.trainer is not None and pm.trainer.is_trained:
+                pred_result = pm.trainer.predict(X)
+                prob = pred_result['probability']
+                threshold = pred_result.get('threshold', 0.5)
+                direction = "LONG" if pred_result['direction'] == 1 else "SHORT"
+                confidence = pred_result.get('confidence', abs(prob - threshold) * 2)
+                
+                # Boost confidence based on model's historical accuracy
+                confidence = min(confidence * (1 + (pm.accuracy - 0.5)), 0.95)
+                
+                return direction, confidence
+            
+            # === FALLBACK: Raw model prediction (legacy path) ===
+            scaler = getattr(pm, 'scaler', None)
             if scaler is not None:
                 try:
-                    # Scaler expects 2D: (samples, features)
                     X = scaler.transform(X)
                 except Exception as e:
                     logger.warning(f"Scaler transform failed for {pm.pair}: {e}")

@@ -1559,13 +1559,21 @@ class GateEvaluator:
             if len(X.shape) == 1:
                 X = X.reshape(1, -1)
             
-            # RF predicts drawdown percentage
-            drawdown = float(self._rf_risk.predict(X)[0])
+            # Check if loaded model is a RandomForestTrainer wrapper (has dict output)
+            # vs a raw sklearn model (returns single float array)
+            if hasattr(self._rf_risk, 'drawdown_model'):
+                # It's a RandomForestTrainer wrapper — use its .predict() which returns dict
+                pred = self._rf_risk.predict(X)
+                drawdown = pred.get('expected_drawdown_pct', 0.02)
+                streak_prob = pred.get('streak_prob', 0.5)
+            else:
+                # Raw sklearn model — single output, estimate streak from drawdown
+                drawdown = float(self._rf_risk.predict(X)[0])
+                # Better estimate: cap streak based on drawdown severity
+                # drawdown 0.01 (1%) -> streak ~0.3, drawdown 0.05 (5%) -> streak ~0.7
+                streak_prob = min(0.9, max(0.2, drawdown * 15))
             
-            # Estimate streak probability from drawdown
-            streak_prob = min(0.9, drawdown * 10)
-            
-            return max(0, drawdown), streak_prob
+            return max(0, min(0.10, drawdown)), max(0, min(1.0, streak_prob))
             
         except Exception as e:
             logger.debug(f"RF risk prediction failed: {e}")

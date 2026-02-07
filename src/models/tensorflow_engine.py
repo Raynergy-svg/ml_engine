@@ -191,14 +191,17 @@ class AntiCollapseFocalLoss(losses.Loss):
         
         focal_loss = focal_weight * bce
         
-        # === ENTROPY REGULARIZATION ===
-        # Penalizes confident predictions, encouraging the model to be uncertain
-        # This prevents collapse to one class
-        # H = -p*log(p) - (1-p)*log(1-p), maximized at p=0.5
+        # === CONDITIONAL ENTROPY REGULARIZATION ===
+        # Only encourage diversity when model is BIASED (mean_pred far from 0.5).
+        # When mean_pred ≈ 0.5, entropy is already high — adding more pushes
+        # outputs to exactly 0.5 with near-zero std (probability collapse).
         entropy = -y_pred * tf.math.log(y_pred) - (1 - y_pred) * tf.math.log(1 - y_pred)
-        # We want to MAXIMIZE entropy, so we SUBTRACT it from loss (or add negative)
-        # But we only want light regularization, so small weight
-        entropy_penalty = -self.entropy_weight * entropy
+        
+        # Bias magnitude: 0 when balanced, 1 when fully biased
+        bias_magnitude = tf.abs(mean_pred - 0.5) * 2.0  # 0→0, 0.5→1
+        # Scale entropy weight by bias: no entropy penalty when balanced
+        effective_entropy_weight = self.entropy_weight * bias_magnitude
+        entropy_penalty = -effective_entropy_weight * entropy
         
         total_loss = focal_loss + entropy_penalty
         

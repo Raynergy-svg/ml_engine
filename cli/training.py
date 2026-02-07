@@ -134,11 +134,18 @@ def _train_rl_position_sizer_if_ready(
             sequence_length=seq_len,
         )
         console.print(f"[dim]Sequence length: {seq_len}, Features: {features.shape[1]}[/dim]")
+        console.print(f"[dim]Using cpu device (forced for macOS TF+PyTorch compatibility)[/dim]")
+        import sys
+        sys.stdout.flush()
         
         sizer = RLPositionSizer(config)
         
+        console.print(f"[dim]Initializing PPO agent and trading environment...[/dim]")
+        
         # Train the RL agent with actual ensemble data
-        stats = sizer.train(features, ensemble_predictions, prices)
+        stats = sizer.train(
+            features, ensemble_predictions, prices,
+        )
         
         console.print("[green]✅ RL position sizer trained and saved[/green]")
         console.print(f"[dim]Model: trained_data/models/rl_position_sizer.zip[/dim]")
@@ -1428,6 +1435,12 @@ def _train_buddy_impl(
             # Use pair-specific checkpoint directory
             pair_checkpoint_dir = str(pair_paths['pair_dir'] / "checkpoints") if training_instrument != "GENERIC" else "trained_data/checkpoints"
             
+            # Read overfit prevention / SWA / cosine restart config from YAML
+            overfit_cfg = cfg.get("overfit_prevention", {})
+            swa_cfg = cfg.get("swa", {})
+            cosine_cfg = cfg.get("cosine_restarts", {})
+            warmstart_cfg = cfg.get("warmstart_recovery", {})
+            
             trainer_config = TrainerConfig(
                 epochs=int(epochs),
                 batch_size=int(batch_size),
@@ -1456,6 +1469,28 @@ def _train_buddy_impl(
                 replay_buffer_ratio=replay_capacity_ratio,
                 replay_mix_ratio=replay_mix_ratio,
                 drift_threshold=drift_threshold,
+                # Overfit prevention from YAML config
+                overfit_threshold=float(overfit_cfg.get("overfit_threshold", 0.08)),
+                critical_threshold=float(overfit_cfg.get("critical_threshold", 0.15)),
+                severe_threshold=float(overfit_cfg.get("severe_threshold", 0.25)),
+                max_acceptable_gap=float(overfit_cfg.get("max_acceptable_gap", 0.12)),
+                overfit_patience_epochs=int(overfit_cfg.get("patience_epochs", 3)),
+                auto_adjust_dropout=bool(overfit_cfg.get("auto_adjust_dropout", True)),
+                auto_reduce_lr=bool(overfit_cfg.get("auto_reduce_lr", True)),
+                max_dropout_increase=float(overfit_cfg.get("max_dropout_increase", 0.3)),
+                # SWA from YAML config
+                enable_swa=bool(swa_cfg.get("enabled", True)),
+                swa_start_fraction=float(swa_cfg.get("start_fraction", 0.75)),
+                swa_lr_factor=float(swa_cfg.get("lr_factor", 0.5)),
+                # Cosine restarts from YAML config
+                enable_cosine_restarts=bool(cosine_cfg.get("enabled", True)),
+                cosine_restart_period=int(cosine_cfg.get("restart_period", 10)),
+                cosine_restart_lr_mult=float(cosine_cfg.get("lr_mult", 0.8)),
+                # Warm-start recovery from YAML config
+                enable_warmstart_detection=bool(warmstart_cfg.get("enabled", True)),
+                warmstart_reset_threshold=float(warmstart_cfg.get("reset_threshold", 0.15)),
+                weight_perturbation_scale=float(warmstart_cfg.get("weight_perturbation_scale", 0.02)),
+                reset_optimizer_on_overfit=bool(warmstart_cfg.get("reset_optimizer_on_overfit", True)),
             )
             
             all_metrics = {}
@@ -1777,9 +1812,16 @@ def _train_buddy_impl(
                 "trained_at": datetime.now().isoformat(),
             }
             
+            # Save meta to BOTH pair-specific and generic paths
+            # (mirrors model file dual-save pattern)
+            _meta_serializer = lambda x: float(x) if isinstance(x, (np.floating, np.integer)) else str(x)
             meta_path = model_dir / "modular_ensemble.meta.json"
             with open(meta_path, "w") as f:
-                json.dump(meta, f, indent=2, default=lambda x: float(x) if isinstance(x, (np.floating, np.integer)) else str(x))
+                json.dump(meta, f, indent=2, default=_meta_serializer)
+            if training_instrument and training_instrument != "GENERIC":
+                pair_meta_path = pair_paths['pair_dir'] / "modular_ensemble.meta.json"
+                with open(pair_meta_path, "w") as f:
+                    json.dump(meta, f, indent=2, default=_meta_serializer)
             
             # ============================================================
             # PROFESSIONAL SUMMARY WITH RICH
@@ -1827,7 +1869,10 @@ def _train_buddy_impl(
             artifacts_table.add_row("Momentum", str(pair_paths['xgboost']))
             artifacts_table.add_row("Risk", str(pair_paths['rf']))
             artifacts_table.add_row("Confidence", str(pair_paths['ridge']))
-            artifacts_table.add_row("Metadata", str(meta_path))
+            artifacts_table.add_row("Metadata", str(pair_paths['pair_dir'] / "modular_ensemble.meta.json")
+                                    if training_instrument and training_instrument != "GENERIC"
+                                    else str(meta_path))
+            artifacts_table.add_row("Metadata (generic)", str(meta_path))
             
             console.print(Panel(artifacts_table, title="[bold]Saved Artifacts[/bold]", border_style="blue"))
             console.print()
@@ -1847,7 +1892,7 @@ def _train_buddy_impl(
                 ))
                 
                 try:
-                    from enterprise_training import (
+                    from src.training.enterprise_training import (
                         StatisticalValidator,
                         WalkForwardValidator,
                         WalkForwardConfig,
@@ -1862,6 +1907,27 @@ def _train_buddy_impl(
                     validation_results.add_column("Result", style="green", width=15)
                     validation_results.add_column("Details", style="dim", width=35)
                     
+                    # -- Helper: window 2D feature matrix into 3D sequences for model.predict() --
+                    def _window_2d_to_3d(X_2d, y_1d, window_size):
+                        """Convert (n_samples, n_features) → (n_windows, window_size, n_features).
+                        
+                        Labels are taken from the *last* timestep of each window,
+                        matching the semantics used during training.
+                        """
+                        X_2d = np.asarray(X_2d, dtype=np.float32)
+                        y_1d = np.asarray(y_1d).flatten()
+                        n = len(X_2d)
+                        if n <= window_size:
+                            return None, None
+                        n_windows = n - window_size + 1
+                        # Use stride_tricks for zero-copy windowing
+                        strides = (X_2d.strides[0],) + X_2d.strides
+                        X_3d = np.lib.stride_tricks.as_strided(
+                            X_2d, shape=(n_windows, window_size, X_2d.shape[1]), strides=strides
+                        ).copy()  # copy so predict() gets contiguous memory
+                        y_windowed = y_1d[window_size - 1:]  # label = last timestep
+                        return X_3d, y_windowed
+
                     # 1. Bootstrap CI for Transformer direction accuracy
                     cv_folds = options.cv_folds if hasattr(options, 'cv_folds') else 5
                     bootstrap_enabled = options.bootstrap if hasattr(options, 'bootstrap') else False
@@ -1872,17 +1938,24 @@ def _train_buddy_impl(
                         # Get validation predictions from direction model
                         if not use_regime and hasattr(dir_trainer, 'model') and dir_trainer.model is not None:
                             try:
-                                # Ensure input shape is set for predict
                                 X_val = np.asarray(dir_data['X_val'])
+                                y_val_raw = dir_data['y_val'].flatten()
+                                
+                                # Window 2D→3D if model expects sequences
+                                if len(X_val.shape) == 2:
+                                    X_val, y_val_raw = _window_2d_to_3d(X_val, y_val_raw, seq_len)
+                                    if X_val is None:
+                                        raise ValueError(f"Not enough val samples for seq_len={seq_len}")
+                                
                                 val_preds = dir_trainer.model.predict(X_val, verbose=0)
                                 if len(val_preds.shape) > 1:
                                     val_preds = val_preds[:, 0] if val_preds.shape[1] == 1 else val_preds
                                 val_preds_binary = (val_preds > 0.5).astype(int).flatten()
-                                val_labels = dir_data['y_val'].flatten()
+                                val_labels = y_val_raw.flatten()
                                 
                                 bootstrap_results = stat_validator.bootstrap_confidence_interval(
+                                    lambda y, p: np.mean(y == p),
                                     val_labels, val_preds_binary,
-                                    metric_fn=lambda y, p: np.mean(y == p),
                                     n_bootstrap=bootstrap_samples,
                                 )
                                 
@@ -1900,7 +1973,7 @@ def _train_buddy_impl(
                                 validation_results.add_row(
                                     "Bootstrap CI (95%)",
                                     "[yellow]Skipped[/yellow]",
-                                    f"[dim]Model shape incompatible[/dim]"
+                                    f"[dim]{bootstrap_err}[/dim]"
                                 )
                     
                     # 2. Walk-Forward Cross-Validation (if enabled and data sufficient)
@@ -1929,17 +2002,18 @@ def _train_buddy_impl(
                                 # EVALUATE the trained model on each fold's validation window
                                 # No retraining - just measure generalization across time
                                 try:
-                                    # Use the already-trained dir_trainer model
-                                    # Model expects 3D input (batch, seq_len, features)
-                                    if len(X_cv_val.shape) == 3:
-                                        y_pred = dir_trainer.model.predict(X_cv_val, verbose=0)
-                                        y_pred_binary = (y_pred > 0.5).astype(float).flatten()
-                                        fold_acc = np.mean(y_pred_binary == y_cv_val)
-                                        cv_scores.append(fold_acc)
-                                    else:
-                                        logger.warning(f"CV fold {fold_idx+1} skipped: expected 3D input, got {len(X_cv_val.shape)}D")
+                                    # Window 2D→3D if model expects sequences
+                                    if len(X_cv_val.shape) == 2:
+                                        X_cv_val, y_cv_val = _window_2d_to_3d(X_cv_val, y_cv_val, seq_len)
+                                        if X_cv_val is None:
+                                            logger.debug(f"CV fold {fold_idx+1} skipped: not enough samples for seq_len={seq_len}")
+                                            continue
+                                    
+                                    y_pred = dir_trainer.model.predict(X_cv_val, verbose=0)
+                                    y_pred_binary = (y_pred > 0.5).astype(float).flatten()
+                                    fold_acc = np.mean(y_pred_binary == y_cv_val)
+                                    cv_scores.append(fold_acc)
                                 except Exception as e:
-                                    # Silently skip CV folds that fail - model shape may be incompatible
                                     logger.debug(f"CV fold {fold_idx+1} evaluation failed: {e}")
                         
                         if cv_scores:
@@ -2084,57 +2158,61 @@ def _train_buddy_impl(
                         # Prepare RL training data from ensemble training
                         try:
                             # Get features from direction data (most complete feature set)
-                            rl_features = np.vstack([
+                            rl_features_2d = np.vstack([
                                 dir_data['X_train'],
                                 dir_data['X_val'],
                             ]).astype(np.float32)
                             
-                            # Get ensemble predictions by combining trained models
-                            # Load and predict using trained direction and confidence models
-                            rl_direction_probs = np.zeros(len(rl_features))
-                            rl_confidences = np.zeros(len(rl_features))
+                            n_rl = len(rl_features_2d)
+                            rl_direction_probs = np.full(n_rl, 0.5, dtype=np.float32)
+                            rl_confidences = np.full(n_rl, 0.5, dtype=np.float32)
                             
-                            # Predict with direction model (Transformer/TCN)
+                            # --- Batch direction probs via underlying TF model ---
                             try:
-                                if use_transformer:
-                                    dir_preds = dir_trainer.predict(rl_features)
-                                else:
-                                    dir_preds = dir_trainer.predict(rl_features)
-                                # Extract direction probability
-                                if isinstance(dir_preds, dict):
-                                    rl_direction_probs = dir_preds.get('direction_prob', np.full(len(rl_features), 0.5))
-                                elif hasattr(dir_preds, 'flatten'):
-                                    rl_direction_probs = dir_preds.flatten()
-                                else:
-                                    rl_direction_probs = np.array(dir_preds).flatten()
+                                if hasattr(dir_trainer, 'model') and dir_trainer.model is not None:
+                                    # Scale features using the trainer's scaler
+                                    X_scaled = dir_trainer.scaler.transform(rl_features_2d)
+                                    
+                                    model_input_shape = dir_trainer.model.input_shape
+                                    is_seq_model = len(model_input_shape) == 3
+                                    
+                                    if is_seq_model:
+                                        # Window 2D→3D for sequence model
+                                        _sl = getattr(dir_trainer, 'seq_len', seq_len)
+                                        X_3d, _ = _window_2d_to_3d(X_scaled, np.zeros(len(X_scaled)), _sl)
+                                        if X_3d is not None:
+                                            raw_preds = dir_trainer.model.predict(X_3d, verbose=0).flatten()
+                                            # Align: windowed output is shorter by (seq_len-1)
+                                            # Pad start with 0.5 so array length matches n_rl
+                                            pad = n_rl - len(raw_preds)
+                                            rl_direction_probs = np.concatenate([
+                                                np.full(pad, 0.5, dtype=np.float32), raw_preds
+                                            ])
+                                            console.print(f"[dim]  Direction probs: {len(raw_preds):,} windowed predictions[/dim]")
+                                    else:
+                                        # Flat model — batch predict directly
+                                        raw_preds = dir_trainer.model.predict(X_scaled, verbose=0).flatten()
+                                        rl_direction_probs[:len(raw_preds)] = raw_preds[:n_rl]
                             except Exception as e:
-                                console.print(f"[dim]Using default direction probs: {e}[/dim]")
-                                rl_direction_probs = np.full(len(rl_features), 0.5)
+                                console.print(f"[dim]  Using default direction probs: {e}[/dim]")
                             
-                            # Predict with ridge confidence model
+                            # --- Batch confidence via underlying Ridge model ---
                             try:
-                                ridge_feats = np.vstack([
-                                    ridge_data['X_train'],
-                                    ridge_data['X_val'],
-                                ]).astype(np.float32)
-                                conf_preds = ridge_trainer.predict(ridge_feats)
-                                if isinstance(conf_preds, dict):
-                                    rl_confidences = conf_preds.get('confidence', np.full(len(ridge_feats), 50.0))
-                                elif hasattr(conf_preds, 'flatten'):
-                                    rl_confidences = conf_preds.flatten()
-                                else:
-                                    rl_confidences = np.array(conf_preds).flatten()
-                                # Normalize confidence to 0-1 range (model outputs 0-100)
-                                rl_confidences = np.clip(rl_confidences / 100.0, 0.0, 1.0)
+                                if hasattr(ridge_trainer, 'model') and ridge_trainer.model is not None:
+                                    ridge_feats = np.vstack([
+                                        ridge_data['X_train'],
+                                        ridge_data['X_val'],
+                                    ]).astype(np.float32)
+                                    ridge_scaled = ridge_trainer.scaler.transform(ridge_feats)
+                                    # sklearn models handle batch predict natively
+                                    raw_conf = np.asarray(ridge_trainer.model.predict(ridge_scaled), dtype=np.float32).flatten()
+                                    # Normalize from 0-100 → 0-1 range
+                                    raw_conf = np.clip(raw_conf / 100.0, 0.0, 1.0)
+                                    min_c = min(n_rl, len(raw_conf))
+                                    rl_confidences[:min_c] = raw_conf[:min_c]
+                                    console.print(f"[dim]  Confidence scores: {min_c:,} batch predictions[/dim]")
                             except Exception as e:
-                                console.print(f"[dim]Using default confidences: {e}[/dim]")
-                                rl_confidences = np.full(len(rl_features), 0.5)
-                            
-                            # Ensure arrays are same length
-                            min_len = min(len(rl_direction_probs), len(rl_confidences), len(rl_features))
-                            rl_direction_probs = rl_direction_probs[:min_len]
-                            rl_confidences = rl_confidences[:min_len]
-                            rl_features = rl_features[:min_len]
+                                console.print(f"[dim]  Using default confidences: {e}[/dim]")
                             
                             # Stack predictions: [direction_prob, confidence]
                             rl_predictions = np.column_stack([
@@ -2143,15 +2221,15 @@ def _train_buddy_impl(
                             ]).astype(np.float32)
                             
                             # Get prices from feature_df
-                            rl_prices = feature_df['close'].values[:min_len].astype(np.float32)
+                            rl_prices = feature_df['close'].values[:n_rl].astype(np.float32)
                             
-                            console.print(f"[dim]RL training data: {len(rl_features):,} samples, "
-                                          f"{rl_features.shape[1]} features[/dim]")
+                            console.print(f"[dim]RL training data: {n_rl:,} samples, "
+                                          f"{rl_features_2d.shape[1]} features[/dim]")
                             
                             _train_rl_position_sizer_if_ready(
                                 console=console,
                                 rl_timesteps=rl_timesteps,
-                                features=rl_features,
+                                features=rl_features_2d,
                                 ensemble_predictions=rl_predictions,
                                 prices=rl_prices,
                             )

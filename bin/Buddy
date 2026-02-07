@@ -58,7 +58,12 @@ cmd_predict() {
             *) args+=("$1"); shift ;;  # Pass through unknown args
         esac
     done
-    run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
+    # Build instrument arg if provided
+    local inst_args=()
+    if [[ -n "${instrument}" ]]; then
+        inst_args=(--instrument "${instrument}")
+    fi
+    run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${inst_args[@]+"${inst_args[@]}"}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_train() {

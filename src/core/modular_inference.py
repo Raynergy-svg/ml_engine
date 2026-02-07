@@ -1019,36 +1019,28 @@ class ModularEnsembleInference:
             else:
                 logger.warning(f"Ridge model not found at {ridge_path}")
             
-            # RL Position Sizer (lazy loaded to avoid TF/PyTorch GPU conflicts)
+            # RL Position Sizer (handles TF/PyTorch conflicts internally via subprocess)
             if self.use_rl_sizer:
                 import time
                 t_rl_start = time.perf_counter()
                 
-                # PPO.load() (PyTorch) deadlocks when TensorFlow is already
-                # initialized in the same process — a known TF/PyTorch conflict
-                # on Intel Macs. Skip RL loading when TF is active.
-                _tf_loaded = 'tensorflow' in sys.modules
-                if _tf_loaded:
-                    logger.warning("⚠️ RL Position Sizer skipped (TF already loaded — PPO.load deadlocks). Using heuristic sizing.")
-                    self.rl_sizer = None
-                else:
-                    logger.info("🔄 RL Position Sizer: loading dependencies...")
-                    RLSizer, rl_available = _lazy_load_rl_sizer()
-                    t_rl_import = time.perf_counter()
-                    logger.info(f"  ⏱️ RL dependencies imported in {t_rl_import - t_rl_start:.2f}s")
-                    
-                    if rl_available and RLSizer is not None:
-                        self.rl_sizer = RLSizer()
-                        logger.info("  🔄 Loading RL model from disk...")
-                        if self.rl_sizer.load():
-                            t_rl_load = time.perf_counter()
-                            logger.info(f"✓ RL Position Sizer loaded (total: {t_rl_load - t_rl_start:.2f}s)")
-                        else:
-                            logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
-                            self.rl_sizer = None
+                logger.info("🔄 RL Position Sizer: loading dependencies...")
+                RLSizer, rl_available = _lazy_load_rl_sizer()
+                t_rl_import = time.perf_counter()
+                logger.info(f"  ⏱️ RL dependencies imported in {t_rl_import - t_rl_start:.2f}s")
+                
+                if rl_available and RLSizer is not None:
+                    self.rl_sizer = RLSizer()
+                    logger.info("  🔄 Loading RL model from disk...")
+                    if self.rl_sizer.load():
+                        t_rl_load = time.perf_counter()
+                        logger.info(f"✓ RL Position Sizer loaded (total: {t_rl_load - t_rl_start:.2f}s)")
                     else:
-                        logger.warning("⚠️ RL requested but dependencies not available. Install: pip install gymnasium stable-baselines3")
+                        logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
                         self.rl_sizer = None
+                else:
+                    logger.warning("⚠️ RL requested but dependencies not available. Install: pip install gymnasium stable-baselines3")
+                    self.rl_sizer = None
             
             # Load confidence calibration if available
             if self.config.enable_calibration:
@@ -1122,8 +1114,14 @@ class ModularEnsembleInference:
                     self._gate_issues['ridge'] = f"sklearn {saved_ver} → {current_version}"
                     logger.warning(f"⚠️ Ridge gate: sklearn version mismatch ({saved_ver} → {current_version})")
         
-        # Check model quality from metadata
-        meta_path = self.model_dir / "modular_ensemble.meta.json"
+        # Check model quality from metadata (prefer pair-specific)
+        meta_path = None
+        if self.instrument and self.instrument != "GENERIC":
+            _pair_meta = self.model_dir / self.instrument / "modular_ensemble.meta.json"
+            if _pair_meta.exists():
+                meta_path = _pair_meta
+        if meta_path is None:
+            meta_path = self.model_dir / "modular_ensemble.meta.json"
         if meta_path.exists():
             import json
             with open(meta_path) as f:
@@ -1191,8 +1189,14 @@ class ModularEnsembleInference:
                 except Exception as e:
                     logger.warning(f"Failed to load calibrator from {calib_path}: {e}")
         
-        # Try loading from model metadata
-        meta_path = self.model_dir / "modular_ensemble.meta.json"
+        # Try loading from model metadata (prefer pair-specific)
+        meta_path = None
+        if self.instrument and self.instrument != "GENERIC":
+            _pair_meta = self.model_dir / self.instrument / "modular_ensemble.meta.json"
+            if _pair_meta.exists():
+                meta_path = _pair_meta
+        if meta_path is None:
+            meta_path = self.model_dir / "modular_ensemble.meta.json"
         if meta_path.exists():
             try:
                 with open(meta_path) as f:
@@ -2250,7 +2254,12 @@ class ModularEnsembleInference:
         
         # Extreme oversold: block LONG (don't catch falling knife)
         # Extreme overbought: block SHORT (don't short a rocket)
-        if rsi_val < rsi_low_threshold and gate_check_direction == 'long':
+        # Also block at absolute extremes (RSI=100 or RSI=0) regardless of direction
+        if rsi_val <= 2.0 or rsi_val >= 98.0:
+            # Absolute extreme — data quality issue or extreme conditions, block all
+            rsi_gate_passed = False
+            rsi_reason = f"rsi_extreme({'%.1f' % rsi_val})"
+        elif rsi_val < rsi_low_threshold and gate_check_direction == 'long':
             rsi_gate_passed = False
             rsi_reason = f"rsi_extreme_low({rsi_val:.1f})"
         elif rsi_val > rsi_high_threshold and gate_check_direction == 'short':
@@ -2535,9 +2544,10 @@ class ModularEnsembleInference:
         accel_str = "accel=true" if signal.xgb_acceleration else "accel=false"
         gate_checks.append(f"XGBoost: momentum={signal.xgb_momentum:.2f}, {accel_str} {status}")
         
-        # RF risk
+        # RF risk (display as percentage - the actual gate unit)
         status = "✓" if signal.risk_gate_passed else "✗"
-        gate_checks.append(f"RF: drawdown={signal.rf_drawdown_pips:.1f}pips, streak={signal.rf_streak_prob:.2f} {status}")
+        rf_dd_pct = signal.rf_drawdown_pips / 10000 if signal.rf_drawdown_pips > 1.0 else signal.rf_drawdown_pips
+        gate_checks.append(f"RF: drawdown={rf_dd_pct:.2%}, streak={signal.rf_streak_prob:.2f} {status}")
         
         # Meta-labeling gate (5th gate - predicts trade SUCCESS)
         if self._meta_labeler_loaded and self.meta_labeler is not None:
@@ -2649,7 +2659,14 @@ def train_calibration(
     logger.info(f"✓ Calibrator saved to {save_path}")
     
     # Also save calibration parameters to ensemble metadata for portability
-    meta_path = model_dir / "modular_ensemble.meta.json"
+    # Prefer pair-specific meta if it exists
+    meta_path = None
+    if instrument and instrument != "GENERIC":
+        _pair_meta = model_dir / instrument / "modular_ensemble.meta.json"
+        if _pair_meta.exists():
+            meta_path = _pair_meta
+    if meta_path is None:
+        meta_path = model_dir / "modular_ensemble.meta.json"
     if meta_path.exists():
         try:
             with open(meta_path, 'r') as f:

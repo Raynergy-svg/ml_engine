@@ -108,7 +108,7 @@ def _buddy_execute_all_pairs(
     from src.core.modular_inference import ModularEnsembleInference
     from src.utils.fx_paper import candles_to_ohlcv_df
     from src.utils.oanda_practice import OandaPracticeClient
-    from src.features.feature_engineering import FeatureEngineering
+    from src.data.feature_engineering import FeatureEngineering
     
     cfg = load_config(config_path)
     client = OandaPracticeClient.from_env()
@@ -127,17 +127,19 @@ def _buddy_execute_all_pairs(
             break
         
         try:
-            # Load pair-specific models if available
+            # Load pair-specific models if available (check both .keras and .pkl)
             pair_model_dir = Path("trained_data/models") / pair
-            has_pair_models = pair_model_dir.exists() and any(pair_model_dir.glob("*.keras"))
+            has_pair_models = pair_model_dir.exists() and (
+                any(pair_model_dir.glob("*.keras")) or any(pair_model_dir.glob("*.pkl"))
+            )
             
             enable_llm_integration = llm_enhance and llm_initialized
             ensemble = ModularEnsembleInference(
-                instrument=pair if has_pair_models else None,
+                instrument=pair,
                 use_rl_sizer=use_rl_sizer,
                 enable_llm_integration=enable_llm_integration,
             )
-            ensemble.load_models()
+            ensemble.load_models(instrument=pair)
             
             # Fetch candles
             resp = client.get_candles(pair, granularity=granularity, count=int(candles), price="MBA")
@@ -589,7 +591,11 @@ def buddy(
     # =========================================================================
     # CHECK FOR MODULAR ENSEMBLE FIRST
     # =========================================================================
-    modular_ensemble_meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
+    # Check pair-specific meta first, then generic fallback
+    _norm_inst = _normalize_instrument(instrument)
+    _pair_meta = Path("trained_data") / "models" / _norm_inst / "modular_ensemble.meta.json"
+    _generic_meta = Path("trained_data") / "models" / "modular_ensemble.meta.json"
+    modular_ensemble_meta_path = _pair_meta if _pair_meta.exists() else _generic_meta
     
     if modular_ensemble_meta_path.exists() and not checkpoint_path:
         # =====================================================================
@@ -652,9 +658,11 @@ def buddy(
         # Normalize instrument
         normalized_instrument = _normalize_instrument(instrument)
         
-        # Check if pair-specific models exist
+        # Check if pair-specific models exist (check both .keras and .pkl)
         pair_model_dir = Path("trained_data/models") / normalized_instrument
-        has_pair_models = pair_model_dir.exists() and any(pair_model_dir.glob("*.keras"))
+        has_pair_models = pair_model_dir.exists() and (
+            any(pair_model_dir.glob("*.keras")) or any(pair_model_dir.glob("*.pkl"))
+        )
         
         # Display model source
         if has_pair_models:
@@ -663,11 +671,11 @@ def buddy(
             console.print(f"[yellow]📊 Loading generic fallback models (no {normalized_instrument}-specific models found)[/yellow]")
         
         ensemble = ModularEnsembleInference(
-            instrument=normalized_instrument if has_pair_models else None,
+            instrument=normalized_instrument,
             use_rl_sizer=use_rl_sizer,
             enable_llm_integration=enable_llm_integration,
         )
-        ensemble.load_models()
+        ensemble.load_models(instrument=normalized_instrument)
         
         # Fetch candles for inference
         from src.utils.fx_paper import candles_to_ohlcv_df
@@ -679,7 +687,7 @@ def buddy(
         _lap("oanda_fetch")
         
         # Feature engineering
-        from src.features.feature_engineering import FeatureEngineering
+        from src.data.feature_engineering import FeatureEngineering
         fe = FeatureEngineering(cfg.get("feature_engineering", {}))
         df = fe.create_features(df, include_all=True)
         _lap("feature_engineering")
@@ -882,7 +890,8 @@ def buddy(
             if not signal.momentum_gate_passed:
                 failed_gates.append(f"XGBoost momentum ({signal.xgb_momentum:.2f})")
             if not signal.risk_gate_passed:
-                failed_gates.append(f"RF risk ({signal.rf_drawdown_pips:.1f} pips)")
+                rf_dd_pct = signal.rf_drawdown_pips / 10000 if signal.rf_drawdown_pips > 1.0 else signal.rf_drawdown_pips
+                failed_gates.append(f"RF risk (dd={rf_dd_pct:.2%}, streak={signal.rf_streak_prob:.2f})")
             if hasattr(signal, 'meta_gate_passed') and not signal.meta_gate_passed:
                 failed_gates.append(f"Meta-labeler ({signal.meta_confidence:.2f})")
             
@@ -1010,7 +1019,7 @@ def buddy(
 
     # Feature engineering
     if all_features:
-        from src.features.feature_engineering import FeatureEngineering
+        from src.data.feature_engineering import FeatureEngineering
 
         fe = FeatureEngineering(cfg.get("feature_engineering", {}))
         df = fe.create_features(
@@ -2726,7 +2735,8 @@ def _buddy_test_modular_ensemble(
             gates = []
             gates.append(f"conf={signal.ridge_confidence:.0f}{'✓' if signal.confidence_gate_passed else '✗'}")
             gates.append(f"mom={signal.xgb_momentum:.2f}{'✓' if signal.momentum_gate_passed else '✗'}")
-            gates.append(f"dd={signal.rf_drawdown_pips:.0f}{'✓' if signal.risk_gate_passed else '✗'}")
+            rf_dd_pct = signal.rf_drawdown_pips / 10000 if signal.rf_drawdown_pips > 1.0 else signal.rf_drawdown_pips
+            gates.append(f"dd={rf_dd_pct:.2%}{'✓' if signal.risk_gate_passed else '✗'}")
             
             console.print(
                 f"{ts_str} | {predicted_side:4} [{', '.join(gates)}] | "
@@ -2748,7 +2758,7 @@ def _buddy_test_modular_ensemble(
                 tcn_dir = "LONG" if signal.tcn_direction == 1 else "SHORT" if signal.tcn_direction == 0 else "NONE"
                 console.print(
                     f"[dim]{ts_str} | TCN:{tcn_dir} conf={signal.ridge_confidence:.0f} "
-                    f"mom={signal.xgb_momentum:.2f} dd={signal.rf_drawdown_pips:.0f} | "
+                    f"mom={signal.xgb_momentum:.2f} dd={signal.rf_drawdown_pips / 10000 if signal.rf_drawdown_pips > 1.0 else signal.rf_drawdown_pips:.2%} | "
                     f"Actual: {actual_direction} {actual_pips:+.1f} pips | SKIP[/dim]"
                 )
     
@@ -2821,14 +2831,19 @@ def _buddy_test_modular_ensemble(
         console.print(f"  >= 0.5: {(mom_arr >= 0.5).sum()} / {len(mom_arr)} ({100*(mom_arr >= 0.5).mean():.1f}%)")
         console.print(f"  Acceleration True: {accel_arr.sum()} / {len(accel_arr)} ({100*accel_arr.mean():.1f}%)")
     
-    # RF Risk statistics (for debugging)
+    # RF Risk statistics (for debugging) - convert legacy pips to pct
     if all_rf_drawdowns:
         rf_dd_arr = np.array(all_rf_drawdowns)
+        # Auto-detect: if values >1 they're in "pips" (pct*10000), convert to pct
+        if rf_dd_arr.mean() > 1.0:
+            rf_dd_pct_arr = rf_dd_arr / 10000
+        else:
+            rf_dd_pct_arr = rf_dd_arr
         rf_streak_arr = np.array(all_rf_streaks)
         console.print(f"\n[bold]RF Risk Debug:[/bold]")
-        console.print(f"  Drawdown - Min: {rf_dd_arr.min():.1f}, Max: {rf_dd_arr.max():.1f}, Mean: {rf_dd_arr.mean():.1f} pips")
+        console.print(f"  Drawdown - Min: {rf_dd_pct_arr.min():.2%}, Max: {rf_dd_pct_arr.max():.2%}, Mean: {rf_dd_pct_arr.mean():.2%}")
         console.print(f"  Streak Prob - Min: {rf_streak_arr.min():.3f}, Max: {rf_streak_arr.max():.3f}, Mean: {rf_streak_arr.mean():.3f}")
-        console.print(f"  Drawdown < 30 pips: {(rf_dd_arr < 30).sum()} / {len(rf_dd_arr)} ({100*(rf_dd_arr < 30).mean():.1f}%)")
+        console.print(f"  Drawdown < 2.5%: {(rf_dd_pct_arr < 0.025).sum()} / {len(rf_dd_pct_arr)} ({100*(rf_dd_pct_arr < 0.025).mean():.1f}%)")
         console.print(f"  Streak prob < 0.3: {(rf_streak_arr < 0.3).sum()} / {len(rf_streak_arr)} ({100*(rf_streak_arr < 0.3).mean():.1f}%)")
     
     # =========================================================================

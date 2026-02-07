@@ -188,6 +188,32 @@ class TrainerConfig:
     
     # Drift detection for auto-retraining
     drift_threshold: float = 0.03  # Retrain if val_acc drops by >3%
+    
+    # === OVERFIT PREVENTION SETTINGS ===
+    overfit_threshold: float = 0.08       # 8% train-val gap triggers warning
+    critical_threshold: float = 0.15      # 15% gap triggers intervention (LR reduction)
+    severe_threshold: float = 0.25        # 25% gap triggers early stop
+    max_acceptable_gap: float = 0.12      # Won't save checkpoint if gap > 12%
+    overfit_patience_epochs: int = 3      # Consecutive overfit epochs before intervention
+    auto_adjust_dropout: bool = True      # Dynamically increase dropout on overfitting
+    auto_reduce_lr: bool = True           # Dynamically reduce LR on overfitting
+    max_dropout_increase: float = 0.3     # Cap on dropout increase
+    
+    # === SWA (Stochastic Weight Averaging) ===
+    enable_swa: bool = True               # Average weights in final 25% for flatter optima
+    swa_start_fraction: float = 0.75      # Start SWA at 75% of training
+    swa_lr_factor: float = 0.5            # SWA constant LR = initial_lr * factor
+    
+    # === COSINE ANNEALING WITH WARM RESTARTS ===
+    enable_cosine_restarts: bool = True    # Periodic LR resets to escape sharp minima
+    cosine_restart_period: int = 10       # Restart every N epochs
+    cosine_restart_lr_mult: float = 0.8   # Each restart uses 80% of prev LR
+    
+    # === WARM-START OVERFIT RECOVERY ===
+    enable_warmstart_detection: bool = True
+    warmstart_reset_threshold: float = 0.15  # If initial gap > 15%, intervene
+    weight_perturbation_scale: float = 0.02  # Noise to break memorization
+    reset_optimizer_on_overfit: bool = True   # Reset momentum on critical overfit
 
 
 # =============================================================================
@@ -229,9 +255,18 @@ class EMACallback:
         self.backup_weights = None
         self._initialized = False
         
+    @staticmethod
+    def _weight_key(w) -> str:
+        """Get unique key for a weight variable.
+        
+        Keras 3 `w.name` is NOT unique across layers (e.g. many layers have 'kernel').
+        `w.path` includes the full layer path and IS unique.
+        """
+        return getattr(w, 'path', w.name)
+
     def _initialize_ema(self):
-        """Initialize EMA weights as copy of current model weights, keyed by name."""
-        self.ema_weights = {w.name: w.numpy().copy() for w in self.model.trainable_weights}
+        """Initialize EMA weights as copy of current model weights, keyed by path."""
+        self.ema_weights = {self._weight_key(w): w.numpy().copy() for w in self.model.trainable_weights}
         self._initialized = True
         logger.info(f"📊 EMA initialized with {len(self.ema_weights)} weight tensors (decay={self.decay})")
     
@@ -252,23 +287,24 @@ class EMACallback:
             return
         
         # EMA update: θ_ema = α * θ_ema + (1-α) * θ_current
-        # Match by name to handle frozen/unfrozen layer changes
+        # Match by path to handle frozen/unfrozen layer changes
         for w in self.model.trainable_weights:
+            key = self._weight_key(w)
             current_val = w.numpy()
-            if w.name in self.ema_weights:
-                stored = self.ema_weights[w.name]
+            if key in self.ema_weights:
+                stored = self.ema_weights[key]
                 if stored.shape == current_val.shape:
-                    self.ema_weights[w.name] = (
+                    self.ema_weights[key] = (
                         self.decay * stored + 
                         (1 - self.decay) * current_val
                     )
                 else:
                     # Shape changed (e.g., layer rebuilt) — re-initialize this weight
-                    logger.debug(f"EMA shape mismatch for {w.name}: stored={stored.shape} vs current={current_val.shape}, re-initializing")
-                    self.ema_weights[w.name] = current_val.copy()
+                    logger.debug(f"EMA shape mismatch for {key}: stored={stored.shape} vs current={current_val.shape}, re-initializing")
+                    self.ema_weights[key] = current_val.copy()
             else:
                 # New trainable weight (e.g., layer was unfrozen) — initialize from current
-                self.ema_weights[w.name] = current_val.copy()
+                self.ema_weights[key] = current_val.copy()
     
     def apply(self):
         """Apply EMA weights to model (for inference). Backs up current weights."""
@@ -277,16 +313,22 @@ class EMACallback:
             return
         
         # Backup current (training) weights
-        self.backup_weights = {w.name: w.numpy().copy() for w in self.model.trainable_weights}
+        self.backup_weights = {self._weight_key(w): w.numpy().copy() for w in self.model.trainable_weights}
         
-        # Apply EMA weights by name (safe with frozen layers, validates shape)
+        # Apply EMA weights by path (safe with frozen layers, validates shape)
+        applied = 0
         for w in self.model.trainable_weights:
-            if w.name in self.ema_weights:
-                stored = self.ema_weights[w.name]
+            key = self._weight_key(w)
+            if key in self.ema_weights:
+                stored = self.ema_weights[key]
                 if stored.shape == tuple(w.shape):
                     w.assign(stored)
+                    applied += 1
                 else:
-                    logger.debug(f"EMA apply: skipping {w.name} shape mismatch")
+                    logger.debug(f"EMA apply: skipping {key} shape mismatch "
+                                 f"(stored={stored.shape} vs model={tuple(w.shape)})")
+        if applied == 0:
+            logger.warning("EMA apply: no weights matched — model uses raw weights")
     
     def restore(self):
         """Restore original training weights after inference."""
@@ -294,8 +336,9 @@ class EMACallback:
             return
         
         for w in self.model.trainable_weights:
-            if w.name in self.backup_weights:
-                w.assign(self.backup_weights[w.name])
+            key = self._weight_key(w)
+            if key in self.backup_weights:
+                w.assign(self.backup_weights[key])
         
         self.backup_weights = None
     
@@ -307,31 +350,59 @@ class EMACallback:
         return self.ema_weights
     
     def set_ema_weights(self, weights):
-        """Load EMA weights from checkpoint. Handles both dict and legacy list format."""
+        """Load EMA weights from checkpoint.
+        
+        Handles three formats:
+        1. Dict keyed by w.path (Keras 3 correct format)
+        2. Dict keyed by w.name (legacy/corrupt — names are NOT unique in Keras 3)
+        3. Positional list (very old legacy)
+        """
         if isinstance(weights, dict):
-            # Validate shapes against current model weights
-            current_shapes = {w.name: w.shape for w in self.model.trainable_weights}
-            valid_weights = {}
-            mismatched = 0
-            for name, arr in weights.items():
-                if name in current_shapes and tuple(arr.shape) == tuple(current_shapes[name]):
-                    valid_weights[name] = arr.copy()
-                else:
-                    mismatched += 1
+            # Build lookup of current model weights by path
+            current_by_path = {self._weight_key(w): w for w in self.model.trainable_weights}
+            current_paths = set(current_by_path.keys())
             
-            if mismatched > 0:
-                logger.warning(f"⚠️ EMA: {mismatched} weight tensors had shape mismatches — "
-                               f"those will be re-initialized from current model weights")
+            # Check if keys match paths (correct format) or names (legacy/corrupt)
+            key_overlap_path = len(set(weights.keys()) & current_paths)
             
-            # Fill in any missing weights from current model
-            for w in self.model.trainable_weights:
-                if w.name not in valid_weights:
-                    valid_weights[w.name] = w.numpy().copy()
-            
-            self.ema_weights = valid_weights
+            if key_overlap_path > 0:
+                # Keys are paths — correct format
+                valid_weights = {}
+                mismatched = 0
+                for key, arr in weights.items():
+                    if key in current_by_path:
+                        w = current_by_path[key]
+                        if tuple(arr.shape) == tuple(w.shape):
+                            valid_weights[key] = arr.copy()
+                        else:
+                            mismatched += 1
+                    else:
+                        mismatched += 1
+                
+                if mismatched > 0:
+                    logger.info(f"EMA: {mismatched}/{len(weights)} weight tensors had "
+                                f"path/shape mismatches — re-initializing those from current model")
+                
+                # Fill in missing weights from current model
+                for key, w in current_by_path.items():
+                    if key not in valid_weights:
+                        valid_weights[key] = w.numpy().copy()
+                
+                self.ema_weights = valid_weights
+            else:
+                # Keys don't match any paths — likely legacy w.name-keyed dict
+                # (In Keras 3, w.name is NOT unique: many layers share 'kernel', 'bias', etc.)
+                n_unique_names = len(set(w.name for w in self.model.trainable_weights))
+                logger.warning(
+                    f"⚠️ EMA file uses legacy name-based keys ({len(weights)} entries, "
+                    f"model has {len(current_by_path)} weights with {n_unique_names} unique names). "
+                    f"Re-initializing EMA from current model weights."
+                )
+                self._initialize_ema()
+                return
         elif isinstance(weights, list):
-            # Legacy format: positional list — unsafe to map by index due to potential 
-            # frozen/unfrozen layer changes. Instead, re-initialize from current weights.
+            # Legacy format: positional list — unsafe to map by index due to potential
+            # frozen/unfrozen layer changes. Re-initialize from current weights.
             logger.warning(f"⚠️ EMA legacy list format ({len(weights)} tensors) — "
                            f"re-initializing from current model weights for safety")
             self._initialize_ema()
@@ -610,58 +681,75 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         self,
         checkpoint_dir: str = "trained_data/checkpoints",
         model_name: str = "transformer",
-        overfit_threshold: float = 0.08,   # 8% gap triggers warning
-        critical_threshold: float = 0.15,  # 15% gap triggers intervention
-        severe_threshold: float = 0.25,    # 25% gap triggers early stop
-        max_acceptable_gap: float = 0.12,  # Won't save checkpoint if gap > 12%
-        patience_epochs: int = 2,          # Reduced from 3 for faster response
-        auto_adjust_dropout: bool = True,
-        auto_reduce_lr: bool = True,
-        max_dropout_increase: float = 0.3,
+        # All thresholds read from TrainerConfig; these are fallback defaults only
+        overfit_threshold: Optional[float] = None,
+        critical_threshold: Optional[float] = None,
+        severe_threshold: Optional[float] = None,
+        max_acceptable_gap: Optional[float] = None,
+        patience_epochs: Optional[int] = None,
+        auto_adjust_dropout: Optional[bool] = None,
+        auto_reduce_lr: Optional[bool] = None,
+        max_dropout_increase: Optional[float] = None,
         # SWA settings
-        enable_swa: bool = False,  # DISABLED: Conflicts with ReduceLROnPlateau causing loss to increase
-        swa_start_fraction: float = 0.75,  # Start SWA at 75% of training
-        swa_lr_factor: float = 0.5,        # SWA uses lower constant LR
+        enable_swa: Optional[bool] = None,
+        swa_start_fraction: Optional[float] = None,
+        swa_lr_factor: Optional[float] = None,
         # Cosine restart settings
-        enable_cosine_restarts: bool = False,  # DISABLED: Conflicts with other LR schedulers
-        restart_period: int = 10,          # Restart every 10 epochs
-        restart_lr_mult: float = 0.8,      # Each restart uses 80% of prev LR
+        enable_cosine_restarts: Optional[bool] = None,
+        restart_period: Optional[int] = None,
+        restart_lr_mult: Optional[float] = None,
         # Mixup augmentation (applied at batch level)
-        enable_mixup: bool = False,        # Disabled by default (needs data pipeline change)
+        enable_mixup: bool = False,
         mixup_alpha: float = 0.2,
-        # Warm-start overfit recovery (NEW)
-        enable_warmstart_detection: bool = True,
-        warmstart_reset_threshold: float = 0.15,  # If initial gap > 15%, intervene
-        weight_perturbation_scale: float = 0.02,  # Noise to break memorization
-        reset_optimizer_on_overfit: bool = True,  # Reset momentum on critical overfit
+        # Warm-start overfit recovery
+        enable_warmstart_detection: Optional[bool] = None,
+        warmstart_reset_threshold: Optional[float] = None,
+        weight_perturbation_scale: Optional[float] = None,
+        reset_optimizer_on_overfit: Optional[bool] = None,
         # CONTINUAL LEARNING: Previous best accuracy (prevents saving worse models)
-        warm_start_best_acc: float = 0.0,  # Set from loaded checkpoint
+        warm_start_best_acc: float = 0.0,
+        # TrainerConfig instance — authoritative source for all values above
+        config: Optional['TrainerConfig'] = None,
     ):
         super().__init__()
+        
+        # === RESOLVE ALL VALUES: explicit arg > config > hardcoded fallback ===
+        # TrainerConfig is the single source of truth for these settings.
+        # Hardcoded fallbacks here only guard against config=None (e.g. tests).
+        _cfg = config  # May be None
+        
+        def _v(explicit, cfg_attr: str, fallback):
+            """Pick first non-None: explicit arg → config value → fallback."""
+            if explicit is not None:
+                return explicit
+            if _cfg is not None:
+                return getattr(_cfg, cfg_attr, fallback)
+            return fallback
+        
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.model_name = model_name
-        self.overfit_threshold = overfit_threshold
-        self.critical_threshold = critical_threshold
-        self.severe_threshold = severe_threshold
-        self.max_acceptable_gap = max_acceptable_gap
-        self.patience_epochs = patience_epochs
-        self.auto_adjust_dropout = auto_adjust_dropout
-        self.auto_reduce_lr = auto_reduce_lr
-        self.max_dropout_increase = max_dropout_increase
+        self.overfit_threshold = _v(overfit_threshold, 'overfit_threshold', 0.08)
+        self.critical_threshold = _v(critical_threshold, 'critical_threshold', 0.15)
+        self.severe_threshold = _v(severe_threshold, 'severe_threshold', 0.25)
+        self.max_acceptable_gap = _v(max_acceptable_gap, 'max_acceptable_gap', 0.12)
+        self.patience_epochs = _v(patience_epochs, 'overfit_patience_epochs', 3)
+        self.auto_adjust_dropout = _v(auto_adjust_dropout, 'auto_adjust_dropout', True)
+        self.auto_reduce_lr = _v(auto_reduce_lr, 'auto_reduce_lr', True)
+        self.max_dropout_increase = _v(max_dropout_increase, 'max_dropout_increase', 0.3)
         
         # SWA settings
-        self.enable_swa = enable_swa
-        self.swa_start_fraction = swa_start_fraction
-        self.swa_lr_factor = swa_lr_factor
+        self.enable_swa = _v(enable_swa, 'enable_swa', True)
+        self.swa_start_fraction = _v(swa_start_fraction, 'swa_start_fraction', 0.75)
+        self.swa_lr_factor = _v(swa_lr_factor, 'swa_lr_factor', 0.5)
         self.swa_weights = None
         self.swa_count = 0
         self.swa_started = False
         
         # Cosine restart settings
-        self.enable_cosine_restarts = enable_cosine_restarts
-        self.restart_period = restart_period
-        self.restart_lr_mult = restart_lr_mult
+        self.enable_cosine_restarts = _v(enable_cosine_restarts, 'enable_cosine_restarts', True)
+        self.restart_period = _v(restart_period, 'cosine_restart_period', 10)
+        self.restart_lr_mult = _v(restart_lr_mult, 'cosine_restart_lr_mult', 0.8)
         self.current_restart_epoch = 0
         self.num_restarts = 0
         
@@ -669,11 +757,11 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         self.enable_mixup = enable_mixup
         self.mixup_alpha = mixup_alpha
         
-        # Warm-start overfit recovery (NEW)
-        self.enable_warmstart_detection = enable_warmstart_detection
-        self.warmstart_reset_threshold = warmstart_reset_threshold
-        self.weight_perturbation_scale = weight_perturbation_scale
-        self.reset_optimizer_on_overfit = reset_optimizer_on_overfit
+        # Warm-start overfit recovery
+        self.enable_warmstart_detection = _v(enable_warmstart_detection, 'enable_warmstart_detection', True)
+        self.warmstart_reset_threshold = _v(warmstart_reset_threshold, 'warmstart_reset_threshold', 0.15)
+        self.weight_perturbation_scale = _v(weight_perturbation_scale, 'weight_perturbation_scale', 0.02)
+        self.reset_optimizer_on_overfit = _v(reset_optimizer_on_overfit, 'reset_optimizer_on_overfit', True)
         self._warmstart_checked = False
         self._initial_weights_perturbed = False
         self._optimizer_reset_count = 0
@@ -1013,7 +1101,8 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
                         self._reset_optimizer_state()
         
         # === COSINE ANNEALING WITH WARM RESTARTS ===
-        if self.enable_cosine_restarts:
+        # Only active before SWA phase (SWA takes over LR in final 25%)
+        if self.enable_cosine_restarts and not self.swa_started:
             cycle_epoch = (epoch - self.current_restart_epoch)
             if cycle_epoch > 0 and cycle_epoch % self.restart_period == 0:
                 # Time for warm restart
@@ -1028,12 +1117,10 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
                 except Exception:
                     pass
             else:
-                # Apply cosine decay within cycle
+                # Apply cosine decay within cycle (overrides ReduceLROnPlateau)
                 new_lr = self._get_cosine_lr(epoch, self._initial_lr)
                 try:
-                    # Only apply cosine if we're not in overfit intervention mode
-                    if self.lr_reductions == 0:
-                        tf.keras.backend.set_value(self.model.optimizer.learning_rate, new_lr)
+                    tf.keras.backend.set_value(self.model.optimizer.learning_rate, new_lr)
                 except Exception:
                     pass
         
@@ -1043,16 +1130,16 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             if epoch >= swa_start_epoch:
                 if not self.swa_started:
                     self.swa_started = True
-                    # Reduce LR for SWA phase
-                    try:
-                        swa_lr = self._initial_lr * self.swa_lr_factor
-                        tf.keras.backend.set_value(self.model.optimizer.learning_rate, swa_lr)
-                        self.console.print(
-                            f"  [magenta]🎯 SWA phase started (epoch {epoch+1}/{self._total_epochs}): "
-                            f"LR={swa_lr:.2e}[/magenta]"
-                        )
-                    except Exception:
-                        pass
+                    self.console.print(
+                        f"  [magenta]🎯 SWA phase started (epoch {epoch+1}/{self._total_epochs})[/magenta]"
+                    )
+                
+                # Maintain constant SWA LR every epoch (overrides ReduceLROnPlateau)
+                try:
+                    swa_lr = self._initial_lr * self.swa_lr_factor
+                    tf.keras.backend.set_value(self.model.optimizer.learning_rate, swa_lr)
+                except Exception:
+                    pass
                 
                 # Update SWA weights every epoch during SWA phase
                 if overfit_gap <= self.critical_threshold:  # Only average good weights
@@ -2433,17 +2520,11 @@ class TCNTrainer(BaseTrainer):
                 min_lr=1e-6,
                 verbose=0,  # Suppress - Rich callback handles display
             ),
-            # Overfit prevention: checkpoints + auto-adjust dropout/LR when train >> val
+            # Overfit prevention: all thresholds from TrainerConfig
             OverfitPreventionCallback(
                 checkpoint_dir=self.config.checkpoint_dir,
                 model_name="tcn_direction",
-                overfit_threshold=0.08,      # 8% gap → warning
-                critical_threshold=0.15,     # 15% gap → intervention
-                severe_threshold=0.25,       # 25% gap → stop training
-                max_acceptable_gap=0.12,     # Won't save if gap > 12%
-                patience_epochs=3,
-                auto_adjust_dropout=True,
-                auto_reduce_lr=True,
+                config=self.config,
             ),
         ]
         
@@ -2459,6 +2540,32 @@ class TCNTrainer(BaseTrainer):
         
         self.is_trained = True
         self.seq_len = seq_len
+        
+        # === CHECKPOINT RECOVERY: Load best OverfitPrevention checkpoint if better ===
+        # EarlyStopping with start_from_epoch=min_epochs may miss checkpoints saved earlier.
+        overfit_cb = None
+        for cb in callbacks:
+            if isinstance(cb, OverfitPreventionCallback):
+                overfit_cb = cb
+                break
+        
+        if overfit_cb is not None and overfit_cb.best_epoch_clean > 0:
+            checkpoint_path = overfit_cb.checkpoint_dir / f"{overfit_cb.model_name}_best.keras"
+            if checkpoint_path.exists():
+                current_val_pred = (self.model.predict(X_val_seq, verbose=0) > 0.5).astype(float)
+                current_val_acc = np.mean(current_val_pred.flatten() == y_val_seq)
+                checkpoint_val_acc = overfit_cb.best_val_acc_clean
+                
+                if checkpoint_val_acc > current_val_acc + 0.005:
+                    try:
+                        loaded = keras.models.load_model(str(checkpoint_path), compile=False)
+                        self.model.set_weights(loaded.get_weights())
+                        logger.info(
+                            f"✓ TCN checkpoint recovery: {current_val_acc:.1%} → {checkpoint_val_acc:.1%} "
+                            f"from epoch {overfit_cb.best_epoch_clean}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not load TCN checkpoint: {e}")
         
         # Calculate metrics
         val_pred = (self.model.predict(X_val_seq, verbose=0) > 0.5).astype(float)
@@ -3688,10 +3795,10 @@ class TransformerDirectionTrainer(BaseTrainer):
             base_loss = AntiCollapseFocalLoss(
                 gamma=self.config.focal_gamma,
                 base_alpha=self.config.focal_alpha,
-                entropy_weight=0.2,  # Increased variance penalty weight for anti-collapse
+                entropy_weight=0.1,  # Light anti-bias regularization (only active when biased)
                 label_smoothing=0.0,  # NO smoothing - hurts binary classification
             )
-            logger.info(f"🎯 Using AntiCollapseFocalLoss (gamma={self.config.focal_gamma}, alpha={self.config.focal_alpha}, variance_weight=0.2)")
+            logger.info(f"🎯 Using AntiCollapseFocalLoss (gamma={self.config.focal_gamma}, alpha={self.config.focal_alpha}, entropy_weight=0.1)")
         else:
             base_loss = keras.losses.BinaryCrossentropy(label_smoothing=0.0)
             logger.info("📊 Using BinaryCrossentropy (no focal loss)")
@@ -3863,7 +3970,42 @@ class TransformerDirectionTrainer(BaseTrainer):
                     self.best_weights = self.model.get_weights()
                     logger.debug(f"💾 Saved balanced weights at epoch {epoch+1} (balance={current_balance:.3f})")
                 
-                # === GRADUATED COLLAPSE DETECTION ===
+                # === PROBABILITY COLLAPSE DETECTION (std-based) ===
+                # Detect when all outputs cluster near 0.5 with low spread
+                pred_std = float(np.std(preds))
+                if pred_std < 0.03 and current_balance > 0.6:
+                    # Outputs are all near 0.5 — this is PROBABILITY collapse
+                    # (not class-biased collapse, which is caught below)
+                    logger.warning(
+                        f"🚨 PROBABILITY COLLAPSE at epoch {epoch+1}: "
+                        f"output std={pred_std:.4f} (all predictions ~0.5). "
+                        f"Model is not discriminating."
+                    )
+                    self.collapse_epochs += 1
+                    if self.collapse_epochs >= 2 and self.recovery_attempts < self.max_recovery_attempts:
+                        self.recovery_attempts += 1
+                        logger.warning(f"🔧 STD-COLLAPSE RECOVERY attempt {self.recovery_attempts}/{self.max_recovery_attempts}")
+                        # Perturb output layer to break the plateau
+                        weights = self.model.get_weights()
+                        noise_scale = 0.2 + 0.1 * self.recovery_attempts
+                        weights[-2] = weights[-2] + np.random.normal(0, noise_scale, weights[-2].shape)
+                        if self.y_train is not None:
+                            p_up = np.clip(np.mean(self.y_train), 0.01, 0.99)
+                            bias_init = float(np.log(p_up / (1.0 - p_up)))
+                            weights[-1] = np.array([np.clip(bias_init, -1.0, 1.0)])
+                        self.model.set_weights(weights)
+                        # Boost LR to escape plateau
+                        if self._initial_lr is not None:
+                            new_lr = self._initial_lr * 1.5
+                            self.model.optimizer.learning_rate.assign(new_lr)
+                            logger.info(f"  → LR boosted to {new_lr:.2e} to escape plateau")
+                        self.collapse_epochs = 0
+                    return  # Skip class-bias checks this epoch
+                elif pred_std >= 0.03:
+                    # Healthy std — reset collapse counters if they were set from std detection
+                    pass
+                
+                # === GRADUATED COLLAPSE DETECTION (class-bias) ===
                 # Warn at 80%, intervene at 85%, aggressive at 90%
                 
                 # Early warning at 80%
@@ -4018,31 +4160,24 @@ class TransformerDirectionTrainer(BaseTrainer):
                 verbose=0,  # Suppress - Rich callback handles display
                 start_from_epoch=self.config.min_epochs,  # Enforce minimum epochs before early stopping
             ),
-            # LR reduction based on accuracy plateau
-            # WARM-START: Use much more patience to avoid premature LR cuts
-            # Fresh training: patience // 4 = 5 epochs
-            # Warm-start: patience * 2 = 40 epochs (model is already near plateau)
-            keras.callbacks.ReduceLROnPlateau(
-                monitor='val_accuracy',
-                factor=0.5,
-                patience=lr_reduce_patience,
-                mode='max',  # Reduce LR when accuracy stops improving
-                min_lr=1e-7 if self._is_warm_start else 1e-6,  # Allow lower LR for fine-tuning
-                verbose=0,  # Suppress - Rich callback handles display
-            ),
-            # Overfit prevention: checkpoints + auto-adjust dropout/LR when train >> val
+            # Overfit prevention + SWA + Cosine Restarts (all from TrainerConfig)
             OverfitPreventionCallback(
                 checkpoint_dir=self.config.checkpoint_dir,
                 model_name="transformer_direction",
-                overfit_threshold=0.08,      # 8% gap → warning
-                critical_threshold=0.15,     # 15% gap → intervention (LR reduction)
-                severe_threshold=0.25,       # 25% gap → stop training
-                max_acceptable_gap=0.12,     # Won't save checkpoint if gap > 12%
-                patience_epochs=3,           # Faster intervention
-                auto_adjust_dropout=True,
-                auto_reduce_lr=True,
+                config=self.config,
                 # CONTINUAL LEARNING: Don't save worse models than previous best
                 warm_start_best_acc=self._warm_start_val_acc,
+            ),
+            # ReduceLROnPlateau as safety net: Cosine Restarts overrides LR each epoch,
+            # but if val_accuracy truly plateaus for a long time, this further reduces baseline LR.
+            # Patience set high so it doesn't fight cosine schedule.
+            keras.callbacks.ReduceLROnPlateau(
+                monitor='val_accuracy',
+                factor=0.5,
+                patience=max(lr_reduce_patience, 20),  # High patience: let cosine/SWA manage LR first
+                mode='max',
+                min_lr=1e-7 if self._is_warm_start else 1e-6,
+                verbose=0,
             ),
             # Prediction collapse detection with auto-recovery - check every 2 epochs for faster response
             PredictionCollapseCallback(X_val_filtered, y_val_filtered, y_train=y_train_filtered, check_every=2, max_recovery_attempts=3),
@@ -4071,10 +4206,56 @@ class TransformerDirectionTrainer(BaseTrainer):
         
         self.is_trained = True
         
+        # === CHECKPOINT RECOVERY: Load best OverfitPrevention checkpoint if better ===
+        # EarlyStopping with start_from_epoch=min_epochs may miss the best checkpoint
+        # saved by OverfitPreventionCallback (which tracks ALL epochs).
+        # Check if a better checkpoint exists on disk and load it.
+        overfit_cb = None
+        for cb in callbacks:
+            if isinstance(cb, OverfitPreventionCallback):
+                overfit_cb = cb
+                break
+        
+        if overfit_cb is not None and overfit_cb.best_epoch_clean > 0:
+            checkpoint_path = overfit_cb.checkpoint_dir / f"{overfit_cb.model_name}_best.keras"
+            if checkpoint_path.exists():
+                # Evaluate current model (EarlyStopping's "best")
+                current_val_pred = (self.model.predict(X_val_filtered, verbose=0) > 0.5).astype(float)
+                current_val_acc = np.mean(current_val_pred.flatten() == y_val_filtered)
+                
+                checkpoint_val_acc = overfit_cb.best_val_acc_clean
+                
+                if checkpoint_val_acc > current_val_acc + 0.005:  # Checkpoint is >0.5% better
+                    from rich.console import Console
+                    console = Console()
+                    console.print(
+                        f"  [bold cyan]🔄 CHECKPOINT RECOVERY: EarlyStopping best={current_val_acc:.1%} "
+                        f"(epoch ≥{self.config.min_epochs}), but OverfitPrevention saved {checkpoint_val_acc:.1%} "
+                        f"at epoch {overfit_cb.best_epoch_clean}[/bold cyan]"
+                    )
+                    try:
+                        loaded = keras.models.load_model(str(checkpoint_path), compile=False)
+                        self.model.set_weights(loaded.get_weights())
+                        console.print(
+                            f"  [bold green]✓ Restored checkpoint weights: {checkpoint_val_acc:.1%} "
+                            f"(+{checkpoint_val_acc - current_val_acc:.1%} improvement)[/bold green]"
+                        )
+                        logger.info(
+                            f"✓ Checkpoint recovery: {current_val_acc:.1%} → {checkpoint_val_acc:.1%} "
+                            f"from epoch {overfit_cb.best_epoch_clean}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Could not load checkpoint {checkpoint_path}: {e}")
+                else:
+                    logger.info(
+                        f"📋 No checkpoint recovery needed: EarlyStopping={current_val_acc:.1%}, "
+                        f"checkpoint={checkpoint_val_acc:.1%}"
+                    )
+        
         # === WARM-START RECOVERY: Restore original weights if training degraded ===
         # CRITICAL: Do this BEFORE computing final metrics!
         if self._is_warm_start and self._warm_start_weights is not None and self._warm_start_val_acc > 0:
-            # Check current val accuracy using model after EarlyStopping restored "best" training weights
+            # Check current val accuracy using model after checkpoint recovery above
             current_val_pred = (self.model.predict(X_val_filtered, verbose=0) > 0.5).astype(float)
             current_val_acc = np.mean(current_val_pred.flatten() == y_val_filtered)
             
@@ -4167,9 +4348,11 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Store threshold instead of bias for cleaner inference.
         self.output_calibration = {
             'threshold': raw_median,  # Use median as threshold for balanced predictions
+            'bias': raw_median - 0.5,  # Signed bias for backward compatibility
             'mean': raw_mean,
             'std': max(raw_std, 0.01),
-            'enabled': abs(raw_mean - 0.5) > 0.05,  # Only calibrate if significantly biased
+            # Enable calibration when biased OR when std is very low (probability collapse)
+            'enabled': abs(raw_mean - 0.5) > 0.05 or raw_std < 0.05,
         }
         
         # Recalculate with adaptive threshold
@@ -4478,19 +4661,30 @@ class TransformerDirectionTrainer(BaseTrainer):
                     if ema_path.exists():
                         with open(ema_path, 'rb') as f:
                             ema_data = pickle.load(f)
-                        ema_weights = ema_data.get('ema_weights', [])
+                        ema_weights = ema_data.get('ema_weights', {})
                         
-                        # Try to apply EMA weights directly to rebuilt model
-                        model_weights = model.trainable_weights
-                        if len(ema_weights) == len(model_weights):
-                            for w, ema_w in zip(model_weights, ema_weights):
+                        if isinstance(ema_weights, dict) and len(ema_weights) > 0:
+                            # Use EMACallback.set_ema_weights() for robust path/name matching
+                            tmp_ema = EMACallback(model, decay=ema_data.get('decay', 0.999))
+                            tmp_ema.set_ema_weights(ema_weights)
+                            if tmp_ema._initialized:
+                                tmp_ema.apply()
+                                logger.info("✓ Loaded EMA weights into rebuilt model")
+                            else:
+                                logger.info("ℹ EMA weights incompatible with rebuilt model — using fresh weights")
+                        elif isinstance(ema_weights, list) and len(ema_weights) == len(model.trainable_weights):
+                            # Legacy list format with matching count
+                            applied = 0
+                            for w, ema_w in zip(model.trainable_weights, ema_weights):
                                 try:
-                                    w.assign(ema_w)
-                                except Exception as assign_err:
-                                    logger.warning(f"Could not assign EMA weight to {w.name}: {assign_err}")
-                            logger.info(f"✓ Loaded {len(ema_weights)} EMA weights into rebuilt model")
+                                    if hasattr(ema_w, 'shape') and ema_w.shape == tuple(w.shape):
+                                        w.assign(ema_w)
+                                        applied += 1
+                                except Exception:
+                                    pass
+                            logger.info(f"✓ Applied {applied}/{len(ema_weights)} legacy EMA weights")
                         else:
-                            logger.warning(f"EMA weights count ({len(ema_weights)}) != model weights ({len(model_weights)})")
+                            logger.info("ℹ EMA weights format/count mismatch — using fresh model weights")
                     
                 except Exception as e:
                     load_errors.append(f"Rebuild: {e}")
@@ -4519,7 +4713,8 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Load output calibration (for bias correction)
         self.output_calibration = meta.get('output_calibration', None)
         if self.output_calibration and self.output_calibration.get('enabled'):
-            logger.info(f"📐 Output calibration loaded: bias={self.output_calibration['bias']:.4f}")
+            _cal_bias = self.output_calibration.get('bias', self.output_calibration.get('threshold', 0.5) - 0.5)
+            logger.info(f"📐 Output calibration loaded: threshold={self.output_calibration.get('threshold', 0.5):.4f}, bias={_cal_bias:.4f}")
         
         # Load lineage
         if meta.get('lineage'):

@@ -1512,9 +1512,14 @@ class CommandDispatcher:
     
     def _handle_buddy(self, args: CommandArgs) -> None:
         """Handle the buddy command."""
-        from cli import _dispatch_buddy
+        import argparse
+        from cli import _dispatch_buddy, buddy as _cli_buddy, buddy_loop as _cli_buddy_loop
         
-        _dispatch_buddy(args, self._command_handlers)
+        # _dispatch_buddy expects argparse.Namespace (attribute access)
+        ns = argparse.Namespace(**args)
+        # command_map must point to the actual buddy function, NOT _handle_buddy (avoids recursion)
+        cmd_map = {"buddy": _cli_buddy, "buddy_loop": _cli_buddy_loop}
+        _dispatch_buddy(ns, cmd_map)
     
     def _handle_promote_model(self, args: CommandArgs) -> None:
         """Handle the promote-model command."""
