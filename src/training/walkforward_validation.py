@@ -33,7 +33,6 @@ from typing import Generator, Tuple, List, Optional, Dict, Any, Iterator
 from collections import defaultdict
 
 import numpy as np
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -511,7 +510,7 @@ def run_walkforward_analysis(
         model = model_fn()
         
         # Train
-        history = model.fit(
+        model.fit(
             X_train, y_train,
             validation_data=(X_val, y_val),
             **fit_kwargs
@@ -650,8 +649,6 @@ def train_direction_with_walkforward(
         y_train_fold = y[train_idx]
         X_val_fold = X[val_idx]
         y_val_fold = y[val_idx]
-        X_test_fold = X[test_idx] if len(test_idx) > 0 else None
-        y_test_fold = y[test_idx] if len(test_idx) > 0 else None
         
         # Get weights if provided
         w_train_fold = w[train_idx] if w is not None else None
@@ -659,7 +656,7 @@ def train_direction_with_walkforward(
         
         # Create fresh trainer instance for this fold
         # Import here to avoid circular import
-        from modular_trainers import TransformerDirectionTrainer, TrainerConfig
+        from modular_trainers import TransformerDirectionTrainer
         fold_trainer = TransformerDirectionTrainer(trainer.config)
         
         # Train on this fold
@@ -1045,5 +1042,3 @@ if __name__ == "__main__":
     print(f"  Cost impact: {returns_test - adjusted}")
     
     print("\n✓ Walk-forward validation module ready")
-
-
