@@ -269,6 +269,39 @@ fx:
     low_lt: 0.6
     high_gte: 0.75
 
+# ----- INFERENCE GATE THRESHOLDS -----
+inference:
+  # Gate 1: Transformer/TCN direction confidence
+  min_tcn_probability: 0.60  # 60% minimum confidence (not coin-flip)
+  
+  # Gate 2: Ridge confidence (ADX-based trend strength)
+  min_confidence: 50.0  # 0-100 scale
+  
+  # Gate 3: XGBoost momentum
+  min_momentum: 0.20  # 0-1 scale
+  require_fresh_or_accel: true  # Allow either fresh momentum OR acceleration
+  
+  # Gate 4: RandomForest risk (drawdown & streak)
+  max_drawdown_pct: 0.025  # 2.5% max expected drawdown
+  max_streak_prob: 0.95  # 95% max streak continuation probability
+  
+  # Gate 5: Meta-labeling (trade success predictor)
+  enable_meta_labeling: true
+  min_meta_confidence: 0.55  # 55% minimum trade success probability
+  
+  # Gate 6: Sentiment analysis
+  sentiment_block_enabled: true
+  sentiment_block_threshold: 0.60  # Block if contrary sentiment > 60%
+  sentiment_min_headlines: 3  # Minimum headlines required
+  
+  # Permissive mode (bypass sklearn gates on version mismatch)
+  permissive_mode: false
+  bypass_risk_gate_in_permissive: false
+  
+  # Confidence calibration
+  enable_calibration: true
+  calibration_method: platt  # 'platt', 'isotonic', or 'none'
+
 # ----- BUDDY CONFIGURATION -----
 buddy:
   head_hidden: 64
