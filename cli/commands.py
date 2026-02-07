@@ -670,8 +670,32 @@ def buddy(
         else:
             console.print(f"[yellow]📊 Loading generic fallback models (no {normalized_instrument}-specific models found)[/yellow]")
         
+        # Load inference configuration from config file
+        inference_config = None
+        if cfg and 'inference' in cfg:
+            inf_cfg = cfg['inference']
+            inference_config = InferenceConfig(
+                min_tcn_probability=inf_cfg.get('min_tcn_probability', 0.60),
+                min_confidence=inf_cfg.get('min_confidence', 50.0),
+                min_momentum=inf_cfg.get('min_momentum', 0.20),
+                require_fresh_or_accel=inf_cfg.get('require_fresh_or_accel', True),
+                max_drawdown_pct=inf_cfg.get('max_drawdown_pct', 0.025),
+                max_streak_prob=inf_cfg.get('max_streak_prob', 0.95),
+                enable_meta_labeling=inf_cfg.get('enable_meta_labeling', True),
+                min_meta_confidence=inf_cfg.get('min_meta_confidence', 0.55),
+                sentiment_block_enabled=inf_cfg.get('sentiment_block_enabled', True),
+                sentiment_block_threshold=inf_cfg.get('sentiment_block_threshold', 0.60),
+                sentiment_min_headlines=inf_cfg.get('sentiment_min_headlines', 3),
+                permissive_mode=inf_cfg.get('permissive_mode', False),
+                bypass_risk_gate_in_permissive=inf_cfg.get('bypass_risk_gate_in_permissive', False),
+                enable_calibration=inf_cfg.get('enable_calibration', True),
+                calibration_method=inf_cfg.get('calibration_method', 'platt'),
+            )
+            console.print(f"[dim]⚙️  Loaded inference config from {config_path}[/dim]")
+        
         ensemble = ModularEnsembleInference(
             instrument=normalized_instrument,
+            config=inference_config,
             use_rl_sizer=use_rl_sizer,
             enable_llm_integration=enable_llm_integration,
         )
