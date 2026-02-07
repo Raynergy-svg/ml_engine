@@ -30,9 +30,11 @@ import platform
 # M1 Metal Optimization Utilities
 # =============================================================================
 
+
 def is_apple_silicon() -> bool:
     """Check if running on Apple Silicon."""
     return platform.system() == "Darwin" and platform.machine() == "arm64"
+
 
 def get_compute_dtype():
     """Get optimal compute dtype for current hardware."""
@@ -46,8 +48,11 @@ def get_compute_dtype():
 # 3. Use batch sizes of 64-256 (optimal for Metal unified memory)
 # 4. Use jit_compile=True for XLA optimization
 
+
 # Default regularization strength for overfitting prevention
 DEFAULT_L2_REG = 0.001
+
+
 # M1 Metal: Keep recurrent_dropout low (≤0.15) to avoid GPU slowdowns
 DEFAULT_RECURRENT_DROPOUT = 0.1 if is_apple_silicon() else 0.15
 
@@ -904,14 +909,15 @@ class TransformerEncoderLayer(layers.Layer):
 
     def get_config(self):
         config = super().get_config()
+        reg_serialized = (keras.regularizers.serialize(self._kernel_regularizer)
+                          if self._kernel_regularizer else None)
         config.update({
             'd_model': self.d_model,
             'num_heads': self.num_heads,
             'dff': self.dff,
             'dropout': self._dropout_rate,
             'activation': self._activation,
-            'kernel_regularizer': keras.regularizers.serialize(self._kernel_regularizer)
-                if self._kernel_regularizer else None,
+            'kernel_regularizer': reg_serialized,
         })
         return config
 
@@ -1272,7 +1278,6 @@ class TFTemporalFusionTransformerEnhanced(Model):
         self.spatial_dropout = layers.SpatialDropout1D(dropout * 0.5)
         
         # Input projection (now includes known future features)
-        total_input_dim = input_size + hour_embedding_dim + day_embedding_dim
         self.input_projection = layers.Dense(hidden_size, kernel_regularizer=l2_reg)
         
         # Variable Selection Network (conditioned on static context)
@@ -1960,9 +1965,9 @@ class DualHeadLoss(keras.losses.Loss):
         variance_penalty = 0.1 * tf.reduce_mean(tf.maximum(min_variance - pred_variance, 0.0))
         
         # Combined loss
-        total_loss = (self.classification_weight * focal_loss + 
-                     self.regression_weight * mse_loss +
-                     variance_penalty)
+        total_loss = (self.classification_weight * focal_loss +
+                      self.regression_weight * mse_loss +
+                      variance_penalty)
         
         return total_loss
     

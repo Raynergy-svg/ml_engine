@@ -30,7 +30,6 @@ import platform
 import logging
 import time
 from typing import Dict, Any, Optional, Tuple, Union, Callable
-from dataclasses import dataclass
 
 import numpy as np
 import tensorflow as tf
@@ -738,7 +737,7 @@ def setup_metal_training(
         (train_dataset, val_dataset, model, training_config)
     """
     # 1. Configure runtime
-    runtime_info = configure_metal_runtime(
+    configure_metal_runtime(
         mixed_precision=config.get('mixed_precision', True)
     )
     
@@ -907,7 +906,7 @@ if __name__ == "__main__":
     # Create optimized dataset
     train_ds = create_optimized_dataset(X_dummy, y_dummy, batch_size=128)
     
-    print(f"\nDataset element spec:")
+    print("\nDataset element spec:")
     print(f"  {train_ds.element_spec}")
     
     # Create model
@@ -917,8 +916,7 @@ if __name__ == "__main__":
         num_layers=2,
     )
     
-    print(f"\nModel summary:")
+    print("\nModel summary:")
     model.summary()
     
     print("\n✓ M1 Metal optimizer ready")
-

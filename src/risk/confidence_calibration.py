@@ -564,7 +564,7 @@ def recalibrate_from_journal(
     
     if verbose:
         # Show calibration effect on sample probabilities
-        print(f"\n[bold]Calibration Results:[/bold]")
+        print("\n[bold]Calibration Results:[/bold]")
         sample_probs = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
         for p in sample_probs:
             result = calibrator.calibrate_confidence(p)

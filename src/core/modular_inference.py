@@ -31,6 +31,7 @@ instrument-agnostic. Models trained on GBP_USD work on USD_JPY, EUR_USD, etc.
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import logging
 import sys
@@ -104,6 +105,7 @@ RLPositionSizer = None  # Lazy loaded
 RL_MODEL_PATH = Path("trained_data/models/rl_position_sizer.zip")
 RL_IMPORT_TIMEOUT = 30.0  # seconds - skip if import takes longer than this
 
+
 def _lazy_load_rl_sizer(timeout: float = RL_IMPORT_TIMEOUT):
     """
     Lazy load RLPositionSizer to avoid TF/PyTorch GPU conflicts at import time.
@@ -163,6 +165,7 @@ def _lazy_load_rl_sizer(timeout: float = RL_IMPORT_TIMEOUT):
     
     RL_AVAILABLE = False
     return None, False
+
 
 logger = logging.getLogger(__name__)
 
@@ -589,8 +592,8 @@ class ModularEnsembleInference:
         prediction: float,
         confidence: float,
         features: Optional[np.ndarray] = None,
-        entry_time: Optional['datetime'] = None,
-        exit_time: Optional['datetime'] = None,
+        entry_time: Optional[datetime] = None,
+        exit_time: Optional[datetime] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Record a completed trade for online learning and drift detection.
@@ -963,19 +966,19 @@ class ModularEnsembleInference:
                 self.regime_model = TransformerRegimeTrainer()
                 self.regime_model.load(str(regime_path))
                 self.use_regime = True
-                logger.debug(f"Transformer REGIME loaded")
+                logger.debug("Transformer REGIME loaded")
             elif transformer_path.exists():
                 # DIRECTION MODE (Transformer)
                 self.tcn = TransformerDirectionTrainer()
                 self.tcn.load(str(transformer_path))
                 self.use_regime = False
-                logger.debug(f"Transformer direction loaded")
+                logger.debug("Transformer direction loaded")
             elif tcn_path.exists():
                 # DIRECTION MODE (TCN legacy)
                 self.tcn = TCNTrainer()
                 self.tcn.load(str(tcn_path))
                 self.use_regime = False
-                logger.debug(f"TCN direction loaded")
+                logger.debug("TCN direction loaded")
             else:
                 logger.warning(f"No direction/regime model found for {self.instrument or 'generic'}")
             
@@ -984,7 +987,7 @@ class ModularEnsembleInference:
                 self.histgb = HistGradientBoostingDirectionTrainer()
                 self.histgb.load(str(histgb_path))
                 self.use_hybrid = True
-                logger.debug(f"HistGB baseline loaded")
+                logger.debug("HistGB baseline loaded")
             else:
                 self.use_hybrid = False
                 logger.debug("HistGB not found - single-model mode")
@@ -994,7 +997,7 @@ class ModularEnsembleInference:
             if xgb_path.exists():
                 self.xgb = XGBoostTrainer()
                 self.xgb.load(str(xgb_path))
-                logger.debug(f"XGBoost loaded")
+                logger.debug("XGBoost loaded")
             else:
                 logger.warning(f"XGBoost model not found at {xgb_path}")
             
@@ -1003,7 +1006,7 @@ class ModularEnsembleInference:
             if rf_path.exists():
                 self.rf = RandomForestTrainer()
                 self.rf.load(str(rf_path))
-                logger.debug(f"Random Forest loaded")
+                logger.debug("Random Forest loaded")
             else:
                 logger.warning(f"Random Forest model not found at {rf_path}")
             
@@ -1012,7 +1015,7 @@ class ModularEnsembleInference:
             if ridge_path.exists():
                 self.ridge = RidgeTrainer()
                 self.ridge.load(str(ridge_path))
-                logger.debug(f"Ridge loaded")
+                logger.debug("Ridge loaded")
             else:
                 logger.warning(f"Ridge model not found at {ridge_path}")
             
@@ -1144,7 +1147,7 @@ class ModularEnsembleInference:
             # Some gates have issues - enable permissive mode but with partial degradation
             self.config.permissive_mode = True
             logger.info(f"📊 Gate status: {usable_gates}/{total_gates} gates usable. "
-                       f"Issues: {self._gate_issues}")
+                        f"Issues: {self._gate_issues}")
             if usable_gates == 0:
                 logger.warning("⚠️ All sklearn gates have issues - using Transformer-only mode")
                 logger.info("💡 Run 'python retrain_gates.py' to fix sklearn version mismatch")
@@ -1216,7 +1219,7 @@ class ModularEnsembleInference:
                         self.calibrator.platt_model.classes_ = np.array([0, 1])
                         self.calibrator.is_fitted = True
                         self._calibration_loaded = True
-                        logger.info(f"✓ Platt calibration loaded from metadata")
+                        logger.info("✓ Platt calibration loaded from metadata")
                     
                     if 'isotonic_params' in calib_data:
                         # Reconstruct Isotonic model from saved parameters
@@ -1227,7 +1230,7 @@ class ModularEnsembleInference:
                         self.calibrator.isotonic_model.f_ = None  # Will be rebuilt on predict
                         self.calibrator.is_fitted = True
                         self._calibration_loaded = True
-                        logger.info(f"✓ Isotonic calibration loaded from metadata")
+                        logger.info("✓ Isotonic calibration loaded from metadata")
                     
                     return
             except Exception as e:
@@ -1245,8 +1248,8 @@ class ModularEnsembleInference:
             # Note: _calibration_loaded stays False, but calibrator.is_fitted is also False
             # _apply_calibration will check is_fitted and gracefully return raw probability
             self._calibration_loaded = False  # Explicitly set to indicate no fitted calibrator
-            logger.info(f"ℹ Calibration enabled but no fitted calibrator found - using raw probabilities")
-            logger.info(f"  To enable calibration, train with: python main.py train-buddy --calibrate")
+            logger.info("ℹ Calibration enabled but no fitted calibrator found - using raw probabilities")
+            logger.info("  To enable calibration, train with: python main.py train-buddy --calibrate")
             logger.info(f"  Or run: python -m confidence_calibration --train --model-dir {self.model_dir}")
 
     def _load_learned_confidence(self) -> None:
@@ -1423,7 +1426,7 @@ class ModularEnsembleInference:
                 logger.debug(f"Missing {len(missing_features)} features (filled with 0): {missing_features[:5]}...")
             elif missing_features:
                 logger.warning(f"Many features missing ({len(missing_features)}/{n_features}). "
-                              f"First 10: {missing_features[:10]}")
+                               f"First 10: {missing_features[:10]}")
             
             return result
         
@@ -1885,12 +1888,12 @@ class ModularEnsembleInference:
                 if 'sentiment' in intel_data:
                     sent = intel_data['sentiment']
                     logger.info(f"📰 Sentiment: {sent['aggregate_label']} ({sent['aggregate_score']:+.2f}) "
-                               f"from {sent['num_headlines']} headlines")
+                                f"from {sent['num_headlines']} headlines")
                 
                 if 'next_high_impact' in intel_data:
                     event = intel_data['next_high_impact']
                     logger.info(f"📅 Next high-impact: {event['name']} ({event['currency']}) "
-                               f"in {int(event['minutes_until'])} minutes")
+                                f"in {int(event['minutes_until'])} minutes")
             
             except Exception as e:
                 logger.warning(f"Market intelligence check failed: {e}")
@@ -2358,7 +2361,7 @@ class ModularEnsembleInference:
                 reasons.append(f"weak_tcn({tcn_probability:.2f}<{self.config.min_tcn_probability})")
             if self.use_regime:
                 if not regime_gate_passed:
-                    reasons.append(f"regime=CHOP (skip)")
+                    reasons.append("regime=CHOP (skip)")
                 if direction_str is None and regime != 'chop':
                     reasons.append("no_direction")
             else:
@@ -2739,4 +2742,3 @@ def run_inference_test():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     run_inference_test()
-

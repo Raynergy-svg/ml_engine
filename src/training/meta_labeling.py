@@ -24,18 +24,17 @@ from __future__ import annotations
 import json
 import logging
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 # Try to import xgboost for meta-model
 try:
-    import xgboost as xgb
+    import xgboost  # noqa: F401
     XGBOOST_AVAILABLE = True
 except ImportError:
     XGBOOST_AVAILABLE = False
@@ -121,8 +120,6 @@ class MetaLabeler:
             - meta_labels: Binary labels (1=primary was correct)
             - meta_weights: Sample weights
         """
-        n = len(features)
-        
         # Primary model's binary predictions
         primary_binary = (primary_predictions >= 0.5).astype(np.float32)
         
@@ -353,8 +350,6 @@ class MetaLabeler:
             trade_rate = n_trades / len(meta_conf)
             
             # Prefer threshold that maximizes improvement while keeping reasonable trade rate
-            score = improvement * min(trade_rate, 0.5)  # Penalize if filtering too many trades
-            
             if improvement > best_improvement and trade_rate >= 0.1:
                 best_improvement = improvement
                 best_threshold = float(thresh)
@@ -872,4 +867,3 @@ if __name__ == "__main__":
     print(f"Improvement: +{100*(filtered_accuracy - all_accuracy):.1f}%")
     
     print("\nMeta-labeling test complete!")
-

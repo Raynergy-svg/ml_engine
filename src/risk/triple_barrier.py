@@ -229,8 +229,8 @@ def compute_triple_barrier_labels(
     
     logger.info(
         f"Triple barrier labeling: {n_labeled} samples, "
-        f"{n_wins} wins ({100*n_wins/max(n_labeled,1):.1f}%), "
-        f"{n_timeouts} timeouts ({100*n_timeouts/max(n_labeled,1):.1f}%)"
+        f"{n_wins} wins ({100*n_wins/max(n_labeled, 1):.1f}%), "
+        f"{n_timeouts} timeouts ({100*n_timeouts/max(n_labeled, 1):.1f}%)"
     )
     
     return direction_labels, confidence_labels, label_weights, results
@@ -350,4 +350,3 @@ if __name__ == "__main__":
             print(f"  idx={r.signal_index}: {r.direction} -> {r.barrier_hit.value}, PnL={r.pnl_pips:+.1f} pips")
     
     print("\nTriple Barrier test complete!")
-

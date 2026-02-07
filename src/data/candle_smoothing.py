@@ -9,7 +9,7 @@ This is intentionally lightweight and dependency-free (pandas only).
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Optional
 
 import numpy as np
 import pandas as pd

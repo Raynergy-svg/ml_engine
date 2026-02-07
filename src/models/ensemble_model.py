@@ -16,12 +16,11 @@ over single models, with diminishing returns beyond that.
 
 from __future__ import annotations
 
-import json
 import logging
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 
@@ -37,7 +36,7 @@ except Exception:
 
 try:
     from sklearn.ensemble import RandomForestClassifier
-    from sklearn.linear_model import LogisticRegression, RidgeClassifier
+    from sklearn.linear_model import LogisticRegression
     from sklearn.preprocessing import StandardScaler
     SKLEARN_AVAILABLE = True
 except ImportError:
@@ -187,7 +186,6 @@ class RandomForestWrapper(BaseModelWrapper):
         if X is None:
             return None
         if X.ndim == 3:
-            batch_size = X.shape[0]
             X_mean = X.mean(axis=1)
             X_std = X.std(axis=1)
             X_last = X[:, -1, :]
@@ -554,7 +552,7 @@ class EnsembleModel:
             if name == "tcn":
                 # TCN already trained
                 if verbose:
-                    logger.info(f"Using pre-trained TCN model")
+                    logger.info("Using pre-trained TCN model")
                 continue
             
             if verbose:
@@ -798,15 +796,14 @@ if __name__ == "__main__":
     
     # Test predictions
     preds = ensemble.predict(X_val[:5])
-    print(f"\nSample predictions:")
+    print("\nSample predictions:")
     print(f"  Direction: {preds['direction']}")
     print(f"  Confidence: {preds['confidence']}")
     
     # Base model predictions
     base_preds = ensemble.get_base_model_predictions(X_val[:5])
-    print(f"\nBase model predictions:")
+    print("\nBase model predictions:")
     for name, p in base_preds.items():
         print(f"  {name}: {p}")
     
     print("\nEnsemble test complete!")
-

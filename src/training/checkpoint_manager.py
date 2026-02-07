@@ -416,7 +416,7 @@ class CheckpointManager:
 
             except Exception as weight_err:
                 console.print(f"[yellow]Weight loading failed (architecture mismatch): {weight_err}[/yellow]")
-                raise ValueError(f"Cannot migrate: architecture incompatible. Delete old model and retrain.")
+                raise ValueError("Cannot migrate: architecture incompatible. Delete old model and retrain.")
 
         except zipfile.BadZipFile:
             raise ValueError(f"Model file {model_path} is not a valid .keras archive")

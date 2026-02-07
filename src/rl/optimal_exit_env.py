@@ -13,10 +13,9 @@ Uses discrete action space:
 from __future__ import annotations
 
 import logging
-import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -29,6 +28,7 @@ PPO = None
 EvalCallback = None
 DummyVecEnv = None
 Monitor = None
+
 
 def _ensure_gym_imported():
     """Lazy import gymnasium only when needed."""
@@ -43,6 +43,7 @@ def _ensure_gym_imported():
         except ImportError:
             GYM_AVAILABLE = False
     return GYM_AVAILABLE
+
 
 def _ensure_sb3_imported():
     """Lazy import stable-baselines3 only when needed."""
@@ -62,7 +63,6 @@ def _ensure_sb3_imported():
             SB3_AVAILABLE = False
     return SB3_AVAILABLE
 
-from .utils import calculate_sharpe
 
 logger = logging.getLogger(__name__)
 

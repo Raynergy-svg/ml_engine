@@ -10,14 +10,10 @@ Features:
 - Custom callbacks for trading-specific metrics
 """
 
-raise SystemExit(
-    "Retired: standalone TF training engine disabled. Buddy training runs only via main.py. "
-    "Use: python main.py train-buddy"
-)
-
 import os
 import datetime
 import time
+import logging
 import numpy as np
 import platform
 from pathlib import Path
@@ -27,11 +23,16 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import callbacks as keras_callbacks
 from tensorflow.keras import optimizers, losses, metrics
+from tensorflow.keras.saving import register_keras_serializable
 
 from .tensorflow_models import create_tensorflow_model
 
+logger = logging.getLogger(__name__)
 
-from tensorflow.keras.saving import register_keras_serializable
+raise SystemExit(
+    "Retired: standalone TF training engine disabled. Buddy training runs only via main.py. "
+    "Use: python main.py train-buddy"
+)
 
 # =============================================================================
 # Constants
@@ -878,7 +879,7 @@ class TensorFlowEngine:
                     alpha=alpha,
                     warmup_steps=warmup_steps,
                 )
-                print(f"✓ Using CosineDecayRestarts LR schedule:")
+                print("✓ Using CosineDecayRestarts LR schedule:")
                 print(f"  Initial LR: {initial_lr}, First cycle: {first_decay_epochs} epochs")
                 print(f"  T_mult: {t_mul}, M_mult: {m_mul}")
                 
@@ -1010,6 +1011,9 @@ class TensorFlowEngine:
         # Multi-metric checkpointing: save best per metric for flexibility
         multi_checkpoint_enabled = self.config.get('multi_checkpoint', True)
         if multi_checkpoint_enabled:
+            # Determine if multi_task mode is enabled
+            multi_task = self.config.get('model', {}).get('multi_task', False)
+            
             # Best direction accuracy checkpoint
             direction_checkpoint_path = os.path.join(
                 self.checkpoint_dir,

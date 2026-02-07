@@ -654,12 +654,14 @@ class TensorFlowUnifiedEngine:
         # Prefer direct call for single-batch inference to avoid overhead/hanging
         # associated with model.predict() in some environments.
         try:
-            return self.model(model_inputs, training=False)
+            outputs = self.model(model_inputs, training=False)
         except Exception:
             # Fallback to predict() if direct call fails (e.g. for some SavedModels)
             if hasattr(self.model, 'predict'):
-                return self.model.predict(model_inputs, verbose=0)
-            raise
+                outputs = self.model.predict(model_inputs, verbose=0)
+            else:
+                raise
+        
         if isinstance(outputs, (list, tuple)):
             return [o.numpy() if hasattr(o, 'numpy') else o for o in outputs]
         return outputs

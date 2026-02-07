@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 
 from .config import ScannerConfig, load_yaml_config
-from .gates import GateEvaluator, ScannerError, _format_confidence_pct
+from .gates import GateEvaluator, ScannerError
 from .results import PairAnalysis, ScanResult
 from .execution import ExecutionManager, ExecutionConfig, ExecutionResult
 from .analysis import QuickBacktester, CorrelationAnalyzer, DriftDetector
@@ -1244,4 +1244,3 @@ class Scanner:
             "daily_limit": self.config.daily_trade_limit,
             "execution_enabled": self.config.enable_execution,
         }
-

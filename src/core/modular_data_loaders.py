@@ -644,7 +644,7 @@ def load_regime_data(
         recent_low = low[i-lookback:i+1]
         
         # Calculate metrics
-        price_range = (recent_high.max() - recent_low.min()) / close[i] if close[i] > 0 else 0
+        # price_range = (recent_high.max() - recent_low.min()) / close[i] if close[i] > 0 else 0
         
         # Directional consistency: how often did price move in same direction?
         returns = np.diff(recent_close) / recent_close[:-1]
@@ -814,19 +814,19 @@ def load_direction_data(
         
         if n_found < len(locked_feature_names) // 2:
             logger.warning(f"⚠️ Locked features: only {n_found}/{len(locked_feature_names)} found in data. "
-                          f"Falling back to dynamic selection.")
+                           f"Falling back to dynamic selection.")
         else:
             if n_missing > 0:
                 missing = [f for f in locked_feature_names if f not in available]
                 logger.warning(f"⚠️ Locked features: {n_missing} missing features will be zero-filled: "
-                              f"{missing[:5]}{'...' if n_missing > 5 else ''}")
+                               f"{missing[:5]}{'...' if n_missing > 5 else ''}")
                 # Add missing columns as zeros
                 for f in missing:
                     df[f] = 0.0
             
             features = list(locked_feature_names)
             logger.info(f"🔒 Using {len(features)} locked features from previous model "
-                       f"({n_found} found, {n_missing} zero-filled)")
+                        f"({n_found} found, {n_missing} zero-filled)")
     
     # =========================================================================
     # SMART FEATURE SELECTION: Keep top ~60 uncorrelated features
@@ -837,9 +837,9 @@ def load_direction_data(
     correlation_threshold = 0.80  # Remove features correlated > 80%
     
     # Skip dynamic selection if features are already locked from previous model
-    features_already_locked = (locked_feature_names is not None and 
-                                len(locked_feature_names) > 0 and
-                                features == list(locked_feature_names))
+    features_already_locked = (locked_feature_names is not None and
+                               len(locked_feature_names) > 0 and
+                               features == list(locked_feature_names))
     
     if len(features) > max_features and not features_already_locked:
         logger.info(f"Selecting top {max_features} uncorrelated features from {len(features)}...")
@@ -1681,7 +1681,7 @@ def load_forward_volatility_data(
     train_frac, val_frac, test_frac = split
     n_valid = n - lookahead
     train_end = int(n_valid * train_frac)
-    val_end = int(n_valid * (train_frac + val_frac))
+    # val_end = int(n_valid * (train_frac + val_frac))
     
     # Fit scaler on training data only
     scaler = RobustScaler()
@@ -1807,10 +1807,10 @@ def load_forward_volatility_data(
         
         # Regression mapping thresholds (for inference fallback)
         'reg_thresholds': {
-            'quiet': -0.15,      # <-15% → QUIET
+            'quiet': -0.15,  # <-15% → QUIET
             'stable_low': -0.15,
-            'stable_high': 0.15, # -15% to +15% → STABLE
-            'active_high': 0.40, # +15% to +40% → ACTIVE
+            'stable_high': 0.15,  # -15% to +15% → STABLE
+            'active_high': 0.40,  # +15% to +40% → ACTIVE
             # >+40% → EXTREME
         },
     }
@@ -2087,13 +2087,13 @@ def load_rf_data(
         logger.info("RF: Computing volatility_10 manually")
         returns = np.diff(close, prepend=close[0]) / np.maximum(np.roll(close, 1), 1e-8)
         returns[0] = 0
-        volatility_10 = np.array([np.std(returns[max(0,i-9):i+1]) if i >= 1 else 0.01 for i in range(n)])
+        volatility_10 = np.array([np.std(returns[max(0, i-9):i+1]) if i >= 1 else 0.01 for i in range(n)])
     
     if volatility_20 is None or np.nansum(np.abs(volatility_20)) < 1e-10:
         logger.info("RF: Computing volatility_20 manually")
         returns = np.diff(close, prepend=close[0]) / np.maximum(np.roll(close, 1), 1e-8)
         returns[0] = 0
-        volatility_20 = np.array([np.std(returns[max(0,i-19):i+1]) if i >= 1 else 0.01 for i in range(n)])
+        volatility_20 = np.array([np.std(returns[max(0, i-19):i+1]) if i >= 1 else 0.01 for i in range(n)])
     
     streak_prob = np.zeros(n, dtype=np.float32)
     for i in range(20, n):
@@ -2511,9 +2511,8 @@ def load_all_modular_data(
         # DIRECTION MODE: Transformer predicts binary direction (legacy)
         logger.info("Using DIRECTION prediction mode (binary)")
         direction_data = load_direction_data(df_normalized, split, direction_lookahead, direction_threshold,
-                                              locked_feature_names=locked_feature_names)
+                                             locked_feature_names=locked_feature_names)
         result['direction'] = direction_data
         result['tcn'] = direction_data  # Alias for backward compat
     
     return result
-
