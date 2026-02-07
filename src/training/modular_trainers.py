@@ -3820,19 +3820,21 @@ class TransformerDirectionTrainer(BaseTrainer):
         # === PREDICTION COLLAPSE DETECTION & RECOVERY CALLBACK ===
         # Detects if model collapses to predicting all one class and takes corrective action
         class PredictionCollapseCallback(keras.callbacks.Callback):
-            def __init__(self, X_val, y_val, y_train=None, check_every=2, max_recovery_attempts=3):
+            def __init__(self, X_val, y_val, y_train=None, check_every=2, max_recovery_attempts=5):
                 super().__init__()
                 self.X_val = X_val
                 self.y_val = y_val
                 self.y_train = y_train  # Needed for class-ratio bias reset
                 self.check_every = check_every
                 self.collapse_warned = False
+                self.severe_collapse_warned = False
                 self.collapse_epochs = 0  # Consecutive collapse epochs
                 self.recovery_attempts = 0
                 self.max_recovery_attempts = max_recovery_attempts
                 self.best_weights = None
                 self.best_balance = 0.5  # Best prediction balance (0.5 = perfectly balanced)
                 self._initial_lr = None  # Store original LR for recovery
+                self.prediction_history = []  # Track prediction balance over time
             
             def on_train_begin(self, logs=None):
                 """Store initial LR so recovery resets to original * 0.5, not compounded."""
@@ -3854,69 +3856,146 @@ class TransformerDirectionTrainer(BaseTrainer):
                 # Track prediction balance (0.5 = perfect, 0 or 1 = collapsed)
                 current_balance = min(pred_up_pct, pred_down_pct) / 50  # 0-1 scale
                 
-                # Save best balanced weights
-                if current_balance > self.best_balance and current_balance > 0.3:
+                # Store prediction history for trend analysis
+                self.prediction_history.append({
+                    'epoch': epoch + 1,
+                    'up_pct': pred_up_pct,
+                    'down_pct': pred_down_pct,
+                    'balance': current_balance
+                })
+                
+                # Keep only last 10 checks
+                if len(self.prediction_history) > 10:
+                    self.prediction_history.pop(0)
+                
+                # Save best balanced weights (lower threshold to 0.25 for more saves)
+                if current_balance > self.best_balance and current_balance > 0.25:
                     self.best_balance = current_balance
                     self.best_weights = self.model.get_weights()
+                    logger.debug(f"💾 Saved balanced weights at epoch {epoch+1} (balance={current_balance:.3f})")
                 
-                # Check for collapse (>90% same prediction - more aggressive detection)
-                if pred_up_pct > 90 or pred_down_pct > 90:
+                # === GRADUATED COLLAPSE DETECTION ===
+                # Warn at 80%, intervene at 85%, aggressive at 90%
+                
+                # Early warning at 80%
+                if (pred_up_pct > 80 or pred_down_pct > 80) and (pred_up_pct < 85 and pred_down_pct < 85):
+                    dominant = "UP" if pred_up_pct > 80 else "DOWN"
+                    logger.info(f"⚡ Early imbalance warning at epoch {epoch+1}: "
+                               f"{pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN "
+                               f"(trending toward {dominant})")
+                
+                # Moderate collapse at 85%
+                elif (pred_up_pct > 85 or pred_down_pct > 85) and (pred_up_pct < 90 and pred_down_pct < 90):
+                    dominant = "UP" if pred_up_pct > 85 else "DOWN"
+                    if not self.collapse_warned:
+                        logger.warning(f"⚠️ MODERATE IMBALANCE at epoch {epoch+1}: "
+                                      f"Model predicts {pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN "
+                                      f"(biased toward {dominant})")
+                        self.collapse_warned = True
+                
+                # Severe collapse at 90%
+                elif pred_up_pct > 90 or pred_down_pct > 90:
                     self.collapse_epochs += 1
                     dominant = "UP" if pred_up_pct > 90 else "DOWN"
                     
-                    if not self.collapse_warned:
-                        logger.warning(f"⚠️ PREDICTION COLLAPSE at epoch {epoch+1}: "
-                                      f"Model predicts {pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN "
-                                      f"(all {dominant})")
-                        self.collapse_warned = True
+                    if not self.severe_collapse_warned:
+                        logger.error(f"🚨 SEVERE PREDICTION COLLAPSE at epoch {epoch+1}: "
+                                    f"Model predicts {pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN "
+                                    f"(all {dominant})")
+                        self.severe_collapse_warned = True
                     
-                    # === RECOVERY ACTION: After 2 consecutive collapse checks ===
+                    # === PROGRESSIVE RECOVERY STRATEGIES ===
+                    # Strategy varies by attempt number for better chance of recovery
                     if self.collapse_epochs >= 2 and self.recovery_attempts < self.max_recovery_attempts:
                         self.recovery_attempts += 1
                         logger.warning(f"🔧 COLLAPSE RECOVERY attempt {self.recovery_attempts}/{self.max_recovery_attempts}")
                         
-                        # Strategy 1: Restore best balanced weights if available
-                        if self.best_weights is not None:
-                            logger.info("  → Restoring best balanced weights")
+                        # Attempt 1-2: Restore best weights
+                        if self.recovery_attempts <= 2 and self.best_weights is not None:
+                            logger.info(f"  → Strategy {self.recovery_attempts}: Restoring best balanced weights (balance={self.best_balance:.3f})")
                             self.model.set_weights(self.best_weights)
-                        else:
-                            # Strategy 2: Reset output bias to log(class_ratio) and perturb weights
-                            logger.info("  → Resetting output layer bias + perturbing weights")
+                            # Progressive LR reduction
+                            lr_factor = 0.5 if self.recovery_attempts == 1 else 0.3
+                        
+                        # Attempt 3: Perturb output layer
+                        elif self.recovery_attempts == 3:
+                            logger.info("  → Strategy 3: Perturbing output layer weights")
                             weights = self.model.get_weights()
-                            # Add noise to last layer weights only
-                            weights[-2] = weights[-2] + np.random.normal(0, 0.1, weights[-2].shape)
-                            # Reset bias to log(p_up / p_down) — informed prior instead of 0
+                            # Add stronger noise to last layer
+                            noise_scale = 0.15  # Increased from 0.1
+                            weights[-2] = weights[-2] + np.random.normal(0, noise_scale, weights[-2].shape)
+                            
+                            # Reset bias to class ratio
                             if self.y_train is not None:
-                                p_up = max(np.mean(self.y_train), 0.01)
+                                p_up = np.clip(np.mean(self.y_train), 0.01, 0.99)
                                 bias_init = float(np.log(p_up / (1.0 - p_up)))
-                                bias_init = np.clip(bias_init, -1.0, 1.0)  # Bound to reasonable range
+                                bias_init = np.clip(bias_init, -1.0, 1.0)
                             else:
-                                bias_init = 0.0  # Neutral if no training labels
+                                bias_init = 0.0
                             weights[-1] = np.array([bias_init])
                             self.model.set_weights(weights)
-                            logger.info(f"  → Output bias reset to {bias_init:.4f}")
+                            logger.info(f"  → Output bias reset to {bias_init:.4f}, weights perturbed")
+                            lr_factor = 0.4
                         
-                        # Reset LR to initial * 0.5 (not compounding 0.5^n of current)
+                        # Attempt 4: Perturb ALL layers
+                        elif self.recovery_attempts == 4:
+                            logger.info("  → Strategy 4: Perturbing all trainable layers")
+                            weights = self.model.get_weights()
+                            for i in range(len(weights) - 2):  # All except last layer
+                                if weights[i].size > 0:
+                                    noise = np.random.normal(0, 0.05, weights[i].shape)
+                                    weights[i] = weights[i] + noise
+                            # Also perturb output layer more aggressively
+                            weights[-2] = weights[-2] + np.random.normal(0, 0.2, weights[-2].shape)
+                            weights[-1] = np.random.normal(0, 0.1, weights[-1].shape)
+                            self.model.set_weights(weights)
+                            logger.info("  → All layers perturbed")
+                            lr_factor = 0.2  # Very aggressive LR cut
+                        
+                        # Attempt 5: Reinitialize output layer completely
+                        else:
+                            logger.info("  → Strategy 5: LAST RESORT - Reinitializing output layer")
+                            weights = self.model.get_weights()
+                            # Completely reinitialize last layer
+                            weights[-2] = np.random.normal(0, 0.3, weights[-2].shape)
+                            weights[-1] = np.zeros_like(weights[-1])
+                            self.model.set_weights(weights)
+                            logger.info("  → Output layer reinitialized")
+                            lr_factor = 0.6  # Higher LR for relearning
+                        
+                        # Adjust learning rate based on strategy
                         if self._initial_lr is not None:
-                            new_lr = self._initial_lr * 0.5
+                            new_lr = self._initial_lr * lr_factor
                         else:
                             current_lr = float(self.model.optimizer.learning_rate)
-                            new_lr = current_lr * 0.5
+                            new_lr = current_lr * lr_factor
                         self.model.optimizer.learning_rate.assign(new_lr)
-                        logger.info(f"  → Learning rate reset to {new_lr:.2e}")
+                        logger.info(f"  → Learning rate adjusted to {new_lr:.2e} (factor={lr_factor})")
                         
                         self.collapse_epochs = 0  # Reset counter after recovery
                     
                     # If all recovery attempts exhausted, stop training
                     elif self.collapse_epochs >= 4 and self.recovery_attempts >= self.max_recovery_attempts:
                         logger.error(f"❌ STOPPING: Prediction collapse persists after {self.max_recovery_attempts} recovery attempts")
+                        logger.error(f"   Final distribution: {pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN")
+                        
+                        # Log prediction history for debugging
+                        if len(self.prediction_history) > 0:
+                            logger.error("   Collapse history (last 10 checks):")
+                            for h in self.prediction_history[-5:]:
+                                logger.error(f"     Epoch {h['epoch']}: {h['up_pct']:.1f}% UP, {h['down_pct']:.1f}% DOWN (balance={h['balance']:.3f})")
+                        
                         self.model.stop_training = True
                 else:
+                    # Reset warnings and counters when balanced
                     self.collapse_epochs = 0
                     self.collapse_warned = False
-                    if epoch > 0 and (epoch + 1) % 10 == 0:
+                    self.severe_collapse_warned = False
+                    
+                    # Regular distribution logging every 5 checks (10 epochs with check_every=2)
+                    if epoch > 0 and (epoch + 1) % (self.check_every * 5) == 0:
                         logger.info(f"📊 Prediction distribution at epoch {epoch+1}: "
-                                   f"{pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN")
+                                   f"{pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN (balance={current_balance:.3f})")
         
         # Callbacks - use config patience values
         # Key insight: For classification, val_accuracy is what matters for trading
