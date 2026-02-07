@@ -22,12 +22,11 @@ import hashlib
 import json
 import logging
 import pickle
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import tensorflow as tf
@@ -322,7 +321,7 @@ class EMACallback:
             
             if mismatched > 0:
                 logger.warning(f"⚠️ EMA: {mismatched} weight tensors had shape mismatches — "
-                             f"those will be re-initialized from current model weights")
+                               f"those will be re-initialized from current model weights")
             
             # Fill in any missing weights from current model
             for w in self.model.trainable_weights:
@@ -334,7 +333,7 @@ class EMACallback:
             # Legacy format: positional list — unsafe to map by index due to potential 
             # frozen/unfrozen layer changes. Instead, re-initialize from current weights.
             logger.warning(f"⚠️ EMA legacy list format ({len(weights)} tensors) — "
-                         f"re-initializing from current model weights for safety")
+                           f"re-initializing from current model weights for safety")
             self._initialize_ema()
             return
         else:
@@ -783,7 +782,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         Nuclear option when model is too far into memorization to recover.
         """
         self.console.print(
-            f"  [red bold]🔥 FULL WEIGHT RESET - Model too far into memorization[/red bold]"
+            "  [red bold]🔥 FULL WEIGHT RESET - Model too far into memorization[/red bold]"
         )
         
         # Save current architecture, reinitialize weights
@@ -812,7 +811,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             pass
         
         self.console.print(
-            f"  [yellow]   Starting fresh - warm-start weights were too corrupted[/yellow]"
+            "  [yellow]   Starting fresh - warm-start weights were too corrupted[/yellow]"
         )
     
     def _reset_optimizer_state(self):
@@ -859,7 +858,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         
         if is_likely_warmstart and gap > self.warmstart_reset_threshold:
             self.console.print(
-                f"  [red bold]⚠️ WARM-START OVERFIT DETECTED[/red bold]"
+                "  [red bold]⚠️ WARM-START OVERFIT DETECTED[/red bold]"
             )
             self.console.print(
                 f"  [yellow]   Initial gap={gap:.1%} suggests loaded weights are memorizing.[/yellow]"
@@ -868,13 +867,13 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             # Severity determines action
             if gap > 0.20:  # 20%+ gap - nuclear option
                 self.console.print(
-                    f"  [red]   Gap > 20% - applying AGGRESSIVE recovery (dense layer reset)[/red]"
+                    "  [red]   Gap > 20% - applying AGGRESSIVE recovery (dense layer reset)[/red]"
                 )
                 self._reinitialize_dense_layers()
                 self._reset_optimizer_state()
             else:
                 self.console.print(
-                    f"  [yellow]   Applying recovery: weight perturbation + optimizer reset[/yellow]"
+                    "  [yellow]   Applying recovery: weight perturbation + optimizer reset[/yellow]"
                 )
                 # Standard recovery
                 self._perturb_weights(scale=self.weight_perturbation_scale)
@@ -969,7 +968,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
                     f"  [yellow]⚠️ Warm-start: {self.critical_epochs} epochs without improvement over baseline[/yellow]"
                 )
                 self.console.print(
-                    f"  [yellow]   Continuing training (will restore original weights if no improvement)[/yellow]"
+                    "  [yellow]   Continuing training (will restore original weights if no improvement)[/yellow]"
                 )
         elif self.critical_epochs >= 5 and self.critical_epochs % 5 == 0:
             if not hasattr(self, '_last_perturbation_epoch') or epoch - self._last_perturbation_epoch >= 5:
@@ -1108,16 +1107,16 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             if self.best_val_acc < self.warm_start_best_acc:
                 # No improvement over baseline after 15 epochs - stop and revert
                 self.console.print(
-                    f"\n  [bold red]🛑 CONTINUAL LEARNING FAILED: No improvement over baseline[/bold red]"
+                    "\n  [bold red]🛑 CONTINUAL LEARNING FAILED: No improvement over baseline[/bold red]"
                 )
                 self.console.print(
                     f"  [red]   Best achieved: {self.best_val_acc:.1%} < baseline: {self.warm_start_best_acc:.1%}[/red]"
                 )
                 self.console.print(
-                    f"  [yellow]💡 Stopping early. Original model weights preserved.[/yellow]"
+                    "  [yellow]💡 Stopping early. Original model weights preserved.[/yellow]"
                 )
                 self.console.print(
-                    f"  [cyan]   Try: More data, lower LR (--lr 0.00001), or different pair[/cyan]"
+                    "  [cyan]   Try: More data, lower LR (--lr 0.00001), or different pair[/cyan]"
                 )
                 self.model.stop_training = True
                 return
@@ -1378,7 +1377,6 @@ class RichEpochCallback(tf.keras.callbacks.Callback):
         val_acc = logs.get('val_accuracy', logs.get('accuracy', 0))
         val_loss = logs.get('val_loss', logs.get('loss', 0))
         train_acc = logs.get('accuracy', 0)
-        train_loss = logs.get('loss', 0)
         lr = logs.get('lr', logs.get('learning_rate', 0))
         
         # Determine if this is best epoch (must beat warm-start baseline!)
@@ -1498,7 +1496,7 @@ class AutoAdjustCallback(tf.keras.callbacks.Callback):
             # Get current learning rate
             try:
                 current_lr = float(self.model.optimizer.learning_rate)
-            except:
+            except Exception:
                 current_lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
             
             if current_lr > self.min_lr:
@@ -1705,7 +1703,7 @@ class ReplayBuffer:
         match_ratio = len(shared) / len(dst_names) if dst_names else 0
         if match_ratio < 0.50:
             logger.warning(f"📦 Replay buffer: only {len(shared)}/{len(dst_names)} features overlap "
-                          f"({match_ratio:.0%}) — too low, discarding buffer")
+                           f"({match_ratio:.0%}) — too low, discarding buffer")
             return None
         
         # Build index mapping: dst_col_idx -> src_col_idx (or -1 if missing)
@@ -1764,7 +1762,7 @@ class ReplayBuffer:
             json.dump(meta, f, indent=2)
         
         logger.info(f"📦 Replay buffer saved to {save_dir} ({len(self.X_buffer)} samples, "
-                     f"{len(self.feature_names) if self.feature_names else '?'} features)")
+                    f"{len(self.feature_names) if self.feature_names else '?'} features)")
     
     def load(self, instrument: str) -> bool:
         """Load replay buffer from disk."""
@@ -1790,7 +1788,7 @@ class ReplayBuffer:
             self.metadata = meta
         
         logger.info(f"📦 Replay buffer loaded: {len(self.X_buffer)} samples from {instrument} "
-                     f"({len(self.feature_names) if self.feature_names else '?'} features)")
+                    f"({len(self.feature_names) if self.feature_names else '?'} features)")
         return True
 
 
@@ -2174,7 +2172,7 @@ class TrainingLineage:
     def get_training_summary(self) -> str:
         """Get human-readable summary of training lineage."""
         lines = [
-            f"📊 Training Lineage Summary",
+            "📊 Training Lineage Summary",
             f"  Checkpoint: {self.checkpoint_id}",
             f"  Created: {self.created_at}",
             f"  Generation: {self.generation}",
@@ -2188,7 +2186,7 @@ class TrainingLineage:
         if self.drift_detected:
             lines.append(f"  ⚠️ Drift detected: {self.drift_reason}")
         if self.ema_enabled:
-            lines.append(f"  EMA: enabled")
+            lines.append("  EMA: enabled")
         if self.ewc_n_tasks > 0:
             lines.append(f"  EWC: {self.ewc_n_tasks} task(s)")
         if self.replay_buffer_size > 0:
@@ -2327,7 +2325,6 @@ class TCNTrainer(BaseTrainer):
     
     def _build_model(self, input_shape: Tuple[int, int]) -> Any:
         """Build TCN model architecture."""
-        import tensorflow as tf
         from tensorflow import keras
         
         seq_len, n_features = input_shape
@@ -2381,7 +2378,6 @@ class TCNTrainer(BaseTrainer):
         feature_names: Optional[list] = None,
     ) -> Dict[str, float]:
         """Train TCN for direction prediction."""
-        import tensorflow as tf
         from tensorflow import keras
         from sklearn.preprocessing import StandardScaler
         
@@ -2637,14 +2633,11 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         
         Uses TCNVolatilityDualHead from tensorflow_models.py.
         """
-        import tensorflow as tf
-        from tensorflow import keras
-        
         # Import the dual-head model
         try:
-            from src.models.tensorflow_models import TCNVolatilityDualHead, DualHeadLoss
+            from src.models.tensorflow_models import TCNVolatilityDualHead
         except ImportError:
-            from models.tensorflow_models import TCNVolatilityDualHead, DualHeadLoss
+            from models.tensorflow_models import TCNVolatilityDualHead
         
         seq_len, n_features = input_shape
         
@@ -2652,7 +2645,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         receptive_field = self._compute_receptive_field()
         if receptive_field < seq_len:
             logger.warning(f"Receptive field ({receptive_field}) < seq_len ({seq_len}). "
-                          f"Consider increasing num_residual_blocks.")
+                           f"Consider increasing num_residual_blocks.")
         
         # Build dual-head model
         model = TCNVolatilityDualHead(
@@ -2707,9 +2700,8 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         Returns:
             Dict with training metrics
         """
-        import tensorflow as tf
         from tensorflow import keras
-        from sklearn.metrics import classification_report, f1_score
+        from sklearn.metrics import f1_score
         
         # Initialize clean display
         display = TrainingDisplay("TCN Forward Volatility")
@@ -2896,8 +2888,8 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
                 reg_loss = regression_loss_fn(y['regression'], outputs['regression'])
                 
                 # Combined loss
-                total_loss = (self.classification_weight * class_loss + 
-                             self.regression_weight * reg_loss)
+                total_loss = (self.classification_weight * class_loss +
+                              self.regression_weight * reg_loss)
                 
                 # Add regularization losses
                 if self.model.losses:
@@ -2921,8 +2913,8 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
                 sample_weight=sample_weight
             )
             reg_loss = regression_loss_fn(y['regression'], outputs['regression'])
-            total_loss = (self.classification_weight * class_loss + 
-                         self.regression_weight * reg_loss)
+            total_loss = (self.classification_weight * class_loss +
+                          self.regression_weight * reg_loss)
             
             val_loss_metric.update_state(total_loss)
             val_acc_metric.update_state(y['classification'], outputs['classification'])
@@ -2962,8 +2954,8 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             history['val_accuracy'].append(val_acc)
             
             # Call callbacks
-            logs = {'loss': train_loss, 'accuracy': train_acc, 
-                   'val_loss': val_loss, 'val_accuracy': val_acc}
+            logs = {'loss': train_loss, 'accuracy': train_acc,
+                    'val_loss': val_loss, 'val_accuracy': val_acc}
             for callback in callbacks:
                 # Set model via set_model() for Keras callbacks, or _model for custom
                 if hasattr(callback, 'set_model'):
@@ -2994,17 +2986,14 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         val_outputs = self.model.predict(X_val, verbose=0)
         if isinstance(val_outputs, dict):
             val_pred_probs = val_outputs['classification']
-            val_pred_reg = val_outputs['regression'].flatten()
         else:
             val_pred_probs = val_outputs
-            val_pred_reg = np.zeros(len(y_val))
         
         val_pred_classes = np.argmax(val_pred_probs, axis=1)
         val_acc = np.mean(val_pred_classes == y_val)
         
         # Calculate distributions (logged via display)
         pred_dist = np.bincount(val_pred_classes, minlength=self.n_classes) / len(val_pred_classes)
-        true_dist = np.bincount(y_val, minlength=self.n_classes) / len(y_val)
         
         # Calculate F1 scores per class
         f1_scores = f1_score(y_val, val_pred_classes, average=None, zero_division=0)
@@ -3442,7 +3431,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                     
                     regime_name = ['LOW_VOL', 'MED_VOL', 'HIGH_VOL'][regime]
                     logger.info(f"  Regime {regime_name}: n={regime_mask.sum()}, up={regime_up} ({100*regime_up/regime_total:.1f}%), "
-                               f"weights: up={up_weight:.3f}, down={down_weight:.3f}")
+                                f"weights: up={up_weight:.3f}, down={down_weight:.3f}")
             
             # Normalize weights to mean=1 (preserves effective batch size)
             sample_weights = sample_weights / sample_weights.mean()
@@ -3507,12 +3496,12 @@ class TransformerDirectionTrainer(BaseTrainer):
                         logger.info(f"📦 Mixed {len(X_replay)} replay samples, new train size: {len(X_train_filtered)}")
                     else:
                         logger.warning(f"⚠️ Replay buffer shape still mismatched after remap: "
-                                      f"buffer={X_replay.shape[-1]}, current={X_train_filtered.shape[-1]}. Skipping replay.")
+                                       f"buffer={X_replay.shape[-1]}, current={X_train_filtered.shape[-1]}. Skipping replay.")
             
             # Add current training data to buffer for future sessions (with feature names)
             self.replay_buffer.add_samples(
-                X_train_filtered, 
-                y_train_filtered, 
+                X_train_filtered,
+                y_train_filtered,
                 sample_weights,
                 data_id=f"{instrument}_{self.lineage.checkpoint_id}",
                 feature_names=self.feature_names,
@@ -3546,7 +3535,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                 else:
                     # Partial transfer: match layers by name, transfer where shapes align
                     logger.info(f"⚡ Architecture mismatch: checkpoint={existing_model.count_params():,} params, "
-                               f"new={self.model.count_params():,}. Attempting partial weight transfer...")
+                                f"new={self.model.count_params():,}. Attempting partial weight transfer...")
                     
                     old_weights_by_name = {}
                     for layer in existing_model.layers:
@@ -3571,9 +3560,9 @@ class TransformerDirectionTrainer(BaseTrainer):
                         self._is_warm_start = True
                         self._warm_start_weights = self.model.get_weights()
                         logger.info(f"✓ Partial transfer: {transferred} weight tensors loaded, "
-                                   f"{skipped} skipped (shape mismatch)")
+                                    f"{skipped} skipped (shape mismatch)")
                     else:
-                        logger.warning(f"⚠️ No compatible layers found for transfer. Starting fresh.")
+                        logger.warning("⚠️ No compatible layers found for transfer. Starting fresh.")
                     
                     # === LAYER FREEZING FOR WARM-START ===
                     # Freeze transformer encoder layers (feature extraction) to prevent catastrophic forgetting
@@ -3623,7 +3612,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                         if trainable_head_layers:
                             logger.info(f"   Trainable layers: {trainable_head_layers[:5]}{'...' if len(trainable_head_layers) > 5 else ''}")
                     else:
-                        logger.warning(f"⚠️ WARM-START: No layers frozen! This may cause catastrophic forgetting.")
+                        logger.warning("⚠️ WARM-START: No layers frozen! This may cause catastrophic forgetting.")
                     
                     # WARM-START LR REDUCTION: Use 100x lower LR to preserve learned weights
                     effective_lr = self.config.learning_rate * self.config.warm_start_lr_factor
@@ -3643,7 +3632,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                             # Store the instrument the loaded model was trained on
                             self._loaded_model_instrument = parent_lineage.instrument
                             logger.info(f"📊 Loaded lineage from parent: {parent_lineage.checkpoint_id} "
-                                       f"(cumulative epochs: {self.lineage.cumulative_epochs}, instrument: {self._loaded_model_instrument})")
+                                        f"(cumulative epochs: {self.lineage.cumulative_epochs}, instrument: {self._loaded_model_instrument})")
                         
                         # CRITICAL: Load previous best accuracy to prevent saving worse models
                         prev_metrics = meta.get('metrics', {})
@@ -3731,11 +3720,11 @@ class TransformerDirectionTrainer(BaseTrainer):
                 # Same-pair: reduce lambda to allow learning while preventing catastrophic forgetting
                 ewc_weight = 0.1
                 logger.info(f"🧠 EWC loss enabled (same-pair): λ={self.ewc.ewc_lambda}×{ewc_weight}, "
-                           f"protecting {self.ewc._n_tasks} prior task(s) with reduced constraint")
+                            f"protecting {self.ewc._n_tasks} prior task(s) with reduced constraint")
             else:
                 ewc_weight = 1.0
                 logger.info(f"🧠 EWC loss enabled (cross-pair): λ={self.ewc.ewc_lambda}, "
-                           f"protecting {self.ewc._n_tasks} prior task(s)")
+                            f"protecting {self.ewc._n_tasks} prior task(s)")
             ewc_loss = create_ewc_loss(base_loss, self.ewc.penalty, ewc_weight=ewc_weight)
             self.model.compile(
                 optimizer=optimizer,
@@ -3745,7 +3734,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         else:
             if self._is_warm_start and self._use_ewc and self.ewc is not None:
                 if self.ewc.fisher_diagonal is None:
-                    logger.info(f"🧠 EWC disabled: no Fisher information from prior training")
+                    logger.info("🧠 EWC disabled: no Fisher information from prior training")
             self.model.compile(
                 optimizer=optimizer,
                 loss=base_loss,
@@ -3866,8 +3855,8 @@ class TransformerDirectionTrainer(BaseTrainer):
                     
                     if not self.collapse_warned:
                         logger.warning(f"⚠️ PREDICTION COLLAPSE at epoch {epoch+1}: "
-                                      f"Model predicts {pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN "
-                                      f"(all {dominant})")
+                                       f"Model predicts {pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN "
+                                       f"(all {dominant})")
                         self.collapse_warned = True
                     
                     # === RECOVERY ACTION: After 2 consecutive collapse checks ===
@@ -3916,7 +3905,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                     self.collapse_warned = False
                     if epoch > 0 and (epoch + 1) % 10 == 0:
                         logger.info(f"📊 Prediction distribution at epoch {epoch+1}: "
-                                   f"{pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN")
+                                    f"{pred_up_pct:.1f}% UP, {pred_down_pct:.1f}% DOWN")
         
         # Callbacks - use config patience values
         # Key insight: For classification, val_accuracy is what matters for trading
@@ -3929,7 +3918,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         lr_reduce_patience = self.config.patience * 2 if self._is_warm_start else max(4, self.config.patience // 4)
         
         if self._is_warm_start:
-            logger.info(f"📊 Warm-start callback adjustments:")
+            logger.info("📊 Warm-start callback adjustments:")
             logger.info(f"   Early stopping patience: {early_stop_patience} (reduced from {self.config.patience})")
             logger.info(f"   LR reduction patience: {lr_reduce_patience} (increased from {max(4, self.config.patience // 4)})")
         
@@ -4005,7 +3994,6 @@ class TransformerDirectionTrainer(BaseTrainer):
         
         # === WARM-START RECOVERY: Restore original weights if training degraded ===
         # CRITICAL: Do this BEFORE computing final metrics!
-        weights_restored = False
         if self._is_warm_start and self._warm_start_weights is not None and self._warm_start_val_acc > 0:
             # Check current val accuracy using model after EarlyStopping restored "best" training weights
             current_val_pred = (self.model.predict(X_val_filtered, verbose=0) > 0.5).astype(float)
@@ -4017,12 +4005,11 @@ class TransformerDirectionTrainer(BaseTrainer):
                 # Training degraded - restore original weights
                 from rich.console import Console
                 console = Console()
-                console.print(f"  [bold red]⚠️ WARM-START RECOVERY TRIGGERED[/bold red]")
+                console.print("  [bold red]⚠️ WARM-START RECOVERY TRIGGERED[/bold red]")
                 console.print(f"  [red]   Current: {current_val_acc:.1%} < Baseline: {self._warm_start_val_acc:.1%}[/red]")
-                console.print(f"  [yellow]   Restoring original warm-start weights to prevent degradation...[/yellow]")
+                console.print("  [yellow]   Restoring original warm-start weights to prevent degradation...[/yellow]")
                 
                 self.model.set_weights(self._warm_start_weights)
-                weights_restored = True
                 
                 console.print(f"  [green]✓ Original weights restored. Model preserved at {self._warm_start_val_acc:.1%} accuracy[/green]")
                 logger.info(f"✓ Warm-start weights restored. Model preserved at {self._warm_start_val_acc:.1%}")
@@ -4089,7 +4076,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         raw_mean = float(np.mean(val_raw_pred))
         raw_std = float(np.std(val_raw_pred))
         raw_median = float(np.median(val_raw_pred))
-        logger.info(f"📊 Final validation prediction distribution:")
+        logger.info("📊 Final validation prediction distribution:")
         logger.info(f"   Raw prob: mean={raw_mean:.4f}, median={raw_median:.4f}, std={raw_std:.4f}, min={float(np.min(val_raw_pred)):.4f}, max={float(np.max(val_raw_pred)):.4f}")
         logger.info(f"   Predictions (thresh=0.5): LONG={long_preds} ({100*long_preds/len(y_pred):.1f}%), SHORT={short_preds} ({100*short_preds/len(y_pred):.1f}%)")
         if long_preds == 0 or short_preds == 0:
@@ -4117,7 +4104,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         long_preds_cal = (val_pred_calibrated == 1).sum()
         short_preds_cal = (val_pred_calibrated == 0).sum()
         logger.info(f"📐 Calibrated (thresh={raw_median:.4f}): LONG={long_preds_cal} ({100*long_preds_cal/len(val_pred_calibrated):.1f}%), "
-                   f"SHORT={short_preds_cal} ({100*short_preds_cal/len(val_pred_calibrated):.1f}%)")
+                    f"SHORT={short_preds_cal} ({100*short_preds_cal/len(val_pred_calibrated):.1f}%)")
         logger.info(f"📐 Calibrated balanced accuracy: {balanced_acc_cal:.4f} (up={up_acc_cal:.4f}, down={down_acc_cal:.4f})")
         
         # Use calibrated balanced accuracy in metrics
@@ -4146,7 +4133,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                     w_norm = float(tf.norm(w).numpy())
                     total_weight_norm += w_norm
                     trainable_params += int(tf.size(w).numpy())
-            avg_weight_norm = total_weight_norm / max(1, len([w for l in self.model.layers for w in l.trainable_weights]))
+            avg_weight_norm = total_weight_norm / max(1, len([w for layer in self.model.layers for w in layer.trainable_weights]))
             self.metrics['total_weight_norm'] = total_weight_norm
             self.metrics['avg_weight_norm'] = avg_weight_norm
             logger.info(f"Weight norms: total={total_weight_norm:.2f}, avg={avg_weight_norm:.4f} (trainable params={trainable_params:,})")
@@ -4181,7 +4168,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                     self.lineage.last_drift_check = datetime.now().isoformat()
         
         logger.info(f"Transformer trained [canonical]: val_accuracy={val_acc:.4f}, "
-                   f"balanced_acc={balanced_acc:.4f} (up={up_acc:.4f}, down={down_acc:.4f})")
+                    f"balanced_acc={balanced_acc:.4f} (up={up_acc:.4f}, down={down_acc:.4f})")
         return self.metrics
     
     def predict(self, X: np.ndarray, use_ema: bool = True) -> Dict[str, Any]:
@@ -4353,7 +4340,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Strategy 1: Standard load (works if same Keras version)
         try:
             model = keras.models.load_model(str(path), compile=False)
-            logger.info(f"✓ Model loaded with standard loader")
+            logger.info("✓ Model loaded with standard loader")
         except Exception as e:
             load_errors.append(f"Standard: {e}")
         
@@ -4361,7 +4348,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         if model is None:
             try:
                 model = tf.keras.models.load_model(str(path), compile=False)
-                logger.info(f"✓ Model loaded with tf.keras loader")
+                logger.info("✓ Model loaded with tf.keras loader")
             except Exception as e:
                 load_errors.append(f"TF-native: {e}")
         
@@ -4369,7 +4356,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         if model is None:
             try:
                 model = keras.models.load_model(str(path), compile=False, safe_mode=False)
-                logger.info(f"✓ Model loaded with safe_mode=False")
+                logger.info("✓ Model loaded with safe_mode=False")
             except Exception as e:
                 load_errors.append(f"Safe-mode: {e}")
         
@@ -4405,7 +4392,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                         dff=dff,
                         dropout=dropout,
                     )
-                    logger.info(f"✓ Model architecture rebuilt from metadata via factory")
+                    logger.info("✓ Model architecture rebuilt from metadata via factory")
                     
                     # If model was rebuilt, we need to load weights from EMA
                     ema_path = path.with_suffix('.ema.pkl')
@@ -4459,7 +4446,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         if meta.get('lineage'):
             self.lineage = TrainingLineage.from_dict(meta['lineage'])
             logger.info(f"📊 Lineage loaded: checkpoint={self.lineage.checkpoint_id}, "
-                       f"cumulative_epochs={self.lineage.cumulative_epochs}")
+                        f"cumulative_epochs={self.lineage.cumulative_epochs}")
         
         # Load EMA weights
         ema_path = path.with_suffix('.ema.pkl')
@@ -4571,7 +4558,6 @@ class TransformerRegimeTrainer(BaseTrainer):
         Train Transformer for 3-class regime classification.
         Reports F1 score (macro) as primary metric.
         """
-        import tensorflow as tf
         from tensorflow import keras
         from sklearn.preprocessing import StandardScaler
         from sklearn.metrics import f1_score, classification_report
@@ -4709,7 +4695,7 @@ class TransformerRegimeTrainer(BaseTrainer):
         
         logger.info(f"Regime Transformer trained: val_acc={val_acc:.4f}, F1_macro={f1_macro:.4f}")
         logger.info(f"  F1 per class: trend={self.metrics['f1_trend']:.3f}, "
-                   f"chop={self.metrics['f1_chop']:.3f}, mean_revert={self.metrics['f1_mean_revert']:.3f}")
+                    f"chop={self.metrics['f1_chop']:.3f}, mean_revert={self.metrics['f1_mean_revert']:.3f}")
         
         return self.metrics
     
@@ -5441,7 +5427,7 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
             X_train_pca = self.pca.fit_transform(X_train_scaled)
             X_val_pca = self.pca.transform(X_val_scaled)
             logger.info(f"PCA: {X_train_scaled.shape[1]} features -> {X_train_pca.shape[1]} components "
-                       f"(explaining {self.pca_variance*100:.0f}% variance)")
+                        f"(explaining {self.pca_variance*100:.0f}% variance)")
             X_train_final = X_train_pca
             X_val_final = X_val_pca
         else:
@@ -5488,7 +5474,7 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
         try:
             from sklearn.metrics import roc_auc_score
             auc = roc_auc_score(y_val_filtered, y_prob)
-        except:
+        except Exception:
             auc = 0.5
         
         self.metrics = {
@@ -5504,7 +5490,7 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
         }
         
         logger.info(f"HistGB trained: val_accuracy={val_acc:.4f}, balanced={balanced_acc:.4f}, "
-                   f"auc={auc:.4f}, iters={self.model.n_iter_}")
+                    f"auc={auc:.4f}, iters={self.model.n_iter_}")
         return self.metrics
     
     def predict(self, X: np.ndarray) -> Dict[str, Any]:
@@ -5869,4 +5855,3 @@ def train_all_modular(
     logger.info("="*50)
     
     return trainers
-
