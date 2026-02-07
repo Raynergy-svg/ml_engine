@@ -18,7 +18,7 @@ from typing import Optional
 
 import numpy as np
 
-from confidence_calibration import CalibrationResult
+from src.risk.confidence_calibration import CalibrationResult
 
 logger = logging.getLogger(__name__)
 

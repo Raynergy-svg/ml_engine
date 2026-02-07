@@ -175,13 +175,7 @@ def _buddy_setup_training_environment(
     console: _ConsoleLike,
     setup_tracing: Callable[[], Any] | None = None,
 ):
-    """Setup TF environment, tracing, and mixed precision.
-    
-    Note: Mixed precision (float16) is only enabled on Apple Silicon (arm64).
-    Intel Macs (x86_64) always use float32 as they lack GPU acceleration for FP16.
-    """
-    import platform
-    
+    """Setup TF environment, tracing, and mixed precision."""
     configure_tf_metal(verbose=bool(timing), force_cpu=force_cpu)
 
     if setup_tracing is not None:
@@ -191,25 +185,20 @@ def _buddy_setup_training_environment(
             pass
 
     mp_enabled = False
-    is_apple_silicon = platform.system() == "Darwin" and platform.machine() == "arm64"
-    
-    if mixed_precision and is_apple_silicon:
+    if mixed_precision:
         try:
+            import warnings
             import tensorflow as tf
 
-            tf.keras.mixed_precision.set_global_policy("mixed_float16")
-            console.print("Mixed precision enabled: mixed_float16")
+            # Suppress TF mixed precision compatibility warnings (e.g. on Metal)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*mixed_float16.*")
+                warnings.filterwarnings("ignore", message=".*Mixed precision.*")
+                tf.keras.mixed_precision.set_global_policy("mixed_float16")
+            console.print("[dim]Mixed precision enabled: mixed_float16[/dim]")
             mp_enabled = True
-        except Exception as e:
-            console.print(
-                "[yellow]Mixed precision enable failed[/yellow]:",
-                e,
-            )
-    elif mixed_precision and not is_apple_silicon:
-        console.print(
-            "[yellow]Mixed precision skipped[/yellow]: "
-            f"not supported on {platform.machine()} (Intel/x86_64 uses float32)"
-        )
+        except Exception:
+            console.print("[dim]Mixed precision: not available[/dim]")
 
     return mp_enabled
 

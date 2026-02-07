@@ -53,13 +53,13 @@ from src.training.enterprise_training import (
 
 # Import modular trainers
 try:
-    from modular_trainers import TrainerConfig
-    from modular_trainers import TransformerDirectionTrainer
-    from modular_trainers import XGBoostTrainer
-    from modular_trainers import RandomForestTrainer
-    from modular_trainers import RidgeTrainer
-    from modular_trainers import HistGradientBoostingDirectionTrainer
-    from modular_trainers import train_all_modular
+    from src.training.modular_trainers import TrainerConfig
+    from src.training.modular_trainers import TransformerDirectionTrainer
+    from src.training.modular_trainers import XGBoostTrainer
+    from src.training.modular_trainers import RandomForestTrainer
+    from src.training.modular_trainers import RidgeTrainer
+    from src.training.modular_trainers import HistGradientBoostingDirectionTrainer
+    from src.training.modular_trainers import train_all_modular
     MODULAR_TRAINERS_AVAILABLE = True
 except ImportError:
     MODULAR_TRAINERS_AVAILABLE = False

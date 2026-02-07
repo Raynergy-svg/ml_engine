@@ -290,7 +290,7 @@ def test_inference():
         print("Train first with: buddy train --model-type ensemble --candles 8000")
         return False
     
-    from modular_inference import ModularEnsembleInference, InferenceConfig
+    from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
     
     # Create test data
     df = create_test_data(100)

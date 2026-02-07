@@ -3236,12 +3236,12 @@ class TransformerDirectionTrainer(BaseTrainer):
         self.n_features = None
         self.seq_len = None
         
-        # Transformer-specific config - defaults match TrainerConfig for proven 60.9% config
-        self.transformer_d_model = getattr(config, 'transformer_d_model', 16) if config else 16
-        self.transformer_num_heads = getattr(config, 'transformer_num_heads', 2) if config else 2
-        self.transformer_num_layers = getattr(config, 'transformer_num_layers', 1) if config else 1
-        self.transformer_dff = getattr(config, 'transformer_dff', 32) if config else 32
-        self.transformer_dropout = getattr(config, 'transformer_dropout', 0.2) if config else 0.2  # Reduced from 0.4
+        # Transformer-specific config
+        self.transformer_d_model = getattr(config, 'transformer_d_model', 32) if config else 32
+        self.transformer_num_heads = getattr(config, 'transformer_num_heads', 4) if config else 4
+        self.transformer_num_layers = getattr(config, 'transformer_num_layers', 2) if config else 2
+        self.transformer_dff = getattr(config, 'transformer_dff', 64) if config else 64
+        self.transformer_dropout = getattr(config, 'transformer_dropout', 0.2) if config else 0.2
         
         # === CONTINUAL LEARNING COMPONENTS ===
         
@@ -3268,134 +3268,25 @@ class TransformerDirectionTrainer(BaseTrainer):
         self._is_warm_start = False
     
     def _build_model(self, input_shape: Tuple[int, int]) -> Any:
-        """
-        Build Transformer model architecture.
-        
-        Key changes for anti-collapse:
-        1. Very light L2 regularization (0.001) - too much suppresses outputs
-        2. Moderate dropout (0.25)
-        3. Small model capacity (d_model=32, 2 layers)
-        4. NO regularization on output layer - let it learn freely
-        5. Output bias initialized to small positive value (assumes ~52% UP)
-        """
-        import tensorflow as tf
-        from tensorflow import keras
-        
+        """Build Transformer model for direction prediction using centralized builder."""
+        from src.models.tensorflow_models import build_transformer_direction_model
+
         seq_len, n_features = input_shape
-        
-        # VERY light L2 regularization - too much suppresses outputs
-        l2_reg = keras.regularizers.l2(0.001)
-        
-        # Input
-        inp = keras.Input(shape=(seq_len, n_features), name="features")
-        
-        # Very light input noise - prevents overfitting to exact values
-        x = keras.layers.GaussianNoise(0.02)(inp)
-        
-        # Light spatial dropout on input sequence
-        x = keras.layers.SpatialDropout1D(0.05)(x)
-        
-        # Project features to d_model dimension (with L2)
-        x = keras.layers.Dense(
-            self.transformer_d_model, 
-            kernel_regularizer=l2_reg,
-            name='input_projection'
-        )(x)
-        x = keras.layers.Dropout(0.15)(x)
-        
-        # Add positional encoding
-        x = self._add_positional_encoding(x, seq_len, self.transformer_d_model)
-        
-        # Transformer encoder layers
-        for i in range(self.transformer_num_layers):
-            x = self._transformer_encoder_layer(
-                x, 
-                self.transformer_d_model, 
-                self.transformer_num_heads,
-                self.transformer_dff,
-                self.transformer_dropout,  # Uses config dropout (0.4)
-                l2_reg,
-                name_prefix=f'transformer_{i}'
-            )
-        
-        # Global pooling and output
-        x = keras.layers.GlobalAveragePooling1D()(x)
-        
-        # Use tanh instead of ReLU - tanh outputs [-1, 1] which allows both positive
-        # and negative contributions to the sigmoid input, making it easier to balance around 0.5
-        x = keras.layers.Dense(16, activation='tanh', kernel_regularizer=l2_reg)(x)
-        x = keras.layers.Dropout(0.15)(x)
-        
-        # Binary direction output
-        # With tanh inputs ranging [-1, 1], the dot product with weights can be near 0
-        # Use small kernel init and zero bias to start at sigmoid(0) = 0.5
-        direction = keras.layers.Dense(
-            1, 
-            activation='sigmoid', 
-            name='direction', 
-            dtype='float32',
-            kernel_initializer=keras.initializers.TruncatedNormal(mean=0.0, stddev=0.05),
-            bias_initializer=keras.initializers.Zeros(),  # Start at sigmoid(0) = 0.5
-        )(x)
-        
-        model = keras.Model(inputs=inp, outputs=direction, name='transformer_direction')
-        
-        # Adam optimizer with standard learning rate
-        optimizer = keras.optimizers.Adam(learning_rate=self.config.learning_rate)
-        logger.info(f"Using Adam optimizer with lr={self.config.learning_rate:.2e}")
-        
-        # Standard binary cross entropy - we'll handle calibration post-training
-        model.compile(
-            optimizer=optimizer,
-            loss=keras.losses.BinaryCrossentropy(label_smoothing=0.0),
-            metrics=[keras.metrics.BinaryAccuracy(name='accuracy', threshold=0.5)],
+
+        model = build_transformer_direction_model(
+            seq_len=seq_len,
+            n_features=n_features,
+            d_model=self.transformer_d_model,
+            num_heads=self.transformer_num_heads,
+            num_layers=self.transformer_num_layers,
+            dff=self.transformer_dff,
+            dropout=self.transformer_dropout,
+            learning_rate=self.config.learning_rate,
         )
-        
+
+        logger.info(f"Using Adam optimizer with lr={self.config.learning_rate:.2e}")
         return model
-    
-    def _add_positional_encoding(self, x, seq_len: int, d_model: int):
-        """Add sinusoidal positional encoding."""
-        import tensorflow as tf
-        from tensorflow import keras
-        
-        # Create positional encoding
-        positions = np.arange(seq_len)[:, np.newaxis]
-        dims = np.arange(d_model)[np.newaxis, :]
-        
-        angles = positions / np.power(10000, (2 * (dims // 2)) / d_model)
-        
-        # Apply sin to even indices, cos to odd
-        pos_encoding = np.zeros((seq_len, d_model))
-        pos_encoding[:, 0::2] = np.sin(angles[:, 0::2])
-        pos_encoding[:, 1::2] = np.cos(angles[:, 1::2])
-        
-        pos_encoding = pos_encoding[np.newaxis, :, :].astype(np.float32)
-        
-        # Add positional encoding to input
-        return x + tf.constant(pos_encoding)
-    
-    def _transformer_encoder_layer(self, x, d_model: int, num_heads: int, dff: int, 
-                                    dropout: float, l2_reg, name_prefix: str):
-        """Single transformer encoder layer with multi-head attention and feedforward."""
-        from tensorflow import keras
-        
-        # Multi-head self-attention
-        attn_output = keras.layers.MultiHeadAttention(
-            num_heads=num_heads,
-            key_dim=d_model // num_heads,
-            name=f'{name_prefix}_mha'
-        )(x, x)
-        attn_output = keras.layers.Dropout(dropout)(attn_output)
-        x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'{name_prefix}_ln1')(x + attn_output)
-        
-        # Feedforward network with L2 regularization
-        ffn = keras.layers.Dense(dff, activation='relu', kernel_regularizer=l2_reg, name=f'{name_prefix}_ffn1')(x)
-        ffn = keras.layers.Dense(d_model, kernel_regularizer=l2_reg, name=f'{name_prefix}_ffn2')(ffn)
-        ffn = keras.layers.Dropout(dropout)(ffn)
-        x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'{name_prefix}_ln2')(x + ffn)
-        
-        return x
-    
+
     def train(
         self,
         X_train: np.ndarray,
@@ -3787,7 +3678,10 @@ class TransformerDirectionTrainer(BaseTrainer):
                             logger.info("📊 EMA weights loaded from checkpoint")
                 del existing_model
             except Exception as e:
-                logger.warning(f"Could not load warm-start checkpoint: {e}. Starting fresh.")
+                err_msg = str(e)
+                if len(err_msg) > 200:
+                    err_msg = err_msg[:200] + "..."
+                logger.warning(f"Could not load warm-start checkpoint: {err_msg}. Starting fresh.")
         elif warm_start_path:
             logger.info(f"No checkpoint found at {warm_start_path}. Starting fresh training.")
         
@@ -3890,7 +3784,18 @@ class TransformerDirectionTrainer(BaseTrainer):
             except Exception as e:
                 logger.warning(f"Could not evaluate baseline: {e}")
         
-        # Print model summary
+        # Compact model info for console
+        try:
+            from rich.console import Console as _RichConsole
+            _rc = _RichConsole()
+            _rc.print(
+                f"  [dim]Model:[/dim] {self.model.name} | "
+                f"[green]{self.model.count_params():,}[/green] params | "
+                f"input=({self.seq_len}, {self.n_features})"
+            )
+        except Exception:
+            pass
+        # Full summary to log file (console handler at WARNING skips INFO)
         self.model.summary(print_fn=logger.info)
         
         # === INITIALIZE EMA IF NOT LOADED ===
@@ -4488,51 +4393,19 @@ class TransformerDirectionTrainer(BaseTrainer):
                     dropout = config.get('transformer_dropout', 0.2)
                     
                     logger.info(f"Rebuilding Transformer: n_features={n_features}, seq_len={seq_len}, d_model={d_model}")
-                    
-                    # Rebuild the actual Transformer architecture
-                    inp = keras.Input(shape=(seq_len, n_features), name="features")
-                    x = keras.layers.GaussianNoise(0.15)(inp)
-                    x = keras.layers.SpatialDropout1D(0.2)(x)
-                    
-                    # Input projection
-                    x = keras.layers.Dense(d_model, name='input_projection')(x)
-                    x = keras.layers.Dropout(0.3)(x)
-                    
-                    # Add positional encoding (simplified for rebuild)
-                    positions = np.arange(seq_len)[:, np.newaxis]
-                    dims = np.arange(d_model)[np.newaxis, :]
-                    angles = positions / np.power(10000, (2 * (dims // 2)) / d_model)
-                    pos_encoding = np.zeros((seq_len, d_model))
-                    pos_encoding[:, 0::2] = np.sin(angles[:, 0::2])
-                    pos_encoding[:, 1::2] = np.cos(angles[:, 1::2])
-                    pos_encoding = pos_encoding[np.newaxis, :, :].astype(np.float32)
-                    x = x + tf.constant(pos_encoding)
-                    
-                    # Transformer encoder layers
-                    for i in range(num_layers):
-                        # Multi-head attention
-                        attn_output = keras.layers.MultiHeadAttention(
-                            num_heads=num_heads,
-                            key_dim=d_model // num_heads,
-                            name=f'transformer_{i}_mha'
-                        )(x, x)
-                        attn_output = keras.layers.Dropout(dropout)(attn_output)
-                        x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'transformer_{i}_ln1')(x + attn_output)
-                        
-                        # FFN
-                        ffn = keras.layers.Dense(dff, activation='relu', name=f'transformer_{i}_ffn1')(x)
-                        ffn = keras.layers.Dense(d_model, name=f'transformer_{i}_ffn2')(ffn)
-                        ffn = keras.layers.Dropout(dropout)(ffn)
-                        x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'transformer_{i}_ln2')(x + ffn)
-                    
-                    # Global pooling and output
-                    x = keras.layers.GlobalAveragePooling1D()(x)
-                    x = keras.layers.Dense(8, activation='relu')(x)
-                    x = keras.layers.Dropout(0.5)(x)
-                    direction = keras.layers.Dense(1, activation='sigmoid', name='direction', dtype='float32')(x)
-                    
-                    model = keras.Model(inputs=inp, outputs=direction, name='transformer_direction')
-                    logger.info(f"✓ Model architecture rebuilt from metadata")
+
+                    # Rebuild using centralized factory (single source of truth)
+                    from src.models.tensorflow_models import build_transformer_direction_model
+                    model = build_transformer_direction_model(
+                        seq_len=seq_len,
+                        n_features=n_features,
+                        d_model=d_model,
+                        num_heads=num_heads,
+                        num_layers=num_layers,
+                        dff=dff,
+                        dropout=dropout,
+                    )
+                    logger.info(f"✓ Model architecture rebuilt from metadata via factory")
                     
                     # If model was rebuilt, we need to load weights from EMA
                     ema_path = path.with_suffix('.ema.pkl')
@@ -4659,96 +4532,32 @@ class TransformerRegimeTrainer(BaseTrainer):
         self.seq_len = None
         self.class_names = ['trend', 'chop', 'mean_revert']
         
-        # Transformer hyperparameters - match proven direction config as baseline
-        self.d_model = getattr(config, 'transformer_d_model', 16) if config else 16
-        self.num_heads = getattr(config, 'transformer_num_heads', 2) if config else 2
-        self.ff_dim = getattr(config, 'transformer_ff_dim', 32) if config else 32
-        self.num_blocks = getattr(config, 'transformer_num_blocks', 1) if config else 1
-        self.transformer_dropout = getattr(config, 'transformer_dropout', 0.2) if config else 0.2  # Reduced from 0.4
+        # Transformer hyperparameters
+        self.d_model = getattr(config, 'transformer_d_model', 32) if config else 32
+        self.num_heads = getattr(config, 'transformer_num_heads', 4) if config else 4
+        self.dff = getattr(config, 'transformer_dff', 64) if config else 64
+        self.num_layers = getattr(config, 'transformer_num_layers', 2) if config else 2
+        self.transformer_dropout = getattr(config, 'transformer_dropout', 0.2) if config else 0.2
     
     def _build_model(self, input_shape: Tuple[int, int]) -> Any:
-        """Build Transformer model for 3-class regime classification."""
-        import tensorflow as tf
-        from tensorflow import keras
-        
+        """Build Transformer model for 3-class regime classification using centralized builder."""
+        from src.models.tensorflow_models import build_transformer_regime_model
+
         seq_len, n_features = input_shape
-        
-        inp = keras.Input(shape=(seq_len, n_features), name="features")
-        
-        # Project input to d_model dimensions
-        x = keras.layers.Dense(self.d_model, name='input_projection')(inp)
-        
-        # Add positional encoding
-        x = self._add_positional_encoding(x, seq_len, self.d_model)
-        
-        # Transformer encoder blocks
-        for i in range(self.num_blocks):
-            x = self._transformer_encoder_layer(
-                x, 
-                d_model=self.d_model,
-                num_heads=self.num_heads,
-                dff=self.ff_dim,
-                dropout=self.transformer_dropout,
-                name_prefix=f'transformer_{i}'
-            )
-        
-        # Global pooling and output
-        x = keras.layers.GlobalAveragePooling1D()(x)
-        x = keras.layers.Dense(32, activation='relu')(x)
-        x = keras.layers.Dropout(self.transformer_dropout)(x)
-        
-        # 3-class regime output (softmax)
-        regime = keras.layers.Dense(3, activation='softmax', name='regime', dtype='float32')(x)
-        
-        model = keras.Model(inputs=inp, outputs=regime, name='transformer_regime')
-        
-        model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=self.config.learning_rate),
-            loss='sparse_categorical_crossentropy',
-            metrics=['accuracy'],
+
+        model = build_transformer_regime_model(
+            seq_len=seq_len,
+            n_features=n_features,
+            d_model=self.d_model,
+            num_heads=self.num_heads,
+            num_layers=self.num_layers,
+            dff=self.dff,
+            dropout=self.transformer_dropout,
+            learning_rate=self.config.learning_rate,
         )
-        
+
         return model
-    
-    def _add_positional_encoding(self, x, seq_len: int, d_model: int):
-        """Add sinusoidal positional encoding."""
-        import tensorflow as tf
-        
-        positions = np.arange(seq_len)[:, np.newaxis]
-        dims = np.arange(d_model)[np.newaxis, :]
-        
-        angles = positions / np.power(10000, (2 * (dims // 2)) / d_model)
-        
-        pos_encoding = np.zeros((seq_len, d_model))
-        pos_encoding[:, 0::2] = np.sin(angles[:, 0::2])
-        pos_encoding[:, 1::2] = np.cos(angles[:, 1::2])
-        
-        pos_encoding = pos_encoding[np.newaxis, :, :].astype(np.float32)
-        
-        return x + tf.constant(pos_encoding)
-    
-    def _transformer_encoder_layer(self, x, d_model: int, num_heads: int, dff: int,
-                                    dropout: float, name_prefix: str):
-        """Single transformer encoder layer."""
-        from tensorflow import keras
-        
-        # Multi-head self-attention
-        attn_output = keras.layers.MultiHeadAttention(
-            num_heads=num_heads,
-            key_dim=d_model // num_heads,
-            name=f'{name_prefix}_mha'
-        )(x, x)
-        attn_output = keras.layers.Dropout(dropout)(attn_output)
-        x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'{name_prefix}_ln1')(x + attn_output)
-        
-        # Feedforward network
-        ffn = keras.layers.Dense(dff, activation='relu', name=f'{name_prefix}_ffn1')(x)
-        ffn = keras.layers.Dense(d_model, name=f'{name_prefix}_ffn2')(ffn)
-        ffn = keras.layers.Dropout(dropout)(ffn)
-        x = keras.layers.LayerNormalization(epsilon=1e-6, name=f'{name_prefix}_ln2')(x + ffn)
-        
-        return x
-    
+
     def train(
         self,
         X_train: np.ndarray,
@@ -4816,6 +4625,18 @@ class TransformerRegimeTrainer(BaseTrainer):
         
         # Build model
         self.model = self._build_model((seq_len, self.n_features))
+        # Compact model info for console
+        try:
+            from rich.console import Console as _RichConsole
+            _rc = _RichConsole()
+            _rc.print(
+                f"  [dim]Model:[/dim] {self.model.name} | "
+                f"[green]{self.model.count_params():,}[/green] params | "
+                f"input=({seq_len}, {self.n_features})"
+            )
+        except Exception:
+            pass
+        # Full summary to log file (console handler at WARNING skips INFO)
         self.model.summary(print_fn=logger.info)
         
         # Callbacks - use config patience values

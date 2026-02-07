@@ -2478,7 +2478,7 @@ def load_all_modular_data(
     # SECOND: Apply FeatureEngineering to add advanced features
     # This ensures training uses the same features as inference
     try:
-        from feature_engineering import FeatureEngineering
+        from src.data.feature_engineering import FeatureEngineering
         fe = FeatureEngineering({})
         # Don't apply candle smoothing (already done by compute_normalized_features if needed)
         df_fe = fe.create_features(df.copy(), include_all=True, apply_candle_smoothing=False)

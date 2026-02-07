@@ -240,7 +240,7 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     import pandas as pd
     from rich.progress import Progress, SpinnerColumn, TextColumn
 
-    from fx_paper import candles_to_ohlcv_df
+    from src.utils.fx_paper import candles_to_ohlcv_df
     from src.utils.oanda_practice import OandaPracticeClient
 
     client = OandaPracticeClient.from_env()

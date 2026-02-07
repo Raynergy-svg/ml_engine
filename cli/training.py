@@ -25,6 +25,7 @@ from rich.table import Table
 from rich.panel import Panel
 
 from cli.config import BuddyTrainingOptions, BuddyTrainingAdvancedOptions, OandaFetchOptions
+from cli.io_utils import DEFAULT_CURRICULUM_KS
 from cli.calibration import (
     _tier2_apply_calibration, _tier2_get_calibration_dict,
     _tier2_points_from_bins, _tier2_nll, _tier2_spearman,
@@ -32,7 +33,7 @@ from cli.calibration import (
     _tier2_temperature_scale_prob, _tier2_interpolate_points,
 )
 from cli.io_utils import (
-    console, logger, DEFAULT_CONFIG_PATH, DEFAULT_CURRICULUM_KS,
+    console, logger, DEFAULT_CONFIG_PATH,
     _oanda_fetch_to_csv, _validate_instrument, _normalize_instrument,
     _meta_path_for_checkpoint, BUDDY_META_FILENAME, _load_buddy_checkpoint,
     _get_pair_model_paths, _migrate_keras2_to_keras3, _extract_instrument_from_csv_path,
@@ -98,8 +99,8 @@ def _train_rl_position_sizer_if_ready(
         from rl_position_sizing import RLPositionSizer, RLConfig, SB3_AVAILABLE, GYM_AVAILABLE
         
         if not SB3_AVAILABLE or not GYM_AVAILABLE:
-            console.print("[dim]Reinforcement learning framework unavailable (requires stable-baselines3 and gymnasium)[/dim]")
-            console.print("[dim]Installation: pip install stable-baselines3 gymnasium[/dim]")
+            console.print("[dim]RL position sizing unavailable (missing stable-baselines3 or gymnasium)[/dim]")
+            console.print("[dim]Install with: pip install stable-baselines3 gymnasium[/dim]")
             return False
         
         # Validate input data
@@ -110,7 +111,7 @@ def _train_rl_position_sizer_if_ready(
         
         n_samples = len(features)
         if n_samples < min_samples:
-            console.print(f"[dim]RL training deferred: insufficient training data ({n_samples}/{min_samples} samples available)[/dim]")
+            console.print(f"[dim]RL training skipped: insufficient data ({n_samples}/{min_samples} samples)[/dim]")
             return False
         
         # Validate data shapes
@@ -119,9 +120,9 @@ def _train_rl_position_sizer_if_ready(
             console.print(f"[dim]Features: {n_samples}, Predictions: {len(ensemble_predictions)}, Prices: {len(prices)}[/dim]")
             return False
         
-        console.print(f"\n[bold cyan]🤖 Reinforcement Learning • Position Sizing Agent[/bold cyan]")
-        console.print(f"[dim]Training data: {n_samples:,} ensemble predictions[/dim]")
-        console.print(f"[dim]Training timesteps: {rl_timesteps:,}[/dim]")
+        console.print(f"\n[bold cyan]🤖 RL Position Sizer Training[/bold cyan]")
+        console.print(f"[dim]Using {n_samples:,} samples from ensemble training data[/dim]")
+        console.print(f"[dim]Timesteps: {rl_timesteps:,}[/dim]")
         
         # Configure RL with appropriate sequence length for data size
         # Ensure we have enough data for the environment (need at least sequence_length + 100 steps)
@@ -139,9 +140,9 @@ def _train_rl_position_sizer_if_ready(
         # Train the RL agent with actual ensemble data
         stats = sizer.train(features, ensemble_predictions, prices)
         
-        console.print("[green]✅ Position sizing agent trained successfully[/green]")
-        console.print(f"[dim]Agent artifact:[/dim] trained_data/models/rl_position_sizer.zip")
-        console.print(f"[dim]Performance:[/dim] Final equity=${stats.get('final_equity', 0):.2f} • "
+        console.print("[green]✅ RL position sizer trained and saved[/green]")
+        console.print(f"[dim]Model: trained_data/models/rl_position_sizer.zip[/dim]")
+        console.print(f"[dim]Final equity: ${stats.get('final_equity', 0):.2f}, "
                       f"Win rate: {stats.get('win_rate', 0):.1%}, "
                       f"Trades: {stats.get('total_trades', 0)}[/dim]")
         
@@ -166,7 +167,7 @@ def _train_buddy_impl(
     """Train Buddy (TensorFlow-only) from USDJPY historical data."""
     # Suppress verbose utils logging during config load
     import logging as _logging
-    _utils_logger = _logging.getLogger('utils')
+    _utils_logger = _logging.getLogger('src.utils.utils')
     _utils_prev = _utils_logger.level
     _utils_logger.setLevel(_logging.WARNING)
     cfg = load_config(config_path)
@@ -204,7 +205,7 @@ def _train_buddy_impl(
     force_cpu = dev == "cpu"
 
     try:
-        from tracing_setup import setup_tracing as _setup_tracing
+        from src.utils.tracing_setup import setup_tracing as _setup_tracing
     except Exception:
         _setup_tracing = None
 
@@ -225,7 +226,7 @@ def _train_buddy_impl(
     import pandas as pd
     import tensorflow as tf
 
-    from feature_engineering import FeatureEngineering
+    from src.data.feature_engineering import FeatureEngineering
 
     buddy_cfg = (cfg.get("buddy") or {}) if isinstance(cfg, dict) else {}
 
@@ -324,47 +325,6 @@ def _train_buddy_impl(
     except Exception:
         pass
 
-    # =========================================================================
-    # PHASE 1: CONFIGURATION PANEL
-    # =========================================================================
-    # Display instrument, granularity, and data source information
-    training_instrument = "GENERIC"
-    training_granularity = "H1"
-    data_source = "CSV file"
-    candles_requested = 5000
-    
-    if oanda_fetch is not None:
-        try:
-            training_instrument = str(getattr(oanda_fetch, "instrument", "USD_JPY"))
-            training_granularity = str(getattr(oanda_fetch, "granularity", "H1"))
-            candles_requested = int(getattr(oanda_fetch, "candles", 5000))
-            data_source = f"OANDA live fetch ({candles_requested:,} candles)"
-        except Exception:
-            pass
-    elif csv_path:
-        # Try to extract instrument from CSV path
-        from cli.io_utils import _extract_instrument_from_csv_path
-        training_instrument = _extract_instrument_from_csv_path(csv_path)
-        data_source = f"CSV file: {Path(csv_path).name}"
-        # Try to extract granularity from filename
-        import re
-        gran_match = re.search(r'_(M\d+|H\d+|D|W)(?:_|\.)', str(csv_path).upper())
-        if gran_match:
-            training_granularity = gran_match.group(1)
-    
-    console.print()
-    console.print(Panel(
-        f"[bold]Training Configuration[/bold]\n\n"
-        f"[dim]Instrument:[/dim] {training_instrument}\n"
-        f"[dim]Granularity:[/dim] {training_granularity}\n"
-        f"[dim]Data Source:[/dim] {data_source}\n"
-        f"[dim]Model Type:[/dim] {model_type or 'ensemble'}\n"
-        f"[dim]Epochs:[/dim] {epochs}  [dim]Batch Size:[/dim] {batch_size}  [dim]Learning Rate:[/dim] {lr}",
-        title="⚙️  Configuration",
-        border_style="cyan",
-    ))
-    console.print()
-
     from src.training.buddy_training_helpers import _buddy_load_and_validate_csv, _load_multi_pair_data
 
     # Check for multi-pair foundation training mode
@@ -398,11 +358,11 @@ def _train_buddy_impl(
         
         console.print(Panel(
             f"[bold]Multi-Pair Foundation Training[/bold]\n\n"
-            f"[dim]Currency Pairs:[/dim] {', '.join(pairs_list)}\n"
-            f"[dim]Observations/Pair:[/dim] {candles_per_pair:,} candles\n"
-            f"[dim]Timeframe:[/dim] {granularity}\n"
-            f"[dim]Expected Dataset:[/dim] ~{candles_per_pair * len(pairs_list):,} total observations",
-            title="🌍 Cross-Instrument Training",
+            f"[dim]Pairs:[/dim] {', '.join(pairs_list)}\n"
+            f"[dim]Candles per pair:[/dim] {candles_per_pair:,}\n"
+            f"[dim]Granularity:[/dim] {granularity}\n"
+            f"[dim]Total expected:[/dim] ~{candles_per_pair * len(pairs_list):,} rows",
+            title="🌍 Multi-Pair Mode",
             border_style="cyan",
         ))
         
@@ -416,7 +376,7 @@ def _train_buddy_impl(
         if df is None or len(df) < 1000:
             raise ValueError(f"Multi-pair data loading failed or insufficient data: {len(df) if df is not None else 0} rows")
         
-        console.print(f"[green]✓ Multi-pair dataset prepared:[/green] {len(df):,} observations aggregated from {len(pairs_list)} currency pairs")
+        console.print(f"[green]✓ Multi-pair data loaded: {len(df):,} rows from {len(pairs_list)} pairs[/green]")
         
         # Skip OOS split for multi-pair (data is already shuffled across pairs)
         oos_live_split = False
@@ -470,20 +430,11 @@ def _train_buddy_impl(
     # - If feature engineering is disabled, apply it here so Buddy still trains on de-noised candles.
     if train_smoothing:
         extra = f" + median(close,w={median_window})" if median_window else ""
-        console.print(f"Noise reduction enabled: M5 resampling{extra} + 14-period EMA smoothing")
+        console.print(f"Training noise reduction enabled: resample->M5{extra} + EMA(14) close")
 
-    # =========================================================================
-    # PHASE 3: FEATURE ENGINEERING
-    # =========================================================================
     # Feature engineering (numeric only).
     if all_features:
         t_fe = time.perf_counter()
-        # Suppress verbose logging during feature engineering
-        import logging as _logging
-        _fe_logger = _logging.getLogger('feature_engineering')
-        _fe_prev_level = _fe_logger.level
-        _fe_logger.setLevel(_logging.WARNING)
-        
         fe = FeatureEngineering(cfg.get("feature_engineering", {}))
         df = fe.create_features(
             df,
@@ -491,22 +442,19 @@ def _train_buddy_impl(
             apply_candle_smoothing=train_smoothing,
             median_window=median_window,
         )
-        
-        # Restore logging level
-        _fe_logger.setLevel(_fe_prev_level)
-        
+
         elapsed_fe = time.perf_counter() - t_fe
         console.print(Panel(
-            f"[bold]Feature Engineering Pipeline Complete[/bold]\n\n"
-            f"[dim]Noise Reduction:[/dim] {bool(train_smoothing)} • Median Window: {median_window}\n"
-            f"[dim]Output Dimensionality:[/dim] {int(len(df)):,} observations × {int(df.shape[1])} features\n"
-            f"[dim]Processing Time:[/dim] {elapsed_fe:.2f}s",
-            title="⚙️  Feature Engineering",
+            f"[bold]Feature Engineering Complete[/bold]\n\n"
+            f"[dim]Smoothing:[/dim] {bool(train_smoothing)}  [dim]Median Window:[/dim] {median_window}\n"
+            f"[dim]Output:[/dim] {int(len(df)):,} rows × {int(df.shape[1])} columns\n"
+            f"[dim]Time:[/dim] {elapsed_fe:.2f}s",
+            title="⚙️ Feature Engineering",
             border_style="blue",
         ))
     elif train_smoothing:
         try:
-            from candle_smoothing import resample_5min_ohlcv_and_ema_close
+            from src.data.candle_smoothing import resample_5min_ohlcv_and_ema_close
 
             df = resample_5min_ohlcv_and_ema_close(
                 df,
@@ -515,7 +463,7 @@ def _train_buddy_impl(
                 median_window=median_window,
             )
         except Exception as e:
-            console.print(f"[yellow]Noise reduction deferred:[/yellow] {e}")
+            console.print(f"[yellow]Training noise reduction skipped[/yellow]: {e}")
 
     init_feature_columns: list[str] | None = None
     if init_from:
@@ -526,9 +474,9 @@ def _train_buddy_impl(
                 cols = init_meta.get("feature_columns")
                 if isinstance(cols, list) and cols:
                     init_feature_columns = [str(c) for c in cols]
-                    console.print(f"[dim]Loading feature schema from checkpoint metadata:[/dim] {meta_p}")
+                    console.print(f"Using feature_columns from init_from metadata: {meta_p}")
         except Exception as e:
-            console.print(f"[yellow]Warm-start metadata unavailable:[/yellow] {e}")
+            console.print(f"[yellow]Warm-start meta load skipped[/yellow]: {e}")
 
     numeric_df = df.select_dtypes(include=["number"]).copy()
     if numeric_df.empty:
@@ -547,9 +495,9 @@ def _train_buddy_impl(
         missing_cols = [c for c in init_feature_columns if c not in numeric_df.columns]
         extra_cols = [c for c in numeric_df.columns if c not in set(init_feature_columns)]
         if missing_cols:
-            console.print(f"[yellow]Warm-start adjustment:[/yellow] {len(missing_cols)} missing features initialized to zero")
+            console.print(f"[yellow]Warm-start[/yellow]: {len(missing_cols)} missing features will be filled with 0.0")
         if extra_cols:
-            console.print(f"[yellow]Warm-start adjustment:[/yellow] {len(extra_cols)} extraneous features removed")
+            console.print(f"[yellow]Warm-start[/yellow]: {len(extra_cols)} extra features will be dropped")
         numeric_df = numeric_df.reindex(columns=init_feature_columns, fill_value=0.0)
 
     # Drop rows with NaNs created by rolling indicators.
@@ -612,19 +560,19 @@ def _train_buddy_impl(
                 keep = ranked_cols[: int(top_features)]
                 numeric_df = numeric_df[keep]
                 console.print(
-                    f"[cyan]✓ Feature Selection Applied:[/cyan] Retained {len(keep)} / {int(len(ranked_cols))} ranked features based on predictive power"
+                    f"[cyan]✓ Feature Selection:[/cyan] kept {len(keep)} / {int(len(ranked_cols))} ranked features"
                 )
         except Exception as e:
-            console.print(f"[yellow]Feature ranking unavailable:[/yellow] {e}")
+            console.print(f"[yellow]Feature ranking skipped[/yellow]: {e}")
             ranked_cols = None
 
     feats = numeric_df.to_numpy(dtype=np.float32)
     feature_columns = list(numeric_df.columns)
 
     if feats.shape[1] < 6:
-        console.print(f"[yellow]⚠ Advisory:[/yellow] Limited feature set detected ({feats.shape[1]} features).")
+        console.print(f"[yellow]⚠ Warning:[/yellow] only {feats.shape[1]} numeric features detected.")
     else:
-        console.print(f"[cyan]✓ Feature Engineering Complete:[/cyan] {feats.shape[1]} normalized features extracted")
+        console.print(f"[cyan]✓ Features:[/cyan] {feats.shape[1]} numeric columns")
 
     # Build supervised targets.
     # Direction: next-close up/down.
@@ -646,7 +594,7 @@ def _train_buddy_impl(
     train_dir_pos_rate = float(np.mean(train_dir_raw)) if len(train_dir_raw) else 0.0
     val_dir_pos_rate = float(np.mean(val_dir_raw)) if len(val_dir_raw) else 0.0
     console.print(
-        f"[cyan]✓ Target Labels Generated:[/cyan] Training={train_dir_pos_rate*100:.1f}% long bias • Validation={val_dir_pos_rate*100:.1f}% long bias"
+        f"[cyan]✓ Direction Labels:[/cyan] train={train_dir_pos_rate*100:.1f}% up / val={val_dir_pos_rate*100:.1f}% up"
     )
 
     # Confidence target: Tier-2 TP-before-SL (true direction), with sparse labeling + sample weights.
@@ -662,11 +610,11 @@ def _train_buddy_impl(
         except Exception:
             label_stride = max(1, int(tier2_calibration_stride))
     if not tier2_calibrate:
-        console.print("Tier-2 calibration disabled (--no-tier2-calibrate): confidence targets initialized to zero")
+        console.print("Tier-2 labeling disabled (--no-tier2-calibrate): confidence targets set to zeros")
     else:
         try:
             t_tier2_label = time.perf_counter()
-            from fx_paper import pip_size, simulate_tp_sl_outcome
+            from src.utils.fx_paper import pip_size, simulate_tp_sl_outcome
 
             # Best-effort instrument inference.
             instrument_guess = None
@@ -731,7 +679,7 @@ def _train_buddy_impl(
                 f"horizon={int(tier2_horizon_candles)} stride={int(label_stride)} | {int(n_sim)} samples in {time.perf_counter() - t_tier2_label:.2f}s"
             )
         except Exception as e:
-            console.print(f"[yellow]Tier-2 calibration failed:[/yellow] {e}")
+            console.print(f"[yellow]Tier-2 confidence labeling failed[/yellow]: {e}")
             conf_y_all = np.zeros((int(n),), dtype=np.float32)
             conf_w_all = np.zeros((int(n),), dtype=np.float32)
 
@@ -765,7 +713,7 @@ def _train_buddy_impl(
         # sklearn returns float64; cast back to float32 to avoid doubling memory.
         train_feats = pca_model.transform(train_feats).astype(np.float32)
         val_feats = pca_model.transform(val_feats).astype(np.float32)
-        console.print(f"[dim]Dimensionality reduction active:[/dim] {orig_feature_dim} → {train_feats.shape[1]} features via PCA")
+        console.print(f"PCA enabled: {orig_feature_dim} -> {train_feats.shape[1]}")
 
     meta_warnings: list[str] = []
 
@@ -773,7 +721,7 @@ def _train_buddy_impl(
     if feature_curriculum and pca_components_eff is not None:
         msg = "PCA + feature curriculum are incompatible (curriculum ranks original features, PCA changes dimensions)."
         if ignore_input_mismatches:
-            console.print(f"[yellow]Configuration Advisory:[/yellow] {msg} Feature curriculum disabled due to --ignore-input-mismatches.")
+            console.print(f"[yellow]Warning[/yellow]: {msg} Disabling curriculum due to --ignore-input-mismatches.")
             meta_warnings.append(f"{msg} Curriculum disabled due to --ignore-input-mismatches.")
             feature_curriculum = False
         else:
@@ -1003,7 +951,7 @@ def _train_buddy_impl(
     curriculum_cb = None
     if feature_curriculum:
         if not ranked_cols:
-            console.print("[yellow]Feature curriculum unavailable: feature ranking data not present; progressive training disabled.[/yellow]")
+            console.print("[yellow]Feature curriculum requested but ranking unavailable; disabling curriculum.[/yellow]")
         else:
             try:
                 # Rank indices aligned to current feature_columns.
@@ -1053,7 +1001,7 @@ def _train_buddy_impl(
                         m = np.zeros((int(self._mask_var.shape[0]),), dtype=np.float32)
                         m[np.asarray(self._order[:k], dtype=np.int32)] = 1.0
                         self._mask_var.assign(m)
-                        console.print(f"[dim]Progressive training:[/dim] Stage {stage+1}/{len(self._ks)} • Top {k} features activated")
+                        console.print(f"[dim]Curriculum[/dim]: stage {stage+1}/{len(self._ks)} -> top {k} features")
 
                     def on_train_begin(self, logs=None):
                         self._apply(0)
@@ -1081,7 +1029,7 @@ def _train_buddy_impl(
                     ks_schedule=ks_final,
                 )
             except Exception as e:
-                console.print(f"[yellow]Feature curriculum initialization failed:[/yellow] {e}")
+                console.print(f"[yellow]Feature curriculum init failed[/yellow]: {e}")
                 feature_mask_var = None
                 curriculum_cb = None
 
@@ -1129,21 +1077,21 @@ def _train_buddy_impl(
     # graph tracing + kernel compilation and can take 5-30s, inflating the ETA.
     try:
         console.print(Panel(
-            f"[bold]Dataset Prepared for Training[/bold]\n\n"
-            f"[dim]Temporal Windows:[/dim] Training={int(n_train_windows):,} • Validation={int(n_val_windows):,}\n"
-            f"[dim]Optimization Steps:[/dim] Per Epoch={int(steps_per_epoch):,} • Validation={int(validation_steps):,}\n"
-            f"[dim]Architecture:[/dim] Sequence Length={int(seq_len)} • Batch Size={int(batch_size)}",
-            title="📊 Pipeline Configuration",
+            f"[bold]Training Dataset Ready[/bold]\n\n"
+            f"[dim]Windows:[/dim] train={int(n_train_windows):,} val={int(n_val_windows):,}\n"
+            f"[dim]Steps:[/dim] per_epoch={int(steps_per_epoch)} validation={int(validation_steps)}\n"
+            f"[dim]Config:[/dim] seq_len={int(seq_len)} batch_size={int(batch_size)}",
+            title="📊 Dataset Configuration",
             border_style="green",
         ))
         if int(steps_per_epoch) >= 2000 and int(steps_per_execution) <= 1:
             console.print(
-                "[yellow]⚡ Performance Advisory:[/yellow] High step count detected with unit execution batch. "
-                "Consider --steps-per-execution 10 for optimized throughput."
+                "[yellow]⚡ Perf hint:[/yellow] large steps_per_epoch with steps_per_execution=1 can be slow. "
+                "Try --steps-per-execution 10 to reduce overhead."
             )
         if not bool(timing):
             console.print(
-                "[dim]Note: Initial batch compilation on Apple Silicon may exhibit extended latency. Enable --timing for diagnostics.[/dim]"
+                "[dim]Note: First batch on Apple Silicon/TF-Metal is slow (graph warmup). Use --timing to verify.[/dim]"
             )
     except Exception:
         pass
@@ -1161,7 +1109,7 @@ def _train_buddy_impl(
     if shared_encoder and init_from:
         raise ValueError("--shared-encoder cannot be used with --warm-start/--init-from")
     if init_from:
-        console.print(f"[cyan]Warm-start configuration:[/cyan] Loading pre-trained weights from {init_from}")
+        console.print(f"Warm-starting from checkpoint: {init_from}")
         model = _load_buddy_checkpoint(model_path=str(init_from), seq_len=int(seq_len), feature_dim=int(feature_dim))
     else:
         head_hidden = int(cfg.get("buddy", {}).get("head_hidden", 64))
@@ -1189,11 +1137,11 @@ def _train_buddy_impl(
             cv_folds = options.cv_folds if hasattr(options, 'cv_folds') else 5
             generate_report_enabled = options.generate_report if hasattr(options, 'generate_report') else True
             
-            # Professional header - Advanced AI training system
+            # Professional header
             console.print()
             console.print(Panel.fit(
-                "[bold white]ADVANCED ENSEMBLE TRAINING SYSTEM[/bold white]\n"
-                "[dim]Enterprise-Grade Machine Learning Pipeline • Production-Ready Architecture[/dim]",
+                "[bold white]ENTERPRISE ML TRAINING PIPELINE[/bold white]\n"
+                "[dim]Production-Grade Ensemble with MLOps[/dim]",
                 border_style="cyan",
                 padding=(1, 4),
             ))
@@ -1201,14 +1149,14 @@ def _train_buddy_impl(
             
             # Enterprise features status table
             enterprise_table = Table(show_header=False, box=None, padding=(0, 2))
-            enterprise_table.add_column("Component", style="cyan", width=24)
-            enterprise_table.add_column("Status", style="green", width=18)
-            enterprise_table.add_row("Experiment Tracking", "✓ Active" if enterprise_enabled else "○ Inactive")
-            enterprise_table.add_row("Walk-Forward Validation", f"✓ {cv_folds}-Fold CV" if cv_folds > 0 else "○ Disabled")
-            enterprise_table.add_row("Statistical Bootstrap", "✓ 95% CI" if bootstrap_enabled else "○ Disabled")
-            enterprise_table.add_row("Automated Reporting", "✓ Enabled" if generate_report_enabled else "○ Disabled")
+            enterprise_table.add_column("Feature", style="cyan")
+            enterprise_table.add_column("Status", style="green")
+            enterprise_table.add_row("MLflow Tracking", "✓ Enabled" if enterprise_enabled else "✗ Disabled")
+            enterprise_table.add_row("Walk-Forward CV", f"✓ {cv_folds} folds" if cv_folds > 0 else "✗ Disabled")
+            enterprise_table.add_row("Bootstrap CI", "✓ 95% CI" if bootstrap_enabled else "✗ Disabled")
+            enterprise_table.add_row("Training Report", "✓ Auto-generated" if generate_report_enabled else "✗ Disabled")
             
-            console.print(Panel(enterprise_table, title="[bold]Production Capabilities[/bold]", border_style="green"))
+            console.print(Panel(enterprise_table, title="[bold]Enterprise Features[/bold]", border_style="green"))
             console.print()
             
             # Import modular components
@@ -1225,41 +1173,34 @@ def _train_buddy_impl(
             )
             
             # Get model configuration from config
-            # CRITICAL FIX: Read from buddy.train_defaults, not transformer
-            buddy_cfg = cfg.get("buddy", {})
-            train_defaults = buddy_cfg.get("train_defaults", {})
             transformer_cfg = cfg.get("transformer", {})
+            use_transformer = transformer_cfg.get("use_transformer", True)  # Default to Transformer
+            use_regime = transformer_cfg.get("use_regime", False)  # NEW: Use regime classification
+            direction_threshold = cfg.get("direction_threshold", 0.005)  # 0.5% min move
+            direction_lookahead = cfg.get("direction_lookahead", 12)  # 12 hours lookahead
+            regime_lookback = transformer_cfg.get("regime_lookback", 20)  # 20 bars lookback
+            regime_lookahead = transformer_cfg.get("regime_lookahead", 12)  # 12 bars lookahead
             
-            # Read use_regime from buddy.train_defaults (primary) or transformer (fallback)
-            use_transformer = train_defaults.get("use_transformer", transformer_cfg.get("use_transformer", True))
-            use_regime = train_defaults.get("use_regime", transformer_cfg.get("use_regime", False))
-            regime_lookback = train_defaults.get("regime_lookback", transformer_cfg.get("regime_lookback", 20))
-            regime_lookahead = train_defaults.get("regime_lookahead", transformer_cfg.get("regime_lookahead", 12))
-            
-            # Direction settings (legacy, only used if use_regime: false)
-            direction_threshold = train_defaults.get("direction_threshold", cfg.get("direction_threshold", 0.005))
-            direction_lookahead = train_defaults.get("direction_lookahead", cfg.get("direction_lookahead", 12))
-            
-            # Model architecture table - Enhanced professional formatting
+            # Model architecture table
             arch_table = Table(show_header=True, header_style="bold cyan", box=None)
-            arch_table.add_column("Component", style="white", width=16)
-            arch_table.add_column("Objective", style="yellow", width=28)
-            arch_table.add_column("Output Specification", style="green")
+            arch_table.add_column("Model", style="white", width=15)
+            arch_table.add_column("Task", style="yellow", width=25)
+            arch_table.add_column("Output", style="green")
             
-            # Architecture configuration with professional terminology
+            # Print architecture with configuration
             if use_regime:
-                arch_table.add_row("Transformer Network", "Market Regime Classification", "Trend | Consolidation | Mean Reversion")
-                arch_table.add_row("Gradient Boosting", "Momentum Vector Analysis", "Score • Acceleration Metric")
-                arch_table.add_row("Random Forest", "Risk Exposure Assessment", "Drawdown Estimate • Streak Probability")
-                arch_table.add_row("Regularized Regression", "Prediction Confidence", "Calibrated Score (0-100)")
+                arch_table.add_row("Transformer", "Regime Classification", "trend / chop / mean_revert")
+                arch_table.add_row("XGBoost", "Momentum Analysis", "momentum_score, acceleration")
+                arch_table.add_row("Random Forest", "Risk Assessment", "expected_drawdown, streak_prob")
+                arch_table.add_row("Ridge", "Confidence Scoring", "confidence (0-100)")
             else:
-                dir_model_name = "Transformer Network" if use_transformer else "Temporal CNN"
-                arch_table.add_row(dir_model_name, f"Directional Prediction (Δ>{direction_threshold:.2%})", "Long | Short Signal")
-                arch_table.add_row("Gradient Boosting", "Momentum Vector Analysis", "Score • Acceleration Metric")
-                arch_table.add_row("Random Forest", "Risk Exposure Assessment", "Drawdown Estimate • Streak Probability")
-                arch_table.add_row("Regularized Regression", "Prediction Confidence", "Calibrated Score (0-100)")
+                dir_model_name = "Transformer" if use_transformer else "TCN"
+                arch_table.add_row(dir_model_name, f"Direction (threshold={direction_threshold:.2%})", "long / short")
+                arch_table.add_row("XGBoost", "Momentum Analysis", "momentum_score, acceleration")
+                arch_table.add_row("Random Forest", "Risk Assessment", "expected_drawdown, streak_prob")
+                arch_table.add_row("Ridge", "Confidence Scoring", "confidence (0-100)")
             
-            console.print(Panel(arch_table, title="[bold]Ensemble Architecture[/bold]", border_style="yellow"))
+            console.print(Panel(arch_table, title="[bold]Model Architecture[/bold]", border_style="yellow"))
             console.print()
             
             # Reconstruct DataFrame from features for modular loaders
@@ -1267,9 +1208,9 @@ def _train_buddy_impl(
             # have their own scalers that will be used during inference
             console.print()
             console.print(Panel(
-                "[bold]Initializing Training Pipeline[/bold]\n\n"
-                "[dim]Preparing specialized feature sets for ensemble components[/dim]",
-                title="⚙️  Data Preparation",
+                "[bold]Preparing Modular Training Data[/bold]\n\n"
+                "[dim]Loading specialized datasets for each ensemble component...[/dim]",
+                title="📦 Data Preparation",
                 border_style="blue",
             ))
             
@@ -1280,7 +1221,7 @@ def _train_buddy_impl(
                 # Take first n_samples rows to match train+val
                 n_samples = len(train_feats) + len(val_feats)
                 feature_df = df.iloc[:n_samples].copy()
-                console.print(f"  [green]✓[/green] Raw features selected (n={len(feature_df):,} observations)")
+                console.print(f"  [green]✓[/green] Using RAW data (n={len(feature_df):,})")
             elif 'ohlc_df' in dir() and ohlc_df is not None:
                 # Fallback to ohlc_df which has OHLCV columns
                 feature_df = ohlc_df.copy()
@@ -1290,14 +1231,14 @@ def _train_buddy_impl(
                 
                 # Re-run feature engineering if needed
                 if len(feature_df.columns) < 20:  # Only OHLCV columns
-                    from feature_engineering import FeatureEngineering
+                    from src.data.feature_engineering import FeatureEngineering
                     fe_modular = FeatureEngineering(cfg.get("feature_engineering", {}))
                     feature_df = fe_modular.create_features(feature_df, include_all=True)
                 
-                console.print(f"  [green]✓[/green] OHLCV features selected (n={len(feature_df):,} observations)")
+                console.print(f"  [green]✓[/green] Using OHLCV data (n={len(feature_df):,})")
             else:
                 # Last resort: use standardized features (not ideal but functional)
-                console.print("  [yellow]⚠ Pre-standardized features detected - potential scale inconsistency![/yellow]")
+                console.print("  [yellow]⚠ Using pre-standardized features - may cause scale mismatch![/yellow]")
                 all_feats = np.vstack([train_feats, val_feats])
                 feature_df = pd.DataFrame(all_feats, columns=feature_columns)
                 
@@ -1331,12 +1272,8 @@ def _train_buddy_impl(
             console.print(f"  Data prepared: [green]{len(feature_df):,}[/green] rows × [green]{len(feature_df.columns)}[/green] columns")
             
             # Load data for each model (same temporal split, different features)
-            # Suppress verbose logging during data loading for cleaner output
-            import logging as _logging
-            _modular_logger = _logging.getLogger('modular_data_loaders')
-            _prev_level = _modular_logger.level
-            _modular_logger.setLevel(_logging.WARNING)
-            
+            # (Verbose data loader logging is routed to file only via setup_logging)
+
             # Calculate split ratio from train/val sizes
             n_total = len(train_feats) + len(val_feats)
             train_frac = len(train_feats) / n_total
@@ -1349,34 +1286,6 @@ def _train_buddy_impl(
             val_frac = val_frac / sum_frac * 0.9
             test_frac = 0.1
             
-            # ============================================================
-            # FEATURE LOCKING: Load feature names from existing model for warm-start consistency
-            # This prevents non-deterministic feature selection from breaking warm-start
-            # ============================================================
-            locked_feature_names = None
-            _model_dir = Path("trained_data/models")
-            _use_transformer = (options.model_type or "transformer") != "tcn"
-            _pair_meta = _model_dir / training_instrument / "transformer_direction.meta.pkl"
-            _generic_meta = _model_dir / "transformer_direction.meta.pkl"
-            
-            _warm_start_cfg = cfg.get("buddy", {}).get("train_defaults", {}).get("warm_start", True)
-            if _warm_start_cfg:
-                # Try pair-specific meta first, then generic
-                for _meta_path in [_pair_meta, _generic_meta]:
-                    if _meta_path.exists():
-                        try:
-                            import pickle as _pkl
-                            with open(_meta_path, 'rb') as _f:
-                                _meta = _pkl.load(_f)
-                            _saved_features = _meta.get('feature_names')
-                            if _saved_features and len(_saved_features) > 0:
-                                locked_feature_names = list(_saved_features)
-                                console.print(f"[cyan]🔒 Feature locking: {len(locked_feature_names)} features "
-                                            f"from {_meta_path.parent.name} model[/cyan]")
-                                break
-                        except Exception as _e:
-                            console.print(f"[dim]Could not load feature names from {_meta_path}: {_e}[/dim]")
-            
             all_data = load_all_modular_data(
                 feature_df, 
                 split=(train_frac, val_frac, test_frac),
@@ -1385,12 +1294,8 @@ def _train_buddy_impl(
                 use_regime=use_regime,
                 regime_lookback=regime_lookback,
                 regime_lookahead=regime_lookahead,
-                locked_feature_names=locked_feature_names,
             )
-            
-            # Restore logging level
-            _modular_logger.setLevel(_prev_level)
-            
+
             # Build Rich table for dataset summary
             dataset_table = Table(title=None, show_header=True, header_style="bold cyan", box=None)
             dataset_table.add_column("Model", style="white")
@@ -1419,7 +1324,7 @@ def _train_buddy_impl(
                     notes
                 )
             
-            console.print(Panel(dataset_table, title="📊 Training Dataset Configuration", border_style="blue"))
+            console.print(Panel(dataset_table, title="📊 Ensemble Dataset Summary", border_style="blue"))
             
             # Extract instrument for pair-specific model training
             # Priority: 1) OANDA fetch instrument, 2) CSV filename, 3) Default
@@ -1465,8 +1370,7 @@ def _train_buddy_impl(
             elif has_generic_model and warm_start_enabled:
                 is_warm_start = True
                 warm_start_path = model_dir / "transformer_direction.keras"
-                console.print(f"[yellow]⚡ Initial training session for {training_instrument}[/yellow]")
-                console.print(f"[dim]Transfer learning: Warm-start from generic cross-pair foundation[/dim]")
+                console.print(f"[yellow]⚡ Initial training for {training_instrument} (warm-start from generic model)[/yellow]")
             else:
                 is_warm_start = False
                 warm_start_path = None
@@ -1497,13 +1401,13 @@ def _train_buddy_impl(
             # Show continual learning config in a compact panel
             if not disable_cl:
                 cl_info = (
-                    f"[bold]Continual Learning Framework Active[/bold]\n\n"
-                    f"[dim]Instrument:[/dim] {training_instrument} • [dim]Timeframe:[/dim] {training_granularity}\n"
-                    f"[dim]Exponential Moving Average:[/dim] α={ema_alpha}, update frequency={ema_update_freq}\n"
-                    f"[dim]Elastic Weight Consolidation:[/dim] λ={ewc_lambda}, γ={ewc_gamma}\n"
-                    f"[dim]Experience Replay:[/dim] {replay_capacity_ratio:.0%} buffer capacity, {replay_mix_ratio:.0%} mix ratio"
+                    f"[bold]Continual Learning Active[/bold]\n\n"
+                    f"[dim]Instrument:[/dim] {training_instrument}  [dim]Granularity:[/dim] {training_granularity}\n"
+                    f"[dim]EMA:[/dim] α={ema_alpha}, freq={ema_update_freq}\n"
+                    f"[dim]EWC:[/dim] λ={ewc_lambda}, γ={ewc_gamma}\n"
+                    f"[dim]Replay:[/dim] {replay_capacity_ratio:.0%} capacity, {replay_mix_ratio:.0%} mix"
                 )
-                console.print(Panel(cl_info, title="🔄 Progressive Feature Training", border_style="magenta"))
+                console.print(Panel(cl_info, title="🔄 Adaptive Learning", border_style="magenta"))
             console.print()
             
             # Configure trainers with Transformer settings
@@ -1550,10 +1454,10 @@ def _train_buddy_impl(
                 # REGIME MODE: 3-class classification
                 console.print()
                 console.print(Panel(
-                    "[bold]Transformer Regime Classifier[/bold]\n\n"
+                    "[bold]Training Transformer (REGIME Classifier)[/bold]\n\n"
                     "[dim]Features:[/dim] ADX, RSI, volatility, z-scores, momentum consistency\n"
-                    f"[dim]Output:[/dim] 3-class regime (trend/consolidation/reversion) | lookback={regime_lookback}, lookahead={regime_lookahead}",
-                    title="Step 1/4 • Neural Network",
+                    f"[dim]Output:[/dim] 3-class regime (trend/chop/mean_revert) | lookback={regime_lookback}, lookahead={regime_lookahead}",
+                    title="Step 1/4",
                     border_style="yellow",
                 ))
                 
@@ -1573,9 +1477,9 @@ def _train_buddy_impl(
                 
                 all_metrics['regime'] = regime_metrics
                 
-                # Show F1 scores with enhanced formatting
-                console.print(f"[green]✓ Regime classifier complete:[/green] Validation accuracy={regime_metrics['val_accuracy']:.1%} • F1 macro={regime_metrics['f1_macro']:.3f}")
-                console.print(f"   [dim]Class performance:[/dim] Trend={regime_metrics['f1_trend']:.3f} • Consolidation={regime_metrics['f1_chop']:.3f} • Mean-reversion={regime_metrics['f1_mean_revert']:.3f}")
+                # Show F1 scores
+                console.print(f"[green]✓ Regime Transformer complete: val_accuracy={regime_metrics['val_accuracy']:.1%}, F1_macro={regime_metrics['f1_macro']:.3f}[/green]")
+                console.print(f"   F1 per class: trend={regime_metrics['f1_trend']:.3f}, chop={regime_metrics['f1_chop']:.3f}, mean_revert={regime_metrics['f1_mean_revert']:.3f}")
                 
                 dir_model_path = regime_model_path  # For metadata
                 dir_data = regime_data  # For metadata
@@ -1584,10 +1488,10 @@ def _train_buddy_impl(
                 # DIRECTION MODE: Binary classification (legacy)
                 console.print()
                 console.print(Panel(
-                    f"[bold]{direction_model_name} Directional Classifier[/bold]\n\n"
+                    f"[bold]Training {direction_model_name} (Direction Predictor)[/bold]\n\n"
                     "[dim]Features:[/dim] Directional indicators (ADX, MACD, SMA crosses, market structure)\n"
-                    f"[dim]Output:[/dim] Binary prediction (short/long) | threshold={direction_threshold:.2%}, lookahead={direction_lookahead}",
-                    title="Step 1/4 • Neural Network",
+                    f"[dim]Output:[/dim] Binary direction (0=short, 1=long) | threshold={direction_threshold:.2%}, lookahead={direction_lookahead}",
+                    title="Step 1/4",
                     border_style="cyan",
                 ))
                 
@@ -1598,23 +1502,21 @@ def _train_buddy_impl(
                 # warm_start_path is already set to pair-specific or generic path as appropriate
                 if is_warm_start and warm_start_path:
                     console.print(Panel(
-                        f"[yellow]Transfer Learning Active[/yellow]\n\n"
-                        f"[dim]Source:[/dim] {warm_start_path}\n"
-                        "[dim]Strategy:[/dim] Fine-tuning from pre-trained weights",
-                        title="🔥 Warm-Start Configuration",
+                        f"[yellow]Loading weights from:[/yellow] {warm_start_path}\n"
+                        "[dim]Training will continue from previous weights (compounding learning)[/dim]",
+                        title="🔥 Warm-Start Enabled",
                         border_style="yellow",
                     ))
                 
-                # Suppress verbose modular_trainers logging for cleaner output
+                # Suppress verbose modular_trainers logging for cleaner console output
+                # (detail still goes to log files via file handlers)
                 import logging as _logging
-                _trainers_logger = _logging.getLogger('modular_trainers')
+                _trainers_logger = _logging.getLogger('src.training.modular_trainers')
                 _trainers_prev = _trainers_logger.level
-                _trainers_propagate_prev = _trainers_logger.propagate
-                _trainers_logger.setLevel(_logging.CRITICAL)  # Suppress ALL
-                _trainers_logger.propagate = False
+                _trainers_logger.setLevel(_logging.WARNING)
                 _absl_logger = _logging.getLogger('absl')
                 _absl_prev = _absl_logger.level
-                _absl_logger.setLevel(_logging.CRITICAL)
+                _absl_logger.setLevel(_logging.ERROR)
                 
                 if use_transformer:
                     dir_trainer = TransformerDirectionTrainer(trainer_config)
@@ -1661,10 +1563,10 @@ def _train_buddy_impl(
             # ============================================================
             console.print()
             console.print(Panel(
-                "[bold]Gradient Boosting Momentum Analyzer[/bold]\n\n"
-                "[dim]Features:[/dim] Lagged returns, spread dynamics, velocity metrics\n"
-                "[dim]Output:[/dim] Momentum score (percentile) • Acceleration indicator",
-                title="Step 2/4 • Gradient Boosting",
+                "[bold]Training XGBoost (Momentum Analyzer)[/bold]\n\n"
+                "[dim]Features:[/dim] Lagged returns, spread dynamics\n"
+                "[dim]Output:[/dim] momentum_score (0-1), acceleration (bool)",
+                title="Step 2/4",
                 border_style="cyan",
             ))
             
@@ -1682,18 +1584,18 @@ def _train_buddy_impl(
                 xgb_trainer.save(str(model_dir / "xgb_momentum.pkl"))
             all_metrics['xgboost'] = xgb_metrics
             
-            console.print(f"[green]✓ Momentum analyzer complete:[/green] MAE={xgb_metrics['momentum_mae']:.4f} • Acceleration accuracy={xgb_metrics['acceleration_accuracy']:.1%}")
-            console.print(f"[dim]Model saved:[/dim] {pair_paths['xgboost']}")
+            console.print(f"[green]✓ XGBoost complete: momentum_mae={xgb_metrics['momentum_mae']:.4f}, accel_acc={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
+            console.print(f"[cyan]💾 XGBoost saved to: {pair_paths['xgboost']}[/cyan]")
             
             # ============================================================
             # TRAIN RANDOM FOREST (Risk Assessor)
             # ============================================================
             console.print()
             console.print(Panel(
-                "[bold]Random Forest Risk Assessor[/bold]\n\n"
-                "[dim]Features:[/dim] ATR, historical drawdowns, streak patterns, volatility regime\n"
-                "[dim]Output:[/dim] Expected drawdown (pips) • Streak probability",
-                title="Step 3/4 • Ensemble Trees",
+                "[bold]Training Random Forest (Risk Assessor)[/bold]\n\n"
+                "[dim]Features:[/dim] ATR, historical drawdowns, streak patterns\n"
+                "[dim]Output:[/dim] expected_drawdown_pips, streak_probability",
+                title="Step 3/4",
                 border_style="cyan",
             ))
             
@@ -1710,19 +1612,19 @@ def _train_buddy_impl(
                 rf_trainer.save(str(model_dir / "rf_risk.pkl"))
             all_metrics['rf'] = rf_metrics
             
-            console.print(f"[green]✓ Risk assessor complete:[/green] Drawdown MAE={rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps • Streak MAE={rf_metrics['streak_prob_mae']:.4f}")
-            console.print(f"[dim]Model saved:[/dim] {pair_paths['rf']}")
+            console.print(f"[green]✓ RF complete: drawdown_mae={rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps, streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
+            console.print(f"[cyan]💾 RF saved to: {pair_paths['rf']}[/cyan]")
             
             # ============================================================
             # TRAIN RIDGE (Confidence Scorer)
             # ============================================================
             console.print()
             console.print(Panel(
-                "[bold]ElasticNet Confidence Scorer[/bold]\n\n"
+                "[bold]Training ElasticNet (Confidence Scorer)[/bold]\n\n"
                 "[dim]Features:[/dim] Rolling variance, volume dynamics\n"
                 "[dim]Output:[/dim] Confidence score (0-100)\n"
-                "[dim]Validation:[/dim] TimeSeriesSplit (temporal ordering preserved)",
-                title="Step 4/4 • Regularized Regression",
+                "[dim]CV:[/dim] TimeSeriesSplit (temporal, no leakage)",
+                title="Step 4/4",
                 border_style="cyan",
             ))
             
@@ -1739,161 +1641,8 @@ def _train_buddy_impl(
                 ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
             all_metrics['ridge'] = ridge_metrics
             
-            console.print(f"[green]✓ Confidence scorer complete:[/green] MAE={ridge_metrics['confidence_mae']:.2f} • R²={ridge_metrics['r2_score']:.4f}")
-            console.print(f"[dim]Regularization:[/dim] α={ridge_metrics.get('best_alpha', 1.0):.4f} • L1 ratio={ridge_metrics.get('best_l1_ratio', 0.5):.2f} • Active features={ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
-            console.print(f"[dim]Model saved:[/dim] {pair_paths['ridge']}")
-            
-            # ============================================================
-            # TRAIN META-LABELER (Gate 5 - Trade Success Predictor)
-            # ============================================================
-            # Meta-labeler predicts: "Given this signal, should we actually trade?"
-            # This is DIFFERENT from direction - it predicts whether the trade will be PROFITABLE
-            train_meta_labeler_flag = cfg.get("buddy", {}).get("train_defaults", {}).get("train_meta_labeler", True)
-            meta_labeler_metrics = None
-            
-            if train_meta_labeler_flag and not use_regime:
-                console.print()
-                console.print(Panel(
-                    "[bold]Training Meta-Labeler (Gate 5)[/bold]\n\n"
-                    "[dim]Purpose:[/dim] Predict trade success probability (not just direction)\n"
-                    "[dim]Input:[/dim] Primary model probability + market features\n"
-                    "[dim]Output:[/dim] Trade success confidence (0-1)\n"
-                    "[dim]Gate:[/dim] Blocks trades when meta-confidence < 0.55",
-                    title="Step 5/5",
-                    border_style="magenta",
-                ))
-                
-                try:
-                    from src.training.meta_labeling import train_meta_labeler, MetaLabelingConfig
-                    import numpy as _np
-                    
-                    def _safe_predict(model, X, batch_size=512):
-                        """Predict with fallback for Keras 3 TensorShape issues.
-                        
-                        Keras 3 model.predict() can fail with 'as_list() is not
-                        defined on an unknown TensorShape' when the in-memory
-                        model's output shape becomes unknown after EWC/EMA/save
-                        state changes.  Fall back to direct model.__call__() in
-                        batches, which bypasses the shape-inference pipeline.
-                        """
-                        try:
-                            return model.predict(X, verbose=0)
-                        except (ValueError, AttributeError) as e:
-                            if 'as_list' not in str(e) and 'TensorShape' not in str(e):
-                                raise
-                            # Batched direct call — avoids predict()'s output-shape inference
-                            results = []
-                            for i in range(0, len(X), batch_size):
-                                batch = X[i:i + batch_size]
-                                out = model(batch, training=False)
-                                results.append(
-                                    out.numpy() if hasattr(out, 'numpy') else _np.asarray(out)
-                                )
-                            return _np.concatenate(results, axis=0)
-                    
-                    def _make_sequences(X_2d, scaler, seq_len):
-                        """Scale 2D features and create 3D sliding-window sequences.
-                        
-                        Mirrors TransformerDirectionTrainer.train() logic:
-                        scale → sliding window → 3D array.
-                        Returns (X_seq, valid_indices) where valid_indices are the
-                        target indices (end of each window) so that we can align
-                        labels and weights.
-                        """
-                        X_scaled = scaler.transform(X_2d.reshape(-1, X_2d.shape[-1]))
-                        seqs = []
-                        indices = []
-                        for i in range(len(X_scaled) - seq_len):
-                            seqs.append(X_scaled[i:i + seq_len])
-                            indices.append(i + seq_len - 1)
-                        return _np.array(seqs, dtype=_np.float32), _np.array(indices)
-                    
-                    # Convert 2D raw features → 3D sequences using trainer's scaler
-                    scaler = dir_trainer.scaler
-                    seq_len = dir_trainer.seq_len
-                    
-                    X_val_seq, val_idx = _make_sequences(dir_data['X_val'], scaler, seq_len)
-                    X_train_seq, train_idx = _make_sequences(dir_data['X_train'], scaler, seq_len)
-                    
-                    # Align labels to sequence targets
-                    y_val_seq = dir_data['y_val'][val_idx]
-                    y_train_seq = dir_data['y_train'][train_idx]
-                    
-                    # Filter to clear-label samples only (w > 0).
-                    # The transformer was trained on filtered data; including unclear
-                    # labels (w=0, y≈0.5) causes misleadingly low primary accuracy
-                    # because y=0.5 gets rounded to 1 in meta-label computation.
-                    w_train_raw = dir_data.get('w_train')
-                    w_val_raw = dir_data.get('w_val')
-                    if w_train_raw is not None:
-                        w_train_seq = w_train_raw[train_idx]
-                        train_clear = w_train_seq > 0
-                        X_train_seq = X_train_seq[train_clear]
-                        y_train_seq = y_train_seq[train_clear]
-                        logger.info(f"Meta-labeler: filtered train {train_clear.sum()}/{len(train_clear)} clear-label sequences")
-                    if w_val_raw is not None:
-                        w_val_seq = w_val_raw[val_idx]
-                        val_clear = w_val_seq > 0
-                        X_val_seq = X_val_seq[val_clear]
-                        y_val_seq = y_val_seq[val_clear]
-                        logger.info(f"Meta-labeler: filtered val {val_clear.sum()}/{len(val_clear)} clear-label sequences")
-                    
-                    # Get primary model predictions (on 3D sequences)
-                    val_probs = _safe_predict(dir_trainer.model, X_val_seq)
-                    if val_probs.ndim > 1:
-                        val_probs = val_probs[:, -1] if val_probs.shape[1] > 1 else val_probs.flatten()
-                    else:
-                        val_probs = val_probs.flatten()
-                    
-                    train_probs = _safe_predict(dir_trainer.model, X_train_seq)
-                    if train_probs.ndim > 1:
-                        train_probs = train_probs[:, -1] if train_probs.shape[1] > 1 else train_probs.flatten()
-                    else:
-                        train_probs = train_probs.flatten()
-                    
-                    # Train meta-labeler
-                    meta_config = MetaLabelingConfig(
-                        use_xgboost=True,
-                        n_estimators=100,
-                        max_depth=2,
-                        learning_rate=0.05,
-                        min_confidence_threshold=0.55,
-                        use_reduced_features=True,  # Prevent overfitting
-                    )
-                    
-                    meta_labeler, meta_labeler_metrics = train_meta_labeler(
-                        X_train=X_train_seq,
-                        y_train=y_train_seq,
-                        primary_probs_train=train_probs,
-                        X_val=X_val_seq,
-                        y_val=y_val_seq,
-                        primary_probs_val=val_probs,
-                        config=meta_config,
-                    )
-                    
-                    # Save to both pair-specific and generic paths
-                    meta_labeler_path = pair_paths['pair_dir'] / "meta_labeler.pkl"
-                    meta_labeler.save(meta_labeler_path)
-                    if training_instrument != "GENERIC":
-                        meta_labeler.save(model_dir / "meta_labeler.pkl")
-                    
-                    all_metrics['meta_labeler'] = meta_labeler_metrics
-                    
-                    _m_train = meta_labeler_metrics.get('meta_train_accuracy', 0)
-                    _m_val = meta_labeler_metrics.get('meta_val_accuracy', 0)
-                    _m_auc = meta_labeler_metrics.get('val_auc', 0)
-                    _m_gap = meta_labeler_metrics.get('overfitting_gap', 0)
-                    _auc_str = f", val_auc={_m_auc:.3f}" if _m_auc > 0 else ""
-                    console.print(f"[green]✓ Meta-Labeler complete: train={_m_train:.1%}, val={_m_val:.1%}{_auc_str}, gap={_m_gap:.1%}[/green]")
-                    console.print(f"[cyan]💾 Meta-Labeler saved to: {meta_labeler_path}[/cyan]")
-                    console.print(f"[yellow]🏷️ Gate 5 ENABLED: Trade success filtering at {meta_config.min_confidence_threshold:.0%} confidence[/yellow]")
-                    
-                except ImportError as e:
-                    console.print(f"[yellow]⚠ Meta-labeler training skipped: {e}[/yellow]")
-                    meta_labeler_metrics = None
-                except Exception as e:
-                    console.print(f"[red]✗ Meta-labeler training failed: {e}[/red]")
-                    meta_labeler_metrics = None
+            console.print(f"[green]✓ ElasticNet complete: MAE={ridge_metrics['confidence_mae']:.2f}, R²={ridge_metrics['r2_score']:.4f}, alpha={ridge_metrics.get('best_alpha', 1.0):.4f}, l1_ratio={ridge_metrics.get('best_l1_ratio', 0.5):.2f}, sparse={ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}[/green]")
+            console.print(f"[cyan]💾 Ridge saved to: {pair_paths['ridge']}[/cyan]")
             
             # ============================================================
             # TRAIN HISTGB (Optional - for hybrid voting with Transformer)
@@ -1904,11 +1653,10 @@ def _train_buddy_impl(
             if train_histgb and not use_regime:
                 console.print()
                 console.print(Panel(
-                    "[bold]Histogram Gradient Boosting Baseline[/bold]\n\n"
-                    "[dim]Objective:[/dim] Hybrid voting ensemble with Transformer (consensus-based filtering)\n"
-                    "[dim]Architecture:[/dim] Histogram-based gradient boosting for high-speed training\n"
-                    "[dim]Trade-off:[/dim] Higher precision, reduced signal frequency",
-                    title="Step 5 (Optional) • Ensemble Voting",
+                    "[bold]Training HistGB (Hybrid Voting Baseline)[/bold]\n\n"
+                    "[dim]Purpose:[/dim] Hybrid voting with Transformer → trade only when BOTH AGREE\n"
+                    "[dim]Expected:[/dim] Higher precision at cost of fewer trades",
+                    title="Step 5 (Optional)",
                     border_style="magenta",
                 ))
                 
@@ -1924,9 +1672,9 @@ def _train_buddy_impl(
                     histgb_trainer.save(str(model_dir / "histgb_direction.pkl"))
                 all_metrics['histgb'] = histgb_metrics
                 
-                console.print(f"[green]✓ Histogram gradient boosting complete:[/green] Validation accuracy={histgb_metrics['val_accuracy']:.1%} • Balanced={histgb_metrics.get('val_balanced_accuracy', 0):.1%}")
-                console.print(f"[dim]Model saved:[/dim] {pair_paths['histgb']}")
-                console.print("[yellow]🔥 Hybrid Voting Enabled:[/yellow] Transformer and HistGB consensus required for trade execution")
+                console.print(f"[green]✓ HistGB complete: val_accuracy={histgb_metrics['val_accuracy']:.1%}, balanced={histgb_metrics.get('val_balanced_accuracy', 0):.1%}[/green]")
+                console.print(f"[cyan]💾 HistGB saved to: {pair_paths['histgb']}[/cyan]")
+                console.print("[yellow]🔥 Hybrid voting ENABLED: Transformer + HistGB will vote together[/yellow]")
             
             # ============================================================
             # SAVE METADATA
@@ -2005,7 +1753,6 @@ def _train_buddy_impl(
                     "max_drawdown_pips": 30,
                     "max_streak_prob": 0.3,
                     "risk_per_trade_pct": 0.02,
-                    "min_meta_confidence": 0.55 if meta_labeler_metrics is not None else None,
                 },
                 "data_split": {
                     "train_frac": train_frac,
@@ -2016,17 +1763,6 @@ def _train_buddy_impl(
                 "trained_at": datetime.now().isoformat(),
             }
             
-            # Add meta-labeler to metadata if trained
-            if meta_labeler_metrics is not None:
-                meta["models"]["meta_labeler"] = {
-                    "path": str(pair_paths['pair_dir'] / "meta_labeler.pkl"),
-                    "purpose": "trade_success_prediction",
-                    "output": "success_probability (0-1)",
-                    "metrics": meta_labeler_metrics,
-                    "threshold": 0.55,
-                }
-            
-            
             meta_path = model_dir / "modular_ensemble.meta.json"
             with open(meta_path, "w") as f:
                 json.dump(meta, f, indent=2, default=lambda x: float(x) if isinstance(x, (np.floating, np.integer)) else str(x))
@@ -2036,56 +1772,47 @@ def _train_buddy_impl(
             # ============================================================
             console.print()
             
-            # Performance metrics display - Professional formatting
-            console.print()
-            perf_table = Table(show_header=True, header_style="bold green", title="Validation Performance Summary")
-            perf_table.add_column("Component", style="white", width=20)
-            perf_table.add_column("Metric", style="cyan", width=22)
+            # Performance metrics table
+            perf_table = Table(show_header=True, header_style="bold green", title="Model Performance")
+            perf_table.add_column("Model", style="white", width=20)
+            perf_table.add_column("Metric", style="cyan", width=20)
             perf_table.add_column("Value", style="green", justify="right")
             
             if use_regime:
                 f1_macro = dir_metrics.get('f1_macro', 0)
-                perf_table.add_row("Regime Classifier", "F1 Macro Score", f"{f1_macro:.3f}")
+                perf_table.add_row("Transformer", "F1 Macro", f"{f1_macro:.3f}")
                 perf_table.add_row("", "F1 Trend", f"{dir_metrics.get('f1_trend', 0):.3f}")
-                perf_table.add_row("", "F1 Consolidation", f"{dir_metrics.get('f1_chop', 0):.3f}")
+                perf_table.add_row("", "F1 Chop", f"{dir_metrics.get('f1_chop', 0):.3f}")
             else:
                 dir_acc = dir_metrics['val_accuracy']
                 bal_acc = dir_metrics.get('val_balanced_accuracy', dir_acc)
-                perf_table.add_row(direction_model_name, "Validation Accuracy", f"{dir_acc:.1%}")
-                perf_table.add_row("", "Balanced Accuracy", f"{bal_acc:.1%}")
+                perf_table.add_row(direction_model_name, "Val Accuracy", f"{dir_acc:.1%}")
+                perf_table.add_row("", "Balanced Acc", f"{bal_acc:.1%}")
             
-            perf_table.add_row("Gradient Boosting", "Acceleration Accuracy", f"{xgb_metrics['acceleration_accuracy']:.1%}")
+            perf_table.add_row("XGBoost", "Accel Accuracy", f"{xgb_metrics['acceleration_accuracy']:.1%}")
             perf_table.add_row("", "Momentum MAE", f"{xgb_metrics['momentum_mae']:.4f}")
             perf_table.add_row("Random Forest", "Drawdown MAE", f"{rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps")
-            perf_table.add_row("", "Streak Probability MAE", f"{rf_metrics['streak_prob_mae']:.4f}")
-            perf_table.add_row("ElasticNet", "R² Score", f"{ridge_metrics['r2_score']:.3f}")
+            perf_table.add_row("", "Streak MAE", f"{rf_metrics['streak_prob_mae']:.4f}")
+            perf_table.add_row("Ridge", "R² Score", f"{ridge_metrics['r2_score']:.3f}")
             perf_table.add_row("", "Confidence MAE", f"{ridge_metrics['confidence_mae']:.2f}")
-            perf_table.add_row("", "Optimal α", f"{ridge_metrics.get('best_alpha', 1.0):.4f}")
+            perf_table.add_row("", "Best Alpha", f"{ridge_metrics.get('best_alpha', 1.0):.4f}")
             perf_table.add_row("", "L1 Ratio", f"{ridge_metrics.get('best_l1_ratio', 0.5):.2f}")
-            perf_table.add_row("", "Sparse Features", f"{ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
-            
-            # Add meta-labeler metrics if available
-            if meta_labeler_metrics is not None:
-                perf_table.add_row("Meta-Labeler", "Val AUC", f"{meta_labeler_metrics.get('val_auc', 0):.3f}")
-                perf_table.add_row("", "Precision", f"{meta_labeler_metrics.get('val_precision', 0):.1%}")
-                perf_table.add_row("", "Recall", f"{meta_labeler_metrics.get('val_recall', 0):.1%}")
+            perf_table.add_row("", "Features (sparse)", f"{ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
             
             console.print(Panel(perf_table, border_style="green"))
             console.print()
             
-            # Saved artifacts table - Professional formatting
+            # Saved artifacts table
             artifacts_table = Table(show_header=False, box=None)
-            artifacts_table.add_column("Component", style="cyan", width=18)
-            artifacts_table.add_column("Artifact Path", style="dim")
-            artifacts_table.add_row("Direction Model", str(dir_model_path))
-            artifacts_table.add_row("Momentum Analyzer", str(pair_paths['xgboost']))
-            artifacts_table.add_row("Risk Assessor", str(pair_paths['rf']))
-            artifacts_table.add_row("Confidence Scorer", str(pair_paths['ridge']))
-            if meta_labeler_metrics is not None:
-                artifacts_table.add_row("Meta-Labeler", str(pair_paths['pair_dir'] / "meta_labeler.pkl"))
-            artifacts_table.add_row("Ensemble Metadata", str(meta_path))
+            artifacts_table.add_column("Type", style="cyan", width=15)
+            artifacts_table.add_column("Path", style="dim")
+            artifacts_table.add_row("Direction", str(dir_model_path))
+            artifacts_table.add_row("Momentum", str(pair_paths['xgboost']))
+            artifacts_table.add_row("Risk", str(pair_paths['rf']))
+            artifacts_table.add_row("Confidence", str(pair_paths['ridge']))
+            artifacts_table.add_row("Metadata", str(meta_path))
             
-            console.print(Panel(artifacts_table, title="[bold]Training Artifacts[/bold]", border_style="blue"))
+            console.print(Panel(artifacts_table, title="[bold]Saved Artifacts[/bold]", border_style="blue"))
             console.print()
             
             # ============================================================
@@ -2096,9 +1823,9 @@ def _train_buddy_impl(
             if enterprise_enabled:
                 console.print()
                 console.print(Panel(
-                    "[bold]Enterprise Validation Framework[/bold]\n"
-                    "[dim]Statistical validation, temporal cross-validation, and experiment tracking[/dim]",
-                    title="🏢 Production Validation",
+                    "[bold]Enterprise Validation Suite[/bold]\n"
+                    "[dim]Statistical validation, cross-validation, and experiment tracking[/dim]",
+                    title="🏢 Enterprise",
                     border_style="cyan",
                 ))
                 
@@ -2113,9 +1840,9 @@ def _train_buddy_impl(
                     )
                     
                     stat_validator = StatisticalValidator()
-                    validation_results = Table(show_header=True, header_style="bold cyan", title="Statistical Validation Results")
-                    validation_results.add_column("Validation Check", style="white", width=28)
-                    validation_results.add_column("Status", style="green", width=16)
+                    validation_results = Table(show_header=True, header_style="bold cyan", title="Validation Results")
+                    validation_results.add_column("Check", style="white", width=25)
+                    validation_results.add_column("Result", style="green", width=15)
                     validation_results.add_column("Details", style="dim", width=35)
                     
                     # 1. Bootstrap CI for Transformer direction accuracy
@@ -2324,9 +2051,9 @@ def _train_buddy_impl(
                     # Final success panel
                     console.print()
                     console.print(Panel(
-                        "[bold green]✓ TRAINING PIPELINE COMPLETE[/bold green]\n\n"
-                        f"[dim]Artifacts:[/dim] {model_dir}\n"
-                        "[dim]Validation:[/dim] [green]PASSED[/green] • Enterprise-grade quality assurance",
+                        "[bold green]✓ TRAINING COMPLETE[/bold green]\n\n"
+                        f"Models saved to: [cyan]{model_dir}[/cyan]\n"
+                        "Enterprise validation: [green]PASSED[/green]",
                         border_style="green",
                     ))
                     
@@ -2412,61 +2139,16 @@ def _train_buddy_impl(
                                 prices=rl_prices,
                             )
                         except Exception as e:
-                            console.print(f"[yellow]Position sizer data preparation failed:[/yellow] {e}")
-                            console.print("[dim]Deferring RL position sizer training[/dim]")
+                            console.print(f"[yellow]RL data preparation failed: {e}[/yellow]")
+                            console.print("[dim]Skipping RL position sizer training[/dim]")
                     
                 except ImportError as e:
-                    console.print(f"[yellow]Enterprise validation framework unavailable:[/yellow] {e}")
-                    console.print("[dim]Install dependencies: pip install mlflow structlog[/dim]")
+                    console.print(f"[yellow]Enterprise features unavailable: {e}[/yellow]")
+                    console.print("[dim]Install with: pip install mlflow structlog[/dim]")
                 except Exception as e:
-                    console.print(f"[yellow]Enterprise validation encountered an error:[/yellow] {e}")
+                    console.print(f"[yellow]Enterprise validation error: {e}[/yellow]")
                     import traceback
                     traceback.print_exc()
-            
-            # =========================================================================
-            # PHASE 7: TRAINING COMPLETE SUMMARY
-            # =========================================================================
-            console.print()
-            console.print()
-            
-            # Calculate total training time
-            try:
-                import time as _time
-                total_time_seconds = _time.perf_counter() - t_fe if 't_fe' in dir() else 0
-                total_time_str = f"{total_time_seconds:.1f}s"
-                if total_time_seconds > 60:
-                    total_time_str = f"{total_time_seconds/60:.1f}m"
-            except Exception:
-                total_time_str = "N/A"
-            
-            # Build saved models list
-            saved_models_text = ""
-            if use_regime:
-                saved_models_text += f"  • transformer_regime.keras\n"
-            else:
-                model_name = "transformer_direction.keras" if use_transformer else "tcn_direction.keras"
-                saved_models_text += f"  • {model_name}\n"
-            saved_models_text += f"  • xgb_momentum.pkl\n"
-            saved_models_text += f"  • rf_risk.pkl\n"
-            saved_models_text += f"  • ridge_confidence.pkl\n"
-            saved_models_text += f"  • modular_ensemble.meta.json"
-            
-            # Create summary panel
-            summary_panel = Panel(
-                f"[bold green]Training Complete ✓[/bold green]\n\n"
-                f"[bold]Saved Models:[/bold]\n{saved_models_text}\n\n"
-                f"[bold]Location:[/bold] [cyan]{model_dir}[/cyan]\n"
-                f"[bold]Instrument:[/bold] {training_instrument}\n"
-                f"[bold]Total Time:[/bold] {total_time_str}\n\n"
-                f"[bold yellow]Next Steps:[/bold yellow]\n"
-                f"  Run [cyan]buddy {training_instrument}[/cyan] to test inference\n"
-                f"  Or [cyan]buddy {training_instrument} -x[/cyan] to execute trades",
-                title="🎉 Training Summary",
-                border_style="green",
-                padding=(1, 2),
-            )
-            console.print(summary_panel)
-            console.print()
             
             return
         
@@ -2475,7 +2157,7 @@ def _train_buddy_impl(
             import json
             from datetime import datetime
             console.print("[cyan]Model: XGBoost (gradient boosting - often better on tabular data)[/cyan]")
-            from xgboost_model import train_xgboost_buddy, XGBoostKerasWrapper
+            from src.models.xgboost_model import train_xgboost_buddy, XGBoostKerasWrapper
             
             # XGBoost training
             xgb_config = {
@@ -2506,7 +2188,7 @@ def _train_buddy_impl(
             # Save XGBoost model
             xgb_model_path = model_dir / f"buddy_xgb{suffix}.pkl"
             xgb_model.save(xgb_model_path)
-            console.print(f"[dim]Model artifact:[/dim] {xgb_model_path}")
+            console.print(f"Saved: {xgb_model_path}")
             
             # Save metadata
             meta = {
@@ -2525,7 +2207,7 @@ def _train_buddy_impl(
             with open(candidate_meta_path.with_suffix('.xgb.meta.json'), "w") as f:
                 json.dump(meta, f, indent=2)
             
-            console.print(f"[dim]Metadata saved:[/dim] {candidate_meta_path.with_suffix('.xgb.meta.json')}")
+            console.print(f"Saved: {candidate_meta_path.with_suffix('.xgb.meta.json')}")
             
             # Continue to meta-labeling if enabled (don't return early)
             xgboost_primary_model = xgb_model
@@ -2535,7 +2217,7 @@ def _train_buddy_impl(
             meta_labeling_enabled = bool(cfg.get("buddy", {}).get("meta_labeling", {}).get("enabled", False))
             if meta_labeling_enabled:
                 try:
-                    from meta_labeling import MetaLabeler, MetaLabelingConfig
+                    from src.training.meta_labeling import MetaLabeler, MetaLabelingConfig
                     
                     console.print("[cyan]Training meta-labeler for XGBoost (trade filter)...[/cyan]")
                     
@@ -2590,12 +2272,12 @@ def _train_buddy_impl(
                         console.print(f"Threshold tuned: {best_thresh:.2f} -> +{thresh_improvement*100:.1f}% improvement")
                     
                     if overfit_gap > 0.20:
-                        console.print(f"[yellow]⚠️ Meta-labeler quality control:[/yellow] Overfitting detected (gap {overfit_gap:.1%} exceeds 20% threshold)")
+                        console.print(f"[yellow]⚠️ Meta-labeler rejected (gap {overfit_gap:.1%} > 20%)[/yellow]")
                         meta["meta_labeling"] = {"enabled": False, "reason": f"overfitting_gap_{overfit_gap:.1%}"}
                     else:
                         meta_labeler_path = model_dir / f"buddy_xgb_meta{suffix}.pkl"
                         labeler.save(meta_labeler_path)
-                        console.print(f"[dim]Meta-labeler saved:[/dim] {meta_labeler_path}")
+                        console.print(f"Saved: {meta_labeler_path}")
                         
                         meta["meta_labeling"] = {
                             "enabled": True,
@@ -2611,7 +2293,7 @@ def _train_buddy_impl(
                         json.dump(meta, f, indent=2)
                     
                 except Exception as e:
-                    console.print(f"[yellow]Meta-labeling pipeline failed:[/yellow] {e}")
+                    console.print(f"[yellow]Meta-labeling failed[/yellow]: {e}")
                     import traceback
                     traceback.print_exc()
             
@@ -2625,10 +2307,10 @@ def _train_buddy_impl(
                 try:
                     console.print()
                     console.print(Panel(
-                        "[bold cyan]🤖 Reinforcement Learning • Position Sizing[/bold cyan]\n\n"
-                        "[dim]Training intelligent agent to optimize position sizes based on[/dim]\n"
-                        "[dim]ensemble predictions and real-time market conditions.[/dim]",
-                        title="Adaptive Position Sizing",
+                        "[bold cyan]🤖 RL Position Sizer Training[/bold cyan]\n\n"
+                        "[dim]Training RL agent to learn optimal position sizing based on[/dim]\n"
+                        "[dim]XGBoost ensemble predictions and market conditions.[/dim]",
+                        title="RL Training",
                         border_style="cyan",
                     ))
                     
@@ -2658,7 +2340,7 @@ def _train_buddy_impl(
                     )
                     
                 except Exception as e:
-                    console.print(f"[yellow]⚠ Position sizing agent training failed:[/yellow] {e}")
+                    console.print(f"[yellow]⚠ RL position sizer training failed: {e}[/yellow]")
                     console.print("[dim]XGBoost training completed successfully - RL training is optional.[/dim]")
                     import traceback
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
@@ -2733,7 +2415,7 @@ def _train_buddy_impl(
         optimizer = adam_cls(learning_rate=float(lr), clipnorm=1.0)
         optimizer_name = f"{adam_cls.__module__}.{adam_cls.__name__}"
         try:
-            console.print("[yellow]Optimizer fallback:[/yellow] Legacy Adam optimizer unavailable; using standard Adam implementation")
+            console.print("[yellow]Warning[/yellow]: tf.keras.optimizers.legacy.Adam unavailable; falling back to non-legacy Adam")
         except Exception:
             pass
     try:
@@ -2898,8 +2580,8 @@ def _train_buddy_impl(
 
     if monitor == "combined" and not has_conf_labels:
         console.print(
-            "[yellow]Configuration Advisory:[/yellow] Combined early-stopping metric requested but confidence labels unavailable "
-            "(--no-tier2-calibrate or insufficient labeled samples). Reverting to direction-based monitoring."
+            "[yellow]Warning[/yellow]: --es-monitor combined requested but confidence labels are absent "
+            "(--no-tier2-calibrate or no labeled samples). Falling back to --es-monitor direction."
         )
         monitor = "direction"
 
@@ -3287,7 +2969,7 @@ def _train_buddy_impl(
         conf_y_oos = np.zeros((int(n_oos),), dtype=np.float32)
         conf_w_oos = np.zeros((int(n_oos),), dtype=np.float32)
         try:
-            from fx_paper import pip_size, simulate_tp_sl_outcome
+            from src.utils.fx_paper import pip_size, simulate_tp_sl_outcome
 
             pip = float(pip_size("USD_JPY"))
 
@@ -3575,7 +3257,7 @@ def _train_buddy_impl(
     try:
         if tier2_calibrate:
             t_tier2_cal = time.perf_counter()
-            from fx_paper import pip_size, simulate_tp_sl_outcome
+            from src.utils.fx_paper import pip_size, simulate_tp_sl_outcome
 
             # Best-effort instrument inference.
             instrument_guess = None
@@ -3898,7 +3580,7 @@ def _train_buddy_impl(
     
     if meta_labeling_enabled:
         try:
-            from meta_labeling import MetaLabeler, MetaLabelingConfig
+            from src.training.meta_labeling import MetaLabeler, MetaLabelingConfig
             
             console.print("[cyan]Training meta-labeler (trade filter)...[/cyan]")
             
@@ -4028,7 +3710,7 @@ def _train_buddy_impl(
                 meta_labeler_path_obj = model_dir / f"buddy_meta{suffix}.pkl"
                 labeler.save(meta_labeler_path_obj)
                 meta_labeler_path = str(meta_labeler_path_obj)
-                console.print(f"[dim]Meta-labeler saved:[/dim] {meta_labeler_path}")
+                console.print(f"Saved: {meta_labeler_path}")
             
         except Exception as e:
             console.print(f"[yellow]Meta-labeling failed[/yellow]: {e}")
@@ -4124,8 +3806,8 @@ def _train_buddy_impl(
         } if meta_labeling_enabled else None,
     }
     meta_path.write_text(json.dumps(meta, indent=2))
-    console.print(f"[dim]Model artifact:[/dim] {model_path}")
-    console.print(f"[dim]Metadata saved:[/dim] {meta_path}")
+    console.print(f"Saved: {model_path}")
+    console.print(f"Saved: {meta_path}")
 
     # ==========================================================================
     # RL Position Sizer Training (automatic after ensemble training)
@@ -4138,10 +3820,10 @@ def _train_buddy_impl(
         try:
             console.print()
             console.print(Panel(
-                "[bold cyan]🤖 Reinforcement Learning • Position Sizing[/bold cyan]\n\n"
-                "[dim]Training intelligent agent to learn optimal position sizing based on[/dim]\n"
+                "[bold cyan]🤖 RL Position Sizer Training[/bold cyan]\n\n"
+                "[dim]Training RL agent to learn optimal position sizing based on[/dim]\n"
                 "[dim]ensemble predictions and market conditions.[/dim]",
-                title="Adaptive Position Sizing",
+                title="RL Training",
                 border_style="cyan",
             ))
             

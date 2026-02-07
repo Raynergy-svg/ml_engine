@@ -49,7 +49,7 @@ class BuddyTrainingOptions:
     M1 Metal Optimizations Applied:
     - model_type: "tcn" - 2-3x faster than LSTM (parallelizable convolutions)
     - batch_size: 128 (was 32) - better GPU utilization
-    - mixed_precision: True (was False) - 1.5-2x speedup
+    - mixed_precision: False (default) - enable in config for M1 Metal 1.5-2x speedup
     - steps_per_execution: 10 (was 1) - reduces Python overhead
     - lr: 0.0005 (was 0.001) - more stable convergence
     
@@ -84,7 +84,7 @@ class BuddyTrainingOptions:
     device: str = "auto"  # auto|cpu|gpu
     ignore_input_mismatches: bool = False
     disable_tier2_on_mismatch: bool = False
-    mixed_precision: bool = True  # M1 CRITICAL: Enable for 1.5-2x speedup (was False)
+    mixed_precision: bool = False  # Default off; set true in config for M1 Metal speedup
     steps_per_execution: int = 10  # M1 CRITICAL: Reduces Python overhead (was 1)
     jit_compile: bool = False  # Keep False for stability (XLA can cause issues)
     shuffle_buffer: int | None = None

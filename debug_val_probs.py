@@ -22,8 +22,8 @@ print(f"Model expects {len(feature_names)} features, seq_len={seq_len}")
 print(f"Scaler type: {type(scaler).__name__}")
 
 # Get data
-from oanda_practice import OandaPracticeClient
-from fx_paper import candles_to_ohlcv_df
+from src.utils.oanda_practice import OandaPracticeClient
+from src.utils.fx_paper import candles_to_ohlcv_df
 
 client = OandaPracticeClient.from_env()
 resp = client.get_candles('EUR_USD', granularity='H1', count=300, price='MBA')

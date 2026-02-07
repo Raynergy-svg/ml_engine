@@ -16,7 +16,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from confidence_calibration import CalibrationResult
+from src.risk.confidence_calibration import CalibrationResult
 
 logger = logging.getLogger(__name__)
 

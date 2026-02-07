@@ -11,7 +11,7 @@ try:
 except Exception:  # pragma: no cover
     ZoneInfo = None  # type: ignore
 
-from fx_guardrails import (
+from src.risk.fx_guardrails import (
     FxDailyState,
     can_open_new_trade,
     check_daily_stops,

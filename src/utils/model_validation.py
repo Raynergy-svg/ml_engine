@@ -96,7 +96,7 @@ class CrossPairValidator:
     
     def prepare_features(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
         """Prepare features matching training pipeline"""
-        from feature_engineering import FeatureEngineer
+        from src.data.feature_engineering import FeatureEngineer
         
         fe = FeatureEngineer()
         features_df = fe.create_features(df)

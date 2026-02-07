@@ -659,8 +659,8 @@ def buddy_analyze(
     console.print("[dim]Fetching recent data for analysis...[/dim]")
     
     from src.utils.oanda_practice import OandaPracticeClient
-    from feature_engineering import FeatureEngineering
-    from fx_paper import candles_to_ohlcv_df
+    from src.data.feature_engineering import FeatureEngineering
+    from src.utils.fx_paper import candles_to_ohlcv_df
     
     client = OandaPracticeClient.from_env()
     fe = FeatureEngineering()

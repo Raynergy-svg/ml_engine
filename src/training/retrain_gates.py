@@ -58,7 +58,7 @@ def main():
         RidgeTrainer,
         TrainerConfig
     )
-    from feature_engineering import FeatureEngineering
+    from src.data.feature_engineering import FeatureEngineering
     
     # Fetch data from OANDA
     console.print("\n[bold]Step 1: Fetching data from OANDA...[/bold]")

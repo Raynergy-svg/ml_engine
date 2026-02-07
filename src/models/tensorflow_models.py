@@ -451,7 +451,12 @@ class PositionalEncoding(layers.Layer):
     
     def call(self, x):
         seq_len = tf.shape(x)[1]
-        return x + self.pe[:, :seq_len, :]
+        return x + tf.cast(self.pe[:, :seq_len, :], x.dtype)
+
+    def get_config(self):
+        config = super().get_config()
+        config['max_len'] = self.max_len
+        return config
 
 
 # =============================================================================
@@ -846,8 +851,8 @@ class TFTransformerPredictor(Model):
 
 @register_keras_serializable()
 class TransformerEncoderLayer(layers.Layer):
-    """Single Transformer encoder layer."""
-    
+    """Single Transformer encoder layer with MHA + FFN + residual connections."""
+
     def __init__(
         self,
         d_model: int,
@@ -855,38 +860,60 @@ class TransformerEncoderLayer(layers.Layer):
         dff: int,
         dropout: float = 0.1,
         activation: str = "gelu",
+        kernel_regularizer=None,
         **kwargs
     ):
         super().__init__(**kwargs)
-        
+
+        # Store config for get_config() serialization
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.dff = dff
+        self._dropout_rate = dropout
+        self._activation = activation
+        self._kernel_regularizer = kernel_regularizer
+
         self.mha = layers.MultiHeadAttention(
             num_heads=num_heads,
             key_dim=d_model // num_heads,
             dropout=dropout
         )
-        
+
         self.ffn = keras.Sequential([
-            layers.Dense(dff, activation=activation),
+            layers.Dense(dff, activation=activation, kernel_regularizer=kernel_regularizer),
             layers.Dropout(dropout),
-            layers.Dense(d_model),
+            layers.Dense(d_model, kernel_regularizer=kernel_regularizer),
             layers.Dropout(dropout)
         ])
-        
-        self.layernorm1 = layers.LayerNormalization()
-        self.layernorm2 = layers.LayerNormalization()
-        
+
+        self.layernorm1 = layers.LayerNormalization(epsilon=1e-6)
+        self.layernorm2 = layers.LayerNormalization(epsilon=1e-6)
+
         self.dropout = layers.Dropout(dropout)
-    
+
     def call(self, x, training=None):
         # Self-attention with residual
         attn_out = self.mha(x, x, training=training)
         x = self.layernorm1(x + self.dropout(attn_out, training=training))
-        
+
         # FFN with residual
         ffn_out = self.ffn(x, training=training)
         x = self.layernorm2(x + ffn_out)
-        
+
         return x
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'd_model': self.d_model,
+            'num_heads': self.num_heads,
+            'dff': self.dff,
+            'dropout': self._dropout_rate,
+            'activation': self._activation,
+            'kernel_regularizer': keras.regularizers.serialize(self._kernel_regularizer)
+                if self._kernel_regularizer else None,
+        })
+        return config
 
 
 @register_keras_serializable()
@@ -1988,6 +2015,145 @@ class TFEnsemblePredictor(Model):
 # =============================================================================
 # Model Factory
 # =============================================================================
+
+
+def build_transformer_direction_model(
+    seq_len: int,
+    n_features: int,
+    d_model: int = 32,
+    num_heads: int = 4,
+    num_layers: int = 2,
+    dff: int = 64,
+    dropout: float = 0.2,
+    l2_strength: float = 0.001,
+    learning_rate: float = 0.001,
+    input_noise_std: float = 0.02,
+    spatial_dropout: float = 0.05,
+    projection_dropout: float = 0.15,
+    head_units: int = 16,
+    head_activation: str = 'tanh',
+    head_dropout: float = 0.15,
+) -> Model:
+    """
+    Build a compiled Transformer for binary direction prediction.
+
+    Uses PositionalEncoding and TransformerEncoderLayer from this module
+    via functional API (compatible with .keras serialization).
+
+    Layer names are chosen to match warm-start freezing patterns:
+        'input_projection', 'positional_encoding', 'transformer_{i}', 'direction'
+    """
+    l2_reg = regularizers.l2(l2_strength) if l2_strength > 0 else None
+
+    inp = layers.Input(shape=(seq_len, n_features), name="features")
+
+    # Input augmentation
+    x = layers.GaussianNoise(input_noise_std)(inp)
+    x = layers.SpatialDropout1D(spatial_dropout)(x)
+
+    # Project features to d_model dimension
+    x = layers.Dense(d_model, kernel_regularizer=l2_reg, name='input_projection')(x)
+    x = layers.Dropout(projection_dropout)(x)
+
+    # Positional encoding
+    x = PositionalEncoding(max_len=seq_len + 100, name='positional_encoding')(x)
+
+    # Transformer encoder layers
+    for i in range(num_layers):
+        x = TransformerEncoderLayer(
+            d_model=d_model,
+            num_heads=num_heads,
+            dff=dff,
+            dropout=dropout,
+            activation='relu',
+            kernel_regularizer=l2_reg,
+            name=f'transformer_{i}',
+        )(x)
+
+    # Global pooling and classification head
+    x = layers.GlobalAveragePooling1D()(x)
+    x = layers.Dense(head_units, activation=head_activation, kernel_regularizer=l2_reg)(x)
+    x = layers.Dropout(head_dropout)(x)
+
+    # Binary direction output
+    direction = layers.Dense(
+        1,
+        activation='sigmoid',
+        name='direction',
+        dtype='float32',
+        kernel_initializer=keras.initializers.TruncatedNormal(mean=0.0, stddev=0.05),
+        bias_initializer=keras.initializers.Zeros(),
+    )(x)
+
+    model = Model(inputs=inp, outputs=direction, name='transformer_direction')
+
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+        loss=keras.losses.BinaryCrossentropy(label_smoothing=0.0),
+        metrics=[keras.metrics.BinaryAccuracy(name='accuracy', threshold=0.5)],
+    )
+
+    return model
+
+
+def build_transformer_regime_model(
+    seq_len: int,
+    n_features: int,
+    d_model: int = 32,
+    num_heads: int = 4,
+    num_layers: int = 2,
+    dff: int = 64,
+    dropout: float = 0.2,
+    num_classes: int = 3,
+    head_units: int = 32,
+    learning_rate: float = 0.001,
+) -> Model:
+    """
+    Build a compiled Transformer for regime classification (N classes).
+
+    Uses PositionalEncoding and TransformerEncoderLayer from this module
+    via functional API (compatible with .keras serialization).
+
+    No L2 regularization or input noise (simpler task than direction).
+    """
+    inp = layers.Input(shape=(seq_len, n_features), name="features")
+
+    # Project input to d_model dimensions
+    x = layers.Dense(d_model, name='input_projection')(inp)
+
+    # Positional encoding
+    x = PositionalEncoding(max_len=seq_len + 100, name='positional_encoding')(x)
+
+    # Transformer encoder blocks
+    for i in range(num_layers):
+        x = TransformerEncoderLayer(
+            d_model=d_model,
+            num_heads=num_heads,
+            dff=dff,
+            dropout=dropout,
+            activation='relu',
+            kernel_regularizer=None,
+            name=f'transformer_{i}',
+        )(x)
+
+    # Global pooling and classification head
+    x = layers.GlobalAveragePooling1D()(x)
+    x = layers.Dense(head_units, activation='relu')(x)
+    x = layers.Dropout(dropout)(x)
+
+    # Softmax output
+    regime = layers.Dense(num_classes, activation='softmax', name='regime', dtype='float32')(x)
+
+    model = Model(inputs=inp, outputs=regime, name='transformer_regime')
+
+    model.compile(
+        optimizer=keras.optimizers.Adam(learning_rate=learning_rate),
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy'],
+    )
+
+    return model
+
 
 def create_tensorflow_model(config: dict) -> Model:
     """

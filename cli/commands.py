@@ -1656,7 +1656,7 @@ def buddy_loop(
     import math
     import numpy as np
     import pandas as pd
-    from tracing_setup import span, record_exception
+    from src.utils.tracing_setup import span, record_exception
 
     from datetime import datetime, timezone
 
@@ -1782,7 +1782,7 @@ def buddy_loop(
         },
     )
 
-    from fx_paper import candles_to_ohlcv_df
+    from src.utils.fx_paper import candles_to_ohlcv_df
     from src.utils.oanda_practice import OandaPracticeClient
 
     client = OandaPracticeClient.from_env()
@@ -1987,7 +1987,7 @@ def buddy_loop(
                 pass
 
         if all_features:
-            from feature_engineering import FeatureEngineering
+            from src.data.feature_engineering import FeatureEngineering
             fe = FeatureEngineering(cfg.get("feature_engineering", {}))
             try:
                 with span("feature_engineering", attributes={"rows": len(df)}):
@@ -2095,7 +2095,7 @@ def buddy_loop(
             console.print("[cyan]DRY-RUN[/cyan]: would place a market order.")
             continue
 
-        from fx_paper import pip_size, position_size_units
+        from src.utils.fx_paper import pip_size, position_size_units
 
         last_close = float(df["close"].iloc[-1])
         ps = float(pip_size(instrument))
@@ -2353,7 +2353,7 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
     # For store_true flags: CLI True overrides config, otherwise use config
     mixed_precision_eff = (
         True if bool(getattr(args, "mixed_precision", False))
-        else bool(_cfg_get("mixed_precision", True))  # Default True for M1
+        else bool(_cfg_get("mixed_precision", False))  # Default False; enable explicitly in config
     )
     jit_compile_eff = (
         True if bool(getattr(args, "jit_compile", False))
@@ -2576,7 +2576,7 @@ def _buddy_test_modular_ensemble(
     fetch_count = test_candles + 300  # Buffer for feature engineering NaN rows
     console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
     
-    from fx_paper import candles_to_ohlcv_df
+    from src.utils.fx_paper import candles_to_ohlcv_df
     from src.utils.oanda_practice import OandaPracticeClient
     
     client = OandaPracticeClient.from_env()
@@ -2584,7 +2584,7 @@ def _buddy_test_modular_ensemble(
     df_raw = candles_to_ohlcv_df(resp)
     
     # Feature engineering
-    from feature_engineering import FeatureEngineering
+    from src.data.feature_engineering import FeatureEngineering
     fe = FeatureEngineering()
     df = fe.create_features(df_raw.copy(), include_all=True)
     
@@ -2974,7 +2974,7 @@ def buddy_test(
     
     console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
     
-    from fx_paper import candles_to_ohlcv_df
+    from src.utils.fx_paper import candles_to_ohlcv_df
     from src.utils.oanda_practice import OandaPracticeClient
     
     client = OandaPracticeClient.from_env()
@@ -2982,7 +2982,7 @@ def buddy_test(
     df_raw = candles_to_ohlcv_df(resp)
     
     # Feature engineering
-    from feature_engineering import FeatureEngineering
+    from src.data.feature_engineering import FeatureEngineering
     fe = FeatureEngineering()
     df = fe.create_features(df_raw.copy(), include_all=True)
     

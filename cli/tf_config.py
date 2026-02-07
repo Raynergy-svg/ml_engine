@@ -57,6 +57,9 @@ def _tf_is_truthy(v: str | None) -> bool:
 
 def _tf_set_log_level(*, verbose: bool) -> None:
     os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2" if verbose else "3")
+    if not verbose:
+        import logging as _logging
+        _logging.getLogger("tensorflow").setLevel(_logging.ERROR)
 
 
 def _tf_should_disable_meta_optimizer() -> bool:

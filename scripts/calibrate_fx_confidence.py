@@ -22,9 +22,9 @@ from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from fx_paper import atr as fx_atr, setup_signal, spread_pips_from_df, pip_size, conservative_slippage_pips
-from reasoning_enhanced import fx_confidence_v1
-import fx_guardrails as fxg
+from src.utils.fx_paper import atr as fx_atr, setup_signal, spread_pips_from_df, pip_size, conservative_slippage_pips
+from src.utils.reasoning_enhanced import fx_confidence_v1
+import src.risk.fx_guardrails as fxg
 
 
 def load_market_csv(path: str) -> pd.DataFrame:

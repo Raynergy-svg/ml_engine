@@ -104,7 +104,7 @@ transformer:
   num_heads: 4         # Attention heads  
   num_layers: 2        # Encoder layers
   dff: 64              # Feedforward dimension
-  dropout: 0.4         # Dropout rate (was 0.2 - increased for regularization)
+  dropout: 0.2         # Reduced from 0.4 to prevent output suppression
   use_transformer: true  # Use Transformer instead of TCN for direction
 
 # ----- OPTIMIZER CONFIGURATION -----

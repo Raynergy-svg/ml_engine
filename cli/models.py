@@ -167,7 +167,7 @@ def _build_xgboost_model(
     Returns a wrapper that's compatible with the Keras training interface.
     Note: XGBoost training is handled separately in _train_buddy_xgboost.
     """
-    from xgboost_model import XGBoostTradingModel, XGBoostConfig
+    from src.models.xgboost_model import XGBoostTradingModel, XGBoostConfig
     
     xgb_config = XGBoostConfig()
     if config:

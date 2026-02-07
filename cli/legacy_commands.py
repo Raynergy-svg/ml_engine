@@ -63,7 +63,7 @@ def train_model(config_path: str) -> None:
         console.print("[bold blue]Initializing ML Engine...[/bold blue]")
         
         # Load training data
-        from data_loader import MarketDataLoader
+        from src.data.data_loader import MarketDataLoader
         data_loader = MarketDataLoader(config)
         
         console.print("[bold blue]Loading market data...[/bold blue]")

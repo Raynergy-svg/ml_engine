@@ -131,7 +131,7 @@ def compute_triple_barrier_labels(
         - label_weights: (n,) array of weights (0 for excluded samples)
         - results: List of TripleBarrierResult for detailed analysis
     """
-    from fx_paper import pip_size, simulate_tp_sl_outcome
+    from src.utils.fx_paper import pip_size, simulate_tp_sl_outcome
     
     n = len(df)
     direction_labels = np.full((n,), 0.5, dtype=np.float32)

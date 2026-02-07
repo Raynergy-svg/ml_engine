@@ -126,7 +126,7 @@ def main():
     # 7. MODULAR INFERENCE
     print_header("7. MODULAR INFERENCE (Gate System)")
     try:
-        from modular_inference import ModularEnsembleInference, InferenceGateConfig
+        from src.core.modular_inference import ModularEnsembleInference, InferenceGateConfig
         config = InferenceGateConfig()
         print_status("Gate Config", True, "loaded")
         print(f"      TCN threshold: {config.min_tcn_probability}")

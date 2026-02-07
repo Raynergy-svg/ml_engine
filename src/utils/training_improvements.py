@@ -81,7 +81,7 @@ def compute_triple_barrier_direction_labels(
         - stats: Dictionary with labeling statistics
     """
     try:
-        from fx_paper import pip_size, simulate_tp_sl_outcome
+        from src.utils.fx_paper import pip_size, simulate_tp_sl_outcome
     except ImportError:
         logger.warning("fx_paper not available, falling back to simple labels")
         n = len(ohlc_df)

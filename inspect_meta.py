@@ -62,7 +62,7 @@ print("2. CURRENT FEATURE GENERATION")
 print("="*60)
 
 # Now compute current features to compare
-from modular_data_loaders import compute_normalized_features, load_direction_data
+from src.core.modular_data_loaders import compute_normalized_features, load_direction_data
 
 # Load sample data
 csv_path = 'market_data/USD_JPY_H1.csv'
