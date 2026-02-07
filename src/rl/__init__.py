@@ -12,6 +12,8 @@ Note: All imports are lazy to avoid 8+ second startup penalty from stable-baseli
 """
 
 # These are imported lazily - the actual SB3/gym import happens on first use
+
+
 def __getattr__(name):
     """Lazy import for RL classes to avoid slow startup."""
     if name == 'GateThresholdEnv':
@@ -43,6 +45,7 @@ def __getattr__(name):
         from .utils import normalize_features_for_rl
         return normalize_features_for_rl
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     # Environments

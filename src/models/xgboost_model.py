@@ -21,15 +21,13 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 import pickle
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -466,7 +464,7 @@ if __name__ == "__main__":
     
     # Predict
     preds = model.predict(X_val[:5])
-    print(f"\nSample predictions:")
+    print("\nSample predictions:")
     print(f"  Direction: {preds['direction']}")
     print(f"  Confidence: {preds['confidence']}")
     
@@ -474,4 +472,3 @@ if __name__ == "__main__":
     print(f"\nTop 10 features: {model.get_feature_importance(10)}")
     
     print("\nXGBoost model test complete!")
-

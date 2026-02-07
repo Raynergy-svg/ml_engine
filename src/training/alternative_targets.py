@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -503,8 +503,6 @@ def analyze_target_predictability(
 
 if __name__ == "__main__":
     # Quick test
-    import numpy as np
-    
     print("Alternative Targets Test")
     print("-" * 50)
     
@@ -540,4 +538,3 @@ if __name__ == "__main__":
     
     print("\nTarget Predictability (top 10):")
     print(predictability.head(10).to_string(index=False))
-

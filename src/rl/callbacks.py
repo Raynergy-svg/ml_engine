@@ -9,13 +9,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import List
 
 import numpy as np
 
 # Lazy import to avoid 8+ second startup penalty from stable-baselines3
 SB3_AVAILABLE = None
 BaseCallback = None
+
 
 def _ensure_sb3_imported():
     """Lazy import stable-baselines3 only when needed."""
@@ -30,10 +31,12 @@ def _ensure_sb3_imported():
             BaseCallback = object
     return SB3_AVAILABLE
 
+
 def _get_callback_base():
     """Get BaseCallback class lazily."""
     _ensure_sb3_imported()
     return BaseCallback if SB3_AVAILABLE else object
+
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +86,8 @@ class TradingCallback(BaseCallback if SB3_AVAILABLE else object):
             # Log to TensorBoard if available
             if len(self._trade_pnls) > 0:
                 self.logger.record('trading/avg_pnl', np.mean(self._trade_pnls))
-                self.logger.record('trading/win_rate', 
-                    sum(1 for p in self._trade_pnls if p > 0) / len(self._trade_pnls))
+                self.logger.record('trading/win_rate',
+                                   sum(1 for p in self._trade_pnls if p > 0) / len(self._trade_pnls))
                 
                 # Sharpe-like metric
                 if np.std(self._trade_pnls) > 0:
@@ -173,7 +176,7 @@ class SharpeStopCallback(BaseCallback if SB3_AVAILABLE else object):
             self._consecutive_above_target += 1
             if self.verbose > 0:
                 logger.info(f"Sharpe {sharpe:.2f} >= {self.target_sharpe} "
-                           f"({self._consecutive_above_target}/{self.patience})")
+                            f"({self._consecutive_above_target}/{self.patience})")
             
             if self._consecutive_above_target >= self.patience:
                 logger.info(f"🎯 Target Sharpe {self.target_sharpe} achieved! Stopping training.")
@@ -246,7 +249,7 @@ class SaveBestTradingCallback(BaseCallback if SB3_AVAILABLE else object):
             
             if self.verbose > 0:
                 logger.info(f"💾 New best model saved: score={score:.3f}, "
-                           f"sharpe={sharpe:.2f}, WR={win_rate:.1%}, DD={max_dd:.1%}")
+                            f"sharpe={sharpe:.2f}, WR={win_rate:.1%}, DD={max_dd:.1%}")
         
         return True
 

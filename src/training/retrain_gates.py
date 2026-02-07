@@ -14,7 +14,6 @@ import json
 import pickle
 from pathlib import Path
 from datetime import datetime
-import numpy as np
 import pandas as pd
 from rich.console import Console
 from rich.panel import Panel
@@ -22,14 +21,15 @@ from rich.progress import track
 
 console = Console()
 
+
 def main():
     parser = argparse.ArgumentParser(description="Retrain gate models locally")
     parser.add_argument("--pairs", type=str, default="EUR_USD,GBP_USD,USD_JPY",
-                       help="Comma-separated list of pairs to train on")
+                        help="Comma-separated list of pairs to train on")
     parser.add_argument("--candles", type=int, default=5000,
-                       help="Number of candles per pair")
+                        help="Number of candles per pair")
     parser.add_argument("--granularity", type=str, default="H1",
-                       help="Timeframe")
+                        help="Timeframe")
     args = parser.parse_args()
     
     pairs = [p.strip() for p in args.pairs.split(",")]
@@ -164,7 +164,7 @@ def main():
     xgb_trainer.save(str(model_dir / "xgb_momentum.pkl"))
     
     console.print(f"  [green]✓ XGBoost: momentum_mae={xgb_metrics['momentum_mae']:.4f}, "
-                 f"accel_acc={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
+                  f"accel_acc={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
     
     # Train RF
     console.print("\n[bold]Step 5: Training Random Forest (Risk)...[/bold]")
@@ -179,7 +179,7 @@ def main():
     
     drawdown_mae_bps = rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pct', 0) * 10000)
     console.print(f"  [green]✓ RF: drawdown_mae={drawdown_mae_bps:.1f} bps, "
-                 f"streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
+                  f"streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
     
     # Train Ridge
     console.print("\n[bold]Step 6: Training ElasticNet (Confidence)...[/bold]")
@@ -193,7 +193,7 @@ def main():
     ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
     
     console.print(f"  [green]✓ Ridge: MAE={ridge_metrics['confidence_mae']:.2f}, "
-                 f"R²={ridge_metrics['r2_score']:.4f}[/green]")
+                  f"R²={ridge_metrics['r2_score']:.4f}[/green]")
     
     # Update metadata
     console.print("\n[bold]Step 7: Updating metadata...[/bold]")
@@ -223,7 +223,7 @@ def main():
     with open(meta_path, 'w') as f:
         json.dump(meta, f, indent=2)
     
-    console.print(f"  [green]✓ Metadata updated[/green]")
+    console.print("  [green]✓ Metadata updated[/green]")
     
     # Summary
     console.print("\n" + "="*60)

@@ -195,7 +195,7 @@ class ScannerConfig:
     # BACKTEST GATE (Phase 2: Scanner Accuracy)
     # ==========================================================================
     require_backtest: bool = True       # Run backtest before showing tradeable signals
-    min_backtest_win_rate: float = 0.45 # Minimum win rate to pass gate (0-1)
+    min_backtest_win_rate: float = 0.45  # Minimum win rate to pass gate (0-1)
     min_backtest_trades: int = 10       # Minimum simulated trades for valid backtest
     backtest_window: int = 50           # Number of candles for backtest
     
