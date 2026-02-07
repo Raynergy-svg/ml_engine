@@ -11,7 +11,8 @@ from cli.training import train_buddy
 from cli.commands import (
     buddy, buddy_loop, buddy_scan, buddy_monitor, buddy_journal,
     buddy_analyze, buddy_validate, buddy_test, model_status, promote_model,
-    train_model, evaluate_model, train_rl_sizer, retrain_gates, suggest_improvements,
+    train_model, evaluate_model, train_rl_sizer, retrain_gates,
+    train_rl_gates, train_rl_exits, retrain_all, suggest_improvements,
     _normalize_command_args, _maybe_run_buddy_interactive_wizard,
     _maybe_launch_buddy_repl, _dispatch_buddy, _dispatch_train_buddy,
 )
@@ -30,7 +31,8 @@ __all__ = [
     # Commands
     'buddy', 'buddy_loop', 'buddy_scan', 'buddy_monitor', 'buddy_journal',
     'buddy_analyze', 'buddy_validate', 'buddy_test', 'model_status', 'promote_model',
-    'train_model', 'evaluate_model', 'train_rl_sizer', 'retrain_gates', 'suggest_improvements',
+    'train_model', 'evaluate_model', 'train_rl_sizer', 'retrain_gates',
+    'train_rl_gates', 'train_rl_exits', 'retrain_all', 'suggest_improvements',
     '_normalize_command_args', '_maybe_run_buddy_interactive_wizard',
     '_maybe_launch_buddy_repl', '_dispatch_buddy', '_dispatch_train_buddy',
     # FX Trading

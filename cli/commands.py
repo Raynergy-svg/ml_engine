@@ -51,7 +51,7 @@ from cli.analytics_commands import (
     suggest_improvements, buddy_journal, buddy_analyze, buddy_monitor,
 )
 from cli.model_management import model_status, promote_model
-from cli.training_ops import train_rl_sizer, retrain_gates
+from cli.training_ops import train_rl_sizer, retrain_gates, train_rl_gates, train_rl_exits, retrain_all
 from cli.buddy_scanning import buddy_scan, buddy_predict_78, _buddy_scan_legacy
 
 

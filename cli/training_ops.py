@@ -37,6 +37,9 @@ from cli.tf_config import _configure_tf_metal
 
 console = Console()
 
+MODEL_DIR_PATH = "trained_data/models"
+MODULAR_ENSEMBLE_META_FILENAME = "modular_ensemble.meta.json"
+
 
 def train_rl_sizer(
     config_path: str = DEFAULT_CONFIG_PATH,
@@ -552,3 +555,394 @@ def retrain_gates(
         title="✅ Complete",
         border_style="green"
     ))
+
+
+def train_rl_gates(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    timesteps: int = 100_000,
+    pairs: str | None = None,
+    granularity: str = "H1",
+    candles: int = 5000,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """Train RL gate threshold optimizer using SAC.
+
+    Learns to adapt confidence, momentum, and risk thresholds based on market regime.
+    Uses a two-phase approach to avoid TensorFlow/PyTorch GPU conflicts.
+    """
+    import tempfile
+
+    console.print()
+    console.print(Panel.fit(
+        "[bold cyan]RL Gate Threshold Training[/bold cyan]\n"
+        f"[dim]SAC - {timesteps:,} timesteps - {granularity}[/dim]",
+        border_style="cyan"
+    ))
+
+    modular_meta_path = Path(MODEL_DIR_PATH) / MODULAR_ENSEMBLE_META_FILENAME
+    if not modular_meta_path.exists():
+        console.print("[yellow]⚠ Train ensemble first: buddy train --oanda-live -n 12000[/yellow]")
+        return
+
+    ALL_MAJOR_PAIRS = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD"]
+    pair_list = [p.strip() for p in pairs.split(",")] if pairs else ALL_MAJOR_PAIRS[:3]
+
+    console.print(f"[cyan]Pairs: {', '.join(pair_list)}[/cyan]")
+
+    # Phase 1: Generate data using TensorFlow
+    console.print("\n[bold]Phase 1: Generating predictions with ensemble...[/bold]")
+
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    _configure_tf_metal(verbose=False)
+
+    from src.core.modular_inference import ModularEnsembleInference
+    from src.data.feature_engineering import FeatureEngineering
+    from src.utils.fx_paper import candles_to_ohlcv_df
+    from src.utils.oanda_practice import OandaPracticeClient
+
+    ensemble = ModularEnsembleInference(use_rl_sizer=False)
+    ensemble.load_models()
+
+    try:
+        oanda = OandaPracticeClient.from_env()
+    except (RuntimeError, ConnectionError, ValueError) as e:
+        console.print(f"[red]OANDA connection failed: {e}[/red]")
+        return
+
+    all_prices: list[Any] = []
+    all_features: list[Any] = []
+    all_preds: list[dict[str, Any]] = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+    ) as progress:
+        task = progress.add_task("Fetching data...", total=len(pair_list))
+        for pair in pair_list:
+            try:
+                resp = oanda.get_candles(pair, granularity=granularity, count=min(candles, 5000))
+                df = candles_to_ohlcv_df(resp)
+                fe = FeatureEngineering({})
+                df = fe.create_features(df, include_all=True)
+                df = df.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
+
+                prices = df['close'].values
+                all_prices.extend(prices)
+
+                feature_cols = [c for c in df.columns if c not in ['time', 'open', 'high', 'low', 'close', 'volume']]
+                features = df[feature_cols].values
+                all_features.extend(features)
+
+                for i in range(60, len(df)):
+                    try:
+                        signal = ensemble.predict(df.iloc[:i + 1])
+                        pred = {
+                            'tcn_prob': signal.tcn_probability,
+                            'ridge_conf': signal.ridge_confidence,
+                            'xgb_mom': signal.xgb_momentum,
+                            'rf_dd': signal.rf_drawdown_pips,
+                        }
+                        all_preds.append(pred)
+                    except (AttributeError, ValueError, KeyError):
+                        all_preds.append({'tcn_prob': 0.5, 'ridge_conf': 50, 'xgb_mom': 0.5, 'rf_dd': 5})
+                progress.update(task, advance=1)
+            except (RuntimeError, ValueError) as e:
+                console.print(f"[yellow]⚠ {pair}: {e}[/yellow]")
+                progress.update(task, advance=1)
+
+    if len(all_prices) < 200:
+        console.print("[red]Insufficient data for training[/red]")
+        return
+
+    data_file = Path(tempfile.gettempdir()) / "rl_gates_data.npz"
+    np.savez(
+        data_file,
+        prices=np.array(all_prices[:len(all_preds)]),
+        features=np.array(all_features[:len(all_preds)]),
+        preds=np.array([[p['tcn_prob'], p['ridge_conf'], p['xgb_mom'], p['rf_dd']] for p in all_preds]),
+    )
+    console.print(f"[green]✓ Generated {len(all_preds):,} samples[/green]")
+
+    # Phase 2: Train SAC in subprocess (no TensorFlow)
+    console.print("\n[bold]Phase 2: Training SAC model...[/bold]")
+
+    cmd = [
+        "python", "-c",
+        f'''
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+import numpy as np
+from src.rl.gate_threshold_env import GateThresholdRL
+
+data = np.load("{data_file}", allow_pickle=True)
+prices = data["prices"]
+features = data["features"]
+preds = data["preds"]
+
+print(f"Training on {{len(prices):,}} samples...")
+rl = GateThresholdRL()
+stats = rl.train(prices=prices, features=features, ensemble_preds=preds, timesteps={timesteps}, verbose=1)
+rl.save()
+print("Model saved to: trained_data/models/sac_gate_thresholds.zip")
+'''
+    ]
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}")) as progress:
+        task = progress.add_task("Training SAC...", total=None)
+        start_time = time.time()
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        train_time = time.time() - start_time
+
+    if data_file.exists():
+        data_file.unlink()
+
+    if result.returncode != 0:
+        console.print(f"[red]Training failed:[/red]\n{result.stderr}")
+        return
+
+    console.print(f"[dim]{result.stdout}[/dim]")
+    console.print(Panel(
+        f"[bold green]✓ RL Gate Thresholds Trained[/bold green]\n\n"
+        f"Timesteps: {timesteps:,}  •  Time: {train_time:.0f}s  •  Samples: {len(all_preds):,}\n\n"
+        f"[bold]Usage:[/bold]  buddy --use-rl-gates -I EUR_USD",
+        border_style="green"
+    ))
+
+
+def train_rl_exits(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    timesteps: int = 100_000,
+    pairs: str | None = None,
+    granularity: str = "H1",
+    candles: int = 5000,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """Train RL exit timing optimizer using PPO.
+
+    Learns optimal exit decisions (hold/take-profit/stop-loss) based on
+    current PnL, time held, momentum, and volatility.
+    """
+    import tempfile
+
+    console.print()
+    console.print(Panel.fit(
+        "[bold cyan]RL Exit Timing Training[/bold cyan]\n"
+        f"[dim]PPO - {timesteps:,} timesteps - {granularity}[/dim]",
+        border_style="cyan"
+    ))
+
+    modular_meta_path = Path(MODEL_DIR_PATH) / MODULAR_ENSEMBLE_META_FILENAME
+    if not modular_meta_path.exists():
+        console.print("[yellow]⚠ Train ensemble first: buddy train --oanda-live -n 12000[/yellow]")
+        return
+
+    ALL_MAJOR_PAIRS = ["EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF", "AUD_USD", "USD_CAD", "NZD_USD"]
+    pair_list = [p.strip() for p in pairs.split(",")] if pairs else ALL_MAJOR_PAIRS[:3]
+
+    console.print(f"[cyan]Pairs: {', '.join(pair_list)}[/cyan]")
+
+    # Phase 1: Generate scenarios data
+    console.print("\n[bold]Phase 1: Generating trade scenarios...[/bold]")
+
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    _configure_tf_metal(verbose=False)
+
+    from src.data.feature_engineering import FeatureEngineering
+    from src.utils.fx_paper import candles_to_ohlcv_df
+    from src.utils.oanda_practice import OandaPracticeClient
+
+    try:
+        oanda = OandaPracticeClient.from_env()
+    except (RuntimeError, ConnectionError, ValueError) as e:
+        console.print(f"[red]OANDA connection failed: {e}[/red]")
+        return
+
+    all_scenarios: list[dict[str, Any]] = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+    ) as progress:
+        task = progress.add_task("Generating scenarios...", total=len(pair_list))
+        for pair in pair_list:
+            try:
+                resp = oanda.get_candles(pair, granularity=granularity, count=min(candles, 5000))
+                df = candles_to_ohlcv_df(resp)
+                fe = FeatureEngineering({})
+                df = fe.create_features(df, include_all=True)
+                df = df.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
+
+                prices = df['close'].values
+                atr = df['atr_pct_14'].values if 'atr_pct_14' in df.columns else np.full(len(df), 0.01)
+                momentum = df['returns_2'].values if 'returns_2' in df.columns else np.zeros(len(df))
+
+                for i in range(100, len(df) - 50):
+                    entry_price = prices[i]
+                    direction = 1 if np.random.random() > 0.5 else -1
+                    for hold_bars in range(1, 25):
+                        if i + hold_bars >= len(df):
+                            break
+                        exit_price = prices[i + hold_bars]
+                        pnl_pct = direction * (exit_price - entry_price) / entry_price
+                        scenario = {
+                            'pnl': pnl_pct,
+                            'bars_held': hold_bars,
+                            'momentum': momentum[i + hold_bars] if i + hold_bars < len(momentum) else 0,
+                            'atr': atr[i + hold_bars] if i + hold_bars < len(atr) else 0.01,
+                            'best_exit': 1 if pnl_pct > 0.002 else (2 if pnl_pct < -0.003 else 0),
+                        }
+                        all_scenarios.append(scenario)
+                progress.update(task, advance=1)
+            except (RuntimeError, ValueError) as e:
+                console.print(f"[yellow]⚠ {pair}: {e}[/yellow]")
+                progress.update(task, advance=1)
+
+    if len(all_scenarios) < 1000:
+        console.print("[red]Insufficient scenarios for training[/red]")
+        return
+
+    data_file = Path(tempfile.gettempdir()) / "rl_exits_data.npz"
+    np.savez(
+        data_file,
+        scenarios=np.array([[s['pnl'], s['bars_held'], s['momentum'], s['atr'], s['best_exit']]
+                           for s in all_scenarios]),
+    )
+    console.print(f"[green]✓ Generated {len(all_scenarios):,} scenarios[/green]")
+
+    # Phase 2: Train PPO in subprocess
+    console.print("\n[bold]Phase 2: Training PPO model...[/bold]")
+
+    cmd = [
+        "python", "-c",
+        f'''
+import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+from src.rl.optimal_exit_env import OptimalExitRL
+
+print("Training PPO on synthetic scenarios...")
+rl = OptimalExitRL()
+stats = rl.train(timesteps={timesteps}, verbose=1)
+rl.save()
+print("Model saved to: trained_data/models/ppo_optimal_exit.zip")
+'''
+    ]
+
+    with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}")) as progress:
+        task = progress.add_task("Training PPO...", total=None)
+        start_time = time.time()
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        train_time = time.time() - start_time
+
+    if data_file.exists():
+        data_file.unlink()
+
+    if result.returncode != 0:
+        console.print(f"[red]Training failed:[/red]\n{result.stderr}")
+        return
+
+    console.print(f"[dim]{result.stdout}[/dim]")
+    console.print(Panel(
+        f"[bold green]✓ RL Exit Timing Trained[/bold green]\n\n"
+        f"Timesteps: {timesteps:,}  •  Time: {train_time:.0f}s  •  Scenarios: {len(all_scenarios):,}\n\n"
+        f"[bold]Usage:[/bold]  buddy --use-rl-exits -I EUR_USD",
+        border_style="green"
+    ))
+
+
+def retrain_all(
+    config_path: str = DEFAULT_CONFIG_PATH,
+    *,
+    granularity: str = "H1",
+    candles: int = 15000,
+    verbose: bool = False,
+    **kwargs: Any,
+) -> None:
+    """Retrain ALL models for all 7 major FX pairs sequentially.
+
+    This command trains the full 4-model ensemble (Transformer, XGBoost, RF, LightGBM)
+    for each pair. Runs sequentially to avoid memory issues.
+    """
+    from cli.training import train_buddy as _train_buddy
+
+    MAJOR_PAIRS = [
+        "EUR_USD", "GBP_USD", "USD_JPY", "AUD_USD",
+        "NZD_USD", "USD_CAD", "USD_CHF",
+    ]
+
+    console.print(Panel(
+        f"[bold]Full Ensemble Retraining - All Pairs[/bold]\n\n"
+        f"Pairs: {', '.join(MAJOR_PAIRS)}\n"
+        f"Candles per pair: {candles:,}\n"
+        f"Granularity: {granularity}\n\n"
+        "[bold yellow]This will take 2-3 hours![/bold yellow]\n\n"
+        "[dim]Each pair trains: Transformer + XGBoost + RF + LightGBM[/dim]",
+        title="🔄 Retrain All Pairs",
+        border_style="cyan"
+    ))
+
+    results: dict[str, dict[str, Any]] = {}
+    start_time = time.time()
+
+    for i, pair in enumerate(MAJOR_PAIRS, 1):
+        pair_start = time.time()
+        console.print(f"\n{'=' * 60}")
+        console.print(f"[bold cyan]Training {pair} ({i}/{len(MAJOR_PAIRS)})[/bold cyan]")
+        console.print(f"{'=' * 60}\n")
+
+        try:
+            _train_buddy(
+                config_path=config_path,
+                instrument=pair,
+                csv_path=None,
+                oanda_fetch=True,
+                oanda_granularity=granularity,
+                oanda_candles=candles,
+                **kwargs,
+            )
+            pair_time = time.time() - pair_start
+            results[pair] = {'status': 'success', 'time_seconds': pair_time}
+            console.print(f"\n[green]✓ {pair} trained in {pair_time / 60:.1f} minutes[/green]")
+        except (RuntimeError, ValueError) as e:
+            pair_time = time.time() - pair_start
+            results[pair] = {'status': 'failed', 'error': str(e), 'time_seconds': pair_time}
+            console.print(f"\n[red]✗ {pair} failed: {e}[/red]")
+            continue
+
+    total_time = time.time() - start_time
+    successful = [p for p, r in results.items() if r['status'] == 'success']
+    failed = [p for p, r in results.items() if r['status'] == 'failed']
+
+    console.print("\n" + "=" * 60)
+    console.print(Panel(
+        f"[bold green]Retrain All Complete![/bold green]\n\n"
+        f"[bold]Total time:[/bold] {total_time / 60:.1f} minutes ({total_time / 3600:.1f} hours)\n\n"
+        f"[bold green]Successful ({len(successful)}):[/bold green] {', '.join(successful) or 'None'}\n"
+        f"[bold red]Failed ({len(failed)}):[/bold red] {', '.join(failed) or 'None'}\n\n"
+        f"[dim]Models saved to: trained_data/models/<PAIR>/[/dim]",
+        title="✅ Complete",
+        border_style="green"
+    ))
+
+    summary_path = Path("trained_data/retrain_all_summary.json")
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(summary_path, 'w') as f:
+        json.dump({
+            'completed_at': datetime.now().isoformat(),
+            'total_time_seconds': total_time,
+            'granularity': granularity,
+            'candles': candles,
+            'results': results,
+        }, f, indent=2)
+    console.print(f"[dim]Summary saved to: {summary_path}[/dim]")
