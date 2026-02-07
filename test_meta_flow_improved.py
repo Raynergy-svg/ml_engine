@@ -75,7 +75,7 @@ def setup_environment() -> None:
     """Setup the Python environment and import dependencies."""
     try:
         # Add project path to sys.path
-        project_path = Path('/Users/davidcertan/Desktop/ml_engine')
+        project_path = Path(__file__).resolve().parent
         if str(project_path) not in sys.path:
             sys.path.insert(0, str(project_path))
         
@@ -474,7 +474,7 @@ def main() -> None:
     try:
         # Create configuration
         config = TestConfig(
-            model_path='/Users/davidcertan/Desktop/ml_engine/trained_data/models/GBP_USD/transformer_direction.keras',
+            model_path=str(Path(__file__).resolve().parent / 'trained_data' / 'models' / 'GBP_USD' / 'transformer_direction.keras'),
             n_train=500,
             n_val=100,
             batch_size=32,

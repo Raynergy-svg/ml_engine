@@ -31,7 +31,8 @@ df = candles_to_ohlcv_df(resp)
 
 # Compute features using validation's compute_features
 import sys
-sys.path.insert(0, '/Users/davidcertan/Desktop/ml_engine/tests/validation')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'tests' / 'validation'))
 from validate_model import compute_features
 
 df_feat = compute_features(df)

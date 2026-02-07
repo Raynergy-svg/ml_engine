@@ -4,8 +4,10 @@ import numpy as np
 import pandas as pd
 import sys
 import os
-sys.path.insert(0, '/Users/davidcertan/Desktop/ml_engine')
-os.chdir('/Users/davidcertan/Desktop/ml_engine')
+from pathlib import Path
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+sys.path.insert(0, _PROJECT_ROOT)
+os.chdir(_PROJECT_ROOT)
 
 from src.core.modular_data_loaders import compute_normalized_features
 from sklearn.ensemble import RandomForestClassifier

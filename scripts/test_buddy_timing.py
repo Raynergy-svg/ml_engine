@@ -8,7 +8,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
 
 import sys
-sys.path.insert(0, '/Users/davidcertan/Desktop/ml_engine')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')

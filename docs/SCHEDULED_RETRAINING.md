@@ -91,7 +91,7 @@ The plist uses **local system time**. Adjust the `Hour` values in the plist base
 ## Email Alerts
 
 - **Only sent on FAILURE** (no spam on success)
-- Recipient: `dcertan84@gmail.com`
+- Recipient: set via `RETRAIN_EMAIL_RECIPIENT` env var
 - Fallback: If email fails, alert written to `logs/ALERT_*.txt`
 
 ## Logs

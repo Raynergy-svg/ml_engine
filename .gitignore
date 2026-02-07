@@ -13,6 +13,7 @@ venv/
 # OS / editor
 .DS_Store
 .vscode/
+.kilocode/
 
 # Logs / databases
 *.log

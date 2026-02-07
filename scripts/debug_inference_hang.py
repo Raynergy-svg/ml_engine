@@ -7,9 +7,11 @@ Replicates exact buddy command flow.
 import time
 import os
 import sys
+from pathlib import Path
 
 # Add project root to path
-sys.path.insert(0, '/Users/davidcertan/Desktop/ml_engine')
+_PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
+sys.path.insert(0, _PROJECT_ROOT)
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 

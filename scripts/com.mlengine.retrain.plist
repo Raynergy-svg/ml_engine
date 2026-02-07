@@ -13,21 +13,21 @@
     <!-- ProgramArguments: The command to run -->
     <key>ProgramArguments</key>
     <array>
-        <!-- Use the conda environment's Python -->
-        <string>/Users/davidcertan/miniforge3/envs/tf-metal/bin/python</string>
-        <string>/Users/davidcertan/Desktop/ml_engine/scripts/scheduled_retrain.py</string>
+        <!-- Use the conda environment's Python - UPDATE PATHS FOR YOUR SYSTEM -->
+        <string>$HOME/miniforge3/envs/tf-metal/bin/python</string>
+        <string>$ML_ENGINE_ROOT/scripts/scheduled_retrain.py</string>
     </array>
     
     <!-- WorkingDirectory: Where to run the command -->
     <key>WorkingDirectory</key>
-    <string>/Users/davidcertan/Desktop/ml_engine</string>
+    <string>$ML_ENGINE_ROOT</string>
     
     <!-- EnvironmentVariables: Set required env vars -->
     <key>EnvironmentVariables</key>
     <dict>
         <!-- Load OANDA credentials from .env file -->
         <key>PATH</key>
-        <string>/Users/davidcertan/miniforge3/envs/tf-metal/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>$HOME/miniforge3/envs/tf-metal/bin:/usr/local/bin:/usr/bin:/bin</string>
         <!-- Add your OANDA credentials here or ensure they're in .env -->
         <!-- Uncomment and fill in if needed:
         <key>OANDA_API_TOKEN</key>
@@ -74,11 +74,11 @@
     
     <!-- StandardOutPath: Where to write stdout -->
     <key>StandardOutPath</key>
-    <string>/Users/davidcertan/Desktop/ml_engine/logs/launchd_retrain_stdout.log</string>
+    <string>$ML_ENGINE_ROOT/logs/launchd_retrain_stdout.log</string>
     
     <!-- StandardErrorPath: Where to write stderr -->
     <key>StandardErrorPath</key>
-    <string>/Users/davidcertan/Desktop/ml_engine/logs/launchd_retrain_stderr.log</string>
+    <string>$ML_ENGINE_ROOT/logs/launchd_retrain_stderr.log</string>
     
     <!-- RunAtLoad: Run immediately when loaded (for testing) -->
     <!-- Set to false for production -->
