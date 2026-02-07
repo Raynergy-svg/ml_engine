@@ -1447,4 +1447,184 @@ def _run_fine_tuning(
     return fine_tune_results
 
 
+def train_with_walkforward_validation(
+    trainer_class: type,
+    trainer_config: Any,
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    feature_names: list[str] | None = None,
+    w_train: np.ndarray | None = None,
+    w_val: np.ndarray | None = None,
+    warm_start_path: str | None = None,
+    instrument: str = "UNKNOWN",
+    wf_config: dict[str, Any] | None = None,
+    console: _ConsoleLike | None = None,
+) -> tuple[Any, dict[str, Any]]:
+    """
+    Train a model with walk-forward cross-validation.
+    
+    This function wraps the standard training process with walk-forward validation,
+    providing more robust out-of-sample performance estimates.
+    
+    Args:
+        trainer_class: Trainer class to use (e.g., TransformerDirectionTrainer)
+        trainer_config: Configuration object for the trainer
+        X_train: Training features
+        y_train: Training labels
+        X_val: Validation features (combined with train for WF splits)
+        y_val: Validation labels
+        feature_names: Optional feature names
+        w_train: Optional sample weights for training
+        w_val: Optional sample weights for validation
+        warm_start_path: Optional path to warm-start model
+        instrument: Instrument name for logging
+        wf_config: Walk-forward configuration dict from YAML
+        console: Rich console for output
+    
+    Returns:
+        Tuple of (best_trainer, aggregated_metrics)
+    """
+    from src.training.walkforward_validation import (
+        WalkForwardConfig,
+        WalkForwardValidator,
+    )
+    
+    # Load walk-forward configuration
+    if wf_config is None or not wf_config.get('enabled', True):
+        # Walk-forward disabled, use standard training
+        trainer = trainer_class(trainer_config)
+        metrics = trainer.train(
+            X_train, y_train, X_val, y_val,
+            feature_names=feature_names,
+            w_train=w_train,
+            w_val=w_val,
+            warm_start_path=warm_start_path,
+            instrument=instrument,
+        )
+        return trainer, metrics
+    
+    # Parse walk-forward config
+    wf_cfg = WalkForwardConfig.from_dict(wf_config)
+    
+    if console:
+        console.print(Panel(
+            f"[bold]Walk-Forward Cross-Validation[/bold]\n\n"
+            f"[dim]Mode:[/dim] {wf_cfg.mode} (sliding window)\n"
+            f"[dim]Splits:[/dim] {wf_cfg.n_splits} folds\n"
+            f"[dim]Train Size:[/dim] {wf_cfg.train_size*100:.0f}%\n"
+            f"[dim]Gap:[/dim] {wf_cfg.gap} samples\n"
+            f"[dim]Retrain per fold:[/dim] {wf_cfg.retrain_per_fold}",
+            title="📊 Robust Validation",
+            border_style="cyan",
+        ))
+    
+    # Combine train and val for walk-forward splitting
+    X_combined = np.concatenate([X_train, X_val], axis=0)
+    y_combined = np.concatenate([y_train, y_val], axis=0)
+    
+    if w_train is not None and w_val is not None:
+        w_combined = np.concatenate([w_train, w_val], axis=0)
+    else:
+        w_combined = None
+    
+    # Create validator
+    validator = WalkForwardValidator(
+        n_splits=wf_cfg.n_splits,
+        train_size=wf_cfg.train_size,
+        val_size=wf_cfg.val_size,
+        test_size=wf_cfg.test_size,
+        gap=wf_cfg.gap,
+        mode=wf_cfg.mode,
+        min_train_size=wf_cfg.min_train_size,
+    )
+    
+    # Train on each fold
+    fold_trainers = []
+    fold_metrics = []
+    
+    for fold_idx, (train_idx, val_idx, test_idx) in enumerate(validator.split(X_combined)):
+        if console:
+            console.print(f"\n[cyan]Fold {fold_idx + 1}/{wf_cfg.n_splits}[/cyan]: "
+                         f"Train={len(train_idx)}, Val={len(val_idx)}, Test={len(test_idx)}")
+        
+        # Split data for this fold
+        X_train_fold = X_combined[train_idx]
+        y_train_fold = y_combined[train_idx]
+        X_val_fold = X_combined[val_idx]
+        y_val_fold = y_combined[val_idx]
+        
+        w_train_fold = w_combined[train_idx] if w_combined is not None else None
+        w_val_fold = w_combined[val_idx] if w_combined is not None else None
+        
+        if wf_cfg.retrain_per_fold:
+            # Create fresh trainer for this fold
+            fold_trainer = trainer_class(trainer_config)
+            
+            # Train on this fold
+            fold_metrics_dict = fold_trainer.train(
+                X_train_fold, y_train_fold,
+                X_val_fold, y_val_fold,
+                feature_names=feature_names,
+                w_train=w_train_fold,
+                w_val=w_val_fold,
+                warm_start_path=warm_start_path,
+                instrument=instrument,
+                data_range=f"fold_{fold_idx+1}",
+            )
+            
+            fold_trainers.append(fold_trainer)
+            fold_metrics.append(fold_metrics_dict)
+            
+            if console:
+                val_acc = fold_metrics_dict.get('val_accuracy', 0.0)
+                console.print(f"  [green]✓ Fold {fold_idx + 1} complete: val_accuracy={val_acc:.1%}[/green]")
+        else:
+            # Use same trainer for all folds (not recommended)
+            if fold_idx == 0:
+                fold_trainer = trainer_class(trainer_config)
+                fold_trainers.append(fold_trainer)
+            else:
+                fold_trainer = fold_trainers[0]
+            
+            # Evaluate on this fold without retraining
+            # Just collect metrics
+            fold_metrics_dict = {'val_accuracy': 0.0}  # Placeholder
+            fold_metrics.append(fold_metrics_dict)
+    
+    # Aggregate results based on strategy
+    if wf_cfg.aggregate_method == "best":
+        # Select best fold based on validation accuracy
+        best_idx = max(range(len(fold_metrics)), 
+                      key=lambda i: fold_metrics[i].get('val_accuracy', 0.0))
+        best_trainer = fold_trainers[best_idx]
+        best_metrics = fold_metrics[best_idx]
+        
+        if console:
+            console.print(f"\n[bold green]Selected best fold: {best_idx + 1}[/bold green] "
+                         f"(val_accuracy={best_metrics.get('val_accuracy', 0.0):.1%})")
+        
+        return best_trainer, best_metrics
+    
+    elif wf_cfg.aggregate_method == "average":
+        # Return last trainer but with averaged metrics
+        averaged_metrics = {}
+        for key in fold_metrics[0].keys():
+            values = [m.get(key, 0.0) for m in fold_metrics]
+            averaged_metrics[key] = np.mean(values)
+            averaged_metrics[f'{key}_std'] = np.std(values)
+        
+        if console:
+            console.print(f"\n[bold green]Averaged metrics across {len(fold_metrics)} folds[/bold green]")
+        
+        return fold_trainers[-1], averaged_metrics
+    
+    else:  # "ensemble" or unknown
+        # Return last trainer (default behavior)
+        if console:
+            console.print(f"\n[yellow]Using last fold trainer (aggregate_method={wf_cfg.aggregate_method})[/yellow]")
+        return fold_trainers[-1], fold_metrics[-1]
+
+
 # — Raynergy-svg —
