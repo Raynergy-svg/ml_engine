@@ -34,14 +34,19 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 # Import normalized feature computation from data loaders
-from .modular_data_loaders import compute_normalized_features, get_normalized_feature_names
+from .modular_data_loaders import (
+    compute_normalized_features,
+    get_normalized_feature_names,
+    align_features_to_model,
+)
 
 # Import confidence calibration module
 try:
@@ -85,26 +90,115 @@ except ImportError:
     RetrainConfig = None
     create_retrain_callback = None
 
+# Import custom Keras serializable classes to ensure proper deserialization
+# This MUST be imported before loading any models that use these schedulers
+try:
+    from src.training.m1_metal_optimizer import WarmupCosineDecaySchedule, CosineDecayRestarts  # noqa: F401
+    CUSTOM_LR_SCHEDULES_AVAILABLE = True
+except ImportError:
+    CUSTOM_LR_SCHEDULES_AVAILABLE = False
+    # Models may still load if compile=False, but recompilation will be needed
+
+# Import Pandera for optional DataFrame schema validation
+# Provides clear error messages when features are missing/mistyped
+try:
+    import pandera as pa
+    import pandera.pandas as pa_pandas
+    PANDERA_AVAILABLE = True
+except ImportError:
+    PANDERA_AVAILABLE = False
+    pa = None
+    pa_pandas = None
+
 # RL position sizer availability is checked lazily to avoid TF/PyTorch GPU conflicts
 # The actual import happens only when use_rl_sizer=True and the model is loaded
 RL_AVAILABLE = True  # We assume it's available, actual check is deferred
 RLPositionSizer = None  # Lazy loaded
 RL_MODEL_PATH = Path("trained_data/models/rl_position_sizer.zip")
+RL_ONNX_PATH = Path("trained_data/models/rl_position_sizer.onnx")
+
+# RL Gate threshold and exit timing (NEW)
+GateThresholdRL = None  # Lazy loaded
+OptimalExitRL = None  # Lazy loaded
+RL_GATES_AVAILABLE = True
+RL_EXITS_AVAILABLE = True
+RL_GATE_MODEL_PATH = Path("trained_data/models/sac_gate_thresholds.zip")
+RL_EXIT_MODEL_PATH = Path("trained_data/models/ppo_optimal_exit.zip")
+
+# Timeout for RL loading to prevent hangs
+RL_LOAD_TIMEOUT_SECONDS = 10
+
+
+def _lazy_load_rl_sizer_unsafe():
+    """Internal: Load RLPositionSizer (may hang on GPU conflicts)."""
+    from rl_position_sizing import RLPositionSizer as _RLPositionSizer
+    return _RLPositionSizer, True
+
 
 def _lazy_load_rl_sizer():
-    """Lazy load RLPositionSizer to avoid TF/PyTorch GPU conflicts at import time."""
+    """Lazy load RLPositionSizer with timeout protection to avoid TF/PyTorch GPU conflicts."""
     global RLPositionSizer, RL_AVAILABLE
     if RLPositionSizer is not None:
         return RLPositionSizer, RL_AVAILABLE
+    
+    # Use ThreadPoolExecutor with timeout to prevent hangs
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+    
     try:
-        from rl_position_sizing import RLPositionSizer as _RLPositionSizer, RL_MODEL_PATH as _RL_MODEL_PATH
-        RLPositionSizer = _RLPositionSizer
-        RL_AVAILABLE = True
-        return RLPositionSizer, RL_AVAILABLE
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_lazy_load_rl_sizer_unsafe)
+            try:
+                _RLPositionSizer, _ = future.result(timeout=RL_LOAD_TIMEOUT_SECONDS)
+                RLPositionSizer = _RLPositionSizer
+                RL_AVAILABLE = True
+                return RLPositionSizer, RL_AVAILABLE
+            except FutureTimeout:
+                logger.warning(f"RL sizer import timed out after {RL_LOAD_TIMEOUT_SECONDS}s - using heuristic sizing")
+                RL_AVAILABLE = False
+                RLPositionSizer = None
+                return None, False
     except ImportError:
         RL_AVAILABLE = False
         RLPositionSizer = None
         return None, False
+    except Exception as e:
+        logger.warning(f"RL sizer import failed: {type(e).__name__}: {e}")
+        RL_AVAILABLE = False
+        RLPositionSizer = None
+        return None, False
+
+
+def _lazy_load_rl_gates():
+    """Lazy load GateThresholdRL to avoid TF/PyTorch GPU conflicts."""
+    global GateThresholdRL, RL_GATES_AVAILABLE
+    if GateThresholdRL is not None:
+        return GateThresholdRL, RL_GATES_AVAILABLE
+    try:
+        from src.rl.gate_threshold_env import GateThresholdRL as _GateThresholdRL
+        GateThresholdRL = _GateThresholdRL
+        RL_GATES_AVAILABLE = True
+        return GateThresholdRL, RL_GATES_AVAILABLE
+    except ImportError:
+        RL_GATES_AVAILABLE = False
+        GateThresholdRL = None
+        return None, False
+
+
+def _lazy_load_rl_exits():
+    """Lazy load OptimalExitRL to avoid TF/PyTorch GPU conflicts."""
+    global OptimalExitRL, RL_EXITS_AVAILABLE
+    if OptimalExitRL is not None:
+        return OptimalExitRL, RL_EXITS_AVAILABLE
+    try:
+        from src.rl.optimal_exit_env import OptimalExitRL as _OptimalExitRL
+        OptimalExitRL = _OptimalExitRL
+        RL_EXITS_AVAILABLE = True
+        return OptimalExitRL, RL_EXITS_AVAILABLE
+    except ImportError:
+        RL_EXITS_AVAILABLE = False
+        OptimalExitRL = None
+        return None, False
+
 
 logger = logging.getLogger(__name__)
 
@@ -118,9 +212,12 @@ class InferenceConfig:
     - Momentum: Percentile-normalized (median=0.3, P90=0.7)
     - Risk: ATR-based expected drawdown (typically 0.5-3%)
     """
-    # TCN/Transformer probability gate - CRITICAL: reject coin-flip signals
-    # 0.5 = uncertain, 0.55+ = slight edge, 0.60+ = good edge
-    min_tcn_probability: float = 0.60  # Require at least 60% confidence in direction (tightened from 0.55)
+    # === TCN VOLATILITY REGIME FILTER (NEW) ===
+    # TCN predicts volatility regime (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
+    # Used as entry timing filter - only trade when volatility is HIGH or EXTREME
+    use_tcn_volatility_filter: bool = True  # Use TCN as volatility gate (not direction ensemble)
+    min_volatility_regime: int = 2  # Minimum regime: 2=HIGH, 3=EXTREME
+    tcn_required: bool = True  # Block ALL trades if TCN unavailable (safety)
     
     # Confidence gate - ADX-based, 50+ is strong trend
     min_confidence: float = 50.0  # 0-100 scale (tightened from 45)
@@ -149,6 +246,9 @@ class InferenceConfig:
     sentiment_block_threshold: float = 0.60  # Absolute sentiment score to block
     sentiment_min_headlines: int = 3  # Require minimum headlines before using sentiment
     
+    # Transformer weight for direction (TCN no longer in ensemble, Transformer-only)
+    transformer_weight: float = 1.0  # Transformer-only for direction prediction
+    
     # Confidence calibration
     enable_calibration: bool = True  # Apply Platt/Isotonic calibration to raw probabilities
     calibration_method: str = 'platt'  # 'platt', 'isotonic', or 'none'
@@ -156,6 +256,13 @@ class InferenceConfig:
     # Meta-labeling gate - predicts whether primary model's signal will succeed
     enable_meta_labeling: bool = True  # Use meta-labeler to filter trades
     min_meta_confidence: float = 0.55  # Minimum meta-confidence to allow trade
+    
+    # Monte Carlo Dropout for uncertainty estimation
+    mc_dropout_samples: int = 20  # Number of forward passes for MC Dropout (0 to disable)
+    max_uncertainty_std: float = 0.15  # Block trades if prediction std > this threshold
+    
+    # Volatility filter - skip low-volatility conditions
+    min_atr_pips: float = 8.0  # Minimum ATR in pips to allow trading
     
     # Position sizing - RISK-BASED (5% aggressive mode)
     risk_per_trade_pct: float = 0.05  # 5% risk per trade (~$5k on $100k)
@@ -190,9 +297,15 @@ class TradeSignal:
     size: float  # Position size (lots or units)
     confidence: float
     
-    # Regime results (new)
+    # Regime results (market regime from Transformer)
     regime: Optional[str] = None  # 'trend', 'chop', 'mean_revert', or None
     regime_confidence: float = 0.0
+    
+    # Volatility regime (TCN filter - NEW)
+    volatility_regime: Optional[int] = None  # 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
+    volatility_regime_name: Optional[str] = None  # Human-readable name
+    volatility_regime_confidence: float = 0.0  # Softmax confidence
+    volatility_gate_passed: bool = False  # Did it pass the minimum regime threshold?
     
     # Gate results
     tcn_direction: Optional[int] = None
@@ -217,6 +330,11 @@ class TradeSignal:
     
     # Meta-labeler confidence (predicts trade SUCCESS, not direction)
     meta_confidence: float = 0.0
+    
+    # RL-optimized parameters (NEW)
+    rl_thresholds_used: bool = False  # True if RL gate thresholds were applied
+    rl_exit_suggestion: Optional[str] = None  # 'hold', 'exit_profit', 'exit_loss', or None
+    rl_exit_confidence: float = 0.0  # Confidence in exit suggestion
     
     # Rejection reason if no trade
     reason: Optional[str] = None
@@ -247,7 +365,9 @@ class ModularEnsembleInference:
         self,
         model_dir: str = "trained_data/models",
         config: Optional[InferenceConfig] = None,
-        use_rl_sizer: bool = False,
+        use_rl_sizer: Optional[bool] = None,  # None = auto-detect from model existence
+        use_rl_gates: Optional[bool] = None,  # None = auto-detect from model existence
+        use_rl_exits: Optional[bool] = None,  # None = auto-detect from model existence
         instrument: Optional[str] = None,  # For pair-specific model loading
         enable_market_intelligence: bool = True,  # Enable sentiment/calendar/online learning
         enable_llm_integration: bool = False,  # Enable LLM-powered enhancements
@@ -272,6 +392,19 @@ class ModularEnsembleInference:
         # Drift detection config
         self.enable_drift_detection = enable_drift_detection
         self._drift_config_overrides = drift_config or {}
+        
+        # RL-based enhancements (NEW)
+        self.use_rl_gates = use_rl_gates
+        self.use_rl_exits = use_rl_exits
+        self.rl_gate_optimizer: Optional['GateThresholdRL'] = None
+        self.rl_exit_optimizer: Optional['OptimalExitRL'] = None
+        self._rl_gates_loaded = False
+        self._rl_exits_loaded = False
+        
+        # Track recent performance for RL gate adaptation
+        self._recent_trades: List[Dict] = []
+        self._recent_win_rate: float = 0.5
+        self._current_drawdown: float = 0.0
         
         # Market Intelligence with drift detection
         self.market_intel = None
@@ -358,6 +491,18 @@ class ModularEnsembleInference:
                 logger.info("✓ OnlineRetrainer initialized for drift-triggered retraining")
             except Exception as e:
                 logger.warning(f"OnlineRetrainer initialization failed: {e}")
+        
+        # === REGIME-SPECIFIC LGBM MODELS (Phase 3) ===
+        # 5 separate LightGBM models, one per market regime
+        self._regime_lgbm_trainer = None  # RegimeLGBMTrainer instance
+        self._regime_lgbm_loaded = False
+        
+        # Regime tracking for transition detection
+        self._regime_history: List[str] = []  # Last N regimes for transition detection
+        self._regime_history_max_size: int = 10  # Keep last 10 regimes
+        self._current_regime: Optional[str] = None
+        self._regime_transition_cooldown: int = 0  # Bars since last transition
+        self._regime_transition_cooldown_target: int = 3  # 3-bar cooldown after transition
     
     # =========================================================================
     # ONLINE LEARNING & DRIFT DETECTION
@@ -818,21 +963,33 @@ class ModularEnsembleInference:
     
     def _get_model_path(self, model_name: str, extension: str = ".keras") -> Path:
         """
-        Get the path to a model file, preferring pair-specific models.
+        Get the path to a model file, auto-preferring pair-specific then joint models.
         
         Lookup order:
         1. trained_data/models/{instrument}/{model_name}{extension}  (pair-specific)
-        2. trained_data/models/{model_name}{extension}  (generic fallback)
+        2. trained_data/models/joint/{model_name}{extension}  (joint training)
+        3. trained_data/models/{model_name}{extension}  (generic fallback)
         
         Returns the first existing path, or the generic path if none exist.
+        Logs which model source is being used.
         """
+        # 1. Check pair-specific path first
         if self.instrument and self.instrument != "GENERIC":
             pair_path = self.model_dir / self.instrument / f"{model_name}{extension}"
             if pair_path.exists():
+                logger.debug(f"Using pair-specific model: {pair_path}")
                 return pair_path
         
-        # Fallback to generic path
-        return self.model_dir / f"{model_name}{extension}"
+        # 2. Check joint training path
+        joint_path = self.model_dir / "joint" / f"{model_name}{extension}"
+        if joint_path.exists():
+            logger.debug(f"Using joint-trained model: {joint_path}")
+            return joint_path
+        
+        # 3. Fallback to generic path
+        generic_path = self.model_dir / f"{model_name}{extension}"
+        logger.debug(f"Using generic model: {generic_path}")
+        return generic_path
     
     def load_models(self, instrument: Optional[str] = None) -> None:
         """
@@ -844,13 +1001,14 @@ class ModularEnsembleInference:
         
         Lookup order for each model:
         1. trained_data/models/{instrument}/ (pair-specific)
-        2. trained_data/models/ (generic fallback)
+        2. trained_data/models/joint/ (joint training)
+        3. trained_data/models/ (generic fallback)
         """
         # Update instrument if provided
         if instrument:
             self.instrument = instrument
         import warnings
-        from modular_trainers import (
+        from src.training.modular_trainers import (
             TCNTrainer, TransformerDirectionTrainer, TransformerRegimeTrainer,
             XGBoostTrainer, RandomForestTrainer, RidgeTrainer,
             HistGradientBoostingDirectionTrainer
@@ -876,29 +1034,94 @@ class ModularEnsembleInference:
         # Use pair-specific paths with fallback to generic
         regime_path = self._get_model_path("transformer_regime", ".keras")
         transformer_path = self._get_model_path("transformer_direction", ".keras")
-        tcn_path = self._get_model_path("tcn_direction", ".keras")
+        tcn_path = self._get_model_path("tcn_volatility_regime", ".keras")  # NEW: volatility regime model
+        tcn_legacy_path = self._get_model_path("tcn_direction", ".keras")  # Legacy: direction model
         histgb_path = self._get_model_path("histgb_direction", ".pkl")
+        
+        # Track TCN volatility filter status
+        self.use_tcn_volatility_filter = False
+        self.tcn_volatility_model = None  # TCN for volatility regime classification
+        self.use_tcn_transformer_ensemble = False  # Legacy ensemble mode disabled
+        self.tcn_model = None  # Legacy TCN model for direction
         
         if regime_path.exists():
             # REGIME MODE
-            self.regime_model = TransformerRegimeTrainer()
-            self.regime_model.load(str(regime_path))
-            self.use_regime = True
-            logger.info(f"✓ Transformer REGIME model loaded from {regime_path}")
+            try:
+                self.regime_model = TransformerRegimeTrainer()
+                self.regime_model.load(str(regime_path))
+                self.use_regime = True
+                logger.info(f"✓ Transformer REGIME model loaded from {regime_path}")
+            except Exception as e:
+                self.regime_model = None
+                self.use_regime = False
+                logger.warning(f"⚠️ Transformer REGIME model failed to load: {e}")
+                logger.warning("⚠️ Model may have been saved with different Keras version")
+                if not self.config.permissive_mode:
+                    logger.info("ℹ Auto-enabling permissive_mode due to model load failure")
+                    self.config.permissive_mode = True
         elif transformer_path.exists():
             # DIRECTION MODE (Transformer)
-            self.tcn = TransformerDirectionTrainer()
-            self.tcn.load(str(transformer_path))
-            self.use_regime = False
-            logger.info(f"✓ Transformer direction model loaded from {transformer_path}")
-        elif tcn_path.exists():
-            # DIRECTION MODE (TCN legacy)
+            try:
+                self.tcn = TransformerDirectionTrainer()
+                self.tcn.load(str(transformer_path))
+                self.use_regime = False
+                logger.info(f"✓ Transformer direction model loaded from {transformer_path}")
+                
+                # === Log training state from lineage (v2) ===
+                if hasattr(self.tcn, 'lineage') and self.tcn.lineage:
+                    lineage = self.tcn.lineage
+                    variance_weight = getattr(lineage, 'auto_variance_weight', 'N/A')
+                    lr_reductions = getattr(lineage, 'lr_reductions_count', 0)
+                    collapse_recoveries = getattr(lineage, 'collapse_recovery_count', 0)
+                    lineage_ver = getattr(lineage, 'lineage_version', 1)
+                    instrument_trained = getattr(lineage, 'instrument', 'unknown')
+                    logger.info(
+                        f"📊 Model training state: instrument={instrument_trained}, "
+                        f"variance_weight={variance_weight}, lr_reductions={lr_reductions}, "
+                        f"collapse_recoveries={collapse_recoveries}, lineage_v{lineage_ver}"
+                    )
+            except Exception as e:
+                self.tcn = None
+                self.use_regime = False
+                logger.warning(f"⚠️ Transformer direction model failed to load: {e}")
+                logger.warning("⚠️ Model may have been saved with different Keras version")
+                if not self.config.permissive_mode:
+                    logger.info("ℹ Auto-enabling permissive_mode due to model load failure")
+                    self.config.permissive_mode = True
+        elif tcn_legacy_path.exists():
+            # DIRECTION MODE (TCN legacy - old direction model)
             self.tcn = TCNTrainer()
-            self.tcn.load(str(tcn_path))
+            self.tcn.load(str(tcn_legacy_path))
             self.use_regime = False
-            logger.info(f"✓ TCN direction model loaded from {tcn_path}")
+            logger.info(f"✓ TCN direction model loaded from {tcn_legacy_path} (legacy)")
         else:
             logger.warning(f"No direction/regime model found for {self.instrument or 'generic'}")
+        
+        # === TCN VOLATILITY REGIME FILTER (NEW) ===
+        # TCN now predicts volatility regime (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
+        # Used as mandatory entry timing filter - blocks trades in LOW/NORMAL volatility
+        if tcn_path.exists():
+            try:
+                self.tcn_volatility_model = TCNTrainer()
+                self.tcn_volatility_model.load(str(tcn_path))
+                self.use_tcn_volatility_filter = True
+                logger.info(f"✓ TCN Volatility Regime filter loaded from {tcn_path}")
+                logger.info(f"🎯 TCN Volatility Filter ENABLED (min_regime={self.config.min_volatility_regime})")
+            except Exception as e:
+                # Handle cross-Keras-version incompatibility gracefully
+                self.tcn_volatility_model = None
+                self.use_tcn_volatility_filter = False
+                logger.warning(f"⚠️ TCN Volatility model failed to load: {e}")
+                logger.warning("⚠️ Model may have been saved with different Keras version (2.x vs 3.x)")
+                logger.warning("⚠️ To fix: Retrain TCN volatility on current environment, or save with cross-version format")
+                logger.info("ℹ Continuing without TCN volatility filter - trades allowed without volatility gate")
+        else:
+            self.use_tcn_volatility_filter = False
+            if self.config.tcn_required:
+                logger.warning(f"⚠️ TCN Volatility Regime model NOT FOUND at {tcn_path}")
+                logger.warning("⚠️ tcn_required=True: ALL TRADES WILL BE BLOCKED until TCN is trained")
+            else:
+                logger.info("ℹ TCN Volatility filter not found - trades allowed without volatility gate")
         
         # Load HistGB for hybrid voting (if available)
         if histgb_path.exists():
@@ -910,23 +1133,55 @@ class ModularEnsembleInference:
             self.use_hybrid = False
             logger.info("ℹ HistGB not found - single-model mode")
         
-        # XGBoost (use pair-specific path)
+        # XGBoost or LightGBM Momentum (check LightGBM first for joint models)
+        lgbm_momentum_path = self._get_model_path("lgbm_momentum", ".pkl")
         xgb_path = self._get_model_path("xgb_momentum", ".pkl")
-        if xgb_path.exists():
+        
+        if lgbm_momentum_path.exists():
+            # Use LightGBM momentum (from joint training)
+            try:
+                from src.training.modular_trainers import LightGBMMomentumTrainer
+                self.xgb = LightGBMMomentumTrainer()
+                self.xgb.load(str(lgbm_momentum_path))
+                logger.info(f"✓ LightGBM Momentum loaded from {lgbm_momentum_path}")
+            except Exception as e:
+                logger.warning(f"Failed to load LightGBM momentum: {e}")
+                # Fall back to XGBoost
+                if xgb_path.exists():
+                    self.xgb = XGBoostTrainer()
+                    self.xgb.load(str(xgb_path))
+                    logger.info(f"✓ XGBoost loaded from {xgb_path} (fallback)")
+        elif xgb_path.exists():
             self.xgb = XGBoostTrainer()
             self.xgb.load(str(xgb_path))
             logger.info(f"✓ XGBoost loaded from {xgb_path}")
         else:
-            logger.warning(f"XGBoost model not found at {xgb_path}")
+            logger.warning("Momentum model not found (tried lgbm_momentum.pkl and xgb_momentum.pkl)")
         
-        # Random Forest (use pair-specific path)
+        # Random Forest or LightGBM Risk (check LightGBM first for joint models)
+        lgbm_risk_path = self._get_model_path("lgbm_risk", ".pkl")
         rf_path = self._get_model_path("rf_risk", ".pkl")
-        if rf_path.exists():
+        
+        if lgbm_risk_path.exists():
+            # Use LightGBM risk (from joint training)
+            try:
+                from src.training.modular_trainers import LightGBMRiskTrainer
+                self.rf = LightGBMRiskTrainer()
+                self.rf.load(str(lgbm_risk_path))
+                logger.info(f"✓ LightGBM Risk loaded from {lgbm_risk_path}")
+            except Exception as e:
+                logger.warning(f"Failed to load LightGBM risk: {e}")
+                # Fall back to RandomForest
+                if rf_path.exists():
+                    self.rf = RandomForestTrainer()
+                    self.rf.load(str(rf_path))
+                    logger.info(f"✓ Random Forest loaded from {rf_path} (fallback)")
+        elif rf_path.exists():
             self.rf = RandomForestTrainer()
             self.rf.load(str(rf_path))
             logger.info(f"✓ Random Forest loaded from {rf_path}")
         else:
-            logger.warning(f"Random Forest model not found at {rf_path}")
+            logger.warning("Risk model not found (tried lgbm_risk.pkl and rf_risk.pkl)")
         
         # Ridge (use pair-specific path)
         ridge_path = self._get_model_path("ridge_confidence", ".pkl")
@@ -937,19 +1192,72 @@ class ModularEnsembleInference:
         else:
             logger.warning(f"Ridge model not found at {ridge_path}")
         
-        # RL Position Sizer (lazy loaded to avoid TF/PyTorch GPU conflicts)
+        # RL Position Sizer (lazy loaded with timeout to avoid TF/PyTorch GPU conflicts)
+        # Auto-detect: if use_rl_sizer is None, enable if model exists
+        if self.use_rl_sizer is None:
+            if RL_MODEL_PATH.exists() or RL_ONNX_PATH.exists():
+                logger.info("🤖 RL model detected - auto-enabling RL position sizer")
+                self.use_rl_sizer = True
+            else:
+                self.use_rl_sizer = False
+        
         if self.use_rl_sizer:
             RLSizer, rl_available = _lazy_load_rl_sizer()
             if rl_available and RLSizer is not None:
                 self.rl_sizer = RLSizer()
                 if self.rl_sizer.load():
-                    logger.info("✓ RL Position Sizer loaded")
+                    logger.info("✓ RL Position Sizer loaded (PPO)")
                 else:
                     logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
                     self.rl_sizer = None
             else:
-                logger.warning("⚠️ RL requested but dependencies not available. Install: pip install gymnasium stable-baselines3")
+                logger.warning("⚠️ RL sizer load failed/timed out - using heuristic sizing")
                 self.rl_sizer = None
+        
+        # Auto-detect RL gates and exits if not explicitly set
+        if self.use_rl_gates is None:
+            if RL_GATE_MODEL_PATH.exists():
+                logger.info("🔍 RL Gate model detected - auto-enabling RL gates")
+                self.use_rl_gates = True
+            else:
+                self.use_rl_gates = False
+        
+        if self.use_rl_exits is None:
+            if RL_EXIT_MODEL_PATH.exists():
+                logger.info("🔍 RL Exit model detected - auto-enabling RL exits")
+                self.use_rl_exits = True
+            else:
+                self.use_rl_exits = False
+        
+        # RL Gate Threshold Optimizer (NEW - lazy loaded)
+        if self.use_rl_gates:
+            GateRL, gates_available = _lazy_load_rl_gates()
+            if gates_available and GateRL is not None:
+                self.rl_gate_optimizer = GateRL()
+                if self.rl_gate_optimizer.load():
+                    logger.info("✓ RL Gate Threshold Optimizer loaded (SAC)")
+                    self._rl_gates_loaded = True
+                else:
+                    logger.info("ℹ RL Gates not trained - using fixed thresholds")
+                    self.rl_gate_optimizer = None
+            else:
+                logger.warning("⚠️ RL Gates requested but dependencies not available")
+                self.rl_gate_optimizer = None
+        
+        # RL Optimal Exit Timing (NEW - lazy loaded)
+        if self.use_rl_exits:
+            ExitRL, exits_available = _lazy_load_rl_exits()
+            if exits_available and ExitRL is not None:
+                self.rl_exit_optimizer = ExitRL()
+                if self.rl_exit_optimizer.load():
+                    logger.info("✓ RL Optimal Exit Timing loaded (PPO)")
+                    self._rl_exits_loaded = True
+                else:
+                    logger.info("ℹ RL Exits not trained - using fixed R:R ratios")
+                    self.rl_exit_optimizer = None
+            else:
+                logger.warning("⚠️ RL Exits requested but dependencies not available")
+                self.rl_exit_optimizer = None
         
         # Load confidence calibration if available
         if self.config.enable_calibration:
@@ -1044,8 +1352,10 @@ class ModularEnsembleInference:
         if usable_gates < total_gates:
             # Some gates have issues - enable permissive mode but with partial degradation
             self.config.permissive_mode = True
-            logger.info(f"📊 Gate status: {usable_gates}/{total_gates} gates usable. "
-                       f"Issues: {self._gate_issues}")
+            logger.info(
+                f"📊 Gate status: {usable_gates}/{total_gates} gates usable. "
+                f"Issues: {self._gate_issues}"
+            )
             if usable_gates == 0:
                 logger.warning("⚠️ All sklearn gates have issues - using Transformer-only mode")
                 logger.info("💡 Run 'python retrain_gates.py' to fix sklearn version mismatch")
@@ -1117,7 +1427,7 @@ class ModularEnsembleInference:
                         self.calibrator.platt_model.classes_ = np.array([0, 1])
                         self.calibrator.is_fitted = True
                         self._calibration_loaded = True
-                        logger.info(f"✓ Platt calibration loaded from metadata")
+                        logger.info("✓ Platt calibration loaded from metadata")
                     
                     if 'isotonic_params' in calib_data:
                         # Reconstruct Isotonic model from saved parameters
@@ -1128,7 +1438,7 @@ class ModularEnsembleInference:
                         self.calibrator.isotonic_model.f_ = None  # Will be rebuilt on predict
                         self.calibrator.is_fitted = True
                         self._calibration_loaded = True
-                        logger.info(f"✓ Isotonic calibration loaded from metadata")
+                        logger.info("✓ Isotonic calibration loaded from metadata")
                     
                     return
             except Exception as e:
@@ -1146,8 +1456,8 @@ class ModularEnsembleInference:
             # Note: _calibration_loaded stays False, but calibrator.is_fitted is also False
             # _apply_calibration will check is_fitted and gracefully return raw probability
             self._calibration_loaded = False  # Explicitly set to indicate no fitted calibrator
-            logger.info(f"ℹ Calibration enabled but no fitted calibrator found - using raw probabilities")
-            logger.info(f"  To enable calibration, train with: python main.py train-buddy --calibrate")
+            logger.info("ℹ Calibration enabled but no fitted calibrator found - using raw probabilities")
+            logger.info("  To enable calibration, train with: python main.py train-buddy --calibrate")
             logger.info(f"  Or run: python -m confidence_calibration --train --model-dir {self.model_dir}")
 
     def _load_meta_labeler(self) -> None:
@@ -1175,11 +1485,13 @@ class ModularEnsembleInference:
         # Build list of paths to check
         meta_labeler_paths = [
             self.model_dir / "meta_labeler.pkl",
+            self.model_dir / "buddy_xgb_meta.pkl",  # Training saves with suffix
         ]
         
         # Add pair-specific path first if instrument is set
         if self.instrument and self.instrument != "GENERIC":
             meta_labeler_paths.insert(0, self.model_dir / self.instrument / "meta_labeler.pkl")
+            meta_labeler_paths.insert(1, self.model_dir / self.instrument / "buddy_xgb_meta.pkl")  # Also check suffixed filename
         
         for path in meta_labeler_paths:
             if path.exists():
@@ -1234,6 +1546,67 @@ class ModularEnsembleInference:
             logger.warning(f"Calibration failed, using raw probability: {e}")
             return raw_probability, False
 
+    def _predict_with_uncertainty(self, features: np.ndarray, n_samples: int = 20) -> tuple[float, float, int]:
+        """
+        Monte Carlo Dropout for uncertainty estimation.
+        
+        Runs the model N times with dropout enabled (training=True) to get
+        a distribution of predictions. High std indicates model uncertainty.
+        
+        Args:
+            features: Input features array (seq_len, n_features)
+            n_samples: Number of forward passes (default: 20)
+            
+        Returns:
+            Tuple of (mean_probability, std_probability, predicted_direction)
+        """
+        if self.tcn is None or not hasattr(self.tcn, 'model'):
+            return 0.5, 0.0, None
+        
+        try:
+            import tensorflow as tf  # noqa: F401
+            
+            # Ensure features have batch dimension
+            if features.ndim == 2:
+                features = np.expand_dims(features, axis=0)
+            
+            # Extract only the last seq_len timesteps
+            seq_len = getattr(self.tcn, 'seq_len', 60)
+            if features.shape[1] > seq_len:
+                features = features[:, -seq_len:, :]  # Take last 60 timesteps
+            
+            # Run N forward passes with dropout enabled
+            predictions = []
+            for _ in range(n_samples):
+                # training=True keeps dropout active
+                pred = self.tcn.model(features, training=True)
+                if isinstance(pred, dict):
+                    prob = pred.get('direction', pred.get('probability', 0.5))
+                else:
+                    prob = pred
+                
+                # Handle tensor output
+                if hasattr(prob, 'numpy'):
+                    prob = prob.numpy()
+                if isinstance(prob, np.ndarray):
+                    prob = float(prob.flatten()[-1])
+                predictions.append(prob)
+            
+            predictions = np.array(predictions)
+            mean_prob = float(np.mean(predictions))
+            std_prob = float(np.std(predictions))
+            
+            # Direction from mean probability
+            direction = 1 if mean_prob > 0.5 else 0
+            
+            logger.debug(f"🎲 MC Dropout (n={n_samples}): mean={mean_prob:.3f}, std={std_prob:.3f}")
+            
+            return mean_prob, std_prob, direction
+            
+        except Exception as e:
+            logger.warning(f"MC Dropout failed: {e}, falling back to single prediction")
+            return 0.5, 0.0, None
+
     def _find_features_by_pattern(self, df: pd.DataFrame, patterns: List[str]) -> List[str]:
         """Find features by partial name matching."""
         found = []
@@ -1283,8 +1656,10 @@ class ModularEnsembleInference:
                 # Log missing features but continue (fill with 0)
                 logger.debug(f"Missing {len(missing_features)} features (filled with 0): {missing_features[:5]}...")
             elif missing_features:
-                logger.warning(f"Many features missing ({len(missing_features)}/{n_features}). "
-                              f"First 10: {missing_features[:10]}")
+                logger.warning(
+                    f"Many features missing ({len(missing_features)}/{n_features}). "
+                    f"First 10: {missing_features[:10]}"
+                )
             
             return result
         
@@ -1406,6 +1781,223 @@ class ModularEnsembleInference:
         feature_names = getattr(self.regime_model, 'feature_names', None) if self.regime_model else None
         return self._extract_features_by_names(df, feature_names, regime_features, fallback_patterns)
     
+    # =========================================================================
+    # 5-CLASS REGIME DETECTION (Phase 3)
+    # =========================================================================
+    
+    def _detect_market_regime(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Detect current market regime using 5-class classification.
+        
+        Uses real-time ADX, RSI, and ATR expansion to classify:
+        - STRONG_TREND: ADX >= 40 + high volatility
+        - WEAK_TREND: ADX 25-40
+        - CHOP: ADX < 20 + neutral RSI
+        - MEAN_REVERT: RSI < 30 or > 70
+        - BREAKOUT: ATR expanding + ADX rising
+        
+        Returns:
+            Dict with 'regime', 'confidence', 'transition_detected', 'cooldown_active'
+        """
+        # Import regime classification from data loaders
+        try:
+            from .modular_data_loaders import (
+                classify_market_regime, 
+                REGIME_NAMES,
+            )
+        except ImportError:
+            logger.warning("Regime classification not available")
+            return {
+                'regime': 'WEAK_TREND',
+                'regime_id': 1,
+                'confidence': 0.5,
+                'transition_detected': False,
+                'cooldown_active': False,
+            }
+        
+        # Classify regime
+        regimes, confidences = classify_market_regime(df, return_confidence=True)
+        
+        # Get current (last) regime
+        current_regime_id = int(regimes.iloc[-1])
+        current_regime = REGIME_NAMES.get(current_regime_id, 'WEAK_TREND')
+        current_confidence = float(confidences.iloc[-1])
+        
+        # Track regime history for transition detection
+        previous_regime = self._current_regime
+        self._current_regime = current_regime
+        
+        # Update history
+        self._regime_history.append(current_regime)
+        if len(self._regime_history) > self._regime_history_max_size:
+            self._regime_history = self._regime_history[-self._regime_history_max_size:]
+        
+        # Detect regime transition
+        transition_detected = False
+        if previous_regime is not None and previous_regime != current_regime:
+            # Check if this is a real transition (not noise)
+            # Require 2 out of last 3 to be the new regime to confirm
+            recent = self._regime_history[-3:] if len(self._regime_history) >= 3 else self._regime_history
+            if recent.count(current_regime) >= 2:
+                transition_detected = True
+                self._regime_transition_cooldown = self._regime_transition_cooldown_target
+                logger.info(f"🔄 Regime transition: {previous_regime} → {current_regime}")
+        
+        # Update cooldown counter
+        cooldown_active = self._regime_transition_cooldown > 0
+        if cooldown_active:
+            self._regime_transition_cooldown -= 1
+        
+        return {
+            'regime': current_regime,
+            'regime_id': current_regime_id,
+            'confidence': current_confidence,
+            'transition_detected': transition_detected,
+            'cooldown_active': cooldown_active,
+            'cooldown_bars_remaining': self._regime_transition_cooldown,
+            'regime_history': self._regime_history[-5:],  # Last 5 for logging
+        }
+    
+    def _track_regime_transition(self, current_regime: str) -> bool:
+        """
+        Check if regime has transitioned from previous state.
+        
+        Args:
+            current_regime: Current detected regime name
+            
+        Returns:
+            True if regime changed, False otherwise
+        """
+        if not self._regime_history:
+            return False
+        
+        # Compare current to most recent
+        previous = self._regime_history[-1]
+        return previous != current_regime
+    
+    def _get_regime_lgbm(self, regime: str) -> Optional[Any]:
+        """
+        Get the LightGBM model for a specific regime.
+        
+        Lazy-loads regime-specific models if not already loaded.
+        Falls back to WEAK_TREND model if requested regime not available.
+        
+        Args:
+            regime: Regime name (STRONG_TREND, WEAK_TREND, CHOP, MEAN_REVERT, BREAKOUT)
+            
+        Returns:
+            LightGBM model for the regime, or None if not available
+        """
+        if self._regime_lgbm_trainer is None:
+            return None
+        
+        model = self._regime_lgbm_trainer.get_model_for_regime(regime)
+        
+        if model is None and regime != 'WEAK_TREND':
+            # Fallback to WEAK_TREND (most conservative)
+            logger.debug(f"No model for {regime}, falling back to WEAK_TREND")
+            model = self._regime_lgbm_trainer.get_model_for_regime('WEAK_TREND')
+        
+        return model
+    
+    def _load_regime_lgbm_models(self, instrument: str) -> bool:
+        """
+        Load all regime-specific LightGBM models for an instrument.
+        
+        Args:
+            instrument: Currency pair (e.g., 'EUR_USD')
+            
+        Returns:
+            True if at least one model loaded, False otherwise
+        """
+        try:
+            from src.training.modular_trainers import RegimeLGBMTrainer
+        except ImportError:
+            logger.warning("RegimeLGBMTrainer not available")
+            return False
+        
+        self._regime_lgbm_trainer = RegimeLGBMTrainer()
+        loaded_regimes = self._regime_lgbm_trainer.load(
+            str(self.model_dir), 
+            instrument
+        )
+        
+        if loaded_regimes:
+            self._regime_lgbm_loaded = True
+            logger.info(f"✓ Loaded regime LightGBM models: {loaded_regimes}")
+            return True
+        else:
+            logger.info("ℹ No regime-specific LightGBM models found")
+            return False
+    
+    def _predict_with_regime_lgbm(
+        self, 
+        df: pd.DataFrame, 
+        regime: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get direction prediction from regime-specific LightGBM model.
+        
+        Args:
+            df: DataFrame with features
+            regime: Current market regime
+            
+        Returns:
+            Dict with 'direction', 'probability', 'regime_used' or None if unavailable
+        """
+        if not self._regime_lgbm_loaded or self._regime_lgbm_trainer is None:
+            return None
+        
+        try:
+            # Extract features (use same features as XGBoost momentum)
+            features = self._extract_xgb_features(df)
+            
+            # Get prediction from regime-specific model
+            result = self._regime_lgbm_trainer.predict(features, regime=regime)
+            
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Regime LightGBM prediction failed: {e}")
+            return None
+
+    def get_volatility_regime(self, df: pd.DataFrame) -> Tuple[int, float]:
+        """
+        Get volatility regime prediction for scanner use.
+        
+        This is a lightweight helper method for the buddy_scanner to check
+        volatility regime without running full inference.
+        
+        Args:
+            df: DataFrame with OHLCV data and computed features
+            
+        Returns:
+            Tuple of (regime: int, confidence: float)
+            - regime: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
+            - confidence: softmax confidence (0.0-1.0)
+            
+        Raises:
+            RuntimeError: If TCN volatility model not loaded
+        """
+        if not self.use_tcn_volatility_filter or self.tcn_volatility_model is None:
+            raise RuntimeError("TCN Volatility model not loaded - cannot get regime")
+        
+        # Ensure normalized features exist
+        if 'returns_1' not in df.columns:
+            df = compute_normalized_features(df)
+        
+        # Extract VOLATILITY-SPECIFIC features and predict
+        tcn_features = self._extract_tcn_volatility_features(df)
+        vol_pred = self.tcn_volatility_model.predict(tcn_features)
+        
+        regime = vol_pred['volatility_regime']
+        regime_name = vol_pred['volatility_regime_name']
+        confidence = vol_pred['regime_confidence']
+        
+        logger.debug(f"Volatility regime: {regime_name} ({regime}) conf={confidence:.1%}")
+        
+        return regime, confidence
+
     def _extract_tcn_features(self, df: pd.DataFrame) -> np.ndarray:
         """Extract features for direction model (TCN or Transformer) using saved feature names."""
         # NORMALIZED features for instrument-agnostic inference
@@ -1426,66 +2018,220 @@ class ModularEnsembleInference:
         # Use saved feature names from training if available
         feature_names = getattr(self.tcn, 'feature_names', None) if self.tcn else None
         return self._extract_features_by_names(df, feature_names, fallback_preferred, fallback_patterns)
+
+    def _extract_tcn_volatility_features(self, df: pd.DataFrame) -> np.ndarray:
+        """Extract features for TCN volatility regime model using saved feature names.
+        
+        This is SEPARATE from _extract_tcn_features() because the volatility model
+        was trained on ~12-16 volatility-specific features, not the ~50 direction features.
+        
+        Includes optional Pandera schema validation (if installed) for early error detection.
+        """
+        # VOLATILITY-FOCUSED features for regime classification (matches training)
+        normalized_features = get_normalized_feature_names().get('volatility', [
+            'atr_pct_5', 'atr_pct_10', 'atr_pct_14', 'atr_pct_20',
+            'volatility_5', 'volatility_10', 'volatility_20',
+            'bb_width_norm', 'bb_width_20',
+            'high_low_range',
+            'returns_1', 'returns_5', 'returns_10',
+            'volume_ratio_10', 'volume_ratio_20',
+            'adx',
+        ])
+        
+        # Legacy fallback features for volatility
+        legacy_fallback = [
+            'atr', 'atr_pct', 'volatility', 'vol_5', 'vol_10', 'vol_20',
+            'bb_width', 'high_low_range', 'tr_pct',
+        ]
+        
+        # Combine: prefer normalized, then legacy
+        fallback_preferred = normalized_features + legacy_fallback
+        fallback_patterns = ['atr', 'volatility', 'vol_', 'range', 'bb_width', 'tr_pct']
+        
+        # Use saved feature names from training if available
+        feature_names = getattr(self.tcn_volatility_model, 'feature_names', None) if self.tcn_volatility_model else None
+        
+        # Feature validation guard: log warning if feature_names not saved
+        if feature_names is None:
+            logger.warning("TCN volatility model has no saved feature_names, using default volatility features")
+        else:
+            # Validate expected feature count matches scaler (if available)
+            scaler = getattr(self.tcn_volatility_model, 'scaler', None)
+            if scaler is not None and hasattr(scaler, 'n_features_in_'):
+                expected_n = scaler.n_features_in_
+                if len(feature_names) != expected_n:
+                    logger.warning(
+                        f"Feature count mismatch: model has {len(feature_names)} feature_names "
+                        f"but scaler expects {expected_n} features"
+                    )
+        
+        # Optional Pandera schema validation for early error detection
+        if PANDERA_AVAILABLE and feature_names:
+            try:
+                # Build schema requiring only the features we need
+                schema_columns = {
+                    fname: pa_pandas.Column(float, required=False, nullable=True)
+                    for fname in feature_names if fname in df.columns
+                }
+                if schema_columns:
+                    schema = pa_pandas.DataFrameSchema(schema_columns, strict=False)
+                    schema.validate(df, lazy=True)
+            except pa.errors.SchemaErrors as exc:
+                logger.warning(f"Pandera schema validation warnings: {exc}")
+            except Exception as exc:
+                logger.debug(f"Pandera validation skipped: {exc}")
+        
+        return self._extract_features_by_names(df, feature_names, fallback_preferred, fallback_patterns)
     
     def _extract_xgb_features(self, df: pd.DataFrame) -> np.ndarray:
-        """Extract features for XGBoost model using saved feature names."""
-        # NORMALIZED features for instrument-agnostic inference
+        """Extract features for XGBoost model using saved feature names.
+
+        Uses the feature alignment system for consistent handling across all models.
+        """
+        # Use saved feature names from training if available
+        feature_names = getattr(self.xgb, 'feature_names', None) if self.xgb else None
+
+        # If we have saved feature names, use the alignment system
+        if feature_names:
+            return align_features_to_model(df, feature_names, fill_value=0.0)
+
+        # Fallback to pattern-based extraction
         normalized_features = get_normalized_feature_names()['momentum']
-        
-        # Legacy fallback features
+
         legacy_fallback = [
             'returns', 'roc_5', 'roc_10', 'roc_20',
             'high_low_ratio', 'momentum_10', 'macd', 'macd_hist',
             'stoch_k', 'stoch_d', 'mfi',
         ]
-        
-        # Combine: prefer normalized, then legacy
+
         fallback_preferred = normalized_features + legacy_fallback
         fallback_patterns = ['return', 'atr_pct', 'volatility', 'volume_ratio', 'macd_norm', 'rsi_norm']
-        
-        # Use saved feature names from training if available
-        feature_names = getattr(self.xgb, 'feature_names', None) if self.xgb else None
-        return self._extract_features_by_names(df, feature_names, fallback_preferred, fallback_patterns)
+
+        return self._extract_features_by_names(df, None, fallback_preferred, fallback_patterns)
     
     def _extract_rf_features(self, df: pd.DataFrame) -> np.ndarray:
-        """Extract features for Random Forest model using saved feature names."""
+        """Extract features for Random Forest model using saved feature names.
+
+        Uses the feature alignment system to handle mismatches between stored
+        model features and current pipeline features, preventing dimension errors.
+        """
+        # Use saved feature names from training if available
+        feature_names = getattr(self.rf, 'feature_names', None) if self.rf else None
+        # Note: n_features could be used for validation but currently unused
+        _ = getattr(self.rf, 'n_features', None) if self.rf else None  # Reserved for future validation
+
+        # If we have saved feature names, use the alignment system
+        if feature_names:
+            # Use align_features_to_model for proper legacy feature mapping
+            result = align_features_to_model(df, feature_names, fill_value=0.0)
+
+            # Validate shape matches scaler expectations (if available)
+            if hasattr(self.rf, 'scaler') and self.rf.scaler is not None:
+                scaler = self.rf.scaler
+                expected_n = getattr(scaler, 'n_features_in_', len(feature_names))
+                if result.shape[1] != expected_n:
+                    logger.warning(
+                        f"RF feature count mismatch after alignment: got {result.shape[1]}, "
+                        f"scaler expects {expected_n}. Padding/truncating."
+                    )
+                    # Pad or truncate to match
+                    if result.shape[1] < expected_n:
+                        padding = np.zeros((result.shape[0], expected_n - result.shape[1]), dtype=np.float32)
+                        result = np.concatenate([result, padding], axis=1)
+                    elif result.shape[1] > expected_n:
+                        result = result[:, :expected_n]
+
+            return result
+
+        # Fallback to pattern-based extraction if no saved feature names
         # NORMALIZED features for instrument-agnostic inference
         normalized_features = get_normalized_feature_names()['risk']
-        
+
         # Legacy fallback features
         legacy_fallback = [
             'atr', 'volatility_5', 'volatility_10', 'volatility_20',
             'high_low_ratio', 'bb_width_20',
             'returns', 'momentum_10',
         ]
-        
+
         # Combine: prefer normalized, then legacy
         fallback_preferred = normalized_features + legacy_fallback
         fallback_patterns = ['atr_pct', 'volatility', 'tr_pct', 'hl_range', 'zscore', 'return']
+
+        return self._extract_features_by_names(df, None, fallback_preferred, fallback_patterns)
+    
+    def _extract_rl_sizer_features(self, df: pd.DataFrame) -> np.ndarray:
+        """Extract features for RL Position Sizer using direction features.
         
-        # Use saved feature names from training if available
-        feature_names = getattr(self.rf, 'feature_names', None) if self.rf else None
-        return self._extract_features_by_names(df, feature_names, fallback_preferred, fallback_patterns)
+        The RL position sizer was trained on direction model features (from training data),
+        so we must use direction features here, NOT RF features.
+        
+        Uses the RL sizer's saved scaler to determine expected feature count.
+        """
+        # Get expected feature count from RL sizer's scaler
+        expected_n_features = None
+        if self.rl_sizer is not None and hasattr(self.rl_sizer, 'scaler'):
+            scaler = self.rl_sizer.scaler
+            if scaler is not None and hasattr(scaler, 'n_features_in_'):
+                expected_n_features = scaler.n_features_in_
+        
+        # Use DIRECTION features (same as what RL sizer was trained on)
+        normalized_features = get_normalized_feature_names()['direction']
+        
+        # Legacy fallback features for direction
+        legacy_fallback = [
+            'returns', 'momentum_10', 'momentum_20',
+            'rsi', 'rsi_14', 'stoch_k', 'stoch_d',
+            'macd', 'macd_signal', 'macd_hist',
+            'adx', 'bb_position_20',
+        ]
+        
+        fallback_preferred = normalized_features + legacy_fallback
+        fallback_patterns = ['returns_', 'zscore_', 'sma_ratio', 'ema_ratio', 'macd', 'rsi', 'pct_rank']
+        
+        # Extract features using the standard method
+        features = self._extract_features_by_names(df, None, fallback_preferred, fallback_patterns)
+        
+        # Pad or truncate to match expected feature count
+        if expected_n_features is not None and features.shape[1] != expected_n_features:
+            logger.debug(
+                f"RL sizer feature adjustment: got {features.shape[1]}, expected {expected_n_features}"
+            )
+            if features.shape[1] < expected_n_features:
+                # Pad with zeros
+                padding = np.zeros((features.shape[0], expected_n_features - features.shape[1]), dtype=np.float32)
+                features = np.concatenate([features, padding], axis=1)
+            else:
+                # Truncate
+                features = features[:, :expected_n_features]
+        
+        return features
     
     def _extract_ridge_features(self, df: pd.DataFrame) -> np.ndarray:
-        """Extract features for Ridge model using saved feature names."""
-        # NORMALIZED features for instrument-agnostic inference
+        """Extract features for Ridge model using saved feature names.
+
+        Uses the feature alignment system for consistent handling across all models.
+        """
+        # Use saved feature names from training if available
+        feature_names = getattr(self.ridge, 'feature_names', None) if self.ridge else None
+
+        # If we have saved feature names, use the alignment system
+        if feature_names:
+            return align_features_to_model(df, feature_names, fill_value=0.0)
+
+        # Fallback to pattern-based extraction
         normalized_features = get_normalized_feature_names()['confidence']
-        
-        # Legacy fallback features
+
         legacy_fallback = [
             'volatility_5', 'volatility_10', 'volatility_20',
             'atr', 'bb_width_20', 'bb_position_20',
             'adx', 'returns',
         ]
-        
-        # Combine: prefer normalized, then legacy
+
         fallback_preferred = normalized_features + legacy_fallback
         fallback_patterns = ['atr_pct', 'volatility', 'volume_ratio', 'sma_ratio', 'return', 'zscore']
-        
-        # Use saved feature names from training if available
-        feature_names = getattr(self.ridge, 'feature_names', None) if self.ridge else None
-        return self._extract_features_by_names(df, feature_names, fallback_preferred, fallback_patterns)
+
+        return self._extract_features_by_names(df, None, fallback_preferred, fallback_patterns)
     
     def _compute_confidence_direct(self, df: pd.DataFrame) -> float:
         """
@@ -1731,17 +2477,158 @@ class ModularEnsembleInference:
                 # Log intelligence insights
                 if 'sentiment' in intel_data:
                     sent = intel_data['sentiment']
-                    logger.info(f"📰 Sentiment: {sent['aggregate_label']} ({sent['aggregate_score']:+.2f}) "
-                               f"from {sent['num_headlines']} headlines")
+                    logger.info(
+                        f"📰 Sentiment: {sent['aggregate_label']} ({sent['aggregate_score']:+.2f}) "
+                        f"from {sent['num_headlines']} headlines"
+                    )
                 
                 if 'next_high_impact' in intel_data:
                     event = intel_data['next_high_impact']
-                    logger.info(f"📅 Next high-impact: {event['name']} ({event['currency']}) "
-                               f"in {int(event['minutes_until'])} minutes")
+                    logger.info(
+                        f"📅 Next high-impact: {event['name']} ({event['currency']}) "
+                        f"in {int(event['minutes_until'])} minutes"
+                    )
             
             except Exception as e:
                 logger.warning(f"Market intelligence check failed: {e}")
                 intel_data = {'error': str(e)}
+        
+        # === ATR VOLATILITY FILTER (NEW) ===
+        # Skip low-volatility conditions where spreads eat into profits
+        if self.config.min_atr_pips > 0 and 'atr' in df.columns:
+            atr = df['atr'].iloc[-1]
+            # Determine pip value based on instrument (JPY pairs have different pip)
+            pip_value = 0.01 if instrument and 'JPY' in instrument else 0.0001
+            atr_pips = atr / pip_value
+            
+            if atr_pips < self.config.min_atr_pips:
+                logger.info(f"🔕 Trade blocked: Low volatility (ATR={atr_pips:.1f} pips < {self.config.min_atr_pips} min)")
+                return TradeSignal(
+                    trade=False,
+                    direction=None,
+                    size=0.0,
+                    confidence=0.0,
+                    reason=f"Low volatility: ATR={atr_pips:.1f} pips (min {self.config.min_atr_pips})",
+                    regime=None,
+                    regime_confidence=0.0,
+                    tcn_direction=None,
+                    tcn_probability=0.5,
+                    ridge_confidence=0.0,
+                    xgb_momentum=0.0,
+                    xgb_acceleration=False,
+                    rf_drawdown_pips=0.0,
+                    rf_streak_prob=0.0,
+                    metadata={'atr_pips': atr_pips, 'intel_data': intel_data},
+                )
+            else:
+                intel_data['atr_pips'] = atr_pips
+        
+        # === TCN VOLATILITY REGIME FILTER (NEW - MANDATORY) ===
+        # TCN predicts volatility regime: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
+        # Only allow trades when regime >= min_volatility_regime (default: 2=HIGH)
+        volatility_regime = None
+        volatility_regime_name = None
+        volatility_regime_confidence = 0.0
+        volatility_gate_passed = False
+        
+        VOL_REGIME_NAMES = {0: 'LOW', 1: 'NORMAL', 2: 'HIGH', 3: 'EXTREME'}
+        
+        if self.config.use_tcn_volatility_filter:
+            if self.tcn_volatility_model is None:
+                # TCN required but not available - BLOCK ALL TRADES
+                if self.config.tcn_required:
+                    logger.warning("⛔ Trade blocked: TCN Volatility filter required but not loaded")
+                    return TradeSignal(
+                        trade=False,
+                        direction=None,
+                        size=0.0,
+                        confidence=0.0,
+                        reason="TCN Volatility filter required but not loaded",
+                        regime=None,
+                        regime_confidence=0.0,
+                        volatility_regime=None,
+                        volatility_regime_name=None,
+                        volatility_regime_confidence=0.0,
+                        volatility_gate_passed=False,
+                        tcn_direction=None,
+                        tcn_probability=0.5,
+                        ridge_confidence=0.0,
+                        xgb_momentum=0.0,
+                        xgb_acceleration=False,
+                        rf_drawdown_pips=0.0,
+                        rf_streak_prob=0.0,
+                        metadata={'intel_data': intel_data},
+                    )
+            else:
+                # Get TCN volatility regime prediction
+                try:
+                    tcn_features = self._extract_tcn_volatility_features(df)
+                    vol_pred = self.tcn_volatility_model.predict(tcn_features)
+                    
+                    volatility_regime = vol_pred['volatility_regime']
+                    volatility_regime_name = vol_pred['volatility_regime_name']
+                    volatility_regime_confidence = vol_pred['regime_confidence']
+                    
+                    # Check if regime meets minimum threshold
+                    volatility_gate_passed = volatility_regime >= self.config.min_volatility_regime
+                    
+                    logger.info(
+                        f"🌡️ Volatility Regime: {volatility_regime_name} ({volatility_regime}) "
+                        f"conf={volatility_regime_confidence:.1%} "
+                        f"(min={self.config.min_volatility_regime}={VOL_REGIME_NAMES.get(self.config.min_volatility_regime, '?')})"
+                    )
+                    
+                    if not volatility_gate_passed:
+                        min_regime_name = VOL_REGIME_NAMES.get(self.config.min_volatility_regime, '?')
+                        logger.info(
+                            f"⏸️ Trade blocked: Volatility too low "
+                            f"({volatility_regime_name} < {min_regime_name})"
+                        )
+                        return TradeSignal(
+                            trade=False,
+                            direction=None,
+                            size=0.0,
+                            confidence=0.0,
+                            reason=f"Low volatility regime: {volatility_regime_name} (need {min_regime_name}+)",
+                            regime=None,
+                            regime_confidence=0.0,
+                            volatility_regime=volatility_regime,
+                            volatility_regime_name=volatility_regime_name,
+                            volatility_regime_confidence=volatility_regime_confidence,
+                            volatility_gate_passed=False,
+                            tcn_direction=None,
+                            tcn_probability=0.5,
+                            ridge_confidence=0.0,
+                            xgb_momentum=0.0,
+                            xgb_acceleration=False,
+                            rf_drawdown_pips=0.0,
+                            rf_streak_prob=0.0,
+                            metadata={'intel_data': intel_data, 'volatility_regime': volatility_regime_name},
+                        )
+                except Exception as e:
+                    logger.warning(f"TCN volatility prediction failed: {e}")
+                    if self.config.tcn_required:
+                        return TradeSignal(
+                            trade=False,
+                            direction=None,
+                            size=0.0,
+                            confidence=0.0,
+                            reason=f"TCN Volatility prediction failed: {e}",
+                            regime=None,
+                            regime_confidence=0.0,
+                            volatility_regime=None,
+                            volatility_regime_name=None,
+                            volatility_regime_confidence=0.0,
+                            volatility_gate_passed=False,
+                            tcn_direction=None,
+                            tcn_probability=0.5,
+                            ridge_confidence=0.0,
+                            xgb_momentum=0.0,
+                            xgb_acceleration=False,
+                            rf_drawdown_pips=0.0,
+                            rf_streak_prob=0.0,
+                            metadata={'intel_data': intel_data},
+                        )
         
         # FIRST: Compute normalized features for instrument-agnostic inference
         if 'returns_1' not in df.columns:
@@ -1776,9 +2663,89 @@ class ModularEnsembleInference:
             try:
                 if self.tcn is not None:
                     tcn_features = self._extract_tcn_features(df)
-                    tcn_pred = self.tcn.predict(tcn_features)
-                    tcn_direction = tcn_pred['direction']
-                    tcn_probability = tcn_pred['probability']
+                    
+                    # === MONTE CARLO DROPOUT (if enabled) ===
+                    if self.config.mc_dropout_samples > 0:
+                        mc_prob, mc_std, mc_dir = self._predict_with_uncertainty(
+                            tcn_features, 
+                            n_samples=self.config.mc_dropout_samples
+                        )
+                        
+                        # Block on high uncertainty
+                        if mc_std > self.config.max_uncertainty_std:
+                            logger.info(f"🎲 Trade blocked: High uncertainty (std={mc_std:.3f} > {self.config.max_uncertainty_std})")
+                            return TradeSignal(
+                                trade=False,
+                                direction=None,
+                                size=0.0,
+                                confidence=0.0,
+                                reason=f"High model uncertainty: std={mc_std:.3f}",
+                                regime=None,
+                                regime_confidence=0.0,
+                                tcn_direction=mc_dir,
+                                tcn_probability=mc_prob,
+                                ridge_confidence=0.0,
+                                xgb_momentum=0.0,
+                                xgb_acceleration=False,
+                                rf_drawdown_pips=0.0,
+                                rf_streak_prob=0.0,
+                                metadata={'mc_uncertainty_std': mc_std, 'intel_data': intel_data},
+                            )
+                        
+                        # Use MC Dropout results
+                        tcn_probability = mc_prob
+                        tcn_direction = mc_dir
+                    else:
+                        # Standard single prediction
+                        tcn_pred = self.tcn.predict(tcn_features)
+                        tcn_direction = tcn_pred['direction']
+                        tcn_probability = tcn_pred['probability']
+                        
+                        # === TCN + TRANSFORMER ENSEMBLE (if available) ===
+                        if self.use_tcn_transformer_ensemble and self.tcn_model is not None:
+                            try:
+                                tcn_only_pred = self.tcn_model.predict(tcn_features)
+                                tcn_only_direction = tcn_only_pred['direction']
+                                tcn_only_probability = tcn_only_pred['probability']
+                                
+                                # Get ensemble weights from config (default: 60% Transformer, 40% TCN)
+                                transformer_weight = getattr(self.config, 'transformer_weight', 0.6)
+                                tcn_weight = getattr(self.config, 'tcn_weight', 0.4)
+                                
+                                # Weighted average of probabilities
+                                ensemble_probability = (
+                                    tcn_probability * transformer_weight + 
+                                    tcn_only_probability * tcn_weight
+                                )
+                                
+                                # Direction from ensemble probability
+                                ensemble_direction = 1 if ensemble_probability > 0.5 else 0
+                                
+                                # Check agreement
+                                models_agree_ensemble = (tcn_direction == tcn_only_direction)
+                                
+                                if models_agree_ensemble:
+                                    logger.debug(
+                                        f"🎯 TCN+Transformer AGREE: direction={ensemble_direction}, "
+                                        f"prob={ensemble_probability:.3f} "
+                                        f"(TF={tcn_probability:.3f}, TCN={tcn_only_probability:.3f})"
+                                    )
+                                else:
+                                    # Models disagree - reduce confidence
+                                    ensemble_probability = ensemble_probability * 0.85
+                                    logger.debug(
+                                        f"⚠️ TCN+Transformer DISAGREE: using weighted avg, "
+                                        f"prob={ensemble_probability:.3f} "
+                                        f"(TF={tcn_direction}/{tcn_probability:.3f}, "
+                                        f"TCN={tcn_only_direction}/{tcn_only_probability:.3f})"
+                                    )
+                                
+                                # Update to ensemble values
+                                tcn_probability = ensemble_probability
+                                tcn_direction = ensemble_direction
+                                
+                            except Exception as e:
+                                logger.warning(f"TCN ensemble prediction failed: {e}, using Transformer only")
             except Exception as e:
                 logger.warning(f"TCN prediction failed: {e}")
         
@@ -1892,6 +2859,37 @@ class ModularEnsembleInference:
         # GRACEFUL DEGRADATION: When permissive_mode is enabled, we check
         # _gate_status to determine which gates to use vs bypass
         
+        # === RL-OPTIMIZED GATE THRESHOLDS ===
+        # If RL gate optimizer is loaded, use learned thresholds instead of fixed config
+        rl_min_confidence = self.config.min_confidence
+        rl_min_momentum = self.config.min_momentum  
+        rl_max_drawdown = self.config.max_drawdown_pct
+        
+        if self._rl_gates_loaded and self.rl_gate_optimizer is not None:
+            try:
+                # Extract features for regime detection
+                rl_features = {}
+                if 'atr_pct_14' in df.columns:
+                    rl_features['volatility'] = df['atr_pct_14'].iloc[-1]
+                if 'adx_14' in df.columns:
+                    rl_features['adx'] = df['adx_14'].iloc[-1]
+                if 'returns_2' in df.columns:
+                    rl_features['momentum'] = df['returns_2'].iloc[-1]
+                
+                # Get RL-optimized thresholds based on current market regime
+                adjusted = self.rl_gate_optimizer.get_adjusted_thresholds(
+                    features=rl_features,
+                    win_rate=self._recent_win_rate,
+                    drawdown=self._current_drawdown
+                )
+                rl_min_confidence = adjusted['min_confidence']
+                rl_min_momentum = adjusted['min_momentum']
+                rl_max_drawdown = adjusted['max_drawdown_pct']
+                
+                logger.debug(f"RL Gate Thresholds: conf={rl_min_confidence:.1f}, mom={rl_min_momentum:.3f}, dd={rl_max_drawdown:.4f}")
+            except Exception as e:
+                logger.warning(f"RL gate threshold adjustment failed, using config defaults: {e}")
+        
         # Initialize gate status tracking if not done during load
         if not hasattr(self, '_gate_status'):
             self._gate_status = {'xgboost': True, 'random_forest': True, 'ridge': True}
@@ -1902,17 +2900,17 @@ class ModularEnsembleInference:
             
             # Confidence gate: use Ridge if available, else pass
             if self._gate_status.get('ridge', False) and self.ridge is not None:
-                confidence_gate_passed = ridge_confidence >= self.config.min_confidence
-                logger.debug(f"Ridge gate ACTIVE: confidence={ridge_confidence:.1f}, passed={confidence_gate_passed}")
+                confidence_gate_passed = ridge_confidence >= rl_min_confidence
+                logger.debug(f"Ridge gate ACTIVE: confidence={ridge_confidence:.1f}, threshold={rl_min_confidence:.1f}, passed={confidence_gate_passed}")
             else:
                 confidence_gate_passed = True
                 logger.debug(f"Ridge gate BYPASSED: {self._gate_issues.get('ridge', 'not loaded')}")
             
             # Momentum gate: use XGBoost if available, else pass
             if self._gate_status.get('xgboost', False) and self.xgb is not None:
-                momentum_fresh = xgb_momentum >= self.config.min_momentum
+                momentum_fresh = xgb_momentum >= rl_min_momentum
                 momentum_gate_passed = momentum_fresh or xgb_acceleration
-                logger.debug(f"XGBoost gate ACTIVE: momentum={xgb_momentum:.3f}, accel={xgb_acceleration}, passed={momentum_gate_passed}")
+                logger.debug(f"XGBoost gate ACTIVE: momentum={xgb_momentum:.3f}, threshold={rl_min_momentum:.3f}, passed={momentum_gate_passed}")
             else:
                 momentum_gate_passed = True
                 logger.debug(f"XGBoost gate BYPASSED: {self._gate_issues.get('xgboost', 'not loaded')}")
@@ -1923,10 +2921,10 @@ class ModularEnsembleInference:
                 logger.debug("Risk gate BYPASSED: bypass_risk_gate_in_permissive=True")
             elif self._gate_status.get('random_forest', False) and self.rf is not None:
                 risk_gate_passed = (
-                    rf_drawdown_pct <= self.config.max_drawdown_pct and
+                    rf_drawdown_pct <= rl_max_drawdown and
                     rf_streak_prob <= self.config.max_streak_prob
                 )
-                logger.debug(f"RF gate ACTIVE: drawdown={rf_drawdown_pct:.4f}, streak={rf_streak_prob:.2f}, passed={risk_gate_passed}")
+                logger.debug(f"RF gate ACTIVE: drawdown={rf_drawdown_pct:.4f}, threshold={rl_max_drawdown:.4f}, passed={risk_gate_passed}")
             else:
                 # RF unusable - use conservative fallback based on ATR
                 # If ATR > 2%, be cautious
@@ -1948,13 +2946,13 @@ class ModularEnsembleInference:
             
             # CONFIDENCE GATE: Use TCN-derived confidence OR Ridge, whichever is higher
             effective_confidence = max(ridge_confidence, tcn_confidence)
-            confidence_gate_passed = effective_confidence >= self.config.min_confidence
+            confidence_gate_passed = effective_confidence >= rl_min_confidence
             
             # MOMENTUM GATE: Pass if any of these are true:
             # 1. XGBoost momentum is fresh (above threshold)
             # 2. XGBoost detects acceleration
             # 3. TCN is strong (override weak momentum readings)
-            momentum_fresh = xgb_momentum >= self.config.min_momentum
+            momentum_fresh = xgb_momentum >= rl_min_momentum
             momentum_gate_passed = momentum_fresh or xgb_acceleration or tcn_strong
             
             # RISK GATE: Slightly more lenient when TCN is confident (but not too much)
@@ -1962,19 +2960,19 @@ class ModularEnsembleInference:
             if tcn_very_strong:
                 # Very confident TCN - relax risk thresholds modestly
                 risk_gate_passed = (
-                    rf_drawdown_pct <= self.config.max_drawdown_pct * 1.3 and
+                    rf_drawdown_pct <= rl_max_drawdown * 1.3 and
                     rf_streak_prob <= self.config.max_streak_prob * 1.3
                 )
             elif tcn_strong:
                 # Strong TCN - relax risk thresholds slightly
                 risk_gate_passed = (
-                    rf_drawdown_pct <= self.config.max_drawdown_pct * 1.15 and
+                    rf_drawdown_pct <= rl_max_drawdown * 1.15 and
                     rf_streak_prob <= self.config.max_streak_prob * 1.15
                 )
             else:
                 # Weak TCN - use strict thresholds
                 risk_gate_passed = (
-                    rf_drawdown_pct <= self.config.max_drawdown_pct and
+                    rf_drawdown_pct <= rl_max_drawdown and
                     rf_streak_prob <= self.config.max_streak_prob
                 )
         
@@ -2024,9 +3022,9 @@ class ModularEnsembleInference:
                     tcn_direction = 1
                 tcn_probability = regime_confidence
         
-        # === TCN PROBABILITY GATE (applies to all modes) ===
-        # Reject signals where TCN is too uncertain (near 50%)
-        tcn_probability_gate_passed = abs(tcn_probability - 0.5) >= (self.config.min_tcn_probability - 0.5)
+        # === TRANSFORMER CONFIDENCE GATE (direction confidence) ===
+        # Require reasonable confidence in direction prediction (at least 55% one way)
+        direction_confidence_gate_passed = abs(tcn_probability - 0.5) >= 0.05  # Minimum 55% confidence
         
         # === SENTIMENT GATE (NEW) ===
         sentiment_gate_passed = True
@@ -2172,7 +3170,8 @@ class ModularEnsembleInference:
             all_gates_passed = (
                 regime_gate_passed and
                 direction_str is not None and
-                tcn_probability_gate_passed and
+                volatility_gate_passed and  # TCN volatility filter (replaces old tcn_probability_gate)
+                direction_confidence_gate_passed and
                 confidence_gate_passed and
                 momentum_gate_passed and
                 risk_gate_passed and
@@ -2185,7 +3184,8 @@ class ModularEnsembleInference:
             # DIRECTION MODE (legacy)
             all_gates_passed = (
                 tcn_direction is not None and
-                tcn_probability_gate_passed and
+                volatility_gate_passed and  # TCN volatility filter (replaces old tcn_probability_gate)
+                direction_confidence_gate_passed and
                 confidence_gate_passed and
                 momentum_gate_passed and
                 risk_gate_passed and
@@ -2201,11 +3201,13 @@ class ModularEnsembleInference:
         reason = None
         if not all_gates_passed:
             reasons = []
-            if not tcn_probability_gate_passed:
-                reasons.append(f"weak_tcn({tcn_probability:.2f}<{self.config.min_tcn_probability})")
+            if not volatility_gate_passed:
+                reasons.append(f"low_volatility_regime({volatility_regime_name or 'N/A'})")
+            if not direction_confidence_gate_passed:
+                reasons.append(f"weak_direction_conf({tcn_probability:.2f})")
             if self.use_regime:
                 if not regime_gate_passed:
-                    reasons.append(f"regime=CHOP (skip)")
+                    reasons.append("regime=CHOP (skip)")
                 if direction_str is None and regime != 'chop':
                     reasons.append("no_direction")
             else:
@@ -2234,11 +3236,11 @@ class ModularEnsembleInference:
         size = 0.0
         if all_gates_passed:
             # Prepare features for RL sizer (if enabled)
-            # Use RF features as they contain market conditions
+            # Use DIRECTION features (same as RL sizer was trained on)
             rl_features = None
             if self.rl_sizer is not None:
                 try:
-                    rl_features = self._extract_rf_features(df)
+                    rl_features = self._extract_rl_sizer_features(df)
                 except Exception:
                     pass
             
@@ -2260,6 +3262,32 @@ class ModularEnsembleInference:
         except Exception:
             self._last_features = None
         
+        # === RL EXIT TIMING ===
+        # If RL exit optimizer is loaded, get exit suggestion for ongoing trades
+        rl_exit_suggestion = None
+        rl_exit_confidence = 0.0
+        if self._rl_exits_loaded and self.rl_exit_optimizer is not None and all_gates_passed:
+            try:
+                # Build observation for exit decision
+                # For new trades, PnL=0 and bars=0; for ongoing trades, caller must provide actual values
+                unrealized_pnl_pips = 0.0  # Placeholder - real PnL comes from check_open_position_exit()
+                bars_in_trade = 0  # Fresh trade entry
+                current_momentum = xgb_momentum
+                current_atr = df['atr'].iloc[-1] if 'atr' in df.columns else 0.001
+                
+                action, confidence = self.rl_exit_optimizer.get_exit_decision(
+                    unrealized_pnl_pips=unrealized_pnl_pips,
+                    bars_in_trade=bars_in_trade,
+                    momentum=current_momentum,
+                    atr=current_atr,
+                )
+                action_map = {0: 'hold', 1: 'exit_profit', 2: 'exit_loss'}
+                rl_exit_suggestion = action_map.get(action, 'hold')
+                rl_exit_confidence = confidence
+                logger.debug(f"RL Exit Suggestion: {rl_exit_suggestion} (confidence={rl_exit_confidence:.2f})")
+            except Exception as e:
+                logger.warning(f"RL exit decision failed: {e}")
+        
         return TradeSignal(
             trade=all_gates_passed,
             direction=direction_str,
@@ -2267,6 +3295,10 @@ class ModularEnsembleInference:
             confidence=ridge_confidence,
             regime=regime,
             regime_confidence=regime_confidence,
+            volatility_regime=volatility_regime,
+            volatility_regime_name=volatility_regime_name,
+            volatility_regime_confidence=volatility_regime_confidence,
+            volatility_gate_passed=volatility_gate_passed,
             tcn_direction=tcn_direction,
             tcn_probability=tcn_probability,
             ridge_confidence=ridge_confidence,
@@ -2283,9 +3315,144 @@ class ModularEnsembleInference:
             regime_gate_passed=regime_gate_passed,
             meta_gate_passed=meta_gate_passed,
             meta_confidence=meta_confidence,
+            rl_thresholds_used=self._rl_gates_loaded,
+            rl_exit_suggestion=rl_exit_suggestion,
+            rl_exit_confidence=rl_exit_confidence,
             reason=reason,
-            metadata={'intel_data': intel_data},
+            metadata={'intel_data': intel_data, 'volatility_regime': volatility_regime_name},
         )
+    
+    def check_open_position_exit(
+        self,
+        df: pd.DataFrame,
+        unrealized_pnl_pips: float,
+        bars_in_trade: int,
+        direction: str,  # 'long' or 'short'
+        entry_price: float,
+        stop_loss_pips: float = 15.0,
+        take_profit_pips: float = 30.0,
+    ) -> Dict[str, Any]:
+        """
+        Check if an open position should be exited using RL Exit optimizer.
+        
+        Call this method periodically (e.g., each bar) to get exit recommendations
+        for open positions. The RL model learns optimal exit timing based on:
+        - Current unrealized P/L
+        - Time in trade
+        - Market momentum
+        - Volatility (ATR)
+        
+        Args:
+            df: Current market data DataFrame (needs momentum, ATR columns)
+            unrealized_pnl_pips: Current position P/L in pips
+            bars_in_trade: Number of bars since trade entry
+            direction: 'long' or 'short'
+            entry_price: Original entry price
+            stop_loss_pips: Stop loss distance in pips
+            take_profit_pips: Take profit distance in pips
+        
+        Returns:
+            Dict with:
+                - should_exit: bool - Whether to exit now
+                - action: str - 'hold', 'exit_profit', or 'exit_loss'
+                - confidence: float - Model confidence in decision
+                - reason: str - Human-readable reason
+                - rl_available: bool - Whether RL model was used
+        """
+        result = {
+            'should_exit': False,
+            'action': 'hold',
+            'confidence': 0.5,
+            'reason': '',
+            'rl_available': False,
+            'pnl_pips': unrealized_pnl_pips,
+            'bars_held': bars_in_trade,
+        }
+        
+        # === FIXED STOP/TARGET CHECK (Always active as safety) ===
+        if unrealized_pnl_pips <= -stop_loss_pips:
+            result['should_exit'] = True
+            result['action'] = 'exit_loss'
+            result['confidence'] = 0.95
+            result['reason'] = f"Stop loss hit: {unrealized_pnl_pips:.1f} pips"
+            return result
+        
+        if unrealized_pnl_pips >= take_profit_pips:
+            result['should_exit'] = True
+            result['action'] = 'exit_profit'
+            result['confidence'] = 0.95
+            result['reason'] = f"Take profit hit: {unrealized_pnl_pips:.1f} pips"
+            return result
+        
+        # === RL EXIT TIMING ===
+        if self._rl_exits_loaded and self.rl_exit_optimizer is not None:
+            try:
+                # Extract features
+                current_momentum = 0.0
+                if 'momentum_5' in df.columns:
+                    current_momentum = df['momentum_5'].iloc[-1]
+                elif 'xgb_momentum' in df.columns:
+                    current_momentum = df['xgb_momentum'].iloc[-1]
+                
+                current_atr = df['atr'].iloc[-1] if 'atr' in df.columns else 0.001
+                
+                # Get RL decision
+                action, confidence = self.rl_exit_optimizer.get_exit_decision(
+                    unrealized_pnl_pips=unrealized_pnl_pips,
+                    bars_in_trade=bars_in_trade,
+                    momentum=current_momentum,
+                    atr=current_atr,
+                )
+                
+                result['rl_available'] = True
+                result['confidence'] = confidence
+                
+                action_map = {0: 'hold', 1: 'exit_profit', 2: 'exit_loss'}
+                result['action'] = action_map.get(action, 'hold')
+                
+                if action == 1:  # EXIT_PROFIT
+                    result['should_exit'] = True
+                    result['reason'] = f"RL suggests take profit at {unrealized_pnl_pips:.1f} pips (conf={confidence:.2f})"
+                elif action == 2:  # EXIT_LOSS
+                    result['should_exit'] = True
+                    result['reason'] = f"RL suggests cut loss at {unrealized_pnl_pips:.1f} pips (conf={confidence:.2f})"
+                else:  # HOLD
+                    result['reason'] = f"RL suggests hold (PnL={unrealized_pnl_pips:.1f}, bars={bars_in_trade})"
+                
+                logger.debug(f"RL Exit Check: action={result['action']}, conf={confidence:.2f}, pnl={unrealized_pnl_pips:.1f}")
+                
+            except Exception as e:
+                logger.warning(f"RL exit check failed: {e}")
+                result['reason'] = f"RL unavailable: {e}"
+        else:
+            # === HEURISTIC EXIT (Fallback when RL not loaded) ===
+            result['reason'] = "RL not loaded - using heuristics"
+            
+            # Trail-stop logic: tighten stop as profit grows
+            if unrealized_pnl_pips > take_profit_pips * 0.6:
+                # In profit zone - check for reversal signals
+                current_momentum = df.get('momentum_5', pd.Series([0])).iloc[-1]
+                
+                # Exit on momentum reversal in profit
+                if direction == 'long' and current_momentum < -0.2:
+                    result['should_exit'] = True
+                    result['action'] = 'exit_profit'
+                    result['confidence'] = 0.7
+                    result['reason'] = f"Momentum reversal in profit zone ({unrealized_pnl_pips:.1f} pips)"
+                elif direction == 'short' and current_momentum > 0.2:
+                    result['should_exit'] = True
+                    result['action'] = 'exit_profit'
+                    result['confidence'] = 0.7
+                    result['reason'] = f"Momentum reversal in profit zone ({unrealized_pnl_pips:.1f} pips)"
+            
+            # Time-decay: exit after too many bars if not profitable
+            if bars_in_trade > 48 and unrealized_pnl_pips < take_profit_pips * 0.2:  # 48 hours in H1
+                result['should_exit'] = True
+                result['action'] = 'exit_loss' if unrealized_pnl_pips < 0 else 'exit_profit'
+                result['confidence'] = 0.6
+                result['reason'] = f"Time decay: {bars_in_trade} bars with {unrealized_pnl_pips:.1f} pips"
+        
+        return result
     
     def predict_verbose(
         self,
@@ -2586,4 +3753,3 @@ def run_inference_test():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     run_inference_test()
-

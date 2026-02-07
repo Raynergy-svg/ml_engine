@@ -162,18 +162,26 @@ training:
   jit_compile: false                 # Avoid Metal issues
 ```
 
+**TensorFlow versions:** `>=2.16.1,<2.17` with `tensorflow-metal>=1.1.0,<1.3` and `protobuf>=4.23.0,<5.0.0`.
+
+**Note:** TensorFlow 2.18.x has a `down_cast` assertion crash on macOS. Stick to 2.16.x.
+
 ## Intel Mac Settings
 
-Uses `ml_engine_py312` conda environment. Auto-detected in `bin/Buddy`:
+Uses `intel` conda environment (Python 3.12). Auto-detected in `bin/Buddy`:
 
 ```bash
 # Auto-detection in bin/Buddy:
 if [[ "$(uname -m)" == "x86_64" ]]; then
-    ENV_NAME="${BUDDY_CONDA_ENV:-ml_engine_py312}"
+    ENV_NAME="${BUDDY_CONDA_ENV:-intel}"
 else
     ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
 fi
 ```
+
+**TensorFlow versions:** `>=2.16.1,<2.17` with `protobuf>=4.23.0,<5.0.0`.
+
+**Note:** TensorFlow 2.18.x has a `down_cast` assertion crash on macOS. Stick to 2.16.x. Both environments now use TensorFlow 2.16+ (Keras 3.x) for consistency. See `docs/ENVIRONMENT_SETUP.md` for details.
 
 ## Code Patterns
 

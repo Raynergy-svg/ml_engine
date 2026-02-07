@@ -29,11 +29,11 @@ def safe_torch_load(*args: Any, **kwargs: Any):
 
 
 UnifiedNeuralEngine = None  # type: ignore
-from reasoning_enhanced import ReasoningEngine
+from src.utils.reasoning_enhanced import ReasoningEngine
 from src.utils.utils import load_config
 
 # TensorFlow support (lazy import)
-from tensorflow_engine_unified import (
+from src.models.tensorflow_engine_unified import (
     TensorFlowUnifiedEngine,
     is_tensorflow_checkpoint,
     get_default_tf_checkpoint,
@@ -225,7 +225,7 @@ def _load_df_from_oanda(
 
         ctx.oanda_client = OandaPracticeClient.from_env()
 
-    from fx_paper import candles_to_ohlcv_df
+    from src.utils.fx_paper import candles_to_ohlcv_df
 
     try:
         resp = ctx.oanda_client.get_candles(
@@ -545,9 +545,9 @@ def _fx_trade_gate(ctx: "TalkContext", *, instrument: str, action: str) -> tuple
     Returns: (ok, human_reason, confidence)
     """
     import fx_guardrails as fxg
-    from fx_paper import atr as fx_atr
-    from fx_paper import spread_pips_from_df
-    from reasoning_enhanced import fx_confidence_v1
+    from src.utils.fx_paper import atr as fx_atr
+    from src.utils.fx_paper import spread_pips_from_df
+    from src.utils.reasoning_enhanced import fx_confidence_v1
 
     cfg = load_config(ctx.config_path)
     policy = fxg.load_fx_policy(cfg)

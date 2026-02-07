@@ -14,16 +14,21 @@ joblib==1.5.3
 # ============================================================
 # Deep Learning - TensorFlow Stack
 # ============================================================
-tensorflow==2.15.1
-tensorflow-metal==1.1.0; sys_platform == 'darwin'  # Apple Silicon GPU
-tensorflow-addons==0.23.0
-keras==2.15.0
-tensorboard==2.15.2
+tensorflow>=2.16,<2.19
+tensorflow-metal==1.1.0; sys_platform == 'darwin' and platform_machine == 'arm64'  # Apple Silicon GPU only
+tensorboard>=2.16
 
 # ============================================================
 # Gradient Boosting
 # ============================================================
 xgboost==2.0.3
+lightgbm>=4.0.0
+catboost>=1.2  # Primary momentum gate model (ordered boosting for time-series)
+
+# ============================================================
+# Time Series Analysis
+# ============================================================
+statsmodels>=0.14.0  # ARIMA hybrid forecasting for ensemble
 
 # ============================================================
 # Data Processing and Storage
@@ -110,12 +115,17 @@ typing_extensions==4.15.0
 packaging==25.0
 
 # ============================================================
+# Reinforcement Learning (Position Sizing)
+# ============================================================
+gymnasium>=0.29.0
+stable-baselines3>=2.0.0
+onnxruntime>=1.16.0  # Fast RL inference via ONNX
+
+# ============================================================
 # Optional: Install separately if needed
 # ============================================================
 # oandapyV20  # OANDA trading API - install via: pip install oandapyV20
 # openai      # OpenAI API - install via: pip install openai
-# gymnasium   # RL environments - install via: pip install gymnasium
-# stable-baselines3  # RL algorithms - install via: pip install stable-baselines3
 # ta-lib      # Technical analysis - requires system lib first
 # wandb       # Weights & Biases tracking - install via: pip install wandb
 # optuna      # Hyperparameter optimization - install via: pip install optuna

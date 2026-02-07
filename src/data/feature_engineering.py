@@ -15,8 +15,8 @@ from typing import List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from text_features import simple_sentiment_score
-from candle_smoothing import resample_5min_ohlcv_and_ema_close
+from src.utils.text_features import simple_sentiment_score
+from src.data.candle_smoothing import resample_5min_ohlcv_and_ema_close
 
 logger = logging.getLogger(__name__)
 
@@ -1107,6 +1107,104 @@ class FeatureEngineering:
             )
             selector.fit(X, y)
             top_features = X.columns[selector.get_support()].tolist()
+
+        elif method == "random_forest":
+            # Random Forest importance-based selection
+            # Uses trained rf_feature_selector.pkl if available, otherwise trains new RF
+            # NOTE: This is separate from rf_risk.pkl which is the RandomForestTrainer ensemble model
+            import pickle
+            from pathlib import Path
+            from sklearn.ensemble import RandomForestClassifier
+            
+            rf_model_path = Path("trained_data/models/rf_feature_selector.pkl")
+            rf_meta_path = Path("trained_data/models/rf_feature_selector_features.pkl")
+            rf_model = None
+            use_trained_model = False
+            
+            # Try to load existing trained RF model
+            if rf_model_path.exists():
+                try:
+                    with open(rf_model_path, "rb") as f:
+                        rf_model = pickle.load(f)
+                    
+                    # Validate it's a sklearn model (not a dict from RandomForestTrainer)
+                    if not hasattr(rf_model, 'feature_importances_'):
+                        logger.warning("⚠️ RF model is not a sklearn model. Retraining...")
+                        rf_model = None
+                    elif rf_meta_path.exists():
+                        with open(rf_meta_path, "rb") as f:
+                            stored_features = pickle.load(f)
+                        
+                        current_features = set(X.columns.tolist())
+                        stored_features_set = set(stored_features)
+                        
+                        if current_features != stored_features_set:
+                            missing = stored_features_set - current_features
+                            extra = current_features - stored_features_set
+                            logger.warning(
+                                f"⚠️ RF model feature mismatch! "
+                                f"Stored: {len(stored_features)}, Current: {len(current_features)}. "
+                                f"Missing: {list(missing)[:5]}{'...' if len(missing)>5 else ''}, "
+                                f"Extra: {list(extra)[:5]}{'...' if len(extra)>5 else ''}. "
+                                f"Deleting stale model and retraining..."
+                            )
+                            rf_model_path.unlink()
+                            rf_meta_path.unlink()
+                            rf_model = None
+                        else:
+                            use_trained_model = True
+                            logger.info(f"✓ Loaded trained RF model with {len(stored_features)} matching features")
+                    else:
+                        # No meta file, can't validate - retrain
+                        logger.warning("⚠️ RF model exists but no feature metadata. Retraining...")
+                        rf_model = None
+                        
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to load RF model: {e}. Training new one...")
+                    rf_model = None
+            
+            # Train new RF if needed
+            if rf_model is None:
+                logger.info(f"🌲 Training new RandomForest for feature selection on {len(X)} samples...")
+                
+                # Convert target to direction labels (UP=1, DOWN=0) if continuous
+                if len(np.unique(y)) > 2:
+                    y_binary = (y > np.median(y)).astype(int)
+                else:
+                    y_binary = y.astype(int)
+                
+                rf_model = RandomForestClassifier(
+                    n_estimators=100,
+                    max_depth=10,
+                    min_samples_leaf=10,
+                    n_jobs=-1,
+                    random_state=42,
+                    class_weight="balanced",  # Handle imbalanced data
+                )
+                rf_model.fit(X.values, y_binary)
+                
+                # Save model and feature names for future use
+                rf_model_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(rf_model_path, "wb") as f:
+                    pickle.dump(rf_model, f)
+                with open(rf_meta_path, "wb") as f:
+                    pickle.dump(X.columns.tolist(), f)
+                
+                logger.info(f"✓ Trained and saved new RF model to {rf_model_path}")
+            
+            # Get feature importances and select top-k
+            importances = rf_model.feature_importances_
+            importance_df = pd.DataFrame({
+                "feature": X.columns,
+                "importance": importances
+            }).sort_values("importance", ascending=False)
+            
+            top_features = importance_df.head(top_k)["feature"].tolist()
+            
+            logger.info(
+                f"🌲 RF Feature Selection: Top {len(top_features)} features by importance. "
+                f"Best: {top_features[:5]}"
+            )
 
         else:
             top_features = X.columns.tolist()[:top_k]

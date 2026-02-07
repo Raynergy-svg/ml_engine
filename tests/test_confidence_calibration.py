@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from confidence_calibration import (
+from src.risk.confidence_calibration import (
     CalibrationConfig,
     CalibrationResult,
     ConfidenceCalibrator,

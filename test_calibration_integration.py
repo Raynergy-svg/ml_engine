@@ -4,7 +4,7 @@
 import logging
 logging.basicConfig(level=logging.INFO)
 
-from modular_inference import ModularEnsembleInference, InferenceConfig
+from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
 
 def test_calibration_integration():
     """Test the calibration integration in modular_inference."""

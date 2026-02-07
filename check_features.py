@@ -2,8 +2,8 @@ import pandas as pd
 import numpy as np
 import pickle
 from pathlib import Path
-from feature_engineering import FeatureEngineering
-from modular_data_loaders import compute_normalized_features
+from src.data.feature_engineering import FeatureEngineering
+from src.core.modular_data_loaders import compute_normalized_features
 
 # Create dummy OHLCV
 dates = pd.date_range('2024-01-01', periods=300, freq='h')

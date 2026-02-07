@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check class distribution in training data."""
-from modular_data_loaders import load_all_modular_data
-from oanda_practice import OandaPracticeClient
+from src.core.modular_data_loaders import load_all_modular_data
+from src.utils.oanda_practice import OandaPracticeClient
 from fx_paper import candles_to_ohlcv_df
 import numpy as np
 

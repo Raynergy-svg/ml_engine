@@ -1,0 +1,1048 @@
+{
+  "modules": {
+    "src.data.feature_engineering": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "buddy_scanner.py",
+        "check_features.py",
+        "main.py",
+        "src/core/modular_data_loaders.py",
+        "src/data/data_loader.py",
+        "src/training/modular_trainers.py",
+        "src/training/tensorflow_data_pipeline.py",
+        "test_validation_preds.py",
+        "tests/test_overfitting_bias_fixes.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 9
+    },
+    "buddy_scanner.py": {
+      "direct_imports": [
+        "src.core.modular_inference",
+        "src.data.feature_engineering",
+        "src.risk.position_sizing",
+        "src.risk.risk_management",
+        "src.utils",
+        "src.utils.fx_paper",
+        "src.utils.oanda_practice"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 7,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/utils/fx_paper.py": {
+      "direct_imports": [
+        "src.data.candle_smoothing"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "test_validation_preds.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.data.feature_engineering"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.risk.position_sizing": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "buddy_scanner.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "tests.validation.validate_model": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "main.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src/data/data_loader.py": {
+      "direct_imports": [
+        "src.data.feature_engineering",
+        "src.utils.text_features"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/risk/risk_management.py": {
+      "direct_imports": [
+        "src.risk.confidence_calibration"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "ml_engine.fx_paper": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "tests/test_fx_paper.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src/training/buddy_training_helpers.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.training.modular_trainers",
+        "src.training.walkforward_validation",
+        "src.utils.oanda_practice"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 4,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "check_class_dist.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.utils.oanda_practice"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/utils/unified_talk.py": {
+      "direct_imports": [
+        "src.models.tensorflow_engine_unified",
+        "src.utils.fx_paper",
+        "src.utils.reasoning_enhanced",
+        "src.utils.utils"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 4,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.risk.confidence_calibration": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/risk/position_sizing.py",
+        "src/risk/risk_management.py",
+        "tests/test_confidence_calibration.py",
+        "tests/test_confidence_integration.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 4
+    },
+    "pair_scanner.py": {
+      "direct_imports": [
+        "src.utils.pair_scanner"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.risk.trading_metrics": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/training/walkforward_validation.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src.utils.utils": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/utils/__init__.py",
+        "src/utils/unified_chat.py",
+        "src/utils/unified_talk.py",
+        "tests/test_overfitting_bias_fixes.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 4
+    },
+    "src.training.modular_trainers": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "main.py",
+        "scripts/test_modular_ensemble.py",
+        "src/core/modular_inference.py",
+        "src/training/buddy_training_helpers.py",
+        "src/training/retrain_gates.py",
+        "src/training/walkforward_validation.py",
+        "src/utils/enterprise_integration.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 7
+    },
+    "src.training.multitask_labels": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/training/tensorflow_data_pipeline.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src/risk/triple_barrier.py": {
+      "direct_imports": [
+        "src.utils.fx_paper"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.models.tensorflow_engine_unified": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/utils/unified_talk.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src/data/feature_engineering.py": {
+      "direct_imports": [
+        "src.data.candle_smoothing",
+        "src.utils.text_features"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.utils.fx_paper": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "buddy_scanner.py",
+        "main.py",
+        "src/risk/triple_barrier.py",
+        "src/utils/training_improvements.py",
+        "src/utils/unified_talk.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 5
+    },
+    "src.utils": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "buddy_scanner.py",
+        "main.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 2
+    },
+    "src.core.modular_inference": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "buddy_scanner.py",
+        "main.py",
+        "scripts/test_modular_ensemble.py",
+        "test_calibration_integration.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 4
+    },
+    "src.utils.oanda_practice": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "buddy_scanner.py",
+        "check_class_dist.py",
+        "debug_joint_data.py",
+        "debug_joint_shape.py",
+        "main.py",
+        "src/training/buddy_training_helpers.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 6
+    },
+    "debug_joint_data.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.utils.oanda_practice"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/utils/__init__.py": {
+      "direct_imports": [
+        "src.utils.utils"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/core/modular_inference.py": {
+      "direct_imports": [
+        "src.training.modular_trainers"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/risk/position_sizing.py": {
+      "direct_imports": [
+        "src.risk.confidence_calibration"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "tests/test_confidence_integration.py": {
+      "direct_imports": [
+        "src.risk.confidence_calibration"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.risk.var_backtesting": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/training/walkforward_validation.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src.training.buddy_training_helpers": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "main.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "debug_joint_shape.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.utils.oanda_practice"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "check_features.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.data.feature_engineering"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/utils/training_improvements.py": {
+      "direct_imports": [
+        "src.utils.fx_paper"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.utils.unified_talk": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "main.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "inspect_meta.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/training/tensorflow_data_pipeline.py": {
+      "direct_imports": [
+        "src.data.data_processing",
+        "src.data.feature_engineering",
+        "src.training.multitask_labels"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 3,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "scripts/test_modular_ensemble.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.core.modular_inference",
+        "src.training.modular_trainers"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 3,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "tests/test_fx_paper.py": {
+      "direct_imports": [
+        "ml_engine.fx_paper"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.data.data_processing": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/training/tensorflow_data_pipeline.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "tests/test_modular_inference.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.utils.reasoning_enhanced": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/utils/unified_chat.py",
+        "src/utils/unified_talk.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 2
+    },
+    "src.utils.pair_scanner": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "pair_scanner.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src.utils.text_features": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/data/data_loader.py",
+        "src/data/feature_engineering.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 2
+    },
+    "src.data.candle_smoothing": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/data/feature_engineering.py",
+        "src/utils/fx_paper.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 2
+    },
+    "src/training/walkforward_validation.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.risk.trading_metrics",
+        "src.risk.var_backtesting",
+        "src.training.modular_trainers"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 4,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.training.model_config": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/core/modular_data_loaders.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src.models.tensorflow_models": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/training/modular_trainers.py",
+        "tests/test_overfitting_bias_fixes.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 2
+    },
+    "src/utils/unified_chat.py": {
+      "direct_imports": [
+        "src.utils.reasoning_enhanced",
+        "src.utils.utils"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "tests/test_overfitting_bias_fixes.py": {
+      "direct_imports": [
+        "src.data.feature_engineering",
+        "src.models.tensorflow_models",
+        "src.utils.utils"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 3,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.core.modular_data_loaders": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "check_class_dist.py",
+        "check_features.py",
+        "debug_joint_data.py",
+        "debug_joint_shape.py",
+        "inspect_meta.py",
+        "main.py",
+        "scripts/test_modular_ensemble.py",
+        "src/training/buddy_training_helpers.py",
+        "src/training/modular_trainers.py",
+        "src/training/retrain_gates.py",
+        "src/training/walkforward_validation.py",
+        "test_validation_preds.py",
+        "tests/test_modular_inference.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 13
+    },
+    "src.training.walkforward_validation": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "src/training/buddy_training_helpers.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src/core/modular_data_loaders.py": {
+      "direct_imports": [
+        "src.data.feature_engineering",
+        "src.training.model_config"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "tests/test_confidence_calibration.py": {
+      "direct_imports": [
+        "src.risk.confidence_calibration"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "main.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.core.modular_inference",
+        "src.data.feature_engineering",
+        "src.training.buddy_training_helpers",
+        "src.training.modular_trainers",
+        "src.utils",
+        "src.utils.fx_paper",
+        "src.utils.oanda_practice",
+        "src.utils.unified_talk",
+        "tests.validation.validate_model"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 10,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "test_calibration_integration.py": {
+      "direct_imports": [
+        "src.core.modular_inference"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src.risk.risk_management": {
+      "direct_imports": [],
+      "transitive_imports": [],
+      "imported_by": [
+        "buddy_scanner.py"
+      ],
+      "depth": 0,
+      "type": "root",
+      "num_direct_deps": 0,
+      "num_transitive_deps": 0,
+      "num_importers": 1
+    },
+    "src/training/retrain_gates.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.training.modular_trainers"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 2,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/utils/enterprise_integration.py": {
+      "direct_imports": [
+        "src.training.modular_trainers"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 1,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    },
+    "src/training/modular_trainers.py": {
+      "direct_imports": [
+        "src.core.modular_data_loaders",
+        "src.data.feature_engineering",
+        "src.models.tensorflow_models"
+      ],
+      "transitive_imports": [],
+      "imported_by": [],
+      "depth": 1,
+      "type": "leaf",
+      "num_direct_deps": 3,
+      "num_transitive_deps": 0,
+      "num_importers": 0
+    }
+  },
+  "statistics": {
+    "total_modules": 61,
+    "avg_direct_deps": 1.25,
+    "avg_transitive_deps": 0.0,
+    "max_depth": 1,
+    "hub_modules": [
+      {
+        "module": "src.core.modular_data_loaders",
+        "importers": 13
+      },
+      {
+        "module": "src.data.feature_engineering",
+        "importers": 9
+      },
+      {
+        "module": "src.training.modular_trainers",
+        "importers": 7
+      },
+      {
+        "module": "src.utils.oanda_practice",
+        "importers": 6
+      },
+      {
+        "module": "src.utils.fx_paper",
+        "importers": 5
+      },
+      {
+        "module": "src.core.modular_inference",
+        "importers": 4
+      },
+      {
+        "module": "src.risk.confidence_calibration",
+        "importers": 4
+      },
+      {
+        "module": "src.utils.utils",
+        "importers": 4
+      },
+      {
+        "module": "src.utils",
+        "importers": 2
+      },
+      {
+        "module": "src.utils.text_features",
+        "importers": 2
+      }
+    ],
+    "heavy_modules": [
+      {
+        "module": "main.py",
+        "imports": 10
+      },
+      {
+        "module": "buddy_scanner.py",
+        "imports": 7
+      },
+      {
+        "module": "src/training/buddy_training_helpers.py",
+        "imports": 4
+      },
+      {
+        "module": "src/training/walkforward_validation.py",
+        "imports": 4
+      },
+      {
+        "module": "src/utils/unified_talk.py",
+        "imports": 4
+      },
+      {
+        "module": "scripts/test_modular_ensemble.py",
+        "imports": 3
+      },
+      {
+        "module": "src/training/modular_trainers.py",
+        "imports": 3
+      },
+      {
+        "module": "src/training/tensorflow_data_pipeline.py",
+        "imports": 3
+      },
+      {
+        "module": "tests/test_overfitting_bias_fixes.py",
+        "imports": 3
+      },
+      {
+        "module": "check_class_dist.py",
+        "imports": 2
+      }
+    ],
+    "isolated_modules": [
+      {
+        "module": "inspect_meta.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "pair_scanner.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "src/core/modular_inference.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "src/risk/position_sizing.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "src/risk/risk_management.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "src/risk/triple_barrier.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "src/utils/__init__.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "src/utils/enterprise_integration.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "src/utils/fx_paper.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "src/utils/training_improvements.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "test_calibration_integration.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "tests/test_confidence_calibration.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "tests/test_confidence_integration.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "tests/test_fx_paper.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "tests/test_modular_inference.py",
+        "imports": 1,
+        "importers": 0
+      },
+      {
+        "module": "check_class_dist.py",
+        "imports": 2,
+        "importers": 0
+      },
+      {
+        "module": "check_features.py",
+        "imports": 2,
+        "importers": 0
+      },
+      {
+        "module": "debug_joint_data.py",
+        "imports": 2,
+        "importers": 0
+      },
+      {
+        "module": "debug_joint_shape.py",
+        "imports": 2,
+        "importers": 0
+      },
+      {
+        "module": "src/core/modular_data_loaders.py",
+        "imports": 2,
+        "importers": 0
+      },
+      {
+        "module": "src/data/data_loader.py",
+        "imports": 2,
+        "importers": 0
+      },
+      {
+        "module": "src/data/feature_engineering.py",
+        "imports": 2,
+        "importers": 0
+      },
+      {
+        "module": "src/training/retrain_gates.py",
+        "imports": 2,
+        "importers": 0
+      },
+      {
+        "module": "src/utils/unified_chat.py",
+        "imports": 2,
+        "importers": 0
+      },
+      {
+        "module": "test_validation_preds.py",
+        "imports": 2,
+        "importers": 0
+      }
+    ],
+    "module_type_distribution": {
+      "root": 27,
+      "leaf": 34
+    }
+  }
+}

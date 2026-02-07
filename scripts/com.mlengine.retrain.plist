@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Label: Unique identifier for this job -->
+    <key>Label</key>
+    <string>com.mlengine.retrain</string>
+    
+    <!-- Disabled: Set to false to enable the job -->
+    <key>Disabled</key>
+    <false/>
+    
+    <!-- ProgramArguments: The command to run -->
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Use the conda environment's Python -->
+        <string>/Users/davidcertan/miniforge3/envs/tf-metal/bin/python</string>
+        <string>/Users/davidcertan/Desktop/ml_engine/scripts/scheduled_retrain.py</string>
+    </array>
+    
+    <!-- WorkingDirectory: Where to run the command -->
+    <key>WorkingDirectory</key>
+    <string>/Users/davidcertan/Desktop/ml_engine</string>
+    
+    <!-- EnvironmentVariables: Set required env vars -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- Load OANDA credentials from .env file -->
+        <key>PATH</key>
+        <string>/Users/davidcertan/miniforge3/envs/tf-metal/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <!-- Add your OANDA credentials here or ensure they're in .env -->
+        <!-- Uncomment and fill in if needed:
+        <key>OANDA_API_TOKEN</key>
+        <string>YOUR_TOKEN</string>
+        <key>OANDA_ACCOUNT_ID</key>
+        <string>YOUR_ACCOUNT_ID</string>
+        -->
+    </dict>
+    
+    <!-- StartCalendarInterval: Run at 10:00 AM UTC on Mon/Wed/Fri -->
+    <!-- Note: macOS uses local time, so adjust for your timezone -->
+    <!-- Example: 10 AM UTC = 11 AM CET (winter) / 12 PM CEST (summer) -->
+    <!-- For Pacific time: 10 AM UTC = 2 AM PST / 3 AM PDT -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <!-- Monday at 10:00 AM UTC -->
+        <dict>
+            <key>Weekday</key>
+            <integer>1</integer>
+            <key>Hour</key>
+            <integer>10</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <!-- Wednesday at 10:00 AM UTC -->
+        <dict>
+            <key>Weekday</key>
+            <integer>3</integer>
+            <key>Hour</key>
+            <integer>10</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+        <!-- Friday at 10:00 AM UTC -->
+        <dict>
+            <key>Weekday</key>
+            <integer>5</integer>
+            <key>Hour</key>
+            <integer>10</integer>
+            <key>Minute</key>
+            <integer>0</integer>
+        </dict>
+    </array>
+    
+    <!-- StandardOutPath: Where to write stdout -->
+    <key>StandardOutPath</key>
+    <string>/Users/davidcertan/Desktop/ml_engine/logs/launchd_retrain_stdout.log</string>
+    
+    <!-- StandardErrorPath: Where to write stderr -->
+    <key>StandardErrorPath</key>
+    <string>/Users/davidcertan/Desktop/ml_engine/logs/launchd_retrain_stderr.log</string>
+    
+    <!-- RunAtLoad: Run immediately when loaded (for testing) -->
+    <!-- Set to false for production -->
+    <key>RunAtLoad</key>
+    <false/>
+    
+    <!-- KeepAlive: Don't restart if it exits -->
+    <key>KeepAlive</key>
+    <false/>
+    
+    <!-- ProcessType: Background task -->
+    <key>ProcessType</key>
+    <string>Background</string>
+    
+    <!-- Nice: Lower priority (higher nice = lower priority) -->
+    <key>Nice</key>
+    <integer>10</integer>
+    
+    <!-- AbandonProcessGroup: Allow child processes to continue -->
+    <key>AbandonProcessGroup</key>
+    <true/>
+</dict>
+</plist>

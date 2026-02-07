@@ -26,6 +26,12 @@ Dependencies:
 
 from __future__ import annotations
 
+# CRITICAL: Disable GPU before PyTorch imports to prevent TensorFlow Metal conflicts
+import os
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")  # Disable CUDA GPU
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")  # Enable MPS CPU fallback
+os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")  # Disable MPS memory caching
+
 import logging
 import pickle
 from dataclasses import dataclass
@@ -35,24 +41,49 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-# Optional dependencies
-try:
-    import gymnasium as gym
-    from gymnasium import spaces
-    GYM_AVAILABLE = True
-except ImportError:
-    GYM_AVAILABLE = False
-    gym = None
-    spaces = None
+# Optional dependencies - lazy load to avoid 8+ second startup penalty
+GYM_AVAILABLE = None
+SB3_AVAILABLE = None
+gym = None
+spaces = None
+PPO = None
+EvalCallback = None
+StopTrainingOnNoModelImprovement = None
+DummyVecEnv = None
 
-try:
-    from stable_baselines3 import PPO
-    from stable_baselines3.common.callbacks import EvalCallback, StopTrainingOnNoModelImprovement
-    from stable_baselines3.common.vec_env import DummyVecEnv
-    SB3_AVAILABLE = True
-except ImportError:
-    PPO = None
-    SB3_AVAILABLE = False
+def _ensure_gym_imported():
+    """Lazy import gymnasium only when needed."""
+    global gym, spaces, GYM_AVAILABLE
+    if GYM_AVAILABLE is None:
+        try:
+            import gymnasium as _gym
+            from gymnasium import spaces as _spaces
+            gym = _gym
+            spaces = _spaces
+            GYM_AVAILABLE = True
+        except ImportError:
+            GYM_AVAILABLE = False
+    return GYM_AVAILABLE
+
+def _ensure_sb3_imported():
+    """Lazy import stable-baselines3 only when needed."""
+    global PPO, EvalCallback, StopTrainingOnNoModelImprovement, DummyVecEnv, SB3_AVAILABLE
+    if SB3_AVAILABLE is None:
+        try:
+            from stable_baselines3 import PPO as _PPO
+            from stable_baselines3.common.callbacks import EvalCallback as _EvalCallback
+            from stable_baselines3.common.callbacks import StopTrainingOnNoModelImprovement as _Stop
+            from stable_baselines3.common.vec_env import DummyVecEnv as _DummyVecEnv
+            PPO = _PPO
+            EvalCallback = _EvalCallback
+            StopTrainingOnNoModelImprovement = _Stop
+            DummyVecEnv = _DummyVecEnv
+            SB3_AVAILABLE = True
+        except (ImportError, AttributeError, Exception) as e:
+            # Can fail due to ImportError, or protobuf/tensorflow compatibility issues
+            SB3_AVAILABLE = False
+            logging.getLogger(__name__).debug(f"stable-baselines3 not available: {type(e).__name__}")
+    return SB3_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +119,15 @@ class RLConfig:
     daily_loss_limit_pct: float = 0.03  # 3% daily loss limit
 
 
-class TradingEnv(gym.Env if GYM_AVAILABLE else object):
+def _get_gym_env_base():
+    """Get gym.Env base class lazily."""
+    _ensure_gym_imported()
+    if GYM_AVAILABLE and gym is not None:
+        return gym.Env
+    return object
+
+
+class TradingEnv(_get_gym_env_base()):
     """
     Gymnasium environment for RL-based position sizing.
     
@@ -125,6 +164,7 @@ class TradingEnv(gym.Env if GYM_AVAILABLE else object):
             prices: Close prices (n_samples,)
             config: RL configuration
         """
+        _ensure_gym_imported()  # Ensure gymnasium is imported
         if not GYM_AVAILABLE:
             raise ImportError("gymnasium is required. Install with: pip install gymnasium")
         
@@ -367,6 +407,7 @@ class RLPositionSizer:
         Returns:
             Training statistics
         """
+        _ensure_sb3_imported()  # Ensure SB3 is imported
         if not SB3_AVAILABLE:
             raise ImportError(
                 "stable-baselines3 is required for RL training. "
@@ -374,11 +415,14 @@ class RLPositionSizer:
             )
         
         logger.info("🤖 Training RL Position Sizer...")
+        print(f"  RL Config: timesteps={self.config.total_timesteps}, lr={self.config.learning_rate}")
+        print(f"  Input: features={features.shape}, prices={len(prices)}")
         
         # Normalize features
         from sklearn.preprocessing import StandardScaler
         self.scaler = StandardScaler()
         features_scaled = self.scaler.fit_transform(features)
+        print(f"  Features scaled. Creating environment...")
         
         # Create environment
         env = TradingEnv(
@@ -387,12 +431,15 @@ class RLPositionSizer:
             prices=prices,
             config=self.config,
         )
+        print(f"  Environment created: obs_space={env.observation_space.shape}, action_space={env.action_space}")
         
         # Wrap in vectorized env
         vec_env = DummyVecEnv([lambda: env])
+        print(f"  Vectorized env ready. Creating PPO model...")
         
         # Create PPO model
         # CRITICAL: Use device='cpu' to avoid segfaults on macOS with TensorFlow + PyTorch
+        print(f"  Creating PPO model (verbose={verbose})...")
         self.model = PPO(
             "MlpPolicy",
             vec_env,
@@ -405,6 +452,7 @@ class RLPositionSizer:
             verbose=verbose,
             device="cpu",  # Force CPU to avoid GPU conflicts with TensorFlow Metal
         )
+        print(f"  PPO model created. Setting up evaluation callback...")
         
         # Setup evaluation callback
         eval_env = DummyVecEnv([lambda: TradingEnv(
@@ -436,11 +484,16 @@ class RLPositionSizer:
             callbacks.append(callback)
         
         # Train
+        print(f"  Starting PPO.learn() with {self.config.total_timesteps} timesteps...")
+        print(f"  (Progress bar should appear below)")
+        import sys
+        sys.stdout.flush()
         self.model.learn(
             total_timesteps=self.config.total_timesteps,
             callback=callbacks,
-            progress_bar=False if callback else True,
+            progress_bar=True,  # Always show progress bar
         )
+        print(f"  PPO training completed!")
         
         self._is_trained = True
         
@@ -524,8 +577,10 @@ class RLPositionSizer:
         model_path = model_path or RL_MODEL_PATH
         scaler_path = scaler_path or RL_SCALER_PATH
         
+        _ensure_sb3_imported()  # Ensure SB3 is imported
         if not SB3_AVAILABLE:
-            logger.warning("stable-baselines3 not available, cannot load RL model")
+            # Only log as debug since RL is optional
+            logger.debug("stable-baselines3 not installed, RL position sizing disabled")
             return False
         
         try:
@@ -549,6 +604,8 @@ class RLPositionSizer:
     @property
     def is_available(self) -> bool:
         """Check if RL position sizing is available."""
+        _ensure_sb3_imported()
+        _ensure_gym_imported()
         return SB3_AVAILABLE and GYM_AVAILABLE
 
 
@@ -557,6 +614,7 @@ def train_rl_position_sizer(
     ensemble_predictions: np.ndarray,
     prices: np.ndarray,
     config: Optional[RLConfig] = None,
+    verbose: int = 0,
 ) -> RLPositionSizer:
     """
     Convenience function to train RL position sizer.
@@ -566,12 +624,13 @@ def train_rl_position_sizer(
         ensemble_predictions: Ensemble predictions [direction_prob, confidence]
         prices: Close prices
         config: RL configuration
+        verbose: Verbosity level (0=silent, 1=progress)
         
     Returns:
         Trained RLPositionSizer
     """
     sizer = RLPositionSizer(config)
-    sizer.train(features, ensemble_predictions, prices)
+    sizer.train(features, ensemble_predictions, prices, verbose=verbose)
     return sizer
 
 

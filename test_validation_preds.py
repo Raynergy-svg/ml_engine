@@ -23,8 +23,8 @@ model = keras.models.load_model(str(model_path), compile=False)
 # Load real data
 from oanda_practice import OandaPracticeClient
 from fx_paper import candles_to_ohlcv_df
-from modular_data_loaders import compute_normalized_features
-from feature_engineering import FeatureEngineering
+from src.core.modular_data_loaders import compute_normalized_features
+from src.data.feature_engineering import FeatureEngineering
 
 client = OandaPracticeClient.from_env()
 resp = client.get_candles('EUR_USD', granularity='H1', count=800, price='MBA')

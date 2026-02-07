@@ -112,7 +112,7 @@ try:
         refine_response,
     )
 except ImportError:
-    logger.warning("self_refine module not available")
+    logger.debug("self_refine module not available (optional)")
     
     def self_improve_interpretation(*args, **kwargs):
         """Fallback if self_refine not available."""

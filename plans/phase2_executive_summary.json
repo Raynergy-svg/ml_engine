@@ -1,0 +1,46 @@
+{
+  "phase": 2,
+  "title": "Dependency Graph Analysis",
+  "completion_date": "2026-01-27T20:34:00Z",
+  "overall_risk_level": "medium",
+  "summary": {
+    "files_analyzed": 137,
+    "total_imports": 2273,
+    "modules_with_local_deps": 61,
+    "version_conflicts": 17,
+    "circular_dependencies": 0,
+    "critical_risks": 0,
+    "high_risks": 2
+  },
+  "key_findings": [
+    "Zero circular dependencies detected - excellent acyclic architecture with flat structure (max depth 1)",
+    "17 version conflicts across requirements files, primarily between requirements.txt and requirements_tf_metal.txt",
+    "1 unconstrained dependency (ipykernel in requirements_tf_metal.txt) poses security and stability risks",
+    "Core ML libraries (numpy, pandas, scikit-learn, xgboost) have conflicting version specifications across environments",
+    "27 isolated modules (44% of total) need review for potential consolidation or integration",
+    "Entry point files (main.py with 27 imports, buddy_scanner.py with 21 imports) show high coupling",
+    "Hub modules well-organized in core infrastructure (modular_data_loaders, feature_engineering, modular_inference)",
+    "Import distribution healthy: 42% standard library, 45% third-party, 13% local",
+    "1 deprecated package (ipython) but still maintained with no immediate action required",
+    "Mixed version constraint patterns (pinned vs range) without clear policy"
+  ],
+  "immediate_actions": [
+    "Add version constraint to ipykernel in requirements_tf_metal.txt (0.5 hours)",
+    "Document TensorFlow environment strategy explaining platform-specific version differences (2 hours)",
+    "Add inline documentation to requirements files explaining environment-specific packages (2 hours)",
+    "Unify core ML library versions across all environments (4 hours)",
+    "Create version policy document defining when to use pinned vs range versions (4 hours)"
+  ],
+  "recommendations": [
+    "Implement automated dependency validation in CI/CD pipeline to prevent unconstrained dependencies",
+    "Refactor main.py and buddy_scanner.py to reduce import counts and improve modularity",
+    "Audit and consolidate 27 isolated modules to reduce code bloat and improve integration",
+    "Consider using pip-tools or poetry for dependency locking to improve reproducibility",
+    "Integrate security scanning (pip-audit or safety) to monitor for vulnerabilities",
+    "Implement dependency injection to reduce coupling and improve testability",
+    "Create module dependency visualization to improve understanding of architecture",
+    "Establish regular dependency review process (monthly) to maintain dependency health",
+    "Consider TensorFlow version unification after documenting environment-specific optimizations",
+    "Automate dependency updates using Dependabot or Renovate to reduce maintenance burden"
+  ]
+}

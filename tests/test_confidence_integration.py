@@ -8,7 +8,7 @@ import pytest
 import numpy as np
 from unittest.mock import Mock, patch
 
-from confidence_calibration import (
+from src.risk.confidence_calibration import (
     create_default_calibrator,
     create_adjuster,
 )

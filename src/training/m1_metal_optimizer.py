@@ -36,6 +36,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers, callbacks, optimizers
+from keras.saving import register_keras_serializable
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +260,7 @@ def create_augmentation_fn(
 # Learning Rate Schedules
 # =============================================================================
 
+@register_keras_serializable(package="ml_engine")
 class WarmupCosineDecaySchedule(optimizers.schedules.LearningRateSchedule):
     """
     Cosine decay with linear warmup - crucial for stable training.
@@ -320,6 +322,7 @@ class WarmupCosineDecaySchedule(optimizers.schedules.LearningRateSchedule):
         }
 
 
+@register_keras_serializable(package="ml_engine")
 class CosineDecayRestarts(optimizers.schedules.LearningRateSchedule):
     """Cosine decay with warm restarts for escaping local minima.
     
@@ -519,9 +522,10 @@ class GradientAccumulationModel(keras.Model):
         gradients = tape.gradient(scaled_loss, self.trainable_variables)
         
         # Initialize or accumulate gradients
+        # Explicitly preserve dtype for Metal compatibility
         if self.gradient_accumulator is None:
             self.gradient_accumulator = [
-                tf.Variable(tf.zeros_like(g), trainable=False)
+                tf.Variable(tf.zeros(g.shape, dtype=g.dtype), trainable=False)
                 for g in gradients if g is not None
             ]
         

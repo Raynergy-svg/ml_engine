@@ -7,9 +7,14 @@ scikit-learn>=1.3.0
 scipy>=1.11.0
 
 # TensorFlow + Apple Silicon GPU plugin
-# Pin versions to keep the Metal plugin compatible.
-tensorflow==2.15.1
-tensorflow-metal==1.1.0; sys_platform == 'darwin'
+# TF 2.16.x is stable - TF 2.18 has down_cast crash on macOS
+tensorflow>=2.16.1,<2.17
+tensorflow-metal>=1.1.0,<1.3; sys_platform == 'darwin' and platform_machine == 'arm64'
+protobuf>=4.23.0,<5.0.0
+
+# Gradient boosting (LightGBM replaces ElasticNet for confidence gate)
+xgboost>=2.0.0
+lightgbm>=4.0.0
 
 # Project runtime
 pyyaml>=6.0
@@ -31,7 +36,12 @@ tqdm>=4.65.0
 tensorboard>=2.13.0
 
 # Jupyter kernel (VS Code)
-ipykernel
+ipykernel>=6.0.0
 
 # Testing (optional)
 pytest>=7.4.0
+
+# Reinforcement Learning (Position Sizing)
+gymnasium>=0.29.0
+stable-baselines3>=2.0.0
+onnxruntime>=1.16.0  # Fast RL inference via ONNX

@@ -127,12 +127,16 @@ class NewsSentimentAnalyzer:
             try:
                 import nltk
                 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-                nltk.download('vader_lexicon', quiet=True)
+                try:
+                    nltk.data.find('sentiment/vader_lexicon.zip')
+                except LookupError:
+                    nltk.download('vader_lexicon', quiet=True)
                 self._vader = SentimentIntensityAnalyzer()
                 self._use_finbert = False
                 self._initialized = True
-            except ImportError:
-                logger.error("No sentiment analysis available")
+                logger.debug("Using VADER fallback for sentiment analysis")
+            except Exception as e:
+                logger.warning(f"Sentiment analysis unavailable: {e}")
                 self._initialized = True
     
     def analyze(self, text: str) -> Dict[str, Any]:
