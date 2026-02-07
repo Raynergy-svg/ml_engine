@@ -374,9 +374,9 @@ def _train_buddy_impl(
         )
         
         if df is None or len(df) < 1000:
-            raise ValueError(f"Multi-pair data loading failed or insufficient data: {len(df) if df is not None else 0} rows")
+            raise ValueError(f"Multi-pair data loading failed or insufficient data: {len(df) if df is not None else 0} observations")
         
-        console.print(f"[green]✓ Multi-pair data loaded: {len(df):,} rows from {len(pairs_list)} pairs[/green]")
+        console.print(f"[green]✓ Multi-pair data loaded: {len(df):,} obs from {len(pairs_list)} pairs[/green]")
         
         # Skip OOS split for multi-pair (data is already shuffled across pairs)
         oos_live_split = False
@@ -1283,7 +1283,7 @@ def _train_buddy_impl(
             if 'volume' not in feature_df.columns:
                 feature_df['volume'] = 1000  # Default volume
             
-            console.print(f"  Data prepared: [green]{len(feature_df):,}[/green] rows × [green]{len(feature_df.columns)}[/green] columns")
+            console.print(f"  Data prepared: [green]{len(feature_df):,}[/green] obs × [green]{len(feature_df.columns)}[/green] features")
             
             # Load data for each model (same temporal split, different features)
             # (Verbose data loader logging is routed to file only via setup_logging)
@@ -1788,27 +1788,30 @@ def _train_buddy_impl(
             
             # Performance metrics table
             perf_table = Table(show_header=True, header_style="bold green", title="Model Performance")
-            perf_table.add_column("Model", style="white", width=20)
-            perf_table.add_column("Metric", style="cyan", width=20)
+            perf_table.add_column("Component", style="white", width=20)
+            perf_table.add_column("Metric", style="cyan", width=25)
             perf_table.add_column("Value", style="green", justify="right")
             
             if use_regime:
                 f1_macro = dir_metrics.get('f1_macro', 0)
                 perf_table.add_row("Transformer", "F1 Macro", f"{f1_macro:.3f}")
-                perf_table.add_row("", "F1 Trend", f"{dir_metrics.get('f1_trend', 0):.3f}")
+                perf_table.add_row("Network", "F1 Trend", f"{dir_metrics.get('f1_trend', 0):.3f}")
                 perf_table.add_row("", "F1 Chop", f"{dir_metrics.get('f1_chop', 0):.3f}")
             else:
                 dir_acc = dir_metrics['val_accuracy']
                 bal_acc = dir_metrics.get('val_balanced_accuracy', dir_acc)
-                perf_table.add_row(direction_model_name, "Val Accuracy", f"{dir_acc:.1%}")
-                perf_table.add_row("", "Balanced Acc", f"{bal_acc:.1%}")
+                perf_table.add_row("Transformer", "Validation Accuracy", f"{dir_acc:.1%}")
+                perf_table.add_row("Network", "Balanced Accuracy", f"{bal_acc:.1%}")
             
-            perf_table.add_row("XGBoost", "Accel Accuracy", f"{xgb_metrics['acceleration_accuracy']:.1%}")
+            perf_table.add_row("", "", "")
+            perf_table.add_row("Gradient Boosting", "Acceleration Accuracy", f"{xgb_metrics['acceleration_accuracy']:.1%}")
             perf_table.add_row("", "Momentum MAE", f"{xgb_metrics['momentum_mae']:.4f}")
+            perf_table.add_row("", "", "")
             perf_table.add_row("Random Forest", "Drawdown MAE", f"{rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps")
-            perf_table.add_row("", "Streak MAE", f"{rf_metrics['streak_prob_mae']:.4f}")
-            perf_table.add_row("Ridge", "R² Score", f"{ridge_metrics['r2_score']:.3f}")
-            perf_table.add_row("", "Confidence MAE", f"{ridge_metrics['confidence_mae']:.2f}")
+            perf_table.add_row("", "Streak Probability MAE", f"{rf_metrics['streak_prob_mae']:.4f}")
+            perf_table.add_row("", "", "")
+            perf_table.add_row("Regularized", "R² Score", f"{ridge_metrics['r2_score']:.3f}")
+            perf_table.add_row("Regression", "Confidence MAE", f"{ridge_metrics['confidence_mae']:.2f}")
             perf_table.add_row("", "Best Alpha", f"{ridge_metrics.get('best_alpha', 1.0):.4f}")
             perf_table.add_row("", "L1 Ratio", f"{ridge_metrics.get('best_l1_ratio', 0.5):.2f}")
             perf_table.add_row("", "Features (sparse)", f"{ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
