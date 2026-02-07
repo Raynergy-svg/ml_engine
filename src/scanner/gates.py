@@ -355,7 +355,7 @@ class GateEvaluator:
             
             # CRITICAL: Import custom classes BEFORE loading model
             # These are decorated with @register_keras_serializable() 
-            from src.models.tensorflow_models import (
+            from src.models.tensorflow_models import (  # noqa: F401
                 TCNVolatilityDualHead,
                 DualHeadLoss,
             )
@@ -904,7 +904,7 @@ class GateEvaluator:
             # Try .h5 extension as fallback
             model_path = self.model_dir / "transformer_direction.h5"
             if not model_path.exists():
-                logger.debug(f"Transformer direction model not found")
+                logger.debug("Transformer direction model not found")
                 return False
         
         try:
@@ -1667,10 +1667,6 @@ class GateEvaluator:
             X = features.values if hasattr(features, 'values') else features
             if len(X.shape) == 1:
                 X = X.reshape(1, -1)
-            
-            # Add direction indicator if meta-labeler expects it
-            # (direction encoded as 1 for LONG, -1 for SHORT)
-            direction_indicator = 1.0 if primary_direction == "LONG" else -1.0
             
             # Check if model has predict_proba
             if hasattr(self._meta_labeler, 'predict_proba'):
