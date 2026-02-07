@@ -51,12 +51,15 @@ class FeatureEngineering:
         df["macd_signal"] = df["macd"].ewm(span=9, adjust=False).mean()
         df["macd_hist"] = df["macd"] - df["macd_signal"]
 
-        # Relative Strength Index (RSI)
+        # Relative Strength Index (RSI) using Wilder's exponential smoothing
+        # Simple rolling mean can produce RSI=100/0 too easily; EWM is standard
         delta = df["close"].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df["rsi"] = 100 - (100 / (1 + rs))
+        gain = delta.where(delta > 0, 0.0)
+        loss = (-delta).where(delta < 0, 0.0)
+        avg_gain = gain.ewm(alpha=1.0 / 14, min_periods=14, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1.0 / 14, min_periods=14, adjust=False).mean()
+        rs = avg_gain / avg_loss.replace(0, np.nan)
+        df["rsi"] = (100 - (100 / (1 + rs))).fillna(50.0).clip(0.01, 99.99)
 
         # Bollinger Bands
         for window in [20]:

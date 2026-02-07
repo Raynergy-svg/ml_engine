@@ -31,7 +31,7 @@ print('✓ RLPositionSizer imports working!')
 
 # 3. Test multi-pair data loading import
 print('\nTesting multi-pair data loading...')
-from buddy_training_helpers import _load_multi_pair_data
+from src.training.buddy_training_helpers import _load_multi_pair_data
 print('✓ Multi-pair loader imports working!')
 
 # 4. Test CLI command registration

@@ -260,6 +260,39 @@ min_epochs: 60
 noise_std: 0.02
 kernel_regularizer: 0.001
 
+# ----- INFERENCE GATE THRESHOLDS -----
+inference:
+  # Gate 1: Transformer/TCN direction confidence
+  min_tcn_probability: 0.60  # 60% minimum confidence (not coin-flip)
+  
+  # Gate 2: Ridge confidence (ADX-based trend strength)
+  min_confidence: 50.0  # 0-100 scale
+  
+  # Gate 3: XGBoost momentum
+  min_momentum: 0.20  # Percentile threshold
+  require_fresh_or_accel: true  # Also pass if momentum is accelerating
+  
+  # Gate 4: RandomForest risk
+  max_drawdown_pct: 0.025  # 2.5% max expected drawdown
+  max_streak_prob: 0.95  # 95% max streak continuation probability
+  
+  # Gate 5: Meta-labeling
+  enable_meta_labeling: true
+  min_meta_confidence: 0.55  # 55% trade success probability
+  
+  # Gate 6: Sentiment
+  sentiment_block_enabled: true
+  sentiment_block_threshold: 0.60  # Block on strong contrary sentiment
+  sentiment_min_headlines: 3
+  
+  # General
+  permissive_mode: false
+  bypass_risk_gate_in_permissive: false
+  
+  # Calibration
+  enable_calibration: true
+  calibration_method: platt
+
 # ----- WALK-FORWARD CROSS-VALIDATION -----
 # Robust time-series validation to prevent look-ahead bias
 walkforward:

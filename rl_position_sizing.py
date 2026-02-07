@@ -34,6 +34,7 @@ os.environ.setdefault("PYTORCH_MPS_HIGH_WATERMARK_RATIO", "0.0")  # Disable MPS 
 
 import logging
 import pickle
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -85,7 +86,9 @@ def _ensure_sb3_imported():
             logging.getLogger(__name__).debug(f"stable-baselines3 not available: {type(e).__name__}")
     return SB3_AVAILABLE
 
-logger = logging.getLogger(__name__)
+_import_time = time.perf_counter() - _import_start
+if _import_time > 5.0:
+    logger.info(f"rl_position_sizing dependencies loaded in {_import_time:.1f}s (PyTorch is slow to import)")
 
 # Model save path
 RL_MODEL_PATH = Path("trained_data/models/rl_position_sizer.zip")
@@ -369,6 +372,76 @@ class TradingEnv(_get_gym_env_base()):
               f"Trades: {len(self.trade_history)}")
 
 
+class RLProgressCallback:
+    """Callback that prints periodic RL training progress to console."""
+
+    def __new__(cls, *args, **kwargs):
+        # Only create if SB3 is available
+        if BaseCallback is None:
+            return None
+        instance = super().__new__(cls)
+        return instance
+
+    def __init__(
+        self,
+        total_timesteps: int,
+        print_freq: int = 50_000,
+        console_print=None,
+    ):
+        if BaseCallback is None:
+            return
+        # Dynamically subclass BaseCallback
+        self._total = total_timesteps
+        self._print_freq = print_freq
+        self._console_print = console_print or print
+        self._last_printed = 0
+        self._start_time = None
+        self._inner = self._make_inner()
+
+    def _make_inner(self):
+        """Create the actual SB3 BaseCallback subclass instance."""
+        outer = self
+
+        class _Inner(BaseCallback):
+            def __init__(self_inner):
+                super().__init__(verbose=0)
+
+            def _on_training_start(self_inner):
+                import time as _t
+                outer._start_time = _t.perf_counter()
+                outer._console_print(
+                    f"  ▶ PPO training started ({outer._total:,} timesteps)..."
+                )
+
+            def _on_step(self_inner) -> bool:
+                import time as _t
+                step = self_inner.num_timesteps
+                if step - outer._last_printed >= outer._print_freq:
+                    outer._last_printed = step
+                    elapsed = _t.perf_counter() - outer._start_time if outer._start_time else 0
+                    pct = 100 * step / outer._total
+                    rate = step / elapsed if elapsed > 0 else 0
+                    eta = (outer._total - step) / rate if rate > 0 else 0
+                    outer._console_print(
+                        f"  ⏳ {step:>8,} / {outer._total:,} ({pct:5.1f}%) "
+                        f"| {rate:,.0f} steps/s | ETA {eta:.0f}s"
+                    )
+                return True
+
+            def _on_training_end(self_inner):
+                import time as _t
+                elapsed = _t.perf_counter() - outer._start_time if outer._start_time else 0
+                outer._console_print(
+                    f"  ✔ PPO training finished in {elapsed:.1f}s"
+                )
+
+        return _Inner()
+
+    def unwrap(self):
+        """Return the actual SB3 BaseCallback for use in callbacks list."""
+        return self._inner
+
+
 class RLPositionSizer:
     """
     RL-based position sizer using PPO.
@@ -449,7 +522,7 @@ class RLPositionSizer:
             n_epochs=self.config.n_epochs,
             gamma=self.config.gamma,
             gae_lambda=self.config.gae_lambda,
-            verbose=verbose,
+            verbose=0,  # Suppress SB3 default output; we use our own callback
             device="cpu",  # Force CPU to avoid GPU conflicts with TensorFlow Metal
         )
         print(f"  PPO model created. Setting up evaluation callback...")
@@ -482,6 +555,14 @@ class RLPositionSizer:
         callbacks = [eval_callback]
         if callback is not None:
             callbacks.append(callback)
+        
+        # Add progress callback for console visibility
+        progress_cb = RLProgressCallback(
+            total_timesteps=self.config.total_timesteps,
+            print_freq=max(10_000, self.config.total_timesteps // 20),
+        )
+        if progress_cb is not None:
+            callbacks.append(progress_cb.unwrap())
         
         # Train
         print(f"  Starting PPO.learn() with {self.config.total_timesteps} timesteps...")
@@ -573,7 +654,12 @@ class RLPositionSizer:
             logger.info(f"💾 RL scaler saved to {scaler_path}")
     
     def load(self, model_path: Optional[Path] = None, scaler_path: Optional[Path] = None) -> bool:
-        """Load model and scaler."""
+        """Load model and scaler.
+        
+        When TensorFlow is already loaded in the process, PPO.load() can deadlock
+        (known TF/PyTorch conflict on Intel Macs). In that case, we load the model
+        in a subprocess and transfer state back via pickle.
+        """
         model_path = model_path or RL_MODEL_PATH
         scaler_path = scaler_path or RL_SCALER_PATH
         
@@ -585,10 +671,15 @@ class RLPositionSizer:
         
         try:
             if model_path.exists():
-                # Force CPU to avoid GPU conflicts with TensorFlow Metal
-                self.model = PPO.load(str(model_path), device="cpu")
-                self._is_trained = True
-                logger.info(f"📂 RL model loaded from {model_path}")
+                # Check if TF is loaded — if so, use subprocess to avoid deadlock
+                import sys
+                if 'tensorflow' in sys.modules:
+                    self._load_via_subprocess(model_path)
+                else:
+                    # Force CPU to avoid GPU conflicts with TensorFlow Metal
+                    self.model = PPO.load(str(model_path), device="cpu")
+                    self._is_trained = True
+                    logger.info(f"📂 RL model loaded from {model_path}")
             
             if scaler_path.exists():
                 with open(scaler_path, "rb") as f:
@@ -600,6 +691,57 @@ class RLPositionSizer:
         except Exception as e:
             logger.warning(f"Failed to load RL model: {e}")
             return False
+    
+    def _load_via_subprocess(self, model_path: Path) -> None:
+        """Load PPO model in a child process to avoid TF/PyTorch deadlock.
+        
+        The child process doesn't have TF imported, so PPO.load() works fine.
+        We transfer the loaded model back via cloudpickle (handles lambdas).
+        """
+        import subprocess, tempfile, sys
+        
+        with tempfile.NamedTemporaryFile(suffix='.pkl', delete=False) as tmp:
+            tmp_path = tmp.name
+        
+        try:
+            # Use cloudpickle (SB3 dependency) since PPO contains unpicklable lambdas
+            script = (
+                "import sys\n"
+                "try:\n"
+                "    import cloudpickle\n"
+                "    from stable_baselines3 import PPO\n"
+                f'    model = PPO.load("{model_path}", device="cpu")\n'
+                f'    with open("{tmp_path}", "wb") as f:\n'
+                "        cloudpickle.dump(model, f)\n"
+                "    sys.exit(0)\n"
+                "except Exception as e:\n"
+                '    print(f"RL subprocess load failed: {e}", file=sys.stderr)\n'
+                "    sys.exit(1)\n"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True, timeout=30,
+                cwd=str(Path.cwd()),
+            )
+            
+            if result.returncode == 0 and Path(tmp_path).exists():
+                import cloudpickle
+                with open(tmp_path, 'rb') as f:
+                    self.model = cloudpickle.load(f)
+                self._is_trained = True
+                logger.info(f"📂 RL model loaded from {model_path} (via subprocess)")
+            else:
+                err = result.stderr.strip() if result.stderr else "unknown error"
+                logger.warning(f"RL subprocess load failed: {err}")
+        except subprocess.TimeoutExpired:
+            logger.warning("RL subprocess load timed out (30s)")
+        except Exception as e:
+            logger.warning(f"RL subprocess load failed: {e}")
+        finally:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass
     
     @property
     def is_available(self) -> bool:

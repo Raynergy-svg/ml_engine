@@ -187,16 +187,18 @@ def _buddy_setup_training_environment(
     mp_enabled = False
     if mixed_precision:
         try:
+            import warnings
             import tensorflow as tf
 
-            tf.keras.mixed_precision.set_global_policy("mixed_float16")
-            console.print("Mixed precision enabled: mixed_float16")
+            # Suppress TF mixed precision compatibility warnings (e.g. on Metal)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", message=".*mixed_float16.*")
+                warnings.filterwarnings("ignore", message=".*Mixed precision.*")
+                tf.keras.mixed_precision.set_global_policy("mixed_float16")
+            console.print("[dim]Mixed precision enabled: mixed_float16[/dim]")
             mp_enabled = True
-        except Exception as e:
-            console.print(
-                "[yellow]Mixed precision enable failed[/yellow]:",
-                e,
-            )
+        except Exception:
+            console.print("[dim]Mixed precision: not available[/dim]")
 
     return mp_enabled
 

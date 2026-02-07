@@ -234,6 +234,39 @@ noise_std: 0.03
 # L2 regularization
 kernel_regularizer: 0.002
 
+# ----- OVERFIT PREVENTION -----
+# Controls the OverfitPreventionCallback that monitors train-val gap
+overfit_prevention:
+  overfit_threshold: 0.08       # 8% train-val gap triggers warning
+  critical_threshold: 0.15      # 15% gap triggers LR reduction
+  severe_threshold: 0.25        # 25% gap triggers early stop
+  max_acceptable_gap: 0.12      # Won't save checkpoint if gap > 12%
+  patience_epochs: 3            # Consecutive overfit epochs before intervention
+  auto_adjust_dropout: true     # Dynamically increase dropout on overfitting
+  auto_reduce_lr: true          # Dynamically reduce LR on overfitting
+  max_dropout_increase: 0.3     # Cap on dropout increase
+
+# ----- STOCHASTIC WEIGHT AVERAGING (SWA) -----
+# Averages weights in final portion of training for flatter optima
+swa:
+  enabled: true                 # Enable SWA
+  start_fraction: 0.75          # Start at 75% of training
+  lr_factor: 0.5                # SWA constant LR = initial_lr * factor
+
+# ----- COSINE ANNEALING WITH WARM RESTARTS -----
+# Periodically resets LR to escape sharp local minima
+cosine_restarts:
+  enabled: true                 # Enable cosine annealing w/ warm restarts
+  restart_period: 10            # Restart every N epochs
+  lr_mult: 0.8                  # Each restart uses 80% of prev LR
+
+# ----- WARM-START OVERFIT RECOVERY -----
+warmstart_recovery:
+  enabled: true                 # Detect/recover from warm-start overfitting
+  reset_threshold: 0.15         # If initial gap > 15%, intervene
+  weight_perturbation_scale: 0.02  # Noise to break memorization
+  reset_optimizer_on_overfit: true # Reset optimizer momentum on critical overfit
+
 # ----- TENSORBOARD -----
 tensorboard:
   enabled: true

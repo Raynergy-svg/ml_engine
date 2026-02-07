@@ -28,7 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from feature_engineering import FeatureEngineering  # noqa: E402
+from src.data.feature_engineering import FeatureEngineering  # noqa: E402
 from ml_head_engine import MLEngineHead  # noqa: E402
 from mr_engine import MREngineHead  # noqa: E402
 from ms_head_engine import MSEngineHead  # noqa: E402

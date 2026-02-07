@@ -20,10 +20,11 @@ scaler = meta.get('scaler')
 print(f"Model seq_len: {seq_len}, features: {len(feature_names)}")
 
 # Get data
-from oanda_practice import OandaPracticeClient
-from fx_paper import candles_to_ohlcv_df
+from src.utils.oanda_practice import OandaPracticeClient
+from src.utils.fx_paper import candles_to_ohlcv_df
 import sys
-sys.path.insert(0, '/Users/davidcertan/Desktop/ml_engine/tests/validation')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'tests' / 'validation'))
 from validate_model import compute_features
 
 client = OandaPracticeClient.from_env()

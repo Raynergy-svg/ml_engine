@@ -73,6 +73,7 @@ def timer(func: Callable) -> Callable:
 def setup_logging(
     log_file=None,
     level=logging.INFO,
+    console_level=None,
     enable_logging=True,
     enable_wandb_logging=True,
     enable_checkpointing_logging=True,
@@ -81,10 +82,12 @@ def setup_logging(
 ):
     """
     Setup comprehensive logging configuration for the ML engine.
-    
+
     Args:
         log_file: Path to main log file (optional)
         level: Logging level (default: INFO)
+        console_level: Console handler level (default: WARNING). Set to
+            logging.INFO for verbose console output.
         enable_logging: Enable console logging
         enable_wandb_logging: Enable Weights & Biases logging
         enable_checkpointing_logging: Enable checkpoint logging
@@ -105,7 +108,7 @@ def setup_logging(
     # Clear existing handlers to avoid duplicates
     if logger.handlers:
         logger.handlers.clear()
-    
+
     # Enhanced formatter with more context
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
@@ -116,6 +119,7 @@ def setup_logging(
     if enable_logging:
         # Use stdout so `conda run` doesn't buffer console logs until process exit.
         # (Default StreamHandler uses stderr, which can appear "after" training finishes.)
+        # Console shows WARNING+ only; full detail goes to file handlers.
         ch = logging.StreamHandler(stream=sys.stdout)
         console_level = logging.WARNING if quiet else level
         ch.setLevel(console_level)

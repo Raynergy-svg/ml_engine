@@ -12,13 +12,13 @@ from src.risk.confidence_calibration import (
     create_default_calibrator,
     create_adjuster,
 )
-from position_sizing import (
+from src.risk.position_sizing import (
     create_default_position_sizer,
 )
-from risk_management import (
+from src.risk.risk_management import (
     create_default_risk_manager,
 )
-from unified_talk import TalkContext
+from src.utils.unified_talk import TalkContext
 
 
 class TestConfidenceIntegration:

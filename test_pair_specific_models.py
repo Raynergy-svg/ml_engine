@@ -104,7 +104,7 @@ def test_modular_inference_loading():
     logging.getLogger('modular_inference').setLevel(logging.ERROR)
     logging.getLogger('tensorflow').setLevel(logging.ERROR)
     
-    from modular_inference import ModularEnsembleInference
+    from src.core.modular_inference import ModularEnsembleInference
     
     model_dir = Path("trained_data/models")
     
@@ -170,7 +170,7 @@ def test_get_model_path():
     """Test the _get_model_path helper method."""
     console.print("\n[bold cyan]Test 4: _get_model_path Helper Method[/bold cyan]")
     
-    from modular_inference import ModularEnsembleInference
+    from src.core.modular_inference import ModularEnsembleInference
     
     model_dir = Path("trained_data/models")
     

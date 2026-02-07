@@ -102,7 +102,7 @@ class OnlineRetrainer:
         self._retrain_lock = Lock()
         self._is_retraining = False
         
-        logger.info(f"OnlineRetrainer initialized (model_dir={self.model_dir})")
+        logger.debug(f"OnlineRetrainer initialized (model_dir={self.model_dir})")
     
     def _load_state(self) -> None:
         """Load state from disk."""

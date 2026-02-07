@@ -31,8 +31,11 @@ instrument-agnostic. Models trained on GBP_USD work on USD_JPY, EUR_USD, etc.
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
 import logging
+import sys
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -112,6 +115,7 @@ except ImportError:
 
 # RL position sizer availability is checked lazily to avoid TF/PyTorch GPU conflicts
 # The actual import happens only when use_rl_sizer=True and the model is loaded
+# NOTE: stable_baselines3 import can take 9-10+ seconds due to PyTorch dependencies
 RL_AVAILABLE = True  # We assume it's available, actual check is deferred
 RLPositionSizer = None  # Lazy loaded
 RL_MODEL_PATH = Path("trained_data/models/rl_position_sizer.zip")
@@ -159,7 +163,6 @@ def _lazy_load_rl_sizer():
                 return None, False
     except ImportError:
         RL_AVAILABLE = False
-        RLPositionSizer = None
         return None, False
     except Exception as e:
         logger.warning(f"RL sizer import failed: {type(e).__name__}: {e}")
@@ -228,7 +231,7 @@ class InferenceConfig:
     
     # Risk gate - ATR-based drawdown (2x ATR, typically 0.5-3%)
     max_drawdown_pct: float = 0.025  # 2.5% max expected drawdown
-    max_streak_prob: float = 0.6  # 60% max streak continuation
+    max_streak_prob: float = 0.95  # 95% max streak continuation (increased from 0.6 for more permissive trading)
     
     # Legacy pip-based (kept for backward compatibility)
     max_drawdown_pips: float = 250.0  # ~2.5% for majors
@@ -449,12 +452,12 @@ class ModularEnsembleInference:
                 features_str = "sentiment + calendar + online learning"
                 if enable_drift_detection:
                     features_str += " + drift detection"
-                logger.info(f"✓ Market Intelligence enabled ({features_str})")
+                logger.debug(f"Market Intelligence enabled ({features_str})")
             except Exception as e:
                 logger.warning(f"Market Intelligence initialization failed: {e}")
                 self.market_intel = None
         elif enable_market_intelligence and not MARKET_INTEL_AVAILABLE:
-            logger.info("ℹ Market Intelligence not available (install transformers for sentiment)")
+            logger.debug("Market Intelligence not available (install transformers for sentiment)")
         
         # RL Position Sizer (NEW)
         self.rl_sizer: Optional[RLPositionSizer] = None
@@ -463,6 +466,10 @@ class ModularEnsembleInference:
         # Confidence Calibrator (NEW)
         self.calibrator: Optional['ConfidenceCalibrator'] = None
         self._calibration_loaded = False
+        
+        # Learned Confidence Model (Phase 3: Scanner Accuracy)
+        self.learned_confidence: Optional['LearnedConfidenceModel'] = None
+        self._learned_confidence_loaded = False
         
         # Meta-Labeler (predicts trade SUCCESS, not direction)
         self.meta_labeler: Optional['MetaLabeler'] = None
@@ -478,6 +485,9 @@ class ModularEnsembleInference:
         self._pending_retrain: bool = False
         self._retrain_reason: Optional[str] = None
         
+        # Thread safety for model loading
+        self._load_lock = threading.Lock()
+        
         # Online retrainer for drift-triggered incremental learning
         self._online_retrainer: Optional['OnlineRetrainer'] = None
         if enable_drift_detection and ONLINE_RETRAINER_AVAILABLE:
@@ -488,7 +498,7 @@ class ModularEnsembleInference:
                     min_samples_for_retrain=self._drift_config_overrides.get('min_samples_for_retrain', 50),
                 )
                 self._online_retrainer = OnlineRetrainer(config=retrain_cfg)
-                logger.info("✓ OnlineRetrainer initialized for drift-triggered retraining")
+                logger.debug("OnlineRetrainer initialized")
             except Exception as e:
                 logger.warning(f"OnlineRetrainer initialization failed: {e}")
         
@@ -669,8 +679,8 @@ class ModularEnsembleInference:
         prediction: float,
         confidence: float,
         features: Optional[np.ndarray] = None,
-        entry_time: Optional['datetime'] = None,
-        exit_time: Optional['datetime'] = None,
+        entry_time: Optional[datetime] = None,
+        exit_time: Optional[datetime] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Record a completed trade for online learning and drift detection.
@@ -994,6 +1004,9 @@ class ModularEnsembleInference:
     def load_models(self, instrument: Optional[str] = None) -> None:
         """
         Load all 4 models from disk.
+        
+        Thread-safe: Uses lock to prevent duplicate loading when called
+        from multiple threads (e.g., scanner parallel execution).
         
         Args:
             instrument: Optional instrument (e.g., 'EUR_USD') to load pair-specific models.
@@ -1328,8 +1341,14 @@ class ModularEnsembleInference:
                     self._gate_issues['ridge'] = f"sklearn {saved_ver} → {current_version}"
                     logger.warning(f"⚠️ Ridge gate: sklearn version mismatch ({saved_ver} → {current_version})")
         
-        # Check model quality from metadata
-        meta_path = self.model_dir / "modular_ensemble.meta.json"
+        # Check model quality from metadata (prefer pair-specific)
+        meta_path = None
+        if self.instrument and self.instrument != "GENERIC":
+            _pair_meta = self.model_dir / self.instrument / "modular_ensemble.meta.json"
+            if _pair_meta.exists():
+                meta_path = _pair_meta
+        if meta_path is None:
+            meta_path = self.model_dir / "modular_ensemble.meta.json"
         if meta_path.exists():
             import json
             with open(meta_path) as f:
@@ -1399,8 +1418,14 @@ class ModularEnsembleInference:
                 except Exception as e:
                     logger.warning(f"Failed to load calibrator from {calib_path}: {e}")
         
-        # Try loading from model metadata
-        meta_path = self.model_dir / "modular_ensemble.meta.json"
+        # Try loading from model metadata (prefer pair-specific)
+        meta_path = None
+        if self.instrument and self.instrument != "GENERIC":
+            _pair_meta = self.model_dir / self.instrument / "modular_ensemble.meta.json"
+            if _pair_meta.exists():
+                meta_path = _pair_meta
+        if meta_path is None:
+            meta_path = self.model_dir / "modular_ensemble.meta.json"
         if meta_path.exists():
             try:
                 with open(meta_path) as f:
@@ -1459,6 +1484,46 @@ class ModularEnsembleInference:
             logger.info("ℹ Calibration enabled but no fitted calibrator found - using raw probabilities")
             logger.info("  To enable calibration, train with: python main.py train-buddy --calibrate")
             logger.info(f"  Or run: python -m confidence_calibration --train --model-dir {self.model_dir}")
+
+    def _load_learned_confidence(self) -> None:
+        """
+        Load learned confidence model (Phase 3: Scanner Accuracy).
+        
+        This model replaces the heuristic _compute_confidence_direct() formula
+        with weights learned from actual trade outcomes.
+        
+        Lookup order:
+        1. trained_data/models/{instrument}/learned_confidence.pkl  (pair-specific)
+        2. trained_data/models/learned_confidence.pkl  (generic fallback)
+        """
+        if not LEARNED_CONFIDENCE_AVAILABLE:
+            logger.debug("Learned confidence module not available")
+            return
+        
+        self._learned_confidence_loaded = False
+        self.learned_confidence = None
+        
+        # Build list of paths to check
+        learned_paths = []
+        if self.instrument and self.instrument != "GENERIC":
+            learned_paths.append(self.model_dir / self.instrument / "learned_confidence.pkl")
+        learned_paths.append(self.model_dir / "learned_confidence.pkl")
+        
+        for path in learned_paths:
+            if path.exists():
+                try:
+                    self.learned_confidence = LearnedConfidenceModel.load(path)
+                    if self.learned_confidence.is_fitted:
+                        self._learned_confidence_loaded = True
+                        logger.info(f"✓ Learned confidence model loaded (CV R²={self.learned_confidence.training_stats.get('cv_score', 0):.3f})")
+                        return
+                    else:
+                        logger.debug(f"Learned confidence model at {path} is not fitted")
+                        self.learned_confidence = None
+                except Exception as e:
+                    logger.debug(f"Failed to load learned confidence from {path}: {e}")
+        
+        logger.debug("No fitted learned confidence model found - using heuristic formula")
 
     def _load_meta_labeler(self) -> None:
         """
@@ -2237,10 +2302,12 @@ class ModularEnsembleInference:
         """
         Compute confidence score directly from indicators (0-100 scale).
         
-        This bypasses the ElasticNet model and uses the formula directly,
-        which is faster and avoids learning a synthetic target.
+        Phase 3 Enhancement: If a learned confidence model is available,
+        use it instead of the heuristic formula. The learned model was
+        trained on actual trade outcomes and should provide more accurate
+        confidence estimates.
         
-        Formula weights:
+        Heuristic formula weights (fallback):
         - ADX (40%): Trend strength - higher = more confident
         - Volatility (20%): Moderate vol = high confidence
         - RSI (15%): Not extreme = high confidence
@@ -2265,6 +2332,18 @@ class ModularEnsembleInference:
         atr_pct = float(atr_pct) if not np.isnan(atr_pct) else 0.01
         bb_pos = float(bb_pos) if not np.isnan(bb_pos) else 0.5
         volume_ratio = float(volume_ratio) if not np.isnan(volume_ratio) else 1.0
+        
+        # Phase 3: Try learned confidence model first
+        if self._learned_confidence_loaded and self.learned_confidence is not None:
+            try:
+                features = np.array([adx, rsi, atr_pct, bb_pos, volume_ratio])
+                learned_conf = self.learned_confidence.predict(features)
+                # Scale to 0-100 range (learned model outputs 0-1)
+                confidence = 15 + learned_conf * 80
+                logger.debug(f"Using learned confidence: {learned_conf:.3f} -> {confidence:.1f}")
+                return float(confidence)
+            except Exception as e:
+                logger.debug(f"Learned confidence prediction failed, using heuristic: {e}")
         
         # ADX score (40%) - higher ADX = more confident trend
         # Use percentile-based scaling: 15-35 is typical range
@@ -2904,7 +2983,7 @@ class ModularEnsembleInference:
                 logger.debug(f"Ridge gate ACTIVE: confidence={ridge_confidence:.1f}, threshold={rl_min_confidence:.1f}, passed={confidence_gate_passed}")
             else:
                 confidence_gate_passed = True
-                logger.debug(f"Ridge gate BYPASSED: {self._gate_issues.get('ridge', 'not loaded')}")
+                logger.warning(f"⚠️  Ridge gate BYPASSED (permissive mode): {self._gate_issues.get('ridge', 'not loaded')}")
             
             # Momentum gate: use XGBoost if available, else pass
             if self._gate_status.get('xgboost', False) and self.xgb is not None:
@@ -2913,12 +2992,12 @@ class ModularEnsembleInference:
                 logger.debug(f"XGBoost gate ACTIVE: momentum={xgb_momentum:.3f}, threshold={rl_min_momentum:.3f}, passed={momentum_gate_passed}")
             else:
                 momentum_gate_passed = True
-                logger.debug(f"XGBoost gate BYPASSED: {self._gate_issues.get('xgboost', 'not loaded')}")
+                logger.warning(f"⚠️  XGBoost gate BYPASSED (permissive mode): {self._gate_issues.get('xgboost', 'not loaded')}")
             
             # Risk gate: use RF if available AND not explicitly bypassed
             if self.config.bypass_risk_gate_in_permissive:
                 risk_gate_passed = True
-                logger.debug("Risk gate BYPASSED: bypass_risk_gate_in_permissive=True")
+                logger.warning("⚠️  Risk gate BYPASSED (permissive mode): bypass_risk_gate_in_permissive=True")
             elif self._gate_status.get('random_forest', False) and self.rf is not None:
                 risk_gate_passed = (
                     rf_drawdown_pct <= rl_max_drawdown and
@@ -2931,10 +3010,10 @@ class ModularEnsembleInference:
                 if 'atr_pct_14' in df.columns:
                     atr_pct = df['atr_pct_14'].iloc[-1]
                     risk_gate_passed = atr_pct <= 0.02  # Max 2% ATR
-                    logger.debug(f"RF gate BYPASSED, using ATR fallback: atr={atr_pct:.4f}, passed={risk_gate_passed}")
+                    logger.warning(f"⚠️  RF gate BYPASSED (permissive mode), using ATR fallback: atr={atr_pct:.4f}, passed={risk_gate_passed}")
                 else:
                     risk_gate_passed = True  # No ATR available, trust Transformer
-                    logger.debug(f"RF gate BYPASSED: {self._gate_issues.get('random_forest', 'not loaded')}, no ATR fallback")
+                    logger.warning(f"⚠️  RF gate BYPASSED (permissive mode): {self._gate_issues.get('random_forest', 'not loaded')}, no ATR fallback")
         else:
             # TCN confidence = how far from 0.5 (uncertain)
             # 0.5 -> 0%, 0.6 -> 20%, 0.7 -> 40%, 0.8 -> 60%, 0.9 -> 80%, 1.0 -> 100%
@@ -3092,7 +3171,12 @@ class ModularEnsembleInference:
         
         # Extreme oversold: block LONG (don't catch falling knife)
         # Extreme overbought: block SHORT (don't short a rocket)
-        if rsi_val < rsi_low_threshold and gate_check_direction == 'long':
+        # Also block at absolute extremes (RSI=100 or RSI=0) regardless of direction
+        if rsi_val <= 2.0 or rsi_val >= 98.0:
+            # Absolute extreme — data quality issue or extreme conditions, block all
+            rsi_gate_passed = False
+            rsi_reason = f"rsi_extreme({'%.1f' % rsi_val})"
+        elif rsi_val < rsi_low_threshold and gate_check_direction == 'long':
             rsi_gate_passed = False
             rsi_reason = f"rsi_extreme_low({rsi_val:.1f})"
         elif rsi_val > rsi_high_threshold and gate_check_direction == 'short':
@@ -3546,9 +3630,10 @@ class ModularEnsembleInference:
         accel_str = "accel=true" if signal.xgb_acceleration else "accel=false"
         gate_checks.append(f"XGBoost: momentum={signal.xgb_momentum:.2f}, {accel_str} {status}")
         
-        # RF risk
+        # RF risk (display as percentage - the actual gate unit)
         status = "✓" if signal.risk_gate_passed else "✗"
-        gate_checks.append(f"RF: drawdown={signal.rf_drawdown_pips:.1f}pips, streak={signal.rf_streak_prob:.2f} {status}")
+        rf_dd_pct = signal.rf_drawdown_pips / 10000 if signal.rf_drawdown_pips > 1.0 else signal.rf_drawdown_pips
+        gate_checks.append(f"RF: drawdown={rf_dd_pct:.2%}, streak={signal.rf_streak_prob:.2f} {status}")
         
         # Meta-labeling gate (5th gate - predicts trade SUCCESS)
         if self._meta_labeler_loaded and self.meta_labeler is not None:
@@ -3660,7 +3745,14 @@ def train_calibration(
     logger.info(f"✓ Calibrator saved to {save_path}")
     
     # Also save calibration parameters to ensemble metadata for portability
-    meta_path = model_dir / "modular_ensemble.meta.json"
+    # Prefer pair-specific meta if it exists
+    meta_path = None
+    if instrument and instrument != "GENERIC":
+        _pair_meta = model_dir / instrument / "modular_ensemble.meta.json"
+        if _pair_meta.exists():
+            meta_path = _pair_meta
+    if meta_path is None:
+        meta_path = model_dir / "modular_ensemble.meta.json"
     if meta_path.exists():
         try:
             with open(meta_path, 'r') as f:

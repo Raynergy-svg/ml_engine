@@ -481,4 +481,98 @@ def create_adjuster() -> ConfidenceAdjuster:
         win_probability_threshold=0.5,
     )
     return ConfidenceAdjuster(config)
+
+
+def recalibrate_from_journal(
+    model_dir: Union[str, Path] = "trained_data/models/joint",
+    min_trades: int = 20,
+    verbose: bool = False,
+) -> Optional[ConfidenceCalibrator]:
+    """Recalibrate Platt scaling model using closed trades from the trade journal.
+    
+    This function implements the calibration feedback loop:
+    1. Loads closed trades from the journal
+    2. Extracts tcn_probability and win/loss outcome
+    3. Refits the calibrator with real outcomes
+    4. Saves to disk for scanner to use
+    
+    Args:
+        model_dir: Directory to save calibrator to
+        min_trades: Minimum closed trades required for recalibration
+        verbose: Print progress
+        
+    Returns:
+        Fitted calibrator if successful, None otherwise
+    """
+    # Lazy import to avoid circular dependencies
+    try:
+        from src.utils.trade_journal import TradeJournal
+    except ImportError:
+        try:
+            from utils.trade_journal import TradeJournal
+        except ImportError:
+            logger.error("Could not import TradeJournal")
+            return None
+    
+    model_dir = Path(model_dir)
+    
+    # Load trade journal
+    journal = TradeJournal()
+    
+    # Filter to closed trades with valid data
+    closed_trades = [
+        t for t in journal.trades
+        if t.status in ("win", "loss") and t.tcn_probability is not None
+    ]
+    
+    if len(closed_trades) < min_trades:
+        logger.warning(
+            f"Insufficient closed trades for recalibration: {len(closed_trades)} < {min_trades}"
+        )
+        if verbose:
+            print(f"[yellow]Need at least {min_trades} closed trades, have {len(closed_trades)}[/yellow]")
+        return None
+    
+    # Extract confidence scores and outcomes
+    confidence_scores = np.array([t.tcn_probability for t in closed_trades])
+    outcomes = np.array([t.status == "win" for t in closed_trades])
+    
+    if verbose:
+        win_rate = outcomes.mean() * 100
+        print(f"Recalibrating from {len(closed_trades)} trades (win rate: {win_rate:.1f}%)")
+    
+    # Create and fit calibrator
+    config = CalibrationConfig(
+        method='platt',
+        min_confidence_threshold=0.5,
+        max_confidence_threshold=0.95,
+        apply_directional_adjustment=False,  # Raw calibration only
+        apply_win_probability_adjustment=False,
+        apply_trading_context_adjustment=False,
+    )
+    calibrator = ConfidenceCalibrator(config)
+    calibrator.fit(confidence_scores, outcomes)
+    
+    if not calibrator.is_fitted:
+        logger.error("Calibrator fitting failed")
+        return None
+    
+    # Save calibrator
+    model_dir.mkdir(parents=True, exist_ok=True)
+    calibrator_path = model_dir / "confidence_calibrator.pkl"
+    calibrator.save(calibrator_path)
+    
+    if verbose:
+        # Show calibration effect on sample probabilities
+        print("\n[bold]Calibration Results:[/bold]")
+        sample_probs = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
+        for p in sample_probs:
+            result = calibrator.calibrate_confidence(p)
+            print(f"  {p:.2f} → {result.calibrated_confidence:.3f}")
+        print(f"\nSaved to: {calibrator_path}")
+    
+    logger.info(f"Recalibrated from {len(closed_trades)} trades, saved to {calibrator_path}")
+    return calibrator
+
+
 # — Raynergy-svg —

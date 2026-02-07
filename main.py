@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+# -*- coding: utf-8 -*-
 #!/usr/bin/env python3
 # flake8: noqa: E402
 """
@@ -9,6 +12,18 @@ A command-line interface for the ML trading engine that handles:
 - Configuration management
 - Training/evaluation progress display
 - Real-time monitoring
+
+Improvements:
+- Modular architecture with clear separation of concerns
+- Custom exception handling with helpful error messages
+- Lazy imports for performance optimization
+- Full type hints for better IDE support
+- argparse subparsers for better command organization
+- Early validation to fail fast
+- Proper resource cleanup
+
+Author: ML Engine Team
+Version: 2.0.0
 """
 
 from __future__ import annotations
@@ -19,22 +34,17 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # 0=all, 1=info, 2=warning, 3=error only
 os.environ["KMP_AFFINITY"] = "noverbose"  # Suppress OpenMP messages
 
-import sys
-import time
-import logging
 import argparse
-from dataclasses import dataclass, fields, replace
+import logging
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-import numpy as np
 from rich.console import Console
-from rich.live import Live
-from rich.layout import Layout
-from rich.table import Table
-from rich.panel import Panel
-from src.utils import setup_logging, load_config
 
+# ============================================================================
+# Local Imports - Core utilities (lightweight, always needed)
+# ============================================================================
 
 @dataclass(frozen=True)
 class OandaFetchOptions:
@@ -6050,115 +6060,94 @@ def integrated_predict_live(
 class _FxPaperTradePlan:
     instrument: str
     granularity: str
-    signal: str
-    last_close: float
-    atr_value: float
-    units: int
-    stop_price: float
-    tp_price: float
-    spread_pips: float
-    slippage_pips: float
-    slippage_price: float
-    confidence: float
-    band: str
-    conf_reasons: list[str]
+    candles: int
+    min_confidence: float
+    all_pairs: bool
+    lookahead: int
+    pairs: Optional[str]
+    top: int
+    no_train: bool
+    skip_execute: bool
+    watch: bool
+    interval: int
+    auto_execute: bool
+    diversified: bool
+    last: int
+    export: Optional[str]
+    save: bool
+    update: bool
+    days: int
+    import_trades: bool
+    timesteps: int
+    rl_episodes: Optional[int]
+    use_rl_sizer: bool
+    skip_rl: bool
+    oanda_live: bool
+    oanda_price: str
+    oanda_save_csv: Optional[str]
+    equity: float
+    risk: float
+    force_units: Optional[int]
+    execute: bool
+    force_execute: bool
+    dry_run: bool
+    loop: bool
+    max_trades: int
+    all_features: bool
+    repl: bool
+    device: str
+    mixed_precision: bool
+    steps_per_execution: Optional[int]
+    jit_compile: bool
+    shuffle_buffer: Optional[int]
+    prefetch: Optional[int]
+    cache_val: bool
+    combined_use_predict: bool
+    shared_encoder: Optional[bool]
+    model_type: Optional[str]
+    timing: bool
+    fit_verbose: Optional[int]
+    max_hold_minutes: Optional[float]
+    force_margin: Optional[float]
+    aggressive_scaling: bool
+    intelligent: bool
+    explain: bool
+    llm_provider: str
+    llm_enhance: bool
+    retrain_interval: float
+    drift_threshold: float
+    feature_drift_threshold: float
+    enable_drift_check: bool
+    ewc_lambda: float
+    ewc_gamma: float
+    replay_mix_ratio: float
+    replay_capacity_ratio: float
+    ema_alpha: float
+    ema_update_freq: int
+    disable_continual_learning: bool
+    enterprise: bool
+    cv_folds: int
+    bootstrap: bool
+    bootstrap_samples: int
+    mlflow_experiment: Optional[str]
+    generate_report: bool
+    disable_ewc: bool
+    monitor_alerts: bool
+    monitor_drift: bool
+    monitor_report: bool
+    monitor_limit: int
+    multi_pair: bool
+    foundation_pairs: Optional[str]
+    auto_apply: bool
 
 
-def _fx_setup_paper_trade(cfg: Dict[str, Any], *, instrument: str, granularity: str, execute: bool):
-    from src.utils.oanda_practice import OandaPracticeClient
-    import fx_guardrails as fxg
-
-    policy = _fx_enforce_fx_policy(cfg, instrument=instrument, granularity=granularity)
-    if policy is None:
-        return None
-
-    client = OandaPracticeClient.from_env()
-    state = fxg.load_state(cfg, policy)
-
-    pnl, _ = _fx_refresh_fx_state(cfg, policy, state, client)
-    if _fx_maybe_force_flat(policy, state, client, execute=execute):
-        return None
-
-    if not _fx_require_account_metrics(pnl):
-        return None
-
-    if not _fx_gate_fx_entry(policy, state, client):
-        return None
-
-    return policy, client, state, pnl
+CommandHandler = Callable[[CommandArgs], None]
+T = TypeVar('T')
 
 
-def _fx_build_paper_trade_plan(
-    cfg: Dict[str, Any],
-    policy: Any,
-    client: Any,
-    state: Any,
-    pnl: Dict[str, Any],
-    *,
-    instrument: str,
-    granularity: str,
-    candles: int,
-    equity: float,
-    risk_per_trade_pct: float,
-) -> tuple["_FxPaperTradePlan", Any] | None:
-    import fx_guardrails as fxg  # noqa: F401  (kept for symmetry; state saved elsewhere)
-
-    df = _fx_load_fx_df(client, instrument=instrument, granularity=granularity, candles=candles)
-    ok_spread, spread_pips, slippage_pips, slippage_price = _fx_spread_and_slippage(policy, df, instrument=instrument)
-    if not ok_spread:
-        return None
-
-    signal, last_close, atr_value = _fx_get_signal_context(df)
-    if signal == "hold":
-        console.print(f"FX setup: HOLD  {instrument} {granularity}  close={last_close:.5f}  ATR14={atr_value:.5f}")
-        return None
-
-    rules = _fx_build_risk_rules(policy, pnl, equity=equity, risk_per_trade_pct=risk_per_trade_pct)
-
-    confidence, band, conf_reasons = _fx_compute_confidence_and_band(
-        cfg,
-        policy,
-        instrument=instrument,
-        signal=signal,
-        _price=last_close,
-        atr_value=atr_value,
-        spread_pips=float(spread_pips),
-    )
-    if band == "low":
-        console.print(f"[bold red]Blocked[/bold red]: low confidence ({confidence:.2f}) => no trades.")
-        console.print(f"[dim]Reasons: {', '.join(conf_reasons)}[/dim]")
-        return None
-
-    if _fx_apply_daily_stops(cfg, policy, state, pnl, band=band):
-        return None
-
-    units, stop_price, tp_price, _, _ = _fx_build_order_units_and_prices(
-        policy,
-        rules,
-        instrument=instrument,
-        signal=signal,
-        price=last_close,
-        atr_value=atr_value,
-        slippage_price=float(slippage_price),
-    )
-
-    plan = _FxPaperTradePlan(
-        instrument=str(instrument),
-        granularity=str(granularity),
-        signal=str(signal),
-        last_close=float(last_close),
-        atr_value=float(atr_value),
-        units=int(units),
-        stop_price=float(stop_price),
-        tp_price=float(tp_price),
-        spread_pips=float(spread_pips),
-        slippage_pips=float(slippage_pips),
-        slippage_price=float(slippage_price),
-        confidence=float(confidence),
-        band=str(band),
-        conf_reasons=[str(x) for x in (conf_reasons or [])],
-    )
-    return plan, rules
+# ============================================================================
+# Argument Parser Builder
+# ============================================================================
 
 
 def _fx_execute_paper_trade_plan(
@@ -6395,52 +6384,34 @@ def generate_dashboard(
 def train_model(config_path: str) -> None:
     """Run model training with live progress dashboard.
     
-    Args:
-        config_path: Path to configuration file
+    def __init__(self) -> None:
+        """Initialize the argument parser builder."""
+        self._parser: Optional[argparse.ArgumentParser] = None
+        self._subparsers: Optional[argparse._SubParsersAction] = None
+        self._common_parser: Optional[argparse.ArgumentParser] = None
+    
+    def build(self) -> argparse.ArgumentParser:
+        """Build and return the argument parser.
         
-    Raises:
-        ValueError: If configuration is invalid
-        RuntimeError: If training fails
-    """
-    try:
-        # Load and validate configuration
-        config = load_config(config_path)
+        Returns:
+            Configured ArgumentParser instance
+        """
+        if self._parser is not None:
+            return self._parser
         
-        # Validate training configuration
-        if "training" not in config:
-            raise ValueError("Configuration missing 'training' section")
-        if "epochs" not in config["training"]:
-            raise ValueError("Configuration missing 'training.epochs'")
-        
-        console.print("[bold blue]Initializing ML Engine...[/bold blue]")
-        
-        # Load training data
-        from data_loader import MarketDataLoader
-        data_loader = MarketDataLoader(config)
-        
-        console.print("[bold blue]Loading market data...[/bold blue]")
-        
-        # Get data directory from config
-        data_dir = config.get("data", {}).get("data_dir", "market_data/")
-        
-        # Load multiple tickers from the data directory
-        data_dict = data_loader.load_multiple_tickers(data_dir)
-        
-        if not data_dict:
-            raise ValueError(f"No data files found in {data_dir}")
-        
-        # Combine all ticker data
-        df = data_loader.combine_ticker_data(data_dict, method="concat")
-        console.print(f"[cyan]Loaded {len(data_dict)} tickers, {len(df)} total rows[/cyan]")
-        
-        # Preprocess the data
-        console.print("[bold blue]Preprocessing data...[/bold blue]")
-        x_train, y_train, x_val, y_val, _, _ = data_loader.preprocess(
-            df,
-            add_features=True,
-            scaler_type="standard",
-            sequence_length=config.get("data", {}).get("sequence_length", 60),
-            test_size=0.2,
+        # Create common parent parser with shared arguments
+        self._common_parser = argparse.ArgumentParser(add_help=False)
+        self._common_parser.add_argument(
+            "--config",
+            "-c",
+            default=DEFAULT_CONFIG_PATH,
+            help="Path to configuration file",
+        )
+        self._common_parser.add_argument(
+            "--verbose",
+            "-v",
+            action="store_true",
+            help="Show detailed logs (default: quiet output)",
         )
         
         console.print(f"[bold green]Data prepared: {len(x_train)} training samples, {len(x_val)} validation samples[/bold green]")
@@ -12179,17 +12150,36 @@ COMMAND REFERENCE:
   
 EXAMPLES:
   buddy scan                     # Scan all majors, show recommendations
-  buddy -I EUR_USD --execute     # Single EUR_USD trade
+  buddy buddy -I EUR_USD --execute     # Single EUR_USD trade
   buddy train -I AUD_USD         # Train model for AUD_USD
   buddy retrain-all              # Retrain all pairs
   buddy journal                  # View trade journal
-""",
-    )
-    parser.add_argument(
-        "command",
-        nargs="?",
-        default="buddy",
-        choices=[
+  buddy monitor                  # Show monitoring dashboard
+  buddy monitor --alerts         # Show detailed alerts
+"""
+    
+    def _add_global_arguments(self) -> None:
+        """Add global arguments that apply to all commands."""
+        assert self._parser is not None
+        
+        self._parser.add_argument(
+            "--config",
+            "-c",
+            default=DEFAULT_CONFIG_PATH,
+            help="Path to configuration file",
+        )
+        self._parser.add_argument(
+            "--verbose",
+            "-v",
+            action="store_true",
+            help="Show detailed logs (default: quiet output)",
+        )
+    
+    def _add_train_command(self) -> None:
+        """Add the train command subparser."""
+        assert self._subparsers is not None
+        
+        train_parser = self._subparsers.add_parser(
             "train",
             "train-buddy",
             "train-joint",
@@ -12200,15 +12190,422 @@ EXAMPLES:
             "train-rl-gates",
             "train-rl-exits",
             "buddy",
-            "Buddy",
-            "promote-model",
-            "model-status",
-            "test",
-            "validate",
+            help="Single-pair inference → execute one trade",
+            aliases=["Buddy"],
+            parents=[self._common_parser],
+        )
+        
+        buddy_parser.add_argument(
+            "--instrument",
+            "-I",
+            default="EUR_USD",
+            help="OANDA instrument e.g. USD_JPY,EUR_USD,GBP_USD",
+        )
+        buddy_parser.add_argument(
+            "--granularity",
+            "-g",
+            default="H1",
+            help="OANDA candle granularity, e.g. M5, M15, H1",
+        )
+        buddy_parser.add_argument(
+            "--candles",
+            "-n",
+            type=int,
+            default=5000,
+            help="How many candles to fetch (default: 5000)",
+        )
+        buddy_parser.add_argument(
+            "--model-path",
+            default=None,
+            help="Optional Buddy model path override",
+        )
+        buddy_parser.add_argument(
+            "--equity",
+            type=float,
+            default=10_000.0,
+            help="Paper equity for sizing (default: 10,000)",
+        )
+        buddy_parser.add_argument(
+            "--risk",
+            "-r",
+            type=float,
+            default=0.005,
+            help="Risk per trade fraction (e.g. 0.005 = 0.5%%) (default: 0.005)",
+        )
+        buddy_parser.add_argument(
+            "--force-units",
+            type=int,
+            default=None,
+            help="Override computed units and place exactly this many units (PRACTICE only)",
+        )
+        buddy_parser.add_argument(
+            "--execute",
+            "-x",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable live trading on OANDA practice account (default: enabled)",
+        )
+        buddy_parser.add_argument(
+            "--force-execute",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Bypass the training accuracy live-trading gate (PRACTICE only) (default: enabled)",
+        )
+        buddy_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Disable live trading, only simulate orders (overrides --execute)",
+        )
+        buddy_parser.add_argument(
+            "--loop",
+            action="store_true",
+            help="Keep Buddy warm and act on each new candle (default: off)",
+        )
+        buddy_parser.add_argument(
+            "--max-trades",
+            type=int,
+            default=1,
+            help="Stop after this many executed trades (0 = unlimited) (default 1)",
+        )
+        buddy_parser.add_argument(
+            "--use-rl-sizer",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Use RL position sizer instead of Kelly criterion (default: enabled if RL model exists)",
+        )
+        buddy_parser.add_argument(
+            "--max-hold-minutes",
+            type=float,
+            default=None,
+            help="Maximum holding time in minutes for opened trades",
+        )
+        buddy_parser.add_argument(
+            "--force-margin",
+            type=float,
+            default=None,
+            help="Force approximate margin in USD for the trade",
+        )
+        buddy_parser.add_argument(
+            "--aggressive-scaling",
+            action="store_true",
+            help="Enable $100K→$1M aggressive scaling strategy",
+        )
+        
+        # Intelligent mode arguments
+        buddy_parser.add_argument(
+            "--intelligent",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable LLM-enhanced intelligent mode (default: enabled)",
+        )
+        buddy_parser.add_argument(
+            "--explain",
+            action="store_true",
+            help="Generate detailed causal reasoning explaining the trade recommendation",
+        )
+        buddy_parser.add_argument(
+            "--llm-provider",
+            type=str,
+            choices=["ollama", "claude", "openai", "auto"],
+            default="auto",
+            help="LLM provider for intelligent mode (default: auto)",
+        )
+        buddy_parser.add_argument(
+            "--llm-enhance",
+            "--no-llm-enhance",
+            dest="llm_enhance",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Enable deep LLM integration (default: enabled)",
+        )
+        
+        # REPL argument
+        buddy_parser.add_argument(
+            "--repl",
+            action="store_true",
+            help="Launch the interactive Buddy REPL",
+        )
+    
+    def _add_scan_command(self) -> None:
+        """Add the scan command subparser."""
+        assert self._subparsers is not None
+        
+        scan_parser = self._subparsers.add_parser(
             "scan",
-            "analyze",
+            help="Scan ALL pairs → shows tradeable + needs training",
+            parents=[self._common_parser],
+        )
+        
+        scan_parser.add_argument(
+            "--pairs",
+            type=str,
+            default=None,
+            help="Comma-separated pairs to scan (e.g., EUR_USD,GBP_USD,USD_JPY)",
+        )
+        scan_parser.add_argument(
+            "--granularity",
+            "-g",
+            default="H1",
+            help="OANDA candle granularity (default: H1)",
+        )
+        scan_parser.add_argument(
+            "--top",
+            type=int,
+            default=5,
+            help="Number of top results to show (default: 5)",
+        )
+        scan_parser.add_argument(
+            "--no-train",
+            action="store_true",
+            dest="no_train",
+            help="Skip the train prompt after scanning (deprecated)",
+        )
+        scan_parser.add_argument(
+            "--skip-execute",
+            action="store_true",
+            dest="skip_execute",
+            help="Skip the trade execution prompt after scanning",
+        )
+        scan_parser.add_argument(
+            "--watch",
+            action="store_true",
+            help="Enable continuous watch mode (scans repeatedly)",
+        )
+        scan_parser.add_argument(
+            "--interval",
+            type=int,
+            default=5,
+            help="Minutes between scans for --watch (default: 5)",
+        )
+        scan_parser.add_argument(
+            "--auto-execute",
+            action="store_true",
+            help="For --watch: automatically execute passing trades",
+        )
+        scan_parser.add_argument(
+            "--diversified",
+            "-d",
+            action="store_true",
+            help="Auto-filter correlated pairs (only show best from each cluster)",
+        )
+        scan_parser.add_argument(
+            "--use-rl-sizer",
+            action=argparse.BooleanOptionalAction,
+            default=True,
+            help="Use RL position sizer instead of Kelly criterion (default: enabled)",
+        )
+        scan_parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Force scan even outside optimal trading hours",
+        )
+    
+    def _add_validate_command(self) -> None:
+        """Add the validate command subparser."""
+        assert self._subparsers is not None
+        
+        validate_parser = self._subparsers.add_parser(
+            "validate",
+            help="Validate trained models",
+            parents=[self._common_parser],
+        )
+        
+        validate_parser.add_argument(
+            "--instrument",
+            "-I",
+            default="EUR_USD",
+            help="OANDA instrument to validate",
+        )
+        validate_parser.add_argument(
+            "--granularity",
+            "-g",
+            default="H1",
+            help="OANDA candle granularity (default: H1)",
+        )
+        validate_parser.add_argument(
+            "--candles",
+            "-n",
+            type=int,
+            default=800,
+            help="Number of candles for validation (default: 800)",
+        )
+        validate_parser.add_argument(
+            "--lookahead",
+            type=int,
+            default=24,
+            help="Hours ahead to measure actual outcome (default: 24)",
+        )
+        validate_parser.add_argument(
+            "--all-pairs",
+            action="store_true",
+            help="Validate all trained pair models",
+        )
+    
+    def _add_journal_command(self) -> None:
+        """Add the journal command subparser."""
+        assert self._subparsers is not None
+        
+        journal_parser = self._subparsers.add_parser(
             "journal",
-            "trade-analysis",
+            help="View trade journal",
+            parents=[self._common_parser],
+        )
+        
+        journal_parser.add_argument(
+            "--update",
+            action="store_true",
+            help="Update trade results from OANDA",
+        )
+        journal_parser.add_argument(
+            "--days",
+            type=int,
+            default=30,
+            help="Number of days of history to show (default: 30)",
+        )
+        journal_parser.add_argument(
+            "--import-trades",
+            action="store_true",
+            help="Import untracked open trades from OANDA into journal",
+        )
+    
+    def _add_monitor_command(self) -> None:
+        """Add the monitor command subparser."""
+        assert self._subparsers is not None
+        
+        monitor_parser = self._subparsers.add_parser(
+            "monitor",
+            help="Show monitoring dashboard and alerts",
+            parents=[self._common_parser],
+        )
+        
+        monitor_parser.add_argument(
+            "--monitor-alerts",
+            action="store_true",
+            help="Show detailed alerts",
+        )
+        monitor_parser.add_argument(
+            "--monitor-drift",
+            action="store_true",
+            help="Show model drift history",
+        )
+        monitor_parser.add_argument(
+            "--monitor-report",
+            action="store_true",
+            help="Generate full monitoring report",
+        )
+        monitor_parser.add_argument(
+            "--monitor-limit",
+            type=int,
+            default=20,
+            help="Limit for drift history display (default: 20)",
+        )
+    
+    def _add_analyze_command(self) -> None:
+        """Add the analyze command subparser."""
+        assert self._subparsers is not None
+        
+        analyze_parser = self._subparsers.add_parser(
+            "analyze",
+            help="Analyze model performance",
+            parents=[self._common_parser],
+        )
+        
+        analyze_parser.add_argument(
+            "--top",
+            type=int,
+            default=30,
+            help="Number of top results to show (default: 30)",
+        )
+        analyze_parser.add_argument(
+            "--save",
+            action="store_true",
+            help="Save plots to trained_data/visualizations",
+        )
+    
+    def _add_model_management_commands(self) -> None:
+        """Add model management command subparsers."""
+        assert self._subparsers is not None
+        
+        # Promote model command
+        _ = self._subparsers.add_parser(
+            "promote-model",
+            help="Promote a model to production",
+            parents=[self._common_parser],
+        )
+        
+        # Model status command
+        _ = self._subparsers.add_parser(
+            "model-status",
+            help="Show model status and information",
+            parents=[self._common_parser],
+        )
+        
+        # Retrain gates command
+        retrain_gates_parser = self._subparsers.add_parser(
+            "retrain-gates",
+            help="Retrain sklearn gates only (XGBoost, RF, Ridge)",
+            parents=[self._common_parser],
+        )
+        retrain_gates_parser.add_argument(
+            "--pairs",
+            type=str,
+            default=None,
+            help="Comma-separated pairs",
+        )
+        retrain_gates_parser.add_argument(
+            "--granularity",
+            "-g",
+            default="H1",
+            help="OANDA candle granularity (default: H1)",
+        )
+        retrain_gates_parser.add_argument(
+            "--candles",
+            "-n",
+            type=int,
+            default=5000,
+            help="Number of candles (default: 5000)",
+        )
+        
+        # Train RL sizer command
+        train_rl_parser = self._subparsers.add_parser(
+            "train-rl-sizer",
+            help="Train RL position sizing agent",
+            parents=[self._common_parser],
+        )
+        train_rl_parser.add_argument(
+            "--timesteps",
+            type=int,
+            default=500_000,
+            help="Total training timesteps (default: 500000)",
+        )
+        train_rl_parser.add_argument(
+            "--rl-episodes",
+            type=int,
+            default=None,
+            help="Training episodes (overrides --timesteps)",
+        )
+        train_rl_parser.add_argument(
+            "--pairs",
+            type=str,
+            default=None,
+            help="Comma-separated pairs",
+        )
+        train_rl_parser.add_argument(
+            "--granularity",
+            "-g",
+            default="H1",
+            help="OANDA candle granularity (default: H1)",
+        )
+        train_rl_parser.add_argument(
+            "--candles",
+            "-n",
+            type=int,
+            default=5000,
+            help="Number of candles (default: 5000)",
+        )
+        
+        # Suggest improvements command
+        suggest_parser = self._subparsers.add_parser(
             "suggest-improvements",
         ],
         help="Command: scan (multi-pair) | buddy (single-pair) | train | train-joint | retrain-all | train-rl-gates | train-rl-exits | validate | journal | suggest-improvements",
@@ -12231,217 +12628,70 @@ EXAMPLES:
         help="Optional Buddy model path override (defaults to trained_data/models/buddy_tf.keras)",
     )
 
-    parser.add_argument(
-        "--pca-components",
-        type=int,
-        default=None,
-        help="Optional PCA components (e.g. 20-30) for Buddy training",
-    )
-    parser.add_argument(
-        "--seq-len",
-        type=int,
-        default=None,
-        help="Sequence length for Buddy training (default: config buddy.train_defaults.seq_len or 50)",
-    )
-    parser.add_argument(
-        "--epochs",
-        type=int,
-        default=None,
-        help="Epochs for Buddy training (default: config buddy.train_defaults.epochs or 300)",
-    )
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=None,
-        help="Batch size for Buddy training (default: config buddy.train_defaults.batch_size or 32)",
-    )
-    parser.add_argument(
-        "--lr",
-        type=float,
-        default=None,
-        help="Learning rate for Buddy training (default: config buddy.train_defaults.lr or 0.001)",
-    )
-    parser.add_argument(
-        "--warm-start",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="For train-buddy: initialize weights from existing model before training (preserves learned patterns). (default: enabled; use --no-warm-start for fresh training)",
-    )
-    parser.add_argument(
-        "--init-from",
-        default=None,
-        help="For train-buddy: path to a .keras checkpoint to warm-start from (overrides --warm-start)",
-    )
-    parser.add_argument(
-        "--patience",
-        type=int,
-        default=None,
-        help="EarlyStopping patience for Buddy training (applies to --es-monitor) (default: config buddy.train_defaults.patience or 10)",
-    )
-    parser.add_argument(
-        "--es-monitor",
-        default=None,
-        choices=["direction", "combined", "val_loss", "loss"],
-        help="EarlyStopping monitor for train-buddy: direction|combined|val_loss|loss (default: config buddy.train_defaults.es_monitor or direction)",
-    )
-    parser.add_argument(
-        "--combined-w-dir",
-        type=float,
-        default=None,
-        help="Weight for direction accuracy in combined early-stopping objective (default: config buddy.train_defaults.combined_w_dir or 0.7)",
-    )
-    parser.add_argument(
-        "--combined-w-conf",
-        type=float,
-        default=None,
-        help="Weight for confidence score (1 - MAE) in combined early-stopping objective (default: config buddy.train_defaults.combined_w_conf or 0.3)",
-    )
-    parser.add_argument(
-        "--top-features",
-        type=int,
-        default=None,
-        help="For train-buddy: keep only top-K most correlated numeric features (disables warm-start)",
-    )
-    parser.add_argument(
-        "--feature-curriculum",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="For train-buddy: enable/disable feature curriculum (CLI overrides config). Cannot be used with --top-features.",
-    )
-    parser.add_argument(
-        "--curriculum-ks",
-        default=None,
-        help=(
-            "For train-buddy --feature-curriculum: comma-separated K schedule (0 = all). "
-            f"If unset, uses config buddy.curriculum_ks or default {DEFAULT_CURRICULUM_KS}."
-        ),
-    )
-    parser.add_argument(
-        "--ignore-input-mismatches",
-        action="store_true",
-        help="Best-effort mode: downgrade some input/PCA/curriculum mismatches to warnings.",
-    )
-    parser.add_argument(
-        "--disable-tier2-on-mismatch",
-        action="store_true",
-        help="If Tier-2 calibration encounters input mismatches, skip Tier-2 instead of best-effort.",
-    )
-    parser.add_argument(
-        "--median-window",
-        type=int,
-        default=None,
-        help="For train-buddy: apply rolling median to close before EMA smoothing (e.g. 3,5)",
-    )
+        # Find optimal candles command
+        find_candles_parser = self._subparsers.add_parser(
+            "find-candles",
+            help="Find optimal training candle count for an instrument",
+            parents=[self._common_parser],
+        )
+        find_candles_parser.add_argument(
+            "--instrument",
+            "-I",
+            required=True,
+            help="OANDA instrument (e.g. EUR_USD)",
+        )
+        find_candles_parser.add_argument(
+            "--granularity",
+            "-g",
+            default="H1",
+            help="OANDA candle granularity (default: H1)",
+        )
+        find_candles_parser.add_argument(
+            "--min-candles",
+            type=int,
+            default=3000,
+            help="Minimum candle count to test (default: 3000)",
+        )
+        find_candles_parser.add_argument(
+            "--max-candles",
+            type=int,
+            default=30000,
+            help="Maximum candle count to test (default: 30000)",
+        )
+        find_candles_parser.add_argument(
+            "--step",
+            type=int,
+            default=3000,
+            help="Step size between candidate counts (default: 3000)",
+        )
+        find_candles_parser.add_argument(
+            "--cv-folds",
+            type=int,
+            default=3,
+            help="Walk-forward CV folds per candidate (default: 3)",
+        )
+        find_candles_parser.add_argument(
+            "--no-auto-train",
+            action="store_true",
+            help="Show results only — do not auto-train with optimal count",
+        )
 
-    # Tier-2 calibration controls (TP-before-SL simulation). This can be the dominant runtime cost.
-    parser.add_argument(
-        "--tier2-calibrate",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="For train-buddy: enable/disable Tier-2 TP/SL calibration + labeling (default enabled)",
-    )
-    parser.add_argument(
-        "--tier2-calibration-stride",
-        type=int,
-        default=None,
-        help="For train-buddy: stride for Tier-2 labeling/calibration simulation (higher = faster, default: config buddy.train_defaults.tier2_calibration_stride or 5)",
-    )
-    parser.add_argument(
-        "--tier2-horizon-candles",
-        type=int,
-        default=None,
-        help="For train-buddy: Tier-2 TP/SL max horizon in candles (lower = faster). Default uses config.",
-    )
-    parser.add_argument(
-        "--vol-norm-window",
-        type=int,
-        default=None,
-        help="For train-buddy: normalize returns by rolling volatility when ranking top features (legacy) (e.g. 50)",
-    )
-    parser.add_argument(
-        "--min-volume",
-        type=int,
-        default=None,
-        help="For train-buddy: drop candles with volume below this threshold before training",
-    )
-    parser.add_argument(
-        "--spread-filter",
-        action="store_true",
-        help="For train-buddy: drop candles with abnormally wide bid/ask spread (requires bid_close+ask_close)",
-    )
-    parser.add_argument(
-        "--spread-pctl",
-        type=float,
-        default=0.99,
-        help="For train-buddy: spread percentile used as filter threshold (default 0.99)",
-    )
-    parser.add_argument(
-        "--spread-mult",
-        type=float,
-        default=3.0,
-        help="For train-buddy: also filter if spread > (median * mult) (default 3.0)",
-    )
-    parser.add_argument(
-        "--no-train-smoothing",
-        action="store_true",
-        help="For train-buddy: disable candle noise reduction (resample to M5 + EMA(14) close)",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for Buddy training (default 42)",
-    )
-    parser.add_argument(
-        "--run-tag",
-        default=None,
-        help="Optional tag to version outputs (writes buddy_tf_<tag>.keras + meta)",
-    )
-    parser.add_argument(
-        "--verbose",
-        "-v",
-        action="store_true",
-        help="Show detailed logs (default: quiet output)",
-    )
 
-    parser.add_argument(
-        "--instrument",
-        "-I",
-        default="EUR_USD",
-        help="OANDA instrument e.g. USD_JPY,EUR_USD,GBP_USD (used by buddy and --oanda-live training)",
-    )
-    parser.add_argument(
-        "--granularity",
-        "-g",
-        default="H1",
-        help="OANDA candle granularity, e.g. M5, M15, H1 (used by buddy and --oanda-live training)",
-    )
-    parser.add_argument(
-        "--candles",
-        "-n",
-        type=int,
-        default=5000,
-        help="How many candles to fetch for training (default: 5000)",
-    )
-    parser.add_argument(
-        "--min-confidence",
-        type=float,
-        default=0.0,
-        help="For test: only count predictions with confidence >= this value (e.g., 0.6)",
-    )
+# ============================================================================
+# Configuration Validator
+# ============================================================================
+
+
+class ConfigValidator:
+    """Validator for configuration files and arguments."""
     
-    # Validation command arguments
-    parser.add_argument(
-        "--all-pairs",
-        action="store_true",
-        help="For validate: validate all trained pair models",
-    )
-    parser.add_argument(
-        "--lookahead",
-        type=int,
-        default=24,
-        help="For validate: hours ahead to measure actual outcome (default: 24)",
-    )
+    def __init__(self, logger: logging.Logger) -> None:
+        """Initialize the configuration validator.
+        
+        Args:
+            logger: Logger instance for validation messages
+        """
+        self._logger = logger
     
     # Scan command arguments
     parser.add_argument(
@@ -13238,24 +13488,283 @@ EXAMPLES:
                 min_confidence=float(getattr(args, "min_confidence", 0.0)),
                 verbose=bool(getattr(args, "verbose", False)),
             )
-        elif args.command == "validate":
-            buddy_validate(
-                args.config,
-                instrument=str(getattr(args, "instrument", "EUR_USD")),
-                granularity=str(getattr(args, "granularity", "H1")),
-                candles=int(getattr(args, "candles", 800)),
-                lookahead=int(getattr(args, "lookahead", 24)),
-                all_pairs=bool(getattr(args, "all_pairs", False)),
-                verbose=bool(getattr(args, "verbose", False)),
+        
+        self._logger.debug(f"Configuration file validated: {path}")
+        return path
+    
+    def validate_config_content(self, config: Dict[str, Any]) -> None:
+        """Validate the content of the loaded configuration.
+        
+        Args:
+            config: Configuration dictionary
+            
+        Raises:
+            ConfigError: If configuration content is invalid
+        """
+        # 'fx' is the modern section name, 'oanda' is legacy - accept either
+        required_sections = ['buddy', 'model']
+        missing_sections = [s for s in required_sections if s not in config]
+        
+        # Either 'fx' or 'oanda' must be present
+        if 'fx' not in config and 'oanda' not in config:
+            missing_sections.append('fx (or oanda)')
+        
+        if missing_sections:
+            raise ConfigError(
+                f"Missing required configuration sections: {', '.join(missing_sections)}",
+                suggestion="Ensure your configuration file has all required sections",
             )
-        elif args.command == "scan":
-            watch_mode = bool(getattr(args, "watch", False))
+        
+        self._logger.debug("Configuration content validated")
+    
+    def validate_instrument(self, instrument: str) -> str:
+        """Validate and normalize an OANDA instrument name.
+        
+        Args:
+            instrument: Instrument name to validate
+            
+        Returns:
+            Normalized instrument name
+            
+        Raises:
+            ValidationError: If instrument is invalid
+        """
+        if not instrument:
+            raise ValidationError(
+                "Instrument name cannot be empty",
+                suggestion="Provide a valid instrument name with --instrument",
+            )
+        
+        # Normalize: replace / with _ and uppercase
+        normalized = instrument.replace("/", "_").upper()
+        
+        # Basic format validation (should be like EUR_USD, USD_JPY, etc.)
+        if "_" not in normalized:
+            raise ValidationError(
+                f"Invalid instrument format: {instrument}",
+                suggestion="Use format like EUR_USD or USD_JPY",
+            )
+        
+        self._logger.debug(f"Instrument validated: {instrument} -> {normalized}")
+        return normalized
+    
+    def validate_granularity(self, granularity: str) -> str:
+        """Validate an OANDA candle granularity.
+        
+        Args:
+            granularity: Granularity to validate
+            
+        Returns:
+            Validated granularity string
+            
+        Raises:
+            ValidationError: If granularity is invalid
+        """
+        valid_granularities = {
+            'M1', 'M2', 'M3', 'M4', 'M5', 'M10', 'M15', 'M30',
+            'H1', 'H2', 'H3', 'H4', 'H6', 'H8', 'H12',
+            'D', 'W', 'M'
+        }
+        
+        if granularity.upper() not in valid_granularities:
+            raise ValidationError(
+                f"Invalid granularity: {granularity}",
+                suggestion=f"Use one of: {', '.join(sorted(valid_granularities))}",
+            )
+        
+        self._logger.debug(f"Granularity validated: {granularity}")
+        return granularity.upper()
+
+
+# ============================================================================
+# Command Dispatcher
+# ============================================================================
+
+
+class CommandDispatcher:
+    """Dispatcher for routing CLI commands to their handlers."""
+    
+    def __init__(self, console: Console, logger: logging.Logger) -> None:
+        """Initialize the command dispatcher.
+        
+        Args:
+            console: Rich console instance for output
+            logger: Logger instance for logging
+        """
+        self._console = console
+        self._logger = logger
+        self._command_handlers: Dict[str, CommandHandler] = {}
+        self._register_handlers()
+    
+    def _register_handlers(self) -> None:
+        """Register all command handlers."""
+        self._command_handlers = {
+            "train": self._handle_train,
+            "train-buddy": self._handle_train,
+            "retrain-gates": self._handle_retrain_gates,
+            "train-rl-sizer": self._handle_train_rl_sizer,
+            "buddy": self._handle_buddy,
+            "Buddy": self._handle_buddy,
+            "promote-model": self._handle_promote_model,
+            "model-status": self._handle_model_status,
+            "test": self._handle_test,
+            "validate": self._handle_validate,
+            "scan": self._handle_scan,
+            "analyze": self._handle_analyze,
+            "journal": self._handle_journal,
+            "monitor": self._handle_monitor,
+            "suggest-improvements": self._handle_suggest_improvements,
+            "find-candles": self._handle_find_candles,
+        }
+    
+    def dispatch(self, args: CommandArgs) -> None:
+        """Dispatch a command to its handler.
+        
+        Args:
+            args: Command arguments
+            
+        Raises:
+            CommandError: If command execution fails
+        """
+        command = args.get('command')
+        
+        if not command:
+            raise CommandError(
+                "No command specified",
+                suggestion="Use 'buddy --help' to see available commands",
+            )
+        
+        handler = self._command_handlers.get(command)
+        
+        if not handler:
+            raise CommandError(
+                f"Unknown command: {command}",
+                suggestion="Use 'buddy --help' to see available commands",
+            )
+        
+        self._logger.info(f"Executing command: {command}")
+        
+        try:
+            handler(args)
+            if command != 'scan':
+                self._logger.info(f"Command completed successfully: {command}")
+        except Exception as e:
+            self._logger.error(f"Command failed: {command}", exc_info=True)
+            raise CommandError(
+                f"Command '{command}' failed: {str(e)}",
+                suggestion="Check logs for more details",
+            ) from e
+    
+    # Command handlers
+    # =================
+    
+    def _handle_train(self, args: CommandArgs) -> None:
+        """Handle the train command."""
+        import argparse
+        from cli import _dispatch_train_buddy
+        from cli.training import train_buddy
+
+        # _dispatch_train_buddy expects argparse.Namespace (attribute access)
+        ns = argparse.Namespace(**args)
+        # command_map must point to train_buddy, NOT _handle_train (avoids recursion)
+        cmd_map = {"train-buddy": train_buddy}
+        _dispatch_train_buddy(ns, cmd_map)
+    
+    def _handle_retrain_gates(self, args: CommandArgs) -> None:
+        """Handle the retrain-gates command."""
+        from cli import retrain_gates as _cli_retrain_gates
+        
+        _cli_retrain_gates(
+            config_path=args['config'],
+            pairs=args.get('pairs'),
+            granularity=args.get('granularity', 'H1'),
+            candles=args.get('candles', 5000),
+            verbose=args.get('verbose', False),
+        )
+    
+    def _handle_train_rl_sizer(self, args: CommandArgs) -> None:
+        """Handle the train-rl-sizer command."""
+        from cli import train_rl_sizer as _cli_train_rl_sizer
+        
+        _cli_train_rl_sizer(
+            config_path=args['config'],
+            timesteps=args.get('timesteps', 500_000),
+            episodes=args.get('rl_episodes'),
+            pairs=args.get('pairs'),
+            granularity=args.get('granularity', 'H1'),
+            candles=args.get('candles', 5000),
+            verbose=args.get('verbose', False),
+        )
+    
+    def _handle_buddy(self, args: CommandArgs) -> None:
+        """Handle the buddy command."""
+        import argparse
+        from cli import _dispatch_buddy, buddy as _cli_buddy, buddy_loop as _cli_buddy_loop
+        
+        # _dispatch_buddy expects argparse.Namespace (attribute access)
+        ns = argparse.Namespace(**args)
+        # command_map must point to the actual buddy function, NOT _handle_buddy (avoids recursion)
+        cmd_map = {"buddy": _cli_buddy, "buddy_loop": _cli_buddy_loop}
+        _dispatch_buddy(ns, cmd_map)
+    
+    def _handle_promote_model(self, args: CommandArgs) -> None:
+        """Handle the promote-model command."""
+        from cli.model_management import promote_model as _cli_promote_model
+        
+        _cli_promote_model(args['config'])
+    
+    def _handle_model_status(self, args: CommandArgs) -> None:
+        """Handle the model-status command."""
+        from cli import model_status as _cli_model_status
+        
+        _cli_model_status(args['config'])
+    
+    def _handle_test(self, args: CommandArgs) -> None:
+        """Handle the test command (legacy - redirects to validate)."""
+        from cli import buddy_test as _cli_buddy_test
+        
+        _cli_buddy_test(
+            args['config'],
+            instrument=args.get('instrument', 'USD_JPY'),
+            granularity=args.get('granularity', 'H1'),
+            test_candles=args.get('candles', 50),
+            min_confidence=args.get('min_confidence', 0.0),
+            verbose=args.get('verbose', False),
+        )
+    
+    def _handle_validate(self, args: CommandArgs) -> None:
+        """Handle the validate command."""
+        from cli import buddy_validate as _cli_buddy_validate
+        
+        _cli_buddy_validate(
+            args['config'],
+            instrument=args.get('instrument', 'EUR_USD'),
+            granularity=args.get('granularity', 'H1'),
+            candles=args.get('candles', 800),
+            lookahead=args.get('lookahead', 24),
+            all_pairs=args.get('all_pairs', False),
+            verbose=args.get('verbose', False),
+        )
+    
+    def _handle_scan(self, args: CommandArgs) -> None:
+        """Handle the scan command."""
+        import logging as _logging
+        
+        # Suppress all verbose logging during scan — only scanner output should show
+        root_logger = _logging.getLogger()
+        prev_level = root_logger.level
+        root_logger.setLevel(_logging.CRITICAL)
+        
+        try:
+            from cli import buddy_scan as _cli_buddy_scan
+            
+            watch_mode = args.get('watch', False)
             
             if watch_mode:
                 # Continuous watch mode - try new scanner first
                 from src.scanner import Scanner, ScannerConfig, ScannerDisplay, ContinuousScanner
                 
-                pairs_str = getattr(args, "pairs", None)
+                pairs_str = args.get('pairs')
                 pair_list = None
                 if pairs_str:
                     pair_list = [p.strip().upper().replace("/", "_") for p in pairs_str.split(",")]
@@ -13284,28 +13793,116 @@ EXAMPLES:
                     top_n=int(getattr(args, "top", 5)),
                 )
             else:
-                # Single scan
-                buddy_scan(
-                    args.config,
-                    pairs=str(getattr(args, "pairs", "")) if getattr(args, "pairs", None) else None,
-                    granularity=str(getattr(args, "granularity", "H1")),
-                    top_n=int(getattr(args, "top", 5)),
-                    verbose=bool(getattr(args, "verbose", False)),
-                    prompt_train=not bool(getattr(args, "no_train", False)),
-                    no_execute=bool(getattr(args, "skip_execute", False)),
-                    use_rl_sizer=bool(getattr(args, "use_rl_sizer", False)),
-                    diversified=bool(getattr(args, "diversified", False)),
+                _cli_buddy_scan(
+                    args['config'],
+                    pairs=args.get('pairs'),
+                    granularity=args.get('granularity', 'H1'),
+                    top_n=args.get('top', 5),
+                    verbose=args.get('verbose', False),
+                    prompt_train=not args.get('no_train', False),
+                    no_execute=args.get('skip_execute', False),
+                    use_rl_sizer=args.get('use_rl_sizer', True),
+                    diversified=args.get('diversified', False),
+                    force=args.get('force', False),
                 )
-        elif args.command == "trade-analysis":
-            # Trade analysis command
-            from trade_analyzer import TradeAnalyzer
-            from pathlib import Path
+        finally:
+            root_logger.setLevel(prev_level)
+    
+    def _handle_analyze(self, args: CommandArgs) -> None:
+        """Handle the analyze command."""
+        from cli import buddy_analyze as _cli_buddy_analyze
+        
+        _cli_buddy_analyze(
+            args['config'],
+            top_n=args.get('top', 30),
+            save_plots=args.get('save', False),
+            verbose=args.get('verbose', False),
+        )
+    
+    def _handle_journal(self, args: CommandArgs) -> None:
+        """Handle the journal command."""
+        from cli import buddy_journal as _cli_buddy_journal
+        
+        _cli_buddy_journal(
+            args['config'],
+            update=args.get('update', False),
+            days=args.get('days', 30),
+            verbose=args.get('verbose', False),
+            import_trades=args.get('import_trades', False),
+        )
+    
+    def _handle_monitor(self, args: CommandArgs) -> None:
+        """Handle the monitor command."""
+        from cli import buddy_monitor as _cli_buddy_monitor
+        
+        _cli_buddy_monitor(
+            args['config'],
+            show_alerts=args.get('monitor_alerts', False),
+            show_drift=args.get('monitor_drift', False),
+            generate_report=args.get('monitor_report', False),
+            drift_limit=args.get('monitor_limit', 20),
+        )
+    
+    def _handle_suggest_improvements(self, args: CommandArgs) -> None:
+        """Handle the suggest-improvements command."""
+        from cli import suggest_improvements as _cli_suggest_improvements
+        
+        _cli_suggest_improvements(
+            args['config'],
+            instrument=args.get('instrument'),
+            auto_apply=args.get('auto_apply', False),
+            verbose=args.get('verbose', False),
+        )
+
+    def _handle_find_candles(self, args: CommandArgs) -> None:
+        """Handle the find-candles command."""
+        from cli.candle_optimizer import find_optimal_candles
+
+        find_optimal_candles(
+            args['config'],
+            instrument=args['instrument'],
+            granularity=args.get('granularity', 'H1'),
+            min_candles=args.get('min_candles', 3000),
+            max_candles=args.get('max_candles', 30000),
+            step=args.get('step', 3000),
+            n_folds=args.get('cv_folds', 3),
+            auto_train=not args.get('no_auto_train', False),
+            verbose=args.get('verbose', False),
+        )
+
+
+# ============================================================================
+# Main Application
+# ============================================================================
+
+
+class MLTradingCLI:
+    """Main CLI application class."""
+    
+    def __init__(self) -> None:
+        """Initialize the CLI application."""
+        self._console = Console()
+        self._logger = setup_logging(log_file="cli.log")
+        self._parser_builder = ArgumentParserBuilder()
+        self._config_validator = ConfigValidator(self._logger)
+        self._dispatcher: Optional[CommandDispatcher] = None
+    
+    def run(self, argv: Optional[List[str]] = None) -> int:
+        """Run the CLI application.
+        
+        Args:
+            argv: Command line arguments (defaults to sys.argv[1:])
             
-            analyzer = TradeAnalyzer()
-            report = analyzer.analyze_recent(n=int(getattr(args, "last", 50)))
+        Returns:
+            Exit code (0 for success, 1 for error)
+        """
+        try:
+            # Build and parse arguments
+            parser = self._parser_builder.build()
+            args = parser.parse_args(argv)
             
-            # Print markdown report
-            console.print(analyzer.format_markdown(report))
+            # Convert argparse Namespace to CommandArgs dict
+            args_dict: CommandArgs = vars(args)
             
             # Export if requested
             export_path = getattr(args, "export", None)
@@ -13347,5 +13944,4 @@ EXAMPLES:
 
 
 if __name__ == "__main__":
-    main()
-# — Raynergy-svg —
+    sys.exit(main())

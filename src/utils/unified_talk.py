@@ -205,7 +205,7 @@ def _apply_feature_engineering_if_needed(ctx: TalkContext, df: pd.DataFrame) -> 
     """Apply feature engineering to DataFrame if the model was trained with all features."""
     if not ctx.apply_feature_engineering:
         return df
-    from feature_engineering import FeatureEngineering
+    from src.data.feature_engineering import FeatureEngineering
     fe = FeatureEngineering()
     return fe.create_features(df, include_all=True)
 
