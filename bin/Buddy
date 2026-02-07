@@ -9,10 +9,15 @@ while [[ -L "$SOURCE" ]]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 ROOT_DIR="$(cd -P "${SCRIPT_DIR}/.." && pwd)"
-CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
+
+# Auto-detect architecture: Intel (x86_64) vs Apple Silicon (arm64)
 if [[ "$(uname -m)" == "x86_64" ]]; then
-    ENV_NAME="${BUDDY_CONDA_ENV:-ml_engine_py312}"
+    # Intel Mac: Use CPU-optimized config and intel conda env
+    CONFIG_FILE="${ROOT_DIR}/config/config_intel_optimized.yaml"
+    ENV_NAME="${BUDDY_CONDA_ENV:-intel}"
 else
+    # Apple Silicon (M1/M2/M3): Use Metal-optimized config
+    CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
     ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
 fi
 
@@ -137,6 +142,23 @@ cmd_status() { run_py "${ROOT_DIR}/main.py" model-status --config "${CONFIG_FILE
 cmd_promote() { run_py "${ROOT_DIR}/main.py" promote-model --config "${CONFIG_FILE}"; }
 cmd_loop() { run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --loop --candles 2000; }
 
+cmd_find() {
+    local args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -i|-I|--instrument) args+=(--instrument "$2"); shift 2 ;;
+            --min) args+=(--min "$2"); shift 2 ;;
+            --max) args+=(--max "$2"); shift 2 ;;
+            --step) args+=(--step "$2"); shift 2 ;;
+            --folds) args+=(--folds "$2"); shift 2 ;;
+            --metric) args+=(--metric "$2"); shift 2 ;;
+            -v|--verbose) args+=(--verbose); shift ;;
+            *) shift ;;
+        esac
+    done
+    run_py "${ROOT_DIR}/main.py" find-candles --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+}
+
 main() {
     [[ $# -eq 0 ]] && { cmd_predict; exit $?; }
     local cmd="$1"; shift
@@ -147,10 +169,11 @@ main() {
         analyze|a) cmd_analyze "$@" ;;
         test) cmd_test "$@" ;;
         journal|j) cmd_journal "$@" ;;
+        find|f) cmd_find "$@" ;;
         status|s) cmd_status ;;
         promote) cmd_promote ;;
         loop|l) cmd_loop ;;
-        help|-h|--help) echo "buddy <predict|train|scan|analyze|test|journal|status|loop>" ;;
+        help|-h|--help) echo "buddy <predict|train|scan|analyze|test|journal|find|status|loop>" ;;
         *) cmd_predict "${cmd}" "$@" ;;
     esac
 }

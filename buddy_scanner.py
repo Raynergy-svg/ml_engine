@@ -888,31 +888,38 @@ class BuddyScanner:
             # Get recent slice
             df_backtest = df.tail(window + 10).copy()
             
-            # Calculate returns
+            # Calculate multi-bar forward returns to measure directional accuracy
+            # Use lookahead of a few bars to smooth out noise (not just 1-bar)
+            lookahead = min(5, window // 10)  # 5 bars ≈ 5 hours for H1
+            df_backtest["fwd_return"] = df_backtest["close"].shift(-lookahead) / df_backtest["close"] - 1
+            
+            # Also compute 1-bar returns for Sharpe
             df_backtest["returns"] = df_backtest["close"].pct_change()
             
-            # Generate simple signals based on model direction bias
-            # We simulate: enter at each bar, hold for 1 bar
-            if direction == "LONG":
-                df_backtest["signal_returns"] = df_backtest["returns"]
-            else:
-                df_backtest["signal_returns"] = -df_backtest["returns"]
+            # Check if the predicted direction matches the actual forward move
+            fwd = df_backtest["fwd_return"].dropna().tail(window)
             
-            # Remove NaN
-            signal_returns = df_backtest["signal_returns"].dropna().tail(window)
-            
-            if len(signal_returns) < 10:
+            if len(fwd) < 10:
                 return None, None, None
             
-            # Calculate metrics
-            wins = (signal_returns > 0).sum()
-            trades = len(signal_returns)
+            # Directional accuracy: did the market move in the predicted direction?
+            if direction == "LONG":
+                wins = (fwd > 0).sum()
+                signal_returns = df_backtest["returns"].dropna().tail(window)
+            else:
+                wins = (fwd < 0).sum()
+                signal_returns = -df_backtest["returns"].dropna().tail(window)
+            
+            trades = len(fwd)
             win_rate = wins / trades if trades > 0 else 0.0
             
             # Sharpe ratio (annualized for hourly data)
-            mean_ret = signal_returns.mean()
-            std_ret = signal_returns.std()
-            sharpe = (mean_ret / std_ret) * np.sqrt(252 * 24) if std_ret > 0 else 0.0
+            if len(signal_returns) > 1:
+                mean_ret = signal_returns.mean()
+                std_ret = signal_returns.std()
+                sharpe = (mean_ret / std_ret) * np.sqrt(252 * 24) if std_ret > 0 else 0.0
+            else:
+                sharpe = 0.0
             
             return win_rate, sharpe, trades
             
@@ -1141,7 +1148,9 @@ class BuddyScanner:
                 import pickle
                 with open(model_path, 'rb') as f:
                     meta = pickle.load(f)
-                    baseline_acc = meta.get('val_accuracy', 0.55)
+                    # val_accuracy is nested under 'metrics' key
+                    baseline_acc = meta.get('metrics', {}).get('val_accuracy', 
+                                   meta.get('val_accuracy', 0.55))
         except Exception:
             # Check global model meta
             if self._model_meta is not None:
@@ -1632,7 +1641,7 @@ class BuddyScanner:
         warnings_lines = []
         if drift_detected:
             degradation_pct = baseline_acc - current_acc
-            warnings_lines.append(f"Model degradation detected — current {current_acc:.0%} vs baseline {baseline_acc:.0%} ({degradation_pct:.1%} drop, retrain recommended)")
+            warnings_lines.append(f"Model degradation detected — recent directional accuracy {current_acc:.0%} vs trained val_accuracy {baseline_acc:.0%} ({degradation_pct:.1%} drop, retrain recommended)")
         
         corr_pairs = [r.pair for r in results[:top_n] if r.correlation_warning]
         if corr_pairs and hasattr(self, '_correlation_details') and self._correlation_details:
