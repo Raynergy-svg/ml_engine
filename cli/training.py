@@ -116,8 +116,8 @@ def _train_rl_position_sizer_if_ready(
         
         # Validate data shapes
         if len(ensemble_predictions) != n_samples or len(prices) != n_samples:
-            console.print(f"[yellow]RL training skipped: data shape mismatch[/yellow]")
-            console.print(f"[dim]Features: {n_samples}, Predictions: {len(ensemble_predictions)}, Prices: {len(prices)}[/dim]")
+            console.print(f"[yellow]RL training deferred: data shape mismatch[/yellow]")
+            console.print(f"[dim]Features: {n_samples} • Predictions: {len(ensemble_predictions)} • Prices: {len(prices)}[/dim]")
             return False
         
         console.print(f"\n[bold cyan]🤖 RL Position Sizer Training[/bold cyan]")
@@ -374,9 +374,9 @@ def _train_buddy_impl(
         )
         
         if df is None or len(df) < 1000:
-            raise ValueError(f"Multi-pair data loading failed or insufficient data: {len(df) if df is not None else 0} rows")
+            raise ValueError(f"Multi-pair data loading failed or insufficient data: {len(df) if df is not None else 0} observations")
         
-        console.print(f"[green]✓ Multi-pair data loaded: {len(df):,} rows from {len(pairs_list)} pairs[/green]")
+        console.print(f"[green]✓ Multi-pair data loaded: {len(df):,} obs from {len(pairs_list)} pairs[/green]")
         
         # Skip OOS split for multi-pair (data is already shuffled across pairs)
         oos_live_split = False
@@ -445,11 +445,11 @@ def _train_buddy_impl(
 
         elapsed_fe = time.perf_counter() - t_fe
         console.print(Panel(
-            f"[bold]Feature Engineering Complete[/bold]\n\n"
-            f"[dim]Smoothing:[/dim] {bool(train_smoothing)}  [dim]Median Window:[/dim] {median_window}\n"
-            f"[dim]Output:[/dim] {int(len(df)):,} rows × {int(df.shape[1])} columns\n"
-            f"[dim]Time:[/dim] {elapsed_fe:.2f}s",
-            title="⚙️ Feature Engineering",
+            f"[bold]Feature Engineering Pipeline Complete[/bold]\n\n"
+            f"[dim]Noise Reduction:[/dim] {bool(train_smoothing)} • [dim]Median:[/dim] {median_window or 'None'}\n"
+            f"[dim]Output Dimensionality:[/dim] {int(len(df)):,} obs × {int(df.shape[1])}\n"
+            f"[dim]Processing Time:[/dim] {elapsed_fe:.2f}s",
+            title="⚙️  Feature Engineering",
             border_style="blue",
         ))
     elif train_smoothing:
@@ -463,7 +463,7 @@ def _train_buddy_impl(
                 median_window=median_window,
             )
         except Exception as e:
-            console.print(f"[yellow]Training noise reduction skipped[/yellow]: {e}")
+            console.print(f"[yellow]Noise reduction deferred:[/yellow] {e}")
 
     init_feature_columns: list[str] | None = None
     if init_from:
@@ -476,7 +476,7 @@ def _train_buddy_impl(
                     init_feature_columns = [str(c) for c in cols]
                     console.print(f"Using feature_columns from init_from metadata: {meta_p}")
         except Exception as e:
-            console.print(f"[yellow]Warm-start meta load skipped[/yellow]: {e}")
+            console.print(f"[yellow]Warm-start metadata unavailable:[/yellow] {e}")
 
     numeric_df = df.select_dtypes(include=["number"]).copy()
     if numeric_df.empty:
@@ -563,7 +563,7 @@ def _train_buddy_impl(
                     f"[cyan]✓ Feature Selection:[/cyan] kept {len(keep)} / {int(len(ranked_cols))} ranked features"
                 )
         except Exception as e:
-            console.print(f"[yellow]Feature ranking skipped[/yellow]: {e}")
+            console.print(f"[yellow]Feature ranking unavailable:[/yellow] {e}")
             ranked_cols = None
 
     feats = numeric_df.to_numpy(dtype=np.float32)
@@ -1140,21 +1140,21 @@ def _train_buddy_impl(
             # Professional header
             console.print()
             console.print(Panel.fit(
-                "[bold white]ENTERPRISE ML TRAINING PIPELINE[/bold white]\n"
-                "[dim]Production-Grade Ensemble with MLOps[/dim]",
+                "[bold white]ADVANCED ENSEMBLE TRAINING SYSTEM[/bold white]\n"
+                "[dim]Enterprise-Grade Machine Learning Pipeline • Production-Ready Architecture[/dim]",
                 border_style="cyan",
                 padding=(1, 4),
             ))
             console.print()
             
             # Enterprise features status table
-            enterprise_table = Table(show_header=False, box=None, padding=(0, 2))
-            enterprise_table.add_column("Feature", style="cyan")
-            enterprise_table.add_column("Status", style="green")
-            enterprise_table.add_row("MLflow Tracking", "✓ Enabled" if enterprise_enabled else "✗ Disabled")
-            enterprise_table.add_row("Walk-Forward CV", f"✓ {cv_folds} folds" if cv_folds > 0 else "✗ Disabled")
-            enterprise_table.add_row("Bootstrap CI", "✓ 95% CI" if bootstrap_enabled else "✗ Disabled")
-            enterprise_table.add_row("Training Report", "✓ Auto-generated" if generate_report_enabled else "✗ Disabled")
+            enterprise_table = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 2))
+            enterprise_table.add_column("Component", style="cyan", width=26)
+            enterprise_table.add_column("Status", style="green", width=20)
+            enterprise_table.add_row("Experiment Tracking", "✓ Active" if enterprise_enabled else "✗ Inactive")
+            enterprise_table.add_row("Walk-Forward Validation", f"✓ {cv_folds}-Fold CV" if cv_folds > 0 else "✗ Disabled")
+            enterprise_table.add_row("Statistical Bootstrap", "✓ 95% CI" if bootstrap_enabled else "✗ Disabled")
+            enterprise_table.add_row("Automated Reporting", "✓ Enabled" if generate_report_enabled else "✗ Disabled")
             
             console.print(Panel(enterprise_table, title="[bold]Enterprise Features[/bold]", border_style="green"))
             console.print()
@@ -1183,22 +1183,36 @@ def _train_buddy_impl(
             
             # Model architecture table
             arch_table = Table(show_header=True, header_style="bold cyan", box=None)
-            arch_table.add_column("Model", style="white", width=15)
-            arch_table.add_column("Task", style="yellow", width=25)
-            arch_table.add_column("Output", style="green")
+            arch_table.add_column("Component", style="white", width=19)
+            arch_table.add_column("Objective", style="yellow", width=26)
+            arch_table.add_column("Output Specification", style="green")
             
             # Print architecture with configuration
             if use_regime:
-                arch_table.add_row("Transformer", "Regime Classification", "trend / chop / mean_revert")
-                arch_table.add_row("XGBoost", "Momentum Analysis", "momentum_score, acceleration")
-                arch_table.add_row("Random Forest", "Risk Assessment", "expected_drawdown, streak_prob")
-                arch_table.add_row("Ridge", "Confidence Scoring", "confidence (0-100)")
+                arch_table.add_row("Transformer", "Regime Classification", "Trend | Chop |")
+                arch_table.add_row("Network", "", "Mean Revert")
+                arch_table.add_row("", "", "")
+                arch_table.add_row("Gradient Boosting", "Momentum Vector Analysis", "Score • Acceleration")
+                arch_table.add_row("", "", "Metric")
+                arch_table.add_row("", "", "")
+                arch_table.add_row("Random Forest", "Risk Exposure Assessment", "Drawdown Estimate •")
+                arch_table.add_row("", "", "Streak Probability")
+                arch_table.add_row("", "", "")
+                arch_table.add_row("Regularized", "Prediction Confidence", "Calibrated Score")
+                arch_table.add_row("Regression", "", "(0-100)")
             else:
                 dir_model_name = "Transformer" if use_transformer else "TCN"
-                arch_table.add_row(dir_model_name, f"Direction (threshold={direction_threshold:.2%})", "long / short")
-                arch_table.add_row("XGBoost", "Momentum Analysis", "momentum_score, acceleration")
-                arch_table.add_row("Random Forest", "Risk Assessment", "expected_drawdown, streak_prob")
-                arch_table.add_row("Ridge", "Confidence Scoring", "confidence (0-100)")
+                arch_table.add_row(f"{dir_model_name}", "Directional Prediction", "Long | Short Signal")
+                arch_table.add_row("Network", f"(Δ>{direction_threshold:.2%})", "")
+                arch_table.add_row("", "", "")
+                arch_table.add_row("Gradient Boosting", "Momentum Vector Analysis", "Score • Acceleration")
+                arch_table.add_row("", "", "Metric")
+                arch_table.add_row("", "", "")
+                arch_table.add_row("Random Forest", "Risk Exposure Assessment", "Drawdown Estimate •")
+                arch_table.add_row("", "", "Streak Probability")
+                arch_table.add_row("", "", "")
+                arch_table.add_row("Regularized", "Prediction Confidence", "Calibrated Score")
+                arch_table.add_row("Regression", "", "(0-100)")
             
             console.print(Panel(arch_table, title="[bold]Model Architecture[/bold]", border_style="yellow"))
             console.print()
@@ -1269,7 +1283,7 @@ def _train_buddy_impl(
             if 'volume' not in feature_df.columns:
                 feature_df['volume'] = 1000  # Default volume
             
-            console.print(f"  Data prepared: [green]{len(feature_df):,}[/green] rows × [green]{len(feature_df.columns)}[/green] columns")
+            console.print(f"  Data prepared: [green]{len(feature_df):,}[/green] obs × [green]{len(feature_df.columns)}[/green] features")
             
             # Load data for each model (same temporal split, different features)
             # (Verbose data loader logging is routed to file only via setup_logging)
@@ -1454,10 +1468,10 @@ def _train_buddy_impl(
                 # REGIME MODE: 3-class classification
                 console.print()
                 console.print(Panel(
-                    "[bold]Training Transformer (REGIME Classifier)[/bold]\n\n"
+                    "[bold]Regime Classification Network[/bold]\n\n"
                     "[dim]Features:[/dim] ADX, RSI, volatility, z-scores, momentum consistency\n"
-                    f"[dim]Output:[/dim] 3-class regime (trend/chop/mean_revert) | lookback={regime_lookback}, lookahead={regime_lookahead}",
-                    title="Step 1/4",
+                    f"[dim]Output:[/dim] 3-class regime (trend/chop/mean_revert) | lookback={regime_lookback} • lookahead={regime_lookahead}",
+                    title="Step 1/4 • Neural Network",
                     border_style="yellow",
                 ))
                 
@@ -1478,8 +1492,8 @@ def _train_buddy_impl(
                 all_metrics['regime'] = regime_metrics
                 
                 # Show F1 scores
-                console.print(f"[green]✓ Regime Transformer complete: val_accuracy={regime_metrics['val_accuracy']:.1%}, F1_macro={regime_metrics['f1_macro']:.3f}[/green]")
-                console.print(f"   F1 per class: trend={regime_metrics['f1_trend']:.3f}, chop={regime_metrics['f1_chop']:.3f}, mean_revert={regime_metrics['f1_mean_revert']:.3f}")
+                console.print(f"[green]✓ Regime classifier complete: Validation accuracy={regime_metrics['val_accuracy']:.1%} • F1_macro={regime_metrics['f1_macro']:.3f}[/green]")
+                console.print(f"   F1 per class: trend={regime_metrics['f1_trend']:.3f} • chop={regime_metrics['f1_chop']:.3f} • mean_revert={regime_metrics['f1_mean_revert']:.3f}")
                 
                 dir_model_path = regime_model_path  # For metadata
                 dir_data = regime_data  # For metadata
@@ -1488,10 +1502,10 @@ def _train_buddy_impl(
                 # DIRECTION MODE: Binary classification (legacy)
                 console.print()
                 console.print(Panel(
-                    f"[bold]Training {direction_model_name} (Direction Predictor)[/bold]\n\n"
+                    f"[bold]Directional Prediction Network[/bold]\n\n"
                     "[dim]Features:[/dim] Directional indicators (ADX, MACD, SMA crosses, market structure)\n"
-                    f"[dim]Output:[/dim] Binary direction (0=short, 1=long) | threshold={direction_threshold:.2%}, lookahead={direction_lookahead}",
-                    title="Step 1/4",
+                    f"[dim]Output:[/dim] Binary prediction (short/long) | threshold={direction_threshold:.2%} • lookahead={direction_lookahead}",
+                    title="Step 1/4 • Neural Network",
                     border_style="cyan",
                 ))
                 
@@ -1553,20 +1567,20 @@ def _train_buddy_impl(
                 
                 # Show balanced accuracy if available
                 if 'val_balanced_accuracy' in dir_metrics:
-                    console.print(f"[green]✓ {direction_model_name} complete: val_accuracy={dir_metrics['val_accuracy']:.1%}, balanced={dir_metrics['val_balanced_accuracy']:.1%}[/green]")
-                    console.print(f"   (up_acc={dir_metrics.get('val_up_accuracy', 0):.1%}, down_acc={dir_metrics.get('val_down_accuracy', 0):.1%})")
+                    console.print(f"[green]✓ Directional predictor complete: Validation accuracy={dir_metrics['val_accuracy']:.1%} • Balanced={dir_metrics['val_balanced_accuracy']:.1%}[/green]")
+                    console.print(f"   (Long accuracy={dir_metrics.get('val_up_accuracy', 0):.1%} • Short accuracy={dir_metrics.get('val_down_accuracy', 0):.1%})")
                 else:
-                    console.print(f"[green]✓ {direction_model_name} complete: val_accuracy={dir_metrics['val_accuracy']:.1%}[/green]")
+                    console.print(f"[green]✓ Directional predictor complete: Validation accuracy={dir_metrics['val_accuracy']:.1%}[/green]")
             
             # ============================================================
             # TRAIN XGBOOST (Momentum Analyzer)
             # ============================================================
             console.print()
             console.print(Panel(
-                "[bold]Training XGBoost (Momentum Analyzer)[/bold]\n\n"
+                "[bold]Momentum Vector Analysis[/bold]\n\n"
                 "[dim]Features:[/dim] Lagged returns, spread dynamics\n"
-                "[dim]Output:[/dim] momentum_score (0-1), acceleration (bool)",
-                title="Step 2/4",
+                "[dim]Output:[/dim] Momentum score (0-1) • Acceleration metric",
+                title="Step 2/4 • Gradient Boosting",
                 border_style="cyan",
             ))
             
@@ -1584,18 +1598,18 @@ def _train_buddy_impl(
                 xgb_trainer.save(str(model_dir / "xgb_momentum.pkl"))
             all_metrics['xgboost'] = xgb_metrics
             
-            console.print(f"[green]✓ XGBoost complete: momentum_mae={xgb_metrics['momentum_mae']:.4f}, accel_acc={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
-            console.print(f"[cyan]💾 XGBoost saved to: {pair_paths['xgboost']}[/cyan]")
+            console.print(f"[green]✓ Momentum analyzer complete: MAE={xgb_metrics['momentum_mae']:.4f} • Acceleration accuracy={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
+            console.print(f"Model saved: {pair_paths['xgboost']}")
             
             # ============================================================
             # TRAIN RANDOM FOREST (Risk Assessor)
             # ============================================================
             console.print()
             console.print(Panel(
-                "[bold]Training Random Forest (Risk Assessor)[/bold]\n\n"
+                "[bold]Risk Exposure Assessment[/bold]\n\n"
                 "[dim]Features:[/dim] ATR, historical drawdowns, streak patterns\n"
-                "[dim]Output:[/dim] expected_drawdown_pips, streak_probability",
-                title="Step 3/4",
+                "[dim]Output:[/dim] Drawdown estimate • Streak probability",
+                title="Step 3/4 • Random Forest",
                 border_style="cyan",
             ))
             
@@ -1612,19 +1626,19 @@ def _train_buddy_impl(
                 rf_trainer.save(str(model_dir / "rf_risk.pkl"))
             all_metrics['rf'] = rf_metrics
             
-            console.print(f"[green]✓ RF complete: drawdown_mae={rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps, streak_mae={rf_metrics['streak_prob_mae']:.4f}[/green]")
-            console.print(f"[cyan]💾 RF saved to: {pair_paths['rf']}[/cyan]")
+            console.print(f"[green]✓ Risk assessor complete: Drawdown MAE={rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps • Streak MAE={rf_metrics['streak_prob_mae']:.4f}[/green]")
+            console.print(f"Model saved: {pair_paths['rf']}")
             
             # ============================================================
             # TRAIN RIDGE (Confidence Scorer)
             # ============================================================
             console.print()
             console.print(Panel(
-                "[bold]Training ElasticNet (Confidence Scorer)[/bold]\n\n"
+                "[bold]Prediction Confidence Calibration[/bold]\n\n"
                 "[dim]Features:[/dim] Rolling variance, volume dynamics\n"
-                "[dim]Output:[/dim] Confidence score (0-100)\n"
+                "[dim]Output:[/dim] Calibrated score (0-100)\n"
                 "[dim]CV:[/dim] TimeSeriesSplit (temporal, no leakage)",
-                title="Step 4/4",
+                title="Step 4/4 • Regularized Regression",
                 border_style="cyan",
             ))
             
@@ -1641,8 +1655,8 @@ def _train_buddy_impl(
                 ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
             all_metrics['ridge'] = ridge_metrics
             
-            console.print(f"[green]✓ ElasticNet complete: MAE={ridge_metrics['confidence_mae']:.2f}, R²={ridge_metrics['r2_score']:.4f}, alpha={ridge_metrics.get('best_alpha', 1.0):.4f}, l1_ratio={ridge_metrics.get('best_l1_ratio', 0.5):.2f}, sparse={ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}[/green]")
-            console.print(f"[cyan]💾 Ridge saved to: {pair_paths['ridge']}[/cyan]")
+            console.print(f"[green]✓ Confidence calibrator complete: MAE={ridge_metrics['confidence_mae']:.2f} • R²={ridge_metrics['r2_score']:.4f} • alpha={ridge_metrics.get('best_alpha', 1.0):.4f} • L1={ridge_metrics.get('best_l1_ratio', 0.5):.2f} • Sparsity={ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}[/green]")
+            console.print(f"Model saved: {pair_paths['ridge']}")
             
             # ============================================================
             # TRAIN HISTGB (Optional - for hybrid voting with Transformer)
@@ -1774,27 +1788,30 @@ def _train_buddy_impl(
             
             # Performance metrics table
             perf_table = Table(show_header=True, header_style="bold green", title="Model Performance")
-            perf_table.add_column("Model", style="white", width=20)
-            perf_table.add_column("Metric", style="cyan", width=20)
+            perf_table.add_column("Component", style="white", width=20)
+            perf_table.add_column("Metric", style="cyan", width=25)
             perf_table.add_column("Value", style="green", justify="right")
             
             if use_regime:
                 f1_macro = dir_metrics.get('f1_macro', 0)
                 perf_table.add_row("Transformer", "F1 Macro", f"{f1_macro:.3f}")
-                perf_table.add_row("", "F1 Trend", f"{dir_metrics.get('f1_trend', 0):.3f}")
+                perf_table.add_row("Network", "F1 Trend", f"{dir_metrics.get('f1_trend', 0):.3f}")
                 perf_table.add_row("", "F1 Chop", f"{dir_metrics.get('f1_chop', 0):.3f}")
             else:
                 dir_acc = dir_metrics['val_accuracy']
                 bal_acc = dir_metrics.get('val_balanced_accuracy', dir_acc)
-                perf_table.add_row(direction_model_name, "Val Accuracy", f"{dir_acc:.1%}")
-                perf_table.add_row("", "Balanced Acc", f"{bal_acc:.1%}")
+                perf_table.add_row("Transformer", "Validation Accuracy", f"{dir_acc:.1%}")
+                perf_table.add_row("Network", "Balanced Accuracy", f"{bal_acc:.1%}")
             
-            perf_table.add_row("XGBoost", "Accel Accuracy", f"{xgb_metrics['acceleration_accuracy']:.1%}")
+            perf_table.add_row("", "", "")
+            perf_table.add_row("Gradient Boosting", "Acceleration Accuracy", f"{xgb_metrics['acceleration_accuracy']:.1%}")
             perf_table.add_row("", "Momentum MAE", f"{xgb_metrics['momentum_mae']:.4f}")
+            perf_table.add_row("", "", "")
             perf_table.add_row("Random Forest", "Drawdown MAE", f"{rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps")
-            perf_table.add_row("", "Streak MAE", f"{rf_metrics['streak_prob_mae']:.4f}")
-            perf_table.add_row("Ridge", "R² Score", f"{ridge_metrics['r2_score']:.3f}")
-            perf_table.add_row("", "Confidence MAE", f"{ridge_metrics['confidence_mae']:.2f}")
+            perf_table.add_row("", "Streak Probability MAE", f"{rf_metrics['streak_prob_mae']:.4f}")
+            perf_table.add_row("", "", "")
+            perf_table.add_row("Regularized", "R² Score", f"{ridge_metrics['r2_score']:.3f}")
+            perf_table.add_row("Regression", "Confidence MAE", f"{ridge_metrics['confidence_mae']:.2f}")
             perf_table.add_row("", "Best Alpha", f"{ridge_metrics.get('best_alpha', 1.0):.4f}")
             perf_table.add_row("", "L1 Ratio", f"{ridge_metrics.get('best_l1_ratio', 0.5):.2f}")
             perf_table.add_row("", "Features (sparse)", f"{ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
@@ -2051,9 +2068,9 @@ def _train_buddy_impl(
                     # Final success panel
                     console.print()
                     console.print(Panel(
-                        "[bold green]✓ TRAINING COMPLETE[/bold green]\n\n"
-                        f"Models saved to: [cyan]{model_dir}[/cyan]\n"
-                        "Enterprise validation: [green]PASSED[/green]",
+                        "[bold green]✓ TRAINING PIPELINE COMPLETE[/bold green]\n\n"
+                        f"[dim]Artifacts:[/dim] [cyan]{model_dir}[/cyan]\n"
+                        "[dim]Validation:[/dim] [green]PASSED[/green] • Enterprise-grade quality assurance",
                         border_style="green",
                     ))
                     
