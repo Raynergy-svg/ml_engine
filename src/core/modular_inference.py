@@ -192,7 +192,7 @@ class InferenceConfig:
     
     # Risk gate - ATR-based drawdown (2x ATR, typically 0.5-3%)
     max_drawdown_pct: float = 0.025  # 2.5% max expected drawdown
-    max_streak_prob: float = 0.6  # 60% max streak continuation
+    max_streak_prob: float = 0.95  # 95% max streak continuation (increased from 0.6 for more permissive trading)
     
     # Legacy pip-based (kept for backward compatibility)
     max_drawdown_pips: float = 250.0  # ~2.5% for majors

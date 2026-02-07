@@ -324,7 +324,8 @@ The ensemble uses a gated architecture with **8+ gates**. **ALL gates must pass*
 min_tcn_probability: float = 0.60        # Gate 1: Transformer direction >= 60% confidence
 min_confidence: float = 50.0             # Gate 2: Ridge ADX score >= 50/100
 min_momentum: float = 0.20               # Gate 3: XGBoost percentile >= 0.20
-max_drawdown_pct: float = 0.025          # Gate 4: RF drawdown <= 2.5%
+max_drawdown_pct: float = 0.025          # Gate 4a: RF drawdown <= 2.5%
+max_streak_prob: float = 0.95            # Gate 4b: RF streak continuation <= 95%
 
 # === ADDITIONAL GATES ===
 min_meta_confidence: float = 0.55        # Gate 5: Meta-labeler trade success >= 55%
@@ -340,7 +341,7 @@ sentiment_block_threshold: float = 0.60  # Gate 6: Block on strong contrary sent
 | 1 | **TCN Probability** | Transformer/TCN | Direction confidence | ≥60% (not 50/50) | Block trade |
 | 2 | **Confidence** | Ridge | Trend strength (ADX-based) | ≥50/100 | Block trade |
 | 3 | **Momentum** | XGBoost | Momentum percentile or acceleration | ≥0.20 OR accelerating | Block trade |
-| 4 | **Risk/Drawdown** | RandomForest | Expected drawdown | ≤2.5% of equity | Block trade |
+| 4 | **Risk/Drawdown** | RandomForest | Expected drawdown & streak risk | ≤2.5% drawdown AND ≤95% streak prob | Block trade |
 | 5 | **Meta-Labeling** | Meta-Labeler (XGBoost) | Trade success probability | ≥55% confidence | Block trade |
 | 6 | **Sentiment** | Market Intelligence | News sentiment alignment | No strong contrary sentiment (>60%) | Block trade |
 | 7 | **RSI Extreme** | Technical indicator | Avoid extremes | RSI 10-90 range | Block trade |
