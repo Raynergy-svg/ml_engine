@@ -327,3 +327,112 @@ pip install optuna
 # ONNX export for faster inference
 pip install tf2onnx onnxruntime
 ```
+
+## Walk-Forward Cross-Validation
+
+### Overview
+
+Walk-forward cross-validation (WF-CV) is implemented to provide robust time-series validation that prevents look-ahead bias. Models are trained and evaluated on temporally ordered data using sliding windows.
+
+### Configuration (config/config_improved_H1.yaml)
+
+```yaml
+walkforward:
+  enabled: true                    # Enable walk-forward validation
+  mode: "rolling"                  # "rolling" (sliding) or "expanding"
+  n_splits: 5                      # Number of folds
+  train_size: 0.60                 # Training window (60%)
+  val_size: 0.10                   # Validation (10%)
+  test_size: 0.10                  # Test (10%)
+  gap: 24                          # Gap between train/val (24 H1 bars = 1 day)
+  min_train_size: 2000             # Minimum samples per fold
+  
+  # Purged K-Fold (advanced)
+  use_purged_kfold: true           # Enable purged CV
+  purge_gap: 24                    # Purge near test (1 day)
+  embargo_gap: 12                  # Embargo after train (12 hours)
+  
+  # Model retraining
+  retrain_per_fold: true           # Retrain for each fold (recommended)
+  aggregate_method: "best"         # "best", "average", or "ensemble"
+```
+
+### Usage
+
+```python
+from src.training.buddy_training_helpers import train_with_walkforward_validation
+from src.training.modular_trainers import TransformerDirectionTrainer, TrainerConfig
+
+# Train with walk-forward validation
+trainer, metrics = train_with_walkforward_validation(
+    trainer_class=TransformerDirectionTrainer,
+    trainer_config=TrainerConfig(),
+    X_train=X_train,
+    y_train=y_train,
+    X_val=X_val,
+    y_val=y_val,
+    feature_names=feature_names,
+    instrument="EUR_USD",
+    wf_config=config.get('walkforward'),
+    console=console,
+)
+```
+
+### Key Features
+
+- **Rolling Mode**: Sliding window keeps recent data relevant (recommended for FX)
+- **Expanding Mode**: Growing window uses all historical data
+- **Per-Fold Retraining**: Model retrained for each time period (realistic estimates)
+- **Purged K-Fold**: Additional gaps prevent information leakage
+- **Temporal Ordering**: Maintains chronological order (no look-ahead bias)
+
+### Visual Guide
+
+```
+Rolling Mode (Default):
+|---TRAIN---|gap|VAL|TEST|
+     |---TRAIN---|gap|VAL|TEST|
+          |---TRAIN---|gap|VAL|TEST|
+
+Expanding Mode:
+|-TRAIN-|gap|VAL|TEST|
+|----TRAIN----|gap|VAL|TEST|
+|--------TRAIN--------|gap|VAL|TEST|
+```
+
+### Timeframe-Specific Settings
+
+| Timeframe | Gap (bars) | Gap (time) | Train Size | N Splits |
+|-----------|------------|------------|------------|----------|
+| M5        | 288        | 1 day      | 0.70       | 7        |
+| M15       | 96         | 1 day      | 0.65       | 6        |
+| H1        | 24         | 1 day      | 0.60       | 5        |
+| H4        | 6          | 1 day      | 0.60       | 5        |
+| D1        | 5          | 1 week     | 0.50       | 4        |
+
+### Expected Performance
+
+- Walk-forward typically **2-8% lower** than standard training
+- This is normal and represents realistic out-of-sample performance
+- High variance (std > 0.05) indicates model instability
+- Use `aggregate_method: "best"` to select best-performing fold
+
+### Files
+
+- `src/training/walkforward_validation.py`: Core implementation
+- `src/training/buddy_training_helpers.py`: `train_with_walkforward_validation()` wrapper
+- `tests/test_walkforward_config.py`: Test suite
+- `docs/WALKFORWARD_VALIDATION_GUIDE.md`: Complete documentation
+- `docs/WALKFORWARD_QUICK_REF.md`: Quick reference
+
+### Disable Walk-Forward
+
+Set `enabled: false` in config or pass `wf_config=None`:
+
+```python
+trainer, metrics = train_with_walkforward_validation(
+    ...,
+    wf_config=None,  # Use standard training
+)
+```
+
