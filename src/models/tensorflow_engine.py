@@ -220,6 +220,188 @@ class AntiCollapseFocalLoss(losses.Loss):
 
 
 @register_keras_serializable()
+class ClassBalancedFocalLoss(losses.Loss):
+    """
+    Class-Balanced Focal Loss using effective number of samples.
+    
+    Addresses class imbalance by reweighting the loss based on the effective
+    number of samples rather than raw counts. This provides smoother weighting
+    than simple inverse frequency.
+    
+    Paper: "Class-Balanced Loss Based on Effective Number of Samples" (Cui et al., 2019)
+    
+    The effective number of samples for class i with n_i samples is:
+        E_i = (1 - beta^n_i) / (1 - beta)
+    
+    Where beta is typically 0.9999 (close to 1 = more aggressive balancing).
+    
+    Args:
+        gamma: Focal loss focusing parameter (default 2.0)
+        beta: Effective number smoothing (default 0.9999, range [0,1))
+        label_smoothing: Label smoothing factor (default 0.05)
+    """
+    
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        beta: float = 0.9999,
+        label_smoothing: float = 0.05,
+        name: str = 'class_balanced_focal_loss',
+        **kwargs
+    ):
+        super().__init__(name=name, **kwargs)
+        self.gamma = gamma
+        self.beta = beta
+        self.label_smoothing = label_smoothing
+    
+    def call(self, y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+        
+        # Apply label smoothing
+        if self.label_smoothing > 0:
+            y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
+        
+        # Clip predictions to prevent log(0)
+        y_pred = tf.clip_by_value(y_pred, 1e-7, 1 - 1e-7)
+        
+        # === COMPUTE EFFECTIVE NUMBER WEIGHTS ===
+        # Count samples per class in this batch
+        n_pos = tf.reduce_sum(tf.cast(y_true > 0.5, tf.float32)) + 1e-6  # Avoid div by zero
+        n_neg = tf.reduce_sum(tf.cast(y_true <= 0.5, tf.float32)) + 1e-6
+        
+        # Effective number: E_n = (1 - beta^n) / (1 - beta)
+        # When beta -> 1, effective number approaches n (no balancing)
+        # When beta -> 0, effective number approaches 1 (full balancing)
+        e_pos = (1.0 - tf.pow(self.beta, n_pos)) / (1.0 - self.beta + 1e-7)
+        e_neg = (1.0 - tf.pow(self.beta, n_neg)) / (1.0 - self.beta + 1e-7)
+        
+        # Class weights are inversely proportional to effective number
+        # Normalize so weights sum to 2 (like standard alpha=0.5 weighting)
+        w_pos = 1.0 / e_pos
+        w_neg = 1.0 / e_neg
+        total_w = w_pos + w_neg + 1e-7
+        w_pos = 2.0 * w_pos / total_w
+        w_neg = 2.0 * w_neg / total_w
+        
+        # === FOCAL LOSS COMPUTATION ===
+        # Binary cross entropy
+        bce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
+        
+        # Focal weight: (1 - pt)^gamma
+        pt = y_true * y_pred + (1 - y_true) * (1 - y_pred)
+        focal_weight = tf.pow(1 - pt, self.gamma)
+        
+        # Apply class-balanced weights
+        cb_weight = y_true * w_pos + (1 - y_true) * w_neg
+        
+        # Combined loss
+        cb_focal_loss = cb_weight * focal_weight * bce
+        
+        return tf.reduce_mean(cb_focal_loss)
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'gamma': self.gamma,
+            'beta': self.beta,
+            'label_smoothing': self.label_smoothing,
+        })
+        return config
+
+
+@register_keras_serializable()
+class HybridClassBalancedAntiCollapseLoss(losses.Loss):
+    """
+    Combines Class-Balanced Focal Loss with variance regularization to prevent collapse.
+    
+    This hybrid loss:
+    1. Uses effective number of samples weighting (beta=0.9999) for class imbalance
+    2. Adds variance penalty when predictions collapse to constant values
+    
+    The variance penalty encourages prediction diversity:
+        variance_loss = variance_weight * max(0, variance_target - pred_variance)
+    
+    This activates only when prediction variance drops below the target,
+    pushing the model to produce more diverse predictions.
+    
+    Args:
+        gamma: Focal loss focusing parameter (default 2.0)
+        beta: Effective number smoothing for class balancing (default 0.9999)
+        variance_weight: Weight for variance penalty (default 0.1)
+        variance_target: Target minimum variance for predictions (default 0.08)
+        label_smoothing: Label smoothing factor (default 0.05)
+    """
+    
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        beta: float = 0.9999,
+        variance_weight: float = 0.1,
+        variance_target: float = 0.08,
+        label_smoothing: float = 0.05,
+        name: str = 'hybrid_cb_anticollapse_loss',
+        **kwargs
+    ):
+        super().__init__(name=name, **kwargs)
+        self.gamma = gamma
+        self.beta = beta
+        self.variance_weight = variance_weight
+        self.variance_target = variance_target
+        self.label_smoothing = label_smoothing
+    
+    def call(self, y_true, y_pred):
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+        
+        # Apply label smoothing
+        if self.label_smoothing > 0:
+            y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
+        
+        # Clip predictions to prevent log(0)
+        y_pred = tf.clip_by_value(y_pred, 1e-7, 1 - 1e-7)
+        
+        # === COMPUTE EFFECTIVE NUMBER WEIGHTS (Class Balancing) ===
+        n_pos = tf.reduce_sum(tf.cast(y_true > 0.5, tf.float32)) + 1e-6
+        n_neg = tf.reduce_sum(tf.cast(y_true <= 0.5, tf.float32)) + 1e-6
+        
+        e_pos = (1.0 - tf.pow(self.beta, n_pos)) / (1.0 - self.beta + 1e-7)
+        e_neg = (1.0 - tf.pow(self.beta, n_neg)) / (1.0 - self.beta + 1e-7)
+        
+        w_pos = 1.0 / e_pos
+        w_neg = 1.0 / e_neg
+        total_w = w_pos + w_neg + 1e-7
+        w_pos = 2.0 * w_pos / total_w
+        w_neg = 2.0 * w_neg / total_w
+        
+        # === FOCAL LOSS COMPUTATION ===
+        bce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
+        pt = y_true * y_pred + (1 - y_true) * (1 - y_pred)
+        focal_weight = tf.pow(1 - pt, self.gamma)
+        cb_weight = y_true * w_pos + (1 - y_true) * w_neg
+        cb_focal_loss = tf.reduce_mean(cb_weight * focal_weight * bce)
+        
+        # === VARIANCE PENALTY (Anti-Collapse) ===
+        # Penalize when prediction variance drops below target
+        # This prevents the model from collapsing to constant predictions
+        pred_var = tf.math.reduce_variance(y_pred)
+        variance_loss = self.variance_weight * tf.maximum(0.0, self.variance_target - pred_var)
+        
+        return cb_focal_loss + variance_loss
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            'gamma': self.gamma,
+            'beta': self.beta,
+            'variance_weight': self.variance_weight,
+            'variance_target': self.variance_target,
+            'label_smoothing': self.label_smoothing,
+        })
+        return config
+
+
+@register_keras_serializable()
 class ModelEMACallback(keras_callbacks.Callback):
     """Exponential Moving Average of model weights for smoother inference.
     
@@ -456,7 +638,25 @@ class LearningRateLoggerCallback(keras_callbacks.Callback):
         self.writer = tf.summary.create_file_writer(os.path.join(log_dir, 'lr'))
     
     def on_epoch_end(self, epoch, logs=None):
-        lr = float(keras.backend.get_value(self.model.optimizer.learning_rate))
+        # Get current learning rate - handle LR schedules gracefully
+        try:
+            lr_obj = self.model.optimizer.learning_rate
+            if hasattr(lr_obj, "numpy"):
+                lr = float(lr_obj.numpy())
+            elif hasattr(lr_obj, "value"):
+                lr = float(lr_obj.value())
+            else:
+                lr = float(lr_obj)
+        except (TypeError, AttributeError):
+            # Learning rate is likely a schedule - try to get current value
+            try:
+                _lr = getattr(self.model.optimizer, "_learning_rate", None)
+                if callable(_lr) and hasattr(self.model.optimizer, "iterations"):
+                    lr = float(_lr(self.model.optimizer.iterations))
+                else:
+                    lr = 0.001  # Default fallback
+            except:
+                lr = 0.001
         with self.writer.as_default():
             tf.summary.scalar('learning_rate', lr, step=epoch)
 
@@ -792,6 +992,41 @@ class TensorFlowEngine:
                 direction_loss_type = (self.config.get('direction_loss', 'focal') or 'focal').lower()
                 if direction_loss_type in ('bce', 'binary_crossentropy'):
                     direction_loss = losses.BinaryCrossentropy(from_logits=False, label_smoothing=label_smoothing)
+                elif direction_loss_type == 'madl':
+                    # MADL: Mean Absolute Directional Loss - optimizes for directional profitability
+                    # Import from tensorflow_models where it's registered
+                    from .tensorflow_models import MADLLoss
+                    madl_direction_weight = self.config.get('madl_direction_weight', 0.7)
+                    direction_loss = MADLLoss(direction_weight=madl_direction_weight, label_smoothing=label_smoothing)
+                elif direction_loss_type == 'anti_collapse':
+                    # AntiCollapseFocalLoss: uses dynamic alpha + entropy regularization
+                    direction_loss = AntiCollapseFocalLoss(
+                        gamma=focal_gamma,
+                        base_alpha=focal_alpha,
+                        entropy_weight=self.config.get('entropy_weight', 0.1),
+                        min_gradient_scale=self.config.get('min_gradient_scale', 0.1),
+                        label_smoothing=label_smoothing
+                    )
+                elif direction_loss_type == 'cb_focal':
+                    # ClassBalancedFocalLoss: uses effective number of samples weighting
+                    cb_beta = self.config.get('cb_beta', 0.9999)
+                    direction_loss = ClassBalancedFocalLoss(
+                        gamma=focal_gamma,
+                        beta=cb_beta,
+                        label_smoothing=label_smoothing
+                    )
+                elif direction_loss_type in ('hybrid_cb_anticollapse', 'hybrid'):
+                    # HybridClassBalancedAntiCollapseLoss: CB focal + variance penalty
+                    cb_beta = self.config.get('cb_beta', 0.9999)
+                    variance_weight = self.config.get('variance_weight', 0.1)
+                    variance_target = self.config.get('variance_target', 0.08)
+                    direction_loss = HybridClassBalancedAntiCollapseLoss(
+                        gamma=focal_gamma,
+                        beta=cb_beta,
+                        variance_weight=variance_weight,
+                        variance_target=variance_target,
+                        label_smoothing=label_smoothing
+                    )
                 else:
                     # Focal loss with label smoothing (Quick Win #3 - already implemented)
                     direction_loss = BinaryFocalLoss(gamma=focal_gamma, alpha=focal_alpha, label_smoothing=label_smoothing)

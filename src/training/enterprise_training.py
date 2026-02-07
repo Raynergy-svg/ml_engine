@@ -46,25 +46,23 @@ import subprocess
 import threading
 import time
 import traceback
-from abc import ABC  # noqa: F401
+from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import (
     Any, Callable, Dict, Generator, List, Optional, 
-    Tuple, Union
+    Tuple, TypeVar, Union
 )
 
 import numpy as np
 
 try:
     import mlflow
-    from mlflow.tracking import MlflowClient  # noqa: F401
+    from mlflow.tracking import MlflowClient
     MLFLOW_AVAILABLE = True
-except (ImportError, TypeError, Exception):
-    # TypeError: protobuf version conflict with mlflow
-    # Other exceptions: various dependency issues
+except ImportError:
     MLFLOW_AVAILABLE = False
 
 try:
@@ -762,58 +760,21 @@ class WalkForwardValidator:
         
         # Use min_train_samples to ensure adequate training data
         min_train = getattr(cfg, 'min_train_samples', cfg.train_period) + cfg.gap
-        test_period = cfg.test_period
-        
-        # Calculate available space for test windows
-        available_space = n_samples - test_period - min_train
-        
-        # Handle insufficient data case - reduce requirements dynamically
-        if available_space < 0:
-            # Not enough data even for 1 fold with current settings
-            # Reduce min_train and test_period proportionally to fit the data
-            # Use at least 60% for training, 20% for test, leaving room for gap
-            effective_samples = n_samples - cfg.gap
-            if effective_samples < 100:
-                logger.error(
-                    f"Insufficient data: {n_samples} samples is too few for validation. "
-                    f"Need at least 100 samples after gap."
-                )
-                return  # No folds yielded
-            
-            # Allocate: 70% train, 30% test (after gap)
-            min_train = max(int(effective_samples * 0.70), 50) + cfg.gap
-            test_period = max(int(effective_samples * 0.25), 20)
-            
-            logger.warning(
-                f"Insufficient data for min_train_samples={cfg.min_train_samples}. "
-                f"Adjusting to min_train={min_train - cfg.gap}, test_period={test_period} "
-                f"for {n_samples} samples."
-            )
-            available_space = n_samples - test_period - min_train
+        available_space = n_samples - cfg.test_period - min_train
         
         if available_space < cfg.n_splits:
-            actual_splits = max(1, available_space)
-            if actual_splits < cfg.n_splits:
-                logger.warning(
-                    f"Reducing folds from {cfg.n_splits} to {actual_splits} "
-                    f"(min_train={min_train}, test_period={test_period}, samples={n_samples})"
-                )
-            n_splits = actual_splits
+            logger.warning(
+                f"Insufficient data for {cfg.n_splits} folds with min_train={min_train}, "
+                f"reducing to {max(1, available_space)} folds"
+            )
+            n_splits = max(1, available_space)
         else:
             n_splits = cfg.n_splits
         
         # Position test windows to ensure minimum training samples
         # First test window starts after min_train samples
         first_test_start = min_train
-        last_test_start = n_samples - test_period
-        
-        # Ensure first_test_start <= last_test_start
-        if first_test_start > last_test_start:
-            logger.error(
-                f"Invalid split configuration: first_test_start ({first_test_start}) > "
-                f"last_test_start ({last_test_start}). Samples={n_samples}"
-            )
-            return  # No folds yielded
+        last_test_start = n_samples - cfg.test_period
         
         test_starts = np.linspace(
             first_test_start,
@@ -824,7 +785,7 @@ class WalkForwardValidator:
         
         logger.info(
             f"Walk-forward: {n_splits} folds, min_train={min_train}, "
-            f"test_period={test_period}, total_samples={n_samples}"
+            f"test_period={cfg.test_period}, total_samples={n_samples}"
         )
         
         for fold, test_start in enumerate(test_starts):
@@ -837,26 +798,15 @@ class WalkForwardValidator:
             train_end = test_start - cfg.gap - cfg.purge_overlap
             
             # Ensure minimum training samples even in expanding mode
-            # Use the dynamically adjusted min_train (minus gap) or a reasonable minimum
-            effective_min_train = min(min_train - cfg.gap, train_end - train_start)
-            min_required = max(50, effective_min_train)  # At least 50 samples for any model
-            
-            if train_end - train_start < min_required:
+            if train_end - train_start < getattr(cfg, 'min_train_samples', 2000):
                 logger.warning(
                     f"Fold {fold + 1}: Training samples ({train_end - train_start}) "
-                    f"below minimum ({min_required}), skipping"
+                    f"below minimum ({getattr(cfg, 'min_train_samples', 2000)}), skipping"
                 )
                 continue
             
-            # Test indices - use the possibly adjusted test_period
-            test_end = min(test_start + test_period, n_samples)
-            
-            # Skip if test set would be empty
-            if test_end <= test_start:
-                logger.warning(
-                    f"Fold {fold + 1}: Empty test set (start={test_start}, end={test_end}), skipping"
-                )
-                continue
+            # Test indices
+            test_end = min(test_start + cfg.test_period, n_samples)
             
             train_idx = np.arange(train_start, train_end)
             test_idx = np.arange(test_start, test_end)
@@ -919,7 +869,7 @@ class WalkForwardValidator:
                 pass
             
             # Fit model
-            model.fit(
+            history = model.fit(
                 X_train, y_train,
                 validation_data=(X_test, y_test),
                 verbose=0,

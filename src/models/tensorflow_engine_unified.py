@@ -179,7 +179,9 @@ def _match_weights_by_name(model_vars, saved_weights):
             saved_norm = _normalize_weight_name(saved_name)
             
             if saved_norm == var_norm and saved_weight.shape == tuple(var.shape):
-                var.assign(saved_weight)
+                # Cast to match dtype for Metal compatibility
+                weight_to_assign = saved_weight.astype(var.dtype.as_numpy_dtype) if hasattr(saved_weight, 'astype') else saved_weight
+                var.assign(weight_to_assign)
                 used_saved.add(saved_name)
                 matched += 1
                 break
@@ -212,12 +214,14 @@ def _match_weights_by_shape_and_pattern(model_vars, saved_weights, used_saved):
         best_match, best_score = _find_best_weight_match(var_name, shape_to_saved[var_shape])
         
         if best_match is not None and best_score > 0:
-            var.assign(best_match[1])
+            # Cast to match dtype for Metal compatibility
+            weight_to_assign = best_match[1].astype(var.dtype.as_numpy_dtype) if hasattr(best_match[1], 'astype') else best_match[1]
+            var.assign(weight_to_assign)
             shape_to_saved[var_shape] = [
                 (n, w) for n, w in shape_to_saved[var_shape] if n != best_match[0]
             ]
             matched += 1
-    
+
     return matched
 
 
@@ -316,7 +320,11 @@ def _load_weights_from_npz(model, npz_path):
                     break
         
         if best_match is not None:
-            var.assign(saved_weights[best_match])
+            # Cast to match dtype for Metal compatibility
+            weight_to_assign = saved_weights[best_match]
+            if hasattr(weight_to_assign, 'astype'):
+                weight_to_assign = weight_to_assign.astype(var.dtype.as_numpy_dtype)
+            var.assign(weight_to_assign)
             del saved_weights[best_match]  # Remove to avoid reuse
             matched += 1
         else:
@@ -407,13 +415,15 @@ def _match_keras_weights_to_vars(model_vars, weights_dict):
                 best_match = (saved_name, saved_weight)
         
         if best_match is not None:
-            var.assign(best_match[1])
+            # Cast to match dtype for Metal compatibility
+            weight_to_assign = best_match[1].astype(var.dtype.as_numpy_dtype) if hasattr(best_match[1], 'astype') else best_match[1]
+            var.assign(weight_to_assign)
             shape_to_saved[var_shape] = [
-                (n, w) for n, w in shape_to_saved[var_shape] 
+                (n, w) for n, w in shape_to_saved[var_shape]
                 if n != best_match[0]
             ]
             matched += 1
-    
+
     return matched
 
 

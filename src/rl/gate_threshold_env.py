@@ -16,11 +16,9 @@ import logging
 import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
-
-from .utils import detect_regime
 
 # Lazy imports for gymnasium and stable-baselines3 to avoid 8+ second startup penalty
 EvalCallback = None  # Will be imported lazily with SB3
@@ -29,7 +27,6 @@ SB3_AVAILABLE = None  # Will be set on first access
 gym = None
 spaces = None
 SAC = None
-
 
 def _ensure_gym_imported():
     """Lazy import gymnasium only when needed."""
@@ -45,7 +42,6 @@ def _ensure_gym_imported():
             GYM_AVAILABLE = False
     return GYM_AVAILABLE
 
-
 def _ensure_sb3_imported():
     """Lazy import stable-baselines3 only when needed."""
     global SAC, EvalCallback, SB3_AVAILABLE
@@ -60,6 +56,7 @@ def _ensure_sb3_imported():
             SB3_AVAILABLE = False
     return SB3_AVAILABLE
 
+from .utils import detect_regime, calculate_sharpe, normalize_features_for_rl
 
 logger = logging.getLogger(__name__)
 

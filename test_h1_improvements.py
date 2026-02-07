@@ -2,28 +2,25 @@
 """Test H1 trade execution improvements."""
 
 from datetime import datetime, timezone
-from buddy_scanner import ScanConfig, PIP_VALUES
-from risk_management import RiskManagementConfig
+from src.scanner import ScannerConfig, PIP_VALUES
+from src.risk.risk_management import RiskManagementConfig
 
 def test_h1_settings():
     """Test H1-optimized settings."""
     print("Testing H1 Trade Execution Improvements")
     print("=" * 60)
     
-    # Test ScanConfig
-    print("\n1. ScanConfig (buddy_scanner.py)")
+    # Test ScannerConfig
+    print("\n1. ScannerConfig (src/scanner/config.py)")
     print("-" * 60)
-    scan_cfg = ScanConfig()
-    print(f"   ATR Period: {scan_cfg.atr_period} (standard for H1)")
+    scan_cfg = ScannerConfig()
     print(f"   ATR SL Multiplier: {scan_cfg.atr_sl_multiplier}x (gives room for noise)")
     print(f"   ATR TP Multiplier: {scan_cfg.atr_tp_multiplier}x (creates {scan_cfg.atr_tp_multiplier/scan_cfg.atr_sl_multiplier:.1f}:1 R:R)")
-    print(f"   SL Range: {scan_cfg.min_sl_pips}-{scan_cfg.max_sl_pips} pips")
-    print(f"   TP Range: {scan_cfg.min_tp_pips}-{scan_cfg.max_tp_pips} pips")
+    print(f"   Min SL: {scan_cfg.min_sl_pips} pips")
     print(f"   Risk per Trade: {scan_cfg.risk_per_trade_pct*100:.1f}% (professional)")
-    print(f"   Max Trades/Day: {scan_cfg.max_trades_per_day} (H1 swing = fewer, better)")
+    print(f"   Max Trades/Day: {scan_cfg.daily_trade_limit} (H1 swing = fewer, better)")
     print(f"   Session Filter: {'ENABLED' if scan_cfg.enable_session_filter else 'DISABLED'}")
     print(f"   Active Hours: {scan_cfg.session_start_utc:02d}:00 - {scan_cfg.session_end_utc:02d}:00 UTC")
-    print(f"   Min ATR: {scan_cfg.min_atr_pips} pips (skip dead markets)")
     
     # Test RiskManagementConfig
     print("\n2. RiskManagementConfig (risk_management.py)")

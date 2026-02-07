@@ -176,7 +176,7 @@ class ScannerDisplay:
         
         # Build header text
         header_parts = [
-            "[bold cyan]📡 BUDDY SCANNER[/bold cyan]",
+            f"[bold cyan]📡 BUDDY SCANNER[/bold cyan]",
             f"[green]${nav:,.0f}[/green]" if nav > 0 else "",
             f"[dim]{open_trades} trades[/dim]" if open_trades > 0 else "",
         ]

@@ -520,11 +520,25 @@ class ProfessionalTrainingCallback:
                 logs = logs or {}
                 duration = time.time() - parent.epoch_start_time if parent.epoch_start_time else 0
                 
-                # Get current learning rate
+                # Get current learning rate - handle LR schedules gracefully
                 try:
-                    lr = float(keras.backend.get_value(self.model.optimizer.learning_rate))
-                except:
-                    lr = parent.last_lr
+                    lr_obj = self.model.optimizer.learning_rate
+                    if hasattr(lr_obj, "numpy"):
+                        lr = float(lr_obj.numpy())
+                    elif hasattr(lr_obj, "value"):
+                        lr = float(lr_obj.value())
+                    else:
+                        lr = float(lr_obj)
+                except (TypeError, AttributeError):
+                    # Learning rate is likely a schedule - try to get current value
+                    try:
+                        _lr = getattr(self.model.optimizer, "_learning_rate", None)
+                        if callable(_lr) and hasattr(self.model.optimizer, "iterations"):
+                            lr = float(_lr(self.model.optimizer.iterations))
+                        else:
+                            lr = parent.last_lr
+                    except:
+                        lr = parent.last_lr
                     
                 # Check for LR changes
                 if abs(lr - parent.last_lr) / max(parent.last_lr, 1e-10) > 0.01:

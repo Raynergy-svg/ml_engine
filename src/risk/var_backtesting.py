@@ -345,6 +345,7 @@ def backtest_var(
     # Exclude NaN periods (warmup)
     valid_mask = ~np.isnan(var_series)
     valid_violations = violations[valid_mask]
+    valid_returns = returns[valid_mask]
     
     total_obs = len(valid_violations)
     violation_count = int(np.sum(valid_violations))
@@ -487,7 +488,7 @@ if __name__ == "__main__":
     # Backtest
     result = backtest_var(returns, var_series, config)
     
-    print("\nBacktest Results:")
+    print(f"\nBacktest Results:")
     print(f"  Violations: {result.violation_count}/{result.total_observations}")
     print(f"  Rate: {result.violation_rate:.2%} (target: {config.violation_target:.2%})")
     print(f"  Kupiec: {'PASSED' if result.kupiec_passed else 'FAILED'} (p={result.kupiec_pvalue:.4f})")

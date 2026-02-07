@@ -46,15 +46,15 @@ def main():
     ))
     
     # Import after arg parsing for faster --help
-    from modular_data_loaders import (
-        compute_normalized_features, 
-        load_xgboost_data, 
-        load_rf_data, 
+    from src.core.modular_data_loaders import (
+        compute_normalized_features,
+        load_xgboost_data,
+        load_rf_data,
         load_ridge_data
     )
-    from modular_trainers import (
-        XGBoostTrainer, 
-        RandomForestTrainer, 
+    from src.training.modular_trainers import (
+        XGBoostTrainer,
+        RandomForestTrainer,
         RidgeTrainer,
         TrainerConfig
     )

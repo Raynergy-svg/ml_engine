@@ -62,9 +62,15 @@ sequence_length: 60
 
 # ----- H1 DIRECTION LABELING -----
 # Look 24 bars ahead (24 hours = 1 day) for cleaner signals on H1
-# Lower threshold (0.3%) + longer lookahead = more clear labels for training
+# Higher threshold (0.3%) = more balanced labels, less class imbalance
 direction_lookahead: 24
-direction_threshold: 0.003  # Min 0.3% move for clear signal (more training data)
+direction_threshold: 0.003  # Min 0.3% move for clear signal (FIX: Increased from 0.0015 to 0.003 for better class balance)
+
+# ----- FEATURE SELECTION -----
+# RF importance-based selection reduces noisy features and improves generalization
+use_feature_selection: true
+feature_selection_method: random_forest  # Options: random_forest, f_test, correlation, mutual_info
+top_k_features: 50  # Reduce from 199 to top 50 most important features
 
 # ----- MODEL CONFIGURATION -----
 model:
@@ -77,22 +83,28 @@ model:
   hidden_size: 64
   num_layers: 3
   
-  # Strong dropout to prevent overfitting (was 0.3)
-  dropout: 0.5
+  # Moderate dropout (reduced from 0.5 - was suppressing minority class learning)
+  dropout: 0.3
   
   # Keep at 0 for M1 Metal speed
   recurrent_dropout: 0.0
   
-  # Strong L2 regularization (was 0.001)
-  kernel_regularizer: 0.005
+  # Moderate L2 regularization (reduced from 0.005 - was too strong)
+  kernel_regularizer: 0.001
   
-  # TCN-specific (legacy, kept for backward compatibility)
-  kernel_size: 3
-  use_residual: true
+  # TCN-specific - AGGRESSIVE ANTI-OVERFITTING (was getting 38% val, worse than random)
+  tcn_hidden_size: 16      # Reduced from 32 - smaller capacity
+  tcn_num_layers: 1        # Reduced from 2 - simpler model
+  tcn_kernel_size: 2       # Reduced from 3 - less receptive field
+  tcn_dropout: 0.6         # Increased from 0.3 - heavy dropout
+  tcn_l2_reg: 0.01         # L2 kernel regularization
+  tcn_spatial_dropout: 0.3 # Spatial dropout on input features
+  tcn_noise_std: 0.05      # Gaussian noise on input
+  use_residual: false      # Disabled - was helping memorization
   
   # Multi-task heads
   multi_task: true
-  state_classes: 2
+  state_classes: 4    # Market states: LOW, NORMAL, HIGH, EXTREME volatility
   
   # Attention heads
   num_heads: 4
@@ -100,39 +112,73 @@ model:
 # ----- TRANSFORMER DIRECTION MODEL -----
 # Replaces TCN for direction prediction - better at capturing trends
 transformer:
-  d_model: 32          # Model dimension
-  num_heads: 4         # Attention heads  
-  num_layers: 2        # Encoder layers
-  dff: 64              # Feedforward dimension
-  dropout: 0.2         # Reduced from 0.4 to prevent output suppression
+  d_model: 16          # Reduced model dimension (was 32) for less overfitting
+  num_heads: 2         # Reduced heads (was 4)
+  num_layers: 2        # Single layer (was 2) - simpler model
+  dff: 32              # Reduced feedforward (was 64)
+  dropout: 0.3         # Moderate dropout (reduced from 0.6 - was suppressing minority)
+  label_smoothing: 0.05 # Mild smoothing (reduced from 0.15 - was too aggressive)
+  l2_reg: 0.005        # Moderate L2 (reduced from 0.02 - was preventing learning)
+  input_noise: 0.03    # Mild input noise (reduced from 0.08 - was corrupting signal)
   use_transformer: true  # Use Transformer instead of TCN for direction
+
+# ----- TCN VOLATILITY REGIME FILTER -----
+# TCN predicts volatility regime (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
+# Acts as entry timing filter - only trade when volatility is HIGH or EXTREME
+# Transformer handles direction prediction alone (weight=1.0)
+use_tcn_volatility_filter: true     # TCN as volatility gate (not direction ensemble)
+transformer_weight: 1.0             # Transformer-only for direction prediction
+
+# Volatility regime calculation settings
+volatility_regime:
+  lookback_bars: 100                # Rolling window for ATR percentile calculation
+  thresholds: [0.25, 0.60, 0.85]    # Percentile boundaries: LOW/NORMAL/HIGH/EXTREME
+  min_regime_for_trade: 2           # Minimum regime to allow trade (2=HIGH, 3=EXTREME)
+  tcn_required: true                # Block all trades if TCN model unavailable
 
 # ----- OPTIMIZER CONFIGURATION -----
 optimizer:
   type: adamw
   
-  # Learning rate
-  learning_rate: 0.0003
+  # Learning rate - reduced to prevent fast overfitting
+  learning_rate: 0.0001
   
-  # Weight decay
-  weight_decay: 0.01
+  # Weight decay - REDUCED to prevent over-regularization (was 0.05, too aggressive)
+  weight_decay: 0.001
   
   betas:
     - 0.9
     - 0.999
   
   # Gradient clipping
-  clipnorm: 1.0
+  clipnorm: 0.5
 
 # ----- TRAINING CONFIGURATION -----
 training:
-  epochs: 200
+  epochs: 300
   
-  # Increased patience for H1 (slower convergence expected)
+  # Increased patience to allow longer training
   early_stopping_patience: 40
   
-  # Minimum epochs before early stopping
+  # Minimum epochs before early stopping (ensures adequate training)
   min_epochs: 60
+  
+  # Warmup epochs for stable early training
+  warmup_epochs: 5
+  
+  # RL position sizer - DISABLED (use train-rl-sizer command separately)
+  auto_train_rl: false
+  
+  # === WARM-START SETTINGS (now properly passed to TrainerConfig!) ===
+  # Warm-start learning rate factor - INCREASED to allow faster adaptation (was 0.01, too low)
+  warm_start_lr_factor: 0.1  # 0.1 = 10x LR reduction (was 0.01 = 100x reduction)
+  # Gradual layer unfreezing (NEW: now implemented!)
+  warm_start_unfreeze_epochs: 10  # Unfreeze encoder layers after N epochs (0 = never)
+  warm_start_gradual_unfreeze: true  # Unfreeze gradually from top to bottom (vs all at once)
+  warm_start_freeze_encoder: true  # Initially freeze encoder layers during warm-start
+  
+  # Max gap between train/val before stopping
+  max_overfit_gap: 0.15
   
   # M1 optimizations
   jit_compile: false
@@ -150,6 +196,16 @@ scheduler:
   T_max: 50
   eta_min: 0.00001
 
+# ----- COSINE WARM RESTARTS (Recommended) -----
+# Enables learning rate warm restarts for better convergence
+lr_schedule:
+  type: cosine_restarts
+  first_decay_epochs: 15
+  t_mul: 2.0
+  m_mul: 0.9
+  warmup_epochs: 5
+  alpha: 0.01
+
 # ----- LOSS CONFIGURATION -----
 loss_type: huber
 huber_delta: 1.0
@@ -163,9 +219,26 @@ unified_head_loss_weights:
   state_logits: 2.0
 
 # ----- FOCAL LOSS FOR DIRECTION -----
+use_focal_loss: true  # Use BinaryFocalLoss instead of BinaryCrossentropy for class imbalance
 auto_focal_alpha: true
 focal_gamma: 2.0
 direction_loss: focal
+
+# === Hybrid Class-Balanced + Anti-Collapse Loss ===
+# Combines class-balanced loss (addresses class imbalance via effective sample weighting)
+# with anti-collapse regularization (prevents probability collapse to single class).
+# The hybrid approach: CB loss provides per-class weighting based on effective samples,
+# while anti-collapse adds variance regularization to maintain prediction diversity.
+use_hybrid_cb_anticollapse: true  # Enable hybrid loss (takes priority over individual flags)
+use_class_balanced_loss: true     # Class-balanced focal loss for rare class handling
+cb_beta: 0.9999                   # CB beta parameter (higher = more weight to rare classes)
+cb_gamma: 2.0                     # Focal gamma (higher = more focus on hard examples)
+
+# === Anti-Collapse Loss Settings (v2) ===
+use_anti_collapse_loss: true  # Use AntiCollapseFocalLoss with variance regularization
+anti_collapse_base_variance_weight: 0.2  # INCREASED: Base variance weight (was 0.1, more aggressive)
+anti_collapse_label_smoothing: 0.05  # Label smoothing for collapse prevention
+sample_weight_max_multiplier: 5.0  # Max sample weight multiplier (increased from 3.0 for hybrid)
 
 # ----- DATA SCALING -----
 enable_data_scaling: true
@@ -187,38 +260,63 @@ min_epochs: 60
 noise_std: 0.02
 kernel_regularizer: 0.001
 
-# ----- OVERFIT PREVENTION -----
-# Controls the OverfitPreventionCallback that monitors train-val gap
-overfit_prevention:
-  overfit_threshold: 0.08       # 8% train-val gap triggers warning
-  critical_threshold: 0.15      # 15% gap triggers LR reduction
-  severe_threshold: 0.25        # 25% gap triggers early stop
-  max_acceptable_gap: 0.12      # Won't save checkpoint if gap > 12%
-  patience_epochs: 3            # Consecutive overfit epochs before intervention
-  auto_adjust_dropout: true     # Dynamically increase dropout on overfitting
-  auto_reduce_lr: true          # Dynamically reduce LR on overfitting
-  max_dropout_increase: 0.3     # Cap on dropout increase
+# ----- INFERENCE GATE THRESHOLDS -----
+inference:
+  # Gate 1: Transformer/TCN direction confidence
+  min_tcn_probability: 0.60  # 60% minimum confidence (not coin-flip)
+  
+  # Gate 2: Ridge confidence (ADX-based trend strength)
+  min_confidence: 50.0  # 0-100 scale
+  
+  # Gate 3: XGBoost momentum
+  min_momentum: 0.20  # Percentile threshold
+  require_fresh_or_accel: true  # Also pass if momentum is accelerating
+  
+  # Gate 4: RandomForest risk
+  max_drawdown_pct: 0.025  # 2.5% max expected drawdown
+  max_streak_prob: 0.95  # 95% max streak continuation probability
+  
+  # Gate 5: Meta-labeling
+  enable_meta_labeling: true
+  min_meta_confidence: 0.55  # 55% trade success probability
+  
+  # Gate 6: Sentiment
+  sentiment_block_enabled: true
+  sentiment_block_threshold: 0.60  # Block on strong contrary sentiment
+  sentiment_min_headlines: 3
+  
+  # General
+  permissive_mode: false
+  bypass_risk_gate_in_permissive: false
+  
+  # Calibration
+  enable_calibration: true
+  calibration_method: platt
 
-# ----- STOCHASTIC WEIGHT AVERAGING (SWA) -----
-# Averages weights in final portion of training for flatter optima
-swa:
-  enabled: true                 # Enable SWA
-  start_fraction: 0.75          # Start at 75% of training
-  lr_factor: 0.5                # SWA constant LR = initial_lr * factor
-
-# ----- COSINE ANNEALING WITH WARM RESTARTS -----
-# Periodically resets LR to escape sharp local minima
-cosine_restarts:
-  enabled: true                 # Enable cosine annealing w/ warm restarts
-  restart_period: 10            # Restart every N epochs
-  lr_mult: 0.8                  # Each restart uses 80% of prev LR
-
-# ----- WARM-START OVERFIT RECOVERY -----
-warmstart_recovery:
-  enabled: true                 # Detect/recover from warm-start overfitting
-  reset_threshold: 0.15         # If initial gap > 15%, intervene
-  weight_perturbation_scale: 0.02  # Noise to break memorization
-  reset_optimizer_on_overfit: true # Reset optimizer momentum on critical overfit
+# ----- WALK-FORWARD CROSS-VALIDATION -----
+# Robust time-series validation to prevent look-ahead bias
+walkforward:
+  enabled: true                    # Enable walk-forward validation
+  mode: "rolling"                  # "rolling" (sliding window) or "expanding" (growing window)
+  n_splits: 5                      # Number of folds
+  train_size: 0.60                 # Training window size (60% of data for rolling)
+  val_size: 0.10                   # Validation size (10%)
+  test_size: 0.10                  # Test/holdout size (10%)
+  gap: 24                          # Gap between train/val (24 H1 bars = 1 day)
+  min_train_size: 2000             # Minimum training samples per fold
+  
+  # Purged K-Fold settings (advanced)
+  use_purged_kfold: true           # Use purged cross-validation
+  purge_gap: 24                    # Purge samples near test (24 H1 bars = 1 day)
+  embargo_gap: 12                  # Embargo after train (12 H1 bars = 12 hours)
+  
+  # Model retraining per fold
+  retrain_per_fold: true           # Retrain model for each fold (recommended)
+  aggregate_method: "best"         # "best", "average", or "ensemble"
+  
+  # Regime-aware validation
+  ensure_regime_balance: false     # Ensure each fold has all regimes (experimental)
+  min_samples_per_regime: 50       # Min samples per regime in each fold
 
 # ----- TENSORBOARD -----
 tensorboard:
@@ -269,38 +367,72 @@ fx:
     low_lt: 0.6
     high_gte: 0.75
 
-# ----- INFERENCE GATE THRESHOLDS -----
-inference:
-  # Gate 1: Transformer/TCN direction confidence
-  min_tcn_probability: 0.60  # 60% minimum confidence (not coin-flip)
+# ----- 5-CLASS REGIME CONFIGURATION (Phase 3) -----
+# Market regime detection for dynamic model selection and strategy adaptation
+regime:
+  enabled: true
+  num_classes: 5  # STRONG_TREND, WEAK_TREND, CHOP, MEAN_REVERT, BREAKOUT
   
-  # Gate 2: Ridge confidence (ADX-based trend strength)
-  min_confidence: 50.0  # 0-100 scale
+  # ADX thresholds for trend strength classification
+  thresholds:
+    adx_strong_trend: 40      # ADX >= 40 = STRONG_TREND
+    adx_weak_trend: 25        # ADX 25-40 = WEAK_TREND
+    adx_chop: 20              # ADX < 20 = CHOP (avoid trading)
+    adx_breakout_max: 30      # BREAKOUT: ADX < 30 but rising
+    
+    # RSI extremes for mean reversion detection
+    rsi_extreme_low: 30       # RSI < 30 = oversold (MEAN_REVERT)
+    rsi_extreme_high: 70      # RSI > 70 = overbought (MEAN_REVERT)
+    
+    # ATR expansion for breakout detection
+    atr_expansion_ratio: 1.3  # Current ATR > 1.3x 5-bar MA = expanding
+    adx_rise_threshold: 2     # ADX increased by > 2 points over 3 bars
   
-  # Gate 3: XGBoost momentum
-  min_momentum: 0.20  # 0-1 scale
-  require_fresh_or_accel: true  # Allow either fresh momentum OR acceleration
+  # Regime transition handling
+  transition:
+    cooldown_bars: 3          # Wait 3 bars after regime change
+    min_confidence: 0.6       # Minimum confidence to act on regime
+    confirm_bars: 2           # Require 2 of last 3 bars in new regime
   
-  # Gate 4: RandomForest risk (drawdown & streak)
-  max_drawdown_pct: 0.025  # 2.5% max expected drawdown
-  max_streak_prob: 0.95  # 95% max streak continuation probability
+  # Per-regime trading behavior
+  behavior:
+    STRONG_TREND:
+      trade_allowed: true
+      position_size_mult: 1.2  # Larger positions in strong trends
+      stop_loss_mult: 1.5      # Wider stops
+      use_trailing_stop: true
+      
+    WEAK_TREND:
+      trade_allowed: true
+      position_size_mult: 1.0  # Normal position size
+      stop_loss_mult: 1.0      # Normal stops
+      use_trailing_stop: false
+      
+    CHOP:
+      trade_allowed: false     # Skip trading in chop
+      position_size_mult: 0.5
+      stop_loss_mult: 0.8
+      use_trailing_stop: false
+      
+    MEAN_REVERT:
+      trade_allowed: true
+      position_size_mult: 0.8  # Smaller positions for reversals
+      stop_loss_mult: 1.2
+      fade_momentum: true      # Trade against 2-bar momentum
+      
+    BREAKOUT:
+      trade_allowed: true
+      position_size_mult: 1.0
+      stop_loss_mult: 1.3
+      use_trailing_stop: true
+      entry_on_pullback: true  # Wait for pullback after breakout
   
-  # Gate 5: Meta-labeling (trade success predictor)
-  enable_meta_labeling: true
-  min_meta_confidence: 0.55  # 55% minimum trade success probability
-  
-  # Gate 6: Sentiment analysis
-  sentiment_block_enabled: true
-  sentiment_block_threshold: 0.60  # Block if contrary sentiment > 60%
-  sentiment_min_headlines: 3  # Minimum headlines required
-  
-  # Permissive mode (bypass sklearn gates on version mismatch)
-  permissive_mode: false
-  bypass_risk_gate_in_permissive: false
-  
-  # Confidence calibration
-  enable_calibration: true
-  calibration_method: platt  # 'platt', 'isotonic', or 'none'
+  # Regime-specific LightGBM model settings
+  lgbm:
+    enabled: true
+    train_per_regime: true    # Train 5 separate models
+    min_samples_per_regime: 100
+    fallback_regime: WEAK_TREND
 
 # ----- BUDDY CONFIGURATION -----
 buddy:
@@ -324,10 +456,10 @@ buddy:
     combined_w_dir: 0.6
     combined_w_conf: 0.4
     steps_per_execution: 10
-    shared_encoder: false
+    shared_encoder: true
     fit_verbose: 2
-    mixed_precision: false
-    jit_compile: false
+    mixed_precision: true
+    jit_compile: true
     cache_val: true
     no_train_smoothing: true  # CRITICAL: Disable M5 resampling for H1 data
     # top_features: 20  # DISABLED: Conflicts with warm-start. Use --all-features (enabled by default)
@@ -372,7 +504,7 @@ buddy:
   
   # ----- META-LABELING -----
   meta_labeling:
-    enabled: true
+    enabled: true  # Disabled: meta_labeler.pkl not trained yet
     n_estimators: 200
     max_depth: 4
     learning_rate: 0.1
@@ -408,7 +540,7 @@ performance:
 
 # ----- DATA AUGMENTATION -----
 augmentation:
-  enabled: false
+  enabled: true
   factor: 2
   noise_level: 0.01
   use_mixup: true
@@ -421,6 +553,40 @@ diagnostics:
   log_gradient_stats: true
   log_feature_importance: true
   save_label_distribution: true
+
+# ----- VALIDATION METRICS SETTINGS -----
+# Configuration for Phase 2 validation metrics (VaR, RAPI, Baselines)
+validation_metrics:
+  # VaR Backtesting Configuration
+  var:
+    enabled: true
+    lambda_param: 0.94       # EWMA decay factor (RiskMetrics standard)
+    confidence_level: 0.95   # 95% VaR (5% target violation rate)
+    violation_target: 0.05   # Expected violation rate
+    min_history: 60          # Minimum warmup period for EWMA
+    significance_level: 0.05 # Alpha for Kupiec/Christoffersen tests
+  
+  # RAPI (Risk-Adjusted Performance Index) Configuration
+  rapi:
+    enabled: true
+    min_rapi: 1.30           # Minimum acceptable RAPI score
+    annualization_factor: 15.87  # sqrt(252) for daily
+    # Per-pair transaction costs (round-trip %)
+    costs_by_tier:
+      major: 0.005           # 0.5% (EUR_USD, GBP_USD, USD_JPY, USD_CHF)
+      cross: 0.007           # 0.7% (AUD_USD, NZD_USD, USD_CAD, EUR_GBP)
+      emerging: 0.009        # 0.9% (USD_MXN, USD_TRY, USD_ZAR)
+  
+  # Baseline Benchmarking Configuration
+  baseline:
+    enabled: true
+    run_on_summary_only: true  # Only compute on final summary (saves compute)
+    methods:
+      - buy_hold              # Always long benchmark
+      - random_walk           # Random 50/50 (lower bound)
+      - sma_crossover         # SMA(5) > SMA(20)
+      - momentum              # 5-period momentum
+    min_outperformance: 0.05  # Model should beat baselines by 5%+
 
 # ----- BUDDY SCANNER SETTINGS -----
 # Configuration for buddy scan command

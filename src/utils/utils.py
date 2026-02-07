@@ -78,6 +78,7 @@ def setup_logging(
     enable_wandb_logging=True,
     enable_checkpointing_logging=True,
     enable_tensorboard_logging=True,
+    quiet=True,
 ):
     """
     Setup comprehensive logging configuration for the ML engine.
@@ -91,13 +92,19 @@ def setup_logging(
         enable_wandb_logging: Enable Weights & Biases logging
         enable_checkpointing_logging: Enable checkpoint logging
         enable_tensorboard_logging: Enable TensorBoard logging
-
+        quiet: If True (default), console shows only WARNING+. Full DEBUG logs always go to file.
+        
     Returns:
         Configured logger instance
+        
+    Note:
+        In quiet mode (default), verbose logs are captured to train.log for debugging failures.
+        Use --verbose flag to see full console output.
     """
     logger = logging.getLogger()
-    logger.setLevel(level)
-
+    # Root logger always at DEBUG so file handlers get everything
+    logger.setLevel(logging.DEBUG)
+    
     # Clear existing handlers to avoid duplicates
     if logger.handlers:
         logger.handlers.clear()
@@ -107,18 +114,34 @@ def setup_logging(
         "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
+    
+    # Console handler: WARNING in quiet mode, level in verbose mode
     if enable_logging:
         # Use stdout so `conda run` doesn't buffer console logs until process exit.
         # (Default StreamHandler uses stderr, which can appear "after" training finishes.)
         # Console shows WARNING+ only; full detail goes to file handlers.
         ch = logging.StreamHandler(stream=sys.stdout)
-        ch.setLevel(console_level if console_level is not None else logging.WARNING)
+        console_level = logging.WARNING if quiet else level
+        ch.setLevel(console_level)
         ch.setFormatter(formatter)
         logger.addHandler(ch)
+    
     base_dir = Path(log_file).parent if log_file else Path.cwd()
+    
+    # Always create train.log with full DEBUG output for debugging failures
+    # This captures verbose output even in quiet mode
+    train_log_path = base_dir / "train.log"
+    try:
+        train_fh = logging.FileHandler(str(train_log_path), mode='a')
+        train_fh.setLevel(logging.DEBUG)
+        train_fh.setFormatter(formatter)
+        logger.addHandler(train_fh)
+    except Exception:
+        pass  # Skip if can't create log file
+    
     if log_file:
         fh = logging.FileHandler(log_file)
-        fh.setLevel(level)
+        fh.setLevel(logging.DEBUG if quiet else level)  # Full logs to file
         fh.setFormatter(formatter)
         logger.addHandler(fh)
     if enable_wandb_logging:

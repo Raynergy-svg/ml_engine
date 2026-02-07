@@ -477,66 +477,26 @@ training:
   jit_compile: false                 # Avoid Metal issues
 ```
 
-#### Apple Silicon Setup
+**TensorFlow versions:** `>=2.16.1,<2.17` with `tensorflow-metal>=1.1.0,<1.3` and `protobuf>=4.23.0,<5.0.0`.
 
-```bash
-# Create conda environment
-conda env create -f environment_tf_metal.yml
+**Note:** TensorFlow 2.18.x has a `down_cast` assertion crash on macOS. Stick to 2.16.x.
 
-# Activate environment
-conda activate tf-metal
+## Intel Mac Settings
 
-# Verify Metal support
-python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
-```
-
-#### Performance Tips
-
-| Setting | Value | Reason |
-|---------|-------|--------|
-| `recurrent_dropout` | `0.0` | Non-zero causes 10x slowdown on Metal |
-| `batch_size` | `64` | Optimal for Metal GPU memory |
-| `mixed_precision` | `false` | Metal doesn't fully support FP16 |
-| `steps_per_execution` | `10` | Reduces Python overhead |
-| `jit_compile` | `false` | Avoids Metal compatibility issues |
-
-### Intel Mac
-
-Uses `ml_engine_py312` conda environment. Auto-detected in [`bin/Buddy`](bin/Buddy):
+Uses `intel` conda environment (Python 3.12). Auto-detected in `bin/Buddy`:
 
 ```bash
 # Auto-detection in bin/Buddy:
 if [[ "$(uname -m)" == "x86_64" ]]; then
-    ENV_NAME="${BUDDY_CONDA_ENV:-ml_engine_py312}"
+    ENV_NAME="${BUDDY_CONDA_ENV:-intel}"
 else
     ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
 fi
 ```
 
-#### Intel Mac Setup
+**TensorFlow versions:** `>=2.16.1,<2.17` with `protobuf>=4.23.0,<5.0.0`.
 
-```bash
-# Create conda environment
-conda env create -f environment_intel_mac.yml
-
-# Activate environment
-conda activate ml_engine_py312
-
-# Verify installation
-python -c "import tensorflow as tf; print(tf.__version__)"
-```
-
-#### Performance Tips
-
-| Setting | Value | Reason |
-|---------|-------|--------|
-| `recurrent_dropout` | `0.1-0.2` | Can use non-zero on CPU |
-| `batch_size` | `32-64` | Adjust based on available RAM |
-| `mixed_precision` | `true` | Can use FP16 for speedup |
-| `steps_per_execution` | `1` | Not needed for CPU |
-| `jit_compile` | `true` | Can use XLA compilation |
-
----
+**Note:** TensorFlow 2.18.x has a `down_cast` assertion crash on macOS. Stick to 2.16.x. Both environments now use TensorFlow 2.16+ (Keras 3.x) for consistency. See `docs/ENVIRONMENT_SETUP.md` for details.
 
 ## Code Patterns
 
@@ -1245,139 +1205,111 @@ pip install tf2onnx onnxruntime
 pip install wandb
 ```
 
-### Advanced Features
+## Walk-Forward Cross-Validation
 
-#### Hyperparameter Optimization with Optuna
+### Overview
+
+Walk-forward cross-validation (WF-CV) is implemented to provide robust time-series validation that prevents look-ahead bias. Models are trained and evaluated on temporally ordered data using sliding windows.
+
+### Configuration (config/config_improved_H1.yaml)
+
+```yaml
+walkforward:
+  enabled: true                    # Enable walk-forward validation
+  mode: "rolling"                  # "rolling" (sliding) or "expanding"
+  n_splits: 5                      # Number of folds
+  train_size: 0.60                 # Training window (60%)
+  val_size: 0.10                   # Validation (10%)
+  test_size: 0.10                  # Test (10%)
+  gap: 24                          # Gap between train/val (24 H1 bars = 1 day)
+  min_train_size: 2000             # Minimum samples per fold
+  
+  # Purged K-Fold (advanced)
+  use_purged_kfold: true           # Enable purged CV
+  purge_gap: 24                    # Purge near test (1 day)
+  embargo_gap: 12                  # Embargo after train (12 hours)
+  
+  # Model retraining
+  retrain_per_fold: true           # Retrain for each fold (recommended)
+  aggregate_method: "best"         # "best", "average", or "ensemble"
+```
+
+### Usage
 
 ```python
-import optuna
+from src.training.buddy_training_helpers import train_with_walkforward_validation
+from src.training.modular_trainers import TransformerDirectionTrainer, TrainerConfig
 
-def objective(trial):
-    """Optuna objective function for hyperparameter tuning."""
-    params = {
-        'learning_rate': trial.suggest_float('learning_rate', 1e-5, 1e-2, log=True),
-        'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128]),
-        'dropout': trial.suggest_float('dropout', 0.1, 0.5),
-    }
-    
-    # Train model with params
-    model = train_model(params)
-    accuracy = evaluate_model(model)
-    
-    return accuracy
-
-# Run optimization
-study = optuna.create_study(direction='maximize')
-study.optimize(objective, n_trials=100)
+# Train with walk-forward validation
+trainer, metrics = train_with_walkforward_validation(
+    trainer_class=TransformerDirectionTrainer,
+    trainer_config=TrainerConfig(),
+    X_train=X_train,
+    y_train=y_train,
+    X_val=X_val,
+    y_val=y_val,
+    feature_names=feature_names,
+    instrument="EUR_USD",
+    wf_config=config.get('walkforward'),
+    console=console,
+)
 ```
 
-#### Experiment Tracking with Weights & Biases
+### Key Features
+
+- **Rolling Mode**: Sliding window keeps recent data relevant (recommended for FX)
+- **Expanding Mode**: Growing window uses all historical data
+- **Per-Fold Retraining**: Model retrained for each time period (realistic estimates)
+- **Purged K-Fold**: Additional gaps prevent information leakage
+- **Temporal Ordering**: Maintains chronological order (no look-ahead bias)
+
+### Visual Guide
+
+```
+Rolling Mode (Default):
+|---TRAIN---|gap|VAL|TEST|
+     |---TRAIN---|gap|VAL|TEST|
+          |---TRAIN---|gap|VAL|TEST|
+
+Expanding Mode:
+|-TRAIN-|gap|VAL|TEST|
+|----TRAIN----|gap|VAL|TEST|
+|--------TRAIN--------|gap|VAL|TEST|
+```
+
+### Timeframe-Specific Settings
+
+| Timeframe | Gap (bars) | Gap (time) | Train Size | N Splits |
+|-----------|------------|------------|------------|----------|
+| M5        | 288        | 1 day      | 0.70       | 7        |
+| M15       | 96         | 1 day      | 0.65       | 6        |
+| H1        | 24         | 1 day      | 0.60       | 5        |
+| H4        | 6          | 1 day      | 0.60       | 5        |
+| D1        | 5          | 1 week     | 0.50       | 4        |
+
+### Expected Performance
+
+- Walk-forward typically **2-8% lower** than standard training
+- This is normal and represents realistic out-of-sample performance
+- High variance (std > 0.05) indicates model instability
+- Use `aggregate_method: "best"` to select best-performing fold
+
+### Files
+
+- `src/training/walkforward_validation.py`: Core implementation
+- `src/training/buddy_training_helpers.py`: `train_with_walkforward_validation()` wrapper
+- `tests/test_walkforward_config.py`: Test suite
+- `docs/WALKFORWARD_VALIDATION_GUIDE.md`: Complete documentation
+- `docs/WALKFORWARD_QUICK_REF.md`: Quick reference
+
+### Disable Walk-Forward
+
+Set `enabled: false` in config or pass `wf_config=None`:
 
 ```python
-import wandb
-
-# Initialize wandb
-wandb.init(project="ml-engine", config=config)
-
-# Log metrics during training
-wandb.log({
-    'train_loss': train_loss,
-    'val_loss': val_loss,
-    'learning_rate': current_lr
-})
-
-# Finish run
-wandb.finish()
+trainer, metrics = train_with_walkforward_validation(
+    ...,
+    wf_config=None,  # Use standard training
+)
 ```
 
----
-
-## Appendix
-
-### Gitignored Files
-
-These are machine-specific and NOT tracked:
-
-```
-# Model artifacts
-trained_data/
-*.pkl
-*.keras
-*.h5
-*.tflite
-
-# Data files
-market_data/*.csv
-*.csv
-
-# Log files
-*.log
-logs/
-
-# Environment
-.env
-.venv/
-venv/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-```
-
-### Useful Commands
-
-```bash
-# Check model file sizes
-du -sh trained_data/models/*
-
-# Find large files
-find . -type f -size +100M -exec ls -lh {} \;
-
-# Count lines of code
-find src -name "*.py" | xargs wc -l
-
-# Run linter
-flake8 src/
-
-# Run formatter
-black src/
-
-# Type checking
-mypy src/
-```
-
-### Resources
-
-| Resource | URL |
-|----------|-----|
-| TensorFlow Metal | https://developer.apple.com/metal/tensorflow-plugin/ |
-| OANDA API Docs | https://developer.oanda.com/ |
-| Keras Documentation | https://keras.io/ |
-| Pytest Documentation | https://docs.pytest.org/ |
-
----
-
-## Changelog
-
-### Version 2.1.0 (2025-02-07)
-- Added comprehensive documentation structure
-- Improved error handling guidelines
-- Added performance optimization section
-- Enhanced best practices and patterns
-- Added improvement roadmap
-
-### Version 2.0.0 (2025-01-XX)
-- Implemented prediction collapse detection system
-- Added meta-labeling gate
-- Improved walk-forward validation
-- Enhanced market intelligence features
-
----
-
-**End of Document**

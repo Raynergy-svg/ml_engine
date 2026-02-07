@@ -17,7 +17,7 @@ Schedule (launchd):
 
 Email Alerts:
     - Only sent on FAILURE (no spam on success)
-    - Recipient: set via RETRAIN_EMAIL_RECIPIENT env var
+    - Recipient: dcertan84@gmail.com
 """
 
 import argparse
@@ -59,8 +59,8 @@ DEFAULT_SCANNER_PAIRS = [
     "EUR_AUD", "GBP_AUD", "EUR_CHF", "GBP_CHF",
 ]
 
-# Email configuration (set RETRAIN_EMAIL_RECIPIENT env var)
-EMAIL_RECIPIENT = os.getenv("RETRAIN_EMAIL_RECIPIENT", "")
+# Email configuration
+EMAIL_RECIPIENT = "dcertan84@gmail.com"
 EMAIL_SENDER = os.getenv("RETRAIN_EMAIL_SENDER", "mlengine-retrain@localhost")
 SMTP_HOST = os.getenv("RETRAIN_SMTP_HOST", "localhost")
 SMTP_PORT = int(os.getenv("RETRAIN_SMTP_PORT", "25"))

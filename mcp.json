@@ -1,5 +1,4 @@
 {
-  "$schema": "https://json.schemastore.org/mcp.json",
   "mcpServers": {
     "memory": {
       "command": "npx",
@@ -43,6 +42,17 @@
       "description": "Current model state and version tracking",
       "ttlDays": null,
       "fields": ["model_name", "accuracy", "trained_pairs", "version", "last_updated"]
+    }
+  },
+  "mcp": {
+    "servers": {
+      "context7": {
+        "type": "http",
+        "url": "https://mcp.context7.com/mcp",
+        "headers": {
+          "CONTEXT7_API_KEY": "ctx7sk-8a6a8955-6ae2-4755-a1aa-1fe88ece54c8"
+        }
+      }
     }
   }
 }

@@ -3,24 +3,16 @@ Scanner Execution Module.
 
 Provides ExecutionManager for trade execution with:
 - Daily trade limit enforcement
-- ATR-based SL/TP calculation (H1 timeframe optimized)
-- Confidence-tiered position multipliers (0.5x/1.0x/2.0x)
+- ATR-based SL/TP calculation
+- High probability TP bonus
 - Kelly-based position sizing
 - Live NAV fetching for compounding
 - RL position sizer integration
-- Trade journal sync for retraining
-
-ALL confidence values are 0-1 scale internally.
-Position multiplier tiers:
-- 0.50-0.65: 0.5x base position (conservative)
-- 0.65-0.80: 1.0x base position (standard)  
-- 0.80+: 2.0x base position (aggressive)
 """
 
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -42,101 +34,57 @@ PIP_VALUES = {
 
 @dataclass
 class ExecutionConfig:
-    """Configuration for trade execution (H1 timeframe optimized).
-    
-    ALL confidence values are 0-1 scale.
+    """Configuration for trade execution.
     
     Attributes:
         # Position sizing
         account_equity: Account balance (0 = fetch from OANDA)
-        risk_per_trade_pct: Risk percentage per trade (0.02 = 2%)
+        risk_per_trade_pct: Risk percentage per trade (0.05 = 5%)
         leverage: Account leverage (default 50:1)
         position_sizing_enabled: Enable dynamic position sizing
         aggressive_mode: Enable larger position sizes for compounding
         
-        # Confidence-tiered position multipliers (0-1 scale thresholds)
-        confidence_tier_low: Min confidence for 0.5x position (0.50)
-        confidence_tier_medium: Min confidence for 1.0x position (0.65)
-        confidence_tier_high: Min confidence for 2.0x position (0.80)
-        position_multiplier_low: Multiplier for low tier (0.5)
-        position_multiplier_medium: Multiplier for medium tier (1.0)
-        position_multiplier_high: Multiplier for high tier (2.0)
-        
-        # SL/TP settings (H1 optimized)
-        atr_sl_multiplier: ATR multiplier for stop loss (1.5x)
-        atr_tp_multiplier: ATR multiplier for take profit (3.0x)
-        min_sl_pips: Minimum stop loss in pips (15)
-        max_sl_pips: Maximum stop loss in pips (80)
-        min_tp_pips: Minimum take profit in pips (30)
-        max_tp_pips: Maximum base take profit in pips (160)
+        # SL/TP settings
+        atr_sl_multiplier: ATR multiplier for stop loss (1.0 = 1x ATR)
+        atr_tp_multiplier: ATR multiplier for take profit (1.5 = 1.5x ATR)
+        min_sl_pips: Minimum stop loss in pips
+        max_sl_pips: Maximum stop loss in pips (fixed for tight scalping)
+        min_tp_pips: Minimum take profit in pips
+        max_tp_pips: Maximum base take profit in pips
         
         # High probability bonus
-        high_prob_threshold: Confidence threshold for TP bonus (0.80)
-        high_prob_tp_bonus: Extra pips added at high probability (20)
+        high_prob_threshold: Confidence threshold for TP bonus (0.65 = 65%)
+        high_prob_tp_bonus: Extra pips added at high probability
         
         # Daily limits
-        max_trades_per_day: Maximum trades allowed per day (3)
-        
-        # Execution
-        fill_timeout_seconds: Max wait for fill (10)
+        max_trades_per_day: Maximum trades allowed per day
     """
     # Position sizing
     account_equity: float = 0.0  # 0 = fetch from OANDA
-    risk_per_trade_pct: float = 0.02  # 2% risk per trade (H1 standard)
+    risk_per_trade_pct: float = 0.05  # 5% risk per trade
     leverage: int = 50
     position_sizing_enabled: bool = True
-    aggressive_mode: bool = False  # Conservative by default for H1
+    aggressive_mode: bool = True
     
-    # Confidence-tiered position multipliers (0-1 scale)
-    confidence_tier_low: float = 0.50
-    confidence_tier_medium: float = 0.65
-    confidence_tier_high: float = 0.80
-    position_multiplier_low: float = 0.5
-    position_multiplier_medium: float = 1.0
-    position_multiplier_high: float = 2.0
-    
-    # SL/TP settings (H1 optimized)
-    atr_sl_multiplier: float = 1.5
-    atr_tp_multiplier: float = 3.0
+    # SL/TP settings (tight scalping)
+    atr_sl_multiplier: float = 1.0
+    atr_tp_multiplier: float = 1.5
     min_sl_pips: float = 15.0
-    max_sl_pips: float = 80.0  # H1 allows wider stops
-    min_tp_pips: float = 30.0
-    max_tp_pips: float = 160.0  # H1 allows wider targets
+    max_sl_pips: float = 15.0  # Fixed for tight scalping
+    min_tp_pips: float = 20.0
+    max_tp_pips: float = 30.0
     
     # High probability bonus
-    high_prob_threshold: float = 0.80  # 0-1 scale
+    high_prob_threshold: float = 0.65
     high_prob_tp_bonus: float = 20.0
     
     # Daily limits
-    max_trades_per_day: int = 3  # H1 timeframe = fewer trades
-    
-    # Execution
-    fill_timeout_seconds: float = 10.0
-    
-    def get_position_multiplier(self, confidence: float) -> float:
-        """Get position multiplier based on confidence tier.
-        
-        Args:
-            confidence: Confidence score (0-1)
-            
-        Returns:
-            Position multiplier (0.5, 1.0, or 2.0)
-        """
-        if confidence >= self.confidence_tier_high:
-            return self.position_multiplier_high
-        elif confidence >= self.confidence_tier_medium:
-            return self.position_multiplier_medium
-        elif confidence >= self.confidence_tier_low:
-            return self.position_multiplier_low
-        else:
-            return 0.0  # Below minimum, no trade
+    max_trades_per_day: int = 30
 
 
 @dataclass 
 class ExecutionResult:
     """Result of trade execution.
-    
-    ALL confidence values are 0-1 scale.
     
     Attributes:
         success: Whether execution succeeded
@@ -146,14 +94,7 @@ class ExecutionResult:
         lots: Position size in lots
         sl_price: Stop loss price
         tp_price: Take profit price
-        sl_pips: Stop loss distance in pips
-        tp_pips: Take profit distance in pips
-        risk_pct: Risk percentage of account
-        confidence: Trade confidence (0-1)
-        confidence_level: Confidence tier name
-        position_multiplier: Applied position multiplier (0.5/1.0/2.0)
         error: Error message if failed
-        journal_synced: Whether trade was logged to journal
     """
     success: bool
     trade_id: Optional[str] = None
@@ -165,15 +106,8 @@ class ExecutionResult:
     sl_pips: float = 0.0
     tp_pips: float = 0.0
     risk_pct: float = 0.0
-    confidence: float = 0.0
     confidence_level: str = "medium"
-    position_multiplier: float = 1.0
     error: Optional[str] = None
-    journal_synced: bool = False
-    
-    def format_confidence_pct(self) -> str:
-        """Format confidence as percentage for display."""
-        return f"{self.confidence * 100:.0f}%"
 
 
 class ExecutionManager:
@@ -182,14 +116,10 @@ class ExecutionManager:
     Features:
     - Daily trade limit enforcement from OANDA
     - Live NAV fetching for proper compounding
-    - ATR-based SL/TP calculation (H1 optimized)
-    - Confidence-tiered position multipliers (0.5x/1.0x/2.0x)
+    - ATR-based SL/TP calculation
     - High probability TP bonus
     - Kelly-based position sizing
     - RL position sizer integration
-    - Trade journal sync for retraining
-    
-    ALL confidence values are 0-1 scale internally.
     """
     
     def __init__(
@@ -211,7 +141,6 @@ class ExecutionManager:
         self._risk_manager = None
         self._rl_sizer = None
         self._memory_client = None
-        self._trade_journal = None
         
         # Cached account info
         self._cached_nav: Optional[float] = None
@@ -292,70 +221,6 @@ class ExecutionManager:
             self._memory_client = MLEngineMemory()
         except ImportError:
             logger.debug("MemoryClient not available")
-    
-    def _init_trade_journal(self) -> None:
-        """Initialize trade journal for logging."""
-        if self._trade_journal is not None:
-            return
-        
-        try:
-            from src.utils.trade_journal import TradeJournal
-            self._trade_journal = TradeJournal()
-        except ImportError:
-            logger.debug("TradeJournal not available")
-    
-    def _wait_for_fill(
-        self, 
-        order_id: str, 
-        timeout: Optional[float] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Wait for order fill with timeout.
-        
-        Args:
-            order_id: OANDA order ID
-            timeout: Max wait time in seconds (uses config default if None)
-            
-        Returns:
-            Fill transaction dict or None if timeout/error
-        """
-        if not self._init_oanda_client():
-            return None
-        
-        timeout = timeout or self.config.fill_timeout_seconds
-        start_time = time.time()
-        poll_interval = 0.5
-        
-        while (time.time() - start_time) < timeout:
-            try:
-                # Check order status
-                result = self._oanda._request(
-                    'GET',
-                    f'/accounts/{self._oanda._config.account_id}/orders/{order_id}'
-                )
-                order = result.get('order', {})
-                state = order.get('state', '')
-                
-                if state == 'FILLED':
-                    # Order filled, get fill transaction
-                    tx_id = order.get('fillingTransactionID')
-                    if tx_id:
-                        tx_result = self._oanda._request(
-                            'GET',
-                            f'/accounts/{self._oanda._config.account_id}/transactions/{tx_id}'
-                        )
-                        return tx_result.get('transaction', {})
-                    return order
-                elif state in ('CANCELLED', 'REJECTED'):
-                    logger.warning(f"Order {order_id} {state}")
-                    return None
-                    
-            except Exception as e:
-                logger.debug(f"Error checking order {order_id}: {e}")
-            
-            time.sleep(poll_interval)
-        
-        logger.warning(f"Order {order_id} fill timeout after {timeout}s")
-        return None
     
     def fetch_live_nav(self) -> Optional[float]:
         """Fetch live NAV from OANDA for proper compounding.
@@ -582,7 +447,6 @@ class ExecutionManager:
         sl_pips: Optional[float] = None,
         tp_pips: Optional[float] = None,
         lots: Optional[float] = None,
-        position_multiplier: Optional[float] = None,
     ) -> ExecutionResult:
         """Execute a single trade on OANDA.
         
@@ -595,7 +459,6 @@ class ExecutionManager:
             sl_pips: Override stop loss pips
             tp_pips: Override take profit pips
             lots: Override position size in lots
-            position_multiplier: Override position multiplier (0.5/1.0/2.0)
             
         Returns:
             ExecutionResult with trade details
@@ -603,24 +466,11 @@ class ExecutionManager:
         # Check daily limit
         can_trade, reason = self.can_trade()
         if not can_trade:
-            return ExecutionResult(success=False, error=reason, confidence=confidence)
+            return ExecutionResult(success=False, error=reason)
         
         # Initialize OANDA
         if not self._init_oanda_client():
-            return ExecutionResult(success=False, error="OANDA client not available", confidence=confidence)
-        
-        # Get position multiplier from confidence tier if not provided
-        if position_multiplier is None:
-            position_multiplier = self.config.get_position_multiplier(confidence)
-        
-        # Check if confidence is below minimum tier
-        if position_multiplier <= 0:
-            return ExecutionResult(
-                success=False, 
-                error=f"Confidence {confidence:.0%} below minimum tier ({self.config.confidence_tier_low:.0%})",
-                confidence=confidence,
-                position_multiplier=0.0,
-            )
+            return ExecutionResult(success=False, error="OANDA client not available")
         
         # Calculate position sizing if not provided
         if lots is None or sl_pips is None or tp_pips is None:
@@ -634,24 +484,8 @@ class ExecutionManager:
             risk_pct = self.config.risk_per_trade_pct
             conf_level = "custom"
         
-        # Apply position multiplier
-        lots = lots * position_multiplier
-        
         if lots <= 0:
-            return ExecutionResult(
-                success=False, 
-                error="Invalid position size",
-                confidence=confidence,
-                position_multiplier=position_multiplier,
-            )
-        
-        # Determine confidence level from tier
-        if confidence >= self.config.confidence_tier_high:
-            conf_level = "high"
-        elif confidence >= self.config.confidence_tier_medium:
-            conf_level = "medium"
-        else:
-            conf_level = "low"
+            return ExecutionResult(success=False, error="Invalid position size")
         
         # Calculate SL/TP prices
         pip_value = PIP_VALUES.get(pair, 0.0001)
@@ -664,8 +498,6 @@ class ExecutionManager:
             sl_price = current_price + (sl_pips * pip_value)
             tp_price = current_price - (tp_pips * pip_value)
             units = -int(lots * 100_000)
-        
-        journal_synced = False
         
         try:
             result = self._oanda.create_market_order(
@@ -692,26 +524,6 @@ class ExecutionManager:
                     trade_id=trade_id,
                 )
                 
-                # Sync trade journal
-                journal_synced = self._sync_trade_to_journal(
-                    pair=pair,
-                    direction=direction,
-                    confidence=confidence,
-                    lots=lots,
-                    entry=fill_price,
-                    sl_price=sl_price,
-                    tp_price=tp_price,
-                    trade_id=trade_id,
-                    position_multiplier=position_multiplier,
-                )
-                
-                logger.info(
-                    f"Trade executed: {pair} {direction} @ {fill_price:.5f} | "
-                    f"Conf: {confidence:.0%} ({conf_level}) | "
-                    f"Mult: {position_multiplier}x | "
-                    f"Lots: {lots:.2f} | SL: {sl_pips:.0f} TP: {tp_pips:.0f}"
-                )
-                
                 return ExecutionResult(
                     success=True,
                     trade_id=trade_id,
@@ -723,72 +535,16 @@ class ExecutionManager:
                     sl_pips=sl_pips,
                     tp_pips=tp_pips,
                     risk_pct=risk_pct,
-                    confidence=confidence,
                     confidence_level=conf_level,
-                    position_multiplier=position_multiplier,
-                    journal_synced=journal_synced,
                 )
             else:
                 return ExecutionResult(
                     success=False,
                     error=f"Order rejected: {result}",
-                    confidence=confidence,
-                    position_multiplier=position_multiplier,
                 )
                 
         except Exception as e:
-            return ExecutionResult(
-                success=False, 
-                error=str(e),
-                confidence=confidence,
-                position_multiplier=position_multiplier,
-            )
-    
-    def _sync_trade_to_journal(
-        self,
-        pair: str,
-        direction: str,
-        confidence: float,
-        lots: float,
-        entry: float,
-        sl_price: float,
-        tp_price: float,
-        trade_id: str,
-        position_multiplier: float,
-    ) -> bool:
-        """Sync trade to trade journal.
-        
-        Args:
-            All trade details
-            
-        Returns:
-            True if synced successfully
-        """
-        self._init_trade_journal()
-        
-        if self._trade_journal is None:
-            return False
-        
-        try:
-            self._trade_journal.add_trade({
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "instrument": pair,
-                "direction": direction,
-                "confidence": confidence,
-                "confidence_pct": f"{confidence * 100:.0f}%",
-                "position_multiplier": position_multiplier,
-                "lots": lots,
-                "entry": entry,
-                "sl": sl_price,
-                "tp": tp_price,
-                "trade_id": trade_id,
-                "model": "scanner",
-                "account_balance": self._cached_nav or self.config.account_equity,
-            })
-            return True
-        except Exception as e:
-            logger.debug(f"Failed to sync trade to journal: {e}")
-            return False
+            return ExecutionResult(success=False, error=str(e))
     
     def execute_trades(
         self,

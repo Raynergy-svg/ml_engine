@@ -21,8 +21,8 @@ model_path = Path('trained_data/models/EUR_USD/transformer_direction.keras')
 model = keras.models.load_model(str(model_path), compile=False)
 
 # Load real data
-from src.utils.oanda_practice import OandaPracticeClient
-from src.utils.fx_paper import candles_to_ohlcv_df
+from oanda_practice import OandaPracticeClient
+from fx_paper import candles_to_ohlcv_df
 from src.core.modular_data_loaders import compute_normalized_features
 from src.data.feature_engineering import FeatureEngineering
 

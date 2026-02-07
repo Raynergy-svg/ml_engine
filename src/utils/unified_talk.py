@@ -544,7 +544,7 @@ def _fx_trade_gate(ctx: "TalkContext", *, instrument: str, action: str) -> tuple
 
     Returns: (ok, human_reason, confidence)
     """
-    import src.risk.fx_guardrails as fxg
+    import fx_guardrails as fxg
     from src.utils.fx_paper import atr as fx_atr
     from src.utils.fx_paper import spread_pips_from_df
     from src.utils.reasoning_enhanced import fx_confidence_v1

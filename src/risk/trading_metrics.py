@@ -25,7 +25,7 @@ Reference: MADL optimization and RAPI metrics from quantitative finance research
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Optional, Tuple
 

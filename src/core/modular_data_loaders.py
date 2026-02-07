@@ -22,12 +22,665 @@ We use:
 from __future__ import annotations
 
 import logging
+import pickle
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# VALID INSTRUMENTS (shared with main.py)
+# =============================================================================
+
+VALID_INSTRUMENTS = [
+    'EUR_USD', 'GBP_USD', 'USD_JPY', 'USD_CHF', 'AUD_USD',
+    'USD_CAD', 'NZD_USD', 'EUR_GBP', 'EUR_JPY', 'GBP_JPY',
+]
+
+
+# =============================================================================
+# PER-PAIR NORMALIZATION STATS
+# =============================================================================
+
+def get_pair_normalization_stats(
+    df: pd.DataFrame,
+    instrument: str,
+    feature_cols: Optional[List[str]] = None,
+    train_idx: Optional[np.ndarray] = None,
+) -> Dict[str, Dict[str, float]]:
+    """
+    Compute per-pair normalization statistics for multi-pair training.
+    
+    Returns pair-specific mean/std for each feature, computed from training
+    data only to prevent data leakage.
+    
+    Args:
+        df: DataFrame with features
+        instrument: Pair name (e.g., 'EUR_USD')
+        feature_cols: List of feature columns to compute stats for.
+                      If None, uses all return-based columns.
+        train_idx: Training indices. If None, uses first 70% of data.
+    
+    Returns:
+        Dict mapping feature names to {mean, std, min, max, p25, p75}
+    """
+    if feature_cols is None:
+        # Default to return-based features (most affected by pair volatility)
+        feature_cols = [c for c in df.columns if 'return' in c.lower()]
+    
+    # Use training data only
+    if train_idx is None:
+        train_end = int(len(df) * 0.7)
+        train_data = df.iloc[:train_end]
+    else:
+        train_data = df.iloc[train_idx]
+    
+    stats = {}
+    for col in feature_cols:
+        if col not in train_data.columns:
+            continue
+        
+        values = train_data[col].values
+        values = values[np.isfinite(values)]  # Remove NaN/inf
+        
+        if len(values) == 0:
+            stats[col] = {'mean': 0.0, 'std': 1.0, 'min': 0.0, 'max': 1.0, 'p25': 0.0, 'p75': 1.0}
+            continue
+        
+        stats[col] = {
+            'mean': float(np.mean(values)),
+            'std': float(np.std(values)) if np.std(values) > 1e-10 else 1.0,
+            'min': float(np.min(values)),
+            'max': float(np.max(values)),
+            'p25': float(np.percentile(values, 25)),
+            'p75': float(np.percentile(values, 75)),
+        }
+    
+    logger.info(f"Computed normalization stats for {instrument}: {len(stats)} features")
+    return stats
+
+
+def save_pair_normalization_stats(
+    stats: Dict[str, Dict[str, float]],
+    instrument: str,
+    base_path: str = "trained_data/models",
+) -> Path:
+    """
+    Save per-pair normalization statistics to disk.
+    
+    Args:
+        stats: Normalization stats from get_pair_normalization_stats()
+        instrument: Pair name
+        base_path: Base directory for model artifacts
+    
+    Returns:
+        Path to saved file
+    """
+    save_dir = Path(base_path) / instrument
+    save_dir.mkdir(parents=True, exist_ok=True)
+    
+    save_path = save_dir / "normalization_stats.pkl"
+    
+    with open(save_path, 'wb') as f:
+        pickle.dump({
+            'instrument': instrument,
+            'stats': stats,
+        }, f)
+    
+    logger.info(f"Saved normalization stats to {save_path}")
+    return save_path
+
+
+def load_pair_normalization_stats(
+    instrument: str,
+    base_path: str = "trained_data/models",
+) -> Optional[Dict[str, Dict[str, float]]]:
+    """
+    Load per-pair normalization statistics from disk.
+    
+    Args:
+        instrument: Pair name
+        base_path: Base directory for model artifacts
+    
+    Returns:
+        Normalization stats dict or None if not found
+    """
+    load_path = Path(base_path) / instrument / "normalization_stats.pkl"
+    
+    if not load_path.exists():
+        logger.warning(f"No normalization stats found at {load_path}")
+        return None
+    
+    with open(load_path, 'rb') as f:
+        data = pickle.load(f)
+    
+    logger.info(f"Loaded normalization stats for {data.get('instrument', instrument)}")
+    return data.get('stats', data)
+
+
+def apply_pair_normalization(
+    df: pd.DataFrame,
+    stats: Dict[str, Dict[str, float]],
+    feature_cols: Optional[List[str]] = None,
+) -> pd.DataFrame:
+    """
+    Apply per-pair normalization using pre-computed statistics.
+    
+    Z-score normalizes features using pair-specific mean/std to prevent
+    bias toward high-volatility instruments in joint training.
+    
+    Args:
+        df: DataFrame with features
+        stats: Normalization stats from get_pair_normalization_stats()
+        feature_cols: Feature columns to normalize. If None, normalizes all in stats.
+    
+    Returns:
+        DataFrame with normalized features (suffixed with '_zscore')
+    """
+    df = df.copy()
+    
+    if feature_cols is None:
+        feature_cols = list(stats.keys())
+    
+    for col in feature_cols:
+        if col not in df.columns or col not in stats:
+            continue
+        
+        col_stats = stats[col]
+        mean = col_stats.get('mean', 0.0)
+        std = col_stats.get('std', 1.0)
+        
+        if std < 1e-10:
+            std = 1.0
+        
+        # Z-score normalization
+        zscore_col = f"{col}_zscore"
+        df[zscore_col] = (df[col] - mean) / std
+        
+        # Clip extreme values
+        df[zscore_col] = df[zscore_col].clip(-5, 5)
+    
+    return df
+
+
+# =============================================================================
+# INSTRUMENT ONE-HOT ENCODING
+# =============================================================================
+
+def encode_instrument_onehot(
+    instrument: str,
+    instruments: Optional[List[str]] = None,
+) -> np.ndarray:
+    """
+    Create one-hot encoding for an instrument.
+    
+    Used for joint multi-pair training to identify which pair the features
+    belong to. Enables model to learn pair-specific patterns.
+    
+    Args:
+        instrument: Pair name (e.g., 'EUR_USD')
+        instruments: List of all instruments. If None, uses VALID_INSTRUMENTS.
+    
+    Returns:
+        One-hot encoded array of shape (n_instruments,)
+    
+    Example:
+        >>> encode_instrument_onehot('EUR_USD')
+        array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
+    """
+    if instruments is None:
+        instruments = VALID_INSTRUMENTS
+    
+    n_instruments = len(instruments)
+    encoding = np.zeros(n_instruments, dtype=np.float32)
+    
+    if instrument in instruments:
+        idx = instruments.index(instrument)
+        encoding[idx] = 1.0
+    else:
+        logger.warning(f"Unknown instrument {instrument}, encoding as zeros")
+    
+    return encoding
+
+
+def get_instrument_feature_names(instruments: Optional[List[str]] = None) -> List[str]:
+    """
+    Get feature names for instrument one-hot encoding.
+    
+    Args:
+        instruments: List of instruments. If None, uses VALID_INSTRUMENTS.
+    
+    Returns:
+        List of feature names like ['instrument_EUR_USD', 'instrument_GBP_USD', ...]
+    """
+    if instruments is None:
+        instruments = VALID_INSTRUMENTS
+    
+    return [f"instrument_{inst}" for inst in instruments]
+
+
+def append_instrument_features(
+    X: np.ndarray,
+    instrument: str,
+    instruments: Optional[List[str]] = None,
+    original_feature_names: Optional[List[str]] = None,
+) -> Tuple[np.ndarray, List[str]]:
+    """
+    Append instrument one-hot encoding to feature matrix.
+    
+    Used for joint multi-pair training to include instrument identity
+    in the feature set for XGBoost/RF/Ridge models.
+    
+    Args:
+        X: Feature matrix of shape (n_samples, n_features)
+        instrument: Pair name
+        instruments: List of all instruments
+        original_feature_names: Feature names from the data loader (optional)
+    
+    Returns:
+        Tuple of (augmented_X, combined_feature_names)
+    """
+    encoding = encode_instrument_onehot(instrument, instruments)
+    
+    # Broadcast encoding to all samples
+    n_samples = X.shape[0]
+    instrument_features = np.tile(encoding, (n_samples, 1))
+    
+    # Concatenate
+    X_augmented = np.hstack([X, instrument_features])
+    
+    # Build complete feature names list
+    instrument_feature_names = get_instrument_feature_names(instruments)
+    
+    if original_feature_names is not None:
+        feature_names = list(original_feature_names) + instrument_feature_names
+    else:
+        # Generate placeholder names for original features
+        n_original = X.shape[1]
+        feature_names = [f'feature_{i}' for i in range(n_original)] + instrument_feature_names
+    
+    return X_augmented, feature_names
+
+
+# =============================================================================
+# 5-CLASS MARKET REGIME CLASSIFICATION
+# =============================================================================
+
+# Regime constants for consistent labeling
+REGIME_STRONG_TREND = 0
+REGIME_WEAK_TREND = 1
+REGIME_CHOP = 2
+REGIME_MEAN_REVERT = 3
+REGIME_BREAKOUT = 4
+
+REGIME_NAMES = {
+    REGIME_STRONG_TREND: 'STRONG_TREND',
+    REGIME_WEAK_TREND: 'WEAK_TREND',
+    REGIME_CHOP: 'CHOP',
+    REGIME_MEAN_REVERT: 'MEAN_REVERT',
+    REGIME_BREAKOUT: 'BREAKOUT',
+}
+
+REGIME_IDS = {v: k for k, v in REGIME_NAMES.items()}
+
+
+class RegimeConfig:
+    """Configuration for 5-class regime detection."""
+    
+    # ADX thresholds
+    adx_strong_trend: float = 40.0   # ADX >= 40 = strong trend
+    adx_weak_trend: float = 25.0     # ADX 25-40 = weak trend
+    adx_chop: float = 20.0           # ADX < 20 = chop/ranging
+    
+    # RSI thresholds for mean reversion
+    rsi_extreme_low: float = 30.0    # RSI < 30 = oversold
+    rsi_extreme_high: float = 70.0   # RSI > 70 = overbought
+    
+    # ATR expansion ratio for breakout detection
+    atr_expansion_ratio: float = 1.3  # Current ATR > 1.3x recent average
+    
+    # Breakout ADX threshold (rising but not yet trending)
+    breakout_adx_max: float = 30.0
+    
+    # Regime transition cooldown
+    transition_cooldown_bars: int = 3
+    
+    # Minimum confidence to report
+    min_regime_confidence: float = 0.6
+
+
+def classify_market_regime(
+    df: pd.DataFrame,
+    config: Optional[RegimeConfig] = None,
+    return_confidence: bool = True,
+) -> Tuple[pd.Series, pd.Series] if return_confidence else pd.Series:
+    """
+    Classify market into 5 regimes based on ADX, RSI, and ATR dynamics.
+    
+    Regimes:
+    - STRONG_TREND (0): ADX >= 40 + high ATR - strong directional momentum
+    - WEAK_TREND (1): ADX 25-40 - moderate trend, use tighter stops
+    - CHOP (2): ADX < 20 + neutral RSI - avoid trading
+    - MEAN_REVERT (3): RSI < 30 or > 70 - fade momentum
+    - BREAKOUT (4): ATR expanding 1.3x + ADX rising but < 30 - volatility expansion
+    
+    Args:
+        df: DataFrame with OHLCV data and indicators (adx, rsi, atr_pct_14)
+        config: Regime detection thresholds. Uses defaults if None.
+        return_confidence: If True, returns (regime, confidence) tuple
+    
+    Returns:
+        If return_confidence=True: Tuple of (regime_series, confidence_series)
+        If return_confidence=False: regime_series only
+        
+    Example:
+        >>> regimes, confidences = classify_market_regime(df)
+        >>> print(f"Current regime: {REGIME_NAMES[regimes.iloc[-1]]}")
+    """
+    config = config or RegimeConfig()
+    n = len(df)
+    
+    # Initialize arrays
+    regimes = np.full(n, REGIME_CHOP, dtype=np.int32)  # Default: CHOP (safest)
+    confidences = np.full(n, 0.5, dtype=np.float32)
+    
+    # Extract indicators (compute if missing)
+    if 'adx' not in df.columns:
+        adx = _compute_adx_fast(df)
+    else:
+        adx = df['adx'].values
+    
+    if 'rsi' not in df.columns:
+        rsi = _compute_rsi_fast(df['close'].values)
+    else:
+        rsi = df['rsi'].values
+    
+    if 'atr_pct_14' not in df.columns:
+        atr_pct = _compute_atr_pct_fast(df)
+    else:
+        atr_pct = df['atr_pct_14'].values
+    
+    # Compute ATR expansion (current vs 5-bar rolling mean)
+    atr_ma5 = pd.Series(atr_pct).rolling(5, min_periods=1).mean().values
+    atr_expanding = atr_pct > (atr_ma5 * config.atr_expansion_ratio)
+    
+    # Compute ADX momentum (rising ADX)
+    adx_series = pd.Series(adx)
+    adx_diff = adx_series.diff(3).fillna(0).values  # 3-bar ADX change
+    adx_rising = adx_diff > 2  # ADX increased by > 2 points
+    
+    # Classify each bar
+    for i in range(n):
+        current_adx = adx[i] if not np.isnan(adx[i]) else 20.0
+        current_rsi = rsi[i] if not np.isnan(rsi[i]) else 50.0
+        current_atr_expanding = atr_expanding[i]
+        current_adx_rising = adx_rising[i]
+        
+        # Priority order: MEAN_REVERT > BREAKOUT > STRONG_TREND > WEAK_TREND > CHOP
+        
+        # 1. MEAN_REVERT: Extreme RSI (overrides trend if RSI extreme)
+        if current_rsi < config.rsi_extreme_low or current_rsi > config.rsi_extreme_high:
+            regimes[i] = REGIME_MEAN_REVERT
+            # Confidence based on RSI extremity
+            if current_rsi < config.rsi_extreme_low:
+                confidences[i] = min(1.0, (config.rsi_extreme_low - current_rsi) / 15 + 0.6)
+            else:
+                confidences[i] = min(1.0, (current_rsi - config.rsi_extreme_high) / 15 + 0.6)
+            continue
+        
+        # 2. BREAKOUT: ATR expanding + ADX rising but not yet high
+        if current_atr_expanding and current_adx_rising and current_adx < config.breakout_adx_max:
+            regimes[i] = REGIME_BREAKOUT
+            # Confidence based on ATR expansion magnitude
+            expansion_ratio = atr_pct[i] / max(atr_ma5[i], 1e-10)
+            confidences[i] = min(1.0, 0.5 + (expansion_ratio - 1.0) * 0.3)
+            continue
+        
+        # 3. STRONG_TREND: ADX >= 40
+        if current_adx >= config.adx_strong_trend:
+            regimes[i] = REGIME_STRONG_TREND
+            # Confidence based on ADX strength
+            confidences[i] = min(1.0, 0.6 + (current_adx - 40) / 40)
+            continue
+        
+        # 4. WEAK_TREND: ADX 25-40
+        if current_adx >= config.adx_weak_trend:
+            regimes[i] = REGIME_WEAK_TREND
+            # Confidence based on ADX position in range
+            confidences[i] = 0.5 + (current_adx - 25) / 30
+            continue
+        
+        # 5. CHOP: ADX < 20 (default case)
+        if current_adx < config.adx_chop:
+            regimes[i] = REGIME_CHOP
+            # Lower ADX = higher confidence in chop regime
+            confidences[i] = min(1.0, 0.5 + (config.adx_chop - current_adx) / 20)
+        else:
+            # Ambiguous zone (ADX 20-25): WEAK_TREND with low confidence
+            regimes[i] = REGIME_WEAK_TREND
+            confidences[i] = 0.4
+    
+    # Convert to Series with index
+    regime_series = pd.Series(regimes, index=df.index, name='regime')
+    confidence_series = pd.Series(confidences, index=df.index, name='regime_confidence')
+    
+    if return_confidence:
+        return regime_series, confidence_series
+    return regime_series
+
+
+def _compute_adx_fast(df: pd.DataFrame, period: int = 14) -> np.ndarray:
+    """Fast ADX computation for regime detection."""
+    high = df['high'].values
+    low = df['low'].values
+    close = df['close'].values
+    n = len(close)
+    
+    # True Range
+    tr = np.zeros(n)
+    for i in range(1, n):
+        tr[i] = max(
+            high[i] - low[i],
+            abs(high[i] - close[i-1]),
+            abs(low[i] - close[i-1])
+        )
+    
+    # Directional movement
+    plus_dm = np.zeros(n)
+    minus_dm = np.zeros(n)
+    for i in range(1, n):
+        up_move = high[i] - high[i-1]
+        down_move = low[i-1] - low[i]
+        
+        if up_move > down_move and up_move > 0:
+            plus_dm[i] = up_move
+        if down_move > up_move and down_move > 0:
+            minus_dm[i] = down_move
+    
+    # Smoothed averages (Wilder's smoothing)
+    atr = pd.Series(tr).ewm(span=period, adjust=False).mean().values
+    plus_di = 100 * pd.Series(plus_dm).ewm(span=period, adjust=False).mean().values / np.maximum(atr, 1e-10)
+    minus_di = 100 * pd.Series(minus_dm).ewm(span=period, adjust=False).mean().values / np.maximum(atr, 1e-10)
+    
+    # DX and ADX
+    di_sum = plus_di + minus_di
+    di_diff = np.abs(plus_di - minus_di)
+    dx = 100 * di_diff / np.maximum(di_sum, 1e-10)
+    adx = pd.Series(dx).ewm(span=period, adjust=False).mean().values
+    
+    return adx
+
+
+def _compute_rsi_fast(close: np.ndarray, period: int = 14) -> np.ndarray:
+    """Fast RSI computation for regime detection."""
+    n = len(close)
+    delta = np.diff(close)
+    
+    gains = np.zeros(n)
+    losses = np.zeros(n)
+    
+    gains[1:] = np.where(delta > 0, delta, 0)
+    losses[1:] = np.where(delta < 0, -delta, 0)
+    
+    avg_gain = pd.Series(gains).ewm(span=period, adjust=False).mean().values
+    avg_loss = pd.Series(losses).ewm(span=period, adjust=False).mean().values
+    
+    rs = avg_gain / np.maximum(avg_loss, 1e-10)
+    rsi = 100 - (100 / (1 + rs))
+    
+    return rsi
+
+
+def _compute_atr_pct_fast(df: pd.DataFrame, period: int = 14) -> np.ndarray:
+    """Fast ATR percentage computation for regime detection."""
+    high = df['high'].values
+    low = df['low'].values
+    close = df['close'].values
+    n = len(close)
+    
+    tr_pct = np.zeros(n)
+    for i in range(1, n):
+        tr = max(
+            high[i] - low[i],
+            abs(high[i] - close[i-1]),
+            abs(low[i] - close[i-1])
+        )
+        tr_pct[i] = tr / max(close[i-1], 1e-10)
+    
+    atr_pct = pd.Series(tr_pct).rolling(period, min_periods=1).mean().values
+    return atr_pct
+
+
+# =============================================================================
+# VOLATILITY REGIME CLASSIFICATION (FOR TCN TRAINING)
+# =============================================================================
+
+# Volatility regime constants
+VOL_REGIME_LOW = 0
+VOL_REGIME_NORMAL = 1
+VOL_REGIME_HIGH = 2
+VOL_REGIME_EXTREME = 3
+
+VOL_REGIME_NAMES = {
+    VOL_REGIME_LOW: 'LOW',
+    VOL_REGIME_NORMAL: 'NORMAL',
+    VOL_REGIME_HIGH: 'HIGH',
+    VOL_REGIME_EXTREME: 'EXTREME',
+}
+
+
+@dataclass
+class VolatilityRegimeConfig:
+    """Configuration for volatility regime classification."""
+    lookback_bars: int = 100          # Rolling window for ATR percentile
+    thresholds: List[float] = field(default_factory=lambda: [0.25, 0.60, 0.85])  # Percentile boundaries
+    min_regime_for_trade: int = 2     # Minimum regime to allow trade (2=HIGH)
+    tcn_required: bool = True         # Block trades if TCN unavailable
+
+
+def compute_volatility_regime(
+    df: pd.DataFrame,
+    config: Optional[VolatilityRegimeConfig] = None,
+) -> np.ndarray:
+    """
+    Compute volatility regime labels using rolling ATR percentile.
+    
+    Uses ATR (Average True Range) percentile within a rolling window to classify
+    volatility into 4 regimes:
+    - LOW (0): ATR below 25th percentile - quiet market, avoid trading
+    - NORMAL (1): ATR 25th-60th percentile - average conditions
+    - HIGH (2): ATR 60th-85th percentile - good trading conditions
+    - EXTREME (3): ATR above 85th percentile - high opportunity/risk
+    
+    This is used as a TCN training target for entry timing filtering.
+    
+    Args:
+        df: DataFrame with OHLCV data
+        config: Volatility regime configuration (thresholds, lookback)
+    
+    Returns:
+        np.ndarray of regime labels (0-3) with shape (len(df),)
+    """
+    config = config or VolatilityRegimeConfig()
+    n = len(df)
+    
+    # Compute ATR percentage if not present
+    if 'atr_pct_14' not in df.columns:
+        atr_pct = _compute_atr_pct_fast(df)
+    else:
+        atr_pct = df['atr_pct_14'].values.copy()
+    
+    # Handle NaN/inf values
+    atr_pct = np.nan_to_num(atr_pct, nan=0.0, posinf=0.0, neginf=0.0)
+    
+    # Initialize regime array
+    regimes = np.full(n, VOL_REGIME_NORMAL, dtype=np.int32)  # Default: NORMAL
+    
+    lookback = config.lookback_bars
+    thresholds = config.thresholds  # [0.25, 0.60, 0.85]
+    
+    # Compute rolling percentile rank for each bar
+    for i in range(lookback, n):
+        window = atr_pct[i - lookback:i]
+        current_atr = atr_pct[i]
+        
+        # Skip if window has no variance
+        if np.std(window) < 1e-10:
+            continue
+        
+        # Percentile rank: what fraction of window is <= current value
+        pct_rank = np.sum(window <= current_atr) / len(window)
+        
+        # Classify based on percentile thresholds
+        if pct_rank < thresholds[0]:
+            regimes[i] = VOL_REGIME_LOW
+        elif pct_rank < thresholds[1]:
+            regimes[i] = VOL_REGIME_NORMAL
+        elif pct_rank < thresholds[2]:
+            regimes[i] = VOL_REGIME_HIGH
+        else:
+            regimes[i] = VOL_REGIME_EXTREME
+    
+    # Fill initial bars with NORMAL (insufficient lookback)
+    regimes[:lookback] = VOL_REGIME_NORMAL
+    
+    logger.info(f"Volatility regime distribution: "
+                f"LOW={np.sum(regimes==0)}, NORMAL={np.sum(regimes==1)}, "
+                f"HIGH={np.sum(regimes==2)}, EXTREME={np.sum(regimes==3)}")
+    
+    return regimes
+
+
+def get_volatility_regime_from_config(config_dict: dict) -> VolatilityRegimeConfig:
+    """Create VolatilityRegimeConfig from YAML config dictionary."""
+    vol_config = config_dict.get('volatility_regime', {})
+    return VolatilityRegimeConfig(
+        lookback_bars=vol_config.get('lookback_bars', 100),
+        thresholds=vol_config.get('thresholds', [0.25, 0.60, 0.85]),
+        min_regime_for_trade=vol_config.get('min_regime_for_trade', 2),
+        tcn_required=vol_config.get('tcn_required', True),
+    )
+
+
+def get_regime_distribution(regimes: pd.Series) -> Dict[str, int]:
+    """Get count of samples per regime."""
+    counts = regimes.value_counts().to_dict()
+    return {REGIME_NAMES.get(k, f'UNKNOWN_{k}'): v for k, v in counts.items()}
+
+
+def filter_by_regime(
+    df: pd.DataFrame,
+    regimes: pd.Series,
+    target_regime: int,
+) -> pd.DataFrame:
+    """Filter DataFrame to only include rows matching target regime."""
+    mask = regimes == target_regime
+    return df[mask].copy()
 
 
 # =============================================================================
@@ -384,6 +1037,157 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# =============================================================================
+# FEATURE ALIGNMENT SYSTEM (2025 Best Practice)
+# =============================================================================
+# This system handles the mismatch between stored model features and current
+# pipeline features, preventing unnecessary model retraining cycles.
+
+# Legacy feature name mappings: old_name -> new_name (or list of fallback names)
+LEGACY_FEATURE_MAPPING: Dict[str, List[str]] = {
+    # Time features that may have been renamed or removed
+    'day_cos': ['day_cos', 'day_of_week_cos'],
+    'day_sin': ['day_sin', 'day_of_week_sin'],
+    'is_asian_session': ['is_asian_session', 'asian_session'],
+    'is_london_session': ['is_london_session', 'london_session'],
+    'is_ny_session': ['is_ny_session', 'ny_session'],
+
+    # Volume lag features
+    'volume_lag_20': ['volume_lag_20', 'volume_lag_10', 'volume_sma_20'],
+    'volume_lag_10': ['volume_lag_10', 'volume_lag_5', 'volume_sma_10'],
+
+    # Statistical features
+    'skew_60': ['skew_60', 'skew_20', 'returns_skew'],
+    'kurt_60': ['kurt_60', 'kurt_20', 'returns_kurt'],
+
+    # Feature interaction terms
+    'volume_price_strength': ['volume_price_strength', 'volume_price_confirm', 'volume_ratio'],
+
+    # Normalized feature aliases
+    'rsi_norm': ['rsi_norm', 'rsi', 'rsi_14'],
+    'log_returns_1': ['log_returns_1', 'log_returns', 'returns_1'],
+    'ema_ratio_12': ['ema_ratio_12', 'ema_12', 'ema_ratio'],
+}
+
+# Features to EXCLUDE from RF models (instrument-specific, non-numeric, etc.)
+RF_EXCLUDED_FEATURES = [
+    # Instrument one-hot columns should NOT be model features
+    'instrument_EUR_USD', 'instrument_GBP_USD', 'instrument_USD_JPY',
+    'instrument_USD_CHF', 'instrument_AUD_USD', 'instrument_USD_CAD',
+    'instrument_NZD_USD', 'instrument_EUR_GBP', 'instrument_EUR_JPY',
+    'instrument_GBP_JPY', 'instrument_EUR_AUD', 'instrument_AUD_JPY',
+    # Raw OHLCV data
+    'open', 'high', 'low', 'close', 'volume', 'time', 'timestamp', 'date',
+    # Identifiers
+    'ticker', 'symbol', 'instrument', 'pair',
+]
+
+
+def get_legacy_feature_equivalent(feature_name: str, df: pd.DataFrame) -> Optional[str]:
+    """
+    Find an equivalent feature in the dataframe for a legacy feature name.
+
+    Args:
+        feature_name: The feature name from the stored model
+        df: Current dataframe with features
+
+    Returns:
+        Equivalent feature name found in df, or None if no match
+    """
+    # Direct match
+    if feature_name in df.columns:
+        return feature_name
+
+    # Check legacy mapping
+    if feature_name in LEGACY_FEATURE_MAPPING:
+        for alt_name in LEGACY_FEATURE_MAPPING[feature_name]:
+            if alt_name in df.columns:
+                return alt_name
+
+    # Pattern matching fallback
+    feature_lower = feature_name.lower()
+    for col in df.columns:
+        col_lower = col.lower()
+        # Handle common suffixes/prefixes
+        if feature_lower.replace('_', '') == col_lower.replace('_', ''):
+            return col
+        # Handle numeric suffixes (e.g., 'volatility_20' vs 'volatility_10')
+        base_name = feature_lower.rstrip('0123456789_')
+        if col_lower.startswith(base_name):
+            return col
+
+    return None
+
+
+def align_features_to_model(
+    df: pd.DataFrame,
+    stored_feature_names: List[str],
+    fill_value: float = 0.0,
+) -> np.ndarray:
+    """
+    Align current DataFrame features to match stored model's expected features.
+
+    This function handles the feature dimension mismatch by:
+    1. Using exact feature names when available
+    2. Mapping legacy names to current equivalents
+    3. Filling truly missing features with fill_value
+
+    Args:
+        df: DataFrame with current features
+        stored_feature_names: List of feature names from the stored model
+        fill_value: Value to use for features that cannot be found
+
+    Returns:
+        numpy array of shape (n_rows, n_stored_features)
+    """
+    n_rows = len(df)
+    n_features = len(stored_feature_names)
+    result = np.full((n_rows, n_features), fill_value, dtype=np.float32)
+
+    found_count = 0
+    missing_features = []
+    mapped_features = []
+
+    for i, fname in enumerate(stored_feature_names):
+        # Skip excluded features (fill with 0)
+        if fname in RF_EXCLUDED_FEATURES:
+            continue
+
+        # Try to find equivalent feature
+        equiv_name = get_legacy_feature_equivalent(fname, df)
+
+        if equiv_name is not None:
+            try:
+                result[:, i] = df[equiv_name].values.astype(np.float32)
+                found_count += 1
+                if equiv_name != fname:
+                    mapped_features.append(f"{fname}->{equiv_name}")
+            except (KeyError, ValueError) as e:
+                logger.debug(f"Could not extract feature {fname}: {e}")
+                missing_features.append(fname)
+        else:
+            missing_features.append(fname)
+
+    # Log alignment results
+    missing_pct = len(missing_features) / n_features * 100 if n_features > 0 else 0
+
+    if missing_pct > 50:
+        logger.warning(
+            f"⚠️ RF Feature alignment: {found_count}/{n_features} features found ({100-missing_pct:.1f}%). "
+            f"Model may need retraining. Missing: {missing_features[:10]}..."
+        )
+    elif missing_features:
+        logger.debug(
+            f"RF Feature alignment: {found_count}/{n_features} found. "
+            f"Missing {len(missing_features)}: {missing_features[:5]}..."
+        )
+
+    if mapped_features:
+        logger.debug(f"Mapped {len(mapped_features)} legacy features: {mapped_features[:5]}...")
+
+    return result
+
+
 def get_normalized_feature_names() -> Dict[str, List[str]]:
     """
     Return lists of normalized feature names for each model type.
@@ -450,6 +1254,22 @@ def get_normalized_feature_names() -> Dict[str, List[str]]:
             'volume_ratio_10', 'volume_ratio_20',
             # Returns consistency
             'returns_5', 'returns_10', 'returns_20',
+        ],
+        'volatility': [
+            # ATR-based volatility (core regime indicators)
+            'atr_pct_5', 'atr_pct_10', 'atr_pct_14', 'atr_pct_20',
+            # Rolling volatility (standard deviation of returns)
+            'volatility_5', 'volatility_10', 'volatility_20',
+            # Bollinger Band width (volatility proxy)
+            'bb_width_norm', 'bb_width_20',
+            # Price range (intrabar volatility)
+            'high_low_range',
+            # Returns (recent price movement)
+            'returns_1', 'returns_5', 'returns_10',
+            # Volume (confirms volatility)
+            'volume_ratio_10', 'volume_ratio_20',
+            # ADX (trend strength, low = choppy/volatile)
+            'adx',
         ],
     }
 
@@ -1153,14 +1973,113 @@ def _add_directional_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# Backward compatibility alias
+# =============================================================================
+# TCN DATA LOADER - Explicit (not an alias)
+# =============================================================================
+
 def load_tcn_data(
+    df: pd.DataFrame,
+    split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
+    lookahead: int = 6,
+    threshold: float = 0.001,
+) -> Dict[str, np.ndarray]:
+    """
+    Load data for TCN model (explicit loader, not an alias).
+    
+    Uses the same features and targets as direction model but with
+    TCN-specific documentation and parameters.
+    
+    Features: NORMALIZED directional indicators (instrument-agnostic)
+    Target: Binary direction (1=up, 0=down) over next `lookahead` bars
+    
+    Args:
+        df: DataFrame with OHLCV and features
+        split: (train_frac, val_frac, test_frac)
+        lookahead: Number of bars ahead for direction label
+        threshold: Minimum price change (as fraction) to assign clear label
+    
+    Returns:
+        Dict with X_train, y_train, w_train, X_val, y_val, w_val, 
+        X_test, y_test, w_test, feature_names, label_stats, scaler
+    """
+    logger.info(f"Loading TCN data (threshold={threshold:.3%}, lookahead={lookahead})...")
+    
+    # Reuse direction data loader with TCN-specific parameters
+    result = load_direction_data(df, split, lookahead, threshold)
+    
+    # Add TCN-specific metadata
+    result['model_type'] = 'tcn'
+    result['task'] = 'direction'
+    
+    logger.info(f"TCN data: train={len(result['X_train'])}, val={len(result['X_val'])}, "
+                f"test={len(result['X_test'])}, features={len(result['feature_names'])}")
+    
+    return result
+
+
+# =============================================================================
+# LIGHTGBM DATA LOADER - Explicit (for confidence scoring)
+# =============================================================================
+
+def load_lightgbm_data(
+    df: pd.DataFrame,
+    split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
+    confidence_window: int = 10,
+    instrument: Optional[str] = None,
+    include_instrument_features: bool = False,
+) -> Dict[str, np.ndarray]:
+    """
+    Load data for LightGBM confidence model (explicit loader).
+    
+    Uses the same features and targets as Ridge model but with
+    LightGBM-specific documentation and parameters.
+    
+    Features: NORMALIZED confidence features (instrument-agnostic)
+    Target: Confidence score (0-100)
+    
+    Args:
+        df: DataFrame with OHLCV and features
+        split: (train_frac, val_frac, test_frac)
+        confidence_window: Window for stability calculation
+        instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
+        include_instrument_features: If True, append instrument one-hot encoding
+    
+    Returns:
+        Dict with X_train, y_train, X_val, y_val, X_test, y_test, 
+        feature_names, adx_p25, adx_p75, instrument
+    """
+    logger.info("Loading LightGBM data (confidence scoring)...")
+    
+    # Reuse ridge data loader (same features and targets)
+    result = load_ridge_data(df, split, confidence_window, instrument, include_instrument_features)
+    
+    # Add LightGBM-specific metadata
+    result['model_type'] = 'lightgbm'
+    result['task'] = 'confidence'
+    
+    logger.info(f"LightGBM data: train={len(result['X_train'])}, val={len(result['X_val'])}, "
+                f"test={len(result['X_test'])}, features={len(result['feature_names'])}")
+    
+    return result
+
+
+# =============================================================================
+# BACKWARD COMPATIBILITY - Legacy aliases
+# =============================================================================
+
+# Backward compatibility alias (deprecated - use load_tcn_data instead)
+def load_tcn_data_legacy(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
     lookahead: int = 6,
     threshold: float = 0.005,
 ) -> Dict[str, np.ndarray]:
-    """Backward compatible alias for load_direction_data."""
+    """
+    DEPRECATED: Use load_tcn_data() instead.
+    
+    This is a backward compatibility alias for load_direction_data.
+    """
+    logger.warning("load_tcn_data_legacy() is deprecated, use load_tcn_data() instead")
     return load_direction_data(df, split, lookahead, threshold)
 
 
@@ -1829,6 +2748,8 @@ def load_xgboost_data(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
     momentum_window: int = 10,
+    instrument: Optional[str] = None,
+    include_instrument_features: bool = False,
 ) -> Dict[str, np.ndarray]:
     """
     Load data for XGBoost model: Momentum analysis from normalized returns.
@@ -1842,6 +2763,8 @@ def load_xgboost_data(
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
         momentum_window: Window for momentum calculation
+        instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
+        include_instrument_features: If True, append instrument one-hot encoding
     
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
@@ -1955,15 +2878,28 @@ def load_xgboost_data(
     # Handle NaN/Inf in targets
     y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
     
+    # Optionally append instrument one-hot encoding for joint multi-pair training
+    instrument_feature_names = []
+    if include_instrument_features and instrument is not None:
+        X_train_aug, instrument_feature_names = append_instrument_features(X[train_idx], instrument)
+        X_val_aug, _ = append_instrument_features(X[val_idx], instrument)
+        X_test_aug, _ = append_instrument_features(X[test_idx], instrument)
+        logger.info(f"Added {len(instrument_feature_names)} instrument features for {instrument}")
+    else:
+        X_train_aug = X[train_idx]
+        X_val_aug = X[val_idx]
+        X_test_aug = X[test_idx]
+    
     result = {
-        'X_train': X[train_idx],
+        'X_train': X_train_aug,
         'y_train': y[train_idx],
-        'X_val': X[val_idx],
+        'X_val': X_val_aug,
         'y_val': y[val_idx],
-        'X_test': X[test_idx],
+        'X_test': X_test_aug,
         'y_test': y[test_idx],
-        'feature_names': features,
+        'feature_names': features + instrument_feature_names,
         'momentum_norm_factor': float(norm_factor),  # Save for inference
+        'instrument': instrument,
     }
     
     logger.info(f"XGBoost data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
@@ -1978,6 +2914,8 @@ def load_rf_data(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
     drawdown_horizon: int = 10,
+    instrument: Optional[str] = None,
+    include_instrument_features: bool = False,
 ) -> Dict[str, np.ndarray]:
     """
     Load data for Random Forest model: Risk assessment.
@@ -1991,6 +2929,8 @@ def load_rf_data(
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
         drawdown_horizon: Bars ahead to measure drawdown
+        instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
+        include_instrument_features: If True, append instrument one-hot encoding
     
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
@@ -2127,14 +3067,27 @@ def load_rf_data(
     # Temporal split
     train_idx, val_idx, test_idx = temporal_split(len(X), *split)
     
+    # Optionally append instrument one-hot encoding for joint multi-pair training
+    instrument_feature_names = []
+    if include_instrument_features and instrument is not None:
+        X_train_aug, instrument_feature_names = append_instrument_features(X[train_idx], instrument)
+        X_val_aug, _ = append_instrument_features(X[val_idx], instrument)
+        X_test_aug, _ = append_instrument_features(X[test_idx], instrument)
+        logger.info(f"Added {len(instrument_feature_names)} instrument features for {instrument}")
+    else:
+        X_train_aug = X[train_idx]
+        X_val_aug = X[val_idx]
+        X_test_aug = X[test_idx]
+    
     result = {
-        'X_train': X[train_idx],
+        'X_train': X_train_aug,
         'y_train': y[train_idx],
-        'X_val': X[val_idx],
+        'X_val': X_val_aug,
         'y_val': y[val_idx],
-        'X_test': X[test_idx],
+        'X_test': X_test_aug,
         'y_test': y[test_idx],
-        'feature_names': features,
+        'feature_names': features + instrument_feature_names,
+        'instrument': instrument,
     }
     
     logger.info(f"RF data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
@@ -2149,6 +3102,8 @@ def load_ridge_data(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
     confidence_window: int = 10,
+    instrument: Optional[str] = None,
+    include_instrument_features: bool = False,
 ) -> Dict[str, np.ndarray]:
     """
     Load data for Ridge model: Confidence scoring from NORMALIZED variance and volume.
@@ -2162,6 +3117,8 @@ def load_ridge_data(
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
         confidence_window: Window for stability calculation
+        instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
+        include_instrument_features: If True, append instrument one-hot encoding
     
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
@@ -2303,19 +3260,184 @@ def load_ridge_data(
     # Handle NaN/Inf in targets
     y = np.nan_to_num(y, nan=50.0, posinf=100.0, neginf=0.0)
     
+    # Optionally append instrument one-hot encoding for joint multi-pair training
+    instrument_feature_names = []
+    if include_instrument_features and instrument is not None:
+        X_train_aug, instrument_feature_names = append_instrument_features(X[train_idx], instrument)
+        X_val_aug, _ = append_instrument_features(X[val_idx], instrument)
+        X_test_aug, _ = append_instrument_features(X[test_idx], instrument)
+        logger.info(f"Added {len(instrument_feature_names)} instrument features for {instrument}")
+    else:
+        X_train_aug = X[train_idx]
+        X_val_aug = X[val_idx]
+        X_test_aug = X[test_idx]
+    
     result = {
-        'X_train': X[train_idx],
+        'X_train': X_train_aug,
         'y_train': y[train_idx],
-        'X_val': X[val_idx],
+        'X_val': X_val_aug,
         'y_val': y[val_idx],
-        'X_test': X[test_idx],
+        'X_test': X_test_aug,
         'y_test': y[test_idx],
-        'feature_names': features,
+        'feature_names': features + instrument_feature_names,
         'adx_p25': float(adx_p25),  # Save for inference
         'adx_p75': float(adx_p75),  # Save for inference
+        'instrument': instrument,
     }
     
     logger.info(f"Ridge data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
+    return result
+
+
+# =============================================================================
+# VOLATILITY REGIME DATA LOADER - TCN Entry Timing Filter
+# =============================================================================
+
+def load_volatility_regime_data(
+    df: pd.DataFrame,
+    split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
+    lookback_bars: int = 100,
+    thresholds: List[float] = None,
+    instrument: Optional[str] = None,
+    include_instrument_features: bool = False,
+) -> Dict[str, np.ndarray]:
+    """
+    Load data for TCN volatility regime classification.
+    
+    TCN acts as entry timing filter - only trade when volatility is HIGH or EXTREME.
+    Uses 4-class classification: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME based on ATR percentile.
+    
+    Features: NORMALIZED volatility indicators (ATR, returns volatility, BB width)
+    Target: Volatility regime (0-3) based on rolling ATR percentile
+    
+    Args:
+        df: DataFrame with OHLCV and features
+        split: (train_frac, val_frac, test_frac)
+        lookback_bars: Rolling window for ATR percentile calculation
+        thresholds: Percentile boundaries [LOW/NORMAL, NORMAL/HIGH, HIGH/EXTREME]
+        instrument: Optional pair name for instrument encoding
+        include_instrument_features: If True, append instrument one-hot encoding
+    
+    Returns:
+        Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
+    """
+    if thresholds is None:
+        thresholds = [0.25, 0.60, 0.85]
+    
+    logger.info(f"Loading volatility regime data (lookback={lookback_bars}, thresholds={thresholds})...")
+    
+    # Compute normalized features if not already present
+    if 'returns_1' not in df.columns:
+        df = compute_normalized_features(df)
+    
+    # VOLATILITY-FOCUSED FEATURES for regime classification
+    # TCN needs features that capture volatility patterns at multiple scales
+    volatility_features = [
+        # ATR-based (core volatility measures)
+        'atr_pct_5', 'atr_pct_10', 'atr_pct_14', 'atr_pct_20',
+        # Returns volatility
+        'volatility_5', 'volatility_10', 'volatility_20',
+        # Bollinger Band width (volatility proxy)
+        'bb_width_norm', 'bb_width_20',
+        # Range-based
+        'high_low_range',
+        # Returns for trend context
+        'returns_1', 'returns_5', 'returns_10',
+        # Volume (can indicate volatility shifts)
+        'volume_ratio_10', 'volume_ratio_20',
+        # ADX (trend strength often correlates with volatility)
+        'adx',
+    ]
+    
+    # Get available features
+    features = _ensure_features_exist(df, volatility_features)
+
+    # Fallback patterns if not enough features
+    if len(features) < 8:
+        fallback_patterns = ['atr', 'volatility', 'vol_', 'range', 'bb_width']
+        pattern_features = _find_features_by_pattern(df, fallback_patterns)
+        for f in pattern_features:
+            if f not in features and f not in ['open', 'high', 'low', 'close', 'volume', 'time']:
+                features.append(f)
+
+    # CRITICAL: Exclude 'volatility_regime' column - it's a continuous percentile (0.0-1.0)
+    # from FeatureEngineering, NOT the discrete labels (0-3) we're predicting.
+    # Including it causes "Class 0.5" errors and TensorFlow assertion failures.
+    features = [f for f in features if f != 'volatility_regime']
+
+    if len(features) < 5:
+        raise ValueError(f"Volatility regime model needs at least 5 features, got {len(features)}")
+    
+    logger.info(f"Volatility regime features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
+    
+    # Extract feature matrix
+    X = df[features].values.astype(np.float32)
+    
+    # Compute volatility regime labels using compute_volatility_regime()
+    vol_config = VolatilityRegimeConfig(
+        lookback_bars=lookback_bars,
+        thresholds=thresholds,
+    )
+    y = compute_volatility_regime(df, config=vol_config)
+
+    # VALIDATION: Ensure labels are valid integers 0-3
+    # This prevents accidentally using the continuous 'volatility_regime' feature (0.0-1.0)
+    # from FeatureEngineering as labels instead of the discrete binned labels
+    y = y.astype(np.int32)  # Explicit cast to int32
+    unique_labels = np.unique(y)
+    invalid_labels = [v for v in unique_labels if v not in {0, 1, 2, 3}]
+    if invalid_labels:
+        raise ValueError(
+            f"compute_volatility_regime() returned invalid labels: {invalid_labels}. "
+            f"Expected only integers 0-3 (LOW/NORMAL/HIGH/EXTREME). "
+            f"If you see float values like 0.5, ensure the continuous 'volatility_regime' "
+            f"feature from FeatureEngineering is not being used as labels."
+        )
+    
+    # Skip initial bars where we don't have enough lookback
+    valid_start = lookback_bars
+    X = X[valid_start:]
+    y = y[valid_start:]
+    
+    # Handle NaN/Inf in features
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    
+    # Temporal split
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    
+    # Log class distribution
+    unique, counts = np.unique(y, return_counts=True)
+    for cls, count in zip(unique, counts):
+        pct = count / len(y) * 100
+        regime_name = VOL_REGIME_NAMES.get(cls, f'REGIME_{cls}')
+        logger.info(f"  {regime_name}: {count} ({pct:.1f}%)")
+    
+    # Optionally append instrument one-hot encoding for joint multi-pair training
+    instrument_feature_names = []
+    if include_instrument_features and instrument is not None:
+        X_train_aug, instrument_feature_names = append_instrument_features(X[train_idx], instrument)
+        X_val_aug, _ = append_instrument_features(X[val_idx], instrument)
+        X_test_aug, _ = append_instrument_features(X[test_idx], instrument)
+        logger.info(f"Added {len(instrument_feature_names)} instrument features for {instrument}")
+    else:
+        X_train_aug = X[train_idx]
+        X_val_aug = X[val_idx]
+        X_test_aug = X[test_idx]
+    
+    result = {
+        'X_train': X_train_aug,
+        'y_train': y[train_idx],
+        'X_val': X_val_aug,
+        'y_val': y[val_idx],
+        'X_test': X_test_aug,
+        'y_test': y[test_idx],
+        'feature_names': features + instrument_feature_names,
+        'lookback_bars': lookback_bars,
+        'thresholds': thresholds,
+        'instrument': instrument,
+    }
+    
+    logger.info(f"Volatility regime data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
     return result
 
 
@@ -2446,10 +3568,10 @@ def load_all_modular_data(
     use_regime: bool = False,
     regime_lookback: int = 20,
     regime_lookahead: int = 12,
-    locked_feature_names: Optional[List[str]] = None,
+    models_to_load: Optional[List[str]] = None,
 ) -> Dict[str, Dict[str, np.ndarray]]:
     """
-    Load data for all 4 models at once.
+    Load data for all enabled models using unified configuration.
     
     IMPORTANT: First computes normalized features that are instrument-agnostic.
     This allows models trained on one pair to work on any other pair.
@@ -2462,13 +3584,19 @@ def load_all_modular_data(
         use_regime: If True, load regime data instead of direction data
         regime_lookback: Bars to look back for regime detection
         regime_lookahead: Bars ahead to confirm regime
-        locked_feature_names: If provided, use these exact direction features (for warm-start consistency)
+        models_to_load: List of model names to load (None = all enabled)
     
     Returns:
-        Dict with 'direction'/'regime', 'xgboost', 'rf', 'ridge' keys, each containing
-        X_train, y_train, X_val, y_val, X_test, y_test, feature_names
-        (direction also includes w_train, w_val, w_test for sample weights)
+        Dict mapping model names to their data dictionaries
+        Keys match data_key values from MODEL_REGISTRY:
+        - 'direction', 'tcn', 'regime' for direction/regime models
+        - 'xgboost' for momentum model
+        - 'rf' for risk model
+        - 'lightgbm', 'ridge' for confidence models
+        - 'histgb' for hybrid voting model
     """
+    from src.training.model_config import get_registry, get_enabled_models, get_model_config
+    
     # FIRST: Compute normalized features (instrument-agnostic)
     # This is the key to making models work across different currency pairs
     logger.info("Computing normalized features for instrument-agnostic training...")
@@ -2496,23 +3624,92 @@ def load_all_modular_data(
     # Clean any NaN/inf from merged features
     df_normalized = df_normalized.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0)
     
-    result = {
-        'xgboost': load_xgboost_data(df_normalized, split),
-        'rf': load_rf_data(df_normalized, split),
-        'ridge': load_ridge_data(df_normalized, split),
-    }
+    # Get MODEL_REGISTRY with initialized imports
+    registry = get_registry()
     
-    if use_regime:
-        # REGIME MODE: Transformer classifies market regime (trend/chop/mean_revert)
-        logger.info("Using REGIME classification mode (3 classes)")
-        regime_data = load_regime_data(df_normalized, split, regime_lookback, regime_lookahead)
-        result['regime'] = regime_data
+    # Determine which models to load
+    if models_to_load is None:
+        models_to_load = get_enabled_models()
     else:
-        # DIRECTION MODE: Transformer predicts binary direction (legacy)
-        logger.info("Using DIRECTION prediction mode (binary)")
-        direction_data = load_direction_data(df_normalized, split, direction_lookahead, direction_threshold,
-                                             locked_feature_names=locked_feature_names)
-        result['direction'] = direction_data
-        result['tcn'] = direction_data  # Alias for backward compat
+        # Filter to only include models that exist in registry
+        models_to_load = [m for m in models_to_load if m in registry]
+    
+    logger.info(f"Loading data for {len(models_to_load)} models: {models_to_load}")
+    
+    # Load data for each model
+    result = {}
+    
+    for model_name in models_to_load:
+        config = registry[model_name]
+        
+        # Skip if data loader not available
+        if config.data_loader_func is None:
+            logger.warning(f"No data loader for {model_name}, skipping")
+            continue
+        
+        # Load data with model-specific parameters
+        try:
+            if model_name == 'transformer_regime':
+                data = config.data_loader_func(
+                    df_normalized, split, regime_lookback, regime_lookahead
+                )
+            elif model_name in ['transformer_direction', 'tcn_direction']:
+                data = config.data_loader_func(
+                    df_normalized, split, direction_lookahead, direction_threshold
+                )
+            elif model_name in ['lightgbm_confidence', 'ridge_confidence']:
+                # Confidence models use same parameters
+                data = config.data_loader_func(
+                    df_normalized, split,  # confidence_window uses default
+                    instrument=None,  # No instrument encoding by default
+                    include_instrument_features=False,  # No instrument features by default
+                )
+            else:
+                # Default: no extra params
+                data = config.data_loader_func(df_normalized, split)
+            
+            # Store result using data_key from config
+            result[config.data_key] = data
+            logger.info(f"✓ Loaded data for {model_name} -> {config.data_key} "
+                       f"({len(data.get('X_train', []))} train samples)")
+        except Exception as e:
+            logger.error(f"Failed to load data for {model_name}: {e}")
+            result[config.data_key] = None
+    
+    # Load volatility regime data for TCN volatility filter (separate from direction/regime)
+    # This is used by train_all_modular() for the TCN Volatility Regime Filter
+    # The TCN volatility filter is independent of direction/regime models
+    try:
+        vol_regime_data = load_volatility_regime_data(
+            df_normalized, split,
+            lookback_bars=100,
+            thresholds=[0.25, 0.60, 0.85],
+        )
+        if vol_regime_data is not None and len(vol_regime_data.get('X_train', [])) > 0:
+            result['volatility_regime'] = vol_regime_data
+            logger.info(f"✓ Loaded volatility_regime data: {len(vol_regime_data['X_train'])} train samples")
+    except Exception as e:
+        logger.warning(f"Volatility regime data loading failed: {e}")
+        # Non-critical - TCN volatility filter is optional
+
+    # Handle direction/regime exclusivity (only one should be active)
+    # Priority: regime > direction > tcn
+    if use_regime:
+        if 'regime' in result and result['regime'] is not None:
+            logger.info("Using REGIME classification mode (3 classes)")
+            # Remove direction/tcn data to avoid confusion
+            result.pop('direction', None)
+            result.pop('tcn', None)
+        else:
+            logger.warning("Regime data requested but not loaded")
+    else:
+        if 'direction' in result and result['direction'] is not None:
+            logger.info("Using DIRECTION prediction mode (Transformer)")
+        elif 'tcn' in result and result['tcn'] is not None:
+            logger.info("Using DIRECTION prediction mode (TCN)")
+    
+    # Log summary
+    loaded_keys = [k for k, v in result.items() if v is not None]
+    logger.info(f"Data loading complete: {len(loaded_keys)} models loaded, {len(result) - len(loaded_keys)} failed")
     
     return result

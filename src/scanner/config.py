@@ -75,9 +75,6 @@ def load_yaml_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
 class ScannerConfig:
     """Configuration for the FX Scanner.
     
-    ALL confidence/probability values use 0-1 scale internally.
-    Display methods convert to percentage format (e.g., 65%).
-    
     Attributes:
         config_path: Path to YAML config file (absolute path recommended)
         pairs: List of FX pairs to scan
@@ -86,19 +83,14 @@ class ScannerConfig:
         granularity: OANDA timeframe (H1, M15, etc.)
         non_interactive: Skip stdin prompts (for cron/CI)
         
-        # Gate thresholds (ALL 0-1 SCALE)
-        min_tcn_probability: Minimum Transformer direction confidence (0-1)
-        min_confidence: Minimum Ridge ADX confidence (0-1, internally normalized)
+        # Gate thresholds
+        min_confidence: Minimum Ridge confidence score (0-100)
         min_momentum: Minimum XGBoost momentum percentile (0-1)
-        max_drawdown_pct: Maximum RF drawdown percentage (0-1)
-        
-        # TCN Forward Volatility (predicts FUTURE regime)
-        # ALLOW: STABLE_NEXT (1), ACTIVE_NEXT (2)
-        # BLOCK: QUIET_NEXT (0), EXTREME_NEXT (3)
+        max_drawdown_pct: Maximum RF drawdown percentage
         
         # Position sizing
         account_equity: Account balance (0 = fetch from OANDA)
-        risk_per_trade_pct: Risk percentage per trade (0-1)
+        risk_per_trade_pct: Risk percentage per trade
         
         # Watch mode
         watch_interval_seconds: Seconds between rescans in watch mode
@@ -122,112 +114,72 @@ class ScannerConfig:
     # Interactive mode
     non_interactive: bool = field(default_factory=lambda: not sys.stdin.isatty())
     
-    # ==========================================================================
-    # GATE THRESHOLDS (ALL 0-1 SCALE - from docs optimal values)
-    # ==========================================================================
-    min_tcn_probability: float = 0.60   # Transformer direction >= 60%
-    min_confidence: float = 0.50        # Ridge ADX normalized (0-1), maps to 50/100
-    min_momentum: float = 0.20          # XGBoost percentile >= 20%
-    max_drawdown_pct: float = 0.025     # RF max drawdown <= 2.5%
-    min_meta_confidence: float = 0.55   # Meta-labeler success probability >= 55%
+    # Gate thresholds (aligned with InferenceConfig)
+    min_confidence: float = 50.0  # Ridge ADX score (0-100 scale)
+    min_momentum: float = 0.20    # XGBoost percentile (0-1 scale)
+    max_drawdown_pct: float = 0.025  # 2.5% max expected drawdown
     
-    # ==========================================================================
-    # TCN FORWARD VOLATILITY GATE (REQUIRED - predicts FUTURE regime)
-    # ==========================================================================
-    # New forward-looking prediction (48-bar lookahead):
-    # ALLOW: STABLE_NEXT (1) - moderate, predictable volatility
-    # ALLOW: ACTIVE_NEXT (2) - high, best for entries  
-    # BLOCK: QUIET_NEXT (0) - insufficient expected movement
-    # BLOCK: EXTREME_NEXT (3) - news events, high risk
-    require_tcn_volatility: bool = True  # FAIL scan if TCN model missing
-    extreme_regime_warning: bool = True  # Log warning when regime == EXTREME_NEXT (3)
-    
-    # ==========================================================================
-    # JOINT MODEL ENFORCEMENT
-    # ==========================================================================
-    use_joint_models_only: bool = True  # Load ONLY from trained_data/models/joint/
-    
-    # ==========================================================================
-    # POSITION SIZING
-    # ==========================================================================
-    account_equity: float = 0.0         # 0 = fetch live NAV from OANDA
-    risk_per_trade_pct: float = 0.02    # 2% risk per trade (professional standard)
+    # Position sizing
+    account_equity: float = 0.0  # 0 = fetch from OANDA
+    risk_per_trade_pct: float = 0.02  # 2% risk per trade
     leverage: int = 50
     
-    # Confidence-tiered position multipliers (0-1 confidence thresholds)
-    confidence_tier_low: float = 0.50       # 0.50-0.65 = 0.5x base position
-    confidence_tier_medium: float = 0.65    # 0.65-0.80 = 1.0x base position
-    confidence_tier_high: float = 0.80      # 0.80+ = 2.0x base position
-    position_multiplier_low: float = 0.5
-    position_multiplier_medium: float = 1.0
-    position_multiplier_high: float = 2.0
+    # Session filter (UTC hours)
+    enable_session_filter: bool = True
+    session_filter_enabled: bool = True  # Alias for compatibility
+    session_start_utc: int = 8   # London open
+    session_end_utc: int = 21    # NY close
     
-    # ==========================================================================
-    # H1 TIMEFRAME SETTINGS (from docs optimal values)
-    # ==========================================================================
-    # ATR-based SL/TP
-    atr_sl_multiplier: float = 1.5      # SL = 1.5x ATR (professional H1 standard)
-    atr_tp_multiplier: float = 3.0      # TP = 3.0x ATR (2:1 R:R ratio)
-    min_sl_pips: float = 15.0           # Floor for tight risk
-    max_sl_pips: float = 80.0           # Cap for extreme volatility
-    min_tp_pips: float = 30.0           # Ensures minimum R:R
-    max_tp_pips: float = 200.0          # Reasonable H1 swing target
+    # Volatility filter
+    min_atr_pips: float = 5.0  # Minimum ATR in pips to trade
+    min_candles: int = 100  # Minimum candles required
     
-    # Default SL/TP (fallback if ATR unavailable)
-    sl_pips: float = 15.0
-    tp_pips: float = 30.0
+    # TCN Volatility Regime gate (GLOBAL - applies to all pairs)
+    # Only allow trades in HIGH (2) or EXTREME (3) volatility regimes
+    # Valid values: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
+    min_volatility_regime: int = 2
+    require_tcn_volatility: bool = True  # Block ALL trades if TCN model unavailable
     
-    # ==========================================================================
-    # SESSION FILTER (UTC hours - London/NY overlap)
-    # ==========================================================================
-    enable_session_filter: bool = False  # Only block weekends by default
-    session_filter_enabled: bool = False  # Alias for compatibility
-    session_start_utc: int = 8           # London open (only if enable_session_filter=True)
-    session_end_utc: int = 21            # NY close (only if enable_session_filter=True)
+    # Joint-only model loading (scanner uses joint-trained models exclusively)
+    use_joint_models_only: bool = True  # Load from trained_data/models/joint/ only
     
-    # ==========================================================================
-    # VOLATILITY FILTER
-    # ==========================================================================
-    min_atr_pips: float = 8.0           # Skip dead markets (from docs)
-    min_candles: int = 100              # Minimum candles required
+    # Position sizing
+    sl_pips: float = 15.0  # Default stop loss
+    tp_pips: float = 30.0  # Default take profit
+    min_tcn_probability: float = 0.60  # TCN direction gate
     
-    # ==========================================================================
-    # BACKTEST GATE (Phase 2: Scanner Accuracy)
-    # ==========================================================================
-    require_backtest: bool = True       # Run backtest before showing tradeable signals
-    min_backtest_win_rate: float = 0.45  # Minimum win rate to pass gate (0-1)
-    min_backtest_trades: int = 10       # Minimum simulated trades for valid backtest
-    backtest_window: int = 50           # Number of candles for backtest
-    
-    # ==========================================================================
-    # TRADE LIMITS
-    # ==========================================================================
-    max_trades_per_day: int = 3         # H1 = swing trading (from docs)
-    daily_trade_limit: int = 3          # Alias for compatibility
-    enable_execution: bool = False      # Enable trade execution
+    # Execution settings (from buddy_scanner)
+    enable_execution: bool = False  # Enable trade execution
+    daily_trade_limit: int = 30  # Max trades per day
     position_sizing_enabled: bool = True
-    aggressive_mode: bool = True        # Enable compounding with Kelly-based sizing
+    aggressive_mode: bool = True  # Enable larger positions for compounding
     
-    # High probability TP bonus
-    high_prob_threshold: float = 0.65   # Confidence threshold for TP bonus (0-1)
-    high_prob_tp_bonus: float = 20.0    # Extra pips at high probability
+    # ATR-based SL/TP (from buddy_scanner)
+    atr_sl_multiplier: float = 1.0  # SL = 1.0x ATR
+    atr_tp_multiplier: float = 1.5  # TP = 1.5x ATR
+    min_sl_pips: float = 15.0
+    max_sl_pips: float = 15.0  # Fixed for tight scalping
+    min_tp_pips: float = 20.0
+    max_tp_pips: float = 30.0
     
-    # ==========================================================================
-    # WATCH MODE / INCREMENTAL CACHING
-    # ==========================================================================
-    watch_interval_seconds: int = 300   # 5 minutes
+    # High probability TP bonus (from buddy_scanner)
+    high_prob_threshold: float = 0.65  # Confidence threshold for TP bonus
+    high_prob_tp_bonus: float = 20.0  # Extra pips at high probability
+    
+    # Watch mode incremental caching
+    watch_interval_seconds: int = 300  # 5 minutes
     incremental_cache_minutes: int = 5
-    incremental_enabled: bool = True
+    incremental_enabled: bool = True  # Enable incremental caching
     price_change_threshold: float = 0.001  # 0.1% price change triggers re-fetch
-    max_workers: int = 4
+    max_workers: int = 4  # Default max workers for incremental scan
     
-    # ==========================================================================
-    # OUTPUT
-    # ==========================================================================
+    # Default pairs (for easy access)
     default_pairs: List[str] = field(default_factory=lambda: DEFAULT_PAIRS.copy())
     pip_values: Dict[str, float] = field(default_factory=lambda: PIP_VALUES.copy())
-    top_n: int = 5                      # Show top N pairs
-    show_all: bool = False              # Show all pairs including failed gates
+    
+    # Output
+    top_n: int = 5  # Show top N pairs
+    show_all: bool = False  # Show all pairs including failed gates
     
     # Loaded YAML config (lazy loaded)
     _yaml_config: Optional[Dict[str, Any]] = field(default=None, repr=False)
@@ -287,82 +239,15 @@ class ScannerConfig:
         return PIP_VALUES.get(pair, 0.0001)
     
     def is_within_session(self) -> bool:
-        """Check if current time is within trading session.
+        """Check if current time is within trading session."""
+        if not self.enable_session_filter:
+            return True
         
-        FX markets are open 24/5:
-        - Open: Sunday 5pm EST (22:00 UTC)
-        - Close: Friday 5pm EST (22:00 UTC)
-        
-        Only blocks on weekends (Saturday after 22:00 UTC to Sunday 22:00 UTC).
-        Hourly filter is optional and DISABLED by default now.
-        """
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
+        hour = now.hour
         
-        # Weekend check (FX market closed)
-        # Saturday = 5, Sunday = 6
-        # Market closes Friday 22:00 UTC, opens Sunday 22:00 UTC
-        if now.weekday() == 5:  # Saturday - always closed
-            return False
-        if now.weekday() == 6 and now.hour < 22:  # Sunday before 22:00 UTC - closed
-            return False
-        if now.weekday() == 4 and now.hour >= 22:  # Friday after 22:00 UTC - closed
-            return False
-        
-        # Optional hourly filter (for optimal London/NY overlap)
-        if self.enable_session_filter:
-            hour = now.hour
-            return self.session_start_utc <= hour < self.session_end_utc
-        
-        return True  # Weekday, market is open
-    
-    def get_position_multiplier(self, confidence: float) -> float:
-        """Get position multiplier based on confidence tier.
-        
-        Confidence tiers (all 0-1 scale):
-        - 0.50-0.65: 0.5x base position (conservative)
-        - 0.65-0.80: 1.0x base position (standard)
-        - 0.80+: 2.0x base position (aggressive)
-        
-        Args:
-            confidence: Confidence score (0-1)
-            
-        Returns:
-            Position multiplier
-        """
-        if confidence >= self.confidence_tier_high:
-            return self.position_multiplier_high
-        elif confidence >= self.confidence_tier_medium:
-            return self.position_multiplier_medium
-        elif confidence >= self.confidence_tier_low:
-            return self.position_multiplier_low
-        else:
-            return 0.0  # Below minimum, no trade
-    
-    @staticmethod
-    def format_confidence_pct(confidence: float) -> str:
-        """Format confidence (0-1) as percentage string.
-        
-        Args:
-            confidence: Confidence score (0-1)
-            
-        Returns:
-            Formatted string like "65%"
-        """
-        return f"{confidence * 100:.0f}%"
-    
-    @staticmethod
-    def normalize_confidence(score: float, from_scale: int = 100) -> float:
-        """Normalize confidence from legacy scale to 0-1.
-        
-        Args:
-            score: Raw score (e.g., 50 on 0-100 scale)
-            from_scale: Source scale maximum (default 100)
-            
-        Returns:
-            Normalized score (0-1)
-        """
-        return score / from_scale if from_scale > 0 else 0.0
+        return self.session_start_utc <= hour < self.session_end_utc
     
     @classmethod
     def from_cli_args(

@@ -9,16 +9,15 @@ while [[ -L "$SOURCE" ]]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 ROOT_DIR="$(cd -P "${SCRIPT_DIR}/.." && pwd)"
+CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
 
-# Auto-detect architecture: Intel (x86_64) vs Apple Silicon (arm64)
-if [[ "$(uname -m)" == "x86_64" ]]; then
-    # Intel Mac: Use CPU-optimized config and intel conda env
-    CONFIG_FILE="${ROOT_DIR}/config/config_intel_optimized.yaml"
-    ENV_NAME="${BUDDY_CONDA_ENV:-intel}"
+# Auto-detect conda environment based on architecture
+if [[ -n "${BUDDY_CONDA_ENV:-}" ]]; then
+    ENV_NAME="${BUDDY_CONDA_ENV}"
+elif [[ "$(uname -m)" == "x86_64" ]]; then
+    ENV_NAME="intel"  # Intel Mac
 else
-    # Apple Silicon (M1/M2/M3): Use Metal-optimized config
-    CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
-    ENV_NAME="${BUDDY_CONDA_ENV:-tf-metal}"
+    ENV_NAME="tf-metal"  # Apple Silicon (M1/M2/M3)
 fi
 
 get_conda() {
@@ -44,6 +43,7 @@ cmd_predict() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -i|--instrument) instrument="$2"; shift 2 ;;
+            -c|--candles) args+=(--candles "$2"); shift 2 ;;
             -g|--granularity) granularity="$2"; shift 2 ;;
             -x|--execute) args+=(--execute); shift ;;
             --no-execute) args+=(--no-execute); shift ;;
@@ -147,21 +147,36 @@ cmd_status() { run_py "${ROOT_DIR}/main.py" model-status --config "${CONFIG_FILE
 cmd_promote() { run_py "${ROOT_DIR}/main.py" promote-model --config "${CONFIG_FILE}"; }
 cmd_loop() { run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --loop --candles 2000; }
 
-cmd_find() {
+cmd_train_joint() {
+    local granularity="H1"
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -i|-I|--instrument) args+=(--instrument "$2"); shift 2 ;;
-            --min) args+=(--min "$2"); shift 2 ;;
-            --max) args+=(--max "$2"); shift 2 ;;
-            --step) args+=(--step "$2"); shift 2 ;;
-            --folds) args+=(--folds "$2"); shift 2 ;;
-            --metric) args+=(--metric "$2"); shift 2 ;;
+            --instruments) args+=(--instruments "$2"); shift 2 ;;
+            -g|--granularity) granularity="$2"; shift 2 ;;
+            --fine-tune) args+=(--fine-tune); shift ;;
+            --no-fine-tune) args+=(--no-fine-tune); shift ;;
+            --fine-tune-threshold) args+=(--fine-tune-threshold "$2"); shift 2 ;;
             -v|--verbose) args+=(--verbose); shift ;;
             *) shift ;;
         esac
     done
-    run_py "${ROOT_DIR}/main.py" find-candles --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+    run_py "${ROOT_DIR}/main.py" train-joint --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
+}
+
+cmd_retrain_all() {
+    local granularity="H1"
+    local candles="15000"
+    local args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -c|--candles) candles="$2"; shift 2 ;;
+            -g|--granularity) granularity="$2"; shift 2 ;;
+            -v|--verbose) args+=(--verbose); shift ;;
+            *) shift ;;
+        esac
+    done
+    run_py "${ROOT_DIR}/main.py" retrain-all --config "${CONFIG_FILE}" --granularity "${granularity}" --candles "${candles}" "${args[@]+"${args[@]}"}"
 }
 
 main() {
@@ -170,6 +185,8 @@ main() {
     case "${cmd}" in
         predict|p) cmd_predict "$@" ;;
         train|t) cmd_train "$@" ;;
+        train-joint|tj) cmd_train_joint "$@" ;;
+        retrain-all|ra) cmd_retrain_all "$@" ;;
         scan) cmd_scan "$@" ;;
         analyze|a) cmd_analyze "$@" ;;
         test) cmd_test "$@" ;;
@@ -178,7 +195,39 @@ main() {
         status|s) cmd_status ;;
         promote) cmd_promote ;;
         loop|l) cmd_loop ;;
-        help|-h|--help) echo "buddy <predict|train|scan|analyze|test|journal|find|status|loop>" ;;
+        help|-h|--help) cat << 'EOF'
+Buddy v2.2.0 - FX Trading Assistant
+
+COMMANDS:
+  predict [PAIR] [-x]     Run prediction (default), -x to execute trade
+  train -i PAIR           Train models for instrument
+  train-joint             Train all scanner pairs jointly (default: 15 pairs)
+  retrain-all             Retrain all pairs
+  scan [--pairs ...]      Scan pairs for opportunities
+  analyze                 Analyze recent trades
+  test                    Run test prediction
+  journal [-u] [-d N]     View/update trade journal
+  status                  Show model status
+  loop                    Run continuous prediction loop
+
+OPTIONS:
+  --use-rl-sizer          Use RL-based position sizing (auto-enabled if model exists)
+  --intelligent           Enable intelligent mode with LLM analysis
+  --llm-enhance           Add LLM market commentary
+  -x, --execute           Execute trades (live)
+  -v, --verbose           Verbose output
+  -g, --granularity G     Timeframe (default: H1)
+  --dry-run               Preview without execution
+
+EXAMPLES:
+  ./bin/Buddy EUR_USD              # Predict EUR/USD
+  ./bin/Buddy EUR_USD -x           # Predict and execute
+  ./bin/Buddy train -i EUR_USD     # Train model for EUR/USD
+  ./bin/Buddy train-joint          # Train all 15 scanner pairs
+  ./bin/Buddy tj --instruments EUR_USD,GBP_USD  # Train specific pairs
+  ./bin/Buddy scan --top 5         # Scan and show top 5 opportunities
+EOF
+;;
         *) cmd_predict "${cmd}" "$@" ;;
     esac
 }

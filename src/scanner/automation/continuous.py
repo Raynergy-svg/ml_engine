@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import signal
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Callable, List, Optional
 
@@ -107,7 +107,7 @@ class ContinuousScanner:
         self._scan_count = 0
         
         if console:
-            console.print("\n[bold cyan]🔄 CONTINUOUS SCAN MODE[/bold cyan]")
+            console.print(f"\n[bold cyan]🔄 CONTINUOUS SCAN MODE[/bold cyan]")
             console.print(f"[dim]Scanning every {interval_minutes} minutes. Press Ctrl+C to stop.[/dim]")
             console.print("=" * 70)
         

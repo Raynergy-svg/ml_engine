@@ -24,6 +24,7 @@ extend-ignore =
     E203
     W291
     W293
+    W503
 
 # Match common formatting defaults
 max-line-length = 88

@@ -34,7 +34,132 @@ from collections import defaultdict
 
 import numpy as np
 
+# Import validation metrics modules (optional - graceful fallback if not available)
+try:
+    from src.risk.var_backtesting import compute_ewma_var, backtest_var, VaRConfig
+    HAS_VAR_MODULE = True
+except ImportError:
+    HAS_VAR_MODULE = False
+
+try:
+    from src.risk.trading_metrics import compute_rapi, TradingCostsConfig, PairTier
+    HAS_RAPI_MODULE = True
+except ImportError:
+    HAS_RAPI_MODULE = False
+
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Feature Selection Helpers
+# =============================================================================
+
+def load_model_metadata(model_path: str) -> dict:
+    """
+    Load model metadata including selected feature indices.
+    
+    This is used to ensure consistent feature selection across walk-forward folds.
+    The metadata is stored in .meta.pkl files alongside the model.
+    
+    Args:
+        model_path: Path to the model file (e.g., 'trained_data/models/joint/transformer_direction.keras')
+    
+    Returns:
+        Dictionary containing model metadata (selected_indices, feature_names, n_features, etc.)
+        Returns empty dict if metadata file not found
+    """
+    import pickle
+    from pathlib import Path
+    
+    try:
+        model_path = Path(model_path)
+        
+        # Try .meta.pkl (primary format for trainers)
+        meta_path = model_path.with_suffix('.meta.pkl')
+        if meta_path.exists():
+            with open(meta_path, 'rb') as f:
+                metadata = pickle.load(f)
+            logger.info(f"✓ Loaded model metadata from {meta_path}")
+            return metadata
+        
+        # Try in parent directory (for ensemble models)
+        meta_path = model_path.parent / 'transformer_direction.meta.pkl'
+        if meta_path.exists():
+            with open(meta_path, 'rb') as f:
+                metadata = pickle.load(f)
+            logger.info(f"✓ Loaded model metadata from {meta_path}")
+            return metadata
+        
+        # Try JSON format (older format)
+        import json
+        json_meta_path = model_path.parent / 'model_metadata.json'
+        if json_meta_path.exists():
+            with open(json_meta_path, 'r') as f:
+                metadata = json.load(f)
+            logger.info(f"✓ Loaded model metadata from {json_meta_path}")
+            return metadata
+        
+        logger.warning(f"No valid metadata found for {model_path}")
+        return {}
+        
+    except Exception as e:
+        logger.error(f"Failed to load model metadata from {model_path}: {e}")
+        return {}
+
+
+@dataclass
+class WalkForwardConfig:
+    """Configuration for walk-forward cross-validation.
+    
+    This class encapsulates all settings for walk-forward validation,
+    making it easy to load from YAML config and pass to training functions.
+    """
+    enabled: bool = True                     # Enable walk-forward validation
+    mode: str = "rolling"                    # "rolling" (sliding) or "expanding"
+    n_splits: int = 5                        # Number of folds
+    train_size: float = 0.60                 # Training window size
+    val_size: float = 0.10                   # Validation size
+    test_size: float = 0.10                  # Test/holdout size
+    gap: int = 24                            # Gap between train/val (prevent leakage)
+    min_train_size: int = 2000               # Minimum training samples per fold
+    
+    # Purged K-Fold settings
+    use_purged_kfold: bool = True            # Use purged cross-validation
+    purge_gap: int = 24                      # Purge samples near test
+    embargo_gap: int = 12                    # Embargo after train
+    
+    # Model retraining per fold
+    retrain_per_fold: bool = True            # Retrain model for each fold
+    aggregate_method: str = "best"           # "best", "average", or "ensemble"
+    
+    # Regime-aware validation
+    ensure_regime_balance: bool = False      # Ensure each fold has all regimes
+    min_samples_per_regime: int = 50         # Min samples per regime in fold
+    
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> 'WalkForwardConfig':
+        """Create WalkForwardConfig from dictionary (e.g., from YAML)."""
+        return cls(**{k: v for k, v in config_dict.items() if k in cls.__dataclass_fields__})
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            'enabled': self.enabled,
+            'mode': self.mode,
+            'n_splits': self.n_splits,
+            'train_size': self.train_size,
+            'val_size': self.val_size,
+            'test_size': self.test_size,
+            'gap': self.gap,
+            'min_train_size': self.min_train_size,
+            'use_purged_kfold': self.use_purged_kfold,
+            'purge_gap': self.purge_gap,
+            'embargo_gap': self.embargo_gap,
+            'retrain_per_fold': self.retrain_per_fold,
+            'aggregate_method': self.aggregate_method,
+            'ensure_regime_balance': self.ensure_regime_balance,
+            'min_samples_per_regime': self.min_samples_per_regime,
+        }
 
 
 @dataclass
@@ -87,6 +212,13 @@ class WalkForwardSummary:
     
     # Stability metrics
     metric_stability: Dict[str, float] = field(default_factory=dict)
+    
+    # Baseline comparison (computed on final summary only)
+    baseline_comparison: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    
+    # Validation metrics (VaR, RAPI)
+    var_metrics: Dict[str, float] = field(default_factory=dict)
+    rapi_metrics: Dict[str, float] = field(default_factory=dict)
     
     def compute_summary(self) -> None:
         """Compute summary statistics from fold results."""
@@ -450,6 +582,445 @@ def calculate_trading_metrics(
 
 
 # =============================================================================
+# Baseline Benchmarking (Final Summary Only)
+# =============================================================================
+
+def calculate_baseline_metrics(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    prices: Optional[np.ndarray] = None,
+    returns: Optional[np.ndarray] = None,
+) -> Dict[str, Dict[str, float]]:
+    """
+    Calculate baseline strategy metrics for comparison.
+    
+    Compares model performance against simple baseline strategies to ensure
+    the model adds value beyond naive approaches.
+    
+    Baselines:
+    - buy_hold: Always long (benchmark for trend-following)
+    - random_walk: Random 50/50 predictions (lower bound)
+    - sma_crossover: SMA(5) > SMA(20) (simple technical)
+    - momentum: Sign of 5-period return (momentum strategy)
+    
+    Args:
+        y_true: True direction labels (0/1)
+        y_pred: Model predictions (0/1 or probabilities)
+        prices: Price series for SMA/momentum calculations
+        returns: Return series (computed from prices if None)
+    
+    Returns:
+        Dict mapping baseline name to metrics dict
+    """
+    results = {}
+    
+    y_true = np.asarray(y_true).flatten()
+    y_pred = np.asarray(y_pred).flatten()
+    
+    n = len(y_true)
+    
+    # Compute returns if not provided
+    if returns is None and prices is not None:
+        returns = np.diff(prices) / prices[:-1]
+        # Align with y_true
+        if len(returns) >= n:
+            returns = returns[:n]
+        else:
+            n = len(returns)
+            y_true = y_true[:n]
+            y_pred = y_pred[:n]
+    
+    # Model predictions (for comparison)
+    y_pred_binary = (y_pred > 0.5).astype(int) if y_pred.max() <= 1 else (y_pred > 0).astype(int)
+    model_accuracy = float(np.mean(y_pred_binary == y_true))
+    
+    # 1. Buy & Hold Baseline (always long)
+    buy_hold_pred = np.ones(n, dtype=int)
+    buy_hold_accuracy = float(np.mean(buy_hold_pred == y_true))
+    results['buy_hold'] = {
+        'accuracy': buy_hold_accuracy,
+        'vs_model': model_accuracy - buy_hold_accuracy,
+    }
+    
+    if returns is not None:
+        buy_hold_returns = returns  # Always long
+        results['buy_hold']['total_return'] = float(np.sum(buy_hold_returns))
+        if np.std(buy_hold_returns) > 0:
+            results['buy_hold']['sharpe'] = float(
+                np.sqrt(252) * np.mean(buy_hold_returns) / np.std(buy_hold_returns)
+            )
+    
+    # 2. Random Walk Baseline (50/50)
+    np.random.seed(42)  # Reproducible
+    random_pred = np.random.randint(0, 2, n)
+    random_accuracy = float(np.mean(random_pred == y_true))
+    results['random_walk'] = {
+        'accuracy': random_accuracy,
+        'vs_model': model_accuracy - random_accuracy,
+    }
+    
+    if returns is not None:
+        random_returns = returns * (2 * random_pred - 1)
+        results['random_walk']['total_return'] = float(np.sum(random_returns))
+        if np.std(random_returns) > 0:
+            results['random_walk']['sharpe'] = float(
+                np.sqrt(252) * np.mean(random_returns) / np.std(random_returns)
+            )
+    
+    # 3. SMA Crossover (if prices available)
+    if prices is not None and len(prices) > 20:
+        prices_series = pd.Series(prices[:n+1] if len(prices) > n else prices)
+        sma_5 = prices_series.rolling(5).mean()
+        sma_20 = prices_series.rolling(20).mean()
+        
+        # Signal: 1 when SMA5 > SMA20 (bullish)
+        sma_signal_raw = (sma_5 > sma_20).astype(int).values
+        # Align to match y_true length
+        sma_signal = sma_signal_raw[:n] if len(sma_signal_raw) > n else np.pad(sma_signal_raw, (0, n - len(sma_signal_raw)), constant_values=0)
+        
+        # Handle NaN from rolling window (first 20 periods)
+        valid_mask = ~np.isnan(sma_signal.astype(float))
+        valid_mask[:20] = False  # First 20 periods have no valid SMA20
+        
+        if np.sum(valid_mask) > 0:
+            sma_accuracy = float(np.mean(sma_signal[valid_mask] == y_true[valid_mask]))
+            results['sma_crossover'] = {
+                'accuracy': sma_accuracy,
+                'vs_model': model_accuracy - sma_accuracy,
+            }
+            
+            if returns is not None:
+                valid_returns = valid_mask[:len(returns)]
+                sma_returns = returns[valid_returns] * (2 * sma_signal[:len(returns)][valid_returns] - 1)
+                results['sma_crossover']['total_return'] = float(np.sum(sma_returns))
+                if len(sma_returns) > 0 and np.std(sma_returns) > 0:
+                    results['sma_crossover']['sharpe'] = float(
+                        np.sqrt(252) * np.mean(sma_returns) / np.std(sma_returns)
+                    )
+    
+    # 4. Momentum Baseline (5-period return sign)
+    if prices is not None and len(prices) > 5:
+        prices_arr = np.asarray(prices)
+        mom_5 = np.zeros(n)
+        for i in range(5, min(n, len(prices_arr))):
+            mom_5[i] = 1 if prices_arr[i] > prices_arr[i-5] else 0
+        
+        mom_accuracy = float(np.mean(mom_5[5:] == y_true[5:]))
+        results['momentum'] = {
+            'accuracy': mom_accuracy,
+            'vs_model': model_accuracy - mom_accuracy,
+        }
+        
+        if returns is not None and len(returns) > 5:
+            mom_returns = returns[5:] * (2 * mom_5[5:len(returns)] - 1)
+            results['momentum']['total_return'] = float(np.sum(mom_returns))
+            if len(mom_returns) > 0 and np.std(mom_returns) > 0:
+                results['momentum']['sharpe'] = float(
+                    np.sqrt(252) * np.mean(mom_returns) / np.std(mom_returns)
+                )
+    
+    # Add model metrics for comparison
+    results['model'] = {
+        'accuracy': model_accuracy,
+    }
+    if returns is not None:
+        model_returns = returns * (2 * y_pred_binary[:len(returns)] - 1)
+        results['model']['total_return'] = float(np.sum(model_returns))
+        if np.std(model_returns) > 0:
+            results['model']['sharpe'] = float(
+                np.sqrt(252) * np.mean(model_returns) / np.std(model_returns)
+            )
+    
+    return results
+
+
+def compute_validation_metrics(
+    y_pred: np.ndarray,
+    returns: np.ndarray,
+    instrument: str = "EUR_USD",
+) -> Dict[str, Dict[str, float]]:
+    """
+    Compute VaR and RAPI validation metrics.
+    
+    This is called on the final summary to minimize compute overhead.
+    
+    Args:
+        y_pred: Model predictions
+        returns: Actual returns
+        instrument: Currency pair for cost calculation
+    
+    Returns:
+        Dict with 'var' and 'rapi' metric dictionaries
+    """
+    results = {'var': {}, 'rapi': {}}
+    
+    # VaR Backtesting
+    if HAS_VAR_MODULE:
+        try:
+            config = VaRConfig(
+                lambda_param=0.94,
+                confidence_level=0.95,
+                violation_target=0.05,
+            )
+            var_series = compute_ewma_var(returns, config)
+            var_result = backtest_var(returns, var_series, config)
+            
+            results['var'] = var_result.to_dict()
+        except Exception as e:
+            logger.warning(f"VaR calculation failed: {e}")
+    
+    # RAPI Calculation
+    if HAS_RAPI_MODULE:
+        try:
+            cost_config = TradingCostsConfig.for_instrument(instrument)
+            rapi_result = compute_rapi(y_pred, returns, cost_config)
+            
+            results['rapi'] = rapi_result.to_dict()
+        except Exception as e:
+            logger.warning(f"RAPI calculation failed: {e}")
+    
+    return results
+
+
+# =============================================================================
+# Regime-Specific Stress Testing (Phase 3)
+# =============================================================================
+
+# Target accuracy per regime (based on research)
+REGIME_ACCURACY_TARGETS = {
+    'STRONG_TREND': 0.60,   # 60% - trends are predictable
+    'WEAK_TREND': 0.55,     # 55% - moderate edge
+    'CHOP': 0.50,           # 50% - basically random, avoid trading
+    'MEAN_REVERT': 0.58,    # 58% - reversals are somewhat predictable
+    'BREAKOUT': 0.55,       # 55% - breakouts need quick reaction
+}
+
+
+def stress_test_regime(
+    y_pred: np.ndarray,
+    y_true: np.ndarray,
+    regimes: np.ndarray,
+    returns: Optional[np.ndarray] = None,
+    min_samples: int = 100,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Stress test model performance under different market regimes.
+    
+    Calculates accuracy, F1, and other metrics per regime to identify
+    where the model excels or struggles.
+    
+    Args:
+        y_pred: Predicted labels (0 or 1 for direction)
+        y_true: Actual labels
+        regimes: Regime labels for each sample (0-4 or string names)
+        returns: Optional returns for profit-based metrics
+        min_samples: Minimum samples to report a regime (flag low-sample regimes)
+    
+    Returns:
+        Dict mapping regime name to metrics dict with:
+        - accuracy: Overall accuracy
+        - f1_score: F1 score for positive class
+        - sample_count: Number of samples
+        - target_met: Whether accuracy meets target
+        - low_sample_warning: True if sample count < min_samples
+        - sharpe (optional): If returns provided
+    """
+    from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+    
+    # Import regime names
+    try:
+        from src.core.modular_data_loaders import REGIME_NAMES
+    except ImportError:
+        REGIME_NAMES = {
+            0: 'STRONG_TREND', 1: 'WEAK_TREND', 2: 'CHOP',
+            3: 'MEAN_REVERT', 4: 'BREAKOUT'
+        }
+    
+    # Convert regime labels to strings if numeric
+    if isinstance(regimes[0], (int, np.integer)):
+        regime_labels = [REGIME_NAMES.get(r, f'REGIME_{r}') for r in regimes]
+    else:
+        regime_labels = list(regimes)
+    
+    results = {}
+    unique_regimes = list(set(regime_labels))
+    
+    for regime in unique_regimes:
+        # Filter samples for this regime
+        mask = np.array([r == regime for r in regime_labels])
+        n_samples = mask.sum()
+        
+        if n_samples == 0:
+            results[regime] = {
+                'status': 'no_samples',
+                'sample_count': 0,
+            }
+            continue
+        
+        y_pred_regime = y_pred[mask]
+        y_true_regime = y_true[mask]
+        
+        # Calculate metrics
+        accuracy = accuracy_score(y_true_regime, y_pred_regime)
+        f1 = f1_score(y_true_regime, y_pred_regime, zero_division=0)
+        precision = precision_score(y_true_regime, y_pred_regime, zero_division=0)
+        recall = recall_score(y_true_regime, y_pred_regime, zero_division=0)
+        
+        # Check against target
+        target = REGIME_ACCURACY_TARGETS.get(regime, 0.50)
+        target_met = accuracy >= target
+        
+        # Calculate Sharpe if returns provided
+        sharpe = None
+        if returns is not None:
+            returns_regime = returns[mask]
+            # Strategy returns: correct predictions get +1, wrong get -1, times actual return
+            correct_mask = y_pred_regime == y_true_regime
+            strategy_returns = np.where(correct_mask, np.abs(returns_regime), -np.abs(returns_regime))
+            
+            if len(strategy_returns) > 1 and strategy_returns.std() > 0:
+                sharpe = float(np.sqrt(252) * strategy_returns.mean() / strategy_returns.std())
+        
+        results[regime] = {
+            'accuracy': float(accuracy),
+            'f1_score': float(f1),
+            'precision': float(precision),
+            'recall': float(recall),
+            'sample_count': int(n_samples),
+            'target': float(target),
+            'target_met': target_met,
+            'low_sample_warning': n_samples < min_samples,
+            'sharpe': sharpe,
+        }
+    
+    # Add summary statistics
+    total_samples = sum(r.get('sample_count', 0) for r in results.values())
+    targets_met = sum(1 for r in results.values() if r.get('target_met', False))
+    
+    results['_summary'] = {
+        'total_samples': total_samples,
+        'regimes_tested': len([r for r in results if r != '_summary']),
+        'targets_met': targets_met,
+        'low_sample_regimes': [
+            r for r, m in results.items() 
+            if r != '_summary' and m.get('low_sample_warning', False)
+        ],
+    }
+    
+    return results
+
+
+def stress_test_regime_transitions(
+    y_pred: np.ndarray,
+    y_true: np.ndarray,
+    regimes: np.ndarray,
+    window_before: int = 5,
+    window_after: int = 5,
+) -> Dict[str, Dict[str, float]]:
+    """
+    Analyze model performance around regime transitions.
+    
+    Tests how well the model performs in the bars immediately before
+    and after a regime change, which are often the most challenging.
+    
+    Args:
+        y_pred: Predicted labels
+        y_true: Actual labels
+        regimes: Regime labels per sample
+        window_before: Bars before transition to analyze
+        window_after: Bars after transition to analyze
+    
+    Returns:
+        Dict with 'before_transition', 'after_transition', 'stable' metrics
+    """
+    from sklearn.metrics import accuracy_score
+    
+    n = len(regimes)
+    
+    # Find transition points
+    transitions = []
+    for i in range(1, n):
+        if regimes[i] != regimes[i-1]:
+            transitions.append(i)
+    
+    if not transitions:
+        return {
+            'status': 'no_transitions',
+            'message': 'No regime transitions found in data',
+        }
+    
+    # Collect indices for before/after/stable
+    before_indices = []
+    after_indices = []
+    stable_indices = []
+    
+    for t in transitions:
+        # Before transition
+        start = max(0, t - window_before)
+        before_indices.extend(range(start, t))
+        
+        # After transition
+        end = min(n, t + window_after + 1)
+        after_indices.extend(range(t, end))
+    
+    # Remove duplicates
+    before_indices = list(set(before_indices))
+    after_indices = list(set(after_indices))
+    
+    # Stable = not in transition zone
+    transition_zone = set(before_indices + after_indices)
+    stable_indices = [i for i in range(n) if i not in transition_zone]
+    
+    results = {}
+    
+    # Before transition accuracy
+    if before_indices:
+        before_acc = accuracy_score(
+            y_true[before_indices], 
+            y_pred[before_indices]
+        )
+        results['before_transition'] = {
+            'accuracy': float(before_acc),
+            'sample_count': len(before_indices),
+        }
+    
+    # After transition accuracy
+    if after_indices:
+        after_acc = accuracy_score(
+            y_true[after_indices], 
+            y_pred[after_indices]
+        )
+        results['after_transition'] = {
+            'accuracy': float(after_acc),
+            'sample_count': len(after_indices),
+        }
+    
+    # Stable regime accuracy
+    if stable_indices:
+        stable_acc = accuracy_score(
+            y_true[stable_indices], 
+            y_pred[stable_indices]
+        )
+        results['stable'] = {
+            'accuracy': float(stable_acc),
+            'sample_count': len(stable_indices),
+        }
+    
+    # Summary
+    results['_summary'] = {
+        'n_transitions': len(transitions),
+        'window_before': window_before,
+        'window_after': window_after,
+        'performance_gap': (
+            results.get('stable', {}).get('accuracy', 0) - 
+            results.get('after_transition', {}).get('accuracy', 0)
+        ) if 'stable' in results and 'after_transition' in results else None,
+    }
+    
+    return results
+
+
+# =============================================================================
 # Walk-Forward Analysis Runner
 # =============================================================================
 
@@ -635,6 +1206,40 @@ def train_direction_with_walkforward(
     val_accuracies = []
     balanced_accuracies = []
     
+    # === FEATURE SELECTION CONSISTENCY ===
+    # Get selected_indices from the passed trainer to ensure consistent features across folds
+    # This prevents dimension mismatch errors when each fold does its own feature selection
+    selected_indices = getattr(trainer, 'selected_indices', None)
+    n_features = getattr(trainer, 'n_features', None)
+    
+    if selected_indices is not None and len(selected_indices) > 0:
+        logger.info(f"🔧 Using inherited feature selection: {len(selected_indices)} features")
+        logger.info(f"   Input X shape: {X.shape}, will select {len(selected_indices)} features")
+        
+        # Validate indices are within bounds
+        if X.ndim == 2:
+            max_feature_idx = X.shape[1] - 1
+        else:
+            max_feature_idx = X.shape[-1] - 1
+        
+        if max(selected_indices) > max_feature_idx:
+            logger.warning(f"⚠️ selected_indices max ({max(selected_indices)}) exceeds input features ({max_feature_idx}). Resetting to None.")
+            selected_indices = None
+        else:
+            # Apply feature selection to full X array upfront
+            X = X[:, selected_indices] if X.ndim == 2 else X[..., selected_indices]
+            logger.info(f"✓ Applied feature selection: X shape now {X.shape}")
+            
+            # Update feature_names if provided
+            if feature_names is not None:
+                try:
+                    feature_names = [feature_names[i] for i in selected_indices]
+                    logger.info(f"✓ Updated feature_names: {len(feature_names)} features")
+                except IndexError:
+                    logger.warning("Could not update feature_names - index mismatch")
+    else:
+        logger.info(f"ℹ️ No inherited feature selection - each fold will select features independently")
+    
     logger.info(f"\n{'='*60}")
     logger.info(f"Walk-Forward Validation ({n_splits} folds, {mode} mode)")
     logger.info(f"Gap: {gap} samples | Initial train: {train_size*100:.0f}%")
@@ -656,8 +1261,19 @@ def train_direction_with_walkforward(
         
         # Create fresh trainer instance for this fold
         # Import here to avoid circular import
-        from modular_trainers import TransformerDirectionTrainer
+        from src.training.modular_trainers import TransformerDirectionTrainer, TrainerConfig
         fold_trainer = TransformerDirectionTrainer(trainer.config)
+        
+        # === INHERIT FEATURE SELECTION ===
+        # If we applied feature selection upfront, tell the fold_trainer not to do it again
+        # by setting selected_indices and n_features (trainer will skip selection if already set)
+        if selected_indices is not None:
+            fold_trainer.selected_indices = list(range(len(selected_indices)))  # Already selected
+            fold_trainer.n_features = len(selected_indices)
+            # Disable feature selection in config for this fold
+            if hasattr(fold_trainer.config, 'use_feature_selection'):
+                fold_trainer.config.use_feature_selection = False
+            logger.debug(f"Fold {fold + 1}: Inherited feature selection, disabled per-fold selection")
         
         # Train on this fold
         metrics = fold_trainer.train(

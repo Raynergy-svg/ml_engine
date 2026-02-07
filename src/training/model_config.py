@@ -19,7 +19,7 @@ Models are defined with:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Type, Any
 
 logger = logging.getLogger(__name__)
@@ -251,8 +251,8 @@ def validate_model_registry() -> Dict[str, Any]:
             errors.append(f"{model_name}: invalid task '{config.task}'")
         
         # Check model_type is valid
-        valid_types = ['transformer', 'tcn', 'xgboost', 'random_forest',
-                       'lightgbm', 'ridge', 'histgradientboosting']
+        valid_types = ['transformer', 'tcn', 'xgboost', 'random_forest', 
+                      'lightgbm', 'ridge', 'histgradientboosting']
         if config.model_type not in valid_types:
             errors.append(f"{model_name}: invalid model_type '{config.model_type}'")
     
@@ -289,12 +289,13 @@ def _initialize_registry_with_imports() -> None:
     
     This is called lazily to avoid circular imports at module load time.
     """
+    global MODEL_REGISTRY
+    
     # Import trainers
     from .modular_trainers import (
         TransformerDirectionTrainer,
         TransformerRegimeTrainer,
         TCNTrainer,
-        TCNVolatilityRegimeTrainer,  # NEW: Research-backed TCN for 4-class volatility regime
         XGBoostTrainer,
         RandomForestTrainer,
         RidgeTrainer,
@@ -320,8 +321,7 @@ def _initialize_registry_with_imports() -> None:
     MODEL_REGISTRY['tcn_direction'].trainer_class = TCNTrainer
     MODEL_REGISTRY['tcn_direction'].data_loader_func = load_tcn_data
 
-    # TCN Volatility Regime: Uses specialized trainer with research-backed architecture
-    MODEL_REGISTRY['tcn_volatility_regime'].trainer_class = TCNVolatilityRegimeTrainer
+    MODEL_REGISTRY['tcn_volatility_regime'].trainer_class = TCNTrainer
     MODEL_REGISTRY['tcn_volatility_regime'].data_loader_func = load_volatility_regime_data
 
     MODEL_REGISTRY['transformer_regime'].trainer_class = TransformerRegimeTrainer
@@ -390,10 +390,10 @@ def print_registry_summary() -> None:
         config = registry[model_name]
         status = "✓" if config.enabled else "✗"
         logger.info(f"{status} {model_name:30s} | "
-                    f"type={config.model_type:20s} | "
-                    f"task={config.task:15s} | "
-                    f"data_key={config.data_key:15s} | "
-                    f"priority={config.priority}")
+                   f"type={config.model_type:20s} | "
+                   f"task={config.task:15s} | "
+                   f"data_key={config.data_key:15s} | "
+                   f"priority={config.priority}")
     
     logger.info("=" * 60)
 

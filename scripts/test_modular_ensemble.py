@@ -134,8 +134,8 @@ def test_tcn():
     print("TESTING TCN (Direction Predictor)")
     print("="*60)
     
-    from modular_data_loaders import load_tcn_data
-    from modular_trainers import TCNTrainer, TrainerConfig
+    from src.core.modular_data_loaders import load_tcn_data
+    from src.training.modular_trainers import TCNTrainer, TrainerConfig
     
     # Create test data
     df = create_test_data(500)
@@ -169,8 +169,8 @@ def test_xgboost():
     print("TESTING XGBOOST (Momentum Analyzer)")
     print("="*60)
     
-    from modular_data_loaders import load_xgboost_data
-    from modular_trainers import XGBoostTrainer, TrainerConfig
+    from src.core.modular_data_loaders import load_xgboost_data
+    from src.training.modular_trainers import XGBoostTrainer, TrainerConfig
     
     # Create test data
     df = create_test_data(500)
@@ -204,8 +204,8 @@ def test_rf():
     print("TESTING RANDOM FOREST (Risk Assessor)")
     print("="*60)
     
-    from modular_data_loaders import load_rf_data
-    from modular_trainers import RandomForestTrainer, TrainerConfig
+    from src.core.modular_data_loaders import load_rf_data
+    from src.training.modular_trainers import RandomForestTrainer, TrainerConfig
     
     # Create test data
     df = create_test_data(500)
@@ -239,8 +239,8 @@ def test_ridge():
     print("TESTING RIDGE (Confidence Scorer)")
     print("="*60)
     
-    from modular_data_loaders import load_ridge_data
-    from modular_trainers import RidgeTrainer, TrainerConfig
+    from src.core.modular_data_loaders import load_ridge_data
+    from src.training.modular_trainers import RidgeTrainer, TrainerConfig
     
     # Create test data
     df = create_test_data(500)

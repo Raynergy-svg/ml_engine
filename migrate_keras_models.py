@@ -12,6 +12,7 @@ Usage:
     python migrate_keras_models.py                    # Migrate all models
     python migrate_keras_models.py --dry-run          # Show what would be migrated
     python migrate_keras_models.py --model buddy_tf   # Migrate specific model
+    python migrate_keras_models.py --scan             # Scan all models (including pair subdirs)
 """
 
 import argparse
@@ -25,6 +26,7 @@ from pathlib import Path
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+import numpy as np
 import tensorflow as tf
 from rich.console import Console
 from rich.table import Table
@@ -34,12 +36,13 @@ console = Console()
 MODEL_DIR = Path("trained_data/models")
 BACKUP_DIR = Path("trained_data/models_keras2_backup")
 
-# Models to migrate and their architecture builders
-MODELS_TO_MIGRATE = [
-    ("buddy_tf.keras", "tcn"),
-    ("tf_model.keras", "tcn"),
-    ("transformer_direction.keras", "tcn"),
-]
+# Model filename to architecture type mapping
+MODEL_ARCH_MAP = {
+    "buddy_tf.keras": "tcn",
+    "tf_model.keras": "tcn",
+    "tcn_direction.keras": "tcn",
+    "transformer_direction.keras": "transformer",
+}
 
 
 def check_model_version(model_path: Path) -> str:
@@ -89,7 +92,73 @@ def build_fresh_model(arch_type: str, seq_len: int, feature_dim: int):
     from tensorflow.keras import layers
     from tensorflow.keras.regularizers import l2
     
-    if arch_type == "tcn":
+    if arch_type == "transformer":
+        # Build Transformer model matching TransformerDirectionTrainer._build_model()
+        l2_reg = l2(0.005)
+        d_model = 16
+        num_heads = 2
+        num_layers = 1
+        dff = 32
+        dropout = 0.2
+        
+        inp = tf.keras.Input(shape=(int(seq_len), int(feature_dim)), name="features")
+        
+        # Input noise and spatial dropout
+        x = layers.GaussianNoise(0.03)(inp)
+        x = layers.SpatialDropout1D(0.15)(x)
+        
+        # Project to d_model dimension
+        x = layers.Dense(d_model, kernel_regularizer=l2_reg, name='input_projection')(x)
+        x = layers.Dropout(0.15)(x)
+        
+        # Positional encoding (sinusoidal)
+        positions = np.arange(seq_len)[:, np.newaxis]
+        dims = np.arange(d_model)[np.newaxis, :]
+        angles = positions / np.power(10000, (2 * (dims // 2)) / d_model)
+        pos_encoding = np.zeros((seq_len, d_model))
+        pos_encoding[:, 0::2] = np.sin(angles[:, 0::2])
+        pos_encoding[:, 1::2] = np.cos(angles[:, 1::2])
+        pos_encoding = pos_encoding[np.newaxis, :, :].astype(np.float32)
+        pos_tensor = tf.constant(pos_encoding)
+        x = x + tf.cast(pos_tensor, x.dtype)
+        
+        # Transformer encoder layers
+        for i in range(num_layers):
+            # Multi-head attention
+            attn_output = layers.MultiHeadAttention(
+                num_heads=num_heads,
+                key_dim=d_model // num_heads,
+                name=f'transformer_{i}_mha'
+            )(x, x)
+            attn_output = layers.Dropout(dropout)(attn_output)
+            x = layers.LayerNormalization(epsilon=1e-6, name=f'transformer_{i}_ln1')(x + attn_output)
+            
+            # Feedforward
+            ffn = layers.Dense(dff, activation='relu', kernel_regularizer=l2_reg, name=f'transformer_{i}_ffn1')(x)
+            ffn = layers.Dense(d_model, kernel_regularizer=l2_reg, name=f'transformer_{i}_ffn2')(ffn)
+            ffn = layers.Dropout(dropout)(ffn)
+            x = layers.LayerNormalization(epsilon=1e-6, name=f'transformer_{i}_ln2')(x + ffn)
+        
+        # Global pooling and output head
+        x = layers.GlobalAveragePooling1D()(x)
+        x = layers.Dense(16, activation='tanh', kernel_regularizer=l2_reg)(x)
+        x = layers.Dropout(0.15)(x)
+        
+        direction = layers.Dense(
+            1, activation='sigmoid', name='direction', dtype='float32',
+            kernel_initializer=tf.keras.initializers.TruncatedNormal(mean=0.0, stddev=0.05),
+            bias_initializer=tf.keras.initializers.Zeros(),
+        )(x)
+        
+        model = tf.keras.Model(inputs=inp, outputs=direction, name='transformer_direction')
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=0.0003),
+            loss='binary_crossentropy',
+            metrics=['accuracy'],
+        )
+        return model
+    
+    elif arch_type == "tcn":
         # Build a multi-output TCN model matching the old MetalOptimizedTCN architecture
         # Based on main.py buddy model structure
         l2_reg = l2(0.002)
@@ -192,9 +261,11 @@ def migrate_model(model_path: Path, arch_type: str, dry_run: bool = False) -> bo
     seq_len, feature_dim = get_model_input_shape(model_path)
     console.print(f"  [dim]Input shape: seq_len={seq_len}, feature_dim={feature_dim}[/dim]")
     
-    # Create backup
+    # Create backup (preserving subdirectory structure)
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    backup_path = BACKUP_DIR / model_path.name
+    rel_path = model_path.relative_to(MODEL_DIR)
+    backup_path = BACKUP_DIR / rel_path
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
     if not backup_path.exists():
         shutil.copy(model_path, backup_path)
         console.print(f"  [dim]Backup: {backup_path}[/dim]")
@@ -246,10 +317,48 @@ def migrate_model(model_path: Path, arch_type: str, dry_run: bool = False) -> bo
             return False
 
 
+def scan_all_models() -> list:
+    """
+    Scan MODEL_DIR and all pair subdirectories for .keras files.
+    
+    Returns list of (model_path, arch_type) tuples.
+    """
+    models = []
+    
+    # Root-level models
+    for model_file in MODEL_DIR.glob("*.keras"):
+        arch_type = MODEL_ARCH_MAP.get(model_file.name, "tcn")  # Default to tcn
+        models.append((model_file, arch_type))
+    
+    # Pair subdirectory models (EUR_USD, USD_JPY, etc.)
+    for subdir in MODEL_DIR.iterdir():
+        if subdir.is_dir() and not subdir.name.startswith(('.', 'backup', 'checkpoint')):
+            for model_file in subdir.glob("*.keras"):
+                arch_type = MODEL_ARCH_MAP.get(model_file.name, "tcn")
+                models.append((model_file, arch_type))
+    
+    return models
+
+
+def clear_stale_checkpoints(model_path: Path):
+    """
+    Delete EMA and EWC checkpoint files for a model.
+    
+    These will be re-initialized fresh from the migrated model weights.
+    """
+    ema_path = model_path.with_suffix('.ema.pkl')
+    ewc_path = model_path.with_suffix('.ewc.pkl')
+    
+    for path in [ema_path, ewc_path]:
+        if path.exists():
+            path.unlink()
+            console.print(f"  [dim]Cleared: {path.name}[/dim]")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Migrate Keras 2 models to Keras 3")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be migrated")
-    parser.add_argument("--model", type=str, help="Migrate specific model (e.g., 'buddy_tf')")
+    parser.add_argument("--model", type=str, help="Migrate specific model (e.g., 'transformer_direction')")
     parser.add_argument("--scan", action="store_true", help="Scan and report model versions")
     args = parser.parse_args()
     
@@ -257,44 +366,47 @@ def main():
     console.print(f"Keras version: {tf.keras.__version__}")
     console.print(f"TensorFlow version: {tf.__version__}")
     
+    # Discover all models
+    all_models = scan_all_models()
+    console.print(f"\nFound {len(all_models)} .keras model(s)\n")
+    
     # Scan mode
     if args.scan:
         table = Table(title="Model Status")
-        table.add_column("Model", style="cyan")
+        table.add_column("Model Path", style="cyan")
+        table.add_column("Architecture", style="magenta")
         table.add_column("Version", style="green")
         table.add_column("Input Shape")
         table.add_column("Status")
         
-        for model_name, _ in MODELS_TO_MIGRATE:
-            model_path = MODEL_DIR / model_name
-            if model_path.exists():
-                version = check_model_version(model_path)
-                shape = get_model_input_shape(model_path)
-                status = "✓ Ready" if version == "keras3" else "⚠ Needs migration"
-                table.add_row(model_name, version, str(shape), status)
-            else:
-                table.add_row(model_name, "-", "-", "Not found")
+        for model_path, arch_type in all_models:
+            rel_path = model_path.relative_to(MODEL_DIR)
+            version = check_model_version(model_path)
+            shape = get_model_input_shape(model_path)
+            status = "✓ Ready" if version == "keras3" else "⚠ Needs migration"
+            table.add_row(str(rel_path), arch_type, version, str(shape), status)
         
         console.print(table)
         return
     
     # Filter models if specific one requested
-    models = MODELS_TO_MIGRATE
+    models = all_models
     if args.model:
-        models = [(m, a) for m, a in MODELS_TO_MIGRATE if args.model in m]
+        models = [(p, a) for p, a in all_models if args.model in p.name]
         if not models:
-            console.print(f"[red]Model '{args.model}' not found in migration list[/red]")
+            console.print(f"[red]Model '{args.model}' not found[/red]")
             return
     
     # Migrate
     results = []
-    for model_name, arch_type in models:
-        model_path = MODEL_DIR / model_name
-        if model_path.exists():
-            success = migrate_model(model_path, arch_type, dry_run=args.dry_run)
-            results.append((model_name, success))
-        else:
-            console.print(f"\n[dim]Skipping {model_name}: not found[/dim]")
+    for model_path, arch_type in models:
+        rel_path = model_path.relative_to(MODEL_DIR)
+        success = migrate_model(model_path, arch_type, dry_run=args.dry_run)
+        results.append((str(rel_path), success))
+        
+        # Clear stale EMA/EWC files after successful migration
+        if success and not args.dry_run:
+            clear_stale_checkpoints(model_path)
     
     # Summary
     console.print("\n[bold]═══ Summary ═══[/bold]")

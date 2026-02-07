@@ -56,6 +56,11 @@ class TradeEntry:
     ridge_confidence: float
     xgb_momentum: float
     rf_drawdown_pips: float
+    
+    # Volatility regime (NEW - TCN entry timing filter)
+    volatility_regime: Optional[int] = None  # 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
+    volatility_regime_name: Optional[str] = None  # Human-readable name
+    volatility_regime_confidence: Optional[float] = None  # Softmax confidence
 
     
     # Execution
@@ -176,6 +181,9 @@ class TradeJournal:
         ridge_confidence: float,
         xgb_momentum: float,
         rf_drawdown_pips: float,
+        volatility_regime: Optional[int] = None,
+        volatility_regime_name: Optional[str] = None,
+        volatility_regime_confidence: Optional[float] = None,
         feature_vector: Optional[List[float]] = None,
         prediction: Optional[float] = None,
         confidence: Optional[float] = None,
@@ -204,6 +212,9 @@ class TradeJournal:
             ridge_confidence=ridge_confidence,
             xgb_momentum=xgb_momentum,
             rf_drawdown_pips=rf_drawdown_pips,
+            volatility_regime=volatility_regime,
+            volatility_regime_name=volatility_regime_name,
+            volatility_regime_confidence=volatility_regime_confidence,
             feature_vector=feature_vector,
             prediction=prediction,
             confidence=confidence,
