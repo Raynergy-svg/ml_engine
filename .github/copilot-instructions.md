@@ -278,6 +278,7 @@ pytest tests/test_buddy_intelligent_mode.py -v
 3. **Path changes**: Source files now in `src/` subfolders, not root
 4. **Config path**: Default config is `config/config_improved_H1.yaml`, not root
 5. **recurrent_dropout**: Keep at `0.0` on Metal - non-zero causes 10x slowdown
+6. **Prediction Collapse**: See `docs/PREDICTION_COLLAPSE_SYSTEM.md` for detection/recovery details
 
 ## Environment Variables
 
@@ -302,6 +303,37 @@ market_data/*.csv      # Downloaded price data
 ---
 
 # IMPROVEMENT RECOMMENDATIONS
+
+## Prediction Collapse Detection & Recovery
+
+**Status**: ✅ Implemented (v2.0)
+
+The training system includes a comprehensive prediction collapse detection and recovery system:
+
+**Graduated Detection Levels**:
+- **80-85%**: Early warning (informational)
+- **85-90%**: Moderate imbalance (warning)
+- **>90%**: Severe collapse (intervention triggered)
+
+**Progressive Recovery Strategies** (5 attempts):
+1. **Attempt 1-2**: Restore best balanced weights (LR × 0.5, 0.3)
+2. **Attempt 3**: Perturb output layer (noise 0.15, LR × 0.4)
+3. **Attempt 4**: Perturb all layers (noise 0.05-0.2, LR × 0.2)
+4. **Attempt 5**: Reinitialize output layer (LR × 0.6)
+
+**Key Features**:
+- Prediction history tracking (last 10 checks)
+- Balance metric (0.0-1.0 scale)
+- Best weight checkpointing (threshold 0.25)
+- Detailed failure logging
+
+**Documentation**: See `docs/PREDICTION_COLLAPSE_SYSTEM.md` and `docs/TRAINING_TROUBLESHOOTING.md`
+
+**Tests**: `tests/test_prediction_collapse.py`
+
+---
+
+# IMPROVEMENT RECOMMENDATIONS (Additional)
 
 ## Quick Wins
 
