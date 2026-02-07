@@ -10,6 +10,7 @@ This module contains commands for:
 from __future__ import annotations
 
 import json
+import sys
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -283,37 +284,52 @@ def buddy_journal(
         import_trades: If True, import untracked open trades into journal
     """
     from datetime import datetime
-    from trade_journal import TradeJournal
+    from src.utils.trade_journal import TradeJournal
+    from src.utils.oanda_practice import OandaPracticeClient
     from rich.table import Table
     from rich.panel import Panel
     from rich.columns import Columns
     from rich.text import Text
     
     journal = TradeJournal()
+    client = OandaPracticeClient.from_env()
     
-    # Update from OANDA if requested
     if update:
-        console.print("\n[dim]Fetching closed trades from OANDA...[/dim]")
+        console.print("\n[dim]Syncing local journal with OANDA...[/dim]")
         try:
-            from src.utils.oanda_practice import OandaPracticeClient
-            client = OandaPracticeClient.from_env()
-            updated_count = journal.update_from_oanda(client)
-            console.print(f"[green]✓ Updated {updated_count} trades from OANDA[/green]")
+            sync_results = journal.sync_open_trades(client)
+            closed_updated = sync_results.get('closed_updated', 0)
+            open_updated = sync_results.get('open_updated', 0)
+            if closed_updated > 0 or open_updated > 0:
+                console.print(f"[green]✓ Local journal synced ({closed_updated} closed, {open_updated} open)[/green]")
+            else:
+                console.print("[dim]No journal updates from OANDA[/dim]")
         except Exception as e:
-            console.print(f"[red]Failed to update from OANDA: {e}[/red]")
+            console.print(f"[red]Failed to sync journal from OANDA: {e}[/red]")
+    
+    if import_trades:
+        console.print("\n[dim]Importing untracked open trades from OANDA...[/dim]")
+        try:
+            imported = journal.import_untracked_trades(client)
+            if imported > 0:
+                console.print(f"[green]✓ Imported {imported} trades into local journal[/green]")
+            else:
+                console.print("[dim]No untracked open trades found[/dim]")
+        except Exception as e:
+            console.print(f"[red]Failed to import open trades: {e}[/red]")
     
     # Get statistics
     stats = journal.get_statistics(days=days)
     
     if stats["total_trades"] == 0:
-        console.print("\n[yellow]No trades found in journal.[/yellow]")
-        console.print("[dim]Trades are logged when using 'buddy predict' with --execute[/dim]")
+        console.print("\n[red]No trades found in journal.[/red]")
+        console.print("[dim]Journal entries are created when the predictions command runs with --execute.[/dim]")
         console.print("=" * 70)
-        return
+        sys.exit(1)
     
     # Fetch comprehensive performance data from OANDA
     console.print("\n[dim]Fetching account data from OANDA...[/dim]")
-    perf_data = journal.get_full_performance_stats(client, days=days if days != 30 else None)
+    perf_data = journal.get_full_performance_stats(client, days=days)
     
     account = perf_data.get('account')
     open_trades = perf_data.get('open_trades', [])
@@ -375,7 +391,7 @@ def buddy_journal(
             "Margin Usage:",
             f"[{margin_color}]{margin_pct:.1f}%[/{margin_color}]",
             "Open Positions:",
-            f"{account.open_trade_count}",
+            f"{account.open_position_count}",
         )
         
         console.print(Panel(
@@ -393,18 +409,18 @@ def buddy_journal(
         pnl_color = "green" if total_unrealized >= 0 else "red"
         
         open_table = Table(show_header=True, header_style="bold white", box=None)
-        open_table.add_column("ID", style="dim", width=6)
+        open_table.add_column("Trade ID", style="dim")
         open_table.add_column("Pair", width=9)
-        open_table.add_column("Dir", justify="center", width=4)
+        open_table.add_column("Direction", justify="center", width=7)
         open_table.add_column("Units", justify="right", width=10)
-        open_table.add_column("Entry", justify="right", width=10)
-        open_table.add_column("SL", justify="right", width=10)
-        open_table.add_column("TP", justify="right", width=10)
-        open_table.add_column("P/L", justify="right", width=12)
+        open_table.add_column("Entry Price", justify="right", width=12)
+        open_table.add_column("Stop Loss", justify="right", width=12)
+        open_table.add_column("Take Profit", justify="right", width=12)
+        open_table.add_column("Unrealized P/L", justify="right", width=14)
         
         for trade in open_trades:
             direction_style = "green" if trade.direction == "long" else "red"
-            direction_symbol = "⬆" if trade.direction == "long" else "⬇"
+            direction_text = "LONG" if trade.direction == "long" else "SHORT"
             
             pnl = trade.unrealized_pnl
             trade_pnl_color = "green" if pnl >= 0 else "red"
@@ -418,7 +434,7 @@ def buddy_journal(
             open_table.add_row(
                 str(trade.trade_id),
                 trade.instrument.replace("_", "/"),
-                f"[{direction_style}]{direction_symbol}[/{direction_style}]",
+                f"[{direction_style}]{direction_text}[/{direction_style}]",
                 f"{trade.units:,}",
                 f"{trade.entry_price:{price_fmt}}",
                 sl_str,
@@ -474,11 +490,12 @@ def buddy_journal(
         perf_lines.append("")
         avg_win = stats.get('avg_win', 0)
         avg_loss = stats.get('avg_loss', 0)
-        rr_ratio = avg_win / avg_loss if avg_loss > 0 else 0
+        rr_ratio = avg_win / avg_loss if avg_loss > 0 else float('inf')
+        rr_text = f"{rr_ratio:.2f}" if rr_ratio != float('inf') else "∞"
         
         perf_lines.append(f"  Avg Win:          [green]${avg_win:,.2f}[/green]")
         perf_lines.append(f"  Avg Loss:         [red]${avg_loss:,.2f}[/red]")
-        perf_lines.append(f"  Risk/Reward:      {rr_ratio:.2f}")
+        perf_lines.append(f"  Risk/Reward:      {rr_text}")
         perf_lines.append(f"  Max Drawdown:     [red]${stats.get('max_drawdown', 0):,.2f}[/red]")
         
         # Streak info
@@ -502,7 +519,7 @@ def buddy_journal(
             
             # Sort by P/L
             sorted_instruments = sorted(by_instrument.items(), key=lambda x: x[1]['pnl'], reverse=True)
-            for instr, data in sorted_instruments[:6]:  # Top 6
+            for instr, data in sorted_instruments:
                 total = data['wins'] + data['losses']
                 wr = data['wins'] / total * 100 if total > 0 else 0
                 instr_pnl_color = "green" if data['pnl'] >= 0 else "red"
@@ -539,7 +556,7 @@ def buddy_journal(
         history_table.add_column("Exit", justify="right", width=10)
         history_table.add_column("P/L", justify="right", width=12)
         
-        for trade in closed_trades[:20]:  # Show last 20
+        for trade in closed_trades:
             direction_style = "green" if trade.direction == "long" else "red"
             direction_symbol = "⬆" if trade.direction == "long" else "⬇"
             
@@ -567,33 +584,10 @@ def buddy_journal(
         
         console.print(Panel(
             history_table,
-            title=f"[bold white]📋 RECENT TRADE HISTORY (Last {min(20, len(closed_trades))})[/bold white]",
+            title=f"[bold white]📋 RECENT TRADE HISTORY ({len(closed_trades)} trades)[/bold white]",
             border_style="white",
             padding=(0, 1),
         ))
-    
-    # ═══════════════════════════════════════════════════════════════════════════
-    # SYNC LOCAL JOURNAL (if requested)
-    # ═══════════════════════════════════════════════════════════════════════════
-    if update:
-        console.print()
-        console.print("[dim]Syncing local journal...[/dim]")
-        try:
-            sync_results = journal.sync_open_trades(client)
-            closed_updated = sync_results.get('closed_updated', 0)
-            open_updated = sync_results.get('open_updated', 0)
-            
-            if closed_updated > 0 or open_updated > 0:
-                console.print(f"[green]✓ Local journal synced ({closed_updated} closed, {open_updated} open)[/green]")
-            
-            # Import untracked trades if requested
-            untracked = sync_results.get('untracked_trades', [])
-            if untracked and import_trades:
-                imported = journal.import_untracked_trades(client)
-                if imported > 0:
-                    console.print(f"[green]✓ Imported {imported} trades into local journal[/green]")
-        except Exception as e:
-            console.print(f"[yellow]Local journal sync failed: {e}[/yellow]")
     
     # ═══════════════════════════════════════════════════════════════════════════
     # FOOTER
@@ -851,171 +845,13 @@ def buddy_monitor(
     drift_limit: int = 20,
     **kwargs: Any,
 ) -> None:
-    """
-    Display monitoring dashboard showing system health, alerts, and model drift.
-    
-    Shows:
-    - Alert summary (critical/warning/info)
-    - Recent model drift metrics
-    - Performance baseline comparison
-    - Recommendations for action
-    
-    Args:
-        config_path: Path to config file
-        show_alerts: Show detailed alert list
-        show_drift: Show model drift history
-        generate_report: Generate full monitoring report
-        drift_limit: Number of drift history entries to show
-    """
-    from src.utils.monitoring import MonitoringSystem, create_monitoring_report, AlertLevel
-    from datetime import datetime
-    
-    cfg = load_config(config_path)
-    monitor = MonitoringSystem(cfg)
-    
-    if generate_report:
-        # Generate full report
-        console.print("\n[bold cyan]📊 Generating Monitoring Report...[/bold cyan]")
-        report_path = create_monitoring_report(monitor)
-        console.print(f"[green]✓[/green] Report saved to: {report_path}")
-        return
-    
-    if show_alerts:
-        # Show detailed alerts
-        console.print("\n" + "=" * 80)
-        console.print("[bold yellow]⚠️  ALERTS[/bold yellow]".center(80))
-        console.print("=" * 80)
-        
-        alerts = monitor.get_alerts()
-        if not alerts:
-            console.print("\n[green]✅ No alerts - system healthy[/green]")
-        else:
-            # Group by category
-            by_category = {}
-            for alert in alerts:
-                if alert.category not in by_category:
-                    by_category[alert.category] = []
-                by_category[alert.category].append(alert)
-            
-            for category, cat_alerts in sorted(by_category.items()):
-                console.print(f"\n[bold]{category.upper().replace('_', ' ')}[/bold]")
-                for alert in cat_alerts:
-                    icon = "🔴" if alert.level == AlertLevel.CRITICAL else "⚠️" if alert.level == AlertLevel.WARNING else "ℹ️"
-                    timestamp = datetime.fromisoformat(alert.timestamp).strftime('%Y-%m-%d %H:%M:%S')
-                    console.print(f"  {icon} [{timestamp}] {alert.message}")
-        
-        console.print("\n" + "=" * 80)
-        return
-    
-    if show_drift:
-        # Show drift history
-        console.print("\n" + "=" * 80)
-        console.print("[bold cyan]📈 MODEL DRIFT HISTORY[/bold cyan]".center(80))
-        console.print("=" * 80)
-        
-        if not monitor.drift_history:
-            console.print("\n[yellow]⚠️  No drift history available[/yellow]")
-            console.print("Model drift tracking will start after first predictions")
-        else:
-            from rich.table import Table
-            
-            table = Table(show_header=True, header_style="bold magenta")
-            table.add_column("Timestamp", style="dim", width=20)
-            table.add_column("Confidence", justify="right")
-            table.add_column("Drift Score", justify="right")
-            table.add_column("Status", justify="center")
-            
-            recent = monitor.drift_history[-drift_limit:]
-            for metrics in recent:
-                timestamp = datetime.fromisoformat(metrics.timestamp).strftime('%Y-%m-%d %H:%M')
-                status = "[red]🔴 ALERT[/red]" if metrics.alert_triggered else "[green]✅ OK[/green]"
-                
-                table.add_row(
-                    timestamp,
-                    f"{metrics.confidence_mean:.3f}",
-                    f"{metrics.feature_drift_score:.3f}",
-                    status,
-                )
-            
-            console.print(table)
-        
-        console.print("\n" + "=" * 80)
-        return
-    
-    # Default: Show dashboard
-    console.print("\n" + "=" * 80)
-    console.print("[bold cyan]📊 FX TRADING BOT - MONITORING DASHBOARD[/bold cyan]".center(80))
-    console.print("=" * 80)
-    
-    # Get dashboard data
-    data = monitor.get_dashboard_data()
-    timestamp = datetime.fromisoformat(data['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
-    
-    console.print(f"\n[dim]Last Updated: {timestamp}[/dim]\n")
-    
-    # Alert Summary
-    from rich.table import Table
-    
-    alert_table = Table(title="Alert Summary", show_header=True)
-    alert_table.add_column("Level", style="bold")
-    alert_table.add_column("Count", justify="right")
-    
-    alerts = data['alerts']
-    alert_table.add_row("[red]Critical[/red]", str(alerts['critical']))
-    alert_table.add_row("[yellow]Warning[/yellow]", str(alerts['warning']))
-    alert_table.add_row("[cyan]Info[/cyan]", str(alerts['info']))
-    alert_table.add_row("[bold]Total[/bold]", str(alerts['total']))
-    
-    console.print(alert_table)
-    
-    # Recent alerts
-    recent_alerts = monitor.get_alerts()[-5:]
-    if recent_alerts:
-        console.print("\n[bold]Recent Alerts:[/bold]")
-        for alert in recent_alerts:
-            icon = "🔴" if alert.level == AlertLevel.CRITICAL else "⚠️" if alert.level == AlertLevel.WARNING else "ℹ️"
-            ts = datetime.fromisoformat(alert.timestamp).strftime('%H:%M:%S')
-            console.print(f"  {icon} [{ts}] {alert.category}: {alert.message}")
-    
-    # Model Health
-    console.print("\n[bold cyan]Model Health[/bold cyan]")
-    recent_drift = data['recent_drift']
-    if recent_drift:
-        latest = recent_drift[-1]
-        status = "[red]🔴 DRIFT DETECTED[/red]" if latest['alert_triggered'] else "[green]✅ Healthy[/green]"
-        
-        health_table = Table(show_header=False)
-        health_table.add_column("Metric", style="bold")
-        health_table.add_column("Value")
-        
-        health_table.add_row("Status", status)
-        health_table.add_row("Confidence", f"{latest['confidence_mean']:.3f}")
-        health_table.add_row("Drift Score", f"{latest['drift_score']:.3f}")
-        
-        console.print(health_table)
-    else:
-        console.print("[dim]  No drift data available yet[/dim]")
-    
-    # Performance Baseline
-    baseline = data.get('baseline_metrics')
-    if baseline and baseline.get('win_rate'):
-        console.print("\n[bold cyan]Performance Baseline[/bold cyan]")
-        baseline_table = Table(show_header=False)
-        baseline_table.add_column("Metric", style="bold")
-        baseline_table.add_column("Value")
-        
-        baseline_table.add_row("Win Rate", f"{baseline['win_rate']:.1%}")
-        baseline_table.add_row("Sharpe Ratio", f"{baseline.get('sharpe_ratio', 0):.2f}")
-        
-        console.print(baseline_table)
-    
-    # Recommendations
-    console.print("\n[bold yellow]💡 Quick Actions[/bold yellow]")
-    console.print("  • buddy monitor --alerts     - View detailed alerts")
-    console.print("  • buddy monitor --drift      - Check model drift history")
-    console.print("  • buddy monitor --report     - Generate full report")
-    
-    if alerts['critical'] > 0:
-        console.print("\n[red]⚠️  CRITICAL ALERTS DETECTED - Review immediately![/red]")
-    
-    console.print("\n" + "=" * 80)
+    """Display the monitoring dashboard using the Rich-based CLI renderer."""
+    from cli.monitoring_cli import run_monitoring_dashboard
+
+    run_monitoring_dashboard(
+        config_path,
+        show_alerts=show_alerts,
+        show_drift=show_drift,
+        generate_report=generate_report,
+        drift_limit=drift_limit,
+    )

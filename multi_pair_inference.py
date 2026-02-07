@@ -20,6 +20,7 @@ Usage:
 
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import pickle
@@ -110,7 +111,11 @@ class PairModel:
             return True
             
         except Exception as e:
-            logger.warning(f"Failed to load model for {self.pair}: {e}")
+            err_msg = str(e)
+            # Truncate enormous Keras deserialization errors (full model JSON)
+            if len(err_msg) > 200:
+                err_msg = err_msg[:200] + "..."
+            logger.warning(f"Failed to load model for {self.pair}: {err_msg}")
             return False
 
 
@@ -140,11 +145,20 @@ class MultiPairInference:
         
     def load(self) -> bool:
         """Load all available pair models."""
+        import io
         loaded = 0
         
         for pair in self.pairs:
             pm = PairModel(pair, self.models_dir)
-            if pm.load():
+            # Suppress stderr during Keras model loading to avoid
+            # massive JSON config dumps on deserialization failures
+            old_stderr = sys.stderr
+            try:
+                sys.stderr = io.StringIO()
+                success = pm.load()
+            finally:
+                sys.stderr = old_stderr
+            if success:
                 self._pair_models[pair] = pm
                 loaded += 1
         

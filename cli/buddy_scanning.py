@@ -44,6 +44,8 @@ def buddy_scan(
     verbose: bool = False,
     prompt_train: bool = False,
     diversified: bool = False,
+    force: bool = False,
+    no_execute: bool = False,
     **kwargs: Any,
 ) -> list:
     """
@@ -73,7 +75,7 @@ def buddy_scan(
     """
     try:
         # Use new enhanced BuddyScanner
-        from buddy_scanner import BuddyScanner, EnhancedScanResult
+        from buddy_scanner import BuddyScanner, EnhancedScanResult, suppress_logging
         from pair_scanner import PairAnalysis
         
         # Don't override account_equity unless explicitly passed
@@ -81,11 +83,13 @@ def buddy_scan(
         explicit_equity = kwargs.get("account_equity")
         use_rl_sizer = kwargs.get("use_rl_sizer", True)  # RL sizer enabled by default
         
-        scanner = BuddyScanner(
-            config_path=config_path,
-            account_equity=explicit_equity,  # None = use config
-            use_rl_sizer=use_rl_sizer,
-        )
+        # Suppress all verbose logging — only scanner's own output should show
+        with suppress_logging():
+            scanner = BuddyScanner(
+                config_path=config_path,
+                account_equity=explicit_equity,  # None = use config
+                use_rl_sizer=use_rl_sizer,
+            )
         
         # Parse pairs
         pair_list = None
@@ -100,6 +104,7 @@ def buddy_scan(
             verbose=True,  # Always verbose for CLI
             prompt_train=prompt_train,
             diversified=diversified,
+            force=force,
         )
         
         # Convert to legacy format for backward compatibility
@@ -213,7 +218,7 @@ def buddy_predict_78(
     console.print(f"   Entry:      {r.current_price:.5f}")
     
     # Calculate actual SL/TP prices
-    from fx_paper import pip_size
+    from src.utils.fx_paper import pip_size
     pip = pip_size(instrument)
     
     if r.direction == "LONG":
@@ -225,7 +230,7 @@ def buddy_predict_78(
     
     console.print(f"   SL:         {sl_price:.5f} ({r.sl_pips:.0f} pips)")
     console.print(f"   TP:         {tp_price:.5f} ({r.tp_pips:.0f} pips)")
-    console.print(f"   R:R:        1:{r.tp_pips/r.sl_pips:.1f}" if r.sl_pips > 0 else "   R:R:        N/A")
+    console.print(f"   R:R:        1:{r.tp_pips/r.sl_pips:.1f}" if r.sl_pips and r.sl_pips > 0 else "   R:R:        N/A")
     console.print()
     
     # Position sizing
@@ -328,7 +333,7 @@ def _buddy_scan_legacy(
     from rich.table import Table
     
     # Import train_buddy here to avoid circular imports
-    from cli.commands import train_buddy
+    from cli.training import train_buddy
     
     console.print("\n" + "=" * 70)
     console.print(f"[bold cyan]📡 MULTI-PAIR SCANNER[/bold cyan]")
@@ -345,7 +350,7 @@ def _buddy_scan_legacy(
     _utils_logger.setLevel(_utils_prev)
     
     # Parse pairs
-    from pair_scanner import MAJOR_PAIRS, PairAnalysis
+    from src.utils.pair_scanner import MAJOR_PAIRS, PairAnalysis
     
     if pairs:
         pair_list = [p.strip().upper().replace("/", "_") for p in pairs.split(",")]
@@ -382,8 +387,8 @@ def _buddy_scan_legacy(
     
     # Initialize scanner
     from src.utils.oanda_practice import OandaPracticeClient
-    from feature_engineering import FeatureEngineering
-    from fx_paper import candles_to_ohlcv_df
+    from src.data.feature_engineering import FeatureEngineering
+    from src.utils.fx_paper import candles_to_ohlcv_df
     
     client = OandaPracticeClient.from_env()
     fe = FeatureEngineering(cfg.get("feature_engineering", {}))

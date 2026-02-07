@@ -35,7 +35,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from enterprise_training import (
+from src.training.enterprise_training import (
     ExperimentConfig,
     ExperimentTracker,
     TrainingExperiment,

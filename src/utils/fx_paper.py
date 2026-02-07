@@ -16,7 +16,7 @@ from typing import Any, Literal, Optional
 import numpy as np
 import pandas as pd
 
-from candle_smoothing import resample_5min_ohlcv_and_ema_close
+from src.data.candle_smoothing import resample_5min_ohlcv_and_ema_close
 
 
 Signal = Literal["buy", "sell", "hold"]

@@ -238,6 +238,7 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     from datetime import datetime, timezone
 
     import pandas as pd
+    from rich.progress import Progress, SpinnerColumn, TextColumn
 
     from fx_paper import candles_to_ohlcv_df
     from src.utils.oanda_practice import OandaPracticeClient
@@ -248,71 +249,84 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     # If the user requests more, page forward using `from_time`.
     max_per_request = 5000
     total = max(1, int(opts.candles))
-    if total <= max_per_request:
-        resp = client.get_candles(
-            opts.instrument,
-            granularity=str(opts.granularity),
-            count=int(total),
-            price=str(opts.price),
+    
+    # Show progress spinner while fetching
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task(
+            f"Downloading {total:,} candles from OANDA ({opts.instrument} {opts.granularity})...",
+            total=None,
         )
-        oanda_df = candles_to_ohlcv_df(resp)
-    else:
-        # Page *backwards* using `to_time`.
-        # Paging forwards using `from_time` can easily land on the current (incomplete)
-        # candle and return only incomplete candles.
-        dfs: list[pd.DataFrame] = []
-        to_time: str | None = None
-        last_min_ts = None
-        remaining = int(total)
-        # Safety: cap number of API calls.
-        max_pages = max(1, int((total + max_per_request - 1) // max_per_request) + 2)
-        for _ in range(max_pages):
-            if remaining <= 0:
-                break
-            count = int(min(max_per_request, remaining))
+        if total <= max_per_request:
             resp = client.get_candles(
                 opts.instrument,
                 granularity=str(opts.granularity),
-                count=int(count),
+                count=int(total),
                 price=str(opts.price),
-                to_time=to_time,
             )
-            df_page = candles_to_ohlcv_df(resp)
-            if df_page is None or len(df_page) == 0:
-                break
-            dfs.append(df_page)
-            remaining -= int(len(df_page))
-
-            # Move the cursor to the earliest candle in this page.
-            try:
-                t = pd.to_datetime(df_page["time"], utc=True, errors="coerce")
-                if t.isna().all():
-                    break
-                min_ts = t.min()
-                if last_min_ts is not None and min_ts >= last_min_ts:
-                    break
-                last_min_ts = min_ts
-                # OANDA accepts RFC3339; keep full precision.
-                to_time = str(min_ts.to_pydatetime().isoformat().replace(UTC_OFFSET_SUFFIX, "Z"))
-            except Exception:
-                break
-
-        if dfs:
-            oanda_df = pd.concat(dfs, axis=0, ignore_index=True)
-            try:
-                if "time" in oanda_df.columns:
-                    oanda_df = oanda_df.drop_duplicates(subset=["time"], keep="last")
-                    oanda_df = oanda_df.sort_values("time").reset_index(drop=True)
-            except Exception:
-                pass
-            # Keep the most recent `total` candles.
-            try:
-                if len(oanda_df) > total:
-                    oanda_df = oanda_df.iloc[-int(total) :].reset_index(drop=True)
-            except Exception:
-                pass
+            oanda_df = candles_to_ohlcv_df(resp)
         else:
-            oanda_df = pd.DataFrame()
+            # Page *backwards* using `to_time`.
+            # Paging forwards using `from_time` can easily land on the current (incomplete)
+            # candle and return only incomplete candles.
+            dfs: list[pd.DataFrame] = []
+            to_time: str | None = None
+            last_min_ts = None
+            remaining = int(total)
+            # Safety: cap number of API calls.
+            max_pages = max(1, int((total + max_per_request - 1) // max_per_request) + 2)
+            for i in range(max_pages):
+                if remaining <= 0:
+                    break
+                count = int(min(max_per_request, remaining))
+                progress.update(task, description=f"Downloading {opts.instrument} {opts.granularity}: page {i+1}/{max_pages} ({total - remaining:,}/{total:,} candles)...")
+                resp = client.get_candles(
+                    opts.instrument,
+                    granularity=str(opts.granularity),
+                    count=int(count),
+                    price=str(opts.price),
+                    to_time=to_time,
+                )
+                df_page = candles_to_ohlcv_df(resp)
+                if df_page is None or len(df_page) == 0:
+                    break
+                dfs.append(df_page)
+                remaining -= int(len(df_page))
+
+                # Move the cursor to the earliest candle in this page.
+                try:
+                    t = pd.to_datetime(df_page["time"], utc=True, errors="coerce")
+                    if t.isna().all():
+                        break
+                    min_ts = t.min()
+                    if last_min_ts is not None and min_ts >= last_min_ts:
+                        break
+                    last_min_ts = min_ts
+                    # OANDA accepts RFC3339; keep full precision.
+                    to_time = str(min_ts.to_pydatetime().isoformat().replace(UTC_OFFSET_SUFFIX, "Z"))
+                except Exception:
+                    break
+
+            if dfs:
+                oanda_df = pd.concat(dfs, axis=0, ignore_index=True)
+                try:
+                    if "time" in oanda_df.columns:
+                        oanda_df = oanda_df.drop_duplicates(subset=["time"], keep="last")
+                        oanda_df = oanda_df.sort_values("time").reset_index(drop=True)
+                except Exception:
+                    pass
+                # Keep the most recent `total` candles.
+                try:
+                    if len(oanda_df) > total:
+                        oanda_df = oanda_df.iloc[-int(total) :].reset_index(drop=True)
+                except Exception:
+                    pass
+            else:
+                oanda_df = pd.DataFrame()
 
     # Helpful "recency" logging so it's obvious we pulled live data now.
     candle_range_str = ""
@@ -339,12 +353,12 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     oanda_df.to_csv(out_path, index=False)
     console.print(Panel(
-        f"[bold]OANDA Data Retrieved[/bold]\n\n"
+        f"[bold]Market Data Retrieved Successfully[/bold]\n\n"
         f"[dim]Timestamp:[/dim] {now_utc_str}\n"
-        f"[dim]Candle Range:[/dim] {candle_range_str}\n"
-        f"[dim]Rows:[/dim] {len(oanda_df):,}\n"
-        f"[dim]Saved to:[/dim] {out_path}",
-        title="✓ Data Fetched",
+        f"[dim]Temporal Range:[/dim] {candle_range_str}\n"
+        f"[dim]Observations:[/dim] {len(oanda_df):,} candles\n"
+        f"[dim]Storage:[/dim] {out_path}",
+        title="✓ OANDA API",
         border_style="green",
     ))
     return str(out_path)
@@ -363,7 +377,7 @@ def _migrate_keras2_to_keras3(model_path: str, seq_len: int, feature_dim: int, c
     import tempfile
     import shutil
 
-    console.print("[yellow]Attempting Keras 2→3 migration...[/yellow]")
+    console.print("[yellow]Initiating Keras 2.x → 3.x model migration...[/yellow]")
 
     # Try to extract weights from the .keras file (it's a zip)
     with tempfile.TemporaryDirectory() as tmpdir:

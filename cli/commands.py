@@ -23,7 +23,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 from rich.live import Live
 
-from cli.config import BuddyTrainingOptions, OandaFetchOptions
+from cli.config import BuddyTrainingOptions, BuddyTrainingAdvancedOptions, OandaFetchOptions
 from cli.io_utils import (
     console, logger, DEFAULT_CONFIG_PATH, VALID_OANDA_INSTRUMENTS,
     _validate_instrument, _normalize_instrument, _get_pair_model_paths,
@@ -519,15 +519,11 @@ def buddy(
             
             if live_nav > 0:
                 equity = live_nav
-                console.print(f"[green]💰 Live Balance: ${live_nav:,.2f}[/green] (fetched from OANDA)")
+                # Balance display now handled in account status header section
+                # Check if daily trade limit reached
                 trades_remaining = max_trades_per_day - trades_today
-                if trades_remaining <= 5:
-                    console.print(f"[yellow]📊 Trades Today: {trades_today}/{max_trades_per_day} (⚠️ {trades_remaining} remaining)[/yellow]")
-                else:
-                    console.print(f"[dim]📊 Trades Today: {trades_today}/{max_trades_per_day}[/dim]")
-                    
                 if trades_remaining <= 0:
-                    console.print(f"[bold red]⛔ DAILY TRADE LIMIT REACHED[/bold red]")
+                    console.print(f"[bold red]⛔ DAILY TRADE LIMIT REACHED ({trades_today}/{max_trades_per_day})[/bold red]")
                     console.print("[dim]Come back tomorrow or increase max_trades_per_day[/dim]")
                     return
         except Exception as e:
@@ -596,8 +592,45 @@ def buddy(
     modular_ensemble_meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
     
     if modular_ensemble_meta_path.exists() and not checkpoint_path:
-        # Use modular ensemble inference
-        console.print("\n[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
+        # =====================================================================
+        # DISPLAY ACCOUNT STATUS HEADER (before banner)
+        # =====================================================================
+        console.print("")
+        console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/bold cyan]")
+        console.print("[bold cyan]               ACCOUNT STATUS[/bold cyan]")
+        console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/bold cyan]")
+        
+        # Display live balance and trade count
+        if live_nav and live_nav > 0:
+            console.print(f"[green]💰 Live Balance: ${live_nav:,.2f}[/green]")
+            trades_remaining = max_trades_per_day - trades_today
+            if trades_remaining <= 5:
+                console.print(f"[yellow]📊 Trades Today: {trades_today}/{max_trades_per_day} (⚠️ {trades_remaining} remaining)[/yellow]")
+            else:
+                console.print(f"[cyan]📊 Trades Today: {trades_today}/{max_trades_per_day}[/cyan]")
+        else:
+            console.print(f"[dim]💰 Balance: Using default equity[/dim]")
+            console.print(f"[dim]📊 Trades Today: {trades_today}/{max_trades_per_day}[/dim]")
+        
+        # Display RL Position Sizer status
+        if use_rl_sizer:
+            console.print(f"[cyan]🤖 RL Position Sizer: ENABLED[/cyan]")
+        else:
+            console.print(f"[dim]🤖 RL Position Sizer: DISABLED[/dim]")
+        
+        # Display Intelligent Mode status
+        enable_llm_integration = llm_enhance and llm_initialized
+        if enable_llm_integration:
+            console.print(f"[cyan]🧠 Intelligent Mode: ENABLED[/cyan]")
+        else:
+            console.print(f"[dim]🧠 Intelligent Mode: DISABLED[/dim]")
+        
+        console.print("")
+        
+        # =====================================================================
+        # MODULAR ENSEMBLE INFERENCE BANNER
+        # =====================================================================
+        console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
         console.print("[bold magenta]  MODULAR ENSEMBLE INFERENCE[/bold magenta]")
         console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
         
@@ -623,17 +656,11 @@ def buddy(
         pair_model_dir = Path("trained_data/models") / normalized_instrument
         has_pair_models = pair_model_dir.exists() and any(pair_model_dir.glob("*.keras"))
         
+        # Display model source
         if has_pair_models:
             console.print(f"[green]📊 Loading {normalized_instrument}-specific models[/green]")
         else:
-            console.print(f"[yellow]📊 No {normalized_instrument} models found, using generic models[/yellow]")
-        
-        if use_rl_sizer:
-            console.print(f"[cyan]🤖 RL Position Sizer: ENABLED[/cyan]")
-        
-        enable_llm_integration = llm_enhance and llm_initialized
-        if enable_llm_integration:
-            console.print(f"[cyan]🧠 LLM Enhancement: ENABLED (dynamic thresholds, smart sentiment)[/cyan]")
+            console.print(f"[yellow]📊 Loading generic fallback models (no {normalized_instrument}-specific models found)[/yellow]")
         
         ensemble = ModularEnsembleInference(
             instrument=normalized_instrument if has_pair_models else None,
@@ -665,18 +692,28 @@ def buddy(
         result = ensemble.predict_verbose(df, instrument=instrument)
         _lap("modular_inference")
         
-        # Display results
+        # =====================================================================
+        # DISPLAY GATE CHECKS SECTION
+        # =====================================================================
         console.print("")
+        console.print("[bold cyan]Gate Checks:[/bold cyan]")
         for check in result['gate_checks']:
             console.print(f"  {check}")
+        
+        # =====================================================================
+        # DISPLAY FINAL TRADING DECISION
+        # =====================================================================
         console.print("")
         console.print(f"[bold]{result['decision']}[/bold]")
         console.print("")
         
         signal = result['raw_signal']
         
-        # Execute trade if gates pass
+        # =====================================================================
+        # TRADE EXECUTION OR DRY RUN STATUS
+        # =====================================================================
         if signal.trade and execute:
+            # Trade signal and execution enabled - execute the trade
             from src.utils.oanda_practice import OandaPracticeClient
             trader = OandaPracticeClient.from_env()
             
@@ -799,25 +836,62 @@ def buddy(
                                 prediction=signal.tcn_probability,
                                 confidence=signal.ridge_confidence,
                             )
-                            console.print(f"  [dim]📓 Trade logged to journal[/dim]")
+                            console.print(f"  [green]✓ Trade logged to journal[/green]")
                         except Exception as je:
-                            console.print(f"  [yellow]Journal error: {je}[/yellow]")
+                            console.print(f"  [yellow]⚠ Journal error: {je}[/yellow]")
                 except Exception as e:
-                    console.print(f"[red]Order failed: {e}[/red]")
+                    console.print(f"[red]✗ Order failed: {e}[/red]")
             else:
                 console.print(f"[bold yellow]Executing: {signal.direction.upper()} {abs(units):,} units[/bold yellow]")
                 console.print("[yellow]⚠ ATR not available - placing order without TP/SL[/yellow]")
                 try:
                     order_result = trader.create_market_order(instrument=instrument, units=units)
-                    console.print(f"[green]Order placed: {order_result.get('orderFillTransaction', {}).get('price', 'filled')}[/green]")
+                    console.print(f"[green]✓ Order placed: {order_result.get('orderFillTransaction', {}).get('price', 'filled')}[/green]")
                 except Exception as e:
-                    console.print(f"[red]Order failed: {e}[/red]")
+                    console.print(f"[red]✗ Order failed: {e}[/red]")
+        
+        elif signal.trade and not execute:
+            # Gates passed but execution flag not set - DRY RUN
+            console.print("[bold cyan]╔═══════════════════════════════════════════════════════════╗[/bold cyan]")
+            console.print("[bold cyan]║              DRY RUN MODE (--execute not set)             ║[/bold cyan]")
+            console.print("[bold cyan]╚═══════════════════════════════════════════════════════════╝[/bold cyan]")
+            console.print(f"[green]✓ All gates passed - Trade signal generated[/green]")
+            console.print(f"  [cyan]Direction:[/cyan] {signal.direction.upper()}")
+            console.print(f"  [cyan]Position Size:[/cyan] {signal.size:.2f} lots ({int(signal.size * 100000):,} units)")
+            console.print(f"  [dim]To execute this trade, add --execute flag[/dim]")
         
         elif signal.trade and not llm_approved:
-            console.print("[yellow]No trade: LLM rejected (model gates passed but LLM identified risk)[/yellow]")
-        elif not signal.trade:
-            console.print("[yellow]No trade: gates failed[/yellow]")
+            # Model gates passed but LLM rejected
+            console.print("[bold yellow]╔═══════════════════════════════════════════════════════════╗[/bold yellow]")
+            console.print("[bold yellow]║              NO TRADE: LLM VALIDATION FAILED              ║[/bold yellow]")
+            console.print("[bold yellow]╚═══════════════════════════════════════════════════════════╝[/bold yellow]")
+            console.print("[yellow]Model gates passed but LLM identified risk factors[/yellow]")
+            console.print("[dim]The intelligent mode override prevented this trade[/dim]")
         
+        else:
+            # Gates failed - no trade signal
+            console.print("[bold yellow]╔═══════════════════════════════════════════════════════════╗[/bold yellow]")
+            console.print("[bold yellow]║              NO TRADE: GATES FAILED                        ║[/bold yellow]")
+            console.print("[bold yellow]╚═══════════════════════════════════════════════════════════╝[/bold yellow]")
+            console.print(f"[yellow]Reason: {signal.reason}[/yellow]")
+            
+            # Show which specific gates failed
+            failed_gates = []
+            if not signal.confidence_gate_passed:
+                failed_gates.append(f"Ridge confidence ({signal.ridge_confidence:.0f}/100)")
+            if not signal.momentum_gate_passed:
+                failed_gates.append(f"XGBoost momentum ({signal.xgb_momentum:.2f})")
+            if not signal.risk_gate_passed:
+                failed_gates.append(f"RF risk ({signal.rf_drawdown_pips:.1f} pips)")
+            if hasattr(signal, 'meta_gate_passed') and not signal.meta_gate_passed:
+                failed_gates.append(f"Meta-labeler ({signal.meta_confidence:.2f})")
+            
+            if failed_gates:
+                console.print(f"  [dim]Failed gates: {', '.join(failed_gates)}[/dim]")
+        
+        # =====================================================================
+        # CLOSING SEPARATOR
+        # =====================================================================
         console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
         return
     

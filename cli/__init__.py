@@ -3,7 +3,6 @@
 from cli.config import OandaFetchOptions, BuddyTrainingOptions, BuddyTrainingAdvancedOptions
 from cli.io_utils import (
     console, logger, DEFAULT_CONFIG_PATH, VALID_OANDA_INSTRUMENTS,
-    _validate_instrument, _normalize_instrument, BUDDY_META_FILENAME,
     DEFAULT_CURRICULUM_KS,
 )
 from cli.calibration import _tier2_apply_calibration
@@ -18,6 +17,7 @@ from cli.commands import (
 )
 from cli.fx_trading import fx_paper_trade, generate_dashboard
 from cli.wizard import _buddy_interactive_wizard
+from cli.candle_optimizer import find_optimal_candles
 
 __all__ = [
     # Config
@@ -37,4 +37,6 @@ __all__ = [
     'fx_paper_trade', 'generate_dashboard',
     # Wizard
     '_buddy_interactive_wizard',
+    # Candle Optimizer
+    'find_optimal_candles',
 ]

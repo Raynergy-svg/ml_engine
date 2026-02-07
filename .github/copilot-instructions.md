@@ -24,10 +24,14 @@ main.py (CLI)
 ```
 
 ### Critical Components
-- **Ensemble Gate System**: All 4 gates must pass before trade execution
+- **Ensemble Gate System**: 8+ gates must pass before trade execution (see Gate Thresholds section)
+- **Meta-Labeling**: 5th gate predicts trade success probability using XGBoost (src/training/meta_labeling.py)
 - **Triple Barrier Labeling**: Professional trade outcome labels (src/risk/triple_barrier.py)
 - **Walk-Forward Validation**: Time-series CV to prevent look-ahead bias (src/training/walkforward_validation.py)
-- **Market Intelligence**: News sentiment via FinBERT (market_intelligence.py)
+- **Market Intelligence**: News sentiment via FinBERT, drift detection, auto-retrain (market_intelligence.py)
+- **Drift Detection**: Auto-triggers model retraining when performance degrades
+- **LLM Integration**: Optional reasoning layer for dynamic threshold adjustment (buddy_intelligent_mode.py)
+- **Permissive Mode**: Graceful degradation when sklearn models have version mismatches
 
 ## Project Structure
 
@@ -98,19 +102,54 @@ pytest tests/ -v
 
 ## Gate Thresholds (H1 Config)
 
-The ensemble uses a gated architecture. **ALL gates must pass** for trade execution:
+The ensemble uses a gated architecture with **8+ gates**. **ALL gates must pass** for trade execution:
 
 ```python
 # From src/core/modular_inference.py InferenceConfig:
-min_tcn_probability: float = 0.60    # Transformer direction >= 60%
-min_confidence: float = 50.0         # Ridge ADX score >= 50/100
-min_momentum: float = 0.20           # XGBoost percentile >= 0.20
-max_drawdown_pct: float = 0.025      # RF drawdown <= 2.5%
 
-# Additional gates:
-min_meta_confidence: float = 0.55    # Meta-labeler success probability
-sentiment_block_threshold: float = 0.60  # Block on strong contrary sentiment
+# === CORE 4-MODEL GATES ===
+min_tcn_probability: float = 0.60        # Gate 1: Transformer direction >= 60% confidence
+min_confidence: float = 50.0             # Gate 2: Ridge ADX score >= 50/100
+min_momentum: float = 0.20               # Gate 3: XGBoost percentile >= 0.20
+max_drawdown_pct: float = 0.025          # Gate 4: RF drawdown <= 2.5%
+
+# === ADDITIONAL GATES ===
+min_meta_confidence: float = 0.55        # Gate 5: Meta-labeler trade success >= 55%
+sentiment_block_threshold: float = 0.60  # Gate 6: Block on strong contrary sentiment
+# Gate 7: RSI extremes (RSI < 10 for LONG, RSI > 90 for SHORT)
+# Gate 8: Trend contradiction (ADX > 35, block counter-trend trades)
 ```
+
+### Gate System Details
+
+| Gate # | Name | Source Model | Purpose | Default Threshold |
+|--------|------|--------------|---------|-------------------|
+| 1 | **TCN Probability** | Transformer/TCN | Direction confidence | ≥60% (not 50/50) |
+| 2 | **Confidence** | Ridge | Trend strength (ADX-based) | ≥50/100 |
+| 3 | **Momentum** | XGBoost | Momentum percentile or acceleration | ≥0.20 OR accelerating |
+| 4 | **Risk/Drawdown** | RandomForest | Expected drawdown | ≤2.5% of equity |
+| 5 | **Meta-Labeling** | Meta-Labeler (XGBoost) | Trade success probability | ≥55% confidence |
+| 6 | **Sentiment** | Market Intelligence | News sentiment alignment | No strong contrary sentiment (>60%) |
+| 7 | **RSI Extreme** | Technical indicator | Avoid extremes | RSI 10-90 range |
+| 8 | **Trend Contradiction** | ADX + direction | Don't fight strong trends | ADX ≤35 or aligned |
+
+**Decision Logic:**
+```python
+all_gates_passed = (
+    tcn_probability_gate_passed      # Gate 1
+    and confidence_gate_passed       # Gate 2
+    and momentum_gate_passed         # Gate 3
+    and risk_gate_passed             # Gate 4
+    and meta_gate_passed             # Gate 5 (if meta-labeler trained)
+    and sentiment_gate_passed        # Gate 6
+    and rsi_gate_passed              # Gate 7
+    and trend_gate_passed            # Gate 8
+)
+```
+
+**Permissive Mode:**
+If `permissive_mode=True`, gates with version mismatches are bypassed with warnings.
+This allows graceful degradation when sklearn models have compatibility issues.
 
 ## H1 Timeframe Settings
 
@@ -205,16 +244,19 @@ After training, models are saved to `trained_data/models/`:
 
 | File | Description |
 |------|-------------|
-| `transformer_direction.keras` | Transformer direction model |
+| `transformer_direction.keras` | Transformer direction model (Gate 1) |
 | `transformer_direction.meta.pkl` | Scalers and metadata |
 | `transformer_direction.ema.pkl` | EMA weights |
-| `xgb_momentum.pkl` | XGBoost momentum gate |
-| `ridge_confidence.pkl` | Ridge confidence gate |
-| `rf_risk.pkl` | RandomForest risk gate |
+| `xgb_momentum.pkl` | XGBoost momentum gate (Gate 3) |
+| `ridge_confidence.pkl` | Ridge confidence gate (Gate 2) |
+| `rf_risk.pkl` | RandomForest risk gate (Gate 4) |
+| `meta_labeler.pkl` | **Meta-labeler trade success predictor (Gate 5)** |
 | `modular_ensemble.meta.json` | Ensemble configuration |
 | `rl_position_sizer.zip` | RL position sizing agent |
 
 Pair-specific models stored in `trained_data/models/{PAIR}/`.
+
+**Note:** Meta-labeler is trained by default during `train-buddy` and saves to both pair-specific and generic paths.
 
 ## Testing Conventions
 - Tests in `tests/` use pytest

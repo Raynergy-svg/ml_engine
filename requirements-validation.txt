@@ -1,0 +1,3 @@
+# Optional validation dependencies
+# Install with: pip install -r requirements-validation.txt
+pandera[pandas]>=0.18.0

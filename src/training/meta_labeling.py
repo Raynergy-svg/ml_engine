@@ -429,14 +429,28 @@ class MetaLabeler:
         metrics = {"meta_train_accuracy": train_acc}
         
         if X_val is not None and y_val is not None:
-            val_acc = float(np.mean((self.meta_model.predict(X_val) > 0.5) == y_val))
+            val_preds = self.meta_model.predict(X_val)
+            val_acc = float(np.mean((val_preds > 0.5) == y_val))
             metrics["meta_val_accuracy"] = val_acc
             metrics["overfitting_gap"] = train_acc - val_acc
+            
+            # AUC, precision, recall for richer reporting
+            try:
+                from sklearn.metrics import roc_auc_score, precision_score, recall_score
+                val_proba = self.meta_model.predict_proba(X_val)[:, 1]
+                if len(np.unique(y_val)) > 1:
+                    metrics["val_auc"] = float(roc_auc_score(y_val, val_proba))
+                val_binary = (val_preds > 0.5).astype(int)
+                metrics["val_precision"] = float(precision_score(y_val, val_binary, zero_division=0))
+                metrics["val_recall"] = float(recall_score(y_val, val_binary, zero_division=0))
+            except Exception:
+                pass  # Non-critical; base accuracy is enough
             
             if verbose:
                 gap = train_acc - val_acc
                 gap_status = "✓" if gap <= self.config.max_overfitting_gap else "⚠️ HIGH"
-                logger.info(f"Meta-model: train={train_acc:.1%}, val={val_acc:.1%}, gap={gap:.1%} {gap_status}")
+                auc_str = f", auc={metrics.get('val_auc', 0):.3f}" if 'val_auc' in metrics else ""
+                logger.info(f"Meta-model: train={train_acc:.1%}, val={val_acc:.1%}, gap={gap:.1%} {gap_status}{auc_str}")
         
         return metrics
     
@@ -617,12 +631,14 @@ class MetaLabeler:
 
 
 def train_meta_labeler(
-    primary_model,
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    X_val: np.ndarray,
-    y_val: np.ndarray,
+    primary_model=None,
+    X_train: np.ndarray = None,
+    y_train: np.ndarray = None,
+    X_val: np.ndarray = None,
+    y_val: np.ndarray = None,
     *,
+    primary_probs_train: np.ndarray = None,
+    primary_probs_val: np.ndarray = None,
     config: Optional[MetaLabelingConfig] = None,
     verbose: bool = True,
 ) -> Tuple[MetaLabeler, Dict[str, float]]:
@@ -630,11 +646,16 @@ def train_meta_labeler(
     Train a meta-labeler for an existing primary model.
     
     This is the main entry point for adding meta-labeling to training.
+    Supports two modes:
+      1. Pass primary_model → predictions are computed internally
+      2. Pass primary_probs_train/primary_probs_val → skip model.predict()
     
     Args:
-        primary_model: Trained primary model (Keras or XGBoost)
+        primary_model: Trained primary model (Keras or XGBoost). Optional if probs provided.
         X_train, y_train: Training data and labels
         X_val, y_val: Validation data and labels
+        primary_probs_train: Pre-computed primary model probabilities for training set
+        primary_probs_val: Pre-computed primary model probabilities for validation set
         config: Meta-labeling configuration
         verbose: Print progress
     
@@ -644,8 +665,12 @@ def train_meta_labeler(
     if verbose:
         logger.info("Training meta-labeler...")
     
-    # Get primary model predictions on training data
-    if hasattr(primary_model, "predict"):
+    # Mode 1: Pre-computed probabilities provided (preferred — avoids re-prediction)
+    if primary_probs_train is not None and primary_probs_val is not None:
+        preds_train = np.asarray(primary_probs_train).flatten()
+        preds_val = np.asarray(primary_probs_val).flatten()
+    # Mode 2: Primary model provided — compute predictions
+    elif primary_model is not None and hasattr(primary_model, "predict"):
         preds_train_dict = primary_model.predict(X_train, verbose=0)
         preds_val_dict = primary_model.predict(X_val, verbose=0)
         
@@ -660,7 +685,10 @@ def train_meta_labeler(
         preds_train = np.asarray(preds_train).flatten()
         preds_val = np.asarray(preds_val).flatten()
     else:
-        raise ValueError("Primary model must have a predict() method")
+        raise ValueError(
+            "Must provide either primary_model (with .predict()) or both "
+            "primary_probs_train and primary_probs_val"
+        )
     
     # Create and train meta-labeler
     labeler = MetaLabeler(config)
