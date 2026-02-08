@@ -221,7 +221,7 @@ def main() -> int:
         print("\n=== Tier-2 calibration sanity ===")
         print(f"bin-level Spearman(score, p_win): {spearman:+.3f}")
         print(f"ECE-like (|p_win-score|, weighted): {ece_like:.3f}  (score=dir_conf*p_conf)")
-        print(f"overall win_rate: {float(cal.get('win_rate', float('nan')))*100:.2f}% (n={int(cal.get('n',0))})")
+        print(f"overall win_rate: {float(cal.get('win_rate', float('nan')))*100:.2f}% (n={int(cal.get('n', 0))})")
 
     print("\n=== Weight sanity (trained model) ===")
     nonfinite = 0

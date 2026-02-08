@@ -14,10 +14,10 @@ raise SystemExit(
     "Use: python main.py train-buddy"
 )
 
-import numpy as np
-import pandas as pd
-import tensorflow as tf
-from typing import Tuple, Optional, Dict, Any, Generator
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import tensorflow as tf  # noqa: E402
+from typing import Tuple, Optional, Dict, Any, Generator  # noqa: E402
 
 # Import existing data loading utilities
 try:

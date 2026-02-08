@@ -22,6 +22,8 @@ import functools
 import copy
 from functools import lru_cache
 
+logger = logging.getLogger(__name__)
+
 # Add caching capabilities
 CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
@@ -31,10 +33,10 @@ memory = Memory(location=str(CACHE_DIR), verbose=0)
 def cache(func):
     """
     Decorator to cache function results using joblib.
-    
+
     Args:
         func: Function to cache
-        
+
     Returns:
         Cached version of the function
     """
@@ -44,13 +46,13 @@ def cache(func):
 def timer(func: Callable) -> Callable:
     """
     Decorator to measure and log function execution time.
-    
+
     Args:
         func: Function to time
-        
+
     Returns:
         Wrapped function that logs execution time
-        
+
     Example:
         >>> @timer
         ... def slow_function():
@@ -64,7 +66,7 @@ def timer(func: Callable) -> Callable:
         value = func(*args, **kwargs)
         end_time = time.time()
         run_time = end_time - start_time
-        logging.info(f"Function {func.__name__!r} took {run_time:.4f} secs")
+        logger.info(f"Function {func.__name__!r} took {run_time:.4f} secs")
         return value
 
     return wrapper_timer
@@ -93,10 +95,10 @@ def setup_logging(
         enable_checkpointing_logging: Enable checkpoint logging
         enable_tensorboard_logging: Enable TensorBoard logging
         quiet: If True (default), console shows only WARNING+. Full DEBUG logs always go to file.
-        
+
     Returns:
         Configured logger instance
-        
+
     Note:
         In quiet mode (default), verbose logs are captured to train.log for debugging failures.
         Use --verbose flag to see full console output.
@@ -104,7 +106,7 @@ def setup_logging(
     logger = logging.getLogger()
     # Root logger always at DEBUG so file handlers get everything
     logger.setLevel(logging.DEBUG)
-    
+
     # Clear existing handlers to avoid duplicates
     if logger.handlers:
         logger.handlers.clear()
@@ -114,7 +116,7 @@ def setup_logging(
         "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     )
-    
+
     # Console handler: WARNING in quiet mode, level in verbose mode
     if enable_logging:
         # Use stdout so `conda run` doesn't buffer console logs until process exit.
@@ -125,9 +127,9 @@ def setup_logging(
         ch.setLevel(console_level)
         ch.setFormatter(formatter)
         logger.addHandler(ch)
-    
+
     base_dir = Path(log_file).parent if log_file else Path.cwd()
-    
+
     # Always create train.log with full DEBUG output for debugging failures
     # This captures verbose output even in quiet mode
     train_log_path = base_dir / "train.log"
@@ -138,7 +140,7 @@ def setup_logging(
         logger.addHandler(train_fh)
     except Exception:
         pass  # Skip if can't create log file
-    
+
     if log_file:
         fh = logging.FileHandler(log_file)
         fh.setLevel(logging.DEBUG if quiet else level)  # Full logs to file
@@ -168,23 +170,23 @@ def setup_logging(
 @lru_cache(maxsize=1)
 def load_config(config_path: str) -> Dict[str, Any]:
     """Load configuration from a YAML file with validation.
-    
+
     Args:
         config_path: Path to YAML configuration file
-        
+
     Returns:
         Dictionary containing configuration
-        
+
     Raises:
         FileNotFoundError: If config file doesn't exist
         yaml.YAMLError: If YAML parsing fails
         ValueError: If configuration is invalid
     """
     logger = logging.getLogger(__name__)
-    
+
     try:
         config_path_obj = Path(config_path)
-        
+
         # Check if file exists
         if not config_path_obj.exists():
             logger.error(f"Configuration file not found: {config_path}")
@@ -194,24 +196,24 @@ def load_config(config_path: str) -> Dict[str, Any]:
             raise ModuleNotFoundError(
                 "PyYAML is required to load YAML configs. Install it with: pip install PyYAML"
             )
-        
+
         # Load YAML
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = yaml.safe_load(f)
-        
+
         # Validate config is not None
         if config is None:
             logger.error(f"Configuration file is empty: {config_path}")
             raise ValueError(f"Configuration file is empty: {config_path}")
-        
+
         # Validate config is a dictionary
         if not isinstance(config, dict):
             logger.error(f"Configuration must be a dictionary, got {type(config)}")
             raise ValueError(f"Configuration must be a dictionary, got {type(config)}")
-        
+
         logger.info(f"Successfully loaded configuration from {config_path}")
         return config
-        
+
     except FileNotFoundError:
         raise
     except Exception as e:
@@ -292,13 +294,13 @@ def _validate_positive_field(
 
 def validate_config(config: Dict[str, Any]) -> bool:
     """Validate configuration has required fields and sensible values.
-    
+
     Args:
         config: Configuration dictionary to validate
-        
+
     Returns:
         True if valid, False otherwise
-        
+
     Logs warnings for missing or invalid fields.
     """
     logger = logging.getLogger(__name__)
@@ -325,25 +327,25 @@ def validate_config(config: Dict[str, Any]) -> bool:
 
 def get_config(config_path="config_tuned.yaml", default_config=None, validate=True):
     """Load and optionally validate configuration.
-    
+
     Args:
         config_path: Path to configuration file
         default_config: Default configuration to merge with
         validate: Whether to validate the configuration
-        
+
     Returns:
         Configuration dictionary
     """
     logger = logging.getLogger(__name__)
-    
+
     user_config = load_config(config_path)
-    
+
     if default_config is not None:
         user_config = merge_config(user_config, default_config)
-    
+
     if validate and not validate_config(user_config):
         logger.warning("Configuration validation found issues, but continuing...")
-    
+
     return user_config
 
 

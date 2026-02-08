@@ -96,8 +96,7 @@ def _reconstruct_metrics_from_log(log_path: Path) -> Optional[Dict[str, Any]]:
     if not by_epoch:
         return None
 
-    for epoch in sorted(by_epoch):
-        history.append(by_epoch[epoch])
+    history.extend(by_epoch[epoch] for epoch in sorted(by_epoch))
 
     return {
         "created_at": datetime.now(timezone.utc).isoformat(),

@@ -19,7 +19,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -51,7 +51,7 @@ _HAS_TRANSFORMERS = False
 _sentiment_pipeline = None
 
 try:
-    from transformers import pipeline
+    import transformers  # noqa: F401
     _HAS_TRANSFORMERS = True
 except ImportError:
     logger.debug("transformers not installed, using simple sentiment fallback")

@@ -21,9 +21,9 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
+from rich.console import Console  # noqa: E402
+from rich.panel import Panel  # noqa: E402
+from rich.table import Table  # noqa: E402
 
 console = Console()
 
@@ -74,7 +74,7 @@ def test_get_pair_model_paths():
     
     # Test EUR_USD pair
     eur_paths = _get_pair_model_paths(model_dir, "EUR_USD", "transformer")
-    console.print(f"\n[yellow]EUR_USD paths:[/yellow]")
+    console.print("\n[yellow]EUR_USD paths:[/yellow]")
     console.print(f"  direction: {eur_paths['direction']}")
     console.print(f"  xgboost:   {eur_paths['xgboost']}")
     console.print(f"  rf:        {eur_paths['rf']}")
@@ -83,7 +83,7 @@ def test_get_pair_model_paths():
     
     # Test GENERIC (no pair)
     generic_paths = _get_pair_model_paths(model_dir, "GENERIC", "transformer")
-    console.print(f"\n[yellow]GENERIC paths:[/yellow]")
+    console.print("\n[yellow]GENERIC paths:[/yellow]")
     console.print(f"  direction: {generic_paths['direction']}")
     console.print(f"  pair_dir:  {generic_paths['pair_dir']}")
     
@@ -154,13 +154,9 @@ def test_modular_inference_loading():
             
             # Verify it chose the pair-specific path
             if test_pair in str(dir_path):
-                console.print(f"  [green]✓ Correctly using pair-specific path[/green]")
-            pair_loaded = True
+                console.print("  [green]✓ Correctly using pair-specific path[/green]")
         except Exception as e:
             console.print(f"  [red]Failed to test {test_pair} paths: {e}[/red]")
-            pair_loaded = False
-    else:
-        pair_loaded = True  # Skip if no pair models
     
     console.print("\n[green]✓ Path resolution test passed[/green]")
     return generic_loaded

@@ -9,13 +9,14 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 sys.path.insert(0, _PROJECT_ROOT)
 os.chdir(_PROJECT_ROOT)
 
-from src.core.modular_data_loaders import compute_normalized_features
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from dotenv import load_dotenv
-import requests
+from src.core.modular_data_loaders import compute_normalized_features  # noqa: E402
+from sklearn.ensemble import RandomForestClassifier  # noqa: E402
+from sklearn.model_selection import train_test_split  # noqa: E402
+from sklearn.preprocessing import StandardScaler  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
+import requests  # noqa: E402
 load_dotenv()
+
 
 def fetch_candles(instrument, granularity, count):
     token = os.getenv('OANDA_API_TOKEN')
@@ -38,6 +39,7 @@ def fetch_candles(instrument, granularity, count):
                 'volume': int(c['volume'])
             })
     return pd.DataFrame(rows)
+
 
 print("=" * 60)
 print("FEATURE PREDICTIVENESS CHECK")
@@ -110,7 +112,7 @@ train_acc = rf.score(X_train, y_train)
 test_acc = rf.score(X_test, y_test)
 print(f'   Train accuracy: {train_acc:.1%}')
 print(f'   Test accuracy:  {test_acc:.1%}')
-print(f'   Random baseline: 25.0%')
+print('   Random baseline: 25.0%')
 
 # Feature importance
 print('\n7. Top 10 most important features:')
@@ -119,7 +121,7 @@ for feat, imp in importances.head(10).items():
     print(f'   {feat:30s}: {imp:.4f}')
 
 # Check per-class accuracy
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report  # noqa: E402
 y_pred = rf.predict(X_test)
 print('\n8. Per-class performance:')
 print(classification_report(y_test, y_pred, target_names=['QUIET', 'STABLE', 'ACTIVE', 'EXTREME']))

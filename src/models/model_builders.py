@@ -46,7 +46,7 @@ class ModelType(str, Enum):
 class ModelConfig:
     """
     Configuration for model building.
-    
+
     Attributes:
         input_dim: Feature dimension (number of input features)
         seq_len: Sequence length (number of timesteps)
@@ -73,13 +73,13 @@ class ModelConfig:
     dense_dropout: float = 0.3
     kernel_regularizer: float = 0.005
     kernel_size: int = 3
-    
+
     @classmethod
     def from_yaml_config(cls, config: dict) -> "ModelConfig":
         """Create ModelConfig from YAML configuration dictionary."""
         transformer_cfg = config.get("transformer", {})
         # training_cfg available if needed: config.get("training", {})
-        
+
         return cls(
             num_layers=transformer_cfg.get("num_layers", 2),
             d_model=transformer_cfg.get("d_model", 64),
@@ -113,10 +113,10 @@ def build_tcn_model(
 ) -> tf.keras.Model:
     """
     Create a Buddy model with TCN encoder - FASTEST on M1 Metal.
-    
+
     TCN uses dilated causal convolutions which are fully parallelizable,
     making them 2-3x faster than LSTMs on Apple Silicon.
-    
+
     Args:
         feature_dim: Number of input features
         seq_len: Sequence length
@@ -128,21 +128,21 @@ def build_tcn_model(
         dense_dropout: Dropout in classification head
         kernel_regularizer: L2 regularization strength
         noise_std: Gaussian noise stddev for input augmentation
-    
+
     Returns:
         Keras Model with 'direction' and 'confidence' outputs
     """
     l2_reg = l2(kernel_regularizer)
     inp = tf.keras.Input(shape=(int(seq_len), int(feature_dim)), name="features")
-    
+
     # Input regularization (M1-compatible alternative to recurrent_dropout)
     x = layers.GaussianNoise(noise_std)(inp)
     x = layers.SpatialDropout1D(dropout * 0.5)(x)
-    
+
     # TCN layers with exponentially increasing dilation
     for i in range(num_layers):
         dilation_rate = 2 ** i
-        
+
         # Causal convolution with dilation
         conv_out = layers.Conv1D(
             filters=hidden_size,
@@ -156,24 +156,24 @@ def build_tcn_model(
         conv_out = layers.BatchNormalization(name=f'tcn_bn_{i}')(conv_out)
         conv_out = layers.Activation('relu', name=f'tcn_relu_{i}')(conv_out)
         conv_out = layers.Dropout(dropout, name=f'tcn_dropout_{i}')(conv_out)
-        
+
         # Residual connection
         if x.shape[-1] != hidden_size:
             x = layers.Conv1D(hidden_size, 1, name=f'tcn_residual_{i}')(x)
         x = layers.Add(name=f'tcn_add_{i}')([x, conv_out])
-    
+
     # Global pooling to get fixed-size representation
     x = layers.GlobalAveragePooling1D(name='global_pool')(x)
-    
+
     # Dense head
     x = layers.Dense(dense_hidden, activation='relu', name='dense_0', kernel_regularizer=l2_reg)(x)
     x = layers.Dropout(dense_dropout, name='dense_dropout')(x)
     x = layers.Dense(dense_hidden // 2, activation='relu', name='dense_1', kernel_regularizer=l2_reg)(x)
-    
+
     # Output heads (float32 for numerical stability with mixed precision)
     direction = layers.Dense(1, activation='sigmoid', name='direction', dtype='float32')(x)
     confidence = layers.Dense(1, activation='sigmoid', name='confidence', dtype='float32')(x)
-    
+
     return tf.keras.Model(
         inputs=inp,
         outputs={'direction': direction, 'confidence': confidence},
@@ -193,10 +193,10 @@ def build_shared_encoder_model(
 ) -> tf.keras.Model:
     """
     Create a Buddy model with a shared LSTM encoder + dense heads.
-    
+
     This is a simpler, faster alternative to the multi-head LSTM model.
     Uses a single LSTM stack shared for both direction and confidence prediction.
-    
+
     Args:
         feature_dim: Number of input features
         seq_len: Sequence length
@@ -205,10 +205,10 @@ def build_shared_encoder_model(
         encoder_dropout: Dropout in LSTM layers (keep 0.0 on Metal!)
         dense_hidden: Hidden units in classification head
         dense_dropout: Dropout in classification head
-    
+
     Returns:
         Keras Model with 'direction' and 'confidence' outputs
-    
+
     Note:
         On Apple Silicon (M1/M2/M3), keep encoder_dropout=0.0 to avoid
         massive slowdowns caused by non-zero recurrent_dropout.
@@ -253,13 +253,13 @@ def build_lstm_model(
 ) -> tf.keras.Model:
     """
     Create the Buddy model with 5 parallel LSTM heads + shared dense + outputs.
-    
+
     This is the original multi-head architecture requiring custom engine layers.
     For most use cases, prefer build_shared_encoder_model() or build_tcn_model().
-    
+
     NOTE: This function requires custom layer imports (MLEngineHead, etc.) which
     may be in legacy/quarantine. Consider using build_shared_encoder_model() instead.
-    
+
     Args:
         feature_dim: Number of input features
         seq_len: Sequence length
@@ -268,10 +268,10 @@ def build_lstm_model(
         head_dropout: Dropout in head LSTMs
         dense_hidden: Hidden units in classification head
         dense_dropout: Dropout in classification head
-    
+
     Returns:
         Keras Model with 'direction' and 'confidence' outputs
-    
+
     Raises:
         ImportError: If custom engine head layers are not available
     """
@@ -318,29 +318,29 @@ def build_xgboost_model(
 ) -> Any:
     """
     Build an XGBoost model for Buddy training.
-    
+
     Returns a wrapper that's compatible with the Keras training interface.
     Note: XGBoost training is handled separately from Keras models.
-    
+
     Args:
         feature_dim: Number of input features (for API compatibility)
         seq_len: Sequence length (for API compatibility)
         config: Optional XGBoost configuration dict
-    
+
     Returns:
         XGBoostTradingModel instance
-    
+
     Raises:
         ImportError: If XGBoost is not available
     """
     from src.models.xgboost_model import XGBoostTradingModel, XGBoostConfig
-    
+
     xgb_config = XGBoostConfig()
     if config:
         for key, value in config.items():
             if hasattr(xgb_config, key):
                 setattr(xgb_config, key, value)
-    
+
     return XGBoostTradingModel(xgb_config)
 
 
@@ -351,22 +351,22 @@ def build_xgboost_model(
 class ModelFactory:
     """
     Factory class for building Buddy trading models.
-    
+
     Provides a unified interface for building different model architectures
     with proper configuration handling.
-    
+
     Example:
         >>> config = ModelConfig(input_dim=64, seq_len=60, d_model=64, num_layers=3)
         >>> factory = ModelFactory()
         >>> model = factory.build(ModelType.TCN, config)
         >>> model.summary()
-    
+
     M1 Metal Recommendations:
         - ModelType.TCN: Fastest (2-3x faster than LSTM)
         - ModelType.LSTM/SHARED_ENCODER: Good baseline
         - ModelType.XGBOOST: CPU-only, good for small datasets
     """
-    
+
     # Registry of model builders
     _builders: dict[ModelType, callable] = {
         ModelType.TCN: build_tcn_model,
@@ -376,7 +376,7 @@ class ModelFactory:
         ModelType.MULTI_HEAD: build_lstm_model,
         ModelType.XGBOOST: build_xgboost_model,
     }
-    
+
     @classmethod
     def build(
         cls,
@@ -385,15 +385,15 @@ class ModelFactory:
     ) -> tf.keras.Model:
         """
         Build a model based on the specified architecture type.
-        
+
         Args:
-            model_type: One of 'tcn', 'lstm', 'shared_encoder', 'attention_lstm', 
+            model_type: One of 'tcn', 'lstm', 'shared_encoder', 'attention_lstm',
                        'multi_head', 'xgboost' or a ModelType enum
             config: ModelConfig with architecture parameters
-        
+
         Returns:
             Configured Keras model (or XGBoost wrapper for 'xgboost' type)
-        
+
         Raises:
             ValueError: If model_type is not recognized
         """
@@ -415,14 +415,14 @@ class ModelFactory:
                         f"Unknown model type: '{model_type}'. "
                         f"Supported: {[t.value for t in ModelType]}"
                     )
-        
+
         builder = cls._builders.get(model_type)
         if builder is None:
             raise ValueError(
                 f"No builder registered for model type: {model_type}. "
                 f"Supported: {[t.value for t in ModelType]}"
             )
-        
+
         # Build with appropriate kwargs based on model type
         if model_type == ModelType.TCN:
             return builder(
@@ -463,10 +463,10 @@ class ModelFactory:
                 seq_len=config.seq_len,
                 config=None,  # Use defaults
             )
-        
+
         # Should not reach here
         raise ValueError(f"Unhandled model type: {model_type}")
-    
+
     @classmethod
     def build_from_type_string(
         cls,
@@ -484,24 +484,24 @@ class ModelFactory:
     ) -> tf.keras.Model:
         """
         Build a Buddy model based on the specified architecture type (backward compatible).
-        
+
         This method provides backward compatibility with the original
         _build_buddy_model_for_type() function from main.py.
-        
+
         Args:
             model_type: One of 'lstm', 'tcn', 'attention_lstm', 'shared_encoder', 'xgboost'
             Other args: Model configuration parameters
-        
+
         Returns:
             Configured Keras model
-        
+
         M1 Metal Recommendations:
             - 'tcn': Fastest on Metal (2-3x faster than LSTM)
             - 'lstm': Good baseline, compatible
             - 'attention_lstm': Better accuracy, slightly slower
         """
         model_type = model_type.lower().strip()
-        
+
         if model_type == 'tcn':
             return build_tcn_model(
                 feature_dim=feature_dim,
@@ -572,16 +572,16 @@ __all__ = [
     # Enums and config
     "ModelType",
     "ModelConfig",
-    
+
     # Factory class
     "ModelFactory",
-    
+
     # Builder functions (new API)
     "build_tcn_model",
     "build_lstm_model",
     "build_shared_encoder_model",
     "build_xgboost_model",
-    
+
     # Backward compatibility aliases
     "_build_buddy_model",
     "_build_buddy_model_shared_encoder",

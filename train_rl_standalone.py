@@ -100,7 +100,6 @@ def main():
             table.add_row(f"[{clr}]{s[0]}[/{clr}]", s[1], s[2])
         console.print(table)
     
-    start_time = time.time()
     stats = {}
     train_time = 0
     

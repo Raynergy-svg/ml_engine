@@ -8,6 +8,7 @@ import ast
 import sys
 from pathlib import Path
 
+
 def check_function_exists(file_path, function_name):
     """Check if a function exists in a file using AST."""
     try:
@@ -22,6 +23,7 @@ def check_function_exists(file_path, function_name):
         print(f"    ✗ Error parsing {file_path}: {e}")
         return False
 
+
 def check_class_exists(file_path, class_name):
     """Check if a class exists in a file using AST."""
     try:
@@ -35,6 +37,7 @@ def check_class_exists(file_path, class_name):
     except Exception as e:
         print(f"    ✗ Error parsing {file_path}: {e}")
         return False
+
 
 def check_command_implementation(command_name, required_components):
     """Check if a Buddy command has all required components."""
@@ -59,6 +62,7 @@ def check_command_implementation(command_name, required_components):
             all_passed = False
 
     return all_passed
+
 
 if __name__ == "__main__":
     print("E2E Operational Check for Buddy Commands")

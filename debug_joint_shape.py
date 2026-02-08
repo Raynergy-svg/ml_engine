@@ -10,7 +10,6 @@ from src.core.modular_data_loaders import (
     load_ridge_data,
 )
 import pandas as pd
-import numpy as np
 
 # Fetch small batch
 print("Fetching data...")

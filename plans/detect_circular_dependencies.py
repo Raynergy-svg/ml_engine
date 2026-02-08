@@ -7,8 +7,7 @@ using DFS-based cycle detection algorithms.
 """
 
 import json
-from pathlib import Path
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List
 from collections import defaultdict
 
 
@@ -369,7 +368,7 @@ def main():
     print(f"  - Direct cycles: {report['summary']['direct_cycles']}")
     print(f"  - Indirect cycles: {report['summary']['indirect_cycles']}")
     print(f"  - Self-referential: {report['summary']['self_referential']}")
-    print(f"\nSeverity distribution:")
+    print("\nSeverity distribution:")
     print(f"  - Critical: {report['summary']['critical_issues']}")
     print(f"  - High: {report['summary']['high_issues']}")
     print(f"  - Medium: {report['summary']['medium_issues']}")

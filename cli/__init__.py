@@ -5,8 +5,8 @@ from cli.io_utils import (
     console, logger, DEFAULT_CONFIG_PATH, VALID_OANDA_INSTRUMENTS,
     DEFAULT_CURRICULUM_KS,
 )
-from cli.calibration import _tier2_apply_calibration
-from cli.tf_config import _configure_tf_metal
+from cli.calibration import _tier2_apply_calibration  # noqa: F401
+from cli.tf_config import _configure_tf_metal  # noqa: F401
 from cli.training import train_buddy
 from cli.commands import (
     buddy, buddy_loop, buddy_scan, buddy_monitor, buddy_journal,
@@ -41,4 +41,7 @@ __all__ = [
     '_buddy_interactive_wizard',
     # Candle Optimizer
     'find_optimal_candles',
+    # Re-exports
+    '_tier2_apply_calibration',
+    '_configure_tf_metal',
 ]

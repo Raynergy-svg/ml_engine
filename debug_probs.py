@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Debug model output probabilities."""
 import numpy as np
-import pandas as pd
 import pickle
 from pathlib import Path
 import keras
@@ -20,12 +19,12 @@ scaler = meta.get('scaler')
 print(f"Model seq_len: {seq_len}, features: {len(feature_names)}")
 
 # Get data
-from src.utils.oanda_practice import OandaPracticeClient
-from src.utils.fx_paper import candles_to_ohlcv_df
-import sys
-from pathlib import Path
+from src.utils.oanda_practice import OandaPracticeClient  # noqa: E402
+from src.utils.fx_paper import candles_to_ohlcv_df  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'tests' / 'validation'))
-from validate_model import compute_features
+from validate_model import compute_features  # noqa: E402
 
 client = OandaPracticeClient.from_env()
 resp = client.get_candles('EUR_USD', granularity='H1', count=200, price='MBA')

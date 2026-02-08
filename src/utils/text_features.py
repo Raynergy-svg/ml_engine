@@ -119,7 +119,7 @@ def _hashed_ngrams(
     for n in range(min_n, max_n + 1):
         if token_count < n:
             continue
-        for i in range(0, token_count - n + 1):
+        for i in range(token_count - n + 1):
             gram = "_".join(tokens[i: i + n])
             bucket = _stable_hash_to_bucket(gram, dim)
             vec[bucket] += 1.0

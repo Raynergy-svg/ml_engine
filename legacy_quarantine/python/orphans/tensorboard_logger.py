@@ -22,15 +22,20 @@ raise SystemExit(
     "Use: python main.py train-buddy"
 )
 
-import datetime
-from pathlib import Path
-from typing import Dict, Any, Optional, Union
-import numpy as np
+import datetime  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Dict, Any, Optional, Union  # noqa: E402
+import numpy as np  # noqa: E402
 
 # PyTorch retired (TensorFlow-only migration)
 # import torch
 # import torch.nn as nn
 # from torch.utils.tensorboard import SummaryWriter
+
+# Stubs for static analysis (code is unreachable due to SystemExit above)
+SummaryWriter = None  # type: ignore
+torch = None  # type: ignore
+nn = None  # type: ignore
 
 
 class TensorBoardLogger:

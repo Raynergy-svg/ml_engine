@@ -15,6 +15,7 @@ sys.path.insert(0, _PROJECT_ROOT)
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+
 def timed(label):
     """Context manager to time a block."""
     class Timer:
@@ -22,10 +23,12 @@ def timed(label):
             self.start = time.perf_counter()
             print(f"⏱️ Starting: {label}...", flush=True)
             return self
+
         def __exit__(self, *args):
             elapsed = time.perf_counter() - self.start
             print(f"✅ {label}: {elapsed:.2f}s", flush=True)
     return Timer()
+
 
 if __name__ == "__main__":
     print("=" * 60)
@@ -36,7 +39,7 @@ if __name__ == "__main__":
     print("\n--- STEP 1: LLM Initialization ---")
     with timed("Initialize LLM provider (Claude)"):
         try:
-            from llm_providers import initialize_buddy_llm, check_provider_status
+            from llm_providers import initialize_buddy_llm
             provider = initialize_buddy_llm(provider=None)  # Auto-select
             print(f"  Provider: {provider.name}, Available: {provider.is_available}")
         except Exception as e:
@@ -86,12 +89,12 @@ if __name__ == "__main__":
     with timed("Load config file"):
         from src.utils import load_config
         cfg = load_config("config/config_intel_optimized.yaml")
-        print(f"  Config loaded")
+        print("  Config loaded")
     
     # == STEP 6: CREATE ENSEMBLE (matches buddy command) ==
     print("\n--- STEP 6: Create ModularEnsembleInference ---")
     with timed("Import modular_inference"):
-        from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
+        from src.core.modular_inference import ModularEnsembleInference
     
     with timed("Create ensemble instance (with RL + LLM)"):
         ensemble = ModularEnsembleInference(

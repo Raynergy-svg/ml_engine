@@ -17,9 +17,8 @@ from __future__ import annotations
 
 import argparse
 import logging
-import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 
 import numpy as np
 import pandas as pd
@@ -125,7 +124,7 @@ def check_target_learnability(df: pd.DataFrame, target_shifts: List[int] = [1, 6
             
             predictability = "LOW" if normalized_entropy > 0.95 else ("MODERATE" if normalized_entropy > 0.85 else "HIGH")
             logger.info(f"   Shift {shift}: UP={up_pct:.1f}% DOWN={100-up_pct:.1f}% | "
-                       f"Entropy={normalized_entropy:.3f} ({predictability} predictability)")
+                        f"Entropy={normalized_entropy:.3f} ({predictability} predictability)")
     
     # Recommendations
     logger.info("\n3. Recommendations:")
@@ -238,7 +237,7 @@ def check_feature_target_correlation(df: pd.DataFrame, target_shift: int = 1, to
     # Summary statistics
     all_corrs = [c["abs_correlation"] for c in correlations]
     if all_corrs:
-        logger.info(f"\n3. Correlation Summary:")
+        logger.info("\n3. Correlation Summary:")
         logger.info(f"   Mean |correlation|: {np.mean(all_corrs):.4f}")
         logger.info(f"   Max |correlation|:  {np.max(all_corrs):.4f}")
         logger.info(f"   Features with |r| > 0.05: {sum(1 for c in all_corrs if c > 0.05)}")
@@ -269,7 +268,6 @@ def check_data_leakage(df: pd.DataFrame, target_shift: int = 1) -> Dict[str, Any
     logger.info("=" * 60)
     
     close = df["close"].values
-    n = len(close)
     
     # Check 1: Future price in features
     logger.info("\n1. Checking for future price leakage in columns...")
@@ -288,7 +286,7 @@ def check_data_leakage(df: pd.DataFrame, target_shift: int = 1) -> Dict[str, Any
         try:
             times = pd.to_datetime(df[time_col])
             if not times.is_monotonic_increasing:
-                logger.warning(f"   ⚠️  Data is not sorted by time! This can cause leakage with ffill.")
+                logger.warning("   ⚠️  Data is not sorted by time! This can cause leakage with ffill.")
                 results["issues"].append("Data not sorted by time")
                 results["leakage_detected"] = True
             else:
@@ -305,15 +303,12 @@ def check_data_leakage(df: pd.DataFrame, target_shift: int = 1) -> Dict[str, Any
     # Chronological split (correct)
     split_idx = int(len(returns) * 0.8)
     train_returns = returns[:split_idx]
-    val_returns = returns[split_idx:]
     
     # Fit scaler on train only (correct)
     train_mean = np.mean(train_returns)
-    train_std = np.std(train_returns)
     
     # Fit scaler on all data (leakage)
     all_mean = np.mean(returns)
-    all_std = np.std(returns)
     
     # Compare
     leakage_diff = abs(train_mean - all_mean) / (abs(train_mean) + 1e-10)
@@ -336,7 +331,7 @@ def check_data_leakage(df: pd.DataFrame, target_shift: int = 1) -> Dict[str, Any
     results["leakage_score"] = len(results["issues"]) / 5.0  # Normalize to 0-1
     results["leakage_detected"] = len(results["issues"]) > 0
     
-    logger.info(f"\n5. Leakage Summary:")
+    logger.info("\n5. Leakage Summary:")
     logger.info(f"   Issues found: {len(results['issues'])}")
     logger.info(f"   Leakage score: {results['leakage_score']:.2f} (0=none, 1=severe)")
     
@@ -361,7 +356,6 @@ def check_temporal_split(df: pd.DataFrame, val_fraction: float = 0.2) -> Dict[st
     
     # Simulate the split from multitask_labels.py
     train_end = int(n * (1 - val_fraction))
-    val_start = train_end
     
     # Check for time column
     time_col = None
@@ -377,12 +371,12 @@ def check_temporal_split(df: pd.DataFrame, val_fraction: float = 0.2) -> Dict[st
             train_times = times[:train_end]
             val_times = times[train_end:]
             
-            logger.info(f"\n1. Split Information:")
+            logger.info("\n1. Split Information:")
             logger.info(f"   Total samples: {n}")
             logger.info(f"   Train: {train_end} samples ({train_end/n*100:.1f}%)")
             logger.info(f"   Val:   {n - train_end} samples ({(n-train_end)/n*100:.1f}%)")
             
-            logger.info(f"\n2. Time Ranges:")
+            logger.info("\n2. Time Ranges:")
             logger.info(f"   Train: {train_times.min()} to {train_times.max()}")
             logger.info(f"   Val:   {val_times.min()} to {val_times.max()}")
             
@@ -493,7 +487,7 @@ def main():
     parser = argparse.ArgumentParser(description="Diagnose ML training issues")
     parser.add_argument("--csv", type=str, help="Path to CSV data file")
     parser.add_argument("--target-shifts", type=str, default="1,6,12,24",
-                       help="Comma-separated target shifts to analyze")
+                        help="Comma-separated target shifts to analyze")
     parser.add_argument("--output", type=str, help="Save results to JSON file")
     
     args = parser.parse_args()
@@ -508,6 +502,7 @@ def main():
     if args.output:
         import json
         # Convert numpy types to Python types for JSON serialization
+
         def convert(obj):
             if isinstance(obj, np.ndarray):
                 return obj.tolist()
@@ -530,4 +525,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

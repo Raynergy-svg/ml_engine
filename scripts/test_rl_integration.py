@@ -13,8 +13,6 @@ import pandas as pd
 import sys
 sys.path.insert(0, '.')
 
-from pathlib import Path
-
 
 def create_test_dataframe(n_rows=100):
     """Create a test DataFrame with realistic features."""
@@ -160,7 +158,7 @@ def test_rl_sizer_feature_extraction():
     # Verify shape matches scaler expectation
     expected_n = inference.rl_sizer.scaler.n_features_in_
     assert features.shape[1] == expected_n, f"Feature count mismatch: {features.shape[1]} vs {expected_n}"
-    print(f'✓ Feature extraction PASSED')
+    print('✓ Feature extraction PASSED')
     
     return True
 
@@ -199,7 +197,7 @@ def test_position_size_calculation():
     
     print(f'✓ Position size: {size} lots')
     assert size >= 0, "Position size should be non-negative"
-    print(f'✓ Position sizing PASSED')
+    print('✓ Position sizing PASSED')
     
     return True
 
@@ -247,7 +245,7 @@ def test_exit_rl_check():
         print(f'✓ Exit result: {result}')
         assert 'should_exit' in result, "Missing should_exit key"
         assert 'action' in result, "Missing action key"
-        print(f'✓ Exit RL check PASSED')
+        print('✓ Exit RL check PASSED')
     else:
         print('⚠ RL exit model not loaded - skipping')
     

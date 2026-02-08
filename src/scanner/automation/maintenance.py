@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MaintenanceConfig:
     """Configuration for idle maintenance."""
-    
+
     retrain_timeout_seconds: int = 300  # 5 minutes
     retrain_candles: int = 3000
     min_trades_before_retrain: int = 50
@@ -37,32 +37,32 @@ class MaintenanceConfig:
 class IdleMaintenance:
     """
     Run maintenance tasks during idle periods.
-    
+
     Tasks:
     - Journal sync with OANDA
     - Gate model retraining (XGB, RF, Ridge)
     - Drift detection checks
-    
+
     Example:
         >>> maintenance = IdleMaintenance()
         >>> maintenance.run_if_needed()  # Runs sync and checks retrain
         >>> maintenance.trigger_background_retrain()  # Force background retrain
     """
-    
+
     def __init__(self, config: Optional[MaintenanceConfig] = None):
         self.config = config or MaintenanceConfig()
         self._last_retrain: Optional[datetime] = None
         self._retrain_thread: Optional[threading.Thread] = None
-    
+
     def run_if_needed(self, oanda_client=None):
         """
         Run maintenance tasks if needed.
-        
+
         Checks:
         1. Syncs trade journal with OANDA
         2. Checks if gate retraining is needed (50+ trades since last)
         3. Triggers background retrain if conditions met
-        
+
         Args:
             oanda_client: Optional OANDA client for journal sync
         """
@@ -71,14 +71,14 @@ class IdleMaintenance:
             self._check_and_retrain()
         except Exception as e:
             logger.debug(f"Idle maintenance failed: {e}")
-    
+
     def _sync_journal(self, oanda_client=None):
         """Sync trade journal with OANDA closed trades."""
         try:
             from src.utils.trade_journal import TradeJournal
-            
+
             journal = TradeJournal()
-            
+
             # Get OANDA client if not provided
             if oanda_client is None:
                 try:
@@ -86,14 +86,14 @@ class IdleMaintenance:
                     oanda_client = get_oanda_client()
                 except Exception:
                     return  # Can't sync without client
-            
+
             updated = journal.update_from_oanda(oanda_client)
             if updated > 0:
                 logger.info(f"Journal synced: {updated} trade(s) updated")
-                
+
         except Exception as e:
             logger.debug(f"Journal sync failed: {e}")
-    
+
     def _check_and_retrain(self):
         """Check if retraining is needed and trigger if so."""
         try:
@@ -102,42 +102,42 @@ class IdleMaintenance:
                 cooldown = timedelta(hours=self.config.retrain_cooldown_hours)
                 if datetime.now() - self._last_retrain < cooldown:
                     return
-            
+
             # Check if market intelligence says retrain needed
             try:
                 from market_intelligence import MarketIntelligence
-                
+
                 intel = MarketIntelligence(
                     enable_sentiment=False,
                     enable_calendar=False,
                     enable_online_learning=True,
                 )
-                
+
                 if intel.should_update_model():
                     self.trigger_background_retrain()
                     intel.mark_model_updated()
-                    
+
             except ImportError:
                 logger.debug("MarketIntelligence not available for retrain check")
-                
+
         except Exception as e:
             logger.debug(f"Retrain check failed: {e}")
-    
+
     def trigger_background_retrain(self):
         """
         Spawn background thread to retrain gate models.
-        
+
         Runs retrain_gates.py as a subprocess to avoid blocking.
         """
         # Don't start another if one is running
         if self._retrain_thread and self._retrain_thread.is_alive():
             logger.debug("Background retrain already in progress")
             return
-        
+
         def _retrain_task():
             try:
                 logger.info("🔄 Background gate retraining started...")
-                
+
                 # Find retrain_gates.py
                 retrain_script = Path(__file__).parents[3] / "retrain_gates.py"
                 if not retrain_script.exists():
@@ -167,38 +167,38 @@ class IdleMaintenance:
                         timeout=self.config.retrain_timeout_seconds,
                         cwd=str(retrain_script.parent),
                     )
-                
+
                 if result.returncode == 0:
                     logger.info("✅ Background gate retraining complete")
                     self._last_retrain = datetime.now()
                 else:
                     logger.warning(f"Gate retraining failed: {result.stderr[:200]}")
-                    
+
             except subprocess.TimeoutExpired:
                 logger.warning(f"Gate retraining timed out ({self.config.retrain_timeout_seconds}s)")
             except Exception as e:
                 logger.warning(f"Background retrain failed: {e}")
-        
+
         # Spawn daemon thread
         self._retrain_thread = threading.Thread(target=_retrain_task, daemon=True)
         self._retrain_thread.start()
-        
+
         if console:
             console.print("[dim]🔄 Background gate retraining triggered[/dim]")
-    
+
     def run_sync_retrain(self):
         """
         Run gate retraining synchronously (blocking).
-        
+
         Use this during dedicated maintenance windows, not between scans.
         """
         try:
             if console:
                 console.print("[dim]🔄 Running synchronous gate retraining...[/dim]")
-            
+
             retrain_script = Path(__file__).parents[3] / "retrain_gates.py"
             main_script = Path(__file__).parents[3] / "main.py"
-            
+
             if retrain_script.exists():
                 cmd = [
                     sys.executable,
@@ -213,7 +213,7 @@ class IdleMaintenance:
             else:
                 logger.warning("No retrain script found")
                 return False
-            
+
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -221,7 +221,7 @@ class IdleMaintenance:
                 timeout=self.config.retrain_timeout_seconds,
                 cwd=cwd,
             )
-            
+
             if result.returncode == 0:
                 self._last_retrain = datetime.now()
                 if console:
@@ -230,7 +230,7 @@ class IdleMaintenance:
             else:
                 logger.warning(f"Sync retrain failed: {result.stderr[:200]}")
                 return False
-                
+
         except subprocess.TimeoutExpired:
             logger.warning("Sync retrain timed out")
             return False

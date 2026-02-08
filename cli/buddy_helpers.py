@@ -216,7 +216,7 @@ def _fx_execution_guard_price_bound(_policy: Any, client: Any, *, instrument: st
     # Determine buffer in pips. Prefer policy-level override if available.
     buffer_pips = None
     try:
-        buffer_pips = float(getattr(_policy.costs, "price_bound_buffer_pips"))
+        buffer_pips = float(_policy.costs.price_bound_buffer_pips)
     except Exception:
         try:
             buffer_pips = float((_policy.get("costs") or {}).get("price_bound_buffer_pips", None))
@@ -246,8 +246,8 @@ def _schedule_auto_close(client: Any, instrument: str, delay_s: float, *, verbos
                 console.print(f"[dim]Auto-close thread[/dim]: sleeping {delay_s:.1f}s before closing {instrument}")
             time.sleep(max(0.0, float(delay_s)))
             try:
-                if hasattr(client, "close_trade") and hasattr(client, "_last_trade_id") and getattr(client, "_last_trade_id"):
-                    tid = getattr(client, "_last_trade_id")
+                if hasattr(client, "close_trade") and hasattr(client, "_last_trade_id") and client._last_trade_id:
+                    tid = client._last_trade_id
                     try:
                         res = client.close_trade(trade_id=tid)
                         console.print(f"[dim]Auto-close[/dim]: closed trade {tid} for {instrument}: {res}")
@@ -275,7 +275,7 @@ def _build_buddy_model_for_type(
     from cli.tf_config import _configure_tf_metal
     _configure_tf_metal(verbose=False)
     import tensorflow as tf  # noqa: F401
-    
+
     if model_type.lower() == "tcn":
         from src.models.tensorflow_models import build_tcn_direction_model
         return build_tcn_direction_model(

@@ -15,8 +15,6 @@ The script prints a CSV-like summary and a recommended threshold.
 from __future__ import annotations
 
 import argparse
-import math
-from collections import defaultdict
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -163,7 +161,6 @@ def walk_forward_eval(df: pd.DataFrame, policy: fxg.FxPolicy, cfg: Dict, instrum
         test_start = train_end
         test_end = min(N, test_start + fold_size)
 
-        df_train = df.iloc[:train_end]
         df_test = df.iloc[test_start:test_end].reset_index(drop=True)
 
         # For each candlestick in test, generate signal and simulate

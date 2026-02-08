@@ -2,7 +2,7 @@
 """Interactive wizard for ML Engine Trading Bot CLI."""
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from cli.io_utils import (
     console,
@@ -48,10 +48,10 @@ def launch_buddy_repl_from_wizard(
             pass
 
         oanda_settings = _S()
-        setattr(oanda_settings, "instrument", instrument)
-        setattr(oanda_settings, "granularity", granularity)
-        setattr(oanda_settings, "candles", int(candles))
-        setattr(oanda_settings, "execute", bool(execute))
+        oanda_settings.instrument = instrument
+        oanda_settings.granularity = granularity
+        oanda_settings.candles = int(candles)
+        oanda_settings.execute = bool(execute)
 
     # Call the REPL entrypoint from unified_talk. Keep keyword args explicit.
     run_unified_talk(

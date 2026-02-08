@@ -17,17 +17,17 @@ Example usage:
         get_pair_model_paths,
         VALID_OANDA_INSTRUMENTS,
     )
-    
+
     # Validate user input
     instrument = validate_instrument("eur-usd")  # Returns "EUR_USD"
-    
+
     # Normalize various formats
     normalize_instrument("EURUSD")  # Returns "EUR_USD"
     normalize_instrument("eur/usd")  # Returns "EUR_USD"
-    
+
     # Extract from CSV path
     pair = extract_instrument_from_csv_path("market_data/GBP_USD_H1.csv")  # "GBP_USD"
-    
+
     # Get model paths for a pair
     paths = get_pair_model_paths(Path("trained_data/models"), "EUR_USD")
 """
@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
 
 
 # Valid OANDA FX instruments (major, minor, and exotic pairs)
@@ -73,7 +72,7 @@ CROSS_PAIRS: tuple[str, ...] = (
 
 def normalize_instrument(instrument: str) -> str:
     """Normalize an instrument name to OANDA format.
-    
+
     Handles various input formats:
     - "EUR_USD" -> "EUR_USD" (already normalized)
     - "eur_usd" -> "EUR_USD" (lowercase)
@@ -81,35 +80,35 @@ def normalize_instrument(instrument: str) -> str:
     - "EUR/USD" -> "EUR_USD" (slash)
     - "EURUSD" -> "EUR_USD" (6-char no separator)
     - "  EUR_USD  " -> "EUR_USD" (whitespace)
-    
+
     Args:
         instrument: Instrument name in any common format.
-        
+
     Returns:
         Normalized instrument string in "XXX_YYY" format.
     """
     # Strip whitespace, uppercase, normalize separators
     v = (instrument or "").strip().upper().replace("-", "_").replace("/", "_")
-    
+
     # Remove any duplicate or leading/trailing underscores
     v = "_".join([p for p in v.split("_") if p])
-    
+
     # Handle 6-char format without separator
     if "_" not in v and len(v) == 6:
         v = v[:3] + "_" + v[3:]
-    
+
     return v
 
 
 def validate_instrument(instrument: str) -> str:
     """Validate and normalize an instrument name.
-    
+
     Args:
         instrument: Instrument name to validate.
-        
+
     Returns:
         Normalized instrument name if valid.
-        
+
     Raises:
         ValueError: If instrument is not a valid OANDA FX instrument.
             Includes suggestions for common typos.
@@ -117,12 +116,12 @@ def validate_instrument(instrument: str) -> str:
     # Special case: "all" means scan all major pairs
     if instrument.upper() == "ALL":
         return "ALL"
-    
+
     normalized = normalize_instrument(instrument)
-    
+
     if normalized in VALID_OANDA_INSTRUMENTS:
         return normalized
-    
+
     # Try to suggest a correction for common typos
     suggestions = []
     for valid in VALID_OANDA_INSTRUMENTS:
@@ -131,21 +130,21 @@ def validate_instrument(instrument: str) -> str:
             diff = sum(1 for a, b in zip(normalized, valid) if a != b)
             if diff <= 2:
                 suggestions.append(valid)
-    
+
     error_msg = f"Invalid instrument: '{instrument}' (normalized: '{normalized}')"
     if suggestions:
         error_msg += f"\n  Did you mean: {', '.join(sorted(suggestions))}?"
-    error_msg += f"\n  Valid examples: EUR_USD, GBP_USD, USD_JPY, AUD_USD, EUR_GBP, or 'all' for all major pairs"
-    
+    error_msg += "\n  Valid examples: EUR_USD, GBP_USD, USD_JPY, AUD_USD, EUR_GBP, or 'all' for all major pairs"
+
     raise ValueError(error_msg)
 
 
 def is_valid_instrument(instrument: str) -> bool:
     """Check if an instrument is valid without raising an exception.
-    
+
     Args:
         instrument: Instrument name to check.
-        
+
     Returns:
         True if valid, False otherwise.
     """
@@ -158,44 +157,44 @@ def is_valid_instrument(instrument: str) -> bool:
 
 def extract_instrument_from_csv_path(csv_path: str) -> str:
     """Extract instrument from CSV filename for pair-specific model training.
-    
+
     Patterns recognized:
     - market_data/EUR_USD_H1.csv -> EUR_USD
     - market_data/oanda_GBP_USD_H1_live_*.csv -> GBP_USD
     - market_data/USD_JPY_*.csv -> USD_JPY
     - market_data/EURUSD.csv -> EUR_USD (6-char format)
-    
+
     Args:
         csv_path: Path to CSV file.
-        
+
     Returns:
         Normalized instrument name if found, "GENERIC" otherwise.
         Returns "GENERIC" for files that don't contain a recognizable pair.
     """
     if not csv_path:
         return "GENERIC"
-    
+
     filename = Path(csv_path).stem.upper()  # e.g., "EUR_USD_H1" or "oanda_GBP_USD_H1_live_20250114"
-    
+
     # Pattern 1: Direct match for XXX_YYY format
     for instrument in VALID_OANDA_INSTRUMENTS:
         if instrument in filename:
             return instrument
-    
-    # Pattern 2: 6-char format like "EURUSD" 
+
+    # Pattern 2: 6-char format like "EURUSD"
     match = re.search(r'([A-Z]{6})', filename)
     if match:
         candidate = match.group(1)[:3] + "_" + match.group(1)[3:]
         if candidate in VALID_OANDA_INSTRUMENTS:
             return candidate
-    
+
     # Pattern 3: Try to extract XXX_YYY pattern from filename
     match = re.search(r'([A-Z]{3})_([A-Z]{3})', filename)
     if match:
         candidate = f"{match.group(1)}_{match.group(2)}"
         if candidate in VALID_OANDA_INSTRUMENTS:
             return candidate
-    
+
     return "GENERIC"
 
 
@@ -205,25 +204,25 @@ def get_pair_model_paths(
     model_type: str = "transformer",
 ) -> dict[str, Path]:
     """Get pair-specific model paths for saving/loading.
-    
+
     Returns dict with paths for all model components:
     - direction: Transformer/TCN direction model
     - regime: Regime detection model
-    - xgboost: XGBoost momentum model  
+    - xgboost: XGBoost momentum model
     - rf: Random Forest risk model
     - ridge: Ridge confidence model
     - histgb: HistGB hybrid voting model (optional)
     - pair_dir: Directory containing all pair models
-    
+
     Example for EUR_USD:
     - trained_data/models/EUR_USD/transformer_direction.keras
     - trained_data/models/EUR_USD/xgb_momentum.pkl
-    
+
     Args:
         model_dir: Base directory for model storage.
         instrument: Trading instrument (e.g., "EUR_USD").
         model_type: Model architecture type ("transformer" or "tcn").
-        
+
     Returns:
         Dictionary mapping model component names to their file paths.
     """
@@ -232,12 +231,12 @@ def get_pair_model_paths(
         pair_dir = model_dir / instrument
     else:
         pair_dir = model_dir
-    
+
     # Ensure directory exists
     pair_dir.mkdir(parents=True, exist_ok=True)
-    
+
     direction_filename = "transformer_direction.keras" if model_type == "transformer" else "tcn_direction.keras"
-    
+
     return {
         'direction': pair_dir / direction_filename,
         'regime': pair_dir / "transformer_regime.keras",
@@ -251,10 +250,10 @@ def get_pair_model_paths(
 
 def get_base_currency(instrument: str) -> str:
     """Get the base currency of an instrument.
-    
+
     Args:
         instrument: Normalized instrument (e.g., "EUR_USD").
-        
+
     Returns:
         Base currency code (e.g., "EUR").
     """
@@ -264,10 +263,10 @@ def get_base_currency(instrument: str) -> str:
 
 def get_quote_currency(instrument: str) -> str:
     """Get the quote currency of an instrument.
-    
+
     Args:
         instrument: Normalized instrument (e.g., "EUR_USD").
-        
+
     Returns:
         Quote currency code (e.g., "USD").
     """
@@ -277,10 +276,10 @@ def get_quote_currency(instrument: str) -> str:
 
 def is_jpy_pair(instrument: str) -> bool:
     """Check if instrument contains JPY (affects pip calculation).
-    
+
     Args:
         instrument: Instrument name.
-        
+
     Returns:
         True if JPY is base or quote currency.
     """
@@ -290,13 +289,13 @@ def is_jpy_pair(instrument: str) -> bool:
 
 def get_pip_value(instrument: str) -> float:
     """Get the pip value for an instrument.
-    
+
     Most pairs: 0.0001 (1 pip = 4th decimal place)
     JPY pairs: 0.01 (1 pip = 2nd decimal place)
-    
+
     Args:
         instrument: Instrument name.
-        
+
     Returns:
         Pip value (0.0001 or 0.01).
     """
@@ -305,17 +304,17 @@ def get_pip_value(instrument: str) -> float:
 
 def format_pair(instrument: str, style: str = "oanda") -> str:
     """Format an instrument in different styles.
-    
+
     Args:
         instrument: Instrument name.
-        style: Output style - "oanda" (EUR_USD), "slash" (EUR/USD), 
+        style: Output style - "oanda" (EUR_USD), "slash" (EUR/USD),
                "compact" (EURUSD).
-        
+
     Returns:
         Formatted instrument string.
     """
     normalized = normalize_instrument(instrument)
-    
+
     if style == "oanda":
         return normalized
     elif style == "slash":

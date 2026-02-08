@@ -14,13 +14,13 @@ raise SystemExit(
     "Use: python main.py train-buddy"
 )
 
-#+ PyTorch retired (TensorFlow-only migration)
-# import torch
-# import torch.nn as nn
-import numpy as np
-from typing import List, Dict, Optional, Tuple, Iterator
-from sklearn.model_selection import TimeSeriesSplit
-import logging
+# + PyTorch retired (TensorFlow-only migration)
+import torch  # noqa: E402
+import torch.nn as nn  # noqa: E402
+import numpy as np  # noqa: E402
+from typing import List, Dict, Optional, Tuple, Iterator  # noqa: E402
+from sklearn.model_selection import TimeSeriesSplit  # noqa: E402
+import logging  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

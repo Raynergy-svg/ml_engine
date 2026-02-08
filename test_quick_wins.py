@@ -9,7 +9,7 @@ print('\n1. LightGBM Wrapper:')
 try:
     import lightgbm as lgb
     print(f'   ✓ LightGBM {lgb.__version__} available')
-    from ensemble_model import LightGBMWrapper, LIGHTGBM_AVAILABLE
+    from ensemble_model import LIGHTGBM_AVAILABLE
     print(f'   ✓ LightGBMWrapper imported, LIGHTGBM_AVAILABLE={LIGHTGBM_AVAILABLE}')
 except ImportError as e:
     print(f'   ✗ LightGBM not installed: {e}')

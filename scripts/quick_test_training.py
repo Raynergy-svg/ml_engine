@@ -8,11 +8,11 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-import logging
+import logging  # noqa: E402
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-import numpy as np
+import numpy as np  # noqa: E402
 
 print("=" * 60)
 print("Quick Training Test")
@@ -20,18 +20,18 @@ print("=" * 60)
 
 # Import TensorFlow
 print("\n1. Loading TensorFlow...")
-import tensorflow as tf
+import tensorflow as tf  # noqa: E402
 print(f"   TensorFlow: {tf.__version__}")
 print(f"   GPUs: {tf.config.list_physical_devices('GPU')}")
 
 # Import local modules
 print("\n2. Importing local modules...")
-from m1_metal_optimizer import (
+from m1_metal_optimizer import (  # noqa: E402
     configure_metal_runtime,
     create_optimized_dataset,
     create_metal_optimized_tcn,
 )
-from tensorflow_data_pipeline import load_tensorflow_multitask_data
+from tensorflow_data_pipeline import load_tensorflow_multitask_data  # noqa: E402
 
 # Configure runtime
 print("\n3. Configuring M1 Metal runtime...")
@@ -130,4 +130,3 @@ else:
     print("   Run full training: python train_optimized_m1.py --epochs 100")
 
 print("\n" + "=" * 60)
-

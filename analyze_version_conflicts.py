@@ -7,7 +7,7 @@ Analyzes all dependency specification files for version conflicts and incompatib
 import re
 import json
 from collections import defaultdict
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from pathlib import Path
 
 
@@ -188,14 +188,14 @@ class VersionConflictAnalyzer:
         
         if len(pinned_versions) > 1:
             # Multiple pinned versions - need to choose one
-            return f"Multiple pinned versions detected. Choose the most recent stable version and update all files consistently."
+            return "Multiple pinned versions detected. Choose the most recent stable version and update all files consistently."
         
         range_versions = [s for s in specs if s['constraint_type'] == 'range']
         
         if range_versions:
-            return f"Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
+            return "Use a consistent version range across all files. Consider pinning to a specific version for reproducibility."
         
-        return f"Ensure consistent version specification across all dependency files."
+        return "Ensure consistent version specification across all dependency files."
     
     def find_unconstrained(self):
         """Find dependencies without version constraints"""

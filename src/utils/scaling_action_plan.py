@@ -39,7 +39,7 @@ class ActionItem:
     current_value: Optional[float] = None
     notes: str = ""
     completed_at: Optional[str] = None
-    
+
     @property
     def progress_pct(self) -> float:
         if self.target_value and self.current_value:
@@ -49,7 +49,7 @@ class ActionItem:
         return 0
 
 
-@dataclass  
+@dataclass
 class WeeklyStats:
     """Weekly performance statistics."""
     week_number: int
@@ -65,13 +65,13 @@ class WeeklyStats:
     slippage_measurements: List[float] = field(default_factory=list)
     max_daily_drawdown: float = 0.0
     best_daily_return: float = 0.0
-    
+
     @property
     def win_rate(self) -> float:
         if self.total_trades == 0:
             return 0.0
         return self.wins / self.total_trades
-    
+
     @property
     def weekly_return(self) -> float:
         if self.starting_equity == 0:
@@ -87,20 +87,20 @@ DEFAULT_ACTION_PLAN = [
     ActionItem("w1_track_execution", "Track expected vs actual price", 1, "execution"),
     ActionItem("w1_20_trades", "Complete 20 trades to confirm win rate", 1, "validation", target_value=20),
     ActionItem("w1_verify_78pct", "Verify 78%+ win rate holds", 1, "validation", target_value=78),
-    
+
     # Week 2: Optimization
     ActionItem("w2_limit_orders", "Implement limit orders", 2, "execution"),
     ActionItem("w2_slippage_target", "Reduce slippage to <2 pips", 2, "execution", target_value=2),
     ActionItem("w2_circuit_breakers", "Add drawdown circuit breakers", 2, "risk"),
     ActionItem("w2_scale_8lots", "Scale to 8 lots if win rate >75%", 2, "position_sizing", target_value=8),
-    
+
     # Week 3-4: Scaling
     ActionItem("w3_compounding", "Implement intraday compounding", 3, "position_sizing"),
     ActionItem("w3_recalc_size", "Recalculate size per trade", 3, "position_sizing"),
     ActionItem("w3_second_broker", "Open second broker account", 3, "execution"),
     ActionItem("w3_split_orders", "Implement split orders for 10+ lots", 3, "execution"),
     ActionItem("w4_target_200k", "Target $200K+ by end of month 1", 4, "growth", target_value=200000),
-    
+
     # Month 2-3: Acceleration
     ActionItem("m2_full_kelly", "Full Kelly sizing (10-15 lots)", 5, "position_sizing", target_value=15),
     ActionItem("m2_multiple_pairs", "Trade multiple pairs (5 trained)", 5, "diversification", target_value=5),
@@ -112,37 +112,37 @@ DEFAULT_ACTION_PLAN = [
 class WeeklyActionTracker:
     """
     Track weekly progress against the $100K → $1M action plan.
-    
+
     Usage:
         tracker = WeeklyActionTracker()
-        
+
         # Check current week's actions
         actions = tracker.get_current_week_actions()
-        
+
         # Update an action
         tracker.update_action("w1_reduce_size", current_value=5)
-        
+
         # Complete an action
         tracker.complete_action("w1_limit_orders", notes="Implemented in aggressive_scaling.py")
-        
+
         # Log weekly stats
         tracker.log_weekly_stats(week=1, stats={...})
     """
-    
+
     def __init__(self, data_path: Optional[Path] = None):
         self.data_path = data_path or Path("trained_data") / "scaling_action_plan.json"
         self.actions: List[ActionItem] = []
         self.weekly_stats: List[WeeklyStats] = []
         self.start_date: Optional[str] = None
         self._load()
-    
+
     def _load(self) -> None:
         """Load action plan from disk."""
         if self.data_path.exists():
             try:
                 data = json.loads(self.data_path.read_text())
                 self.start_date = data.get("start_date")
-                
+
                 self.actions = []
                 for a in data.get("actions", []):
                     item = ActionItem(
@@ -157,7 +157,7 @@ class WeeklyActionTracker:
                         completed_at=a.get("completed_at"),
                     )
                     self.actions.append(item)
-                
+
                 self.weekly_stats = []
                 for s in data.get("weekly_stats", []):
                     stat = WeeklyStats(
@@ -176,24 +176,24 @@ class WeeklyActionTracker:
                         best_daily_return=s.get("best_daily_return", 0),
                     )
                     self.weekly_stats.append(stat)
-                    
+
             except Exception as e:
                 logger.warning(f"Failed to load action plan: {e}")
                 self._init_default()
         else:
             self._init_default()
-    
+
     def _init_default(self) -> None:
         """Initialize with default action plan."""
         self.start_date = datetime.now(timezone.utc).date().isoformat()
         self.actions = [ActionItem(**asdict(a)) for a in DEFAULT_ACTION_PLAN]
         self.weekly_stats = []
         self._save()
-    
+
     def _save(self) -> None:
         """Save action plan to disk."""
         self.data_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         data = {
             "start_date": self.start_date,
             "last_updated": datetime.now(timezone.utc).isoformat(),
@@ -231,38 +231,38 @@ class WeeklyActionTracker:
             ]
         }
         self.data_path.write_text(json.dumps(data, indent=2))
-    
+
     @property
     def current_week(self) -> int:
         """Calculate current week number since start."""
         if not self.start_date:
             return 1
-        
+
         start = datetime.fromisoformat(self.start_date).date()
         today = datetime.now(timezone.utc).date()
         days_elapsed = (today - start).days
         return max(1, (days_elapsed // 7) + 1)
-    
+
     def get_current_week_actions(self) -> List[ActionItem]:
         """Get actions for current week."""
         week = self.current_week
         return [a for a in self.actions if a.week == week]
-    
+
     def get_actions_by_week(self, week: int) -> List[ActionItem]:
         """Get actions for a specific week."""
         return [a for a in self.actions if a.week == week]
-    
+
     def get_actions_by_status(self, status: ActionStatus) -> List[ActionItem]:
         """Get actions by status."""
         return [a for a in self.actions if a.status == status]
-    
+
     def get_action(self, action_id: str) -> Optional[ActionItem]:
         """Get a specific action by ID."""
         for a in self.actions:
             if a.id == action_id:
                 return a
         return None
-    
+
     def update_action(
         self,
         action_id: str,
@@ -275,7 +275,7 @@ class WeeklyActionTracker:
         if not action:
             logger.warning(f"Action not found: {action_id}")
             return False
-        
+
         if status:
             action.status = status
         if current_value is not None:
@@ -286,10 +286,10 @@ class WeeklyActionTracker:
                 action.completed_at = datetime.now(timezone.utc).isoformat()
         if notes:
             action.notes = notes
-        
+
         self._save()
         return True
-    
+
     def complete_action(self, action_id: str, notes: str = "") -> bool:
         """Mark an action as completed."""
         return self.update_action(
@@ -297,11 +297,11 @@ class WeeklyActionTracker:
             status=ActionStatus.COMPLETED,
             notes=notes
         )
-    
+
     def start_action(self, action_id: str) -> bool:
         """Mark an action as in progress."""
         return self.update_action(action_id, status=ActionStatus.IN_PROGRESS)
-    
+
     def log_weekly_stats(
         self,
         week_number: int,
@@ -324,9 +324,9 @@ class WeeklyActionTracker:
         else:
             week_start = datetime.now(timezone.utc).date()
             week_end = week_start + timedelta(days=6)
-        
+
         avg_slippage = sum(slippage_measurements) / len(slippage_measurements) if slippage_measurements else 0
-        
+
         stats = WeeklyStats(
             week_number=week_number,
             start_date=week_start.isoformat(),
@@ -342,7 +342,7 @@ class WeeklyActionTracker:
             max_daily_drawdown=max_daily_drawdown,
             best_daily_return=best_daily_return,
         )
-        
+
         # Replace existing or append
         existing_idx = next(
             (i for i, s in enumerate(self.weekly_stats) if s.week_number == week_number),
@@ -352,49 +352,49 @@ class WeeklyActionTracker:
             self.weekly_stats[existing_idx] = stats
         else:
             self.weekly_stats.append(stats)
-        
+
         self._save()
-        
+
         # Auto-update related actions based on stats
         self._auto_update_actions(stats)
-        
+
         return stats
-    
+
     def _auto_update_actions(self, stats: WeeklyStats) -> None:
         """Auto-update action progress based on weekly stats."""
         # Update trade count
         total_trades_all_weeks = sum(s.total_trades for s in self.weekly_stats)
         self.update_action("w1_20_trades", current_value=total_trades_all_weeks)
-        
+
         # Update win rate verification
         total_wins = sum(s.wins for s in self.weekly_stats)
         if total_trades_all_weeks > 0:
             win_rate = (total_wins / total_trades_all_weeks) * 100
             self.update_action("w1_verify_78pct", current_value=win_rate)
-        
+
         # Update slippage measurement count
         total_slippage_measurements = sum(len(s.slippage_measurements) for s in self.weekly_stats)
         self.update_action("w1_measure_slippage", current_value=total_slippage_measurements)
-        
+
         # Update slippage target (week 2)
         if stats.avg_slippage_pips > 0:
             self.update_action("w2_slippage_target", current_value=stats.avg_slippage_pips)
-        
+
         # Update equity targets
         latest_equity = stats.ending_equity
         self.update_action("w4_target_200k", current_value=latest_equity)
         self.update_action("m3_target_1m", current_value=latest_equity)
-    
+
     def get_progress_report(self) -> Dict[str, Any]:
         """Get comprehensive progress report."""
         current_week = self.current_week
-        
+
         # Action status summary
         total_actions = len(self.actions)
         completed = len([a for a in self.actions if a.status == ActionStatus.COMPLETED])
         in_progress = len([a for a in self.actions if a.status == ActionStatus.IN_PROGRESS])
         not_started = len([a for a in self.actions if a.status == ActionStatus.NOT_STARTED])
-        
+
         # Calculate phase
         if current_week <= 2:
             phase = "Validation"
@@ -404,7 +404,7 @@ class WeeklyActionTracker:
             phase = "Scaling"
         else:
             phase = "Acceleration"
-        
+
         # Weekly stats summary
         if self.weekly_stats:
             latest_stats = max(self.weekly_stats, key=lambda s: s.week_number)
@@ -419,11 +419,11 @@ class WeeklyActionTracker:
             total_trades = 0
             overall_win_rate = 0
             avg_slippage = 0
-        
+
         # Current week actions
         current_actions = self.get_current_week_actions()
         current_week_progress = sum(a.progress_pct for a in current_actions) / len(current_actions) if current_actions else 0
-        
+
         return {
             "current_week": current_week,
             "phase": phase,
@@ -466,40 +466,40 @@ class WeeklyActionTracker:
                 for s in sorted(self.weekly_stats, key=lambda s: s.week_number)
             ],
         }
-    
+
     def print_dashboard(self) -> None:
         """Print a formatted dashboard."""
         report = self.get_progress_report()
-        
+
         print("\n" + "=" * 70)
         print("📊 AGGRESSIVE SCALING PROGRESS DASHBOARD")
         print("=" * 70)
-        
+
         print(f"\n🗓️  Week {report['current_week']} | Phase: {report['phase']}")
         print(f"   Started: {report['start_date']} ({report['days_elapsed']} days)")
-        
+
         print(f"\n📋 Actions: {report['action_summary']['completed']}/{report['action_summary']['total']} completed ({report['action_summary']['completion_pct']}%)")
-        
-        print(f"\n🎯 Current Week Actions:")
+
+        print("\n🎯 Current Week Actions:")
         for a in report['current_week_actions']:
             status_icon = "✅" if a['status'] == 'completed' else "🔄" if a['status'] == 'in_progress' else "⬜"
             progress = f" [{a['current']}/{a['target']}]" if a['target'] else ""
             print(f"   {status_icon} {a['description']}{progress}")
-        
+
         perf = report['performance']
-        print(f"\n📈 Performance:")
+        print("\n📈 Performance:")
         print(f"   Total Trades: {perf['total_trades']}")
         print(f"   Win Rate: {perf['overall_win_rate']}%")
         print(f"   Total PnL: ${perf['total_pnl']:,.2f}")
         print(f"   Avg Slippage: {perf['avg_slippage_pips']} pips")
         if perf['latest_equity']:
             print(f"   Current Equity: ${perf['latest_equity']:,.2f}")
-        
+
         if report['weekly_stats_summary']:
-            print(f"\n📅 Weekly Returns:")
+            print("\n📅 Weekly Returns:")
             for s in report['weekly_stats_summary']:
                 print(f"   Week {s['week']}: {s['trades']} trades, {s['win_rate']}% win rate, ${s['pnl']:,.0f} ({s['return_pct']:+.1f}%)")
-        
+
         print("\n" + "=" * 70)
 
 
@@ -510,28 +510,28 @@ class WeeklyActionTracker:
 def sync_from_trade_journal(tracker: WeeklyActionTracker, journal_path: Optional[Path] = None) -> None:
     """
     Sync tracker with trade journal data.
-    
+
     Args:
         tracker: Action tracker to update
         journal_path: Path to trade journal JSON
     """
     journal_path = journal_path or Path("trained_data") / "trade_journal.json"
-    
+
     if not journal_path.exists():
         logger.warning("Trade journal not found")
         return
-    
+
     try:
         data = json.loads(journal_path.read_text())
         trades = data.get("trades", [])
-        
+
         if not trades:
             return
-        
+
         # Group trades by week
         from collections import defaultdict
         weekly_trades = defaultdict(list)
-        
+
         for trade in trades:
             trade_date = datetime.fromisoformat(trade["timestamp"].replace("Z", "+00:00")).date()
             if tracker.start_date:
@@ -540,25 +540,25 @@ def sync_from_trade_journal(tracker: WeeklyActionTracker, journal_path: Optional
             else:
                 week = 1
             weekly_trades[week].append(trade)
-        
+
         # Update weekly stats
         cumulative_equity = 100000  # Starting equity assumption
-        
+
         for week_num in sorted(weekly_trades.keys()):
             week_trades = weekly_trades[week_num]
-            
+
             wins = len([t for t in week_trades if t.get("status") == "win"])
             losses = len([t for t in week_trades if t.get("status") == "loss"])
             total_pnl = sum(t.get("pnl", 0) or 0 for t in week_trades)
             slippage_measurements = [
-                abs(t.get("slippage_pips", 0)) 
-                for t in week_trades 
+                abs(t.get("slippage_pips", 0))
+                for t in week_trades
                 if t.get("slippage_pips") is not None
             ]
-            
+
             starting_equity = cumulative_equity
             cumulative_equity += total_pnl
-            
+
             tracker.log_weekly_stats(
                 week_number=week_num,
                 starting_equity=starting_equity,
@@ -569,9 +569,9 @@ def sync_from_trade_journal(tracker: WeeklyActionTracker, journal_path: Optional
                 total_pnl=total_pnl,
                 slippage_measurements=slippage_measurements,
             )
-        
+
         logger.info(f"Synced {len(trades)} trades from journal")
-        
+
     except Exception as e:
         logger.error(f"Failed to sync from journal: {e}")
 
@@ -582,20 +582,20 @@ def sync_from_trade_journal(tracker: WeeklyActionTracker, journal_path: Optional
 
 if __name__ == "__main__":
     import sys
-    
+
     tracker = WeeklyActionTracker()
-    
+
     if len(sys.argv) > 1:
         command = sys.argv[1]
-        
+
         if command == "dashboard":
             tracker.print_dashboard()
-        
+
         elif command == "sync":
             sync_from_trade_journal(tracker)
             print("✅ Synced from trade journal")
             tracker.print_dashboard()
-        
+
         elif command == "complete" and len(sys.argv) > 2:
             action_id = sys.argv[2]
             notes = sys.argv[3] if len(sys.argv) > 3 else ""
@@ -603,14 +603,14 @@ if __name__ == "__main__":
                 print(f"✅ Completed: {action_id}")
             else:
                 print(f"❌ Action not found: {action_id}")
-        
+
         elif command == "start" and len(sys.argv) > 2:
             action_id = sys.argv[2]
             if tracker.start_action(action_id):
                 print(f"🔄 Started: {action_id}")
             else:
                 print(f"❌ Action not found: {action_id}")
-        
+
         elif command == "update" and len(sys.argv) > 3:
             action_id = sys.argv[2]
             value = float(sys.argv[3])
@@ -618,11 +618,11 @@ if __name__ == "__main__":
                 print(f"📝 Updated: {action_id} = {value}")
             else:
                 print(f"❌ Action not found: {action_id}")
-        
+
         elif command == "reset":
             tracker._init_default()
             print("🔄 Reset to default action plan")
-        
+
         else:
             print("Usage:")
             print("  python scaling_action_plan.py dashboard")

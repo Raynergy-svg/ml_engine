@@ -7,9 +7,8 @@ This script scans the codebase and extracts import statements with classificatio
 import ast
 import json
 import os
-import sys
 from pathlib import Path
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List
 import re
 
 # Standard library modules (for classification)
@@ -46,8 +45,7 @@ STANDARD_LIBRARY_MODULES = {
 
 def should_exclude_path(path: Path) -> bool:
     """Check if a path should be excluded from scanning."""
-    path_str = str(path)
-    
+
     # Exclude specific directories
     exclude_dirs = ['.venv', 'venv', 'env', '__pycache__', 'legacy_quarantine', 
                     'node_modules', '.git', '.idea', '.vscode']
@@ -95,9 +93,7 @@ def classify_import(module_name: str, file_path: Path, project_root: Path) -> st
     
     # Check if it's a local project import
     # Local imports typically start with 'src' or other project directories
-    file_dir = file_path.parent
-    relative_path = file_dir.relative_to(project_root)
-    
+
     # Check if the module could be a local import
     # by seeing if it matches any top-level directory in the project
     project_dirs = [d.name for d in project_root.iterdir() if d.is_dir() and not d.name.startswith('.')]

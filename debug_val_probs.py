@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Debug validation probabilities."""
 import numpy as np
-import pandas as pd
 import pickle
 from pathlib import Path
 
@@ -22,18 +21,18 @@ print(f"Model expects {len(feature_names)} features, seq_len={seq_len}")
 print(f"Scaler type: {type(scaler).__name__}")
 
 # Get data
-from src.utils.oanda_practice import OandaPracticeClient
-from src.utils.fx_paper import candles_to_ohlcv_df
+from src.utils.oanda_practice import OandaPracticeClient  # noqa: E402
+from src.utils.fx_paper import candles_to_ohlcv_df  # noqa: E402
 
 client = OandaPracticeClient.from_env()
 resp = client.get_candles('EUR_USD', granularity='H1', count=300, price='MBA')
 df = candles_to_ohlcv_df(resp)
 
 # Compute features using validation's compute_features
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parent / 'tests' / 'validation'))
-from validate_model import compute_features
+import sys  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+sys.path.insert(0, str(_Path(__file__).resolve().parent / 'tests' / 'validation'))
+from validate_model import compute_features  # noqa: E402
 
 df_feat = compute_features(df)
 print(f"Computed {len(df_feat.columns)} features")
@@ -75,12 +74,12 @@ print(f"  Std: {np.std(probs):.4f}")
 # Distribution
 n_long = sum(1 for p in probs if p > 0.5)
 n_short = sum(1 for p in probs if p <= 0.5)
-print(f"\nPredictions:")
+print("\nPredictions:")
 print(f"  LONG (>0.5): {n_long} ({100*n_long/len(probs):.1f}%)")
 print(f"  SHORT (<=0.5): {n_short} ({100*n_short/len(probs):.1f}%)")
 
 # Show histogram
-print(f"\nHistogram:")
+print("\nHistogram:")
 bins = [(0, 0.1), (0.1, 0.2), (0.2, 0.3), (0.3, 0.4), (0.4, 0.5), 
         (0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.0)]
 for low, high in bins:

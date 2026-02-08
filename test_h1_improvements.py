@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from src.scanner import ScannerConfig, PIP_VALUES
 from src.risk.risk_management import RiskManagementConfig
 
+
 def test_h1_settings():
     """Test H1-optimized settings."""
     print("Testing H1 Trade Execution Improvements")
@@ -29,7 +30,7 @@ def test_h1_settings():
     print(f"   ATR Period: {risk_cfg.atr_period}")
     print(f"   ATR SL Multiplier: {risk_cfg.atr_sl_multiplier}x")
     print(f"   ATR TP Multiplier: {risk_cfg.atr_tp_multiplier}x")
-    print(f"   R:R Ratios by Confidence:")
+    print("   R:R Ratios by Confidence:")
     print(f"     Low  (55-65%): 1:{risk_cfg.low_confidence_rr}")
     print(f"     Med  (65-75%): 1:{risk_cfg.medium_confidence_rr}")
     print(f"     High (75%+):   1:{risk_cfg.high_confidence_rr}")
@@ -88,6 +89,7 @@ def test_h1_settings():
     print("✓ Trailing stop (move to BE after 1R)")
     print("✓ Max hold time (72h for H1 swing)")
     print("\nAll H1 improvements verified! ✅")
+
 
 if __name__ == "__main__":
     test_h1_settings()

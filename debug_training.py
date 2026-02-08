@@ -3,7 +3,7 @@
 
 from pathlib import Path
 import json
-import sys
+
 
 def main():
     print("=" * 60)
@@ -77,19 +77,21 @@ def main():
     # 7. Check RL module
     print("\n🧪 5. MODULE IMPORTS")
     try:
-        from rl_position_sizing import RLPositionSizer
+        from rl_position_sizing import RLPositionSizer  # noqa: F401
         print("   ✓ RLPositionSizer imported")
     except ImportError as e:
         print(f"   ✗ RLPositionSizer import failed: {e}")
     
     try:
-        from market_intelligence import MarketIntelligence
+        from market_intelligence import MarketIntelligence  # noqa: F401
         print("   ✓ MarketIntelligence imported")
+    except ImportError as e:
+        print(f"   ✗ MarketIntelligence import failed: {e}")
     except ImportError as e:
         print(f"   ✗ MarketIntelligence import failed: {e}")
     
     try:
-        from trade_analyzer import TradeAnalyzer
+        from trade_analyzer import TradeAnalyzer  # noqa: F401
         print("   ✓ TradeAnalyzer imported")
     except ImportError as e:
         print(f"   ✗ TradeAnalyzer import failed: {e}")
@@ -112,9 +114,9 @@ def main():
     # 9. Test RL Environment
     print("\n🎮 7. RL ENVIRONMENT TEST")
     try:
-        from rl_position_sizing import RLPositionSizer
-        sizer = RLPositionSizer()
-        print(f"   ✓ RLPositionSizer initialized")
+        from rl_position_sizing import RLPositionSizer as _RLPositionSizer
+        sizer = _RLPositionSizer()
+        print("   ✓ RLPositionSizer initialized")
         print(f"   Model path: {sizer.model_path}")
         print(f"   Trade buffer: {len(sizer.trade_buffer)} trades")
     except Exception as e:
@@ -123,13 +125,13 @@ def main():
     # 10. Test Online Learning in MarketIntelligence
     print("\n🧠 8. MARKET INTELLIGENCE ONLINE LEARNING")
     try:
-        from market_intelligence import MarketIntelligence
-        mi = MarketIntelligence(
+        from market_intelligence import MarketIntelligence as _MarketIntelligence
+        mi = _MarketIntelligence(
             enable_sentiment=False,
             enable_calendar=False,
             enable_online_learning=True
         )
-        print(f"   ✓ MarketIntelligence initialized")
+        print("   ✓ MarketIntelligence initialized")
         print(f"   Online learning: {mi.enable_online_learning}")
         print(f"   Trade buffer: {len(mi.trade_buffer)} trades")
     except Exception as e:
@@ -138,6 +140,7 @@ def main():
     print("\n" + "=" * 60)
     print("DEBUG COMPLETE")
     print("=" * 60)
+
 
 if __name__ == '__main__':
     main()

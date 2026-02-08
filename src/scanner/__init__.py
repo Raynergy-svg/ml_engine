@@ -3,7 +3,7 @@ FX Scanner Module - Clean, refactored multi-pair scanner.
 
 This module provides a robust scanner for FX pairs using:
 - CatBoost (primary) + XGBoost (fallback) for momentum gates
-- ThreadPoolExecutor for parallel pair scanning  
+- ThreadPoolExecutor for parallel pair scanning
 - Rich Live displays for real-time progress
 - Incremental caching to reduce API calls in watch mode
 - Trade execution with daily limits and position sizing
@@ -12,16 +12,16 @@ This module provides a robust scanner for FX pairs using:
 
 Usage:
     from src.scanner import Scanner, ScannerConfig, ScanResult
-    
+
     scanner = Scanner()
     results = scanner.scan(pairs=["EUR_USD", "GBP_USD"])
-    
+
     # Watch mode with incremental updates
     scanner.scan_watch(pairs=["EUR_USD"], interval_seconds=300)
-    
+
     # Execute trades
     from src.scanner import ExecutionManager, ExecutionConfig
-    
+
     executor = ExecutionManager()
     result = executor.execute_trade(
         pair="EUR_USD",
@@ -30,10 +30,10 @@ Usage:
         current_price=1.0850,
         atr=0.0015,
     )
-    
+
     # Analysis tools
     from src.scanner.analysis import QuickBacktester, CorrelationAnalyzer, DriftDetector
-    
+
     # Filters
     from src.scanner.filters import VolatilityFilter, DiversificationFilter
 """
@@ -72,7 +72,7 @@ __all__ = [
     # Core scanner
     "Scanner",
     "ScannerConfig",
-    "ScanResult", 
+    "ScanResult",
     "PairAnalysis",
     "ScannerDisplay",
     "GateEvaluator",

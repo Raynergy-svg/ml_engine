@@ -339,10 +339,10 @@ class DataLoader:
         # Reshape for scaler: (n_samples, seq_len, features) -> (n_samples * seq_len, features)
         train_shape = x_train.shape
         x_train_flat = x_train.reshape(-1, train_shape[-1])
-        
+
         # Fit scaler on training data ONLY
         self.scaler.fit(x_train_flat)
-        
+
         # Transform all splits using train-fitted scaler
         x_train_scaled = self.scaler.transform(x_train_flat).reshape(train_shape)
         x_val_scaled = self.scaler.transform(x_val.reshape(-1, train_shape[-1])).reshape(x_val.shape)
@@ -415,8 +415,7 @@ class DataLoader:
             return x_seq
         else:
             raise ValueError(
-                "Insufficient data: need %s, got %s"
-                % (sequence_length, len(x_scaled))
+                f"Insufficient data: need {sequence_length}, got {len(x_scaled)}"
             )
 
 
@@ -464,9 +463,7 @@ class MarketDataLoader(DataLoader):
         elif method == "average":
             # Average across tickers
             # Align indices first
-            aligned_data = []
-            for ticker, df in data_dict.items():
-                aligned_data.append(df)
+            aligned_data = list(data_dict.values())
 
             combined = pd.concat(aligned_data, axis=1, keys=data_dict.keys())
             # Average numeric columns

@@ -4,8 +4,7 @@
 import sys
 sys.path.insert(0, '.')
 
-from src.rl.optimal_exit_env import OptimalExitRL, OptimalExitEnv
-import numpy as np
+from src.rl.optimal_exit_env import OptimalExitRL, OptimalExitEnv  # noqa: E402
 
 print("=" * 60)
 print("TESTING FIXED EXIT RL ENVIRONMENT")
@@ -77,4 +76,3 @@ if abs(total_ep_reward) > 1.0:
     print('   Ready for training.')
 else:
     print('⚠️  Rewards still too small, may need more tuning.')
-

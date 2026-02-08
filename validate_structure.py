@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Validate repository structure after restructuring."""
 
-import os
 import sys
 from pathlib import Path
+
 
 def check_file_exists(path, description):
     """Check if a file exists and report."""
@@ -14,6 +14,7 @@ def check_file_exists(path, description):
         print(f"✗ {description} MISSING: {path}")
         return False
 
+
 def check_dir_exists(path, description):
     """Check if a directory exists and report."""
     if Path(path).is_dir():
@@ -22,6 +23,7 @@ def check_dir_exists(path, description):
     else:
         print(f"✗ {description} MISSING: {path}")
         return False
+
 
 def check_import_in_file(file_path, import_statement, description):
     """Check if a file contains a specific import."""
@@ -37,6 +39,7 @@ def check_import_in_file(file_path, import_statement, description):
     except Exception as e:
         print(f"✗ {description} - Error reading file: {e}")
         return False
+
 
 if __name__ == "__main__":
     print("Validating repository structure...\n")

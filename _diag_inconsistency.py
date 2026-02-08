@@ -6,13 +6,11 @@ import os
 warnings.filterwarnings('ignore')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-from src.training.modular_trainers import TransformerDirectionTrainer
-from multi_pair_inference import MultiPairInference
-from src.core.modular_inference import ModularEnsembleInference
-from src.core.modular_data_loaders import compute_normalized_features
-from src.utils.oanda_practice import OandaPracticeClient
-from src.utils.fx_paper import candles_to_ohlcv_df
-import pandas as pd
+from multi_pair_inference import MultiPairInference  # noqa: E402
+from src.core.modular_inference import ModularEnsembleInference  # noqa: E402
+from src.core.modular_data_loaders import compute_normalized_features  # noqa: E402
+from src.utils.oanda_practice import OandaPracticeClient  # noqa: E402
+from src.utils.fx_paper import candles_to_ohlcv_df  # noqa: E402
 
 print('=== Fetching GBP_USD data ===')
 client = OandaPracticeClient.from_env()
@@ -97,17 +95,17 @@ if pm:
     raw_pred = pm.transformer.predict(X.reshape(1, sl, -1).astype(np.float32), verbose=0)
     scan_raw_prob = float(raw_pred[0, 0])
     print(f'Raw model output: {scan_raw_prob:.4f} -> {"LONG" if scan_raw_prob > 0.5 else "SHORT"}')
-    print(f'Scanner direction logic: prob > 0.5 => direction, confidence = |prob-0.5|*2')
+    print('Scanner direction logic: prob > 0.5 => direction, confidence = |prob-0.5|*2')
 else:
     print('NO PAIR MODEL LOADED')
 
 # -----------------------------------------------------------
 # CHECK: Are they loading the same .keras file?
 # -----------------------------------------------------------
-import pathlib
+import pathlib  # noqa: E402
 mei_path = mei._get_model_path('transformer_direction', '.keras')
 mpi_path = pathlib.Path('trained_data/models/GBP_USD/transformer_direction.keras')
-print(f'\n=== MODEL FILES ===')
+print('\n=== MODEL FILES ===')
 print(f'Modular inference: {mei_path} (exists={mei_path.exists()})')
 print(f'Multi-pair:        {mpi_path} (exists={mpi_path.exists()})')
 print(f'Same file: {mei_path.resolve() == mpi_path.resolve()}')
@@ -118,7 +116,7 @@ print(f'Same file: {mei_path.resolve() == mpi_path.resolve()}')
 if tcn and pm:
     fn1 = set(tcn.feature_names) if tcn.feature_names else set()
     fn2 = set(pm.feature_names) if pm.feature_names else set()
-    print(f'\n=== FEATURE COMPARISON ===')
+    print('\n=== FEATURE COMPARISON ===')
     print(f'Modular inference features: {len(fn1)}')
     print(f'Multi-pair features:        {len(fn2)}')
     only_mod = fn1 - fn2
@@ -134,7 +132,7 @@ if tcn and pm:
 # ROOT CAUSE ANALYSIS
 # -----------------------------------------------------------
 print(f'\n{"="*60}')
-print(f'ROOT CAUSE ANALYSIS')
+print('ROOT CAUSE ANALYSIS')
 print(f'{"="*60}')
 
 if mod_prob is not None and scan_raw_prob is not None:
@@ -149,11 +147,11 @@ if mod_prob is not None and scan_raw_prob is not None:
         print('  Even though they load the same .keras file, the input differs.')
 
     if mod_threshold != 0.5:
-        print(f'[BUG 2] THRESHOLD MISMATCH')
+        print('[BUG 2] THRESHOLD MISMATCH')
         print(f'  Modular inference uses calibrated threshold: {mod_threshold:.4f}')
-        print(f'  Scanner always uses hardcoded threshold: 0.5')
-        print(f'  This means the scanner ignores output calibration entirely.')
+        print('  Scanner always uses hardcoded threshold: 0.5')
+        print('  This means the scanner ignores output calibration entirely.')
 
     if mod_dir != ("LONG" if scan_raw_prob > 0.5 else "SHORT"):
         print(f'\n  >>> CONFIRMED: Scanner says {"SHORT" if scan_raw_prob < 0.5 else "LONG"} while inference says {mod_dir}')
-        print(f'  >>> This explains the GBP/USD SHORT vs LONG inconsistency')
+        print('  >>> This explains the GBP/USD SHORT vs LONG inconsistency')

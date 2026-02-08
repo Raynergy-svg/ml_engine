@@ -10,7 +10,6 @@ entrypoints without forcing a full training pipeline refactor.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np

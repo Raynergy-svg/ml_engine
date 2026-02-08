@@ -53,7 +53,7 @@ def build_multitask_targets(
 
     Returns arrays aligned to the sequences produced by `prepare_sequences`:
     index i corresponds to target time t = i + sequence_length + target_shift - 1.
-    
+
     Args:
         df: DataFrame with price data
         sequence_length: Length of input sequences
@@ -64,7 +64,7 @@ def build_multitask_targets(
         train_split_fraction: If provided, compute risk quantiles only on first N%
                              of data to prevent data leakage. E.g., 0.8 means use
                              first 80% for quantile computation.
-    
+
     Note:
         When train_split_fraction is provided, risk quantile edges are computed
         ONLY on the training portion to prevent leaking validation distribution
@@ -99,7 +99,7 @@ def build_multitask_targets(
         risk_for_quantiles = risk[:train_end_idx]
     else:
         risk_for_quantiles = risk  # Legacy behavior: use all data
-    
+
     qs = np.linspace(0.0, 1.0, state_classes + 1)
     edges = np.quantile(risk_for_quantiles, qs)
     edges = np.unique(edges)
@@ -126,14 +126,14 @@ def build_multitask_targets(
     # Use LOG RETURNS instead of price ratios for stationarity
     # Add DEAD-ZONE threshold to filter noise from spreads/random movements
     # =========================================================================
-    
+
     # Log returns are stationary and trend-neutral (mean/variance don't drift)
     # This removes the bias where model learns "buy in downtrend" patterns
     horizon_log_return = np.log(
         close[target_indices] / np.clip(close[base_indices], 1e-12, None)
     )
     trend_aligned = horizon_log_return  # Use log returns for trend target too
-    
+
     # Dynamic dead-zone threshold: 0.5× rolling standard deviation of returns
     # This filters out noise from spreads (0.5-2 pips) and random walk movements
     # Samples in dead-zone get direction=-1 (HOLD) and should be filtered/downweighted
@@ -143,12 +143,12 @@ def build_multitask_targets(
         start = max(0, i - std_window + 1)
         window = returns[start : i + 1]
         rolling_std[i] = float(np.std(window)) if len(window) > 1 else 0.001
-    
+
     # Use mean rolling std as threshold (0.5× std dev = half a standard deviation)
     # This is approximately where random noise ends and true signals begin
     threshold = np.mean(rolling_std[rolling_std > 0]) * 0.5
     threshold = max(threshold, 0.0001)  # Minimum threshold to avoid div-by-zero edge cases
-    
+
     # Three-class labeling: 1=UP, 0=DOWN, -1=HOLD (dead-zone)
     # Dead-zone samples should be filtered or given lower sample weights during training
     direction_aligned = np.where(
@@ -174,7 +174,7 @@ def build_multitask_targets(
     else:
         r_min = float(np.min(risk_aligned))
         r_max = float(np.max(risk_aligned))
-    
+
     if r_max > r_min:
         risk_norm = (risk_aligned - r_min) / (r_max - r_min)
         # Clip to [0, 1] in case validation data has values outside training range
@@ -191,31 +191,31 @@ def build_multitask_targets(
 
 
 def split_time_series(
-    n: int, 
-    *, 
+    n: int,
+    *,
     val_fraction: float = 0.2,
     purge_gap: int = 0,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Split time series data into train and validation sets.
-    
+
     Args:
         n: Total number of samples
         val_fraction: Fraction of data for validation (default 0.2 = 20%)
         purge_gap: Number of samples to skip between train and val to prevent
                    temporal leakage. This creates a "buffer zone" where no
                    training or validation samples exist.
-    
+
     Returns:
         Tuple of (train_indices, val_indices)
-    
+
     Example with purge_gap=10:
         Data: [0, 1, 2, ..., 79, 80, 81, ..., 89, 90, 91, ..., 99]
                    TRAIN          PURGE GAP       VALIDATION
-        
+
         train_idx: [0, 1, ..., 79]
         val_idx: [90, 91, ..., 99]
         (samples 80-89 are excluded to prevent leakage)
-    
+
     Note:
         The purge gap is critical for time-series cross-validation because
         features computed with rolling windows can "see" into the future
@@ -231,17 +231,17 @@ def split_time_series(
     # Calculate split point
     split = int(round(n * (1.0 - val_fraction)))
     split = max(1, min(n - 1 - purge_gap, split))
-    
+
     # Train indices: from 0 to split
     train_idx = np.arange(0, split, dtype=int)
-    
+
     # Validation indices: start after purge gap
     val_start = split + purge_gap
     if val_start >= n:
         # If purge gap is too large, reduce it
         val_start = split + max(0, (n - split) // 2)
-    
+
     val_idx = np.arange(val_start, n, dtype=int)
-    
+
     return train_idx, val_idx
 # — Raynergy-svg —

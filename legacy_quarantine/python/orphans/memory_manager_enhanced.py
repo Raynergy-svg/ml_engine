@@ -36,16 +36,16 @@ to a different framework. Buddy is now TensorFlow-only.
 We keep a small compatibility layer so existing imports keep working.
 """
 
-from __future__ import annotations
+from __future__ import annotations  # noqa: E402
 
-import gc
-import logging
-import time
-from contextlib import contextmanager
-from functools import wraps
-from typing import Callable, Optional
+import gc  # noqa: E402
+import logging  # noqa: E402
+import time  # noqa: E402
+from contextlib import contextmanager  # noqa: E402
+from functools import wraps  # noqa: E402
+from typing import Callable, Optional  # noqa: E402
 
-import psutil
+import psutil  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

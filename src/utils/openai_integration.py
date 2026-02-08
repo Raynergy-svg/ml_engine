@@ -44,13 +44,14 @@ load_dotenv()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 project_id = os.getenv("OPENAI_PROJECT_ID")
+logger = logging.getLogger(__name__)
 
 
 def set_openai_credentials(config: dict) -> None:
     """Set OpenAI credentials from config or environment variables."""
     openai.api_key = config.get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
-        logging.error("OpenAI API key not found in configuration or .env")
+        logger.error("OpenAI API key not found in configuration or .env")
         raise ValueError("Missing OpenAI API key")
 
 
@@ -60,7 +61,7 @@ client = openai
 def query_openai(prompt, model="gpt-4", temperature=0.2, max_attempts=3):
     """General-purpose function to query the OpenAI API."""
     if not openai.api_key:
-        logging.error("OPENAI_API_KEY not set.")
+        logger.error("OPENAI_API_KEY not set.")
         return None
     attempts = 0
     while attempts < max_attempts:
@@ -80,7 +81,7 @@ def query_openai(prompt, model="gpt-4", temperature=0.2, max_attempts=3):
             return text
         except Exception as e:
             attempts += 1
-            logging.error(f"OpenAI query error (attempt {attempts}): {e}")
+            logger.error(f"OpenAI query error (attempt {attempts}): {e}")
             time.sleep(1)
     return None
 
@@ -104,7 +105,7 @@ def query_for_learning_rate(metrics, model="gpt-4", temperature=0.2):
         suggestion = json.loads(response_text)
         return suggestion.get("learning_rate")
     except Exception as e:
-        logging.error(f"Error parsing learning rate response: {e}")
+        logger.error(f"Error parsing learning rate response: {e}")
         return None
 
 
@@ -144,7 +145,7 @@ def query_for_loss_function_adjustment(
         suggestions = json.loads(response_text)
         return suggestions
     except Exception as e:
-        logging.error(f"Error parsing loss function suggestion response: {e}")
+        logger.error(f"Error parsing loss function suggestion response: {e}")
         return None
 
 
@@ -170,7 +171,7 @@ def query_for_data_handling_adjustment(
         suggestions = json.loads(response_text)
         return suggestions
     except Exception as e:
-        logging.error(f"Error parsing data handling suggestion response: {e}")
+        logger.error(f"Error parsing data handling suggestion response: {e}")
         return None
 
 
@@ -196,7 +197,7 @@ def query_for_model_architecture_adjustment(
         suggestions = json.loads(response_text)
         return suggestions
     except Exception as e:
-        logging.error(f"Error parsing model architecture suggestion response: {e}")
+        logger.error(f"Error parsing model architecture suggestion response: {e}")
         return None
 
 
@@ -218,10 +219,10 @@ def query_for_auto_configuration(metrics, current_config):
             response = response.replace("```yaml", "").replace("```", "").strip()
         config_updates = yaml.safe_load(response)
     except Exception as e:
-        logging.error("Failed to parse GPT response: %s\nResponse was: %s", e, response)
+        logger.error("Failed to parse GPT response: %s\nResponse was: %s", e, response)
         config_updates = {}
 
-    logging.debug("Config Updates:\n%s", config_updates)
+    logger.debug("Config Updates:\n%s", config_updates)
     return config_updates
 
 
@@ -232,16 +233,16 @@ def report_config_changes(current_config, config_updates, config_path: str = "co
     updated_config = current_config.copy()
     for key, value in config_updates.items():
         if key not in updated_config:
-            logging.info(f"[OpenAI Update] New config key '{key}' added: {value}")
+            logger.info(f"[OpenAI Update] New config key '{key}' added: {value}")
         else:
             old_val = updated_config[key]
             if old_val != value:
-                logging.info(
+                logger.info(
                     f"[OpenAI Update] '{key}' changed from {old_val} to {value}"
                 )
         updated_config[key] = value
 
-    logging.debug(f"Updated Config before writing to file:\n{updated_config}")
+    logger.debug(f"Updated Config before writing to file:\n{updated_config}")
 
     with open(str(config_path), "w") as f:
         yaml.dump(updated_config, f)
@@ -262,7 +263,7 @@ def autotune_configurations(config: dict) -> dict:
     if "model" not in config:
         config["model"] = {}
     config["model"].update(tuned_params)
-    logging.info(f"Autotuned configuration: {tuned_params}")
+    logger.info(f"Autotuned configuration: {tuned_params}")
     return config
 
 
@@ -275,11 +276,11 @@ def query_quant_critic(
     temperature: float = 0.2,
 ) -> dict:
     """Query OpenAI to act as a quant critic improving trading rationale.
-    
+
     This function provides specific feedback on Buddy's ML model predictions,
     identifying errors in logic, missing risks, overconfidence, or poor
     linkage to features.
-    
+
     Args:
         ticker: The trading instrument (e.g., "USD_JPY", "EUR_USD")
         timeframe: The timeframe of the prediction (e.g., "H1", "M5")
@@ -287,7 +288,7 @@ def query_quant_critic(
         current_response: The current interpretation of Buddy's prediction
         model: OpenAI model to use (default: "gpt-4")
         temperature: Temperature for generation (default: 0.2)
-        
+
     Returns:
         Dict with keys:
         - feedback: str - Specific feedback on the interpretation (always present)
@@ -300,7 +301,7 @@ def query_quant_critic(
 Original Task: Interpret Buddy's prediction for {ticker} on {timeframe}.
 Buddy Raw Output: {json.dumps(buddy_raw, indent=2)}
 
-Current Interpretation: 
+Current Interpretation:
 {current_response}
 
 Provide specific feedback:
@@ -326,7 +327,7 @@ Return only valid JSON."""
             "risk_assessment": None,
             "is_optimal": False,
         }
-    
+
     try:
         result = json.loads(response_text)
         # Ensure all expected keys are present
@@ -337,7 +338,7 @@ Return only valid JSON."""
             "is_optimal": result.get("is_optimal", False),
         }
     except json.JSONDecodeError as e:
-        logging.error(f"Error parsing quant critic response: {e}")
+        logger.error(f"Error parsing quant critic response: {e}")
         # Return the raw text as feedback if JSON parsing fails
         return {
             "feedback": response_text,
@@ -358,10 +359,10 @@ def improve_trading_rationale(
     model: str = "gpt-4",
 ) -> dict:
     """Generate improved trading rationale using the quant critic.
-    
+
     This is a convenience function that constructs the appropriate inputs
     for the quant critic from common trading signal components.
-    
+
     Args:
         ticker: Trading instrument
         timeframe: Prediction timeframe
@@ -371,7 +372,7 @@ def improve_trading_rationale(
         features: Dict of key features used in prediction (optional)
         gate_results: Results from trading gates (optional)
         model: OpenAI model to use
-        
+
     Returns:
         Dict with improved rationale and feedback
     """
@@ -383,12 +384,12 @@ def improve_trading_rationale(
         "delta": prediction - last_price,
         "direction": "long" if prediction > last_price else "short",
     }
-    
+
     if features:
         buddy_raw["key_features"] = features
     if gate_results:
         buddy_raw["gate_results"] = gate_results
-    
+
     # Construct current response
     delta = prediction - last_price
     direction = "BUY" if delta > 0 else "SELL"
@@ -398,7 +399,7 @@ def improve_trading_rationale(
         f"Prediction: {prediction:.5f}, Last: {last_price:.5f}, Delta: {delta:+.5f}\n"
         f"Confidence: {confidence_str}"
     )
-    
+
     return query_quant_critic(
         ticker=ticker,
         timeframe=timeframe,

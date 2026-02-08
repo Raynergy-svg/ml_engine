@@ -16,6 +16,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def main():
     print("=" * 60)
     print("Testing Exit RL Integration")
@@ -40,7 +41,7 @@ def main():
     # Step 3: Import inference config
     print("\n3. Importing InferenceConfig...")
     try:
-        from src.core.modular_inference import InferenceConfig, ModularEnsembleInference
+        from src.core.modular_inference import ModularEnsembleInference
         print("   ✅ Import successful")
     except Exception as e:
         print(f"   ❌ Import failed: {e}")
@@ -129,6 +130,7 @@ def main():
     print("ALL 3 RL COMPONENTS TESTED!")
     print("=" * 60)
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

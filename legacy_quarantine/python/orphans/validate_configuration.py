@@ -27,10 +27,10 @@ def test_configuration_loading():
         print(f"❌ Configuration loading failed: {e}")
         return None
 
+
 def test_required_sections(config):
     """Test that all required sections are present."""
     print("\n🔍 Testing required sections...")
-
 
     required_sections = [
         "data", "model", "training", "buddy", "fx",
@@ -106,9 +106,8 @@ def test_main_py_integration(config):
     
     return all_ok
 
+
 def test_oanda_integration(config):
-
-
     """Test that OANDA services configuration is properly structured."""
     print("\n🔍 Testing OANDA services integration...")
     
@@ -147,9 +146,8 @@ def test_oanda_integration(config):
     
     return all_ok
 
+
 def test_parameter_consistency(config):
-
-
     """Test that parameters are consistent with main.py expectations."""
     print("\n🔍 Testing parameter consistency...")
     
@@ -185,9 +183,8 @@ def test_parameter_consistency(config):
         print("✅ All parameters consistent with main.py expectations")
         return True
 
+
 def test_buddy_fx_integration(config):
-
-
     """Test that Buddy and FX configurations work together."""
     print("\n🔍 Testing Buddy-FX integration...")
     
@@ -227,9 +224,8 @@ def test_buddy_fx_integration(config):
     
     return all_ok
 
+
 def main():
-
-
     """Run all validation tests."""
     print("🚀 Starting Configuration Validation")
     print("=" * 50)
@@ -287,9 +283,8 @@ def main():
         print("Please review the issues above and fix the configuration.")
         return False
 
+
 if __name__ == "__main__":
-
-
     success = main()
     sys.exit(0 if success else 1)
 # — Raynergy-svg —

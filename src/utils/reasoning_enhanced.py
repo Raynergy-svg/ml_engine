@@ -104,11 +104,11 @@ class ReasoningEngine:
     Enhanced reasoning engine for stock market prediction with improved explainability,
     uncertainty quantification, and decision support.
     """
-    
+
     def __init__(self, config: Dict[str, Any] = None):
         """
         Initialize the reasoning engine.
-        
+
         Args:
             config: Configuration dictionary
         """
@@ -117,15 +117,15 @@ class ReasoningEngine:
         self.uncertainty_threshold = self.config.get("uncertainty_threshold", 0.3)
         self.output_dir = Path(self.config.get("output_dir", "./output"))
         self.output_dir.mkdir(exist_ok=True, parents=True)
-        
+
         # Initialize state
         self.predictions = None
         self.uncertainties = None
         self.explanations = None
         self.decision_signals = None
-        
+
         logger.info("ReasoningEngine initialized")
-    
+
     def analyze_predictions(
         self,
         predictions: np.ndarray,
@@ -136,21 +136,21 @@ class ReasoningEngine:
     ) -> Dict[str, Any]:
         """
         Analyze predictions and generate insights.
-        
+
         Args:
             predictions: Model predictions
             uncertainties: Prediction uncertainties (optional)
             actual_values: Actual values for comparison (optional)
             timestamps: Timestamps for predictions (optional)
             ticker_symbols: Ticker symbols for predictions (optional)
-            
+
         Returns:
             Dictionary of analysis results
         """
         # Store predictions and uncertainties
         self.predictions = predictions
         self.uncertainties = uncertainties
-        
+
         # Initialize results dictionary
         results = {
             "predictions": predictions,
@@ -159,22 +159,22 @@ class ReasoningEngine:
             "signals": {},
             "insights": []
         }
-        
+
         # Calculate metrics if actual values are provided
         if actual_values is not None:
             metrics = self._calculate_metrics(predictions, actual_values)
             results["metrics"] = metrics
-        
+
         # Generate trading signals
         signals = self._generate_signals(
-            predictions, 
+            predictions,
             uncertainties=uncertainties
         )
         results["signals"] = signals
-        
+
         # Generate explanations
         explanations = self._generate_explanations(
-            predictions, 
+            predictions,
             uncertainties=uncertainties,
             actual_values=actual_values,
             timestamps=timestamps,
@@ -182,16 +182,16 @@ class ReasoningEngine:
         )
         results["explanations"] = explanations
         self.explanations = explanations
-        
+
         # Generate insights
         insights = self._generate_insights(
-            predictions, 
+            predictions,
             uncertainties=uncertainties,
             actual_values=actual_values,
             signals=signals
         )
         results["insights"] = insights
-        
+
         return results
 
     def _to_float(self, value: Any) -> Optional[float]:
@@ -332,43 +332,43 @@ class ReasoningEngine:
             "regressed": regressed,
             "state_acc_healthy": accuracy_healthy if head == "state" else None,
         }
-    
+
     def _calculate_metrics(
-        self, 
-        predictions: np.ndarray, 
+        self,
+        predictions: np.ndarray,
         actual_values: np.ndarray
     ) -> Dict[str, float]:
         """
         Calculate performance metrics.
-        
+
         Args:
             predictions: Model predictions
             actual_values: Actual values
-            
+
         Returns:
             Dictionary of metrics
         """
         # Ensure arrays are flattened
         predictions = predictions.flatten()
         actual_values = actual_values.flatten()
-        
+
         # Calculate metrics
         mse = mean_squared_error(actual_values, predictions)
         rmse = np.sqrt(mse)
         mae = mean_absolute_error(actual_values, predictions)
         r2 = r2_score(actual_values, predictions)
-        
+
         # Calculate directional accuracy
         direction_actual = np.sign(np.diff(actual_values, prepend=actual_values[0]))
         direction_pred = np.sign(np.diff(predictions, prepend=predictions[0]))
         directional_accuracy = np.mean(direction_actual == direction_pred)
-        
+
         # Calculate profit factor (if predictions were used for trading)
         returns_actual = np.diff(actual_values, prepend=actual_values[0])
         returns_pred = np.diff(predictions, prepend=predictions[0])
         profitable_trades = returns_actual * np.sign(returns_pred) > 0
         profit_factor = np.sum(returns_actual[profitable_trades]) / (np.abs(np.sum(returns_actual[~profitable_trades])) + 1e-10)
-        
+
         return {
             "mse": mse,
             "rmse": rmse,
@@ -377,7 +377,7 @@ class ReasoningEngine:
             "directional_accuracy": directional_accuracy,
             "profit_factor": profit_factor
         }
-    
+
     def _generate_signals(
         self,
         predictions: np.ndarray,
@@ -385,25 +385,25 @@ class ReasoningEngine:
     ) -> Dict[str, np.ndarray]:
         """
         Generate trading signals based on predictions and uncertainties.
-        
+
         Args:
             predictions: Model predictions
             uncertainties: Prediction uncertainties (optional)
-            
+
         Returns:
             Dictionary of trading signals
         """
         predictions = predictions.flatten()
-        
+
         # Calculate price changes
         price_changes = np.diff(predictions, prepend=predictions[0])
-        
+
         # Generate basic signals
         signals = {
             "price_change": price_changes,
             "direction": np.sign(price_changes)
         }
-        
+
         # Generate signals with uncertainty if available
         if uncertainties is not None:
             uncertainties_arr = np.asarray(uncertainties, dtype=float)
@@ -415,46 +415,46 @@ class ReasoningEngine:
                     uncertainties_arr = np.full_like(predictions, float(uncertainties_arr[0]))
                 elif uncertainties_arr.size != predictions.size:
                     uncertainties_arr = np.full_like(predictions, float(np.mean(uncertainties_arr)))
-            
+
             # Calculate confidence scores
             confidence = 1.0 - uncertainties_arr
-            
+
             # Generate confidence-weighted signals
             confident_direction = np.sign(price_changes) * (confidence > self.confidence_threshold)
-            
+
             signals.update({
                 "uncertainty": uncertainties_arr,
                 "confidence": confidence,
                 "confident_direction": confident_direction
             })
-        
+
         # Generate trend signals
         if len(predictions) >= 3:
             # Simple moving average
             sma_3 = np.convolve(predictions, np.ones(3)/3, mode='valid')
             sma_3 = np.pad(sma_3, (2, 0), mode='edge')
-            
+
             # Exponential moving average
             alpha = 0.2
             ema = np.zeros_like(predictions)
             ema[0] = predictions[0]
             for i in range(1, len(predictions)):
                 ema[i] = alpha * predictions[i] + (1 - alpha) * ema[i-1]
-            
+
             # Trend signals
             trend = np.sign(predictions - ema)
-            
+
             signals.update({
                 "sma_3": sma_3,
                 "ema": ema,
                 "trend": trend
             })
-        
+
         # Store decision signals
         self.decision_signals = signals
-        
+
         return signals
-    
+
     def _build_explanation_base(
         self,
         index: int,
@@ -468,7 +468,7 @@ class ReasoningEngine:
             "timestamp": timestamps[index] if timestamps is not None else None,
             "ticker": ticker_symbols[index] if ticker_symbols is not None else None
         }
-    
+
     def _add_uncertainty_to_explanation(
         self,
         explanation: Dict[str, Any],
@@ -482,15 +482,15 @@ class ReasoningEngine:
             confidence_level = "medium"
         else:
             confidence_level = "low"
-        
+
         explanation.update({
             "uncertainty": uncertainty,
             "confidence": confidence,
             "confidence_level": confidence_level
         })
-        
+
         return explanation
-    
+
     def _add_actual_to_explanation(
         self,
         explanation: Dict[str, Any],
@@ -498,15 +498,15 @@ class ReasoningEngine:
         prediction: float
     ) -> Dict[str, Any]:
         error = prediction - actual
-        
+
         explanation.update({
             "actual": actual,
             "error": error,
             "error_percentage": error / actual * 100 if actual != 0 else float('inf')
         })
-        
+
         return explanation
-    
+
     def _add_trend_to_explanation(
         self,
         explanation: Dict[str, Any],
@@ -521,12 +521,12 @@ class ReasoningEngine:
             direction = "down"
         else:
             direction = "flat"
-        
+
         explanation.update({
             "price_change": price_change,
             "direction": direction
         })
-        
+
         return explanation
 
     def _normalize_uncertainties(
@@ -581,7 +581,7 @@ class ReasoningEngine:
         if index <= 0:
             return
         self._add_trend_to_explanation(explanation, float(prediction), float(predictions_flat[index - 1]))
-    
+
     def _generate_explanations(
         self,
         predictions: np.ndarray,
@@ -592,23 +592,23 @@ class ReasoningEngine:
     ) -> List[Dict[str, Any]]:
         """
         Generate explanations for predictions.
-        
+
         Args:
             predictions: Model predictions
             uncertainties: Prediction uncertainties (optional)
             actual_values: Actual values for comparison (optional)
             timestamps: Timestamps for predictions (optional)
             ticker_symbols: Ticker symbols for predictions (optional)
-            
+
         Returns:
             List of explanation dictionaries
         """
         predictions_flat = predictions.flatten()
         uncertainties_flat = self._normalize_uncertainties(predictions_flat, uncertainties)
         actual_values_flat = actual_values.flatten() if actual_values is not None else None
-        
+
         explanations: List[Dict[str, Any]] = []
-        
+
         for i, pred in enumerate(predictions_flat):
             explanation = self._build_explanation_base(
                 index=i,
@@ -616,15 +616,15 @@ class ReasoningEngine:
                 timestamps=timestamps,
                 ticker_symbols=ticker_symbols
             )
-            
+
             self._apply_optional_uncertainty(explanation, uncertainties_flat, i)
             self._apply_optional_actual(explanation, actual_values_flat, i, pred)
             self._apply_optional_trend(explanation, i, pred, predictions_flat)
-            
+
             explanations.append(explanation)
-        
+
         return explanations
-    
+
     def _overall_trend_insight(self, predictions: np.ndarray) -> Optional[str]:
         if len(predictions) <= 1:
             return None
@@ -690,13 +690,13 @@ class ReasoningEngine:
     ) -> List[str]:
         """
         Generate insights from predictions and signals.
-        
+
         Args:
             predictions: Model predictions
             uncertainties: Prediction uncertainties (optional)
             actual_values: Actual values for comparison (optional)
             signals: Trading signals (optional)
-            
+
         Returns:
             List of insight strings
         """
@@ -720,7 +720,7 @@ class ReasoningEngine:
                 insights.append(signal_message)
 
         return insights
-    
+
     def visualize_predictions(
         self,
         predictions: Optional[np.ndarray] = None,
@@ -731,61 +731,61 @@ class ReasoningEngine:
     ) -> Optional[plt.Figure]:
         """
         Visualize predictions with uncertainties and actual values.
-        
+
         Args:
             predictions: Model predictions (optional, uses stored predictions if None)
             uncertainties: Prediction uncertainties (optional, uses stored uncertainties if None)
             actual_values: Actual values for comparison (optional)
             save_path: Path to save visualization (optional)
             show_plot: Whether to show the plot
-            
+
         Returns:
             Matplotlib figure or None if no predictions available
         """
         # Use stored predictions if not provided
         predictions = predictions if predictions is not None else self.predictions
         uncertainties = uncertainties if uncertainties is not None else self.uncertainties
-        
+
         if predictions is None:
             logger.warning("No predictions available for visualization")
             return None
-        
+
         # Create figure
         fig, ax = plt.subplots(figsize=(12, 6))
-        
+
         # Generate x-axis (indices)
         x = np.arange(len(predictions))
         ax.set_xlabel("Index")
-        
+
         # Plot predictions
         ax.plot(x, predictions, label="Predictions", color="blue", linewidth=2)
-        
+
         # Plot uncertainties as confidence bands
         if uncertainties is not None:
             lower_bound = predictions - uncertainties
             upper_bound = predictions + uncertainties
             ax.fill_between(x, lower_bound, upper_bound, alpha=0.3, color="blue", label="Uncertainty")
-        
+
         # Plot actual values if provided
         if actual_values is not None:
             ax.plot(x, actual_values, label="Actual", color="green", linewidth=2, linestyle="--")
-        
+
         # Formatting
         ax.set_ylabel("Value")
         ax.set_title("Predictions with Uncertainties")
         ax.legend()
         ax.grid(True, alpha=0.3)
-        
+
         plt.tight_layout()
-        
+
         # Save if path provided
         if save_path:
             fig.savefig(save_path, dpi=300, bbox_inches="tight")
             logger.info(f"Visualization saved to {save_path}")
-        
+
         # Show if requested
         if show_plot:
             plt.show()
-        
+
         return fig
 # — Raynergy-svg —

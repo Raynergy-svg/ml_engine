@@ -4,8 +4,8 @@
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-import numpy as np
-import pandas as pd
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
 print("=" * 60)
 print("Diagnosing NaN Issues in Training Data")
@@ -19,7 +19,7 @@ df = pd.read_csv(DATA_FILE)
 print(f"Rows: {len(df)}")
 
 # Check for NaN in raw data
-print(f"\n1. NaN in raw data:")
+print("\n1. NaN in raw data:")
 for col in df.columns:
     nan_count = df[col].isna().sum()
     if nan_count > 0:
@@ -27,7 +27,7 @@ for col in df.columns:
 
 # Check close prices
 close = df['close'].values
-print(f"\n2. Close prices:")
+print("\n2. Close prices:")
 print(f"   min: {close.min():.4f}")
 print(f"   max: {close.max():.4f}")
 print(f"   NaN: {np.isnan(close).sum()}")
@@ -38,7 +38,7 @@ print(f"   Zero: {(close == 0).sum()}")
 returns = np.zeros_like(close, dtype=float)
 returns[1:] = (close[1:] / np.clip(close[:-1], 1e-12, None)) - 1.0
 
-print(f"\n3. Returns:")
+print("\n3. Returns:")
 print(f"   min: {returns.min():.6f}")
 print(f"   max: {returns.max():.6f}")
 print(f"   mean: {returns.mean():.6f}")
@@ -54,7 +54,7 @@ for i in range(len(returns)):
     window = returns[start : i + 1]
     risk[i] = float(np.std(window))
 
-print(f"\n4. Risk (rolling std of returns):")
+print("\n4. Risk (rolling std of returns):")
 print(f"   min: {risk.min():.8f}")
 print(f"   max: {risk.max():.8f}")
 print(f"   mean: {risk.mean():.8f}")
@@ -65,14 +65,14 @@ print(f"   Zero: {(risk == 0).sum()}")
 # The issue: risk values are VERY SMALL (order of 1e-4 to 1e-3)
 # When squared in MSE, they become 1e-8 to 1e-6, causing numerical issues
 
-print(f"\n5. Risk value distribution:")
+print("\n5. Risk value distribution:")
 print(f"   < 1e-5: {(risk < 1e-5).sum()}")
 print(f"   < 1e-4: {(risk < 1e-4).sum()}")
 print(f"   < 1e-3: {(risk < 1e-3).sum()}")
 
 # Now test with feature engineering
 print("\n6. Testing full data pipeline...")
-from tensorflow_data_pipeline import load_tensorflow_multitask_data
+from tensorflow_data_pipeline import load_tensorflow_multitask_data  # noqa: E402
 
 config = {
     'sequence_length': 60,
@@ -103,7 +103,7 @@ try:
         print(f"      mean: {arr.mean():.8f}")
         
         if nan_count > 0 or inf_count > 0:
-            print(f"      ⚠️ WARNING: Contains invalid values!")
+            print("      ⚠️ WARNING: Contains invalid values!")
             
 except Exception as e:
     print(f"   Error: {e}")
@@ -113,4 +113,3 @@ except Exception as e:
 print("\n" + "=" * 60)
 print("Diagnosis Complete")
 print("=" * 60)
-

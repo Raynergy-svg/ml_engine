@@ -4,9 +4,9 @@ Quick validation script for skills - minimal version
 """
 
 import sys
-import os
 import re
 from pathlib import Path
+
 
 def validate_skill(skill_path):
     """Basic validation of a skill"""
@@ -54,6 +54,7 @@ def validate_skill(skill_path):
             return False, "Description cannot contain angle brackets (< or >)"
 
     return True, "Skill is valid!"
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

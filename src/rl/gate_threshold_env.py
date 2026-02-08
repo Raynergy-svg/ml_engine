@@ -6,7 +6,7 @@ based on market regime, recent performance, and account state.
 
 Uses continuous action space to adjust:
 - Confidence threshold (Ridge ADX gate)
-- Momentum threshold (XGBoost gate)  
+- Momentum threshold (XGBoost gate)
 - Risk threshold (RandomForest drawdown gate)
 """
 
@@ -16,7 +16,7 @@ import logging
 import pickle
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -27,6 +27,7 @@ SB3_AVAILABLE = None  # Will be set on first access
 gym = None
 spaces = None
 SAC = None
+
 
 def _ensure_gym_imported():
     """Lazy import gymnasium only when needed."""
@@ -42,6 +43,7 @@ def _ensure_gym_imported():
             GYM_AVAILABLE = False
     return GYM_AVAILABLE
 
+
 def _ensure_sb3_imported():
     """Lazy import stable-baselines3 only when needed."""
     global SAC, EvalCallback, SB3_AVAILABLE
@@ -56,7 +58,8 @@ def _ensure_sb3_imported():
             SB3_AVAILABLE = False
     return SB3_AVAILABLE
 
-from .utils import detect_regime, calculate_sharpe, normalize_features_for_rl
+
+from .utils import detect_regime  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -124,18 +127,18 @@ class GateRLConfig:
     base_confidence: float = 50.0
     base_momentum: float = 0.20
     base_risk: float = 0.025
-    
+
     # Threshold adjustment ranges
     confidence_delta_range: float = 0.15  # ±15 points (35-65)
     momentum_delta_range: float = 0.10   # ±0.10 (0.10-0.30)
     risk_delta_range: float = 0.015      # ±1.5% (1%-4%)
-    
+
     # Reward shaping
     sharpe_weight: float = 0.15
     drawdown_penalty: float = 0.8
     win_rate_bonus: float = 0.25
     overtrade_penalty: float = 0.05  # Penalty per trade above threshold
-    
+
     # Training
     total_timesteps: int = 100_000
     learning_rate: float = 3e-4
@@ -145,11 +148,11 @@ class GateRLConfig:
     tau: float = 0.005  # Soft update coefficient
     ent_coef: float = 0.1  # Fixed entropy coefficient (no auto-tuning)
     learning_starts: int = 10_000  # More random exploration before learning
-    
+
     # Episode limits
     max_drawdown_pct: float = 0.10
     max_trades_per_episode: int = 200
-    
+
     # Network architecture
     net_arch_pi: List[int] = field(default_factory=lambda: [64, 64])
     net_arch_qf: List[int] = field(default_factory=lambda: [256, 256])
@@ -169,28 +172,28 @@ def _get_gym_env_base():
 class GateThresholdEnv(_get_gym_env_base()):
     """
     Gymnasium environment for learning optimal gate thresholds.
-    
+
     State Space (5-dim Box):
         - regime_trend: 1 if TREND regime, else 0
         - regime_chop: 1 if CHOP regime, else 0
         - regime_mean_revert: 1 if MEAN_REVERT regime, else 0
         - recent_win_rate: Rolling 20-trade win rate
         - current_drawdown: % from peak equity
-        
+
     Action Space (3-dim Box, continuous):
         - Δ confidence_threshold: scaled to [-delta, +delta]
         - Δ momentum_threshold: scaled to [-delta, +delta]
         - Δ risk_threshold: scaled to [-delta, +delta]
-        
+
     Reward:
         - Trade P/L (normalized)
         - Sharpe component
         - Drawdown penalty
         - Win rate bonus
     """
-    
+
     metadata = {"render_modes": ["human"]}
-    
+
     def __init__(
         self,
         prices: np.ndarray,
@@ -201,11 +204,11 @@ class GateThresholdEnv(_get_gym_env_base()):
     ):
         """
         Initialize gate threshold environment.
-        
+
         Args:
             prices: Close prices (n_samples,)
             features: Market features (n_samples, n_features)
-            ensemble_preds: Ensemble predictions (n_samples, 4) 
+            ensemble_preds: Ensemble predictions (n_samples, 4)
                            [tcn_prob, ridge_conf, xgb_mom, rf_drawdown]
             config: RL configuration
             directions: Direction signals (-1, 0, 1) for reward shaping
@@ -213,15 +216,15 @@ class GateThresholdEnv(_get_gym_env_base()):
         _ensure_gym_imported()
         if not GYM_AVAILABLE:
             raise ImportError("gymnasium required. Install: pip install gymnasium")
-        
+
         super().__init__()
-        
+
         self.config = config or GateRLConfig()
         self.prices = prices
         self.features = features
         self.ensemble_preds = ensemble_preds
         self.n_samples = len(prices)
-        
+
         # Direction signals for reward shaping (derive from TCN if not provided)
         if directions is not None:
             self.directions = directions
@@ -229,18 +232,18 @@ class GateThresholdEnv(_get_gym_env_base()):
             # Infer from TCN probability
             tcn_prob = ensemble_preds[:, 0] if ensemble_preds.shape[1] > 0 else np.full(len(prices), 0.5)
             self.directions = np.where(tcn_prob > 0.58, 1, np.where(tcn_prob < 0.42, -1, 0))
-        
+
         # Validate data
         assert len(features) == len(prices), "Features and prices must match"
         assert len(ensemble_preds) == len(prices), "Predictions and prices must match"
-        
+
         # Observation space: [regime(3), win_rate(1), drawdown(1)] = 5 dims
         self.observation_space = spaces.Box(
             low=np.array([0, 0, 0, 0, 0], dtype=np.float32),
             high=np.array([1, 1, 1, 1, self.config.max_drawdown_pct], dtype=np.float32),
             dtype=np.float32
         )
-        
+
         # Action space: threshold deltas (continuous, normalized to [-1, 1])
         self.action_space = spaces.Box(
             low=-1.0,
@@ -248,7 +251,7 @@ class GateThresholdEnv(_get_gym_env_base()):
             shape=(3,),
             dtype=np.float32
         )
-        
+
         # State tracking
         self.current_step = 60  # Start after warmup
         self.initial_equity = 100000.0
@@ -256,7 +259,7 @@ class GateThresholdEnv(_get_gym_env_base()):
         self.peak_equity = self.initial_equity
         self.trade_history: List[Dict] = []
         self.daily_pnl = 0.0
-        
+
     def reset(
         self,
         seed: Optional[int] = None,
@@ -273,21 +276,21 @@ class GateThresholdEnv(_get_gym_env_base()):
         self.peak_equity = self.initial_equity
         self.trade_history = []
         self.daily_pnl = 0.0
-        
+
         return self._get_obs(), {}
-    
+
     def _get_obs(self) -> np.ndarray:
         """Construct observation vector."""
         # Detect regime from features
         regime_onehot, _ = detect_regime(self.features[self.current_step])
-        
+
         # Win rate from recent trades
         recent = self.trade_history[-20:] if self.trade_history else []
         win_rate = sum(1 for t in recent if t.get('pnl', 0) > 0) / max(len(recent), 1)
-        
+
         # Current drawdown
         drawdown = (self.peak_equity - self.equity) / self.peak_equity
-        
+
         obs = np.array([
             regime_onehot[0],  # TREND
             regime_onehot[1],  # CHOP
@@ -295,17 +298,17 @@ class GateThresholdEnv(_get_gym_env_base()):
             win_rate,
             drawdown,
         ], dtype=np.float32)
-        
+
         return obs
-    
+
     def _scale_action(self, action: np.ndarray) -> Tuple[float, float, float]:
         """Scale normalized action to actual threshold deltas."""
         conf_delta = action[0] * self.config.confidence_delta_range * 100  # Scale to 0-100
         mom_delta = action[1] * self.config.momentum_delta_range
         risk_delta = action[2] * self.config.risk_delta_range
-        
+
         return conf_delta, mom_delta, risk_delta
-    
+
     def _check_gates(
         self,
         conf_thresh: float,
@@ -314,7 +317,7 @@ class GateThresholdEnv(_get_gym_env_base()):
     ) -> Tuple[bool, Dict]:
         """Check if current market state passes adjusted gates."""
         pred = self.ensemble_preds[self.current_step]
-        
+
         # Handle both scalar and array predictions
         if np.isscalar(pred) or (isinstance(pred, np.ndarray) and pred.ndim == 0):
             # Single probability value - derive gate values from features
@@ -336,14 +339,14 @@ class GateThresholdEnv(_get_gym_env_base()):
             ridge_conf = float(feat[2]) if len(feat) > 2 else 50.0
             xgb_mom = float(abs(feat[1]) / 100) if len(feat) > 1 else 0.3
             rf_drawdown = float(feat[0] / 100) if len(feat) > 0 else 0.02
-        
+
         # Apply gates with adjusted thresholds
         conf_passed = ridge_conf >= conf_thresh
         mom_passed = xgb_mom >= mom_thresh
         risk_passed = rf_drawdown <= risk_thresh
-        
+
         all_passed = conf_passed and mom_passed and risk_passed
-        
+
         gate_info = {
             'tcn_prob': tcn_prob,
             'ridge_conf': ridge_conf,
@@ -358,9 +361,9 @@ class GateThresholdEnv(_get_gym_env_base()):
                 'risk': risk_thresh,
             }
         }
-        
+
         return all_passed, gate_info
-    
+
     def _simulate_trade(
         self,
         gates_passed: bool,
@@ -369,23 +372,23 @@ class GateThresholdEnv(_get_gym_env_base()):
         """Simulate trade outcome based on gate decision."""
         if not gates_passed:
             return {'pnl': 0.0, 'traded': False}
-        
+
         # Get prices
         entry_price = self.prices[self.current_step]
-        
+
         # Look ahead for exit (simplified: next bar)
         exit_idx = min(self.current_step + 1, self.n_samples - 1)
         exit_price = self.prices[exit_idx]
-        
+
         # Direction from TCN probability
         tcn_prob = gate_info['tcn_prob']
         direction = 1 if tcn_prob > 0.5 else -1
-        
+
         # Calculate P/L (2% position size)
         position_value = self.equity * 0.02
         price_change = (exit_price - entry_price) / entry_price
         pnl = position_value * price_change * direction
-        
+
         return {
             'pnl': pnl,
             'traded': True,
@@ -393,22 +396,22 @@ class GateThresholdEnv(_get_gym_env_base()):
             'entry': entry_price,
             'exit': exit_price,
         }
-    
+
     def _calculate_reward(self, trade_result: Dict) -> float:
         """Calculate shaped reward with soft tanh clipping and better no-trade handling."""
         pnl = trade_result.get('pnl', 0)
         traded = trade_result.get('traded', False)
-        
+
         # === No-trade reward (important for learning when NOT to trade) ===
         if not traded:
             # Check if we SHOULD have traded (opportunity cost)
             if self.current_step > 0 and self.current_step < self.n_samples - 1:
                 # Look at next period returns
                 future_return = (
-                    self.prices[min(self.current_step + 5, self.n_samples - 1)] 
+                    self.prices[min(self.current_step + 5, self.n_samples - 1)]
                     - self.prices[self.current_step]
                 ) / self.prices[self.current_step]
-                
+
                 # Small reward for avoiding bad trades
                 if abs(future_return) < 0.001:  # Flat market - good to skip
                     return 0.05  # Small positive for correct skip
@@ -418,15 +421,15 @@ class GateThresholdEnv(_get_gym_env_base()):
                     # Missed opportunity penalty (scaled by how good the move was)
                     return -0.02 * min(abs(future_return) * 100, 1.0)
             return 0.0
-        
+
         # === Traded: base reward from P/L ===
         # Use soft tanh clipping instead of hard clip
         pnl_normalized = pnl / self.initial_equity * 100
         reward = 5.0 * np.tanh(pnl_normalized / 5.0)  # Soft clip to ~[-5, 5]
-        
+
         # === Sortino ratio component (penalize downside more than upside) ===
         if len(self.trade_history) > 5:
-            returns = np.array([t.get('pnl', 0) / self.initial_equity 
+            returns = np.array([t.get('pnl', 0) / self.initial_equity
                                for t in self.trade_history[-20:]])
             negative_returns = returns[returns < 0]
             if len(negative_returns) > 1:
@@ -434,21 +437,21 @@ class GateThresholdEnv(_get_gym_env_base()):
                 if downside_std > 1e-8:
                     sortino = np.mean(returns) / downside_std
                     reward += self.config.sharpe_weight * np.tanh(sortino / 2)
-        
+
         # === Drawdown penalty (progressive) ===
         drawdown = (self.peak_equity - self.equity) / self.peak_equity
         if drawdown > 0.01:  # Start penalizing earlier
             # Progressive penalty: gentle at first, harsh at high DD
             dd_penalty = self.config.drawdown_penalty * (drawdown ** 1.5) * 50
             reward -= np.tanh(dd_penalty)  # Soft cap the penalty too
-        
+
         # === Win rate bonus (only if enough trades) ===
         recent = self.trade_history[-10:] if len(self.trade_history) >= 5 else []
         if recent:
             win_rate = sum(1 for t in recent if t.get('pnl', 0) > 0) / len(recent)
             if win_rate > 0.45:  # Lower threshold to encourage learning
                 reward += self.config.win_rate_bonus * (win_rate - 0.45) * 5
-        
+
         # === Risk-adjusted bonus for profitable trades ===
         if pnl > 0:
             # Reward higher profit factor
@@ -456,55 +459,55 @@ class GateThresholdEnv(_get_gym_env_base()):
             if avg_loss > 0:
                 profit_factor = pnl / avg_loss
                 reward += 0.1 * np.tanh(profit_factor - 1)  # Bonus for PF > 1
-        
+
         return float(reward)  # No hard clip - tanh already bounds it
-    
+
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         """
         Execute one step with adjusted thresholds.
-        
+
         Args:
             action: Threshold adjustments (3-dim, normalized to [-1, 1])
-            
+
         Returns:
             observation, reward, terminated, truncated, info
         """
         # Scale action to actual threshold deltas
         conf_delta, mom_delta, risk_delta = self._scale_action(action)
-        
+
         # Calculate adjusted thresholds
         conf_thresh = self.config.base_confidence + conf_delta
         mom_thresh = self.config.base_momentum + mom_delta
         risk_thresh = self.config.base_risk + risk_delta
-        
+
         # Clip to valid ranges
         conf_thresh = np.clip(conf_thresh, 30, 70)
         mom_thresh = np.clip(mom_thresh, 0.05, 0.40)
         risk_thresh = np.clip(risk_thresh, 0.01, 0.05)
-        
+
         # Check gates with adjusted thresholds
         gates_passed, gate_info = self._check_gates(
             conf_thresh, mom_thresh, risk_thresh
         )
-        
+
         # Simulate trade
         trade_result = self._simulate_trade(gates_passed, gate_info)
-        
+
         # Update state
         pnl = trade_result.get('pnl', 0)
         self.equity += pnl
         self.daily_pnl += pnl
         self.peak_equity = max(self.peak_equity, self.equity)
-        
+
         if trade_result.get('traded', False):
             self.trade_history.append(trade_result)
-        
+
         # Calculate reward
         reward = self._calculate_reward(trade_result)
-        
+
         # Move to next step
         self.current_step += 1
-        
+
         # Check termination
         terminated = False
         truncated = False
@@ -518,27 +521,27 @@ class GateThresholdEnv(_get_gym_env_base()):
                 'risk': risk_thresh,
             }
         }
-        
+
         # End of data
         if self.current_step >= self.n_samples - 1:
             terminated = True
             info['reason'] = 'end_of_data'
-        
+
         # Max drawdown
         drawdown = (self.peak_equity - self.equity) / self.peak_equity
         if drawdown > self.config.max_drawdown_pct:
             terminated = True
             reward -= 2.0  # Penalty (VecNormalize handles scaling)
             info['reason'] = 'max_drawdown'
-        
+
         # Max trades
         if len(self.trade_history) >= self.config.max_trades_per_episode:
             truncated = True
             info['reason'] = 'max_trades'
-        
+
         obs = self._get_obs()
         return obs, reward, terminated, truncated, info
-    
+
     def render(self, mode: str = "human") -> None:
         """Render current state."""
         drawdown = (self.peak_equity - self.equity) / self.peak_equity * 100
@@ -551,16 +554,16 @@ class GateThresholdEnv(_get_gym_env_base()):
 class GateThresholdRL:
     """
     RL-based gate threshold optimizer using SAC.
-    
+
     Learns to dynamically adjust gate thresholds based on market conditions.
     """
-    
+
     def __init__(self, config: Optional[GateRLConfig] = None):
         self.config = config or GateRLConfig()
         self.model = None
         self.scaler = None
         self._is_trained = False
-    
+
     def train(
         self,
         prices: np.ndarray,
@@ -589,7 +592,7 @@ class GateThresholdRL:
         _ensure_sb3_imported()
         if not SB3_AVAILABLE:
             raise ImportError("stable-baselines3 required: pip install stable-baselines3")
-        
+
         # Import here to avoid slow startup
         from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
         from stable_baselines3.common.monitor import Monitor
@@ -682,7 +685,7 @@ class GateThresholdRL:
                 device="cpu",  # CRITICAL: avoid GPU conflicts
                 verbose=verbose,
             )
-        
+
         # Evaluation environment with Monitor + VecNormalize for proper tracking
         eval_log_dir = Path("trained_data/logs/rl_gates")
         eval_log_dir.mkdir(parents=True, exist_ok=True)
@@ -696,7 +699,7 @@ class GateThresholdRL:
             str(eval_log_dir / "eval_monitor")
         )])
         eval_env = VecNormalize(eval_env, norm_obs=True, norm_reward=False, training=False)
-        
+
         eval_callback = EvalCallback(
             eval_env,
             best_model_save_path=str(GATE_RL_MODEL_PATH.parent),
@@ -705,23 +708,23 @@ class GateThresholdRL:
             n_eval_episodes=5,
             deterministic=True,
         )
-        
+
         # Train
         self.model.learn(
             total_timesteps=total_timesteps,
             callback=eval_callback,
             progress_bar=True,
         )
-        
+
         # Load the BEST model saved by EvalCallback (not the final one)
         best_model_path = GATE_RL_MODEL_PATH.parent / "best_model.zip"
         if best_model_path.exists():
             logger.info(f"📥 Loading best model from {best_model_path}")
             self.model = SAC.load(best_model_path, env=vec_env, device="cpu")
-        
+
         self._is_trained = True
         self.save()
-        
+
         # Stats - access underlying environment from vectorized wrapper
         # Note: SubprocVecEnv doesn't expose .envs, only DummyVecEnv does
         try:
@@ -746,7 +749,7 @@ class GateThresholdRL:
 
         logger.info(f"✅ Gate Threshold RL training complete: {stats}")
         return stats
-    
+
     def get_adjusted_thresholds(
         self,
         features: np.ndarray,
@@ -755,12 +758,12 @@ class GateThresholdRL:
     ) -> Dict[str, float]:
         """
         Get optimal gate thresholds for current market state.
-        
+
         Args:
             features: Current market features
             current_win_rate: Recent win rate
             current_drawdown: Current drawdown
-            
+
         Returns:
             Dictionary with adjusted thresholds
         """
@@ -771,10 +774,10 @@ class GateThresholdRL:
                 'momentum': self.config.base_momentum,
                 'risk': self.config.base_risk,
             }
-        
+
         # Detect regime
         regime_onehot, _ = detect_regime(features)
-        
+
         # Build observation
         obs = np.array([
             regime_onehot[0],
@@ -783,26 +786,26 @@ class GateThresholdRL:
             current_win_rate,
             current_drawdown,
         ], dtype=np.float32)
-        
+
         # Get action
         action, _ = self.model.predict(obs, deterministic=True)
-        
+
         # Scale to actual deltas
         conf_delta = action[0] * self.config.confidence_delta_range * 100
         mom_delta = action[1] * self.config.momentum_delta_range
         risk_delta = action[2] * self.config.risk_delta_range
-        
+
         # Calculate and clip thresholds
         conf = np.clip(self.config.base_confidence + conf_delta, 30, 70)
         mom = np.clip(self.config.base_momentum + mom_delta, 0.05, 0.40)
         risk = np.clip(self.config.base_risk + risk_delta, 0.01, 0.05)
-        
+
         return {
             'confidence': float(conf),
             'momentum': float(mom),
             'risk': float(risk),
         }
-    
+
     def save(self):
         """Save model, scaler, and config."""
         GATE_RL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -820,24 +823,24 @@ class GateThresholdRL:
         with open(config_path, 'wb') as f:
             pickle.dump(self.config, f)
         logger.info(f"💾 Gate RL config saved to {config_path}")
-    
+
     def load(self) -> bool:
         """Load model and scaler."""
         _ensure_sb3_imported()
         if not SB3_AVAILABLE:
             logger.debug("stable-baselines3 not available")
             return False
-        
+
         try:
             if GATE_RL_MODEL_PATH.exists():
                 self.model = SAC.load(str(GATE_RL_MODEL_PATH), device="cpu")
                 self._is_trained = True
                 logger.info(f"📂 Gate RL model loaded from {GATE_RL_MODEL_PATH}")
-            
+
             if GATE_RL_SCALER_PATH.exists():
                 with open(GATE_RL_SCALER_PATH, "rb") as f:
                     self.scaler = pickle.load(f)
-            
+
             return self._is_trained
         except Exception as e:
             logger.warning(f"Failed to load Gate RL model: {e}")

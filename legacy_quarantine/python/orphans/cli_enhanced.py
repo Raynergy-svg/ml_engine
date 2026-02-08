@@ -18,11 +18,11 @@ import asyncio
 torch = None  # type: ignore
 
 # Import optimized modules
-from data_processing import load_stock_data_efficient, prepare_sequences
-from memory_manager_enhanced import MemoryManager, memory_efficient
-from reasoning_enhanced import ReasoningEngine
-from neural_network_integrator_enhanced import NeuralNetworkIntegrator
-from neural_engine_unified import UnifiedNeuralEngine
+from data_processing import load_stock_data_efficient, prepare_sequences  # noqa: E402
+from memory_manager_enhanced import MemoryManager, memory_efficient  # noqa: E402
+from reasoning_enhanced import ReasoningEngine  # noqa: E402
+from neural_network_integrator_enhanced import NeuralNetworkIntegrator  # noqa: E402
+from neural_engine_unified import UnifiedNeuralEngine  # noqa: E402
 
 # Configure logging
 logging.basicConfig(
@@ -242,6 +242,7 @@ class StockPredictionCLI:
         except Exception as e:
             logger.error(f"Error fetching stock data: {e}")
             return pd.DataFrame()
+
     async def fetch_market_indicators(
         self, start_date: str, end_date: str
     ) -> pd.DataFrame:
@@ -280,6 +281,7 @@ class StockPredictionCLI:
         except Exception as e:
             logger.error(f"Error fetching market indicators: {e}")
             return pd.DataFrame()
+
     async def fetch_economic_data(self, start_date: str, end_date: str) -> pd.DataFrame:
         """
         Fetch economic data from online sources.

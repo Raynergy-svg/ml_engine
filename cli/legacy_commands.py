@@ -10,7 +10,6 @@ import logging
 import time
 import warnings
 from functools import wraps
-from typing import Any
 
 from rich.console import Console
 from rich.live import Live
@@ -18,7 +17,7 @@ from rich.live import Live
 from src.utils import load_config
 from cli.fx_trading import generate_dashboard
 
-
+logger = logging.getLogger(__name__)
 console = Console()
 
 
@@ -40,12 +39,12 @@ def _deprecated(func):
 @_deprecated
 def train_model(config_path: str) -> None:
     """Run model training with live progress dashboard.
-    
+
     DEPRECATED: Use train_buddy instead.
-    
+
     Args:
         config_path: Path to configuration file
-        
+
     Raises:
         ValueError: If configuration is invalid
         RuntimeError: If training fails
@@ -53,34 +52,34 @@ def train_model(config_path: str) -> None:
     try:
         # Load and validate configuration
         config = load_config(config_path)
-        
+
         # Validate training configuration
         if "training" not in config:
             raise ValueError("Configuration missing 'training' section")
         if "epochs" not in config["training"]:
             raise ValueError("Configuration missing 'training.epochs'")
-        
+
         console.print("[bold blue]Initializing ML Engine...[/bold blue]")
-        
+
         # Load training data
         from src.data.data_loader import MarketDataLoader
         data_loader = MarketDataLoader(config)
-        
+
         console.print("[bold blue]Loading market data...[/bold blue]")
-        
+
         # Get data directory from config
         data_dir = config.get("data", {}).get("data_dir", "market_data/")
-        
+
         # Load multiple tickers from the data directory
         data_dict = data_loader.load_multiple_tickers(data_dir)
-        
+
         if not data_dict:
             raise ValueError(f"No data files found in {data_dir}")
-        
+
         # Combine all ticker data
         df = data_loader.combine_ticker_data(data_dict, method="concat")
         console.print(f"[cyan]Loaded {len(data_dict)} tickers, {len(df)} total rows[/cyan]")
-        
+
         # Preprocess the data
         console.print("[bold blue]Preprocessing data...[/bold blue]")
         x_train, y_train, x_val, y_val, _, _ = data_loader.preprocess(
@@ -90,9 +89,9 @@ def train_model(config_path: str) -> None:
             sequence_length=config.get("data", {}).get("sequence_length", 60),
             test_size=0.2,
         )
-        
+
         console.print(f"[bold green]Data prepared: {len(x_train)} training samples, {len(x_val)} validation samples[/bold green]")
-        
+
         # Update config with correct input size based on actual features
         input_size = x_train.shape[-1]  # Get feature dimension
         if "model" not in config:
@@ -103,20 +102,20 @@ def train_model(config_path: str) -> None:
         from ml_engine_enhanced import EnhancedMLEngine
 
         engine = EnhancedMLEngine(config)
-        
+
         # Get epochs from config (not nested in 'training')
         epochs = config.get("epochs", 100)
         console.print(f"[bold green]Training for {epochs} epochs[/bold green]")
-        
+
         # Train the model and get results
         console.print("[bold green]Starting training...[/bold green]")
         result = engine.train(x_train, y_train, x_val, y_val, epochs=epochs)
-        
+
         console.print("[bold green]Training completed successfully![/bold green]")
         console.print(f"[cyan]Total epochs trained: {result.get('total_epochs', epochs)}[/cyan]")
         console.print(f"[cyan]Best validation loss: {result['best_val_loss']:.6f}[/cyan]")
         console.print(f"[cyan]Resumed from checkpoint: {result.get('resumed', False)}[/cyan]")
-                
+
     except FileNotFoundError as e:
         console.print(f"[red]Configuration file not found: {e}[/red]")
         raise
@@ -125,19 +124,19 @@ def train_model(config_path: str) -> None:
         raise
     except Exception as e:
         console.print(f"[red]Unexpected error: {e}[/red]")
-        logging.error(f"Unexpected error in train_model: {e}", exc_info=True)
+        logger.error(f"Unexpected error in train_model: {e}", exc_info=True)
         raise
 
 
 @_deprecated
 def evaluate_model(config_path: str) -> None:
     """Run model evaluation with results dashboard.
-    
+
     DEPRECATED: Use buddy inference commands instead.
-    
+
     Args:
         config_path: Path to configuration file
-        
+
     Raises:
         RuntimeError: If evaluation fails
     """
@@ -149,36 +148,36 @@ def evaluate_model(config_path: str) -> None:
         engine = EnhancedMLEngine(config)
 
         api_logs = [f"[blue]{time.strftime('%H:%M:%S')}[/blue] Starting evaluation"]
-        
+
         with Live(generate_dashboard(0, 10, 200, 0.0, 0.0, 0.0, api_logs, config)) as live:
             try:
                 console.print("[bold green]Evaluating model...[/bold green]")
                 metrics = engine.evaluate_model()
-                
+
                 # Display evaluation results
                 api_logs.append("[green]Evaluation completed[/green]")
                 if metrics:
                     for key, value in metrics.items():
                         api_logs.append(f"[cyan]{key}: {value:.4f}[/cyan]")
-                
+
                 live.update(generate_dashboard(10, 10, 0, 0.0, 0.0, 0.0, api_logs, config))
                 console.print("[bold green]Evaluation completed successfully![/bold green]")
-                
+
             except Exception as e:
                 console.print(f"[red]Evaluation error: {e}[/red]")
-                logging.error(f"Evaluation failed: {e}", exc_info=True)
+                logger.error(f"Evaluation failed: {e}", exc_info=True)
                 raise RuntimeError(f"Evaluation failed: {e}")
-                
+
     except Exception as e:
         console.print(f"[red]Failed to evaluate model: {e}[/red]")
-        logging.error(f"Model evaluation error: {e}", exc_info=True)
+        logger.error(f"Model evaluation error: {e}", exc_info=True)
         raise
 
 
 @_deprecated
 def visualize_dashboard(config_path: str) -> None:
     """Display dashboard visualizations using the visualizer module.
-    
+
     DEPRECATED: Use buddy commands instead.
     """
     import visualizer
@@ -193,7 +192,7 @@ def visualize_dashboard(config_path: str) -> None:
 @_deprecated
 def openai_tune(config_path: str) -> None:
     """Execute OpenAI-based auto-tuning using the openai_integration module.
-    
+
     DEPRECATED: This functionality is no longer actively maintained.
     """
     try:
@@ -251,12 +250,12 @@ def openai_tune(config_path: str) -> None:
 @_deprecated
 def predict_price(config_path: str) -> None:
     """Use ML engine to predict prices given a dataset.
-    
+
     DEPRECATED: Use buddy inference commands instead.
-    
+
     Args:
         config_path: Path to configuration file
-        
+
     Raises:
         RuntimeError: If prediction fails
     """
@@ -266,27 +265,27 @@ def predict_price(config_path: str) -> None:
         from ml_engine_enhanced import EnhancedMLEngine
 
         engine = EnhancedMLEngine(config)
-        
+
         console.print("[bold green]Generating prediction...[/bold green]")
         prediction = engine.predict_price()
-        
+
         console.print(f"[bold yellow]Predicted Price: {prediction}[/bold yellow]")
-        logging.info(f"Price prediction completed: {prediction}")
-        
+        logger.info(f"Price prediction completed: {prediction}")
+
     except AttributeError as e:
         console.print(f"[red]Method not available: {e}[/red]")
-        logging.error(f"predict_price method error: {e}")
+        logger.error(f"predict_price method error: {e}")
         raise RuntimeError(f"Prediction method not available: {e}")
     except Exception as e:
         console.print(f"[red]Prediction failed: {e}[/red]")
-        logging.error(f"Price prediction error: {e}", exc_info=True)
+        logger.error(f"Price prediction error: {e}", exc_info=True)
         raise
 
 
 @_deprecated
 def realtime_loop(config_path: str) -> None:
     """Run the ML engine in a real-time loop for continuous inference.
-    
+
     DEPRECATED: Use buddy scan or fx-paper-trade instead.
     """
     config = load_config(config_path)
@@ -300,7 +299,7 @@ def realtime_loop(config_path: str) -> None:
 @_deprecated
 def tune_model(config_path: str) -> None:
     """Perform advanced hyperparameter tuning using ML engine methods.
-    
+
     DEPRECATED: Manual hyperparameter tuning is recommended.
     """
     config = load_config(config_path)
@@ -314,7 +313,7 @@ def tune_model(config_path: str) -> None:
 @_deprecated
 def profile_pipeline(config_path: str) -> None:
     """Profile the ML pipeline for bottlenecks.
-    
+
     DEPRECATED: Use Python profiling tools directly.
     """
     config = load_config(config_path)
@@ -328,7 +327,7 @@ def profile_pipeline(config_path: str) -> None:
 @_deprecated
 def run_ai_assistant(config_path: str) -> None:
     """Legacy AI assistant entrypoint.
-    
+
     DEPRECATED: AI assistant entrypoint removed. Use `python main.py buddy` / `python main.py train-buddy`.
     """
     _ = config_path
@@ -338,7 +337,7 @@ def run_ai_assistant(config_path: str) -> None:
 @_deprecated
 def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_path: str | None = None) -> None:
     """Legacy alias: train Buddy TF model from main.py only.
-    
+
     DEPRECATED: Use train_buddy instead.
     """
     _ = checkpoint_path
@@ -358,7 +357,7 @@ def train_oanda_unified(
     all_features: bool = False,
 ) -> None:
     """Legacy alias: uses repo-local USDJPY CSV unless --csv is provided.
-    
+
     DEPRECATED: Use train_buddy with --oanda-live instead.
     """
     _ = (instruments, granularity, candles, checkpoint_path)
@@ -370,7 +369,7 @@ def train_oanda_unified(
 @_deprecated
 def chat_unified(config_path: str, metrics_path: str | None = None) -> None:
     """Interactive chat over the latest unified head metrics.
-    
+
     DEPRECATED: Use buddy commands instead.
     """
     from unified_chat import run_unified_chat
@@ -390,7 +389,7 @@ def talk_unified(
     verbose: bool = False,
 ) -> None:
     """Legacy unified talk command.
-    
+
     DEPRECATED: Unified talk has been replaced by TF-only Buddy.
     """
     _ = (checkpoint_path, csv_path, ticker, period, interval, verbose)

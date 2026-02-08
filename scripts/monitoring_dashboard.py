@@ -13,10 +13,9 @@ Usage:
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -46,7 +45,7 @@ def format_timestamp(ts_str: str) -> str:
     try:
         dt = datetime.fromisoformat(ts_str)
         return dt.strftime('%Y-%m-%d %H:%M:%S')
-    except:
+    except Exception:
         return ts_str
 
 

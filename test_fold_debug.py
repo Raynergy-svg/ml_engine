@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Debug why folds fail in candle_optimizer."""
 import numpy as np
-import sys, os
+import sys
+import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-from src.utils.utils import load_config
-from src.core.modular_data_loaders import compute_normalized_features, load_direction_data
-import pandas as pd
-import glob
+from src.utils.utils import load_config  # noqa: E402
+from src.core.modular_data_loaders import compute_normalized_features, load_direction_data  # noqa: E402
+import pandas as pd  # noqa: E402
+import glob  # noqa: E402
 
 cfg = load_config('config/config_intel_optimized.yaml')
 
@@ -16,7 +17,8 @@ if csvs:
     df = pd.read_csv(csvs[-1])
     print(f'Loaded {len(df)} rows from {csvs[-1]}')
 else:
-    print('No CSV found'); sys.exit(1)
+    print('No CSV found')
+    sys.exit(1)
 
 if 'returns_1' not in df.columns:
     df = compute_normalized_features(df)
@@ -34,7 +36,7 @@ w_all = np.concatenate([w_train, w_val_data], axis=0) if w_train is not None els
 
 print(f'x_all shape: {x_all.shape}, y_all shape: {y_all.shape}')
 
-from src.training.walkforward_validation import WalkForwardValidator
+from src.training.walkforward_validation import WalkForwardValidator  # noqa: E402
 validator = WalkForwardValidator(n_splits=3, train_size=0.60, val_size=0.15, test_size=0.10, gap=60, mode='expanding', min_train_size=200)
 
 for fold_idx, (train_idx, val_idx, test_idx) in enumerate(validator.split(x_all)):

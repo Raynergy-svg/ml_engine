@@ -33,16 +33,16 @@ logger = logging.getLogger(__name__)
 def detect_keras_version() -> str:
     """
     Detect the current Keras version string.
-    
+
     This is a convenience function that returns only the version string.
     For detailed version information, use detect_keras_version_info().
-    
+
     Returns:
         String containing the Keras version (e.g., '3.0.5', '2.15.0')
-        
+
     Raises:
         ImportError: If Keras is not installed
-        
+
     Example:
         >>> version = detect_keras_version()
         >>> print(f"Using Keras {version}")
@@ -61,7 +61,7 @@ def detect_keras_version() -> str:
 def detect_keras_version_info() -> Dict[str, Any]:
     """
     Detect which Keras version and implementation is currently installed.
-    
+
     Returns:
         Dict containing version information:
         - 'keras_version': Version string of keras package
@@ -79,7 +79,7 @@ def detect_keras_version_info() -> Dict[str, Any]:
         'tensorflow_version': None,
         'is_keras3': False
     }
-    
+
     # Try to detect keras
     try:
         import keras
@@ -88,7 +88,7 @@ def detect_keras_version_info() -> Dict[str, Any]:
         logger.info(f"Detected keras version: {info['keras_version']}")
     except ImportError:
         logger.warning("Keras package not found")
-    
+
     # Try to detect tf_keras
     try:
         import tf_keras
@@ -97,7 +97,7 @@ def detect_keras_version_info() -> Dict[str, Any]:
         logger.info(f"Detected tf_keras version: {info['tf_keras_version']}")
     except ImportError:
         logger.info("tf_keras package not available")
-    
+
     # Try to detect tensorflow
     try:
         import tensorflow as tf
@@ -106,26 +106,26 @@ def detect_keras_version_info() -> Dict[str, Any]:
         logger.info(f"Detected tensorflow version: {info['tensorflow_version']}")
     except ImportError:
         logger.info("TensorFlow package not available")
-    
+
     return info
 
 
 def detect_model_format(model_path: str) -> str:
     """
     Detect the format of a saved Keras model.
-    
+
     This is a convenience function that wraps check_model_format for
     compatibility with the required signature.
-    
+
     Args:
         model_path: Path to the model file or directory
-        
+
     Returns:
         String indicating format: 'keras', 'h5', 'saved_model', or 'unknown'
-        
+
     Raises:
         FileNotFoundError: If the model path doesn't exist
-        
+
     Example:
         >>> format = detect_model_format('path/to/model.keras')
         >>> print(f"Model format: {format}")
@@ -136,47 +136,47 @@ def detect_model_format(model_path: str) -> str:
 def check_model_format(model_path: Union[str, Path]) -> str:
     """
     Detect the format of a saved Keras model.
-    
+
     Args:
         model_path: Path to the model file or directory
-        
+
     Returns:
         String indicating format: 'keras', 'h5', 'saved_model', or 'unknown'
-        
+
     Raises:
         FileNotFoundError: If the model path doesn't exist
     """
     model_path = Path(model_path)
-    
+
     if not model_path.exists():
         raise FileNotFoundError(f"Model path does not exist: {model_path}")
-    
+
     # Check for .keras format (directory with config.json and weights)
     if model_path.is_dir():
         config_path = model_path / "config.json"
         if config_path.exists():
             logger.info(f"Detected .keras format at: {model_path}")
             return 'keras'
-        
+
         # Check for SavedModel format
         saved_model_pb = model_path / "saved_model.pb"
         if saved_model_pb.exists():
             logger.info(f"Detected SavedModel format at: {model_path}")
             return 'saved_model'
-        
+
         # Check for HDF5 directory format
         assets_path = model_path / "assets"
         variables_path = model_path / "variables"
         if assets_path.exists() and variables_path.exists():
             logger.info(f"Detected HDF5 directory format at: {model_path}")
             return 'h5'
-    
+
     # Check for .h5 file format
     elif model_path.is_file():
         if model_path.suffix == '.h5' or model_path.suffix == '.hdf5':
             logger.info(f"Detected .h5 file format at: {model_path}")
             return 'h5'
-        
+
         # Check if it's a zip file (newer .keras format)
         if model_path.suffix == '.keras':
             try:
@@ -186,7 +186,7 @@ def check_model_format(model_path: Union[str, Path]) -> str:
                         return 'keras'
             except Exception as e:
                 logger.warning(f"Failed to check if {model_path} is a .keras zip: {e}")
-    
+
     logger.warning(f"Unknown model format at: {model_path}")
     return 'unknown'
 
@@ -194,11 +194,11 @@ def check_model_format(model_path: Union[str, Path]) -> str:
 def validate_model_loading(model: Any, expected_input_shape: Optional[Tuple] = None) -> Dict[str, Any]:
     """
     Validate that a model was loaded correctly.
-    
+
     Args:
         model: The loaded Keras model
         expected_input_shape: Optional expected input shape (excluding batch dimension)
-        
+
     Returns:
         Dict containing validation results:
         - 'valid': Boolean indicating if model is valid
@@ -220,25 +220,25 @@ def validate_model_loading(model: Any, expected_input_shape: Optional[Tuple] = N
         'optimizer': None,
         'warnings': []
     }
-    
+
     try:
         # Check if model has expected attributes
         if not hasattr(model, 'input_shape') or not hasattr(model, 'output_shape'):
             validation['warnings'].append("Model missing input_shape or output_shape attributes")
             return validation
-        
+
         validation['input_shape'] = model.input_shape
         validation['output_shape'] = model.output_shape
         validation['num_layers'] = len(model.layers)
         validation['trainable_params'] = sum([np.prod(w.shape) for w in model.trainable_weights])
         validation['non_trainable_params'] = sum([np.prod(w.shape) for w in model.non_trainable_weights])
-        
+
         # Check optimizer
         if hasattr(model, 'optimizer') and model.optimizer is not None:
             validation['optimizer'] = model.optimizer
         else:
             validation['warnings'].append("Model has no optimizer (weights-only load)")
-        
+
         # Validate against expected input shape
         if expected_input_shape is not None:
             actual_shape = model.input_shape[1:]  # Exclude batch dimension
@@ -246,27 +246,27 @@ def validate_model_loading(model: Any, expected_input_shape: Optional[Tuple] = N
                 validation['warnings'].append(
                     f"Input shape mismatch: expected {expected_input_shape}, got {actual_shape}"
                 )
-        
+
         validation['valid'] = True
         logger.info(
             f"Model validation passed: {validation['num_layers']} layers, "
             f"{validation['trainable_params']:,} trainable params"
         )
-        
+
     except Exception as e:
         validation['warnings'].append(f"Validation error: {str(e)}")
         logger.error(f"Model validation failed: {e}")
-    
+
     return validation
 
 
 def extract_model_metadata(model_path: Union[str, Path]) -> Dict[str, Any]:
     """
     Extract metadata from a saved Keras model without loading it.
-    
+
     Args:
         model_path: Path to the model file or directory
-        
+
     Returns:
         Dict containing model metadata:
         - 'format': Model format
@@ -282,10 +282,10 @@ def extract_model_metadata(model_path: Union[str, Path]) -> Dict[str, Any]:
         'model_name': None,
         'config': None
     }
-    
+
     try:
         model_path = Path(model_path)
-        
+
         if metadata['format'] == 'keras':
             # Try to read config.json
             if model_path.is_dir():
@@ -293,7 +293,7 @@ def extract_model_metadata(model_path: Union[str, Path]) -> Dict[str, Any]:
             else:
                 # It's a .keras zip file
                 config_path = model_path  # Will be handled below
-            
+
             if model_path.is_file() and model_path.suffix == '.keras':
                 # Extract from zip
                 with zipfile.ZipFile(model_path, 'r') as zip_ref:
@@ -305,21 +305,21 @@ def extract_model_metadata(model_path: Union[str, Path]) -> Dict[str, Any]:
                             metadata['backend'] = config.get('backend')
                             metadata['model_name'] = config.get('config', {}).get('name')
             elif config_path.exists():
-                with open(config_path, 'r') as f:
+                with open(config_path) as f:
                     config = json.load(f)
                     metadata['config'] = config
                     metadata['keras_version'] = config.get('keras_version')
                     metadata['backend'] = config.get('backend')
                     metadata['model_name'] = config.get('config', {}).get('name')
-        
+
         logger.info(
             f"Extracted metadata: Keras {metadata['keras_version']}, "
             f"Backend: {metadata['backend']}, Name: {metadata['model_name']}"
         )
-        
+
     except Exception as e:
         logger.warning(f"Failed to extract metadata from {model_path}: {e}")
-    
+
     return metadata
 
 
@@ -334,25 +334,25 @@ def load_with_keras_native(
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Load a Keras model using native Keras 3.x (standalone keras package).
-    
+
     This approach uses the native `keras` package (Keras 3.x) directly, which
     is required for models that were saved with Keras 3.x. These models have
     module paths like 'keras.src.models.functional' which are incompatible with
     tf_keras.
-    
+
     Args:
         model_path: Path to the model file or directory
         custom_objects: Optional dictionary mapping names to custom layer classes
         compile: Whether to compile the model with the saved optimizer (default False
                 to avoid issues with custom LR schedules)
-        
+
     Returns:
         Tuple of (model, metadata) where metadata contains:
         - 'approach': 'keras_native'
         - 'success': Boolean indicating success
         - 'optimizer_preserved': Whether optimizer state was preserved
         - 'warnings': List of warnings
-        
+
     Raises:
         ImportError: If keras is not available
         Exception: If model loading fails
@@ -363,9 +363,9 @@ def load_with_keras_native(
         'optimizer_preserved': False,
         'warnings': []
     }
-    
+
     logger.info(f"Attempting to load model using native Keras 3.x: {model_path}")
-    
+
     try:
         import keras
         logger.info(f"Using native keras package version {keras.__version__}")
@@ -374,18 +374,18 @@ def load_with_keras_native(
         metadata['warnings'].append(error_msg)
         logger.error(error_msg)
         raise ImportError(error_msg)
-    
+
     # Ensure custom LR schedules are registered before loading
     try:
-        from src.training.m1_metal_optimizer import WarmupCosineDecaySchedule, CosineDecayRestarts
+        from src.training.m1_metal_optimizer import WarmupCosineDecaySchedule, CosineDecayRestarts  # noqa: F401
         logger.debug("Custom LR schedules imported for registration")
     except ImportError:
         logger.debug("Custom LR schedules not available (this is OK for inference)")
-    
+
     try:
         # Build custom objects dict with standard replacements
         all_custom_objects = custom_objects.copy() if custom_objects else {}
-        
+
         # Load the model - use compile=False by default to avoid optimizer issues
         model = keras.models.load_model(
             str(model_path),
@@ -406,13 +406,13 @@ def load_with_keras_native(
 
     except Exception as e:
         error_str = str(e).lower()
-        
+
         # If it's an optimizer issue, retry with compile=False
-        if compile and ('optimizer' in error_str or 'warmup' in error_str.lower() or 
-                       'schedule' in error_str.lower() or 'deserialize' in error_str):
+        if compile and ('optimizer' in error_str or 'warmup' in error_str.lower() or
+                        'schedule' in error_str.lower() or 'deserialize' in error_str):
             logger.warning(f"Optimizer/schedule issue detected, retrying with compile=False: {e}")
             metadata['warnings'].append(f"Optimizer issue: {e}")
-            
+
             try:
                 model = keras.models.load_model(
                     str(model_path),
@@ -453,23 +453,23 @@ def load_with_tf_keras(
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Load a Keras model using tf.keras for backward compatibility.
-    
+
     This approach uses tf.keras (or tf_keras package) which maintains compatibility
     with models saved using older Keras versions. This is the recommended approach
     for immediate fixes when loading Keras 2.15.0 models.
-    
+
     Args:
         model_path: Path to the model file or directory
         custom_objects: Optional dictionary mapping names to custom layer classes
         compile: Whether to compile the model with the saved optimizer
-        
+
     Returns:
         Tuple of (model, metadata) where metadata contains:
         - 'approach': 'tf_keras'
         - 'success': Boolean indicating success
         - 'optimizer_preserved': Whether optimizer state was preserved
         - 'warnings': List of warnings
-        
+
     Raises:
         ImportError: If tf.keras or tf_keras is not available
         Exception: If model loading fails
@@ -480,9 +480,9 @@ def load_with_tf_keras(
         'optimizer_preserved': False,
         'warnings': []
     }
-    
+
     logger.info(f"Attempting to load model using tf.keras: {model_path}")
-    
+
     # Try tf_keras first (newer, standalone package)
     try:
         import tf_keras as keras
@@ -500,7 +500,7 @@ def load_with_tf_keras(
             metadata['warnings'].append(error_msg)
             logger.error(error_msg)
             raise ImportError(error_msg)
-    
+
     try:
         # Load the model
         model = keras.models.load_model(
@@ -564,19 +564,19 @@ def load_with_tf_keras(
 def parse_model_config(config_path: Union[str, Path]) -> Dict[str, Any]:
     """
     Parse the model configuration from a saved Keras model file.
-    
+
     Args:
         config_path: Path to config.json or .keras file
-        
+
     Returns:
         Dict containing the parsed configuration
-        
+
     Raises:
         FileNotFoundError: If config file doesn't exist
         ValueError: If config is invalid
     """
     config_path = Path(config_path)
-    
+
     # Handle .keras zip files
     if config_path.is_file() and config_path.suffix == '.keras':
         with zipfile.ZipFile(config_path, 'r') as zip_ref:
@@ -587,24 +587,24 @@ def parse_model_config(config_path: Union[str, Path]) -> Dict[str, Any]:
                     return config
             else:
                 raise FileNotFoundError("config.json not found in .keras file")
-    
+
     # Handle directory format
     elif config_path.is_dir():
         config_file = config_path / "config.json"
         if not config_file.exists():
             raise FileNotFoundError(f"config.json not found in directory: {config_path}")
-        with open(config_file, 'r') as f:
+        with open(config_file) as f:
             config = json.load(f)
             logger.info("Parsed config from directory")
             return config
-    
+
     # Handle direct config.json file
     elif config_path.is_file() and config_path.name == "config.json":
-        with open(config_path, 'r') as f:
+        with open(config_path) as f:
             config = json.load(f)
             logger.info("Parsed config from config.json file")
             return config
-    
+
     else:
         raise FileNotFoundError(f"Invalid config path: {config_path}")
 
@@ -615,20 +615,20 @@ def rebuild_tcn_architecture(
 ) -> Any:
     """
     Rebuild a TCN architecture from its configuration using Keras 3.x APIs.
-    
+
     This is a convenience function that wraps rebuild_tcn_model_from_config
     for compatibility with the required signature.
-    
+
     Args:
         config: Model configuration dictionary
         optimizer_config: Optional optimizer configuration
-        
+
     Returns:
         Rebuilt Keras model
-        
+
     Raises:
         ValueError: If configuration is invalid or unsupported
-        
+
     Example:
         >>> config = {'config': {'layers': [...]}}
         >>> model = rebuild_tcn_architecture(config)
@@ -642,18 +642,18 @@ def rebuild_tcn_model_from_config(
 ) -> Any:
     """
     Rebuild a TCN model from its configuration using Keras 3.x APIs.
-    
+
     This function reconstructs the model architecture from the saved configuration
     using current Keras 3.x APIs, avoiding the deserialization issues with old
     module paths.
-    
+
     Args:
         config: Model configuration dictionary
         optimizer_config: Optional optimizer configuration
-        
+
     Returns:
         Rebuilt Keras model
-        
+
     Raises:
         ValueError: If configuration is invalid or unsupported
     """
@@ -661,25 +661,25 @@ def rebuild_tcn_model_from_config(
         import keras
     except ImportError:
         raise ImportError("Keras is required for model rebuilding")
-    
+
     logger.info("Rebuilding TCN model from configuration")
-    
+
     # Extract layer configurations
     layers_config = config.get('config', {}).get('layers', [])
     if not layers_config:
         raise ValueError("No layers found in configuration")
-    
+
     # Build the model layer by layer
     inputs = None
     layer_map = {}  # Map layer names to layer instances
-    
+
     for layer_config in layers_config:
         class_name = layer_config.get('class_name')
         name = layer_config.get('config', {}).get('name')
         layer_config_dict = layer_config.get('config', {})
-        
+
         logger.info(f"Building layer: {class_name} ({name})")
-        
+
         # Handle input layer
         if class_name == 'InputLayer':
             input_shape = layer_config_dict.get('batch_input_shape')
@@ -690,22 +690,22 @@ def rebuild_tcn_model_from_config(
                 )
                 layer_map[name] = inputs
                 continue
-        
+
         # Build other layers
         layer = None
-        
+
         if class_name == 'GaussianNoise':
             layer = keras.layers.GaussianNoise(
                 stddev=layer_config_dict.get('stddev', 0.1),
                 name=name
             )
-        
+
         elif class_name == 'SpatialDropout1D':
             layer = keras.layers.SpatialDropout1D(
                 rate=layer_config_dict.get('rate', 0.1),
                 name=name
             )
-        
+
         elif class_name == 'Conv1D':
             layer = keras.layers.Conv1D(
                 filters=layer_config_dict.get('filters', 64),
@@ -717,7 +717,7 @@ def rebuild_tcn_model_from_config(
                 kernel_initializer=layer_config_dict.get('kernel_initializer', 'glorot_uniform'),
                 name=name
             )
-        
+
         elif class_name == 'BatchNormalization':
             layer = keras.layers.BatchNormalization(
                 axis=layer_config_dict.get('axis', -1),
@@ -725,16 +725,16 @@ def rebuild_tcn_model_from_config(
                 epsilon=layer_config_dict.get('epsilon', 0.001),
                 name=name
             )
-        
+
         elif class_name == 'Dropout':
             layer = keras.layers.Dropout(
                 rate=layer_config_dict.get('rate', 0.5),
                 name=name
             )
-        
+
         elif class_name == 'GlobalAveragePooling1D':
             layer = keras.layers.GlobalAveragePooling1D(name=name)
-        
+
         elif class_name == 'Dense':
             layer = keras.layers.Dense(
                 units=layer_config_dict.get('units', 32),
@@ -743,52 +743,52 @@ def rebuild_tcn_model_from_config(
                 kernel_initializer=layer_config_dict.get('kernel_initializer', 'glorot_uniform'),
                 name=name
             )
-        
+
         elif class_name == 'Softmax':
             layer = keras.layers.Softmax(name=name)
-        
+
         else:
             logger.warning(f"Unsupported layer class: {class_name}, skipping")
             continue
-        
+
         if layer is not None:
             layer_map[name] = layer
-    
+
     # Reconstruct the model using Functional API
     if not layer_map:
         raise ValueError("No valid layers were reconstructed")
-    
+
     # Find input and output layers
     input_layers_config = config.get('config', {}).get('input_layers', [])
     output_layers_config = config.get('config', {}).get('output_layers', [])
-    
+
     if not input_layers_config or not output_layers_config:
         raise ValueError("Input or output layers not specified in configuration")
-    
+
     # Get the first input layer
     input_name = input_layers_config[0][0]
     if input_name not in layer_map:
         raise ValueError(f"Input layer '{input_name}' not found in reconstructed layers")
-    
+
     # Build the model by connecting layers
     # For simplicity, we'll create a sequential model from the layers
     # (This is a simplified approach - full functional API reconstruction would be more complex)
-    
+
     logger.warning("Using simplified sequential reconstruction - may not match exact architecture")
-    
+
     # Create a list of layers in order
     layer_list = [layer for name, layer in layer_map.items() if name != input_name]
-    
+
     # Build the model
     model = keras.Sequential(layer_list, name=config.get('config', {}).get('name', 'rebuilt_model'))
-    
+
     # Compile with optimizer if provided
     if optimizer_config:
         try:
             # Parse optimizer configuration
             optimizer_class_name = optimizer_config.get('class_name', 'Adam')
             optimizer_config_dict = optimizer_config.get('config', {})
-            
+
             # Create optimizer
             if optimizer_class_name == 'Adam':
                 optimizer = keras.optimizers.Adam(
@@ -804,19 +804,19 @@ def rebuild_tcn_model_from_config(
             else:
                 logger.warning(f"Unsupported optimizer class: {optimizer_class_name}, using Adam")
                 optimizer = keras.optimizers.Adam()
-            
+
             # Compile model
             model.compile(
                 optimizer=optimizer,
                 loss='categorical_crossentropy',
                 metrics=['accuracy']
             )
-            
+
             logger.info(f"Model compiled with {optimizer_class_name} optimizer")
-            
+
         except Exception as e:
             logger.warning(f"Failed to compile model with optimizer: {e}")
-    
+
     logger.info("TCN model rebuilt successfully")
     return model
 
@@ -827,22 +827,22 @@ def load_by_rebuilding(
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Load a Keras model by rebuilding it from configuration and loading weights.
-    
+
     This approach is useful for migrating models to Keras 3.x when backward
     compatibility is not available. It rebuilds the architecture using current
     APIs and loads the weights separately.
-    
+
     Args:
         model_path: Path to the model file or directory
         custom_objects: Optional dictionary mapping names to custom layer classes
-        
+
     Returns:
         Tuple of (model, metadata) where metadata contains:
         - 'approach': 'rebuild'
         - 'success': Boolean indicating success
         - 'optimizer_preserved': False (always false for this approach)
         - 'warnings': List of warnings
-        
+
     Raises:
         Exception: If model rebuilding fails
     """
@@ -852,25 +852,25 @@ def load_by_rebuilding(
         'optimizer_preserved': False,
         'warnings': []
     }
-    
+
     logger.info(f"Attempting to load model by rebuilding: {model_path}")
-    
+
     try:
         # Parse configuration
         config = parse_model_config(model_path)
-        
+
         # Extract optimizer config if available
         optimizer_config = None
         if 'optimizer' in config:
             optimizer_config = config['optimizer']
-        
+
         # Rebuild the model
         model = rebuild_tcn_model_from_config(config, optimizer_config)
-        
+
         # Try to load weights
         model_path = Path(model_path)
         weights_loaded = False
-        
+
         if model_path.is_dir():
             # Check for model.weights.h5 or weights.h5
             weights_files = list(model_path.glob("*.weights.h5")) + list(model_path.glob("weights.h5"))
@@ -895,27 +895,27 @@ def load_by_rebuilding(
                             with zip_ref.open(weights_files[0]) as wf:
                                 tmp.write(wf.read())
                             tmp_path = tmp.name
-                        
+
                         model.load_weights(tmp_path, by_name=True)
                         weights_loaded = True
                         logger.info("Loaded weights from .keras file")
-                        
+
                         # Clean up temp file
                         os.unlink(tmp_path)
                     except Exception as e:
                         metadata['warnings'].append(f"Failed to load weights: {str(e)}")
                         logger.warning(f"Failed to load weights: {e}")
-        
+
         if not weights_loaded:
             metadata['warnings'].append("Weights could not be loaded - model initialized randomly")
             logger.warning("Model initialized with random weights")
-        
+
         metadata['success'] = True
         metadata['warnings'].append("Optimizer state not preserved (rebuild approach)")
-        
+
         logger.info("Model rebuilt successfully")
         return model, metadata
-        
+
     except Exception as e:
         error_msg = f"Failed to rebuild model: {str(e)}"
         metadata['warnings'].append(error_msg)
@@ -1026,25 +1026,25 @@ def register_custom_deserializers() -> Dict[str, Any]:
 def update_module_paths_in_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     Update old module paths in model configuration to new Keras 3.x paths.
-    
+
     Args:
         config: Original model configuration
-        
+
     Returns:
         Updated configuration with corrected module paths
     """
     import copy
-    
+
     # Deep copy to avoid modifying original
     updated_config = copy.deepcopy(config)
-    
+
     # Map old module paths to new ones
     path_mappings = {
         'keras.src.engine.functional': 'keras',
         'keras.src.layers': 'keras.layers',
         'keras.src.optimizers': 'keras.optimizers',
     }
-    
+
     # Update module field if present
     if 'module' in updated_config:
         old_module = updated_config['module']
@@ -1053,7 +1053,7 @@ def update_module_paths_in_config(config: Dict[str, Any]) -> Dict[str, Any]:
                 updated_config['module'] = new_path + old_module[len(old_path):]
                 logger.info(f"Updated module path: {old_module} -> {updated_config['module']}")
                 break
-    
+
     # Update layer configurations
     if 'config' in updated_config and 'layers' in updated_config['config']:
         for layer_config in updated_config['config']['layers']:
@@ -1063,7 +1063,7 @@ def update_module_paths_in_config(config: Dict[str, Any]) -> Dict[str, Any]:
                     if old_module.startswith(old_path):
                         layer_config['module'] = new_path + old_module[len(old_path):]
                         break
-    
+
     return updated_config
 
 
@@ -1073,22 +1073,22 @@ def load_with_custom_deserialization(
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Load a Keras model using custom deserialization with updated module paths.
-    
+
     This advanced approach modifies the model configuration to update old
     module paths to new Keras 3.x paths, then uses custom deserializers
     to load the model.
-    
+
     Args:
         model_path: Path to the model file or directory
         custom_objects: Optional dictionary mapping names to custom layer classes
-        
+
     Returns:
         Tuple of (model, metadata) where metadata contains:
         - 'approach': 'custom_deserialization'
         - 'success': Boolean indicating success
         - 'optimizer_preserved': Boolean indicating if optimizer was preserved
         - 'warnings': List of warnings
-        
+
     Raises:
         Exception: If custom deserialization fails
     """
@@ -1098,9 +1098,9 @@ def load_with_custom_deserialization(
         'optimizer_preserved': False,
         'warnings': []
     }
-    
+
     logger.info(f"Attempting to load model with custom deserialization: {model_path}")
-    
+
     try:
         import keras
     except ImportError:
@@ -1108,29 +1108,29 @@ def load_with_custom_deserialization(
         metadata['warnings'].append(error_msg)
         logger.error(error_msg)
         raise ImportError(error_msg)
-    
+
     try:
         # Register custom deserializers
         registered_objects = register_custom_deserializers()
-        
+
         # Merge with provided custom objects
         if custom_objects:
             registered_objects.update(custom_objects)
-        
+
         # Parse and update configuration
         config = parse_model_config(model_path)
         updated_config = update_module_paths_in_config(config)
-        
+
         # Create model from updated configuration
         model = keras.models.model_from_config(
             updated_config['config'],
             custom_objects=registered_objects
         )
-        
+
         # Try to load weights
         model_path = Path(model_path)
         weights_loaded = False
-        
+
         if model_path.is_dir():
             weights_files = list(model_path.glob("*.weights.h5")) + list(model_path.glob("weights.h5"))
             if weights_files:
@@ -1151,16 +1151,16 @@ def load_with_custom_deserialization(
                             with zip_ref.open(weights_files[0]) as wf:
                                 tmp.write(wf.read())
                             tmp_path = tmp.name
-                        
+
                         model.load_weights(tmp_path, by_name=True)
                         weights_loaded = True
                         logger.info("Loaded weights from .keras file")
-                        
+
                         os.unlink(tmp_path)
                     except Exception as e:
                         metadata['warnings'].append(f"Failed to load weights: {str(e)}")
                         logger.warning(f"Failed to load weights: {e}")
-        
+
         # Try to restore optimizer state
         optimizer_preserved = False
         if 'optimizer' in updated_config:
@@ -1168,7 +1168,7 @@ def load_with_custom_deserialization(
                 optimizer_config = updated_config['optimizer']
                 optimizer_class_name = optimizer_config.get('class_name', 'Adam')
                 optimizer_config_dict = optimizer_config.get('config', {})
-                
+
                 if optimizer_class_name == 'Adam':
                     optimizer = keras.optimizers.Adam(
                         learning_rate=optimizer_config_dict.get('learning_rate', 0.001),
@@ -1182,32 +1182,32 @@ def load_with_custom_deserialization(
                     )
                 else:
                     optimizer = keras.optimizers.Adam()
-                
+
                 model.compile(
                     optimizer=optimizer,
                     loss='categorical_crossentropy',
                     metrics=['accuracy']
                 )
-                
+
                 optimizer_preserved = True
                 logger.info(f"Restored optimizer: {optimizer_class_name}")
-                
+
             except Exception as e:
                 metadata['warnings'].append(f"Failed to restore optimizer: {str(e)}")
                 logger.warning(f"Failed to restore optimizer: {e}")
-        
+
         if not weights_loaded:
             metadata['warnings'].append("Weights could not be loaded - model initialized randomly")
-        
+
         metadata['success'] = True
         metadata['optimizer_preserved'] = optimizer_preserved
-        
+
         if not optimizer_preserved:
             metadata['warnings'].append("Optimizer state not fully preserved (configuration only)")
-        
+
         logger.info("Model loaded with custom deserialization")
         return model, metadata
-        
+
     except Exception as e:
         error_msg = f"Failed to load model with custom deserialization: {str(e)}"
         metadata['warnings'].append(error_msg)
@@ -1222,37 +1222,37 @@ def load_with_custom_deserialization(
 def load_weights_by_name(model: Any, weights_path: Union[str, Path]) -> None:
     """
     Load weights into a Keras model using by_name=True parameter.
-    
+
     This function loads weights from a weights file, matching layers by name
     rather than by topology. This is useful when loading weights into models
     with slightly different architectures.
-    
+
     Args:
         model: The Keras model to load weights into
         weights_path: Path to the weights file (.h5 or .weights.h5)
-        
+
     Raises:
         FileNotFoundError: If the weights file doesn't exist
         ValueError: If the weights file is invalid
         Exception: If weight loading fails
-        
+
     Example:
         >>> import keras
         >>> model = keras.Sequential([...])
         >>> load_weights_by_name(model, 'path/to/model.weights.h5')
     """
     weights_path = Path(weights_path)
-    
+
     if not weights_path.exists():
         raise FileNotFoundError(f"Weights file not found: {weights_path}")
-    
+
     logger.info(f"Loading weights from: {weights_path}")
-    
+
     try:
         # Load weights with by_name=True
         model.load_weights(str(weights_path), by_name=True)
         logger.info("Weights loaded successfully with by_name=True")
-        
+
     except Exception as e:
         error_msg = f"Failed to load weights from {weights_path}: {str(e)}"
         logger.error(error_msg)
@@ -1267,22 +1267,22 @@ def reinitialize_optimizer(
 ) -> None:
     """
     Reinitialize a model's optimizer with matching hyperparameters from saved configuration.
-    
+
     This function creates a new optimizer instance based on the saved configuration
     and compiles the model with it. This avoids variable mismatch warnings that occur
     when loading models with optimizer states from different Keras versions.
-    
+
     Args:
         model: The Keras model to recompile
         optimizer_config: Optimizer configuration dictionary (from saved model)
         loss: Loss function to use for compilation
         metrics: Optional list of metrics to use for compilation
-        
+
     Raises:
         ValueError: If optimizer configuration is invalid
         ImportError: If required optimizer class is not available
         Exception: If optimizer reinitialization fails
-        
+
     Example:
         >>> import keras
         >>> model = keras.Sequential([...])
@@ -1296,23 +1296,23 @@ def reinitialize_optimizer(
         import keras
     except ImportError:
         raise ImportError("Keras is required for optimizer reinitialization")
-    
+
     if metrics is None:
         metrics = ['accuracy']
-    
+
     logger.info("Reinitializing optimizer from configuration")
-    
+
     try:
         # Extract optimizer class name and configuration
         optimizer_class_name = optimizer_config.get('class_name', 'Adam')
         optimizer_config_dict = optimizer_config.get('config', {})
-        
+
         logger.info(f"Optimizer class: {optimizer_class_name}")
         logger.info(f"Optimizer config: {optimizer_config_dict}")
-        
+
         # Create optimizer based on class name
         optimizer = None
-        
+
         if optimizer_class_name == 'Adam':
             optimizer = keras.optimizers.Adam(
                 learning_rate=optimizer_config_dict.get('learning_rate', 0.001),
@@ -1321,14 +1321,14 @@ def reinitialize_optimizer(
                 epsilon=optimizer_config_dict.get('epsilon', 1e-7),
                 amsgrad=optimizer_config_dict.get('amsgrad', False)
             )
-        
+
         elif optimizer_class_name == 'SGD':
             optimizer = keras.optimizers.SGD(
                 learning_rate=optimizer_config_dict.get('learning_rate', 0.01),
                 momentum=optimizer_config_dict.get('momentum', 0.0),
                 nesterov=optimizer_config_dict.get('nesterov', False)
             )
-        
+
         elif optimizer_class_name == 'RMSprop':
             optimizer = keras.optimizers.RMSprop(
                 learning_rate=optimizer_config_dict.get('learning_rate', 0.001),
@@ -1336,21 +1336,21 @@ def reinitialize_optimizer(
                 momentum=optimizer_config_dict.get('momentum', 0.0),
                 epsilon=optimizer_config_dict.get('epsilon', 1e-7)
             )
-        
+
         elif optimizer_class_name == 'Adagrad':
             optimizer = keras.optimizers.Adagrad(
                 learning_rate=optimizer_config_dict.get('learning_rate', 0.01),
                 initial_accumulator_value=optimizer_config_dict.get('initial_accumulator_value', 0.1),
                 epsilon=optimizer_config_dict.get('epsilon', 1e-7)
             )
-        
+
         elif optimizer_class_name == 'Adadelta':
             optimizer = keras.optimizers.Adadelta(
                 learning_rate=optimizer_config_dict.get('learning_rate', 1.0),
                 rho=optimizer_config_dict.get('rho', 0.95),
                 epsilon=optimizer_config_dict.get('epsilon', 1e-7)
             )
-        
+
         elif optimizer_class_name == 'Adamax':
             optimizer = keras.optimizers.Adamax(
                 learning_rate=optimizer_config_dict.get('learning_rate', 0.002),
@@ -1358,7 +1358,7 @@ def reinitialize_optimizer(
                 beta_2=optimizer_config_dict.get('beta_2', 0.999),
                 epsilon=optimizer_config_dict.get('epsilon', 1e-7)
             )
-        
+
         elif optimizer_class_name == 'Nadam':
             optimizer = keras.optimizers.Nadam(
                 learning_rate=optimizer_config_dict.get('learning_rate', 0.002),
@@ -1366,7 +1366,7 @@ def reinitialize_optimizer(
                 beta_2=optimizer_config_dict.get('beta_2', 0.999),
                 epsilon=optimizer_config_dict.get('epsilon', 1e-7)
             )
-        
+
         elif optimizer_class_name == 'Ftrl':
             optimizer = keras.optimizers.Ftrl(
                 learning_rate=optimizer_config_dict.get('learning_rate', 0.001),
@@ -1375,7 +1375,7 @@ def reinitialize_optimizer(
                 l1_regularization_strength=optimizer_config_dict.get('l1_regularization_strength', 0.0),
                 l2_regularization_strength=optimizer_config_dict.get('l2_regularization_strength', 0.0)
             )
-        
+
         else:
             # Try to create optimizer dynamically from class name
             try:
@@ -1388,22 +1388,22 @@ def reinitialize_optimizer(
                     f"falling back to Adam"
                 )
                 optimizer = keras.optimizers.Adam()
-        
+
         if optimizer is None:
             raise ValueError(f"Failed to create optimizer: {optimizer_class_name}")
-        
+
         # Compile the model with the new optimizer
         model.compile(
             optimizer=optimizer,
             loss=loss,
             metrics=metrics
         )
-        
+
         logger.info(
             f"Model recompiled successfully with {optimizer_class_name} optimizer "
             f"(learning_rate={optimizer_config_dict.get('learning_rate', 'default')})"
         )
-        
+
     except Exception as e:
         error_msg = f"Failed to reinitialize optimizer: {str(e)}"
         logger.error(error_msg)
@@ -1416,54 +1416,54 @@ def validate_model_structure(
 ) -> bool:
     """
     Validate that a loaded model matches the expected structure.
-    
+
     This function compares the loaded model's configuration against an expected
     configuration to ensure the model structure is correct. This is useful for
     verifying that a model was loaded correctly, especially when using the
     rebuilding approach.
-    
+
     Args:
         model: The loaded Keras model
         expected_config: Expected model configuration dictionary
-        
+
     Returns:
         Boolean indicating whether the model structure matches
-        
+
     Raises:
         ValueError: If model or config is invalid
     """
     logger.info("Validating model structure against expected configuration")
-    
+
     try:
         # Check basic attributes
         if not hasattr(model, 'layers'):
             logger.error("Model has no layers attribute")
             return False
-        
+
         # Compare number of layers
         expected_layers = expected_config.get('config', {}).get('layers', [])
         actual_num_layers = len(model.layers)
         expected_num_layers = len(expected_layers)
-        
+
         if actual_num_layers != expected_num_layers:
             logger.warning(
                 f"Layer count mismatch: expected {expected_num_layers}, "
                 f"got {actual_num_layers}"
             )
             return False
-        
+
         # Compare layer types
         for i, (layer, expected_layer) in enumerate(zip(model.layers, expected_layers)):
             expected_class_name = expected_layer.get('class_name')
             actual_class_name = layer.__class__.__name__
-            
+
             if expected_class_name != actual_class_name:
                 logger.warning(
                     f"Layer {i} type mismatch: expected {expected_class_name}, "
                     f"got {actual_class_name}"
                 )
                 return False
-        
+
         # Compare input/output shapes
         expected_input_layers = expected_config.get('config', {}).get('input_layers', [])
         if expected_input_layers:
@@ -1472,7 +1472,7 @@ def validate_model_structure(
                 (layer for layer in expected_layers if layer.get('config', {}).get('name') == expected_input_name),
                 None
             )
-            
+
             if expected_input_layer:
                 expected_shape = expected_input_layer.get('config', {}).get('batch_input_shape')
                 if expected_shape and model.input_shape != expected_shape:
@@ -1481,10 +1481,10 @@ def validate_model_structure(
                         f"got {model.input_shape}"
                     )
                     return False
-        
+
         logger.info("Model structure validation passed")
         return True
-        
+
     except Exception as e:
         logger.error(f"Model structure validation failed: {e}")
         return False
@@ -1497,31 +1497,31 @@ def validate_model_structure(
 class KerasModelLoader:
     """
     Main class for loading Keras models with cross-version compatibility.
-    
+
     This class provides a high-level interface for loading Keras models,
     particularly for handling Keras 2.15.0 models in Keras 3.x environments.
     It automatically detects the best loading approach and provides comprehensive
     metadata about the loaded model.
-    
+
     Attributes:
         model_path: Path to the model file or directory
         model: The loaded Keras model (None until load_model() is called)
         metadata: Dictionary containing model metadata and loading information
-        
+
     Example:
         >>> loader = KerasModelLoader('path/to/model.keras')
         >>> model = loader.load_model()
         >>> info = loader.get_model_info()
         >>> print(f"Model has {info['validation']['num_layers']} layers")
     """
-    
+
     def __init__(self, model_path: Union[str, Path]):
         """
         Initialize the KerasModelLoader with a model path.
-        
+
         Args:
             model_path: Path to the model file or directory
-            
+
         Raises:
             FileNotFoundError: If the model path doesn't exist
             ValueError: If the model format is not recognized
@@ -1529,38 +1529,38 @@ class KerasModelLoader:
         self.model_path = Path(model_path)
         self.model: Optional[Any] = None
         self.metadata: Dict[str, Any] = {}
-        
+
         # Validate model path exists
         if not self.model_path.exists():
             raise FileNotFoundError(f"Model path does not exist: {self.model_path}")
-        
+
         # Detect model format
         self.model_format = check_model_format(self.model_path)
         if self.model_format == 'unknown':
             raise ValueError(f"Unknown model format: {self.model_path}")
-        
+
         # Extract basic metadata
         self._extract_initial_metadata()
-        
+
         logger.info(
             f"KerasModelLoader initialized for {self.model_path} "
             f"(format: {self.model_format})"
         )
-    
+
     def _extract_initial_metadata(self) -> None:
         """
         Extract initial metadata from the model file.
-        
+
         This method is called during initialization to gather basic information
         about the model without loading it.
         """
         try:
             # Extract model metadata
             model_metadata = extract_model_metadata(self.model_path)
-            
+
             # Detect Keras version
             keras_version_info = detect_keras_version_info()
-            
+
             # Store initial metadata
             self.metadata = {
                 'model_path': str(self.model_path),
@@ -1571,7 +1571,7 @@ class KerasModelLoader:
                 'load_time': None,
                 'approach_used': None
             }
-            
+
         except Exception as e:
             logger.warning(f"Failed to extract initial metadata: {e}")
             self.metadata = {
@@ -1579,7 +1579,7 @@ class KerasModelLoader:
                 'model_format': self.model_format,
                 'error': str(e)
             }
-    
+
     def load_model(
         self,
         custom_objects: Optional[Dict] = None,
@@ -1589,34 +1589,34 @@ class KerasModelLoader:
     ) -> Any:
         """
         Load the Keras model using the best available approach.
-        
+
         This method attempts to load the model using multiple approaches with
         automatic fallback. It uses the intelligent loader function to determine
         the best approach based on the environment and model format.
-        
+
         Args:
             custom_objects: Optional dictionary mapping names to custom layer classes
             preferred_approach: Force a specific approach ('tf_keras', 'rebuild', 'custom_deserialization')
             compile: Whether to compile the model with the saved optimizer
             expected_input_shape: Optional expected input shape for validation
-            
+
         Returns:
             The loaded Keras model
-            
+
         Raises:
             Exception: If model loading fails
-            
+
         Example:
             >>> loader = KerasModelLoader('path/to/model.keras')
             >>> model = loader.load_model(compile=True)
             >>> predictions = model.predict(X_test)
         """
         import time
-        
+
         logger.info(f"Loading model from: {self.model_path}")
-        
+
         start_time = time.time()
-        
+
         try:
             # Use the intelligent loader
             self.model, load_metadata = load_keras_model(
@@ -1626,32 +1626,32 @@ class KerasModelLoader:
                 compile=compile,
                 expected_input_shape=expected_input_shape
             )
-            
+
             # Update metadata
             self.metadata.update(load_metadata)
             self.metadata['loaded'] = True
             self.metadata['load_time'] = time.time() - start_time
-            
+
             logger.info(
                 f"Model loaded successfully in {self.metadata['load_time']:.2f}s "
                 f"using approach: {load_metadata['approach_used']}"
             )
-            
+
             return self.model
-            
+
         except Exception as e:
             error_msg = f"Failed to load model: {str(e)}"
             logger.error(error_msg)
             self.metadata['error'] = error_msg
             raise Exception(error_msg) from e
-    
+
     def get_model_info(self) -> Dict[str, Any]:
         """
         Return comprehensive information about the loaded model.
-        
+
         This method returns a dictionary containing metadata about the model,
         including loading information, validation results, and model structure.
-        
+
         Returns:
             Dictionary containing model information:
             - 'model_path': Path to the model file
@@ -1664,10 +1664,10 @@ class KerasModelLoader:
             - 'keras_version_info': Keras version information
             - 'model_metadata': Extracted model metadata
             - 'warnings': List of warnings
-            
+
         Raises:
             ValueError: If model has not been loaded yet
-            
+
         Example:
             >>> loader = KerasModelLoader('path/to/model.keras')
             >>> model = loader.load_model()
@@ -1678,22 +1678,22 @@ class KerasModelLoader:
         """
         if not self.metadata.get('loaded', False):
             raise ValueError("Model has not been loaded yet. Call load_model() first.")
-        
+
         return self.metadata
-    
+
     def get_model_summary(self) -> str:
         """
         Get a formatted summary of the loaded model.
-        
+
         This method returns a string containing a human-readable summary of the
         model, including architecture, parameters, and loading information.
-        
+
         Returns:
             Formatted string containing model summary
-            
+
         Raises:
             ValueError: If model has not been loaded yet
-            
+
         Example:
             >>> loader = KerasModelLoader('path/to/model.keras')
             >>> model = loader.load_model()
@@ -1701,38 +1701,38 @@ class KerasModelLoader:
         """
         if self.model is None:
             raise ValueError("Model has not been loaded yet. Call load_model() first.")
-        
+
         import io
         import sys
-        
+
         # Capture model summary
         old_stdout = sys.stdout
         sys.stdout = buffer = io.StringIO()
-        
+
         try:
             self.model.summary()
             summary = buffer.getvalue()
         finally:
             sys.stdout = old_stdout
-        
+
         return summary
-    
+
     def validate(self, expected_input_shape: Optional[Tuple] = None) -> Dict[str, Any]:
         """
         Validate the loaded model structure and weights.
-        
+
         This method performs comprehensive validation of the loaded model,
         checking structure, weights, and optional input shape matching.
-        
+
         Args:
             expected_input_shape: Optional expected input shape for validation
-            
+
         Returns:
             Dictionary containing validation results
-            
+
         Raises:
             ValueError: If model has not been loaded yet
-            
+
         Example:
             >>> loader = KerasModelLoader('path/to/model.keras')
             >>> model = loader.load_model()
@@ -1742,7 +1742,7 @@ class KerasModelLoader:
         """
         if self.model is None:
             raise ValueError("Model has not been loaded yet. Call load_model() first.")
-        
+
         return validate_model_loading(self.model, expected_input_shape)
 
 
@@ -1759,22 +1759,22 @@ def load_keras_model(
 ) -> Tuple[Any, Dict[str, Any]]:
     """
     Intelligently load a Keras model using multiple approaches with automatic fallback.
-    
+
     This function attempts to load a Keras model using different approaches in order:
     1. tf.keras backward compatibility (if available)
     2. Model rebuilding + weight loading (for Keras 3.x migration)
     3. Custom deserialization (advanced)
-    
+
     It automatically detects the best approach based on the environment and model format,
     and provides detailed metadata about the loading process.
-    
+
     Args:
         model_path: Path to the model file or directory
         custom_objects: Optional dictionary mapping names to custom layer classes
         preferred_approach: Force a specific approach ('tf_keras', 'rebuild', 'custom_deserialization')
         compile: Whether to compile the model with the saved optimizer (for tf_keras approach)
         expected_input_shape: Optional expected input shape for validation
-        
+
     Returns:
         Tuple of (model, metadata) where metadata contains:
         - 'approach_used': Which approach succeeded
@@ -1783,22 +1783,22 @@ def load_keras_model(
         - 'validation': Model validation results
         - 'warnings': List of warnings
         - 'keras_version_info': Keras version information
-        
+
     Raises:
         FileNotFoundError: If model path doesn't exist
         Exception: If all loading approaches fail
     """
     logger.info(f"Loading Keras model: {model_path}")
-    
+
     # Detect Keras version info
     keras_version_info = detect_keras_version_info()
-    
+
     # Check model format
     model_format = check_model_format(model_path)
-    
+
     # Extract metadata
     model_metadata = extract_model_metadata(model_path)
-    
+
     # Initialize result metadata
     result_metadata = {
         'approach_used': None,
@@ -1810,7 +1810,7 @@ def load_keras_model(
         'model_format': model_format,
         'model_metadata': model_metadata
     }
-    
+
     # Add warnings about version mismatch
     if model_metadata['keras_version']:
         saved_version = model_metadata['keras_version']
@@ -1822,10 +1822,10 @@ def load_keras_model(
                     f"loading with Keras {current_version}"
                 )
                 logger.warning(f"Version mismatch: {saved_version} -> {current_version}")
-    
+
     # Determine which approaches to try
     approaches_to_try = []
-    
+
     if preferred_approach:
         approaches_to_try.append(preferred_approach)
     else:
@@ -1838,14 +1838,14 @@ def load_keras_model(
             approaches_to_try.append('tf_keras')
         approaches_to_try.append('custom_deserialization')
         approaches_to_try.append('rebuild')
-    
+
     # Try each approach
     model = None
     last_error = None
-    
+
     for approach in approaches_to_try:
         logger.info(f"Trying approach: {approach}")
-        
+
         try:
             if approach == 'keras_native':
                 model, approach_metadata = load_with_keras_native(
@@ -1866,32 +1866,32 @@ def load_keras_model(
             else:
                 logger.warning(f"Unknown approach: {approach}")
                 continue
-            
+
             # Success!
             result_metadata['approach_used'] = approach
             result_metadata['success'] = True
             result_metadata['optimizer_preserved'] = approach_metadata['optimizer_preserved']
             result_metadata['warnings'].extend(approach_metadata['warnings'])
-            
+
             # Validate the model
             validation = validate_model_loading(model, expected_input_shape)
             result_metadata['validation'] = validation
             result_metadata['warnings'].extend(validation['warnings'])
-            
+
             logger.info(f"Model loaded successfully using approach: {approach}")
             break
-            
+
         except Exception as e:
             last_error = e
             logger.warning(f"Approach '{approach}' failed: {str(e)}")
             result_metadata['warnings'].append(f"Approach '{approach}' failed: {str(e)}")
-    
+
     # Check if any approach succeeded
     if model is None:
         error_msg = f"All loading approaches failed. Last error: {str(last_error)}"
         logger.error(error_msg)
         raise Exception(error_msg)
-    
+
     return model, result_metadata
 
 
@@ -1902,16 +1902,16 @@ def load_keras_model(
 if __name__ == "__main__":
     """
     Example usage of the Keras model loader.
-    
+
     This demonstrates how to use the KerasModelLoader class and utility functions
     to load a Keras 2.15.0 model in a Keras 3.x environment.
     """
-    
+
     print("=" * 80)
     print("Keras Model Loader - Cross-Version Compatibility Solution")
     print("=" * 80)
     print()
-    
+
     # Example 1: Detect Keras version
     print("Example 1: Detect Keras Version")
     print("-" * 40)
@@ -1921,7 +1921,7 @@ if __name__ == "__main__":
     except ImportError as e:
         print(f"  Error: {e}")
     print()
-    
+
     # Example 2: Detect model format (replace with actual path)
     print("Example 2: Detect Model Format")
     print("-" * 40)
@@ -1933,7 +1933,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print("  Model not found (this is expected in the example)")
     print()
-    
+
     # Example 3: Extract model metadata
     print("Example 3: Extract Model Metadata")
     print("-" * 40)
@@ -1947,7 +1947,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"  Error: {e}")
     print()
-    
+
     # Example 4: Using KerasModelLoader class (recommended)
     print("Example 4: Using KerasModelLoader Class (Recommended)")
     print("-" * 40)
@@ -1955,16 +1955,16 @@ if __name__ == "__main__":
     try:
         # Initialize loader
         loader = KerasModelLoader(example_model_path)
-        
+
         # Load the model
         model = loader.load_model(
             compile=True,
             expected_input_shape=(60, 14)  # Adjust based on your model
         )
-        
+
         # Get model information
         info = loader.get_model_info()
-        
+
         print("  ✓ Model loaded successfully!")
         print(f"  Approach used: {info['approach_used']}")
         print(f"  Optimizer preserved: {info['optimizer_preserved']}")
@@ -1972,22 +1972,22 @@ if __name__ == "__main__":
         print(f"  Number of layers: {info['validation']['num_layers']}")
         print(f"  Trainable parameters: {info['validation']['trainable_params']:,}")
         print(f"  Load time: {info['load_time']:.2f}s")
-        
+
         if info['warnings']:
             print("\n  Warnings:")
             for warning in info['warnings']:
                 print(f"    - {warning}")
-        
+
         # Get model summary
         print("\n  Model Summary:")
         print(loader.get_model_summary())
-        
+
     except FileNotFoundError:
         print("  Model not found (this is expected in the example)")
     except Exception as e:
         print(f"  Error: {e}")
     print()
-    
+
     # Example 5: Load model with intelligent loader (functional approach)
     print("Example 5: Load Model with Intelligent Loader (Functional)")
     print("-" * 40)
@@ -1998,18 +1998,18 @@ if __name__ == "__main__":
             compile=True,
             expected_input_shape=(60, 14)  # Adjust based on your model
         )
-        
+
         print("  ✓ Model loaded successfully!")
         print(f"  Approach used: {load_metadata['approach_used']}")
         print(f"  Optimizer preserved: {load_metadata['optimizer_preserved']}")
         print(f"  Validation passed: {load_metadata['validation']['valid']}")
-        
+
     except FileNotFoundError:
         print("  Model not found (this is expected in the example)")
     except Exception as e:
         print(f"  Error: {e}")
     print()
-    
+
     # Example 6: Load model with specific approach
     print("Example 6: Load Model with Specific Approach")
     print("-" * 40)
@@ -2031,7 +2031,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"  Error: {e}")
     print()
-    
+
     # Example 7: Load weights only (no optimizer)
     print("Example 7: Load Weights Only")
     print("-" * 40)
@@ -2047,7 +2047,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"  Error: {e}")
     print()
-    
+
     # Example 8: Reinitialize optimizer
     print("Example 8: Reinitialize Optimizer")
     print("-" * 40)
@@ -2058,7 +2058,7 @@ if __name__ == "__main__":
         model = keras.Sequential([
             keras.layers.Dense(10, input_shape=(5,))
         ])
-        
+
         optimizer_config = {
             'class_name': 'Adam',
             'config': {
@@ -2067,14 +2067,14 @@ if __name__ == "__main__":
                 'beta_2': 0.999
             }
         }
-        
+
         reinitialize_optimizer(model, optimizer_config)
         print("  ✓ Optimizer reinitialized successfully")
-        
+
     except Exception as e:
         print(f"  Error: {e}")
     print()
-    
+
     # Example 9: Load weights by name
     print("Example 9: Load Weights by Name")
     print("-" * 40)
@@ -2085,17 +2085,17 @@ if __name__ == "__main__":
         model = keras.Sequential([
             keras.layers.Dense(10, input_shape=(5,), name='dense_1')
         ])
-        
+
         # Note: This would normally load from an actual weights file
         # weights_path = 'path/to/model.weights.h5'
         # load_weights_by_name(model, weights_path)
         print("  ✓ Function ready to load weights by name")
         print("  (Replace weights_path with actual file path)")
-        
+
     except Exception as e:
         print(f"  Error: {e}")
     print()
-    
+
     # Example 10: Validate model structure
     print("Example 10: Validate Model Structure")
     print("-" * 40)
@@ -2107,7 +2107,7 @@ if __name__ == "__main__":
             keras.layers.Dense(10, input_shape=(5,), name='dense_1'),
             keras.layers.Dense(1, name='dense_2')
         ])
-        
+
         expected_config = {
             'config': {
                 'layers': [
@@ -2117,14 +2117,14 @@ if __name__ == "__main__":
                 ]
             }
         }
-        
+
         is_valid = validate_model_structure(model, expected_config)
         print(f"  Model structure valid: {is_valid}")
-        
+
     except Exception as e:
         print(f"  Error: {e}")
     print()
-    
+
     print("=" * 80)
     print("For production use:")
     print("  1. Replace 'path/to/your/model.keras' with your actual model path")

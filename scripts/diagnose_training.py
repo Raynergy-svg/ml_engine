@@ -46,7 +46,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import sys
 import time
 import warnings
@@ -256,8 +255,7 @@ def check_label_quality(
     
     # Class balance
     y_train_bin = (y_train >= 0.5).astype(int).ravel()
-    y_val_bin = (y_val >= 0.5).astype(int).ravel()
-    
+
     report.n_positive = int((y_train_bin == 1).sum())
     report.n_negative = int((y_train_bin == 0).sum())
     report.balance_ratio = report.n_positive / max(report.n_positive + report.n_negative, 1)
@@ -1028,4 +1026,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

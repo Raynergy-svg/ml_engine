@@ -31,32 +31,32 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CalibrationConfig:
     """Configuration for confidence calibration."""
-    
+
     # Calibration method: 'platt', 'isotonic', or 'none'
     method: str = 'platt'
-    
+
     # Minimum confidence threshold for trade execution
     min_confidence_threshold: float = 0.5
-    
+
     # Maximum confidence threshold (above this, confidence is capped)
     max_confidence_threshold: float = 0.95
-    
+
     # Whether to apply directional adjustment (penalty for neutral predictions)
     apply_directional_adjustment: bool = True
-    
+
     # Directional adjustment parameters
     neutral_threshold: float = 0.05  # How close to 0.5 is considered neutral
     directional_penalty: float = 0.1  # Penalty for neutral predictions
-    
+
     # Whether to apply win probability adjustment
     apply_win_probability_adjustment: bool = True
-    
+
     # Win probability adjustment parameters
     win_probability_threshold: float = 0.5
-    
+
     # Whether to apply trading context adjustment
     apply_trading_context_adjustment: bool = True
-    
+
     # Trading context adjustment parameters
     trading_penalty: float = 0.15  # Additional penalty for trading context
 
@@ -64,7 +64,7 @@ class CalibrationConfig:
 @dataclass
 class CalibrationResult:
     """Result of confidence calibration."""
-    
+
     original_confidence: float
     calibrated_confidence: float
     adjustment_factors: Dict[str, float]
@@ -80,14 +80,14 @@ class CalibrationResult:
 
 class ConfidenceCalibrator:
     """Confidence calibrator for trading models.
-    
+
     This class provides methods to calibrate model confidence scores
     to better align with actual win probabilities using historical data.
     """
-    
+
     def __init__(self, config: CalibrationConfig):
         """Initialize the calibrator.
-        
+
         Args:
             config: Calibration configuration
         """
@@ -96,47 +96,47 @@ class ConfidenceCalibrator:
         self.isotonic_model: Optional[IsotonicRegression] = None
         self.calibration_history: List[Dict[str, Any]] = []
         self.is_fitted = False
-        
-    def fit(self, 
-            confidence_scores: Union[List[float], np.ndarray], 
+
+    def fit(self,
+            confidence_scores: Union[List[float], np.ndarray],
             actual_outcomes: Union[List[bool], np.ndarray]) -> None:
         """Fit calibration models using historical data.
-        
+
         Args:
             confidence_scores: Model confidence scores (0 to 1)
             actual_outcomes: Actual trade outcomes (True for win, False for loss)
         """
         confidence_scores = np.array(confidence_scores)
         actual_outcomes = np.array(actual_outcomes)
-        
+
         if len(confidence_scores) != len(actual_outcomes):
             raise ValueError("Confidence scores and outcomes must have the same length")
-        
+
         if len(confidence_scores) < 10:
             logger.warning("Insufficient data for calibration (minimum 10 samples needed)")
             return
-        
+
         # Fit Platt scaling (logistic regression)
         if self.config.method in ['platt', 'both']:
             self.platt_model = LogisticRegression()
             # Reshape for sklearn
             X = confidence_scores.reshape(-1, 1)
             self.platt_model.fit(X, actual_outcomes)
-        
+
         # Fit isotonic regression
         if self.config.method in ['isotonic', 'both']:
             self.isotonic_model = IsotonicRegression(out_of_bounds='clip')
             self.isotonic_model.fit(confidence_scores, actual_outcomes)
-        
+
         self.is_fitted = True
         logger.info(f"Calibration models fitted using {len(confidence_scores)} samples")
-    
+
     def calibrate_confidence(self, confidence: float) -> CalibrationResult:
         """Calibrate a single confidence score.
-        
+
         Args:
             confidence: Original model confidence score
-            
+
         Returns:
             CalibrationResult with calibrated confidence and adjustment factors
         """
@@ -152,22 +152,22 @@ class ConfidenceCalibrator:
             # Apply base calibration using fitted models
             calibrated = self._apply_base_calibration(confidence)
             base_method = self.config.method
-            
+
             # Apply adjustments only when model is fitted
             adjustment_factors = {}
-            
+
             # Directional adjustment
             if self.config.apply_directional_adjustment:
                 directional_factor = self._calculate_directional_adjustment(confidence)
                 calibrated *= directional_factor
                 adjustment_factors['directional'] = directional_factor
-            
+
             # Win probability adjustment
             if self.config.apply_win_probability_adjustment:
                 win_prob_factor = self._calculate_win_probability_adjustment(calibrated)
                 calibrated *= win_prob_factor
                 adjustment_factors['win_probability'] = win_prob_factor
-            
+
             # Trading context adjustment
             if self.config.apply_trading_context_adjustment:
                 trading_factor = self._calculate_trading_context_adjustment()
@@ -175,7 +175,7 @@ class ConfidenceCalibrator:
                 adjustment_factors['trading_context'] = trading_factor
 
             unfitted = False
-        
+
         # Apply thresholds (clamp to configured min/max)
         calibrated = float(np.clip(
             calibrated,
@@ -189,7 +189,7 @@ class ConfidenceCalibrator:
             reason = "Models not fitted"
         else:
             reason = "Valid" if is_valid else f"Below threshold ({self.config.min_confidence_threshold})"
-        
+
         result = CalibrationResult(
             original_confidence=confidence,
             calibrated_confidence=calibrated,
@@ -198,7 +198,7 @@ class ConfidenceCalibrator:
             is_valid=is_valid,
             reason=reason
         )
-        
+
         # Log calibration
         self.calibration_history.append({
             'timestamp': pd.Timestamp.now(),
@@ -207,44 +207,44 @@ class ConfidenceCalibrator:
             'valid': is_valid,
             'factors': adjustment_factors
         })
-        
+
         return result
-    
+
     def _apply_base_calibration(self, confidence: float) -> float:
         """Apply base calibration using fitted models."""
         if self.config.method == 'none':
             return confidence
-        
+
         if self.config.method == 'platt' and self.platt_model is not None:
             X = np.array([[confidence]])
             return float(self.platt_model.predict_proba(X)[0, 1])
-        
+
         if self.config.method == 'isotonic' and self.isotonic_model is not None:
             return float(self.isotonic_model.predict([confidence])[0])
-        
+
         if self.config.method == 'both':
             # Average of both methods
             platt_pred = float(self.platt_model.predict_proba([[confidence]])[0, 1]) if self.platt_model else confidence
             isotonic_pred = float(self.isotonic_model.predict([confidence])[0]) if self.isotonic_model else confidence
             return (platt_pred + isotonic_pred) / 2
-        
+
         return confidence
-    
+
     def _calculate_directional_adjustment(self, confidence: float) -> float:
         """Calculate directional adjustment factor.
-        
+
         Reduces confidence for predictions close to neutral (0.5).
         """
         # Distance from neutral
         distance_from_neutral = abs(confidence - 0.5)
-        
+
         if distance_from_neutral < self.config.neutral_threshold:
             # Apply penalty for neutral predictions
             penalty = self.config.directional_penalty * (1 - distance_from_neutral / self.config.neutral_threshold)
             return 1.0 - penalty
         else:
             return 1.0
-    
+
     def _calculate_win_probability_adjustment(self, calibrated_confidence: float) -> float:
         """Calculate win probability adjustment factor."""
         if calibrated_confidence < self.config.win_probability_threshold:
@@ -253,103 +253,103 @@ class ConfidenceCalibrator:
             return 1.0 - reduction
         else:
             return 1.0
-    
+
     def _calculate_trading_context_adjustment(self) -> float:
         """Calculate trading context adjustment factor."""
         return 1.0 - self.config.trading_penalty
-    
+
     def evaluate_calibration(self,
                              confidence_scores: Union[List[float], np.ndarray],
                              actual_outcomes: Union[List[bool], np.ndarray]) -> Dict[str, float]:
         """Evaluate calibration quality using Brier score.
-        
+
         Args:
             confidence_scores: Model confidence scores
             actual_outcomes: Actual trade outcomes
-            
+
         Returns:
             Dictionary with evaluation metrics
         """
         confidence_scores = np.array(confidence_scores)
         actual_outcomes = np.array(actual_outcomes)
-        
+
         # Original Brier score
         original_brier = brier_score_loss(actual_outcomes, confidence_scores)
-        
+
         # Calibrated Brier score
         calibrated_scores = [self.calibrate_confidence(c).calibrated_confidence
                              for c in confidence_scores]
         calibrated_brier = brier_score_loss(actual_outcomes, calibrated_scores)
-        
+
         return {
             'original_brier_score': original_brier,
             'calibrated_brier_score': calibrated_brier,
             'improvement': original_brier - calibrated_brier,
             'relative_improvement': (original_brier - calibrated_brier) / original_brier if original_brier > 0 else 0
         }
-    
+
     def save(self, filepath: Union[str, Path]) -> None:
         """Save calibration models to file."""
         filepath = Path(filepath)
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        
+
         data = {
             'config': self.config,
             'platt_model': self.platt_model,
             'isotonic_model': self.isotonic_model,
             'is_fitted': self.is_fitted
         }
-        
+
         with open(filepath, 'wb') as f:
             pickle.dump(data, f)
-        
+
         logger.info(f"Calibration models saved to {filepath}")
-    
+
     @classmethod
     def load(cls, filepath: Union[str, Path]) -> 'ConfidenceCalibrator':
         """Load calibration models from file."""
         filepath = Path(filepath)
-        
+
         if not filepath.exists():
             raise FileNotFoundError(f"Calibration file not found: {filepath}")
-        
+
         with open(filepath, 'rb') as f:
             data = pickle.load(f)
-        
+
         calibrator = cls(data['config'])
         calibrator.platt_model = data['platt_model']
         calibrator.isotonic_model = data['isotonic_model']
         calibrator.is_fitted = data['is_fitted']
-        
+
         logger.info(f"Calibration models loaded from {filepath}")
         return calibrator
 
 
 class ConfidenceAdjuster:
     """Advanced confidence adjustment based on multiple factors.
-    
+
     This class implements the confidence adjustment logic described in
     TRADING_CONFIDENCE_ADJUSTMENT_REPORT.md, combining multiple factors
     to produce a more realistic confidence score.
     """
-    
+
     def __init__(self, config: CalibrationConfig):
         """Initialize the confidence adjuster."""
         self.config = config
-    
+
     def adjust_confidence(self,
                           original_confidence: float,
                           prediction_direction: float | None,
                           tier2_win_probability: Optional[float] = None,
                           trading_context: str = 'forex') -> CalibrationResult:
         """Adjust confidence based on multiple factors.
-        
+
         Args:
             original_confidence: Original model confidence
             prediction_direction: Prediction direction (0.0 to 1.0, 0.5 is neutral)
             tier2_win_probability: Tier2 win probability if available
             trading_context: Trading context ('forex', 'stocks', etc.)
-            
+
         Returns:
             CalibrationResult with adjusted confidence
         """
@@ -395,7 +395,7 @@ class ConfidenceAdjuster:
         else:
             is_valid = adjusted_confidence >= float(self.config.min_confidence_threshold)
             reason = self._get_validity_reason(adjusted_confidence, is_valid)
-        
+
         return CalibrationResult(
             original_confidence=original_confidence,
             calibrated_confidence=adjusted_confidence,
@@ -404,23 +404,23 @@ class ConfidenceAdjuster:
             is_valid=is_valid,
             reason=reason
         )
-    
+
     def _calculate_direction_factor(self, prediction_direction: float) -> float:
         """Calculate direction adjustment factor.
-        
+
         Reduces confidence for predictions close to neutral.
         """
         # Distance from neutral (0.5)
         distance_from_neutral = abs(prediction_direction - 0.5)
-        
+
         # Direction penalty factor from the analysis
         direction_penalty = 0.972 if distance_from_neutral < 0.1 else 1.0
-        
+
         return direction_penalty
-    
+
     def _calculate_win_probability_factor(self, win_probability: float) -> float:
         """Calculate win probability adjustment factor.
-        
+
         Uses the win probability penalty from the analysis.
         """
         # If win probability meets or exceeds the configured threshold, do not reduce.
@@ -435,12 +435,12 @@ class ConfidenceAdjuster:
             return 1.0
         # Otherwise reduce proportionally (keep <1.0)
         return float(max(0.0, float(win_probability)))
-    
+
     def _calculate_trading_factor(self, trading_context: str) -> float:
         """Calculate trading context adjustment factor."""
         # Trading adjustment factor (configurable).
         return float(max(0.0, 1.0 - float(getattr(self.config, "trading_penalty", 0.0))))
-    
+
     def _get_validity_reason(self, confidence: float, is_valid: bool) -> str:
         """Get reason for confidence validity."""
         if is_valid:
@@ -489,18 +489,18 @@ def recalibrate_from_journal(
     verbose: bool = False,
 ) -> Optional[ConfidenceCalibrator]:
     """Recalibrate Platt scaling model using closed trades from the trade journal.
-    
+
     This function implements the calibration feedback loop:
     1. Loads closed trades from the journal
     2. Extracts tcn_probability and win/loss outcome
     3. Refits the calibrator with real outcomes
     4. Saves to disk for scanner to use
-    
+
     Args:
         model_dir: Directory to save calibrator to
         min_trades: Minimum closed trades required for recalibration
         verbose: Print progress
-        
+
     Returns:
         Fitted calibrator if successful, None otherwise
     """
@@ -513,18 +513,18 @@ def recalibrate_from_journal(
         except ImportError:
             logger.error("Could not import TradeJournal")
             return None
-    
+
     model_dir = Path(model_dir)
-    
+
     # Load trade journal
     journal = TradeJournal()
-    
+
     # Filter to closed trades with valid data
     closed_trades = [
         t for t in journal.trades
         if t.status in ("win", "loss") and t.tcn_probability is not None
     ]
-    
+
     if len(closed_trades) < min_trades:
         logger.warning(
             f"Insufficient closed trades for recalibration: {len(closed_trades)} < {min_trades}"
@@ -532,15 +532,15 @@ def recalibrate_from_journal(
         if verbose:
             print(f"[yellow]Need at least {min_trades} closed trades, have {len(closed_trades)}[/yellow]")
         return None
-    
+
     # Extract confidence scores and outcomes
     confidence_scores = np.array([t.tcn_probability for t in closed_trades])
     outcomes = np.array([t.status == "win" for t in closed_trades])
-    
+
     if verbose:
         win_rate = outcomes.mean() * 100
         print(f"Recalibrating from {len(closed_trades)} trades (win rate: {win_rate:.1f}%)")
-    
+
     # Create and fit calibrator
     config = CalibrationConfig(
         method='platt',
@@ -552,16 +552,16 @@ def recalibrate_from_journal(
     )
     calibrator = ConfidenceCalibrator(config)
     calibrator.fit(confidence_scores, outcomes)
-    
+
     if not calibrator.is_fitted:
         logger.error("Calibrator fitting failed")
         return None
-    
+
     # Save calibrator
     model_dir.mkdir(parents=True, exist_ok=True)
     calibrator_path = model_dir / "confidence_calibrator.pkl"
     calibrator.save(calibrator_path)
-    
+
     if verbose:
         # Show calibration effect on sample probabilities
         print("\n[bold]Calibration Results:[/bold]")
@@ -570,7 +570,7 @@ def recalibrate_from_journal(
             result = calibrator.calibrate_confidence(p)
             print(f"  {p:.2f} → {result.calibrated_confidence:.3f}")
         print(f"\nSaved to: {calibrator_path}")
-    
+
     logger.info(f"Recalibrated from {len(closed_trades)} trades, saved to {calibrator_path}")
     return calibrator
 

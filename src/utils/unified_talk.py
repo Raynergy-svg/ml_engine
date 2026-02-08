@@ -29,11 +29,11 @@ def safe_torch_load(*args: Any, **kwargs: Any):
 
 
 UnifiedNeuralEngine = None  # type: ignore
-from src.utils.reasoning_enhanced import ReasoningEngine
-from src.utils.utils import load_config
+from src.utils.reasoning_enhanced import ReasoningEngine  # noqa: E402
+from src.utils.utils import load_config  # noqa: E402
 
 # TensorFlow support (lazy import)
-from src.models.tensorflow_engine_unified import (
+from src.models.tensorflow_engine_unified import (  # noqa: E402
     TensorFlowUnifiedEngine,
     is_tensorflow_checkpoint,
     get_default_tf_checkpoint,
@@ -92,7 +92,7 @@ class TalkContext:
 
     # Feature engineering flag (True if model was trained with all features)
     apply_feature_engineering: bool = False
-    
+
     # Model type flag
     is_tensorflow: bool = False
 
@@ -103,7 +103,7 @@ class TalkContext:
     oanda_candles: int = 300
     oanda_price: str = "MBA"
     oanda_execute: bool = True  # Live trading enabled by default
-    
+
     # Risk management: Stop Loss and Take Profit (in pips)
     stop_loss_pips: float = 20.0  # Default 20 pips stop loss
     take_profit_pips: float = 40.0  # Default 40 pips take profit (2:1 risk/reward)
@@ -116,7 +116,7 @@ class TalkContext:
 
     # Prevent concurrent model inference (TensorFlow is not reliably thread-safe).
     inference_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
-    
+
     # New confidence system components
     confidence_calibrator: Any = None  # ConfidenceCalibrator instance
     position_sizer: Any = None  # DynamicPositionSizer instance
@@ -149,7 +149,7 @@ def select_latest_checkpoint(model_dir: Path) -> Optional[Path]:
 
 def _default_checkpoint_path(cfg: Dict[str, Any]) -> str:
     """Get default checkpoint path, preferring TensorFlow over PyTorch.
-    
+
     Priority:
     1. TensorFlow checkpoint (trained_data/checkpoints/tensorflow/tf_model_best.keras)
     2. PyTorch checkpoint (trained_data/models/unified_market_net.pth)
@@ -158,7 +158,7 @@ def _default_checkpoint_path(cfg: Dict[str, Any]) -> str:
     tf_checkpoint = Path(get_default_tf_checkpoint())
     if tf_checkpoint.exists():
         return str(tf_checkpoint)
-    
+
     # Fall back to PyTorch checkpoint
     model_dir = Path(cfg.get("MODEL_DIR") or cfg.get("paths", {}).get("model_dir") or "trained_data/models")
     latest = select_latest_checkpoint(model_dir)
@@ -260,7 +260,7 @@ def _coerce_sequence(
     expected_features: int = None,
 ) -> np.ndarray:
     """Extract feature sequence from DataFrame.
-    
+
     Args:
         df: DataFrame with features
         feature_columns: List of columns to use (ignored if use_all_numeric=True)
@@ -272,16 +272,16 @@ def _coerce_sequence(
     if use_all_numeric:
         # Use all numeric columns for TensorFlow models
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-        
+
         # If expected_features is set, limit to that number
         if expected_features and len(numeric_cols) > expected_features:
             numeric_cols = numeric_cols[:expected_features]
         elif expected_features and len(numeric_cols) < expected_features:
             # Pad with zeros if we have fewer features
             pass  # Handle below
-            
+
         feature_columns = numeric_cols
-    
+
     missing = [c for c in feature_columns if c not in df.columns]
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
@@ -291,7 +291,7 @@ def _coerce_sequence(
         raise ValueError(f"Need at least {sequence_length} rows; got {len(window)}")
 
     arr = window.to_numpy(dtype=np.float32, copy=True)
-    
+
     # Pad or truncate features to match expected_features
     if expected_features and arr.shape[1] != expected_features:
         if arr.shape[1] > expected_features:
@@ -339,7 +339,7 @@ def _predict_one(ctx: TalkContext, df: pd.DataFrame) -> Dict[str, Any]:
         x = np.expand_dims(seq, axis=0)  # (1, seq, feat)
     else:
         x = torch.tensor(seq, dtype=torch.float32).unsqueeze(0)  # (1, seq, feat)
-    
+
     out = ctx.engine.predict(x)
 
     pred_scaled = np.asarray(out.get("prediction"), dtype=float).reshape(-1)
@@ -369,7 +369,7 @@ def _predict_one(ctx: TalkContext, df: pd.DataFrame) -> Dict[str, Any]:
 
 def _predict_one_locked(ctx: TalkContext, df: pd.DataFrame) -> Dict[str, Any]:
     """Thread-safe wrapper for _predict_one.
-    
+
     TensorFlow inference can hang if called concurrently from multiple threads.
     Guard all inference through a single lock shared by the REPL + warmup.
     """
@@ -489,22 +489,22 @@ def _confidence_bucket(confidence: float) -> str:
 
 def _can_execute_trade(state_probs: Any, risk: Any) -> tuple[bool, str]:
     """Determine if trade should be executed based on confidence and risk.
-    
+
     Rules:
     - HIGH confidence (>=75%): Always execute
     - MEDIUM confidence (55-75%): Execute only if risk is LOW (<0.35)
     - LOW confidence (<55%): Never execute
-    
+
     Returns (can_execute, reason)
     """
     if state_probs is None or not isinstance(state_probs, list) or len(state_probs) == 0:
         return False, "no prediction data available"
-    
+
     confidence = float(max(state_probs))
     conf_bucket = _confidence_bucket(confidence)
     risk_val = float(risk) if risk is not None else 0.5
     risk_level = _risk_bucket(risk_val)
-    
+
     if conf_bucket == "high":
         return True, f"high confidence ({confidence:.0%})"
     elif conf_bucket == "medium":
@@ -645,13 +645,13 @@ def _render_default_answer(result: Dict[str, Any], q: str) -> str:
     risk = result.get("risk")
     trend = result.get("trend")
     state_probs = result.get("state_probs")
-    
+
     lines: list[str] = []
-    
+
     state_line = _format_state_probs_line(state_probs)
     if state_line:
         lines.append(state_line)
-    
+
     summary = _summary_line(pred, last_close)
     if summary is not None:
         lines.append(summary)
@@ -677,17 +677,17 @@ def _render_default_answer(result: Dict[str, Any], q: str) -> str:
 
 def _render_answer(q: str, result: Dict[str, Any]) -> str:
     ql = q.lower()
-    
+
     # Handle specific questions
     if any(k in ql for k in ("risk", "risky", "dangerous", "safe")):
         return _render_risk_answer(result.get("risk"))
-    
+
     if any(k in ql for k in ("trend", "direction", "going")):
         return _render_trend_answer(result.get("trend"), result.get("state_probs"))
-    
+
     if any(k in ql for k in ("state", "bullish", "bearish", "sentiment")):
         return _format_state_answer(result.get("state_probs"))
-    
+
     return _render_default_answer(result, q)
 
 
@@ -724,11 +724,11 @@ def _find_pytorch_checkpoint(cfg: Dict[str, Any]) -> Optional[str]:
         cfg.get("paths", {}).get("checkpoint"),
         cfg.get("data", {}).get("checkpoint_path"),
     ]
-    
+
     for path in paths_to_try:
         if path and Path(path).exists():
             return str(path)
-    
+
     return None
 
 
@@ -736,11 +736,11 @@ def _load_tensorflow_model(cfg: Dict[str, Any], ckpt_path: str) -> tuple[TensorF
     """Load TensorFlow model and return engine and metadata."""
     print("🔷 Loading TensorFlow TFT model...")
     engine = TensorFlowUnifiedEngine.from_checkpoint(ckpt_path, device=cfg.get("device"))
-    
+
     feature_columns = cfg.get("data", {}).get("feature_columns") or ["open", "high", "low", "close", "volume"]
     sequence_length = int(cfg.get("data", {}).get("sequence_length") or cfg.get("sequence_length") or 60)
     target_shift = int(cfg.get("data", {}).get("target_shift") or cfg.get("target_shift") or 1)
-    
+
     return engine, {
         "feature_columns": feature_columns,
         "sequence_length": sequence_length,
@@ -761,10 +761,10 @@ def _load_pytorch_model(cfg: Dict[str, Any], ckpt_path: str) -> tuple[UnifiedNeu
     feature_columns = list(data_meta.get("feature_columns") or ["open", "high", "low", "close", "volume"])
     sequence_length = int(data_meta.get("sequence_length") or cfg.get("data", {}).get("sequence_length") or cfg.get("sequence_length") or 60)
     target_shift = int(data_meta.get("target_shift") or cfg.get("data", {}).get("target_shift") or cfg.get("target_shift") or 1)
-    
+
     base_ohlcv_count = 8
     apply_feature_engineering = len(feature_columns) > base_ohlcv_count
-    
+
     return engine, {
         "feature_columns": feature_columns,
         "sequence_length": sequence_length,
@@ -787,7 +787,7 @@ def _load_context(config_path: str, *, checkpoint_path: Optional[str] = None) ->
         )
 
     is_tf_model = is_tensorflow_checkpoint(ckpt_path)
-    
+
     if is_tf_model:
         try:
             engine, meta = _load_tensorflow_model(cfg, ckpt_path)
@@ -813,11 +813,11 @@ def _load_context(config_path: str, *, checkpoint_path: Optional[str] = None) ->
     from confidence_calibration import create_default_calibrator
     from position_sizing import create_default_position_sizer
     from risk_management import create_default_risk_manager
-    
+
     confidence_calibrator = create_default_calibrator()
     position_sizer = create_default_position_sizer()
     risk_manager = create_default_risk_manager()
-    
+
     return TalkContext(
         config_path=config_path,
         checkpoint_path=ckpt_path,
@@ -1003,14 +1003,14 @@ def _handle_summary_command(ctx: TalkContext) -> None:
     if ctx.last_result is None:
         print(_assistant_prefix(ctx) + "I don't have a prediction yet. Run 'predict' and I'll give you the lowdown.")
         return
-    
+
     result = ctx.last_result
     state_probs = result.get("state_probs")
     risk = result.get("risk")
     trend = result.get("trend")
-    
+
     lines = [f"📊 Here's what I'm seeing for {ctx.active_source or 'current data'}:"]
-    
+
     # State with confidence level
     if state_probs:
         best = int(np.argmax(state_probs))
@@ -1018,36 +1018,36 @@ def _handle_summary_command(ctx: TalkContext) -> None:
         labels = ["🔴 BEARISH", "🟢 BULLISH"] if len(state_probs) == 2 else [f"State {i}" for i in range(len(state_probs))]
         conf_label = _confidence_bucket(conf).upper()
         lines.append(f"  State: {labels[best]} ({conf:.0%} - {conf_label} confidence)")
-    
+
     # Risk
     if risk is not None:
         r = float(risk)
         emoji = _risk_emoji(r)
         lines.append(f"  Risk: {emoji} {_risk_bucket(r)} ({r:.2f})")
-    
+
     # Trend
     if trend is not None:
         t = float(trend)
         emoji = _trend_emoji(t)
         lines.append(f"  Trend: {emoji} {t:+.4f}")
-    
+
     # Trade readiness
     can_trade, reason = _can_execute_trade(state_probs, risk)
     trade_emoji = "✅" if can_trade else "⏸️"
     lines.append(f"  Trade ready: {trade_emoji} {reason}")
-    
+
     print(_assistant_prefix(ctx) + "\n".join(lines))
 
 
 def _handle_sl_command(ctx: TalkContext, ql: str) -> Optional[bool]:
     """Handle stop loss commands."""
-    if not (ql.startswith("sl ") or ql.startswith("stoploss ") or ql.startswith("stop loss ")):
+    if not (ql.startswith(("sl ", "stoploss ", "stop loss "))):
         return None
-    
+
     parts = ql.split()
     if len(parts) < 2:
         return None
-    
+
     try:
         pips = float(parts[-1])
         ctx.stop_loss_pips = pips
@@ -1069,13 +1069,13 @@ def _handle_sl_command(ctx: TalkContext, ql: str) -> Optional[bool]:
 
 def _handle_tp_command(ctx: TalkContext, ql: str) -> Optional[bool]:
     """Handle take profit commands."""
-    if not (ql.startswith("tp ") or ql.startswith("takeprofit ") or ql.startswith("take profit ")):
+    if not (ql.startswith(("tp ", "takeprofit ", "take profit "))):
         return None
-    
+
     parts = ql.split()
     if len(parts) < 2:
         return None
-    
+
     try:
         pips = float(parts[-1])
         ctx.take_profit_pips = pips
@@ -1101,7 +1101,7 @@ def _handle_risk_settings_command(ctx: TalkContext) -> None:
     tp_status = f"ON ({ctx.take_profit_pips} pips)" if ctx.use_take_profit else "OFF"
     exec_status = EXEC_STATUS_LIVE if ctx.oanda_execute else EXEC_STATUS_DRY_RUN
     print(
-        _assistant_prefix(ctx) 
+        _assistant_prefix(ctx)
         + "📊 Risk Management Settings:\n"
         + f"  Execute Mode: {exec_status}\n"
         + f"  Stop Loss: {sl_status}\n"
@@ -1118,7 +1118,7 @@ def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
     if ql in {"help", "?"}:
         _handle_help_command(ctx)
         return True
-    
+
     if ql in {"summary", "status", "overview"}:
         _handle_summary_command(ctx)
         return True
@@ -1136,11 +1136,11 @@ def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
     sl_result = _handle_sl_command(ctx, ql)
     if sl_result is not None:
         return sl_result
-    
+
     tp_result = _handle_tp_command(ctx, ql)
     if tp_result is not None:
         return tp_result
-    
+
     if ql in {"risk", "risk settings", "sl/tp", "sltp"}:
         _handle_risk_settings_command(ctx)
         return True
@@ -1293,12 +1293,12 @@ def _parse_trade_units(parts: list[str]) -> int:
 
 def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str], skip_confidence_check: bool = False) -> None:
     """Handle direct buy/sell market orders.
-    
+
     By default, checks confidence before executing:
     - HIGH confidence: Always execute
     - MEDIUM confidence + LOW risk: Execute
     - Otherwise: Refuse to execute
-    
+
     Set skip_confidence_check=True to bypass (use with caution).
     """
     # Get units - if not provided, use default
@@ -1308,7 +1308,7 @@ def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str], ski
     else:
         instrument = ctx.oanda_instrument
         units = _default_trade_units(ctx, instrument)
-    
+
     signed_units = abs(int(units)) * (1 if action == "buy" else -1)
 
     # Tier-1 gating before executing (unless explicitly skipped)
@@ -1337,7 +1337,7 @@ def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str], ski
             base_take_profit_pips=ctx.take_profit_pips if ctx.use_take_profit else None,
             instrument=instrument
         )
-        
+
         if risk_result.is_valid:
             stop_loss_pips = risk_result.stop_loss_pips
             take_profit_pips = risk_result.take_profit_pips
@@ -1351,7 +1351,7 @@ def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str], ski
 
     # Calculate stop loss and take profit prices
     stop_loss_price, take_profit_price = _calculate_sl_tp_prices(ctx, instrument, action, stop_loss_pips, take_profit_pips)
-    
+
     resp = ctx.oanda_client.create_market_order(
         instrument=instrument,
         units=signed_units,
@@ -1359,19 +1359,19 @@ def _handle_trade_market(ctx: TalkContext, *, action: str, parts: list[str], ski
         take_profit_price=take_profit_price,
     )
     tx = (resp or {}).get("orderFillTransaction") or (resp or {}).get("orderCreateTransaction") or {}
-    
+
     sl_tp_msg = ""
     if stop_loss_price:
         sl_tp_msg += f" SL={stop_loss_price:.5f}"
     if take_profit_price:
         sl_tp_msg += f" TP={take_profit_price:.5f}"
-    
+
     print(_assistant_prefix(ctx) + f"✅ Order submitted! {action.upper()} {abs(signed_units)} {instrument}{sl_tp_msg} (id={tx.get('id')}).")
 
 
 def _get_pip_value(instrument: str) -> float:
     """Get the pip value for an instrument.
-    
+
     For most forex pairs, 1 pip = 0.0001
     For JPY pairs, 1 pip = 0.01
     """
@@ -1385,7 +1385,7 @@ def _get_current_price(ctx: TalkContext, instrument: str) -> Optional[float]:
     """Get current price from last result or OANDA."""
     if ctx.last_result and ctx.last_result.get("last_close"):
         return float(ctx.last_result["last_close"])
-    
+
     try:
         _ensure_oanda_client(ctx)
         resp = ctx.oanda_client.get_candles(
@@ -1409,7 +1409,7 @@ def _calculate_sl_tp_for_action(
     """Calculate SL/TP prices based on action direction."""
     stop_loss_price = None
     take_profit_price = None
-    
+
     if action.lower() == "buy":
         if use_stop_loss:
             stop_loss_price = current_price - sl_distance
@@ -1420,7 +1420,7 @@ def _calculate_sl_tp_for_action(
             stop_loss_price = current_price + sl_distance
         if use_take_profit:
             take_profit_price = current_price - tp_distance
-    
+
     return stop_loss_price, take_profit_price
 
 
@@ -1434,20 +1434,20 @@ def _calculate_sl_tp_prices(
     """Calculate stop loss and take profit prices based on current price and pip settings."""
     if not ctx.use_stop_loss and not ctx.use_take_profit:
         return None, None
-    
+
     # Use provided pips or fall back to context defaults
     sl_pips = stop_loss_pips if stop_loss_pips is not None else ctx.stop_loss_pips
     tp_pips = take_profit_pips if take_profit_pips is not None else ctx.take_profit_pips
-    
+
     current_price = _get_current_price(ctx, instrument)
     if current_price is None:
         print(_assistant_prefix(ctx) + "⚠️ Could not get current price for SL/TP calculation")
         return None, None
-    
+
     pip_value = _get_pip_value(instrument)
     sl_distance = sl_pips * pip_value
     tp_distance = tp_pips * pip_value
-    
+
     return _calculate_sl_tp_for_action(
         current_price, action, sl_distance, tp_distance,
         ctx.use_stop_loss, ctx.use_take_profit
@@ -1478,51 +1478,51 @@ def _calculate_position_size(
     risk_pct: float = 0.02,  # 2% risk per trade default
 ) -> int:
     """Calculate position size based on account equity and risk parameters.
-    
+
     Formula: units = (equity * risk_pct) / (stop_loss_pips * pip_value)
-    
+
     For USD/JPY with 20 pip SL and 2% risk on $100k:
     units = (100000 * 0.02) / (20 * 0.01) = 2000 / 0.20 = 10,000 units
     """
     equity = _get_account_equity(ctx)
     risk_amount = equity * risk_pct
-    
+
     # Get pip value based on instrument
     pip_value = _get_pip_value(instrument)
     stop_pips = ctx.stop_loss_pips if ctx.use_stop_loss else 20.0
-    
+
     # Risk per pip = pip_value (for JPY pairs, 1 pip = 0.01)
     # For standard lot (100k units), 1 pip = ~$6.45 for USD/JPY
     # For mini lot (10k units), 1 pip = ~$0.645
     # Simplified: pip_value_per_unit ≈ pip_value for most pairs
-    
+
     # Stop loss in price terms
     stop_distance = stop_pips * pip_value
-    
+
     if stop_distance <= 0:
         return 10000  # Safe default
-    
+
     # Position size = risk_amount / stop_distance
     # This gives us the units where losing stop_pips = risk_amount
     units = risk_amount / stop_distance
-    
+
     # Round to nearest 1000 (standard lot sizing)
     units = int(round(units / 1000) * 1000)
-    
+
     # Ensure minimum and maximum bounds
     units = max(1000, min(units, 500000))  # Between 1k and 500k units
-    
+
     return units
 
 
 def _default_trade_units(ctx: TalkContext = None, instrument: str = None) -> int:
     """Calculate smart position size based on account equity and risk.
-    
+
     Uses configured risk per trade (default 2%) with the configured stop loss.
     """
     if ctx is None:
         return 10000  # Fallback if no context
-        
+
     # Try to load risk from config
     risk_pct = 0.02
     try:
@@ -1530,7 +1530,7 @@ def _default_trade_units(ctx: TalkContext = None, instrument: str = None) -> int
         risk_pct = float(cfg.get("fx", {}).get("risk", {}).get("risk_per_trade_pct", 0.02))
     except Exception:
         pass
-        
+
     return _calculate_position_size(ctx, instrument or ctx.oanda_instrument, risk_pct=risk_pct)
 
 
@@ -1558,7 +1558,7 @@ def _ensure_last_prediction(ctx: TalkContext) -> None:
         print(_assistant_prefix(ctx) + "Candles fetched. Running inference...")
     else:
         print(_assistant_prefix(ctx) + "Running inference on active data...")
-        
+
     ctx.last_result = _predict_one_locked(ctx, ctx.active_df)
     print(_assistant_prefix(ctx) + "Inference complete.")
 
@@ -1594,7 +1594,7 @@ def _handle_trade_auto(ctx: TalkContext, parts: list[str]) -> None:
     result = ctx.last_result or {}
     pred = result.get("prediction")
     last_close = result.get("last_close")
-    
+
     if pred is None or last_close is None:
         raise ValueError("Need a valid prediction and last close. Run 'predict' first.")
 
@@ -1608,7 +1608,7 @@ def _handle_trade_auto(ctx: TalkContext, parts: list[str]) -> None:
     action = "buy" if delta > 0 else "sell"
     signed_units = abs(int(units)) * (1 if action == "buy" else -1)
     can_trade, reason, _ = _fx_trade_gate(ctx, instrument=instrument, action=action)
-    
+
     if not can_trade:
         emoji = _trend_emoji(delta)
         print(
@@ -1642,23 +1642,23 @@ def _execute_auto_trade(
 ) -> None:
     """Execute the auto trade order."""
     stop_loss_price, take_profit_price = _calculate_sl_tp_prices(ctx, instrument, action)
-    
+
     resp = ctx.oanda_client.create_market_order(
-        instrument=instrument, 
+        instrument=instrument,
         units=signed_units,
         stop_loss_price=stop_loss_price,
         take_profit_price=take_profit_price,
     )
     tx = (resp or {}).get("orderFillTransaction") or (resp or {}).get("orderCreateTransaction") or {}
-    
+
     sl_tp_info = ""
     if stop_loss_price:
         sl_tp_info += f"\n   Stop Loss: {stop_loss_price:.5f}"
     if take_profit_price:
         sl_tp_info += f"\n   Take Profit: {take_profit_price:.5f}"
-    
+
     print(
-        _assistant_prefix(ctx) 
+        _assistant_prefix(ctx)
         + f"✅ Auto-trade executed: {action.upper()} {abs(signed_units)} {instrument}\n"
         + f"   Order ID: {tx.get('id')}{sl_tp_info}\n"
         + f"   Reason: {reason}"
@@ -1673,7 +1673,7 @@ def _handle_trade_commands(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
         print(_assistant_prefix(ctx) + f"⚠️ Force {action.upper()} - bypassing confidence check...")
         _handle_trade_market(ctx, action=action, parts=[action], skip_confidence_check=True)
         return True
-    
+
     # Handle direct buy/sell commands (not just "trade buy/sell")
     if ql in {"buy", "sell"}:
         _ensure_oanda_client(ctx)
@@ -1833,7 +1833,7 @@ def run_unified_talk(
     assistant_name: str = DEFAULT_ASSISTANT_NAME,
 ) -> None:
     """Run the unified talk REPL.
-    
+
     Args:
         config_path: Path to config file.
         checkpoint_path: Optional model checkpoint path.

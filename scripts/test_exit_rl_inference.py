@@ -6,7 +6,8 @@ import numpy as np
 import sys
 sys.path.insert(0, '.')
 
-from src.core.modular_inference import ModularEnsembleInference
+from src.core.modular_inference import ModularEnsembleInference  # noqa: E402
+
 
 def main():
     print("=" * 60)
@@ -70,7 +71,7 @@ def main():
         direction="long",
         entry_price=1.0950,
     )
-    print(f"\n   Stop Loss Test: PnL=-16 pips")
+    print("\n   Stop Loss Test: PnL=-16 pips")
     print(f"   Should Exit: {result['should_exit']} (expected: True)")
     print(f"   Reason: {result['reason']}")
     
@@ -82,13 +83,14 @@ def main():
         direction="short",
         entry_price=1.0950,
     )
-    print(f"\n   Take Profit Test: PnL=+32 pips")
+    print("\n   Take Profit Test: PnL=+32 pips")
     print(f"   Should Exit: {result['should_exit']} (expected: True)")
     print(f"   Reason: {result['reason']}")
     
     print("\n" + "=" * 60)
     print("✅ Exit RL Integration Test Complete!")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     main()

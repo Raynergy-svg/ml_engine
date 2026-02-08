@@ -9,14 +9,17 @@ import json
 from pathlib import Path
 from datetime import datetime
 
+
 def print_header(title):
     print("\n" + "=" * 60)
     print(f"  {title}")
     print("=" * 60)
 
+
 def print_status(name, ok, detail=""):
     status = "✅" if ok else "❌"
     print(f"  {status} {name}: {detail}")
+
 
 def main():
     print_header("ML ENGINE SELF-IMPROVEMENT SYSTEMS DEBUG")
@@ -102,7 +105,7 @@ def main():
     # 5. TRADE ANALYZER
     print_header("5. TRADE ANALYZER")
     try:
-        from trade_analyzer import TradeAnalyzer, GATE_THRESHOLDS
+        from trade_analyzer import TradeAnalyzer, GATE_THRESHOLDS  # noqa: F401
         print_status("TradeAnalyzer", True, "imported")
         print(f"      Gate thresholds: {GATE_THRESHOLDS}")
     except ImportError as e:
@@ -118,15 +121,15 @@ def main():
             enable_online_learning=True
         )
         print_status("MarketIntelligence", True, "initialized")
-        print_status("Online Learner", mi.online_learner is not None, 
-                    f"{len(mi.online_learner.trade_buffer) if mi.online_learner else 0} trades in buffer")
+        print_status("Online Learner", mi.online_learner is not None,
+                     f"{len(mi.online_learner.trade_buffer) if mi.online_learner else 0} trades in buffer")
     except Exception as e:
         print_status("MarketIntelligence", False, str(e))
     
     # 7. MODULAR INFERENCE
     print_header("7. MODULAR INFERENCE (Gate System)")
     try:
-        from src.core.modular_inference import ModularEnsembleInference, InferenceGateConfig
+        from src.core.modular_inference import ModularEnsembleInference, InferenceGateConfig  # noqa: F401
         config = InferenceGateConfig()
         print_status("Gate Config", True, "loaded")
         print(f"      TCN threshold: {config.min_tcn_probability}")
@@ -149,6 +152,7 @@ def main():
   - EWC/EMA/Replay are active during training
   - Online learning updates after each closed trade
 """)
+
 
 if __name__ == '__main__':
     main()

@@ -24,10 +24,10 @@ def verify_model_save_load(pair="EUR_USD"):
     meta_path = model_base_path / "transformer_direction.meta.pkl"
     
     print(f"Verifying model save/load for {pair}")
-    print(f"=" * 60)
+    print("=" * 60)
     
     # Check if model files exist
-    print(f"\n1. Checking model files...")
+    print("\n1. Checking model files...")
     if not model_path.exists():
         print(f"   ❌ Model file not found: {model_path}")
         print(f"   → Train a model first: ./bin/Buddy train -i {pair}")
@@ -40,17 +40,17 @@ def verify_model_save_load(pair="EUR_USD"):
     print(f"   ✓ Metadata file exists: {meta_path}")
     
     # Load metadata
-    print(f"\n2. Loading metadata...")
+    print("\n2. Loading metadata...")
     try:
         with open(meta_path, 'rb') as f:
             meta = pickle.load(f)
-        print(f"   ✓ Metadata loaded successfully")
+        print("   ✓ Metadata loaded successfully")
     except Exception as e:
         print(f"   ❌ Failed to load metadata: {e}")
         return False
     
     # Verify critical metadata fields
-    print(f"\n3. Verifying metadata fields...")
+    print("\n3. Verifying metadata fields...")
     required_fields = [
         'scaler', 'seq_len', 'metrics', 'config', 'feature_names',
         'n_features', 'model_type', 'output_calibration'
@@ -64,7 +64,7 @@ def verify_model_save_load(pair="EUR_USD"):
             return False
     
     # Check metrics
-    print(f"\n4. Checking training metrics...")
+    print("\n4. Checking training metrics...")
     metrics = meta.get('metrics', {})
     
     metric_checks = {
@@ -88,20 +88,20 @@ def verify_model_save_load(pair="EUR_USD"):
             print(f"   ⚠️ {desc:25s}: Not found")
     
     # Check calibration
-    print(f"\n5. Checking output calibration...")
+    print("\n5. Checking output calibration...")
     calibration = meta.get('output_calibration')
     
     if calibration is None:
-        print(f"   ⚠️ No calibration data saved")
+        print("   ⚠️ No calibration data saved")
     else:
-        print(f"   ✓ Calibration data present:")
+        print("   ✓ Calibration data present:")
         print(f"     - Threshold: {calibration.get('threshold', 'N/A')}")
         print(f"     - Mean: {calibration.get('mean', 'N/A')}")
         print(f"     - Std: {calibration.get('std', 'N/A')}")
         print(f"     - Enabled: {calibration.get('enabled', False)}")
     
     # Check model type
-    print(f"\n6. Verifying model type...")
+    print("\n6. Verifying model type...")
     model_type = meta.get('model_type', 'unknown')
     if model_type == 'transformer':
         print(f"   ✓ Model type: {model_type}")
@@ -110,7 +110,7 @@ def verify_model_save_load(pair="EUR_USD"):
         return False
     
     # Check feature configuration
-    print(f"\n7. Checking feature configuration...")
+    print("\n7. Checking feature configuration...")
     n_features = meta.get('n_features', 0)
     seq_len = meta.get('seq_len', 0)
     feature_names = meta.get('feature_names', [])
@@ -122,35 +122,35 @@ def verify_model_save_load(pair="EUR_USD"):
         print(f"     First 5: {feature_names[:5]}")
     
     # Try loading the model (requires TensorFlow)
-    print(f"\n8. Attempting to load model...")
+    print("\n8. Attempting to load model...")
     try:
         from src.training.modular_trainers import TransformerDirectionTrainer
         
         trainer = TransformerDirectionTrainer()
         trainer.load(str(model_path), pair)
         
-        print(f"   ✓ Model loaded successfully")
+        print("   ✓ Model loaded successfully")
         print(f"   ✓ Is trained: {trainer.is_trained}")
         print(f"   ✓ Scaler initialized: {trainer.scaler is not None}")
         
         # Verify calibration loaded
         if hasattr(trainer, 'output_calibration') and trainer.output_calibration:
-            print(f"   ✓ Output calibration restored")
+            print("   ✓ Output calibration restored")
             print(f"     - Threshold: {trainer.output_calibration.get('threshold', 0.5):.4f}")
         else:
-            print(f"   ⚠️ Output calibration not restored")
+            print("   ⚠️ Output calibration not restored")
         
     except ImportError as e:
         print(f"   ⚠️ Cannot test model loading: {e}")
-        print(f"      (TensorFlow not available in this environment)")
+        print("      (TensorFlow not available in this environment)")
     except Exception as e:
         print(f"   ❌ Failed to load model: {e}")
         return False
     
     # Summary
-    print(f"\n" + "=" * 60)
+    print("\n" + "=" * 60)
     print(f"✅ Model save/load verification PASSED for {pair}")
-    print(f"=" * 60)
+    print("=" * 60)
     
     return True
 

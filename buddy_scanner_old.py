@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import warnings
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +47,6 @@ try:
         ScanResult,
         PairAnalysis,
         ScannerError,
-        GateEvaluator,
-        ExecutionManager,
-        ExecutionConfig,
-        ExecutionResult,
-        DEFAULT_PAIRS,
-        PIP_VALUES,
     )
 except ImportError as e:
     logger.error(f"Failed to import from src.scanner: {e}")

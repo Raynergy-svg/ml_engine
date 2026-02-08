@@ -18,8 +18,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Tuple
 
 import numpy as np
 import pandas as pd
@@ -62,10 +61,10 @@ def compute_triple_barrier_direction_labels(
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
     """
     Compute direction labels using triple-barrier method.
-    
+
     Instead of predicting next-bar direction, predicts which direction
     would have been profitable given TP/SL targets.
-    
+
     Args:
         ohlc_df: DataFrame with OHLC data
         instrument: Trading pair (e.g., "USD_JPY")
@@ -73,7 +72,7 @@ def compute_triple_barrier_direction_labels(
         seq_len: Sequence length for features
         label_stride: Compute labels every N bars
         verbose: Print progress
-    
+
     Returns:
         Tuple of:
         - direction_labels: (n,) array, 1=long profitable, 0=short profitable, 0.5=unclear
@@ -90,19 +89,19 @@ def compute_triple_barrier_direction_labels(
             np.ones(n, dtype=np.float32),
             {"error": "fx_paper not available"}
         )
-    
+
     n = len(ohlc_df)
     direction_labels = np.full(n, 0.5, dtype=np.float32)
     sample_weights = np.zeros(n, dtype=np.float32)
-    
+
     pip = float(pip_size(instrument))
     start_idx = max(0, seq_len - 1)
     end_idx = n - config.max_horizon_candles - 2
-    
+
     if end_idx <= start_idx:
         logger.warning(f"Insufficient data for triple-barrier: start={start_idx}, end={end_idx}")
         return direction_labels, sample_weights, {"error": "insufficient_data"}
-    
+
     stats = {
         "n_samples": 0,
         "n_long_wins": 0,
@@ -110,9 +109,9 @@ def compute_triple_barrier_direction_labels(
         "n_timeouts": 0,
         "n_excluded": 0,
     }
-    
+
     t0 = time.perf_counter()
-    
+
     for i in range(start_idx, end_idx, label_stride):
         try:
             # Get spread at entry
@@ -125,13 +124,13 @@ def compute_triple_barrier_direction_labels(
                         spread = (ask - bid) / pip
                 except Exception:
                     pass
-            
+
             best_direction = None
             best_outcome = None
             best_pnl = float("-inf")
-            
+
             directions_to_try = ["long", "short"] if config.use_both_directions else ["long"]
-            
+
             for direction in directions_to_try:
                 try:
                     res = simulate_tp_sl_outcome(
@@ -145,35 +144,35 @@ def compute_triple_barrier_direction_labels(
                         max_horizon_candles=config.max_horizon_candles,
                         tie_break="sl",
                     )
-                    
+
                     # Calculate PnL
                     if direction == "long":
                         pnl = (res.exit_price - res.entry_price) / pip
                     else:
                         pnl = (res.entry_price - res.exit_price) / pip
-                    
+
                     outcome = (
                         BarrierOutcome.TAKE_PROFIT if res.hit_type == "tp"
                         else BarrierOutcome.STOP_LOSS if res.hit_type == "sl"
                         else BarrierOutcome.TIMEOUT
                     )
-                    
+
                     # Keep best direction (prefer TP hit, then highest PnL)
                     if outcome == BarrierOutcome.TAKE_PROFIT or pnl > best_pnl:
                         best_direction = direction
                         best_outcome = outcome
                         best_pnl = pnl
-                        
+
                         if outcome == BarrierOutcome.TAKE_PROFIT:
                             break  # Found a winner, stop searching
-                            
+
                 except Exception as e:
                     logger.debug(f"Triple-barrier failed at idx={i}, dir={direction}: {e}")
                     continue
-            
+
             if best_direction is not None and best_outcome is not None:
                 stats["n_samples"] += 1
-                
+
                 if best_outcome == BarrierOutcome.TIMEOUT:
                     stats["n_timeouts"] += 1
                     if config.exclude_timeouts:
@@ -194,22 +193,22 @@ def compute_triple_barrier_direction_labels(
                         # SL hit = intended direction was wrong
                         direction_labels[i] = 0.0 if best_direction == "long" else 1.0
                     sample_weights[i] = 1.0
-                    
+
         except Exception as e:
             logger.debug(f"Triple-barrier labeling failed at idx={i}: {e}")
             continue
-    
+
     elapsed = time.perf_counter() - t0
     stats["elapsed_seconds"] = elapsed
     stats["samples_per_second"] = stats["n_samples"] / max(elapsed, 0.001)
-    
+
     if verbose:
         logger.info(
             f"Triple-barrier labeling: {stats['n_samples']} samples, "
             f"{stats['n_long_wins']} long wins, {stats['n_short_wins']} short wins, "
             f"{stats['n_timeouts']} timeouts in {elapsed:.2f}s"
         )
-    
+
     return direction_labels, sample_weights, stats
 
 
@@ -236,22 +235,22 @@ def select_top_k_features(
 ) -> Tuple[List[int], List[str], Dict[str, float]]:
     """
     Select top-K features based on predictive power.
-    
+
     Args:
         X_train: Training features (n_samples, n_features)
         y_train: Training labels (n_samples,)
         feature_names: List of feature names
         k: Number of features to select
         method: Selection method
-    
+
     Returns:
         Tuple of (selected_indices, selected_names, importance_scores)
     """
     n_features = X_train.shape[1]
     k = min(k, n_features)
-    
+
     scores = np.zeros(n_features)
-    
+
     if method in ("correlation", "combined"):
         # Pearson correlation with target
         for i in range(n_features):
@@ -261,11 +260,11 @@ def select_top_k_features(
                     scores[i] += abs(corr)
             except Exception:
                 pass
-    
+
     if method in ("mutual_info", "combined"):
         try:
             from sklearn.feature_selection import mutual_info_classif
-            
+
             # Discretize target if continuous
             y_discrete = (y_train >= 0.5).astype(int)
             mi_scores = mutual_info_classif(
@@ -281,16 +280,16 @@ def select_top_k_features(
             scores += mi_scores
         except Exception as e:
             logger.warning(f"Mutual info failed: {e}")
-    
+
     # Normalize combined scores
     if method == "combined" and scores.max() > 0:
         scores = scores / scores.max()
-    
+
     # Select top-K
     top_indices = np.argsort(scores)[-k:][::-1]
     selected_names = [feature_names[i] for i in top_indices]
     importance = {feature_names[i]: float(scores[i]) for i in top_indices}
-    
+
     return list(top_indices), selected_names, importance
 
 
@@ -301,27 +300,27 @@ def apply_pca_reduction(
 ) -> Tuple[np.ndarray, np.ndarray, Any]:
     """
     Apply PCA dimensionality reduction.
-    
+
     Args:
         X_train: Training features
         X_val: Validation features
         n_components: Number of PCA components
-    
+
     Returns:
         Tuple of (X_train_pca, X_val_pca, pca_model)
     """
     from sklearn.decomposition import PCA
-    
+
     n_components = min(n_components, X_train.shape[1], X_train.shape[0])
-    
+
     pca = PCA(n_components=n_components, svd_solver="auto", random_state=42)
     X_train_pca = pca.fit_transform(X_train).astype(np.float32)
     X_val_pca = pca.transform(X_val).astype(np.float32)
-    
+
     explained_var = pca.explained_variance_ratio_.sum()
     logger.info(f"PCA: {X_train.shape[1]} -> {n_components} components, "
                 f"explained variance: {explained_var:.2%}")
-    
+
     return X_train_pca, X_val_pca, pca
 
 
@@ -336,28 +335,28 @@ def compute_lookahead_direction_labels(
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
     Compute direction labels with longer lookahead and threshold filtering.
-    
+
     Args:
         closes: Close prices array
         lookahead: Number of bars to look ahead
         threshold: Minimum price change (as fraction) to assign label
-    
+
     Returns:
         Tuple of (direction_labels, sample_weights)
     """
     n = len(closes)
     direction_labels = np.full(n, 0.5, dtype=np.float32)
     sample_weights = np.zeros(n, dtype=np.float32)
-    
+
     for i in range(n - lookahead):
         future_close = closes[i + lookahead]
         current_close = closes[i]
-        
+
         if current_close <= 0:
             continue
-        
+
         pct_change = (future_close - current_close) / current_close
-        
+
         if abs(pct_change) >= threshold:
             direction_labels[i] = 1.0 if pct_change > 0 else 0.0
             sample_weights[i] = 1.0
@@ -365,11 +364,11 @@ def compute_lookahead_direction_labels(
             # Below threshold = unclear signal
             direction_labels[i] = 0.5
             sample_weights[i] = 0.3  # Downweight unclear samples
-    
+
     n_clear = (sample_weights == 1.0).sum()
     n_unclear = ((sample_weights > 0) & (sample_weights < 1.0)).sum()
     logger.info(f"Lookahead labels: {n_clear} clear signals, {n_unclear} unclear")
-    
+
     return direction_labels, sample_weights
 
 
@@ -380,52 +379,52 @@ def compute_lookahead_direction_labels(
 def create_gradient_monitor_callback():
     """Create a Keras callback for gradient monitoring."""
     import tensorflow as tf
-    
+
     class GradientMonitorCallback(tf.keras.callbacks.Callback):
         """Monitor gradient flow during training."""
-        
+
         def __init__(self, check_every_n_batches: int = 50):
             super().__init__()
             self.check_every_n_batches = check_every_n_batches
             self.batch_count = 0
             self.gradient_stats = []
-        
+
         def on_train_batch_end(self, batch, logs=None):
             self.batch_count += 1
             if self.batch_count % self.check_every_n_batches != 0:
                 return
-            
+
             # Check weight norms (proxy for gradient health)
             stats = {"batch": self.batch_count}
             vanishing_layers = []
             exploding_layers = []
-            
+
             for layer in self.model.layers:
                 if hasattr(layer, 'kernel') and layer.kernel is not None:
                     weight_norm = float(tf.norm(layer.kernel).numpy())
                     stats[f"{layer.name}_norm"] = weight_norm
-                    
+
                     if weight_norm < 1e-7:
                         vanishing_layers.append(layer.name)
                     elif weight_norm > 1000:
                         exploding_layers.append(layer.name)
-            
+
             if vanishing_layers:
                 logger.warning(f"Batch {self.batch_count}: Potential vanishing gradients in {vanishing_layers}")
             if exploding_layers:
                 logger.warning(f"Batch {self.batch_count}: Potential exploding gradients in {exploding_layers}")
-            
+
             self.gradient_stats.append(stats)
-        
+
         def on_epoch_end(self, epoch, logs=None):
             # Summary at end of epoch
             if not self.gradient_stats:
                 return
-            
+
             # Check for consistent issues
             last_stats = self.gradient_stats[-1]
             issues = []
-            
+
             for key, value in last_stats.items():
                 if key == "batch":
                     continue
@@ -433,10 +432,10 @@ def create_gradient_monitor_callback():
                     issues.append(f"{key}: very small ({value:.2e})")
                 elif value > 100:
                     issues.append(f"{key}: large ({value:.2e})")
-            
+
             if issues:
                 logger.info(f"Epoch {epoch} gradient health issues: {issues[:5]}")
-    
+
     return GradientMonitorCallback
 
 
@@ -457,9 +456,9 @@ def train_xgboost_baseline(
 ) -> Tuple[Any, Dict[str, float]]:
     """
     Train XGBoost baseline model to verify data quality.
-    
+
     If XGBoost can't beat random, the problem is in the data/labels.
-    
+
     Args:
         X_train, y_train: Training data
         X_val, y_val: Validation data
@@ -468,7 +467,7 @@ def train_xgboost_baseline(
         max_depth: Max tree depth
         learning_rate: Learning rate
         verbose: Print results
-    
+
     Returns:
         Tuple of (model, metrics)
     """
@@ -477,18 +476,18 @@ def train_xgboost_baseline(
     except ImportError:
         logger.error("XGBoost not installed. Run: pip install xgboost")
         return None, {"error": "xgboost_not_installed"}
-    
+
     # Flatten sequences if needed
     if len(X_train.shape) == 3:
         # (samples, seq_len, features) -> (samples, seq_len * features)
         X_train = X_train.reshape(X_train.shape[0], -1)
         X_val = X_val.reshape(X_val.shape[0], -1)
-    
+
     # Ensure labels are appropriate
     if task == "classification":
         y_train_bin = (y_train >= 0.5).astype(int).ravel()
         y_val_bin = (y_val >= 0.5).astype(int).ravel()
-        
+
         model = xgb.XGBClassifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
@@ -497,30 +496,30 @@ def train_xgboost_baseline(
             use_label_encoder=False,
             eval_metric="logloss",
         )
-        
+
         model.fit(
             X_train, y_train_bin,
             eval_set=[(X_val, y_val_bin)],
             verbose=False,
         )
-        
+
         train_pred = model.predict(X_train)
         val_pred = model.predict(X_val)
-        
+
         train_acc = (train_pred == y_train_bin).mean()
         val_acc = (val_pred == y_val_bin).mean()
-        
+
         # Probability predictions for AUC
         train_proba = model.predict_proba(X_train)[:, 1]
         val_proba = model.predict_proba(X_val)[:, 1]
-        
+
         from sklearn.metrics import roc_auc_score
         try:
             train_auc = roc_auc_score(y_train_bin, train_proba)
             val_auc = roc_auc_score(y_val_bin, val_proba)
         except Exception:
             train_auc = val_auc = 0.5
-        
+
         metrics = {
             "train_accuracy": float(train_acc),
             "val_accuracy": float(val_acc),
@@ -528,7 +527,7 @@ def train_xgboost_baseline(
             "val_auc": float(val_auc),
             "overfit_gap": float(train_acc - val_acc),
         }
-        
+
     else:
         model = xgb.XGBRegressor(
             n_estimators=n_estimators,
@@ -536,33 +535,33 @@ def train_xgboost_baseline(
             learning_rate=learning_rate,
             random_state=42,
         )
-        
+
         model.fit(
             X_train, y_train.ravel(),
             eval_set=[(X_val, y_val.ravel())],
             verbose=False,
         )
-        
+
         train_pred = model.predict(X_train)
         val_pred = model.predict(X_val)
-        
+
         from sklearn.metrics import mean_squared_error, r2_score
-        
+
         train_mse = mean_squared_error(y_train.ravel(), train_pred)
         val_mse = mean_squared_error(y_val.ravel(), val_pred)
         train_r2 = r2_score(y_train.ravel(), train_pred)
         val_r2 = r2_score(y_val.ravel(), val_pred)
-        
+
         metrics = {
             "train_mse": float(train_mse),
             "val_mse": float(val_mse),
             "train_r2": float(train_r2),
             "val_r2": float(val_r2),
         }
-    
+
     if verbose:
         logger.info(f"XGBoost baseline results: {metrics}")
-        
+
         if task == "classification":
             if val_acc < 0.52:
                 logger.warning(
@@ -580,7 +579,7 @@ def train_xgboost_baseline(
                     f"✓ XGBoost baseline accuracy {val_acc:.1%}. "
                     "Labels appear learnable. Neural network should be able to match or exceed."
                 )
-    
+
     return model, metrics
 
 
@@ -591,24 +590,24 @@ def train_xgboost_baseline(
 @dataclass
 class ImprovedLabelingConfig:
     """Configuration for improved labeling strategy."""
-    
+
     # Primary labeling method
     method: Literal["triple_barrier", "lookahead", "next_bar"] = "triple_barrier"
-    
+
     # Triple-barrier settings
     triple_barrier: TripleBarrierConfig = field(default_factory=TripleBarrierConfig)
-    
+
     # Lookahead settings
     lookahead_bars: int = 12  # 1 hour on M5
     lookahead_threshold: float = 0.002  # 0.2% min move
-    
+
     # Feature selection
     feature_selection: FeatureSelectionConfig = field(default_factory=FeatureSelectionConfig)
-    
+
     # Training settings
     min_epochs: int = 50
     early_stopping_patience: int = 30
-    
+
     # XGBoost baseline
     run_xgboost_baseline: bool = True
 
@@ -624,7 +623,7 @@ def create_improved_labels(
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
     """
     Create improved direction labels using the configured strategy.
-    
+
     Args:
         ohlc_df: OHLC DataFrame
         closes: Close prices array
@@ -632,12 +631,12 @@ def create_improved_labels(
         config: Labeling configuration
         seq_len: Sequence length
         verbose: Print progress
-    
+
     Returns:
         Tuple of (direction_labels, sample_weights, stats)
     """
     n = len(closes)
-    
+
     if config.method == "triple_barrier":
         direction_labels, sample_weights, stats = compute_triple_barrier_direction_labels(
             ohlc_df,
@@ -648,7 +647,7 @@ def create_improved_labels(
             verbose=verbose,
         )
         stats["method"] = "triple_barrier"
-        
+
     elif config.method == "lookahead":
         direction_labels, sample_weights = compute_lookahead_direction_labels(
             closes,
@@ -660,7 +659,7 @@ def create_improved_labels(
             "lookahead_bars": config.lookahead_bars,
             "threshold": config.lookahead_threshold,
         }
-        
+
     else:  # next_bar (original method)
         next_close = closes[1:]
         cur_close = closes[:-1]
@@ -669,14 +668,14 @@ def create_improved_labels(
         sample_weights = np.ones(n, dtype=np.float32)
         sample_weights[-1] = 0  # Last sample has no label
         stats = {"method": "next_bar"}
-    
+
     # Compute label statistics
     valid_mask = sample_weights > 0
     if valid_mask.any():
         stats["n_valid_samples"] = int(valid_mask.sum())
         stats["positive_rate"] = float(direction_labels[valid_mask].mean())
         stats["avg_weight"] = float(sample_weights[valid_mask].mean())
-    
+
     return direction_labels, sample_weights, stats
 
 
@@ -695,19 +694,19 @@ def apply_training_improvements(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, List[str], Dict[str, Any]]:
     """
     Apply all training improvements to prepared data.
-    
+
     Args:
         train_feats, val_feats: Feature arrays
         train_labels, val_labels: Label arrays
         feature_names: List of feature names
         config: Improvement configuration
         verbose: Print progress
-    
+
     Returns:
         Tuple of (train_feats, val_feats, train_labels, val_labels, feature_names, stats)
     """
     stats = {}
-    
+
     # 1. Feature selection/reduction
     if config.feature_selection.method == "top_k":
         selected_idx, selected_names, importance = select_top_k_features(
@@ -726,7 +725,7 @@ def apply_training_improvements(
         }
         if verbose:
             logger.info(f"Feature selection: {stats['feature_selection']['original_features']} -> {len(selected_idx)}")
-            
+
     elif config.feature_selection.method == "pca":
         train_feats, val_feats, pca_model = apply_pca_reduction(
             train_feats, val_feats,
@@ -738,7 +737,7 @@ def apply_training_improvements(
             "n_components": train_feats.shape[1],
             "explained_variance": float(pca_model.explained_variance_ratio_.sum()),
         }
-    
+
     # 2. XGBoost baseline (if enabled)
     if config.run_xgboost_baseline:
         try:
@@ -752,6 +751,5 @@ def apply_training_improvements(
         except Exception as e:
             logger.warning(f"XGBoost baseline failed: {e}")
             stats["xgboost_baseline"] = {"error": str(e)}
-    
-    return train_feats, val_feats, train_labels, val_labels, feature_names, stats
 
+    return train_feats, val_feats, train_labels, val_labels, feature_names, stats

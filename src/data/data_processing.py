@@ -285,7 +285,7 @@ def create_sequences(
     target_column: int = -1,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Create rolling window sequences and next-step targets.
-    
+
     M1 Metal Optimization:
     - Uses float32 dtype for better GPU compatibility
     - Uses stride_tricks for memory-efficient view creation when possible
@@ -304,11 +304,11 @@ def create_sequences(
         raise DataValidationError("data is too short for the requested sequence_length")
 
     n_samples = len(arr) - sequence_length
-    
+
     # M1 Metal: Use float32 for better TensorFlow Metal performance
     # float64 works but float32 is 2x faster on M1 GPU
     arr = arr.astype(np.float32, copy=False)
-    
+
     # Use sliding window view for memory efficiency (NumPy 1.20+)
     try:
         from numpy.lib.stride_tricks import sliding_window_view
@@ -515,7 +515,7 @@ def prepare_sequences(
     train_split_fraction: Optional[float] = None,
 ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
     """Prepare sequences for time-series prediction.
-    
+
     Args:
         df: DataFrame with features and target
         sequence_length: Length of input sequences
@@ -526,10 +526,10 @@ def prepare_sequences(
         scale_target: Whether to scale target
         train_split_fraction: If provided, fit scaler only on first N% of data
                              to prevent data leakage. E.g., 0.8 means fit on first 80%.
-    
+
     Returns:
         Tuple of (sequences, targets, metadata)
-    
+
     Note:
         When train_split_fraction is provided, the scaler is fit ONLY on the
         training portion of the data to prevent data leakage. This is critical
@@ -555,7 +555,7 @@ def prepare_sequences(
 
     feature_scaler = None
     target_scaler = None
-    
+
     # Calculate train split index for scaler fitting
     n_rows = len(feature_data)
     if train_split_fraction is not None:
@@ -705,12 +705,12 @@ def _load_from_cache(cache_file: Path, required_cols: set) -> Optional[pd.DataFr
     """Try to load data from cache file."""
     if not cache_file.exists():
         return None
-    
+
     try:
         df = pd.read_parquet(cache_file, engine="pyarrow")
         df.columns = _fix_columns_async(df.columns)
         df = _ensure_close_column_data(df)
-        
+
         missing_cols = required_cols - set(df.columns)
         if missing_cols:
             logger.error(
@@ -819,11 +819,11 @@ def _normalize_downloaded_data(data: pd.DataFrame, required_cols: set) -> Option
     """Normalize column names and validate required columns exist."""
     data.columns = _fix_columns_async(data.columns)
     data = _ensure_close_column_data(data)
-    
+
     if not required_cols.issubset(set(data.columns)):
         missing = required_cols - set(data.columns)
         logger.error("Downloaded data missing required columns: %s", missing)
         return None
-    
+
     return data
 # — Raynergy-svg —

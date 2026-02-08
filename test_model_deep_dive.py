@@ -2,7 +2,6 @@
 """Deep dive into what the model receives vs outputs."""
 import pickle
 import numpy as np
-import pandas as pd
 from pathlib import Path
 
 # Load model and meta
@@ -15,7 +14,7 @@ feature_names = meta.get('feature_names', [])
 seq_len = meta.get('seq_len', 60)
 
 # Load model
-import keras
+import keras  # noqa: E402
 model_path = Path('trained_data/models/EUR_USD/transformer_direction.keras')
 model = keras.models.load_model(str(model_path), compile=False)
 

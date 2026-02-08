@@ -10,6 +10,7 @@ from rich.table import Table
 
 console = Console()
 
+
 def simulate_regime_training_output():
     """Show expected output when regime mode is active."""
     

@@ -15,16 +15,16 @@ from src.models.model_builders import (
     # Enums and config
     ModelType,
     ModelConfig,
-    
+
     # Factory class
     ModelFactory,
-    
+
     # Builder functions (new API)
     build_tcn_model,
     build_lstm_model,
     build_shared_encoder_model,
     build_xgboost_model,
-    
+
     # Backward compatibility aliases
     _build_buddy_model,
     _build_buddy_model_shared_encoder,
@@ -37,16 +37,16 @@ __all__ = [
     # Enums and config
     "ModelType",
     "ModelConfig",
-    
+
     # Factory class
     "ModelFactory",
-    
+
     # Builder functions (new API)
     "build_tcn_model",
     "build_lstm_model",
     "build_shared_encoder_model",
     "build_xgboost_model",
-    
+
     # Backward compatibility aliases
     "_build_buddy_model",
     "_build_buddy_model_shared_encoder",

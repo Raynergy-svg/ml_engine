@@ -2,22 +2,15 @@
 """I/O utilities for ML Engine Trading Bot CLI."""
 from __future__ import annotations
 
-import os
-import json
-import logging
-import pickle
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
 from datetime import datetime, timezone
 
-import numpy as np
-import pandas as pd
 from rich.console import Console
 from rich.panel import Panel
 
-from src.utils import setup_logging, load_config
+from src.utils import setup_logging
 
 
 # Constants
@@ -110,54 +103,54 @@ def _normalize_instrument(s: str) -> str:
 def _extract_instrument_from_csv_path(csv_path: str) -> str:
     """
     Extract instrument from CSV filename for pair-specific model training.
-    
+
     Patterns recognized:
     - market_data/EUR_USD_H1.csv -> EUR_USD
     - market_data/oanda_GBP_USD_H1_live_*.csv -> GBP_USD
     - market_data/USD_JPY_*.csv -> USD_JPY
     - market_data/EURUSD.csv -> EUR_USD (6-char format)
-    
+
     Returns normalized instrument or "GENERIC" if not extractable.
     """
     if not csv_path:
         return "GENERIC"
-    
+
     filename = Path(csv_path).stem.upper()  # e.g., "EUR_USD_H1" or "oanda_GBP_USD_H1_live_20250114"
-    
+
     # Try to find a valid instrument in the filename
     # Pattern 1: Direct match for XXX_YYY format
     for instrument in VALID_OANDA_INSTRUMENTS:
         if instrument in filename:
             return instrument
-    
-    # Pattern 2: 6-char format like "EURUSD" 
+
+    # Pattern 2: 6-char format like "EURUSD"
     match = re.search(r'([A-Z]{6})', filename)
     if match:
         candidate = match.group(1)[:3] + "_" + match.group(1)[3:]
         if candidate in VALID_OANDA_INSTRUMENTS:
             return candidate
-    
+
     # Pattern 3: Try to extract XXX_YYY pattern from filename
     match = re.search(r'([A-Z]{3})_([A-Z]{3})', filename)
     if match:
         candidate = f"{match.group(1)}_{match.group(2)}"
         if candidate in VALID_OANDA_INSTRUMENTS:
             return candidate
-    
+
     return "GENERIC"
 
 
 def _get_pair_model_paths(model_dir: Path, instrument: str, model_type: str = "transformer") -> dict:
     """
     Get pair-specific model paths for saving/loading.
-    
+
     Returns dict with paths for:
     - direction: Transformer/TCN direction model
-    - xgboost: XGBoost momentum model  
+    - xgboost: XGBoost momentum model
     - rf: Random Forest risk model
     - ridge: Ridge confidence model
     - histgb: HistGB hybrid voting model (optional)
-    
+
     Example for EUR_USD:
     - trained_data/models/EUR_USD/transformer_direction.keras
     - trained_data/models/EUR_USD/xgb_momentum.pkl
@@ -167,12 +160,12 @@ def _get_pair_model_paths(model_dir: Path, instrument: str, model_type: str = "t
         pair_dir = model_dir / instrument
     else:
         pair_dir = model_dir
-    
+
     # Ensure directory exists
     pair_dir.mkdir(parents=True, exist_ok=True)
-    
+
     direction_filename = "transformer_direction.keras" if model_type == "transformer" else "tcn_direction.keras"
-    
+
     return {
         'direction': pair_dir / direction_filename,
         'regime': pair_dir / "transformer_regime.keras",
@@ -189,12 +182,12 @@ def _validate_instrument(instrument: str) -> str:
     # Special case: "all" means scan all major pairs
     if instrument.upper() == "ALL":
         return "ALL"
-    
+
     normalized = _normalize_instrument(instrument)
-    
+
     if normalized in VALID_OANDA_INSTRUMENTS:
         return normalized
-    
+
     # Try to suggest a correction for common typos
     suggestions = []
     for valid in VALID_OANDA_INSTRUMENTS:
@@ -203,12 +196,12 @@ def _validate_instrument(instrument: str) -> str:
             diff = sum(1 for a, b in zip(normalized, valid) if a != b)
             if diff <= 2:
                 suggestions.append(valid)
-    
+
     error_msg = f"Invalid instrument: '{instrument}' (normalized: '{normalized}')"
     if suggestions:
         error_msg += f"\n  Did you mean: {', '.join(sorted(suggestions))}?"
-    error_msg += f"\n  Valid examples: EUR_USD, GBP_USD, USD_JPY, AUD_USD, EUR_GBP, or 'all' for all major pairs"
-    
+    error_msg += "\n  Valid examples: EUR_USD, GBP_USD, USD_JPY, AUD_USD, EUR_GBP, or 'all' for all major pairs"
+
     raise ValueError(error_msg)
 
 
@@ -235,7 +228,6 @@ def _meta_path_for_checkpoint(model_path: str) -> Path | None:
 
 
 def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
-    from datetime import datetime, timezone
 
     import pandas as pd
     from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -249,7 +241,7 @@ def _oanda_fetch_to_csv(opts: OandaFetchOptions) -> str:
     # If the user requests more, page forward using `from_time`.
     max_per_request = 5000
     total = max(1, int(opts.candles))
-    
+
     # Show progress spinner while fetching
     with Progress(
         SpinnerColumn(),
@@ -402,26 +394,26 @@ def _migrate_keras2_to_keras3(model_path: str, seq_len: int, feature_dim: int, c
             l2_reg = l2(0.002)
             hidden_size = 32
             dropout = 0.35
-            
+
             inp = tf.keras.Input(shape=(int(seq_len), int(feature_dim)), name="input")
             x = layers.GaussianNoise(0.03)(inp)
             x = layers.SpatialDropout1D(dropout * 0.5)(x)
-            
+
             # TCN layers (2 blocks)
             for i in range(2):
                 dilation_rate = 2 ** i
-                conv_out = layers.Conv1D(hidden_size, 3, padding='causal', dilation_rate=dilation_rate, 
+                conv_out = layers.Conv1D(hidden_size, 3, padding='causal', dilation_rate=dilation_rate,
                                          activation='relu', kernel_regularizer=l2_reg)(x)
                 conv_out = layers.BatchNormalization()(conv_out)
                 conv_out = layers.Dropout(dropout)(conv_out)
                 if x.shape[-1] != hidden_size:
                     x = layers.Conv1D(hidden_size, 1)(x)
                 x = layers.Add()([x, conv_out])
-            
+
             x = x[:, -1, :]  # Take last timestep
             x = layers.Dense(64, activation='relu')(x)
             x = layers.Dropout(dropout)(x)
-            
+
             # Multi-output heads
             dir_branch = layers.Dense(32, activation='relu')(x)
             dir_branch = layers.Dropout(dropout * 0.5)(dir_branch)
@@ -430,13 +422,13 @@ def _migrate_keras2_to_keras3(model_path: str, seq_len: int, feature_dim: int, c
             state_branch = layers.Dense(32, activation='relu')(x)
             state_branch = layers.Dropout(dropout * 0.5)(state_branch)
             trend_branch = layers.Dense(32, activation='relu')(x)
-            
+
             direction = layers.Dense(1, activation='sigmoid', name='direction', dtype='float32')(dir_branch)
             price = layers.Dense(1, activation='linear', name='price', dtype='float32')(price_branch)
             risk = layers.Dense(1, activation='sigmoid', name='risk', dtype='float32')(risk_branch)
             state_logits = layers.Dense(2, activation='softmax', name='state_logits', dtype='float32')(state_branch)
             trend = layers.Dense(1, activation='linear', name='trend', dtype='float32')(trend_branch)
-            
+
             fresh_model = tf.keras.Model(
                 inputs=inp,
                 outputs={'direction': direction, 'price': price, 'risk': risk, 'state_logits': state_logits, 'trend': trend},
@@ -459,7 +451,7 @@ def _migrate_keras2_to_keras3(model_path: str, seq_len: int, feature_dim: int, c
 
             except Exception as weight_err:
                 console.print(f"[yellow]Weight loading failed (architecture mismatch): {weight_err}[/yellow]")
-                raise ValueError(f"Cannot migrate: architecture incompatible. Delete old model and retrain.")
+                raise ValueError("Cannot migrate: architecture incompatible. Delete old model and retrain.")
 
         except zipfile.BadZipFile:
             raise ValueError(f"Model file {model_path} is not a valid .keras archive")

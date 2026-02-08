@@ -7,7 +7,7 @@ This module provides:
 
 Example usage:
     from src.trading import TradeExecutor, OrderRequest, ExecutionResult
-    
+
     executor = TradeExecutor.from_env()
     order = OrderRequest(
         instrument="EUR_USD",

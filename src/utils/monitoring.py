@@ -9,7 +9,7 @@ This module provides:
 
 Usage:
     from src.utils.monitoring import MonitoringSystem, Alert, AlertLevel
-    
+
     monitor = MonitoringSystem(config)
     monitor.check_daily_performance()
     monitor.check_model_drift(predictions)
@@ -21,10 +21,10 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -79,14 +79,14 @@ class ModelDriftMetrics:
 class MonitoringSystem:
     """
     Comprehensive monitoring system for FX trading bot.
-    
+
     Features:
     - Daily performance tracking
     - Model drift detection
     - Alert generation and management
     - Trading metrics aggregation
     """
-    
+
     def __init__(
         self,
         config: Dict[str, Any],
@@ -94,7 +94,7 @@ class MonitoringSystem:
     ):
         """
         Initialize monitoring system.
-        
+
         Args:
             config: Configuration dictionary
             log_dir: Directory for monitoring logs
@@ -102,19 +102,19 @@ class MonitoringSystem:
         self.config = config
         self.log_dir = Path(log_dir or config.get('paths', {}).get('log_dir', 'trained_data/logs'))
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Alert settings
         self.alerts: List[Alert] = []
         self.alert_thresholds = self._load_alert_thresholds()
-        
+
         # Performance baselines
         self.baseline_metrics = self._load_baseline_metrics()
-        
+
         # Model drift tracking
         self.drift_history: List[ModelDriftMetrics] = []
-        
+
         logger.info(f"Monitoring system initialized. Log dir: {self.log_dir}")
-    
+
     def _load_alert_thresholds(self) -> Dict[str, Any]:
         """Load alert threshold configuration."""
         defaults = {
@@ -126,24 +126,24 @@ class MonitoringSystem:
             'confidence_drop_threshold': 0.10,  # 10% drop in avg confidence
             'consecutive_losses_max': 5,  # Max consecutive losses
         }
-        
+
         # Override with config if available
         monitoring_cfg = self.config.get('monitoring', {})
         return {**defaults, **monitoring_cfg.get('alert_thresholds', {})}
-    
+
     def _load_baseline_metrics(self) -> Optional[PerformanceMetrics]:
         """Load baseline performance metrics."""
         baseline_path = self.log_dir / 'baseline_metrics.json'
         if not baseline_path.exists():
             return None
-        
+
         try:
             data = json.loads(baseline_path.read_text())
             return PerformanceMetrics(**data)
         except Exception as e:
             logger.warning(f"Failed to load baseline metrics: {e}")
             return None
-    
+
     def save_baseline_metrics(self, metrics: PerformanceMetrics) -> None:
         """Save baseline performance metrics."""
         baseline_path = self.log_dir / 'baseline_metrics.json'
@@ -162,7 +162,7 @@ class MonitoringSystem:
         }
         baseline_path.write_text(json.dumps(data, indent=2))
         logger.info(f"Baseline metrics saved: {baseline_path}")
-    
+
     def check_daily_performance(
         self,
         pnl: float,
@@ -171,7 +171,7 @@ class MonitoringSystem:
     ) -> None:
         """
         Check daily performance and generate alerts if needed.
-        
+
         Args:
             pnl: Total profit/loss for the day
             trades: List of trades
@@ -179,19 +179,19 @@ class MonitoringSystem:
         """
         if not trades:
             return
-        
+
         # Calculate metrics
         total_trades = len(trades)
         winning_trades = sum(1 for t in trades if t.get('pnl', 0) > 0)
-        losing_trades = sum(1 for t in trades if t.get('pnl', 0) < 0)
+        sum(1 for t in trades if t.get('pnl', 0) < 0)
         win_rate = winning_trades / total_trades if total_trades > 0 else 0
-        
+
         # Calculate drawdown
         cumulative_pnl = np.cumsum([t.get('pnl', 0) for t in trades])
         running_max = np.maximum.accumulate(cumulative_pnl)
         drawdowns = (running_max - cumulative_pnl) / starting_balance
         max_drawdown = float(np.max(drawdowns)) if len(drawdowns) > 0 else 0
-        
+
         # Daily loss check
         daily_loss_pct = abs(pnl / starting_balance) if pnl < 0 else 0
         if daily_loss_pct >= self.alert_thresholds['daily_loss_threshold']:
@@ -202,7 +202,7 @@ class MonitoringSystem:
                 f"(threshold: {self.alert_thresholds['daily_loss_threshold']:.1%})",
                 {'pnl': pnl, 'pct': daily_loss_pct}
             )
-        
+
         # Max drawdown check
         if max_drawdown >= self.alert_thresholds['max_drawdown_threshold']:
             self.add_alert(
@@ -212,7 +212,7 @@ class MonitoringSystem:
                 f"(threshold: {self.alert_thresholds['max_drawdown_threshold']:.1%})",
                 {'max_drawdown': max_drawdown}
             )
-        
+
         # Consecutive losses check
         consecutive_losses = 0
         max_consecutive = 0
@@ -222,7 +222,7 @@ class MonitoringSystem:
                 max_consecutive = max(max_consecutive, consecutive_losses)
             else:
                 consecutive_losses = 0
-        
+
         if max_consecutive >= self.alert_thresholds['consecutive_losses_max']:
             self.add_alert(
                 AlertLevel.WARNING,
@@ -231,7 +231,7 @@ class MonitoringSystem:
                 f"(threshold: {self.alert_thresholds['consecutive_losses_max']})",
                 {'consecutive_losses': max_consecutive}
             )
-        
+
         # Win rate degradation (if baseline exists)
         if self.baseline_metrics and win_rate > 0:
             degradation = self.baseline_metrics.win_rate - win_rate
@@ -243,13 +243,13 @@ class MonitoringSystem:
                     f"(current: {win_rate:.1%}, baseline: {self.baseline_metrics.win_rate:.1%})",
                     {'current_win_rate': win_rate, 'baseline_win_rate': self.baseline_metrics.win_rate}
                 )
-        
+
         logger.info(
             f"Daily performance check: PnL={pnl:.2f}, "
             f"Trades={total_trades}, Win Rate={win_rate:.1%}, "
             f"Max DD={max_drawdown:.1%}"
         )
-    
+
     def check_model_drift(
         self,
         predictions: np.ndarray,
@@ -258,22 +258,22 @@ class MonitoringSystem:
     ) -> ModelDriftMetrics:
         """
         Check for model drift using prediction statistics.
-        
+
         Args:
             predictions: Model predictions
             confidences: Model confidence scores
             feature_stats: Optional feature distribution statistics
-        
+
         Returns:
             ModelDriftMetrics object
         """
         timestamp = datetime.now().isoformat()
-        
+
         # Calculate current statistics
         pred_mean = float(np.mean(predictions))
         pred_std = float(np.std(predictions))
         conf_mean = float(np.mean(confidences))
-        
+
         # Feature drift score (if stats provided)
         feature_drift_score = 0.0
         if feature_stats:
@@ -287,13 +287,13 @@ class MonitoringSystem:
                         drift = abs(value - baseline_val) / abs(baseline_val)
                         drifts.append(drift)
                 feature_drift_score = float(np.mean(drifts)) if drifts else 0.0
-        
+
         # Performance degradation (if baseline exists)
         performance_degradation = 0.0
         if self.baseline_metrics:
             # Use confidence as a proxy for performance
             performance_degradation = max(0, self.baseline_metrics.win_rate - conf_mean)
-        
+
         # Check thresholds
         alert_triggered = False
         if feature_drift_score >= self.alert_thresholds['model_drift_threshold']:
@@ -305,7 +305,7 @@ class MonitoringSystem:
                 f"(threshold: {self.alert_thresholds['model_drift_threshold']:.3f})",
                 {'drift_score': feature_drift_score}
             )
-        
+
         if performance_degradation >= self.alert_thresholds['confidence_drop_threshold']:
             alert_triggered = True
             self.add_alert(
@@ -314,7 +314,7 @@ class MonitoringSystem:
                 f"Model confidence dropped: {performance_degradation:.1%}",
                 {'degradation': performance_degradation}
             )
-        
+
         # Create metrics object
         metrics = ModelDriftMetrics(
             timestamp=timestamp,
@@ -325,33 +325,33 @@ class MonitoringSystem:
             performance_degradation=performance_degradation,
             alert_triggered=alert_triggered,
         )
-        
+
         self.drift_history.append(metrics)
         self._save_drift_metrics(metrics)
-        
+
         logger.info(
             f"Model drift check: pred_mean={pred_mean:.3f}, "
             f"conf_mean={conf_mean:.3f}, drift={feature_drift_score:.3f}"
         )
-        
+
         return metrics
-    
+
     def _load_feature_baseline(self) -> Optional[Dict[str, float]]:
         """Load baseline feature statistics."""
         baseline_path = self.log_dir / 'feature_baseline.json'
         if not baseline_path.exists():
             return None
-        
+
         try:
             return json.loads(baseline_path.read_text())
         except Exception as e:
             logger.warning(f"Failed to load feature baseline: {e}")
             return None
-    
+
     def _save_drift_metrics(self, metrics: ModelDriftMetrics) -> None:
         """Save drift metrics to log."""
         drift_log = self.log_dir / 'model_drift.jsonl'
-        
+
         data = {
             'timestamp': metrics.timestamp,
             'prediction_mean': metrics.prediction_mean,
@@ -361,11 +361,11 @@ class MonitoringSystem:
             'performance_degradation': metrics.performance_degradation,
             'alert_triggered': metrics.alert_triggered,
         }
-        
+
         # Append to JSONL file
         with drift_log.open('a') as f:
             f.write(json.dumps(data) + '\n')
-    
+
     def add_alert(
         self,
         level: AlertLevel,
@@ -388,7 +388,7 @@ class MonitoringSystem:
             logging.INFO,
             f"[{level.value.upper()}] {category}: {message}"
         )
-    
+
     def get_alerts(
         self,
         level: Optional[AlertLevel] = None,
@@ -396,25 +396,25 @@ class MonitoringSystem:
     ) -> List[Alert]:
         """Get alerts, optionally filtered by level or category."""
         alerts = self.alerts
-        
+
         if level:
             alerts = [a for a in alerts if a.level == level]
-        
+
         if category:
             alerts = [a for a in alerts if a.category == category]
-        
+
         return alerts
-    
+
     def clear_alerts(self) -> None:
         """Clear all alerts."""
         self.alerts = []
-    
+
     def export_alerts(self, path: Optional[Path] = None) -> Path:
         """Export alerts to JSON file."""
         if path is None:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             path = self.log_dir / f'alerts_{timestamp}.json'
-        
+
         data = [
             {
                 'level': a.level.value,
@@ -425,21 +425,21 @@ class MonitoringSystem:
             }
             for a in self.alerts
         ]
-        
+
         path.write_text(json.dumps(data, indent=2))
         logger.info(f"Alerts exported to {path}")
         return path
-    
+
     def get_dashboard_data(self) -> Dict[str, Any]:
         """
         Get aggregated data for monitoring dashboard.
-        
+
         Returns:
             Dictionary with dashboard metrics
         """
         # Recent drift metrics
         recent_drift = self.drift_history[-10:] if self.drift_history else []
-        
+
         # Alert summary
         alert_summary = {
             'total': len(self.alerts),
@@ -447,7 +447,7 @@ class MonitoringSystem:
             'warning': len([a for a in self.alerts if a.level == AlertLevel.WARNING]),
             'info': len([a for a in self.alerts if a.level == AlertLevel.INFO]),
         }
-        
+
         return {
             'timestamp': datetime.now().isoformat(),
             'alerts': alert_summary,
@@ -477,18 +477,18 @@ def create_monitoring_report(
 ) -> Path:
     """
     Create a comprehensive monitoring report.
-    
+
     Args:
         monitor: MonitoringSystem instance
         output_path: Optional output path
-    
+
     Returns:
         Path to report file
     """
     if output_path is None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_path = monitor.log_dir / f'monitoring_report_{timestamp}.json'
-    
+
     # Gather all data
     dashboard_data = monitor.get_dashboard_data()
     all_alerts = [
@@ -501,7 +501,7 @@ def create_monitoring_report(
         }
         for a in monitor.alerts
     ]
-    
+
     report = {
         'generated_at': datetime.now().isoformat(),
         'dashboard': dashboard_data,
@@ -519,7 +519,7 @@ def create_monitoring_report(
             for m in monitor.drift_history
         ],
     }
-    
+
     output_path.write_text(json.dumps(report, indent=2))
     logger.info(f"Monitoring report saved to {output_path}")
     return output_path
@@ -531,10 +531,10 @@ def create_monitoring_report(
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    
+
     print("Monitoring System Module")
     print("=" * 60)
-    
+
     # Create test config
     test_config = {
         'paths': {'log_dir': '/tmp/ml_engine_monitoring_test'},
@@ -545,10 +545,10 @@ if __name__ == "__main__":
             }
         }
     }
-    
+
     # Initialize monitoring system
     monitor = MonitoringSystem(test_config)
-    
+
     # Test daily performance check
     print("\nTesting daily performance check...")
     test_trades = [
@@ -563,7 +563,7 @@ if __name__ == "__main__":
         trades=test_trades,
         starting_balance=10000,
     )
-    
+
     # Test model drift check
     print("\nTesting model drift check...")
     predictions = np.random.rand(100) * 0.5 + 0.3  # Mean around 0.55
@@ -571,20 +571,20 @@ if __name__ == "__main__":
     drift_metrics = monitor.check_model_drift(predictions, confidences)
     print(f"  Drift score: {drift_metrics.feature_drift_score:.3f}")
     print(f"  Confidence mean: {drift_metrics.confidence_mean:.3f}")
-    
+
     # Test alerts
     print(f"\nTotal alerts: {len(monitor.alerts)}")
     for alert in monitor.alerts:
         print(f"  [{alert.level.value}] {alert.category}: {alert.message}")
-    
+
     # Test dashboard data
     print("\nDashboard data:")
     dashboard = monitor.get_dashboard_data()
     print(f"  Alerts: {dashboard['alerts']}")
     print(f"  Recent drift checks: {len(dashboard['recent_drift'])}")
-    
+
     # Export report
     report_path = create_monitoring_report(monitor)
     print(f"\nReport exported to: {report_path}")
-    
+
     print("\n✓ Monitoring system module ready")

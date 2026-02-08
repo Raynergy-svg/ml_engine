@@ -3,18 +3,19 @@
 Test both candidate and production models, then promote the better one.
 """
 import json
-import sys
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
 console = Console()
 
+
 def load_meta(path):
     """Load model metadata."""
     if not path.exists():
         return None
     return json.loads(path.read_text())
+
 
 def test_model(meta_path, model_name):
     """Extract test metrics from metadata."""
@@ -31,6 +32,7 @@ def test_model(meta_path, model_name):
         "best_epoch": meta.get("best_epoch", 0),
         "path": str(meta_path),
     }
+
 
 def compare_and_promote():
     """Compare models and promote the better one."""
@@ -93,13 +95,11 @@ def compare_and_promote():
         
         if candidate_score > production_score:
             winner = candidate
-            loser = production
-            console.print(f"[green]✓ Candidate model is better![/green]")
+            console.print("[green]✓ Candidate model is better![/green]")
             console.print(f"  Score: {candidate_score:.2f} vs {production_score:.2f}")
         else:
             winner = production
-            loser = candidate
-            console.print(f"[green]✓ Production model is better![/green]")
+            console.print("[green]✓ Production model is better![/green]")
             console.print(f"  Score: {production_score:.2f} vs {candidate_score:.2f}")
         
         # If production is better, we should promote it (copy to candidate)
@@ -135,6 +135,6 @@ def compare_and_promote():
         console.print(f"  Accuracy: {production['accuracy']:.2f}%")
         console.print(f"  Combined Score: {production['combined_score']:.4f}\n")
 
+
 if __name__ == "__main__":
     compare_and_promote()
-

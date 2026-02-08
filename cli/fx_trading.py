@@ -6,7 +6,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,6 @@ from rich.panel import Panel
 
 from cli.io_utils import (
     console,
-    logger,
     load_config,
     BUDDY_META_FILENAME,
     TABLE_HEADER_STYLE,
@@ -319,7 +318,7 @@ def _fx_execution_guard_price_bound(_policy: Any, client: Any, *, instrument: st
     # Determine buffer in pips. Prefer policy-level override `costs.price_bound_buffer_pips` if available.
     buffer_pips = None
     try:
-        buffer_pips = float(getattr(_policy.costs, "price_bound_buffer_pips"))
+        buffer_pips = float(_policy.costs.price_bound_buffer_pips)
     except Exception:
         try:
             # support dict-like policy.costs
@@ -345,7 +344,6 @@ def _schedule_auto_close(client: Any, instrument: str, delay_s: float, *, verbos
     This is a best-effort helper for PRACTICE mode to ensure scalping-style trades
     are not left open beyond the desired timeframe.
     """
-    import threading
 
     def _worker():
         try:
@@ -355,8 +353,8 @@ def _schedule_auto_close(client: Any, instrument: str, delay_s: float, *, verbos
             try:
                 # Prefer closing the specific trade if the create_market_order returned a trade id
                 # The client may expose `close_trade(trade_id=...)` or fall back to close_position.
-                if hasattr(client, "close_trade") and hasattr(client, "_last_trade_id") and getattr(client, "_last_trade_id"):
-                    tid = getattr(client, "_last_trade_id")
+                if hasattr(client, "close_trade") and hasattr(client, "_last_trade_id") and client._last_trade_id:
+                    tid = client._last_trade_id
                     try:
                         res = client.close_trade(trade_id=tid)
                         console.print(f"[dim]Auto-close[/dim]: closed trade {tid} for {instrument}: {res}")
@@ -392,8 +390,6 @@ def integrated_predict_once(config: Dict[str, Any]) -> Dict[str, Any]:
     The production path is Buddy (`train-buddy`/`buddy`). Some unit tests still
     exercise the historical integrated API. Keep this no-network and lightweight.
     """
-
-    import numpy as np
 
     batch_size = int((config or {}).get("batch_size") or 1)
     # A deterministic placeholder prediction tensor.
@@ -468,7 +464,6 @@ def _pick_default_market_csv(config: Dict[str, Any]) -> str:
 
 def _normalize_market_dataframe(df):
     """Return a copy with standardized OHLCV column names: open/high/low/close/volume."""
-    import pandas as pd
 
     if not isinstance(df, pd.DataFrame):
         raise TypeError("market_data_df must be a pandas DataFrame")
@@ -508,8 +503,6 @@ def build_integrated_feature_tensors(
 
     This implementation is intentionally simple and deterministic.
     """
-
-    import numpy as np
 
     df = _normalize_market_dataframe(market_data_df)
     seq_len = int((config or {}).get("data", {}).get("sequence_length") or 60)
@@ -850,7 +843,7 @@ def _fx_execute_paper_trade_plan(
         if trade_id:
             try:
                 # attach to client for auto-close worker to use
-                setattr(client, "_last_trade_id", str(trade_id))
+                client._last_trade_id = str(trade_id)
             except Exception:
                 pass
     except Exception:

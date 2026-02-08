@@ -170,7 +170,7 @@ class MLVisualizer:
 
     def load_config(self):
         """Load the configuration from the YAML file."""
-        with open(self.config_path, "r") as f:
+        with open(self.config_path) as f:
             return yaml.safe_load(f)
 
     def update_config(self, new_config):

@@ -88,7 +88,7 @@ class FeatureEngineering:
         ranges = pd.concat([high_low, high_close, low_close], axis=1)
         true_range = ranges.max(axis=1)
         df["atr"] = true_range.rolling(window=14).mean()
-        
+
         # ATR percentage (as decimal, e.g., 0.001 = 0.1%)
         # Used by RF risk model for expected drawdown
         df["atr_pct_5"] = true_range.rolling(window=5).mean() / df["close"].clip(lower=1e-8)
@@ -158,19 +158,19 @@ class FeatureEngineering:
         # =====================================================================
         # DIRECTIONAL FEATURES (Enhanced for direction prediction)
         # =====================================================================
-        
+
         # MACD Crossover Signals (+1 = bullish cross, -1 = bearish cross, 0 = no cross)
         macd_above_signal = (df["macd"] > df["macd_signal"]).astype(int)
         df["macd_crossover"] = macd_above_signal.diff().fillna(0)  # +1, -1, or 0
-        
+
         # MACD Histogram momentum (acceleration of trend)
         df["macd_hist_momentum"] = df["macd_hist"].diff()
-        
+
         # MACD Divergence (price vs MACD disagreement)
         price_direction = np.sign(df["close"].diff(5))
         macd_direction = np.sign(df["macd"].diff(5))
         df["macd_divergence"] = (price_direction != macd_direction).astype(float)
-        
+
         # Trend Strength Composite (combines multiple indicators)
         # Normalized ADX (0-1 scale, >0.5 = strong trend)
         adx_norm = df["adx"] / 100.0
@@ -179,14 +179,14 @@ class FeatureEngineering:
         # MACD histogram normalized
         macd_hist_norm = df["macd_hist"] / (df["macd_hist"].rolling(20).std() + 1e-8)
         macd_hist_norm = macd_hist_norm.clip(-3, 3) / 3.0  # Clip to [-1, 1]
-        
+
         df["trend_strength"] = (adx_norm * 0.4 + rsi_trend.abs() * 0.3 + macd_hist_norm.abs() * 0.3)
         df["trend_direction"] = np.sign(rsi_trend) * df["trend_strength"]
-        
+
         # Moving Average Crossovers
         df["sma_5_20_cross"] = (df["sma_5"] > df["sma_20"]).astype(int).diff().fillna(0)
         df["ema_12_26_cross"] = (ema_12 > ema_26).astype(int).diff().fillna(0)
-        
+
         # Momentum Divergence (price making new highs but momentum not)
         price_high_20 = df["close"].rolling(20).max()
         mom_high_20 = df["momentum_10"].rolling(20).max() if "momentum_10" in df.columns else df["close"].diff(10).rolling(20).max()
@@ -194,47 +194,47 @@ class FeatureEngineering:
             (df["close"] >= price_high_20 * 0.99)
             & (df.get("momentum_10", df["close"].diff(10)) < mom_high_20 * 0.9)
         ).astype(float)
-        
+
         # Stochastic Crossover
         df["stoch_crossover"] = (df["stoch_k"] > df["stoch_d"]).astype(int).diff().fillna(0)
-        
+
         # RSI Overbought/Oversold signals
         df["rsi_signal"] = np.where(df["rsi"] > 70, -1, np.where(df["rsi"] < 30, 1, 0))
-        
+
         # =====================================================================
         # ADDITIONAL MOMENTUM FEATURES (Step 3: Feature engineering for momentum)
         # =====================================================================
-        
+
         # CCI Signal (Commodity Channel Index)
         # Buy when CCI < -100 (oversold), Sell when CCI > 100 (overbought)
         if "cci" in df.columns:
             df["cci_signal"] = np.where(df["cci"] > 100, -1, np.where(df["cci"] < -100, 1, 0))
-        
+
         # ADX Trend Strength (>25 = strong trend, >40 = very strong)
         df["adx_trend_strong"] = (df["adx"] > 25).astype(float)
         df["adx_trend_very_strong"] = (df["adx"] > 40).astype(float)
-        
+
         # DI Crossover (+DI crosses above -DI = bullish, vice versa)
         di_bullish = (df["plus_di"] > df["minus_di"]).astype(int)
         df["di_crossover"] = di_bullish.diff().fillna(0)  # +1 = bullish cross, -1 = bearish cross
-        
+
         # DI Spread (larger spread = stronger trend direction)
         df["di_spread"] = (df["plus_di"] - df["minus_di"]) / (df["plus_di"] + df["minus_di"] + 1e-8)
-        
+
         # Price Momentum (percentage change over different windows)
         for window in [5, 10, 20]:
             df[f"price_pct_change_{window}"] = df["close"].pct_change(window)
-        
+
         # Acceleration (second derivative of price)
         df["price_acceleration"] = df["close"].diff().diff()
         df["momentum_acceleration"] = df["momentum_10"].diff() if "momentum_10" in df.columns else df["close"].diff(10).diff()
-        
+
         # Volume-Price Confirmation (rising price + rising volume = strong)
         if "volume" in df.columns:
             price_rising = (df["close"].diff() > 0).astype(int)
             volume_rising = (df["volume"].diff() > 0).astype(int)
             df["volume_price_confirm"] = (price_rising * volume_rising - (1 - price_rising) * volume_rising).fillna(0)
-        
+
         # Multi-timeframe RSI agreement
         rsi_short = (
             df["close"].diff(7).apply(lambda x: max(x, 0)).rolling(7).mean()
@@ -246,14 +246,14 @@ class FeatureEngineering:
         # =====================================================================
         # MARKET REGIME DETECTION (2025 Best Practice)
         # =====================================================================
-        
+
         # Trending vs Ranging Regime
         # High ADX + clear DI separation = trending
         # Low ADX = ranging/consolidating
         df["is_trending"] = (df["adx"] > 25).astype(float)
         df["is_strong_trend"] = (df["adx"] > 40).astype(float)
         df["is_ranging"] = (df["adx"] < 20).astype(float)
-        
+
         # Volatility Regime (based on ATR percentile)
         atr_pct = df["atr"].rolling(100).apply(
             lambda x: pd.Series(x).rank(pct=True).iloc[-1] if len(x) > 0 else 0.5,
@@ -262,35 +262,35 @@ class FeatureEngineering:
         df["volatility_regime"] = atr_pct.fillna(0.5)
         df["is_high_volatility"] = (df["volatility_regime"] > 0.7).astype(float)
         df["is_low_volatility"] = (df["volatility_regime"] < 0.3).astype(float)
-        
+
         # Trend Quality Score (combining ADX, DI spread, and MA alignment)
         ma_aligned_up = ((df["sma_5"] > df["sma_20"]) & (df["sma_20"] > df["sma_50"])).astype(float)
         ma_aligned_down = ((df["sma_5"] < df["sma_20"]) & (df["sma_20"] < df["sma_50"])).astype(float)
         df["ma_alignment"] = ma_aligned_up - ma_aligned_down  # +1 = bullish aligned, -1 = bearish aligned
-        
+
         # Squeeze Detection (low BB width = potential breakout)
         bb_width_pct = df["bb_width_20"].rolling(50).apply(
             lambda x: pd.Series(x).rank(pct=True).iloc[-1] if len(x) > 0 else 0.5,
             raw=False
         )
         df["bb_squeeze"] = (bb_width_pct < 0.2).astype(float).fillna(0)
-        
+
         # =====================================================================
         # FEATURE INTERACTIONS (2025 Best Practice)
         # =====================================================================
-        
+
         # RSI × ATR (strong signal in high volatility)
         df["rsi_x_atr_norm"] = ((df["rsi"] - 50) / 50) * (df["atr"] / df["atr"].rolling(20).mean())
-        
+
         # MACD × ADX (trend momentum strength)
         df["macd_x_adx"] = (df["macd_hist"] / (df["macd_hist"].rolling(20).std() + 1e-8)) * (df["adx"] / 50)
-        
+
         # Volume × Price Movement (confirmation)
         if "volume" in df.columns:
             vol_norm = df["volume"] / df["volume"].rolling(20).mean()
             price_move = df["close"].pct_change().abs() * 100
             df["volume_price_strength"] = vol_norm * price_move
-        
+
         # Overbought/Oversold with trend confirmation
         df["rsi_trend_confirm"] = (
             ((df["rsi"] > 70) & (df["trend_direction"] > 0)).astype(float) * -1 +  # Overbought in uptrend
@@ -332,7 +332,7 @@ class FeatureEngineering:
         # Use percentage returns normalized by volatility instead of raw price diffs
         # This makes features stationary across different price levels and regimes
         # =====================================================================
-        
+
         # ATR for volatility normalization (compute if not already present)
         if "atr" not in df.columns:
             high_low = df["high"] - df["low"]
@@ -343,12 +343,12 @@ class FeatureEngineering:
             atr_temp = true_range.rolling(window=14).mean()
         else:
             atr_temp = df["atr"]
-        
+
         # Rolling ATR for normalization (smoothed to reduce noise)
         rolling_atr = atr_temp.rolling(20).mean().fillna(atr_temp)
         # Prevent division by zero
         rolling_atr = rolling_atr.replace(0, np.nan).ffill().fillna(0.0001)
-        
+
         # Momentum as LOG RETURNS (trend-agnostic, stationary)
         # Log returns compound properly and are symmetric for up/down moves
         for window in [5, 10, 20]:
@@ -356,17 +356,17 @@ class FeatureEngineering:
             log_return_momentum = np.log(
                 df["close"] / df["close"].shift(window).replace(0, np.nan)
             ).fillna(0)
-            
+
             # Volatility-normalized momentum: divide by rolling ATR
             # This makes "0.5% move" mean different things in low vs high volatility
             # A 0.5% move in low vol is significant; in high vol it's noise
             df[f"momentum_{window}"] = log_return_momentum / rolling_atr
-            
+
             # Also keep raw percentage momentum for comparison
             df[f"momentum_pct_{window}"] = (
                 df["close"] / df["close"].shift(window) - 1.0
             ).fillna(0)
-        
+
         # Clip extreme values to prevent outliers from dominating
         for window in [5, 10, 20]:
             df[f"momentum_{window}"] = df[f"momentum_{window}"].clip(-10, 10)
@@ -397,7 +397,7 @@ class FeatureEngineering:
                 if col in df.columns:
                     date_col = col
                     break
-            
+
             if date_col:
                 # Force a real DatetimeIndex even if the source strings have mixed/explicit timezones.
                 # Using utc=True avoids pandas returning an object Index (which lacks .dayofweek).
@@ -439,12 +439,12 @@ class FeatureEngineering:
         # =====================================================================
         # FX SESSION FEATURES (Critical for Forex - 2025 Best Practice)
         # =====================================================================
-        
+
         # Hour of day (critical for intraday trading)
         df["hour"] = df.index.hour
         df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
         df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
-        
+
         # FX Trading Sessions (times in UTC)
         # Asian Session: 00:00 - 09:00 UTC (Tokyo 09:00-18:00 JST)
         # London Session: 07:00 - 16:00 UTC
@@ -452,23 +452,23 @@ class FeatureEngineering:
         df["is_asian_session"] = ((df["hour"] >= 0) & (df["hour"] < 9)).astype(int)
         df["is_london_session"] = ((df["hour"] >= 7) & (df["hour"] < 16)).astype(int)
         df["is_ny_session"] = ((df["hour"] >= 13) & (df["hour"] < 22)).astype(int)
-        
+
         # Session Overlaps (highest volatility periods)
         df["is_london_ny_overlap"] = ((df["hour"] >= 13) & (df["hour"] < 16)).astype(int)
         df["is_asian_london_overlap"] = ((df["hour"] >= 7) & (df["hour"] < 9)).astype(int)
-        
+
         # Weekend proximity (Friday afternoon = risk-off, Sunday evening = gaps)
         df["is_friday"] = (df["day_of_week"] == 4).astype(int)
         df["is_monday"] = (df["day_of_week"] == 0).astype(int)
         df["friday_afternoon"] = ((df["day_of_week"] == 4) & (df["hour"] >= 18)).astype(int)
-        
+
         # Market regime time features
         # First/last hour of major sessions often have higher volatility
         df["is_session_open"] = (
-            ((df["hour"] == 0) | (df["hour"] == 7) | (df["hour"] == 13))
+            (df["hour"] == 0) | (df["hour"] == 7) | (df["hour"] == 13)
         ).astype(int)
         df["is_session_close"] = (
-            ((df["hour"] == 8) | (df["hour"] == 15) | (df["hour"] == 21))
+            (df["hour"] == 8) | (df["hour"] == 15) | (df["hour"] == 21)
         ).astype(int)
 
         return df
@@ -527,7 +527,7 @@ class FeatureEngineering:
 
     def add_regime_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add market regime detection features (2025 best practice).
-        
+
         Identifies:
         1. Trend vs range-bound (using ADX)
         2. Volatility regime (high/low/normal)
@@ -535,7 +535,7 @@ class FeatureEngineering:
         4. Mean-reversion potential
         """
         df = df.copy()
-        
+
         # --- Trend Regime (ADX-based) ---
         if 'adx' in df.columns:
             # Strong trend: ADX > 40
@@ -544,10 +544,10 @@ class FeatureEngineering:
             df['is_strong_trend'] = (df['adx'] > 40).astype(float)
             df['is_trending'] = (df['adx'] > 25).astype(float)
             df['is_ranging'] = (df['adx'] < 20).astype(float)
-            
+
             # Trend strength (normalized ADX)
             df['trend_strength'] = df['adx'].clip(0, 100) / 100.0
-        
+
         # --- Volatility Regime ---
         if 'atr' in df.columns:
             # Use rolling percentile of ATR
@@ -557,17 +557,17 @@ class FeatureEngineering:
             df['volatility_regime'] = atr_pctl.fillna(0.5)
             df['is_high_volatility'] = (atr_pctl > 0.75).astype(float)
             df['is_low_volatility'] = (atr_pctl < 0.25).astype(float)
-        
+
         # --- Momentum Regime ---
         if 'rsi' in df.columns:
             # Overbought/Oversold
             df['is_overbought'] = (df['rsi'] > 70).astype(float)
             df['is_oversold'] = (df['rsi'] < 30).astype(float)
             df['rsi_extreme'] = ((df['rsi'] > 70) | (df['rsi'] < 30)).astype(float)
-            
+
             # RSI momentum (rate of change)
             df['rsi_momentum'] = df['rsi'].diff(5) / 5.0
-        
+
         # --- Moving Average Alignment ---
         if all(col in df.columns for col in ['sma_5', 'sma_20', 'sma_50']):
             # Bullish alignment: 5 > 20 > 50
@@ -577,7 +577,7 @@ class FeatureEngineering:
             df['ma_bullish_alignment'] = bull_align
             df['ma_bearish_alignment'] = bear_align
             df['ma_alignment_strength'] = bull_align - bear_align
-        
+
         # --- Bollinger Band Regime ---
         if 'bb_width_20' in df.columns:
             bb_pctl = df['bb_width_20'].rolling(window=100, min_periods=20).apply(
@@ -585,64 +585,64 @@ class FeatureEngineering:
             )
             df['bb_squeeze'] = (bb_pctl < 0.2).astype(float)  # Potential breakout
             df['bb_expansion'] = (bb_pctl > 0.8).astype(float)
-        
+
         if 'bb_position_20' in df.columns:
             # Position within bands (0-1)
             df['bb_upper_touch'] = (df['bb_position_20'] > 0.95).astype(float)
             df['bb_lower_touch'] = (df['bb_position_20'] < 0.05).astype(float)
-        
+
         # --- Session Features (FX-specific) ---
         if hasattr(df.index, 'hour'):
             hour = df.index.hour
             df['hour_sin'] = np.sin(2 * np.pi * hour / 24)
             df['hour_cos'] = np.cos(2 * np.pi * hour / 24)
-            
+
             # Major FX sessions (UTC)
             df['is_asian_session'] = ((hour >= 0) & (hour < 9)).astype(float)
             df['is_london_session'] = ((hour >= 7) & (hour < 16)).astype(float)
             df['is_ny_session'] = ((hour >= 13) & (hour < 22)).astype(float)
-            
+
             # High volatility overlaps
             df['is_london_ny_overlap'] = ((hour >= 13) & (hour < 16)).astype(float)
             df['is_asian_london_overlap'] = ((hour >= 7) & (hour < 9)).astype(float)
-        
+
         # --- Day of Week Features ---
         if hasattr(df.index, 'dayofweek'):
             dow = df.index.dayofweek
             df['is_monday'] = (dow == 0).astype(float)
             df['is_friday'] = (dow == 4).astype(float)
             df['is_mid_week'] = ((dow >= 1) & (dow <= 3)).astype(float)
-            
+
             # Weekend gap risk (Friday afternoon)
             if hasattr(df.index, 'hour'):
                 df['friday_afternoon'] = ((dow == 4) & (df.index.hour >= 17)).astype(float)
-        
+
         return df
 
     def add_intermarket_features(
-        self, 
-        df: pd.DataFrame, 
+        self,
+        df: pd.DataFrame,
         correlates: dict = None
     ) -> pd.DataFrame:
         """Add intermarket correlation features (2025 enhancement).
-        
+
         For FX, relevant correlates include:
         - DXY (Dollar Index) for USD pairs
         - VIX (volatility index)
         - Gold (safe haven)
         - Oil (commodity currencies)
         - Bond yields (rate differentials)
-        
+
         Args:
             df: Main price DataFrame
             correlates: Dict of {name: DataFrame} with correlated asset prices
                        Each DataFrame should have 'close' column and same index
-        
+
         Note: This method adds placeholder features if correlates not provided,
               allowing the model architecture to remain consistent.
         """
         df = df.copy()
-        
+
         if correlates is None:
             # Add placeholder features (will be 0.5 or neutral)
             # This maintains feature consistency when external data unavailable
@@ -652,41 +652,41 @@ class FeatureEngineering:
             df['yield_diff_momentum'] = 0.0
             df['risk_on_score'] = 0.5
             return df
-        
+
         # --- DXY (Dollar Index) Correlation ---
         if 'dxy' in correlates and 'close' in correlates['dxy'].columns:
             dxy = correlates['dxy']['close'].reindex(df.index, method='ffill')
-            
+
             # Rolling correlation with USD
             df['dxy_corr_20'] = df['close'].rolling(20).corr(dxy).fillna(0)
             df['dxy_momentum'] = dxy.pct_change(5).fillna(0)
             df['dxy_zscore'] = ((dxy - dxy.rolling(50).mean()) / dxy.rolling(50).std()).fillna(0)
-        
+
         # --- VIX (Volatility Index) ---
         if 'vix' in correlates and 'close' in correlates['vix'].columns:
             vix = correlates['vix']['close'].reindex(df.index, method='ffill')
-            
+
             df['vix_level'] = (vix.clip(10, 80) - 10) / 70.0  # Normalize to 0-1
             df['vix_spike'] = (vix.diff() > vix.rolling(20).std() * 2).astype(float)
             df['vix_high'] = (vix > 25).astype(float)
-        
+
         # --- Gold (Safe Haven) ---
         if 'gold' in correlates and 'close' in correlates['gold'].columns:
             gold = correlates['gold']['close'].reindex(df.index, method='ffill')
-            
+
             df['gold_momentum'] = gold.pct_change(10).fillna(0).clip(-0.1, 0.1)
             df['gold_corr_20'] = df['close'].rolling(20).corr(gold).fillna(0)
-        
+
         # --- Yield Spread (Rate Differential) ---
         if 'us_10y' in correlates and 'jp_10y' in correlates:
             us_yield = correlates['us_10y']['close'].reindex(df.index, method='ffill')
             jp_yield = correlates['jp_10y']['close'].reindex(df.index, method='ffill')
-            
+
             # Yield differential (important for carry trades)
             yield_diff = us_yield - jp_yield
             df['yield_diff'] = yield_diff.fillna(yield_diff.mean())
             df['yield_diff_momentum'] = yield_diff.diff(5).fillna(0)
-        
+
         # --- Composite Risk Score ---
         # Combines multiple factors into a risk-on/risk-off indicator
         risk_factors = []
@@ -694,54 +694,54 @@ class FeatureEngineering:
             risk_factors.append(1 - df['vix_level'])  # Lower VIX = risk-on
         if 'gold_momentum' in df.columns:
             risk_factors.append(-df['gold_momentum'] * 5)  # Gold selling = risk-on
-        
+
         if risk_factors:
             df['risk_on_score'] = np.mean(risk_factors, axis=0).clip(0, 1)
         else:
             df['risk_on_score'] = 0.5
-        
+
         return df
 
     def add_momentum_divergence_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add momentum divergence features (classic technical patterns).
-        
+
         Divergences between price and momentum indicators often precede reversals.
         """
         df = df.copy()
-        
+
         # Price highs/lows over window
         window = 14
         price_high = df['close'].rolling(window).max()
         price_low = df['close'].rolling(window).min()
-        
+
         # Check if RSI diverges from price
         if 'rsi' in df.columns:
             rsi_high = df['rsi'].rolling(window).max()
             rsi_low = df['rsi'].rolling(window).min()
-            
+
             # Bearish divergence: price makes new high but RSI doesn't
             new_price_high = (df['close'] >= price_high * 0.999)
             rsi_lower_high = (df['rsi'] < rsi_high - 5)
             df['bearish_divergence'] = (new_price_high & rsi_lower_high).astype(float)
-            
+
             # Bullish divergence: price makes new low but RSI doesn't
             new_price_low = (df['close'] <= price_low * 1.001)
             rsi_higher_low = (df['rsi'] > rsi_low + 5)
             df['bullish_divergence'] = (new_price_low & rsi_higher_low).astype(float)
-        
+
         # MACD divergence
         if 'macd' in df.columns:
             macd_high = df['macd'].rolling(window).max()
             macd_low = df['macd'].rolling(window).min()
-            
+
             new_price_high = (df['close'] >= price_high * 0.999)
             macd_lower = (df['macd'] < macd_high * 0.9)
             df['macd_bearish_div'] = (new_price_high & macd_lower).astype(float)
-            
+
             new_price_low = (df['close'] <= price_low * 1.001)
             macd_higher = (df['macd'] > macd_low * 1.1) if (df['macd'] < 0).any() else (df['macd'] > macd_low + 0.0001)
             df['macd_bullish_div'] = (new_price_low & macd_higher.fillna(False)).astype(float)
-        
+
         return df
 
     def _parse_int_list(self, values, default, min_value: int) -> List[int]:
@@ -758,20 +758,20 @@ class FeatureEngineering:
 
     def normalize_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Normalize features to prevent scale issues (2025 Best Practice).
-        
+
         This method:
         1. Clips extreme values to prevent outliers from dominating
         2. Normalizes price-derived features to [-1, 1] or [0, 1] ranges
         3. Handles inf/nan values
         """
         df = df.copy()
-        
+
         # Features that should be in [0, 100] range (oscillators)
         oscillator_cols = ['rsi', 'rsi_7', 'stoch_k', 'stoch_d', 'mfi', 'adx']
         for col in oscillator_cols:
             if col in df.columns:
                 df[col] = df[col].clip(0, 100)
-        
+
         # Features that should be in [-100, 100] range
         bounded_cols = ['williams_r', 'cci']
         for col in bounded_cols:
@@ -780,39 +780,39 @@ class FeatureEngineering:
                     df[col] = df[col].clip(-100, 0)
                 elif col == 'cci':
                     df[col] = df[col].clip(-200, 200)
-        
+
         # Percentage features should be clipped
         pct_cols = [c for c in df.columns if 'pct_change' in c or 'roc_' in c]
         for col in pct_cols:
             if col in df.columns:
                 df[col] = df[col].clip(-0.5, 0.5)  # ±50% max
-        
+
         # Normalize volume ratio (often spikes)
         if 'volume_ratio' in df.columns:
             df['volume_ratio'] = df['volume_ratio'].clip(0, 5)
-        
+
         # Z-scores should be bounded
         zscore_cols = [c for c in df.columns if 'zscore' in c]
         for col in zscore_cols:
             if col in df.columns:
                 df[col] = df[col].clip(-4, 4)
-        
+
         # Handle inf/nan
         df = df.replace([np.inf, -np.inf], np.nan)
-        
+
         # Log transform skewed features (volatility, ATR)
         # This helps with the long-tail distribution
         if 'atr' in df.columns:
             atr_mean = df['atr'].mean()
             if atr_mean > 0:
                 df['atr_log'] = np.log1p(df['atr'] / atr_mean)
-        
+
         for col in ['volatility_5', 'volatility_10', 'volatility_20']:
             if col in df.columns:
                 col_mean = df[col].mean()
                 if col_mean > 0:
                     df[f'{col}_log'] = np.log1p(df[col] / col_mean)
-        
+
         return df
 
     def _ensure_text_sentiment(
@@ -909,24 +909,24 @@ class FeatureEngineering:
         instrument: str = "EUR_USD",
     ) -> pd.DataFrame:
         """Add real-time news sentiment features using FinBERT (if available).
-        
+
         This adds:
         - news_sentiment: Mean sentiment score from recent headlines [-1, 1]
         - news_volume: Number of news items (activity = volatility signal)
-        
+
         Requires optional news_features module. Falls back gracefully if not available.
-        
+
         Args:
             df: DataFrame to add features to
             instrument: Currency pair for news fetching
-            
+
         Returns:
             DataFrame with news sentiment features added
         """
         news_cfg = (self.config or {}).get("news", {})
         if not bool(news_cfg.get("enabled", True)):
             return df
-        
+
         try:
             from news_features import add_sentiment_features
             use_finbert = news_cfg.get("use_finbert", True)
@@ -948,7 +948,7 @@ class FeatureEngineering:
         instrument: Optional[str] = None,
     ) -> pd.DataFrame:
         """Create all features.
-        
+
         Args:
             df: Input DataFrame with OHLCV data
             include_all: Whether to add all feature sets
@@ -1000,7 +1000,7 @@ class FeatureEngineering:
             df = self.add_time_features(df)
             df = self.add_lag_features(df)
             df = self.add_rolling_features(df)
-            
+
             # Enhanced features (2025 improvements)
             # Market regime detection
             df = self.add_regime_features(df)
@@ -1013,7 +1013,7 @@ class FeatureEngineering:
             else:
                 # Add placeholder features for consistent model architecture
                 df = self.add_intermarket_features(df, None)
-            
+
             # Normalize features (2025 Best Practice)
             # Prevents scale issues and clips extreme values
             if self.config.get("normalize_features", True):
@@ -1118,18 +1118,17 @@ class FeatureEngineering:
             import pickle
             from pathlib import Path
             from sklearn.ensemble import RandomForestClassifier
-            
+
             rf_model_path = Path("trained_data/models/rf_feature_selector.pkl")
             rf_meta_path = Path("trained_data/models/rf_feature_selector_features.pkl")
             rf_model = None
-            use_trained_model = False
-            
+
             # Try to load existing trained RF model
             if rf_model_path.exists():
                 try:
                     with open(rf_model_path, "rb") as f:
                         rf_model = pickle.load(f)
-                    
+
                     # Validate it's a sklearn model (not a dict from RandomForestTrainer)
                     if not hasattr(rf_model, 'feature_importances_'):
                         logger.warning("⚠️ RF model is not a sklearn model. Retraining...")
@@ -1137,45 +1136,44 @@ class FeatureEngineering:
                     elif rf_meta_path.exists():
                         with open(rf_meta_path, "rb") as f:
                             stored_features = pickle.load(f)
-                        
+
                         current_features = set(X.columns.tolist())
                         stored_features_set = set(stored_features)
-                        
+
                         if current_features != stored_features_set:
                             missing = stored_features_set - current_features
                             extra = current_features - stored_features_set
                             logger.warning(
                                 f"⚠️ RF model feature mismatch! "
                                 f"Stored: {len(stored_features)}, Current: {len(current_features)}. "
-                                f"Missing: {list(missing)[:5]}{'...' if len(missing)>5 else ''}, "
-                                f"Extra: {list(extra)[:5]}{'...' if len(extra)>5 else ''}. "
+                                f"Missing: {list(missing)[:5]}{'...' if len(missing) > 5 else ''}, "
+                                f"Extra: {list(extra)[:5]}{'...' if len(extra) > 5 else ''}. "
                                 f"Deleting stale model and retraining..."
                             )
                             rf_model_path.unlink()
                             rf_meta_path.unlink()
                             rf_model = None
                         else:
-                            use_trained_model = True
                             logger.info(f"✓ Loaded trained RF model with {len(stored_features)} matching features")
                     else:
                         # No meta file, can't validate - retrain
                         logger.warning("⚠️ RF model exists but no feature metadata. Retraining...")
                         rf_model = None
-                        
+
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to load RF model: {e}. Training new one...")
                     rf_model = None
-            
+
             # Train new RF if needed
             if rf_model is None:
                 logger.info(f"🌲 Training new RandomForest for feature selection on {len(X)} samples...")
-                
+
                 # Convert target to direction labels (UP=1, DOWN=0) if continuous
                 if len(np.unique(y)) > 2:
                     y_binary = (y > np.median(y)).astype(int)
                 else:
                     y_binary = y.astype(int)
-                
+
                 rf_model = RandomForestClassifier(
                     n_estimators=100,
                     max_depth=10,
@@ -1185,25 +1183,25 @@ class FeatureEngineering:
                     class_weight="balanced",  # Handle imbalanced data
                 )
                 rf_model.fit(X.values, y_binary)
-                
+
                 # Save model and feature names for future use
                 rf_model_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(rf_model_path, "wb") as f:
                     pickle.dump(rf_model, f)
                 with open(rf_meta_path, "wb") as f:
                     pickle.dump(X.columns.tolist(), f)
-                
+
                 logger.info(f"✓ Trained and saved new RF model to {rf_model_path}")
-            
+
             # Get feature importances and select top-k
             importances = rf_model.feature_importances_
             importance_df = pd.DataFrame({
                 "feature": X.columns,
                 "importance": importances
             }).sort_values("importance", ascending=False)
-            
+
             top_features = importance_df.head(top_k)["feature"].tolist()
-            
+
             logger.info(
                 f"🌲 RF Feature Selection: Top {len(top_features)} features by importance. "
                 f"Best: {top_features[:5]}"

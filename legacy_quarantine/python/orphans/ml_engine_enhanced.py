@@ -7,10 +7,10 @@ raise SystemExit(
     "Retired: legacy engine disabled. Buddy training/inference/trading runs only via main.py."
 )
 
-import logging
-import numpy as np
-from pathlib import Path
-from typing import Dict, Any, Tuple, Optional, Union, List
+import logging  # noqa: E402
+import numpy as np  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Dict, Any, Tuple, Optional, Union, List  # noqa: E402
 
 # NOTE: PyTorch was removed from this repository. This legacy module remains
 # only to avoid breaking imports from older scripts, but it is not supported.
@@ -26,12 +26,12 @@ nn = _NN()  # type: ignore
 optim = None  # type: ignore
 DataLoader = TensorDataset = GradScaler = None  # type: ignore
 ReduceLROnPlateau = CosineAnnealingWarmRestarts = None  # type: ignore
-from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.metrics import r2_score, mean_squared_error  # noqa: E402
 
 # Import optimized modules
-from memory_manager_enhanced import MemoryManager, mixed_precision_context
-from data_processing import create_optimized_dataloader
-from models_enhanced import (
+from memory_manager_enhanced import MemoryManager, mixed_precision_context  # noqa: E402
+from data_processing import create_optimized_dataloader  # noqa: E402
+from models_enhanced import (  # noqa: E402
     StockPredictor,
     AttentiveLSTM,
     GRUPredictor,

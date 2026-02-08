@@ -19,7 +19,7 @@ Models are defined with:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Type, Any
 
 logger = logging.getLogger(__name__)
@@ -28,10 +28,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ModelConfig:
     """Configuration for a single model in the ensemble.
-    
+
     This class defines all metadata needed to train, save, and load a model
     in a consistent way across the entire pipeline.
-    
+
     Attributes:
         name: Unique model identifier (e.g., 'transformer_direction')
         model_type: Type of model architecture (e.g., 'transformer', 'xgboost')
@@ -179,7 +179,7 @@ def get_enabled_models() -> List[str]:
 
 def get_models_by_task(task: str) -> List[str]:
     """Get list of model names that perform a specific task."""
-    return [name for name, config in MODEL_REGISTRY.items() 
+    return [name for name, config in MODEL_REGISTRY.items()
             if config.task == task and config.enabled]
 
 
@@ -218,7 +218,7 @@ def get_output_for_task(task: str) -> str:
 
 def validate_model_registry() -> Dict[str, Any]:
     """Validate MODEL_REGISTRY for missing trainers or data loaders.
-    
+
     Returns:
         Dict with validation results:
         - valid: Overall validity
@@ -227,35 +227,35 @@ def validate_model_registry() -> Dict[str, Any]:
     """
     errors = []
     warnings = []
-    
+
     for model_name, config in MODEL_REGISTRY.items():
         # Check if enabled
         if not config.enabled:
             continue
-        
+
         # Check trainer class
         if config.trainer_class is None:
             errors.append(f"{model_name}: trainer_class is None")
-        
+
         # Check data loader function
         if config.data_loader_func is None:
             errors.append(f"{model_name}: data_loader_func is None")
-        
+
         # Check save extension
         if config.save_extension not in ['.keras', '.pkl']:
             errors.append(f"{model_name}: invalid save_extension '{config.save_extension}'")
-        
+
         # Check task is valid
         valid_tasks = ['direction', 'regime', 'volatility_regime', 'momentum', 'risk', 'confidence']
         if config.task not in valid_tasks:
             errors.append(f"{model_name}: invalid task '{config.task}'")
-        
+
         # Check model_type is valid
-        valid_types = ['transformer', 'tcn', 'xgboost', 'random_forest', 
-                      'lightgbm', 'ridge', 'histgradientboosting']
+        valid_types = ['transformer', 'tcn', 'xgboost', 'random_forest',
+                       'lightgbm', 'ridge', 'histgradientboosting']
         if config.model_type not in valid_types:
             errors.append(f"{model_name}: invalid model_type '{config.model_type}'")
-    
+
     # Check for duplicate data keys
     data_keys = [config.data_key for config in MODEL_REGISTRY.values()]
     seen_keys = set()
@@ -263,9 +263,9 @@ def validate_model_registry() -> Dict[str, Any]:
         if key in seen_keys:
             warnings.append(f"Duplicate data_key '{key}' found")
         seen_keys.add(key)
-    
+
     valid = len(errors) == 0
-    
+
     result = {
         'valid': valid,
         'errors': errors,
@@ -273,24 +273,23 @@ def validate_model_registry() -> Dict[str, Any]:
         'n_models': len(MODEL_REGISTRY),
         'n_enabled': len(get_enabled_models()),
     }
-    
+
     if not valid:
         logger.error(f"MODEL_REGISTRY validation failed: {errors}")
     elif warnings:
         logger.warning(f"MODEL_REGISTRY validation warnings: {warnings}")
     else:
         logger.info(f"MODEL_REGISTRY validation passed: {result['n_enabled']}/{result['n_models']} models enabled")
-    
+
     return result
 
 
 def _initialize_registry_with_imports() -> None:
     """Initialize MODEL_REGISTRY with actual trainer classes and data loader functions.
-    
+
     This is called lazily to avoid circular imports at module load time.
     """
-    global MODEL_REGISTRY
-    
+
     # Import trainers
     from .modular_trainers import (
         TransformerDirectionTrainer,
@@ -301,7 +300,7 @@ def _initialize_registry_with_imports() -> None:
         RidgeTrainer,
         HistGradientBoostingDirectionTrainer,
     )
-    
+
     # Import data loaders
     from ..core.modular_data_loaders import (
         load_direction_data,
@@ -313,11 +312,11 @@ def _initialize_registry_with_imports() -> None:
         load_lightgbm_data,
         load_volatility_regime_data,
     )
-    
+
     # Update trainer classes
     MODEL_REGISTRY['transformer_direction'].trainer_class = TransformerDirectionTrainer
     MODEL_REGISTRY['transformer_direction'].data_loader_func = load_direction_data
-    
+
     MODEL_REGISTRY['tcn_direction'].trainer_class = TCNTrainer
     MODEL_REGISTRY['tcn_direction'].data_loader_func = load_tcn_data
 
@@ -326,22 +325,22 @@ def _initialize_registry_with_imports() -> None:
 
     MODEL_REGISTRY['transformer_regime'].trainer_class = TransformerRegimeTrainer
     MODEL_REGISTRY['transformer_regime'].data_loader_func = load_regime_data
-    
+
     MODEL_REGISTRY['xgboost_momentum'].trainer_class = XGBoostTrainer
     MODEL_REGISTRY['xgboost_momentum'].data_loader_func = load_xgboost_data
-    
+
     MODEL_REGISTRY['rf_risk'].trainer_class = RandomForestTrainer
     MODEL_REGISTRY['rf_risk'].data_loader_func = load_rf_data
-    
+
     MODEL_REGISTRY['lightgbm_confidence'].trainer_class = RidgeTrainer  # RidgeTrainer now uses LightGBM
     MODEL_REGISTRY['lightgbm_confidence'].data_loader_func = load_lightgbm_data
-    
+
     MODEL_REGISTRY['ridge_confidence'].trainer_class = RidgeTrainer
     MODEL_REGISTRY['ridge_confidence'].data_loader_func = load_ridge_data
-    
+
     MODEL_REGISTRY['histgb_direction'].trainer_class = HistGradientBoostingDirectionTrainer
     MODEL_REGISTRY['histgb_direction'].data_loader_func = load_direction_data
-    
+
     logger.debug("MODEL_REGISTRY initialized with trainer classes and data loader functions")
 
 
@@ -351,11 +350,11 @@ def _initialize_registry_with_imports() -> None:
 
 def get_registry() -> Dict[str, ModelConfig]:
     """Get the MODEL_REGISTRY, initializing imports if needed.
-    
+
     This is the main entry point for accessing the model registry.
     It ensures that all trainer classes and data loader functions are
     imported before returning the registry.
-    
+
     Returns:
         Dict mapping model names to ModelConfig objects
     """
@@ -363,7 +362,7 @@ def get_registry() -> Dict[str, ModelConfig]:
     first_config = next(iter(MODEL_REGISTRY.values()), None)
     if first_config and first_config.trainer_class is None:
         _initialize_registry_with_imports()
-    
+
     return MODEL_REGISTRY
 
 
@@ -378,23 +377,23 @@ def print_registry_summary() -> None:
     logger.info("=" * 60)
     logger.info("MODEL REGISTRY SUMMARY")
     logger.info("=" * 60)
-    
+
     registry = get_registry()
     enabled = get_enabled_models()
-    
+
     logger.info(f"Total models: {len(registry)}")
     logger.info(f"Enabled models: {len(enabled)}")
     logger.info("")
-    
+
     for model_name in get_model_names_by_priority():
         config = registry[model_name]
         status = "✓" if config.enabled else "✗"
         logger.info(f"{status} {model_name:30s} | "
-                   f"type={config.model_type:20s} | "
-                   f"task={config.task:15s} | "
-                   f"data_key={config.data_key:15s} | "
-                   f"priority={config.priority}")
-    
+                    f"type={config.model_type:20s} | "
+                    f"task={config.task:15s} | "
+                    f"data_key={config.data_key:15s} | "
+                    f"priority={config.priority}")
+
     logger.info("=" * 60)
 
 

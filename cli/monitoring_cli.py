@@ -68,8 +68,10 @@ def _safe_load_config(config_path: str) -> Dict[str, Any]:
         return load_config(config_path)
     except (FileNotFoundError, ModuleNotFoundError, ValueError, TypeError, OSError):
         return dict(_FALLBACK_CONFIG)
-    except YAMLError if YAMLError is not None else ValueError:
-        return dict(_FALLBACK_CONFIG)
+    except Exception as exc:
+        if YAMLError is not None and isinstance(exc, YAMLError):
+            return dict(_FALLBACK_CONFIG)
+        raise
 
 
 def _build_monitor(config_path: str) -> Optional[MonitoringSystem]:

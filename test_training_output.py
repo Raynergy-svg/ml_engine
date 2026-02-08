@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Test script to verify training output improvements."""
 
-import re
 from pathlib import Path
+
 
 def test_training_output_improvements():
     """Verify all professional output improvements are implemented."""
@@ -87,16 +87,17 @@ def test_training_output_improvements():
         f"Should have at least 20 bullet separators (•), found {bullet_count}"
     
     print("✅ All training output improvements verified!")
-    print(f"   - System header: ADVANCED ENSEMBLE TRAINING SYSTEM")
-    print(f"   - Enterprise features table: Component-based")
-    print(f"   - Model architecture: Professional component names")
-    print(f"   - Step headers: Using bullet separators")
-    print(f"   - Completion messages: Professional terminology")
-    print(f"   - Warning messages: Using 'deferred' and 'unavailable'")
-    print(f"   - Feature engineering: Professional terminology")
-    print(f"   - Final completion: Professional messaging")
+    print("   - System header: ADVANCED ENSEMBLE TRAINING SYSTEM")
+    print("   - Enterprise features table: Component-based")
+    print("   - Model architecture: Professional component names")
+    print("   - Step headers: Using bullet separators")
+    print("   - Completion messages: Professional terminology")
+    print("   - Warning messages: Using 'deferred' and 'unavailable'")
+    print("   - Feature engineering: Professional terminology")
+    print("   - Final completion: Professional messaging")
     print(f"   - Bullet separators (•): {bullet_count} instances found")
     return True
+
 
 if __name__ == "__main__":
     test_training_output_improvements()

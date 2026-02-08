@@ -7,52 +7,27 @@ import sys
 import json
 import time
 import logging
-import threading
-import pickle
-import shutil
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, Optional, List, Tuple
-from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any
 
 import numpy as np
-import pandas as pd
-from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
-from rich.live import Live
 
-from cli.config import BuddyTrainingOptions, BuddyTrainingAdvancedOptions, OandaFetchOptions
+from cli.config import BuddyTrainingAdvancedOptions, OandaFetchOptions
 from cli.io_utils import (
-    console, logger, DEFAULT_CONFIG_PATH, VALID_OANDA_INSTRUMENTS,
-    _validate_instrument, _normalize_instrument, _get_pair_model_paths,
-    _parse_bool_answer, _load_buddy_checkpoint, _oanda_fetch_to_csv,
-    BUDDY_META_FILENAME, _meta_path_for_checkpoint,
+    console, DEFAULT_CONFIG_PATH, _validate_instrument, _normalize_instrument, BUDDY_META_FILENAME, _meta_path_for_checkpoint,
 )
 from cli.tf_config import _configure_tf_metal
-from cli.fx_trading import fx_paper_trade, generate_dashboard
 
 from src.utils import load_config
 
 # Import from refactored modules
 from cli.buddy_helpers import (
-    _tier2_get_calibration_dict, _tier2_points_from_bins, _tier2_interpolate_points,
-    _tier2_clip_prob, _tier2_logit, _tier2_sigmoid, _tier2_temperature_scale_prob,
     _tier2_apply_calibration, _configure_predict_output, _buddy_live_enabled_from_meta,
     _fx_execution_guard_price_bound, _schedule_auto_close, _build_buddy_model_for_type,
 )
-from cli.legacy_commands import (
-    train_model, evaluate_model, visualize_dashboard, openai_tune,
-    predict_price, realtime_loop, tune_model, profile_pipeline,
-    run_ai_assistant, train_unified, train_oanda_unified, chat_unified, talk_unified,
-)
-from cli.analytics_commands import (
-    suggest_improvements, buddy_journal, buddy_analyze, buddy_monitor,
-)
-from cli.model_management import model_status, promote_model
-from cli.training_ops import train_rl_sizer, retrain_gates, train_rl_gates, train_rl_exits, retrain_all
-from cli.buddy_scanning import buddy_scan, buddy_predict_78, _buddy_scan_legacy
+from cli.wizard import _buddy_interactive_wizard, launch_buddy_repl_from_wizard
 
 
 # Forward declaration - train_buddy is defined later in this file
@@ -86,53 +61,53 @@ def _buddy_execute_all_pairs(
     llm_enhance: bool = True,
 ) -> None:
     """Execute trades on ALL major pairs that pass gates.
-    
+
     Scans all major pairs, runs inference, and executes trades on any
     that pass all gates. Respects daily trade limits and correlation limits.
     """
     import numpy as np
-    from datetime import datetime, timezone
-    
+    from datetime import datetime
+
     console.print("\n[bold cyan]════════════════════════════════════════════════════════════[/bold cyan]")
     console.print("[bold cyan]  BUDDY ALL-PAIRS EXECUTION MODE[/bold cyan]")
     console.print("[bold cyan]════════════════════════════════════════════════════════════[/bold cyan]")
     console.print(f"[dim]Scanning {len(_MAJOR_PAIRS)} major pairs for trade opportunities...[/dim]\n")
-    
+
     # Suppress verbose logging
     import os
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
     import logging as _logging
     for name in ['modular_trainers', 'modular_inference', 'tensorflow', 'absl']:
         _logging.getLogger(name).setLevel(_logging.ERROR)
-    
+
     from src.core.modular_inference import ModularEnsembleInference
     from src.utils.fx_paper import candles_to_ohlcv_df
     from src.utils.oanda_practice import OandaPracticeClient
     from src.data.feature_engineering import FeatureEngineering
-    
+
     cfg = load_config(config_path)
     client = OandaPracticeClient.from_env()
     fe = FeatureEngineering(cfg.get("feature_engineering", {}))
-    
+
     # Track results
     passed_pairs = []
     failed_pairs = []
     executed_trades = []
     trades_executed_now = 0
-    
+
     for pair in _MAJOR_PAIRS:
         # Check trade limit
         if trades_today + trades_executed_now >= max_trades_per_day:
             console.print(f"\n[bold yellow]⚠️ Daily trade limit reached ({max_trades_per_day}). Stopping.[/bold yellow]")
             break
-        
+
         try:
             # Load pair-specific models if available (check both .keras and .pkl)
             pair_model_dir = Path("trained_data/models") / pair
             has_pair_models = pair_model_dir.exists() and (
                 any(pair_model_dir.glob("*.keras")) or any(pair_model_dir.glob("*.pkl"))
             )
-            
+
             enable_llm_integration = llm_enhance and llm_initialized
             ensemble = ModularEnsembleInference(
                 instrument=pair,
@@ -140,31 +115,31 @@ def _buddy_execute_all_pairs(
                 enable_llm_integration=enable_llm_integration,
             )
             ensemble.load_models(instrument=pair)
-            
+
             # Fetch candles
             resp = client.get_candles(pair, granularity=granularity, count=int(candles), price="MBA")
             df = candles_to_ohlcv_df(resp)
-            
+
             # Feature engineering
             df = fe.create_features(df, include_all=True)
             df = df.replace([np.inf, -np.inf], np.nan)
             df = df.ffill().bfill().fillna(0.0)
-            
+
             # Run inference
             result = ensemble.predict_verbose(df, equity=equity, instrument=pair)
             signal = result['raw_signal']
-            
+
             # Check if gates pass
             if signal.trade:
                 # LLM validation if available
                 llm_approved = True
                 llm_size_mult = 1.0
                 llm_note = ""
-                
+
                 if llm_initialized:
                     try:
                         from buddy_intelligent_mode import validate_trade_with_llm, BuddyRawOutput
-                        
+
                         # Build context for LLM
                         buddy_raw = BuddyRawOutput(
                             confidence=signal.confidence,
@@ -178,7 +153,7 @@ def _buddy_execute_all_pairs(
                                 'rf_drawdown': signal.rf_drawdown_pips,
                             }
                         )
-                        
+
                         price_data = {
                             'last_close': float(df['close'].iloc[-1]),
                             'atr': float(df['atr'].iloc[-1]) if 'atr' in df.columns else None,
@@ -186,25 +161,25 @@ def _buddy_execute_all_pairs(
                             'adx': float(df['adx'].iloc[-1]) if 'adx' in df.columns else None,
                             'trend': 'up' if df['close'].iloc[-1] > df['close'].iloc[-20] else 'down',
                         }
-                        
+
                         llm_validation = validate_trade_with_llm(
                             ticker=pair,
                             direction=signal.direction,
                             buddy_raw=buddy_raw,
                             price_data=price_data,
                         )
-                        
+
                         llm_approved = llm_validation.approve
                         llm_size_mult = llm_validation.size_multiplier
                         if not llm_approved:
                             llm_note = f" [LLM: {llm_validation.reason}]"
                         elif llm_size_mult != 1.0:
                             llm_note = f" [LLM: {llm_size_mult:.1f}x]"
-                            
-                    except Exception as e:
+
+                    except Exception:
                         # LLM failed, continue with trade
                         pass
-                
+
                 if llm_approved:
                     adjusted_size = signal.size * llm_size_mult
                     passed_pairs.append({
@@ -230,75 +205,74 @@ def _buddy_execute_all_pairs(
                     'reason': signal.reason,
                 })
                 status = f"[red]✗ FAIL[/red] ({signal.reason[:30]}...)" if len(signal.reason) > 30 else f"[red]✗ FAIL[/red] ({signal.reason})"
-            
+
             # Show compact status
             model_tag = "[green]●[/green]" if has_pair_models else "[yellow]○[/yellow]"
             console.print(f"  {model_tag} {pair}: {status}")
-            
+
         except Exception as e:
             failed_pairs.append({'pair': pair, 'reason': str(e)[:50]})
             console.print(f"  [red]✗[/red] {pair}: [red]ERROR[/red] ({str(e)[:40]}...)")
-    
+
     # Summary
-    console.print(f"\n[bold]━━━ SCAN RESULTS ━━━[/bold]")
+    console.print("\n[bold]━━━ SCAN RESULTS ━━━[/bold]")
     console.print(f"  Passed gates: [green]{len(passed_pairs)}[/green] / {len(_MAJOR_PAIRS)}")
     console.print(f"  Failed gates: [red]{len(failed_pairs)}[/red] / {len(_MAJOR_PAIRS)}")
-    
+
     if not passed_pairs:
         console.print("\n[yellow]No pairs passed all gates. No trades to execute.[/yellow]")
         return
-    
+
     # Show pairs that passed
-    console.print(f"\n[bold]━━━ TRADEABLE PAIRS ━━━[/bold]")
+    console.print("\n[bold]━━━ TRADEABLE PAIRS ━━━[/bold]")
     for p in passed_pairs:
         dir_color = "green" if p['direction'] == 'long' else "red"
         console.print(f"  [{dir_color}]{p['direction'].upper():5}[/{dir_color}] {p['pair']}: {p['size']:.1f} lots (conf={p['confidence']:.0f}%)")
-    
+
     # Execute if enabled
     if not execute:
-        console.print(f"\n[yellow]⚠️ DRY RUN - Add --execute to place trades[/yellow]")
+        console.print("\n[yellow]⚠️ DRY RUN - Add --execute to place trades[/yellow]")
         return
-    
+
     # Check if FX market is likely open (not weekend)
-    import datetime
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_utc = datetime.now(timezone.utc)
     weekday = now_utc.weekday()  # 0=Mon, 5=Sat, 6=Sun
     hour_utc = now_utc.hour
-    
+
     # FX market closed: Fri 21:00 UTC to Sun 21:00 UTC (approximately)
     market_closed = (weekday == 5) or (weekday == 6 and hour_utc < 21) or (weekday == 4 and hour_utc >= 21)
     if market_closed:
-        console.print(f"\n[yellow]⚠️ WARNING: FX market is likely closed (weekend)[/yellow]")
+        console.print("\n[yellow]⚠️ WARNING: FX market is likely closed (weekend)[/yellow]")
         console.print(f"[dim]   Current time: {now_utc.strftime('%Y-%m-%d %H:%M UTC')} (day={weekday})[/dim]")
-        console.print(f"[dim]   Orders may be cancelled with MARKET_HALTED[/dim]\n")
-    
-    console.print(f"\n[bold cyan]━━━ EXECUTING TRADES ━━━[/bold cyan]")
-    
+        console.print("[dim]   Orders may be cancelled with MARKET_HALTED[/dim]\n")
+
+    console.print("\n[bold cyan]━━━ EXECUTING TRADES ━━━[/bold cyan]")
+
     for p in passed_pairs:
         # Re-check trade limit
         if trades_today + trades_executed_now >= max_trades_per_day:
-            console.print(f"[yellow]Trade limit reached. Skipping remaining pairs.[/yellow]")
+            console.print("[yellow]Trade limit reached. Skipping remaining pairs.[/yellow]")
             break
-        
+
         try:
             pair = p['pair']
             signal = p['signal']
             result = p['result']
-            
+
             # Get current price for SL/TP
             resp = client.get_candles(pair, granularity="M1", count=1, price="MBA")
             current_price = float(resp['candles'][0]['mid']['c'])
-            
+
             # Calculate ATR-based SL/TP
             atr = signal.metadata.get('atr', 0.001)
             pip_size = 0.01 if 'JPY' in pair else 0.0001
             price_precision = 3 if 'JPY' in pair else 5
-            
+
             # Calculate SL/TP with proper precision
             sl_distance = 1.5 * atr
             tp_distance = 3.0 * atr
             ts_distance = max(atr * 0.9, pip_size * 10)  # Min 10 pips trailing stop
-            
+
             if signal.direction == 'long':
                 sl_price = round(current_price - sl_distance, price_precision)
                 tp_price = round(current_price + tp_distance, price_precision)
@@ -307,14 +281,14 @@ def _buddy_execute_all_pairs(
                 sl_price = round(current_price + sl_distance, price_precision)
                 tp_price = round(current_price - tp_distance, price_precision)
                 units = -int(abs(signal.size) * 100000)
-            
+
             # Round trailing stop distance properly
             ts_distance = round(ts_distance, price_precision)
-            
+
             # Override units if forced
             if force_units:
                 units = force_units if signal.direction == 'long' else -force_units
-            
+
             # Execute
             order_result = client.create_market_order(
                 instrument=pair,
@@ -323,14 +297,14 @@ def _buddy_execute_all_pairs(
                 stop_loss_price=sl_price,
                 trailing_stop_distance=ts_distance,
             )
-            
+
             # Debug: show full order result if order fails
             trade_id = order_result.get('orderFillTransaction', {}).get('tradeOpened', {}).get('tradeID')
             if trade_id:
                 executed_trades.append({'pair': pair, 'direction': signal.direction, 'trade_id': trade_id})
                 trades_executed_now += 1
                 console.print(f"  [green]✓[/green] {pair}: {signal.direction.upper()} {abs(units):,} units (Trade #{trade_id})")
-                
+
                 # Log to journal
                 try:
                     from src.utils.trade_journal import TradeJournal
@@ -356,7 +330,7 @@ def _buddy_execute_all_pairs(
                 cancel_reason = cancel_tx.get('reason', '')
                 reject_reason = order_result.get('orderRejectTransaction', {}).get('rejectReason', '')
                 error_msg = order_result.get('errorMessage', '')
-                
+
                 if cancel_reason == 'MARKET_HALTED':
                     console.print(f"  [yellow]⏸[/yellow] {pair}: Market closed (weekend/holiday)")
                 elif cancel_reason:
@@ -367,15 +341,15 @@ def _buddy_execute_all_pairs(
                     console.print(f"  [red]✗[/red] {pair}: Error - {error_msg}")
                 else:
                     console.print(f"  [red]✗[/red] {pair}: Order failed")
-                
+
         except Exception as e:
             console.print(f"  [red]✗[/red] {pair}: Execution error ({str(e)[:40]})")
-    
+
     # Final summary
-    console.print(f"\n[bold]━━━ EXECUTION SUMMARY ━━━[/bold]")
+    console.print("\n[bold]━━━ EXECUTION SUMMARY ━━━[/bold]")
     console.print(f"  Trades executed: [green]{len(executed_trades)}[/green]")
     console.print(f"  Total trades today: {trades_today + trades_executed_now}/{max_trades_per_day}")
-    
+
     if executed_trades:
         console.print(f"\n[dim]Trade IDs: {', '.join(t['trade_id'] for t in executed_trades)}[/dim]")
 
@@ -408,7 +382,7 @@ def buddy(
     llm_enhance: bool = True,
 ) -> None:
     """Buddy: run one TF-only inference on fresh OANDA candles; optionally place a trade.
-    
+
     Args:
         config_path: Path to config YAML file.
         checkpoint_path: Optional path to specific model checkpoint.
@@ -431,21 +405,21 @@ def buddy(
         llm_enhance: Enable deep LLM integration.
     """
     _configure_predict_output(verbose)
-    
+
     # =========================================================================
     # INTELLIGENT MODE INITIALIZATION
     # =========================================================================
     llm_initialized = False
     llm_validation = None
     llm_approved = True
-    
+
     if intelligent or explain:
         try:
-            from llm_providers import initialize_buddy_llm, check_provider_status
-            
+            from llm_providers import initialize_buddy_llm
+
             provider_pref = None if llm_provider == "auto" else llm_provider
             provider = initialize_buddy_llm(provider=provider_pref)
-            
+
             if provider.is_available:
                 llm_initialized = True
                 console.print(f"[cyan]🧠 Intelligent Mode: {provider.name.upper()}[/cyan]")
@@ -478,7 +452,7 @@ def buddy(
         from market_intelligence import MarketIntelligence
         journal = TradeJournal()
         added = journal.backfill_online_learning()
-        
+
         try:
             intel = MarketIntelligence(enable_online_learning=True)
             buffer_size = len(intel.online_learner.trade_buffer) if intel.online_learner else 0
@@ -491,23 +465,23 @@ def buddy(
                 console.print(f"[dim]🔄 Online Learning backfilled: {added} trades[/dim]")
     except Exception:
         pass
-    
+
     # =========================================================================
     # FETCH LIVE ACCOUNT BALANCE FROM OANDA
     # =========================================================================
     live_nav = None
     trades_today = 0
     max_trades_per_day = 30
-    
+
     if equity is None:
         try:
             from src.utils.oanda_practice import OandaPracticeClient
-            
+
             client = OandaPracticeClient.from_env()
             account_summary = client.get_account_summary()
             account = account_summary.get('account', {})
             live_nav = float(account.get('NAV', 0))
-            
+
             # Count trades opened today
             today_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d')
             trades_result = client._request(
@@ -518,7 +492,7 @@ def buddy(
             for t in trades_result.get('trades', []):
                 if t.get('openTime', '').startswith(today_utc):
                     trades_today += 1
-            
+
             if live_nav > 0:
                 equity = live_nav
                 # Balance display now handled in account status header section
@@ -531,7 +505,7 @@ def buddy(
         except Exception as e:
             if verbose:
                 console.print(f"[dim]Could not fetch live balance: {e}[/dim]")
-    
+
     # Initialize aggressive scaling engine if enabled
     scaling_engine = None
     if aggressive_scaling:
@@ -596,7 +570,7 @@ def buddy(
     _pair_meta = Path("trained_data") / "models" / _norm_inst / "modular_ensemble.meta.json"
     _generic_meta = Path("trained_data") / "models" / "modular_ensemble.meta.json"
     modular_ensemble_meta_path = _pair_meta if _pair_meta.exists() else _generic_meta
-    
+
     if modular_ensemble_meta_path.exists() and not checkpoint_path:
         # =====================================================================
         # DISPLAY ACCOUNT STATUS HEADER (before banner)
@@ -605,7 +579,7 @@ def buddy(
         console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/bold cyan]")
         console.print("[bold cyan]               ACCOUNT STATUS[/bold cyan]")
         console.print("[bold cyan]═══════════════════════════════════════════════════════════════[/bold cyan]")
-        
+
         # Display live balance and trade count
         if live_nav and live_nav > 0:
             console.print(f"[green]💰 Live Balance: ${live_nav:,.2f}[/green]")
@@ -615,31 +589,31 @@ def buddy(
             else:
                 console.print(f"[cyan]📊 Trades Today: {trades_today}/{max_trades_per_day}[/cyan]")
         else:
-            console.print(f"[dim]💰 Balance: Using default equity[/dim]")
+            console.print("[dim]💰 Balance: Using default equity[/dim]")
             console.print(f"[dim]📊 Trades Today: {trades_today}/{max_trades_per_day}[/dim]")
-        
+
         # Display RL Position Sizer status
         if use_rl_sizer:
-            console.print(f"[cyan]🤖 RL Position Sizer: ENABLED[/cyan]")
+            console.print("[cyan]🤖 RL Position Sizer: ENABLED[/cyan]")
         else:
-            console.print(f"[dim]🤖 RL Position Sizer: DISABLED[/dim]")
-        
+            console.print("[dim]🤖 RL Position Sizer: DISABLED[/dim]")
+
         # Display Intelligent Mode status
         enable_llm_integration = llm_enhance and llm_initialized
         if enable_llm_integration:
-            console.print(f"[cyan]🧠 Intelligent Mode: ENABLED[/cyan]")
+            console.print("[cyan]🧠 Intelligent Mode: ENABLED[/cyan]")
         else:
-            console.print(f"[dim]🧠 Intelligent Mode: DISABLED[/dim]")
-        
+            console.print("[dim]🧠 Intelligent Mode: DISABLED[/dim]")
+
         console.print("")
-        
+
         # =====================================================================
         # MODULAR ENSEMBLE INFERENCE BANNER
         # =====================================================================
         console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
         console.print("[bold magenta]  MODULAR ENSEMBLE INFERENCE[/bold magenta]")
         console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
-        
+
         # Check if instrument was in training set
         meta = json.loads(modular_ensemble_meta_path.read_text())
         trained_pairs = meta.get("selected_pairs", [])
@@ -647,35 +621,34 @@ def buddy(
             console.print(f"\n[bold yellow]⚠️  WARNING: {instrument} not in training set[/bold yellow]")
             console.print(f"[dim]Trained: {', '.join(trained_pairs)}[/dim]")
             console.print(f"[dim]Model may perform differently on {instrument}[/dim]\n")
-        
+
         # Suppress verbose TF/Metal logging
         os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
         for name in ['modular_trainers', 'modular_inference', 'tensorflow', 'absl']:
             logging.getLogger(name).setLevel(logging.ERROR)
-        
+
         from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
-        
+
         # Normalize instrument
         normalized_instrument = _normalize_instrument(instrument)
-        
+
         # Check if pair-specific models exist (check both .keras and .pkl)
         pair_model_dir = Path("trained_data/models") / normalized_instrument
         has_pair_models = pair_model_dir.exists() and (
             any(pair_model_dir.glob("*.keras")) or any(pair_model_dir.glob("*.pkl"))
         )
-        
+
         # Display model source
         if has_pair_models:
             console.print(f"[green]📊 Loading {normalized_instrument}-specific models[/green]")
         else:
             console.print(f"[yellow]📊 Loading generic fallback models (no {normalized_instrument}-specific models found)[/yellow]")
-        
+
         # Load inference configuration from config file
         inference_config = None
         if cfg and 'inference' in cfg:
             inf_cfg = cfg['inference']
             inference_config = InferenceConfig(
-                min_tcn_probability=inf_cfg.get('min_tcn_probability', 0.60),
                 min_confidence=inf_cfg.get('min_confidence', 50.0),
                 min_momentum=inf_cfg.get('min_momentum', 0.20),
                 require_fresh_or_accel=inf_cfg.get('require_fresh_or_accel', True),
@@ -692,7 +665,7 @@ def buddy(
                 calibration_method=inf_cfg.get('calibration_method', 'platt'),
             )
             console.print(f"[dim]⚙️  Loaded inference config from {config_path}[/dim]")
-        
+
         ensemble = ModularEnsembleInference(
             instrument=normalized_instrument,
             config=inference_config,
@@ -700,30 +673,30 @@ def buddy(
             enable_llm_integration=enable_llm_integration,
         )
         ensemble.load_models(instrument=normalized_instrument)
-        
+
         # Fetch candles for inference
         from src.utils.fx_paper import candles_to_ohlcv_df
         from src.utils.oanda_practice import OandaPracticeClient
-        
+
         client = OandaPracticeClient.from_env()
         resp = client.get_candles(instrument, granularity=granularity, count=int(candles), price="MBA")
         df = candles_to_ohlcv_df(resp)
         _lap("oanda_fetch")
-        
+
         # Feature engineering
         from src.data.feature_engineering import FeatureEngineering
         fe = FeatureEngineering(cfg.get("feature_engineering", {}))
         df = fe.create_features(df, include_all=True)
         _lap("feature_engineering")
-        
+
         # Clean up data
         df = df.replace([np.inf, -np.inf], np.nan)
         df = df.ffill().bfill().fillna(0.0)
-        
+
         # Run modular ensemble inference
         result = ensemble.predict_verbose(df, instrument=instrument)
         _lap("modular_inference")
-        
+
         # =====================================================================
         # DISPLAY GATE CHECKS SECTION
         # =====================================================================
@@ -731,16 +704,16 @@ def buddy(
         console.print("[bold cyan]Gate Checks:[/bold cyan]")
         for check in result['gate_checks']:
             console.print(f"  {check}")
-        
+
         # =====================================================================
         # DISPLAY FINAL TRADING DECISION
         # =====================================================================
         console.print("")
         console.print(f"[bold]{result['decision']}[/bold]")
         console.print("")
-        
+
         signal = result['raw_signal']
-        
+
         # =====================================================================
         # TRADE EXECUTION OR DRY RUN STATUS
         # =====================================================================
@@ -748,30 +721,29 @@ def buddy(
             # Trade signal and execution enabled - execute the trade
             from src.utils.oanda_practice import OandaPracticeClient
             trader = OandaPracticeClient.from_env()
-            
+
             # Apply LLM size adjustment if available
             size_multiplier = 1.0
             if llm_validation and llm_validation.size_multiplier != 1.0:
                 size_multiplier = llm_validation.size_multiplier
-            
+
             units = int(signal.size * 100000 * size_multiplier)
             if signal.direction == 'short':
                 units = -units
-            
+
             # Calculate TP, SL, TS based on ATR
             current_price = float(df['close'].iloc[-1])
             atr = float(df['atr'].iloc[-1]) if 'atr' in df.columns else None
-            
+
             spread = atr * 0.05 if atr else current_price * 0.0001
-            
+
             if atr and atr > 0:
                 is_jpy = instrument.endswith('_JPY')
                 pip_mult = 100 if is_jpy else 10000
-                pip_size_val = 0.01 if is_jpy else 0.0001
-                
+
                 sl_distance = atr * 1.5
                 sl_pips = sl_distance * pip_mult
-                
+
                 raw_signal = result.get('raw_signal')
                 tcn_prob = raw_signal.tcn_probability if raw_signal else 0.5
                 if tcn_prob >= 0.65:
@@ -780,24 +752,24 @@ def buddy(
                 else:
                     tp_distance = atr * 2.0
                 tp_pips = tp_distance * pip_mult
-                
+
                 ts_distance = atr * 1.0
-                
+
                 if signal.direction == 'long':
                     sl_price = current_price - sl_distance
                     tp_price = current_price + tp_distance
                 else:
                     sl_price = current_price + sl_distance
                     tp_price = current_price - tp_distance
-                
-                ts_pips = ts_distance * pip_mult
-                
+
+                ts_distance * pip_mult
+
                 console.print(f"[bold yellow]Executing: {signal.direction.upper()} {abs(units):,} units @ {current_price:.5f}[/bold yellow]")
                 console.print(f"  [cyan]TP:[/cyan] {tp_price:.5f} (+{tp_pips:.1f} pips = {tp_distance/atr:.1f}x ATR)")
                 console.print(f"  [red]SL:[/red] {sl_price:.5f} (-{sl_pips:.1f} pips = {sl_distance/atr:.1f}x ATR)")
                 console.print(f"  [magenta]TS:[/magenta] {ts_distance:.5f} ({ts_distance*pip_mult:.1f} pips trailing)")
                 console.print(f"  [dim]ATR: {atr:.5f} ({atr*pip_mult:.1f} pips) | R:R = 1:{tp_distance/sl_distance:.2f}[/dim]")
-                
+
                 try:
                     order_result = trader.create_market_order(
                         instrument=instrument,
@@ -820,24 +792,24 @@ def buddy(
                         trade_id = create_tx.get('id')
                     if not trade_id:
                         trade_id = 'N/A'
-                    
+
                     if fill_price_str != 'N/A':
                         fill_price_actual = float(fill_price_str)
                         slippage = fill_price_actual - current_price
                         slippage_pips = slippage * pip_mult
-                        
+
                         is_favorable = (signal.direction == 'short' and slippage < 0) or (signal.direction == 'long' and slippage > 0)
                         slip_color = 'green' if abs(slippage_pips) < 1.0 else ('yellow' if abs(slippage_pips) < 3.0 else 'red')
                         slip_sign = '+' if slippage_pips > 0 else ''
                         favorable_str = ' (favorable)' if is_favorable else ''
-                        
+
                         console.print(f"[green]✓ Filled @ {fill_price_str} (Trade #{trade_id})[/green]")
                         console.print(f"  [{slip_color}]Slippage: {slip_sign}{slippage_pips:.1f} pips{favorable_str}[/{slip_color}]")
                     else:
                         fill_price_actual = current_price
                         slippage_pips = 0.0
                         console.print(f"[green]✓ Order filled (Trade #{trade_id})[/green]")
-                    
+
                     # Log trade to journal
                     if trade_id and trade_id != 'N/A':
                         try:
@@ -868,7 +840,7 @@ def buddy(
                                 prediction=signal.tcn_probability,
                                 confidence=signal.ridge_confidence,
                             )
-                            console.print(f"  [green]✓ Trade logged to journal[/green]")
+                            console.print("  [green]✓ Trade logged to journal[/green]")
                         except Exception as je:
                             console.print(f"  [yellow]⚠ Journal error: {je}[/yellow]")
                 except Exception as e:
@@ -881,17 +853,17 @@ def buddy(
                     console.print(f"[green]✓ Order placed: {order_result.get('orderFillTransaction', {}).get('price', 'filled')}[/green]")
                 except Exception as e:
                     console.print(f"[red]✗ Order failed: {e}[/red]")
-        
+
         elif signal.trade and not execute:
             # Gates passed but execution flag not set - DRY RUN
             console.print("[bold cyan]╔═══════════════════════════════════════════════════════════╗[/bold cyan]")
             console.print("[bold cyan]║              DRY RUN MODE (--execute not set)             ║[/bold cyan]")
             console.print("[bold cyan]╚═══════════════════════════════════════════════════════════╝[/bold cyan]")
-            console.print(f"[green]✓ All gates passed - Trade signal generated[/green]")
+            console.print("[green]✓ All gates passed - Trade signal generated[/green]")
             console.print(f"  [cyan]Direction:[/cyan] {signal.direction.upper()}")
             console.print(f"  [cyan]Position Size:[/cyan] {signal.size:.2f} lots ({int(signal.size * 100000):,} units)")
-            console.print(f"  [dim]To execute this trade, add --execute flag[/dim]")
-        
+            console.print("  [dim]To execute this trade, add --execute flag[/dim]")
+
         elif signal.trade and not llm_approved:
             # Model gates passed but LLM rejected
             console.print("[bold yellow]╔═══════════════════════════════════════════════════════════╗[/bold yellow]")
@@ -899,14 +871,14 @@ def buddy(
             console.print("[bold yellow]╚═══════════════════════════════════════════════════════════╝[/bold yellow]")
             console.print("[yellow]Model gates passed but LLM identified risk factors[/yellow]")
             console.print("[dim]The intelligent mode override prevented this trade[/dim]")
-        
+
         else:
             # Gates failed - no trade signal
             console.print("[bold yellow]╔═══════════════════════════════════════════════════════════╗[/bold yellow]")
             console.print("[bold yellow]║              NO TRADE: GATES FAILED                        ║[/bold yellow]")
             console.print("[bold yellow]╚═══════════════════════════════════════════════════════════╝[/bold yellow]")
             console.print(f"[yellow]Reason: {signal.reason}[/yellow]")
-            
+
             # Show which specific gates failed
             failed_gates = []
             if not signal.confidence_gate_passed:
@@ -918,16 +890,16 @@ def buddy(
                 failed_gates.append(f"RF risk (dd={rf_dd_pct:.2%}, streak={signal.rf_streak_prob:.2f})")
             if hasattr(signal, 'meta_gate_passed') and not signal.meta_gate_passed:
                 failed_gates.append(f"Meta-labeler ({signal.meta_confidence:.2f})")
-            
+
             if failed_gates:
                 console.print(f"  [dim]Failed gates: {', '.join(failed_gates)}[/dim]")
-        
+
         # =====================================================================
         # CLOSING SEPARATOR
         # =====================================================================
         console.print("[bold magenta]════════════════════════════════════════════════════════════[/bold magenta]")
         return
-    
+
     # =========================================================================
     # FALLBACK TO STANDARD MODEL INFERENCE
     # =========================================================================
@@ -935,19 +907,19 @@ def buddy(
     # Load model + preprocessing metadata
     meta_path = Path("trained_data") / "models" / BUDDY_META_FILENAME
     candidate_meta_path = Path("trained_data") / "models" / "buddy_tf_candidate.meta.json"
-    
+
     if checkpoint_path:
         ck_meta = _meta_path_for_checkpoint(str(checkpoint_path))
         if ck_meta and ck_meta.exists():
             meta_path = ck_meta
-    
+
     if candidate_meta_path.exists():
         meta_path = candidate_meta_path
         console.print("[cyan]Using candidate model[/cyan] (buddy_tf_candidate.keras)")
         console.print("[dim]Tip: Promote with: buddy promote-model[/dim]")
     elif meta_path.exists():
         console.print("[green]Model: buddy_tf.keras (production)[/green]")
-    
+
     if not meta_path.exists():
         if checkpoint_path:
             raise FileNotFoundError(f"Missing Buddy metadata for checkpoint: {checkpoint_path}")
@@ -1098,7 +1070,7 @@ def buddy(
         except Exception:
             pass
 
-    x_last = x_std.reshape(1, seq_len_eff, -1)
+    x_std.reshape(1, seq_len_eff, -1)
 
     # Load TensorFlow and model
     from cli.tf_config import _configure_tf_metal
@@ -1119,11 +1091,11 @@ def buddy(
         "MTEngineHead": MTEngineHead,
         "MXEngineHead": MXEngineHead,
     }
-    
+
     # Load model with fallback strategies
     model = None
     load_errors = []
-    
+
     try:
         model = tf.keras.models.load_model(model_path, compile=False, custom_objects=custom_objects)
         if verbose:
@@ -1132,7 +1104,7 @@ def buddy(
         load_errors.append(f"Standard: {str(e1)[:100]}")
         if verbose:
             console.print(f"[dim]Strategy 1 failed: {str(e1)[:100]}[/dim]")
-        
+
         try:
             model = tf.keras.models.load_model(
                 model_path, compile=False, custom_objects=custom_objects, safe_mode=False
@@ -1143,7 +1115,7 @@ def buddy(
             load_errors.append(f"SafeMode=False: {str(e2)[:100]}")
             if verbose:
                 console.print(f"[dim]Strategy 2 failed: {str(e2)[:100]}[/dim]")
-            
+
             try:
                 model = tf.keras.saving.load_model(
                     model_path, compile=False, custom_objects=custom_objects
@@ -1154,20 +1126,20 @@ def buddy(
                 load_errors.append(f"tf.keras.saving: {str(e3)[:100]}")
                 if verbose:
                     console.print(f"[dim]Strategy 3 failed: {str(e3)[:100]}[/dim]")
-                
+
                 try:
                     feature_dim = len(feature_columns)
                     seq_len_meta = int(meta.get("seq_len", 60))
                     model_type = meta.get("model_type", "tcn")
-                    
+
                     console.print(f"[yellow]Attempting to rebuild {model_type} model from metadata...[/yellow]")
-                    
+
                     model = _build_buddy_model_for_type(
                         model_type=model_type,
                         feature_dim=feature_dim,
                         seq_len=seq_len_meta,
                     )
-                    
+
                     weights_path = str(model_path).replace(".keras", "_weights.h5")
                     if Path(weights_path).exists():
                         model.load_weights(weights_path)
@@ -1190,10 +1162,10 @@ def buddy(
                         f"Failed to load model from {model_path}. "
                         "This is a Keras version mismatch."
                     ) from e4
-    
+
     if model is None:
         raise RuntimeError("Model loading failed - model is None")
-    
+
     _lap("tf_load_model")
 
     _inputs_struct = getattr(model, "_inputs_struct", None)
@@ -1302,23 +1274,23 @@ def buddy(
         return f"{p:.6f}"
 
     side = "buy" if p_dir >= 0.5 else "sell"
-    
+
     # =========================================================================
     # PREDICTION SUMMARY
     # =========================================================================
     dir_strength = abs(p_dir - 0.5) * 200
     signal_emoji = "🟢" if side == "buy" else "🔴"
-    
+
     console.print("\n" + "=" * 60)
     console.print(f"[bold]{signal_emoji} BUDDY SIGNAL: {side.upper()}[/bold]")
     console.print("=" * 60)
-    
+
     console.print(f"  Instrument:     {instrument}")
     console.print(f"  Timeframe:      {granularity}")
     console.print(f"  Direction:      {p_dir:.1%} {'(LONG)' if side == 'buy' else '(SHORT)'}")
     console.print(f"  Signal Strength: {dir_strength:.1f}%")
     console.print(f"  Model Conf:     {p_conf:.1%}")
-    
+
     try:
         if "adx" in df.columns:
             adx_val = float(df["adx"].iloc[-1])
@@ -1328,7 +1300,7 @@ def buddy(
             console.print(f"  Market Regime:  [{regime_color}]{regime}[/{regime_color}] (ADX={adx_val:.1f})")
     except Exception:
         pass
-    
+
     console.print("-" * 60)
 
     # Tier-2 calibrated win probability
@@ -1403,7 +1375,7 @@ def buddy(
     if tier2_p_win is not None:
         t2_color = "green" if tier2_p_win >= 0.50 else "yellow" if tier2_p_win >= 0.40 else "red"
         console.print(f"  [bold]Win Prob (Tier-2): [{t2_color}]{tier2_p_win:.1%}[/{t2_color}][/bold]")
-        
+
         stop_loss_pips = float(cfg.get("buddy", {}).get("stop_loss_pips", 12.0))
         take_profit_pips = float(cfg.get("buddy", {}).get("take_profit_pips", 24.0))
         ev = (tier2_p_win * take_profit_pips) - ((1 - tier2_p_win) * stop_loss_pips)
@@ -1411,9 +1383,9 @@ def buddy(
         console.print(f"  Expected Value:  [{ev_color}]{ev:+.1f} pips[/{ev_color}]")
     elif tier1_conf is not None:
         console.print(f"  Tier-1 Conf:     {tier1_conf:.1%}")
-    
+
     console.print("-" * 60)
-    
+
     if verbose:
         console.print("[dim]Detailed Diagnostics:[/dim]")
         conf_msg = f"model_conf={_fmt_prob(p_conf)}"
@@ -1460,7 +1432,7 @@ def buddy(
         console.print("[cyan]DRY-RUN[/cyan]: would place a market order.")
         return
 
-    # Place a conservative market order with SL/TP  
+    # Place a conservative market order with SL/TP
     last_close = float(df["close"].iloc[-1])
     from src.utils.fx_paper import pip_size, position_size_units
 
@@ -1474,23 +1446,23 @@ def buddy(
         if equity is not None
         else cfg.get("buddy", {}).get("equity", cfg.get("fx", {}).get("equity", 10_000.0))
     )
-    
+
     # Aggressive scaling sizing
     risk_eff = None
     use_smart_execution = False
-    
+
     if scaling_engine is not None:
         try:
             can_trade, block_reason = scaling_engine.risk_manager.can_trade()
             if not can_trade:
                 console.print(f"[red]🛑 CIRCUIT BREAKER: {block_reason}[/red]")
                 return
-            
+
             position_lots = scaling_engine.calculate_position_size(
                 equity=equity_eff,
                 atr_pips=stop_loss_pips,
             )
-            
+
             units_from_scaling = int(position_lots * 100000)
             kelly_mult = scaling_engine._get_kelly_multiplier()
             kelly_fraction = scaling_engine.kelly_calculator.kelly_fraction
@@ -1498,20 +1470,20 @@ def buddy(
             risk_eff = kelly_fraction * slippage_adj * kelly_mult
             risk_eff = min(risk_eff, 0.03)
             use_smart_execution = position_lots >= 5.0
-            
+
             if verbose:
-                console.print(f"[yellow]Aggressive Scaling:[/yellow]")
+                console.print("[yellow]Aggressive Scaling:[/yellow]")
                 console.print(f"  Kelly Fraction: {kelly_fraction:.1%}")
                 console.print(f"  Slippage Adjustment: {slippage_adj:.1%}")
                 console.print(f"  Phase Multiplier: {kelly_mult:.0%}")
                 console.print(f"  Effective Risk: {risk_eff:.2%}")
                 console.print(f"  Position Size: {position_lots:.2f} lots ({units_from_scaling:,} units)")
                 if use_smart_execution:
-                    console.print(f"  [cyan]Smart Execution: Will split large order[/cyan]")
+                    console.print("  [cyan]Smart Execution: Will split large order[/cyan]")
         except Exception as e:
             console.print(f"[yellow]Warning: Aggressive scaling error: {e}. Using standard sizing.[/yellow]")
             risk_eff = None
-    
+
     # Tier-2 Kelly sizing fallback
     if risk_eff is None and tier2_p_win is not None:
         try:
@@ -1574,21 +1546,21 @@ def buddy(
         try:
             from aggressive_scaling import SmartOrderExecutor
             executor = SmartOrderExecutor(atr_pips=stop_loss_pips, spread_pips=1.5)
-            
+
             split_orders = executor.split_order(
                 total_lots=abs(units_final) / 100000,
                 current_price=last_close,
                 side=side,
             )
-            
+
             console.print(f"[cyan]Smart Execution: Splitting into {len(split_orders)} orders[/cyan]")
-            
+
             total_filled = 0
             for i, order in enumerate(split_orders, 1):
                 order_units = int(order['size'] * 100000)
                 if side == "sell":
                     order_units = -abs(order_units)
-                
+
                 price_bound = _fx_execution_guard_price_bound(None, client, instrument=instrument, units=order_units)
                 result = client.create_market_order(
                     instrument=instrument,
@@ -1600,12 +1572,12 @@ def buddy(
                 )
                 total_filled += abs(order_units)
                 console.print(f"  [green]Order {i}/{len(split_orders)}[/green]: {order_units:,} units - {result}")
-                
+
                 if i < len(split_orders):
                     time.sleep(0.5)
-            
+
             console.print(f"[green]Total filled[/green]: {total_filled:,} units")
-            
+
             scaling_engine.record_trade_result(
                 win=True,
                 pips=0,
@@ -1635,7 +1607,7 @@ def buddy(
             client_tag="buddy_tf",
         )
         console.print(f"[green]Order submitted[/green]: {result}")
-        
+
         if scaling_engine is not None:
             try:
                 scaling_engine.record_trade_result(
@@ -1645,7 +1617,7 @@ def buddy(
                 )
             except Exception:
                 pass
-    
+
     # Schedule auto-close if requested
     try:
         if max_hold_minutes is not None:
@@ -1677,7 +1649,7 @@ def buddy_loop(
 
     max_hold_minutes = None
     try:
-        m = kwargs.get("max_hold_minutes", None)
+        m = kwargs.get("max_hold_minutes")
         max_hold_minutes = float(m) if m is not None else None
     except Exception:
         max_hold_minutes = None
@@ -1688,7 +1660,7 @@ def buddy_loop(
     import json
     import math
     import numpy as np
-    import pandas as pd
+    import pandas as pd  # noqa: F811
     from src.utils.tracing_setup import span, record_exception
 
     from datetime import datetime, timezone
@@ -1710,7 +1682,7 @@ def buddy_loop(
         next_boundary = (math.floor(now / interval_s) + 1) * interval_s
         sleep_s = max(0.0, (next_boundary + float(lag_s)) - now)
         if verbose:
-            eta = datetime.fromtimestamp(next_boundary, tz=timezone.utc).isoformat().replace(UTC_OFFSET_SUFFIX, "Z")
+            eta = datetime.fromtimestamp(next_boundary, tz=timezone.utc).isoformat().replace("+00:00", "Z")
             console.print(f"[dim]Loop[/dim]: waiting {sleep_s:.1f}s for next {granularity} boundary @ {eta}")
         time.sleep(sleep_s)
 
@@ -1826,7 +1798,7 @@ def buddy_loop(
             ts = ts.tz_localize("UTC")
         else:
             ts = ts.tz_convert("UTC")
-        return ts.isoformat().replace(UTC_OFFSET_SUFFIX, "Z")
+        return ts.isoformat().replace("+00:00", "Z")
 
     def _normalize_candle_df(df_in: "pd.DataFrame") -> "pd.DataFrame":
         out = df_in
@@ -2274,13 +2246,13 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
     )
     max_hold_raw = getattr(args, "max_hold_minutes", None)
     max_hold_eff = float(max_hold_raw) if max_hold_raw is not None else None
-    
+
     # Check for aggressive scaling mode
     aggressive_scaling = bool(getattr(args, "aggressive_scaling", False))
-    
+
     # Check for RL position sizer
     use_rl_sizer = bool(getattr(args, "use_rl_sizer", False))
-    
+
     # Intelligent mode flags
     intelligent = bool(getattr(args, "intelligent", False))
     explain = bool(getattr(args, "explain", False))
@@ -2336,7 +2308,7 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
     _utils_logger.setLevel(_logging.WARNING)
     cfg = load_config(args.config)
     _utils_logger.setLevel(_utils_prev)
-    
+
     buddy_cfg = (cfg.get("buddy") or {}) if isinstance(cfg, dict) else {}
     buddy_train_cfg = (buddy_cfg.get("train_defaults") or buddy_cfg.get("train") or {}) if isinstance(buddy_cfg, dict) else {}
     training_cfg = (cfg.get("training") or {}) if isinstance(cfg, dict) else {}
@@ -2357,7 +2329,7 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
             return default_val
         except Exception:
             return default_val
-    
+
     def _model_cfg_get(name: str, default_val):
         """Get config value from model section."""
         try:
@@ -2381,7 +2353,7 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
         if getattr(args, "shared_encoder", None) is not None
         else bool(_cfg_get("shared_encoder", False))
     )
-    
+
     # M1 METAL CRITICAL SETTINGS - now properly read from config
     # For store_true flags: CLI True overrides config, otherwise use config
     mixed_precision_eff = (
@@ -2406,13 +2378,13 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
         if getattr(args, "shuffle_buffer", None) is not None
         else _cfg_get("shuffle_buffer", None)
     )
-    
+
     # Model type from CLI or config - TCN is default for M1 Metal performance
     model_type_eff = (
         str(args.model_type) if getattr(args, "model_type", None) is not None
         else str(_model_cfg_get("type", "tcn"))
     )
-    
+
     tier2_stride_eff = (
         int(getattr(args, "tier2_calibration_stride", 0))
         if getattr(args, "tier2_calibration_stride", None) is not None
@@ -2435,7 +2407,7 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
 
     # Check for multi-pair mode - skip single-pair OANDA fetch if enabled
     multi_pair_mode = bool(getattr(args, "multi_pair", False))
-    
+
     oanda_fetch = None
     if bool(oanda_live_eff) and not multi_pair_mode:
         # Single-pair mode: validate and normalize instrument name
@@ -2445,10 +2417,10 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
         except ValueError as e:
             console.print(f"[red]Error: {e}[/red]")
             raise SystemExit(1)
-        
+
         if instrument_raw.upper().replace("/", "_").replace("-", "_") != instrument_validated:
             console.print(f"[yellow]Normalized instrument: {instrument_raw} -> {instrument_validated}[/yellow]")
-        
+
         console.print(Panel(
             f"[bold]Fetching Live Market Data[/bold]\n\n"
             f"[dim]Instrument:[/dim] {instrument_validated}\n"
@@ -2457,7 +2429,7 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
             title="🌐 OANDA API",
             border_style="cyan",
         ))
-        
+
         oanda_fetch = OandaFetchOptions(
             instrument=instrument_validated,
             granularity=str(args.granularity),
@@ -2569,10 +2541,10 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
     )
 
 
-
 # NOTE: buddy_scan, buddy_predict_78, and _buddy_scan_legacy are imported from cli/buddy_scanning.py
 # NOTE: suggest_improvements is imported from cli/analytics_commands.py
 # NOTE: retrain_gates is imported from cli/training_ops.py
+
 
 def _buddy_test_modular_ensemble(
     config_path: str,
@@ -2587,16 +2559,15 @@ def _buddy_test_modular_ensemble(
     """
     import json
     import numpy as np
-    
+
     console.print("[bold magenta]Using MODULAR ENSEMBLE (4 models with gates)[/bold magenta]")
     console.print("-" * 60)
-    
+
     cfg = load_config(config_path)
-    
+
     # Check if instrument was in training set
     meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
     if meta_path.exists():
-        import json
         meta = json.loads(meta_path.read_text())
         trained_pairs = meta.get("selected_pairs", [])
         if trained_pairs and instrument not in trained_pairs:
@@ -2604,51 +2575,51 @@ def _buddy_test_modular_ensemble(
             console.print(f"[yellow]Trained pairs: {', '.join(trained_pairs)}[/yellow]")
             console.print(f"[yellow]Model may not generalize well to {instrument}.[/yellow]")
             console.print(f"[cyan]For accurate testing, use: buddy test -I {trained_pairs[0]}[/cyan]\n")
-    
+
     # Fetch candles
     fetch_count = test_candles + 300  # Buffer for feature engineering NaN rows
     console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
-    
+
     from src.utils.fx_paper import candles_to_ohlcv_df
     from src.utils.oanda_practice import OandaPracticeClient
-    
+
     client = OandaPracticeClient.from_env()
     resp = client.get_candles(instrument, granularity=granularity, count=fetch_count, price="MBA")
     df_raw = candles_to_ohlcv_df(resp)
-    
+
     # Feature engineering
     from src.data.feature_engineering import FeatureEngineering
     fe = FeatureEngineering()
     df = fe.create_features(df_raw.copy(), include_all=True)
-    
+
     # Load modular ensemble
     _configure_tf_metal(verbose=verbose)
-    
-    from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
-    
+
+    from src.core.modular_inference import ModularEnsembleInference
+
     ensemble = ModularEnsembleInference()
     ensemble.load_models()
-    
+
     # Run hindcast
-    console.print(f"\n[bold]Testing predictions with modular ensemble...[/bold]\n")
-    
+    console.print("\n[bold]Testing predictions with modular ensemble...[/bold]\n")
+
     closes = df["close"].values
     pip_size = 0.01 if "JPY" in instrument else 0.0001
-    
+
     # Get threshold from MODEL METADATA (not config!) to match how model was trained
     model_meta_path = Path("trained_data") / "models" / "modular_ensemble.meta.json"
     model_meta = json.loads(model_meta_path.read_text()) if model_meta_path.exists() else {}
     model_cfg = model_meta.get("config", {})
-    
+
     threshold_pct = model_cfg.get("direction_threshold", 0.0015)  # Default matches training
     lookahead = model_cfg.get("direction_lookahead", 24)
-    
+
     console.print(f"[dim]Using MODEL training settings: threshold={threshold_pct*100:.2f}%, lookahead={lookahead}[/dim]")
-    
+
     # Test window - need extra buffer for lookahead
     test_start = len(df) - test_candles - lookahead - 1
     test_end = len(df) - lookahead - 1  # Leave room for lookahead measurement
-    
+
     # Metrics for GATED trades (production mode)
     gated_correct = 0
     gated_wrong = 0
@@ -2656,35 +2627,35 @@ def _buddy_test_modular_ensemble(
     gated_losses_pips = []
     trades_taken = 0
     trades_skipped = 0
-    
+
     # Metrics for RAW TCN direction (evaluation mode - no gates)
     raw_correct = 0
     raw_wrong = 0
     raw_wins_pips = []
     raw_losses_pips = []
-    
+
     # Metrics for CLEAR signals only (matching training threshold)
     clear_correct = 0
     clear_wrong = 0
-    
+
     # Track gate failures
     gate_failures = {"confidence": 0, "momentum": 0, "risk": 0, "no_direction": 0}
-    
+
     # Track actual XGBoost outputs for debugging
     all_momentum_values = []
     all_acceleration_values = []
     all_rf_drawdowns = []
     all_rf_streaks = []
-    
+
     console.print(f"[dim]Using lookahead={lookahead} bars, threshold={threshold_pct*100:.2f}% to match training config[/dim]\n")
-    
+
     for i in range(test_start, test_end):
         if i < 60:  # Need at least 60 bars of history
             continue
-        
+
         # Get features up to this point (no lookahead)
         df_slice = df.iloc[:i+1].copy()
-        
+
         # Run modular inference
         try:
             signal = ensemble.predict(df_slice)
@@ -2692,34 +2663,34 @@ def _buddy_test_modular_ensemble(
             if verbose:
                 console.print(f"[dim]Prediction failed at {i}: {e}[/dim]")
             continue
-        
+
         # Track XGBoost outputs for debugging
         all_momentum_values.append(signal.xgb_momentum)
         all_acceleration_values.append(signal.xgb_acceleration)
         all_rf_drawdowns.append(signal.rf_drawdown_pips)
         all_rf_streaks.append(signal.rf_streak_prob)
-        
+
         # Get timestamp
         try:
             ts = df.index[i]
             ts_str = ts.strftime("%Y-%m-%d %H:%M") if hasattr(ts, "strftime") else str(ts)[:16]
         except Exception:
             ts_str = f"candle_{i}"
-        
+
         # Actual movement over LOOKAHEAD period (must match training!)
         entry_price = closes[i]
         exit_price = closes[i + lookahead]  # lookahead from config
         actual_pips = (exit_price - entry_price) / pip_size
         actual_direction = "↑" if actual_pips > 0 else "↓"
-        
+
         # Calculate move percentage (for threshold matching)
         move_pct = abs(exit_price - entry_price) / entry_price
         is_clear_move = move_pct >= threshold_pct  # threshold_pct from config
-        
+
         # RAW TCN evaluation (ignore gates - just evaluate direction prediction)
         if signal.tcn_direction is not None:
             raw_is_correct = (
-                (signal.tcn_direction == 1 and actual_pips > 0) or 
+                (signal.tcn_direction == 1 and actual_pips > 0) or
                 (signal.tcn_direction == 0 and actual_pips < 0)
             )
             if raw_is_correct:
@@ -2728,24 +2699,24 @@ def _buddy_test_modular_ensemble(
             else:
                 raw_wrong += 1
                 raw_losses_pips.append(abs(actual_pips))
-            
+
             # Also track clear-signal accuracy (matching training labels)
             if is_clear_move:
                 if raw_is_correct:
                     clear_correct += 1
                 else:
                     clear_wrong += 1
-        
+
         # GATED production evaluation
         if signal.trade:
             trades_taken += 1
             predicted_side = "BUY" if signal.direction == "long" else "SELL"
-            
+
             is_correct = (
-                (signal.direction == "long" and actual_pips > 0) or 
+                (signal.direction == "long" and actual_pips > 0) or
                 (signal.direction == "short" and actual_pips < 0)
             )
-            
+
             if is_correct:
                 gated_correct += 1
                 gated_wins_pips.append(abs(actual_pips))
@@ -2754,14 +2725,14 @@ def _buddy_test_modular_ensemble(
                 gated_wrong += 1
                 gated_losses_pips.append(abs(actual_pips))
                 status = "[red]❌[/red]"
-            
+
             # Gate status
             gates = []
             gates.append(f"conf={signal.ridge_confidence:.0f}{'✓' if signal.confidence_gate_passed else '✗'}")
             gates.append(f"mom={signal.xgb_momentum:.2f}{'✓' if signal.momentum_gate_passed else '✗'}")
             rf_dd_pct = signal.rf_drawdown_pips / 10000 if signal.rf_drawdown_pips > 1.0 else signal.rf_drawdown_pips
             gates.append(f"dd={rf_dd_pct:.2%}{'✓' if signal.risk_gate_passed else '✗'}")
-            
+
             console.print(
                 f"{ts_str} | {predicted_side:4} [{', '.join(gates)}] | "
                 f"Actual: {actual_direction} {actual_pips:+.1f} pips | {status}"
@@ -2777,7 +2748,7 @@ def _buddy_test_modular_ensemble(
                 gate_failures["momentum"] += 1
             if not signal.risk_gate_passed:
                 gate_failures["risk"] += 1
-            
+
             if verbose:
                 tcn_dir = "LONG" if signal.tcn_direction == 1 else "SHORT" if signal.tcn_direction == 0 else "NONE"
                 console.print(
@@ -2785,25 +2756,25 @@ def _buddy_test_modular_ensemble(
                     f"mom={signal.xgb_momentum:.2f} dd={signal.rf_drawdown_pips / 10000 if signal.rf_drawdown_pips > 1.0 else signal.rf_drawdown_pips:.2%} | "
                     f"Actual: {actual_direction} {actual_pips:+.1f} pips | SKIP[/dim]"
                 )
-    
+
     # Calculate metrics
     gated_total = gated_correct + gated_wrong
     gated_accuracy = gated_correct / gated_total * 100 if gated_total > 0 else 0
     gated_avg_win = np.mean(gated_wins_pips) if gated_wins_pips else 0
     gated_avg_loss = np.mean(gated_losses_pips) if gated_losses_pips else 0
-    
+
     raw_total = raw_correct + raw_wrong
     raw_accuracy = raw_correct / raw_total * 100 if raw_total > 0 else 0
     raw_avg_win = np.mean(raw_wins_pips) if raw_wins_pips else 0
     raw_avg_loss = np.mean(raw_losses_pips) if raw_losses_pips else 0
-    
+
     # Print results
     console.print("\n" + "=" * 70)
-    console.print(f"[bold]📊 MODULAR ENSEMBLE HINDCAST RESULTS[/bold]")
+    console.print("[bold]📊 MODULAR ENSEMBLE HINDCAST RESULTS[/bold]")
     console.print("=" * 70)
-    
+
     # Raw TCN performance (evaluation)
-    console.print(f"\n[bold cyan]TCN Direction (Raw - No Gates):[/bold cyan]")
+    console.print("\n[bold cyan]TCN Direction (Raw - No Gates):[/bold cyan]")
     console.print(f"  Predictions:        {raw_total}")
     console.print(f"  Correct:            {raw_correct} ({raw_accuracy:.1f}%)")
     console.print(f"  Wrong:              {raw_wrong} ({100-raw_accuracy:.1f}%)")
@@ -2812,7 +2783,7 @@ def _buddy_test_modular_ensemble(
     if raw_total > 0:
         raw_ev = (raw_correct / raw_total) * raw_avg_win - (raw_wrong / raw_total) * raw_avg_loss
         console.print(f"  Expected Value:     {raw_ev:+.2f} pips/trade")
-    
+
     # Clear signal accuracy (matching training labels - moves >= threshold)
     clear_total = clear_correct + clear_wrong
     if clear_total > 0:
@@ -2821,9 +2792,9 @@ def _buddy_test_modular_ensemble(
         console.print(f"  Clear Signals:      {clear_total} ({100*clear_total/raw_total:.1f}% of all)")
         console.print(f"  Correct:            {clear_correct} ({clear_accuracy:.1f}%)")
         console.print(f"  Wrong:              {clear_wrong} ({100-clear_accuracy:.1f}%)")
-    
+
     # Gated performance (production)
-    console.print(f"\n[bold yellow]Gated Trades (Production Mode):[/bold yellow]")
+    console.print("\n[bold yellow]Gated Trades (Production Mode):[/bold yellow]")
     console.print(f"  Trades Taken:       {trades_taken}")
     console.print(f"  Trades Skipped:     {trades_skipped}")
     if gated_total > 0:
@@ -2834,27 +2805,27 @@ def _buddy_test_modular_ensemble(
         gated_ev = (gated_correct / gated_total) * gated_avg_win - (gated_wrong / gated_total) * gated_avg_loss
         console.print(f"  Expected Value:     {gated_ev:+.2f} pips/trade")
     else:
-        console.print(f"  [dim]No trades passed gates[/dim]")
-    
+        console.print("  [dim]No trades passed gates[/dim]")
+
     # Gate filter breakdown
-    console.print(f"\n[bold]Gate Filter Breakdown:[/bold]")
-    console.print(f"  Momentum gate fail: {gate_failures['momentum']} ({gate_failures['momentum']/max(trades_skipped,1)*100:.0f}%)")
-    console.print(f"  Confidence gate fail: {gate_failures['confidence']} ({gate_failures['confidence']/max(trades_skipped,1)*100:.0f}%)")
-    console.print(f"  Risk gate fail:     {gate_failures['risk']} ({gate_failures['risk']/max(trades_skipped,1)*100:.0f}%)")
+    console.print("\n[bold]Gate Filter Breakdown:[/bold]")
+    console.print(f"  Momentum gate fail: {gate_failures['momentum']} ({gate_failures['momentum']/max(trades_skipped, 1)*100:.0f}%)")
+    console.print(f"  Confidence gate fail: {gate_failures['confidence']} ({gate_failures['confidence']/max(trades_skipped, 1)*100:.0f}%)")
+    console.print(f"  Risk gate fail:     {gate_failures['risk']} ({gate_failures['risk']/max(trades_skipped, 1)*100:.0f}%)")
     console.print(f"  No TCN direction:   {gate_failures['no_direction']}")
-    
+
     # XGBoost momentum statistics (for debugging)
     if all_momentum_values:
         import numpy as np
         mom_arr = np.array(all_momentum_values)
         accel_arr = np.array(all_acceleration_values)
-        console.print(f"\n[bold]XGBoost Momentum Debug:[/bold]")
+        console.print("\n[bold]XGBoost Momentum Debug:[/bold]")
         console.print(f"  Min:  {mom_arr.min():.4f}")
         console.print(f"  Max:  {mom_arr.max():.4f}")
         console.print(f"  Mean: {mom_arr.mean():.4f}")
         console.print(f"  >= 0.5: {(mom_arr >= 0.5).sum()} / {len(mom_arr)} ({100*(mom_arr >= 0.5).mean():.1f}%)")
         console.print(f"  Acceleration True: {accel_arr.sum()} / {len(accel_arr)} ({100*accel_arr.mean():.1f}%)")
-    
+
     # RF Risk statistics (for debugging) - convert legacy pips to pct
     if all_rf_drawdowns:
         rf_dd_arr = np.array(all_rf_drawdowns)
@@ -2864,41 +2835,41 @@ def _buddy_test_modular_ensemble(
         else:
             rf_dd_pct_arr = rf_dd_arr
         rf_streak_arr = np.array(all_rf_streaks)
-        console.print(f"\n[bold]RF Risk Debug:[/bold]")
+        console.print("\n[bold]RF Risk Debug:[/bold]")
         console.print(f"  Drawdown - Min: {rf_dd_pct_arr.min():.2%}, Max: {rf_dd_pct_arr.max():.2%}, Mean: {rf_dd_pct_arr.mean():.2%}")
         console.print(f"  Streak Prob - Min: {rf_streak_arr.min():.3f}, Max: {rf_streak_arr.max():.3f}, Mean: {rf_streak_arr.mean():.3f}")
         console.print(f"  Drawdown < 2.5%: {(rf_dd_pct_arr < 0.025).sum()} / {len(rf_dd_pct_arr)} ({100*(rf_dd_pct_arr < 0.025).mean():.1f}%)")
         console.print(f"  Streak prob < 0.3: {(rf_streak_arr < 0.3).sum()} / {len(rf_streak_arr)} ({100*(rf_streak_arr < 0.3).mean():.1f}%)")
-    
+
     # =========================================================================
     # TRADE FREQUENCY ANALYSIS (Step 6)
     # =========================================================================
-    console.print(f"\n[bold cyan]📊 Trade Frequency Analysis:[/bold cyan]")
-    
+    console.print("\n[bold cyan]📊 Trade Frequency Analysis:[/bold cyan]")
+
     # Calculate trades per day (assuming H1 timeframe: 24 candles/day)
     candles_per_day = 24 if granularity == "H1" else 288 if granularity == "M5" else 96 if granularity == "M15" else 24
     test_days = test_candles / candles_per_day
     trades_per_day = trades_taken / test_days if test_days > 0 else 0
-    
+
     console.print(f"  Test Period:      {test_days:.1f} days ({test_candles} candles)")
     console.print(f"  Trades Taken:     {trades_taken}")
     console.print(f"  Trades/Day:       {trades_per_day:.2f}")
-    
+
     # Trade frequency warnings
     if trades_per_day < 1:
-        console.print(f"  [yellow]⚠ LOW FREQUENCY: <1 trade/day. Consider relaxing gates:[/yellow]")
+        console.print("  [yellow]⚠ LOW FREQUENCY: <1 trade/day. Consider relaxing gates:[/yellow]")
         console.print(f"    - Lower confidence threshold (currently {cfg.get('gates', {}).get('min_confidence', 75)})")
         console.print(f"    - Lower momentum threshold (currently {cfg.get('gates', {}).get('min_momentum', 0.5)})")
     elif trades_per_day < 2:
-        console.print(f"  [yellow]⚠ Below target: <2 trades/day. May need to relax gates.[/yellow]")
+        console.print("  [yellow]⚠ Below target: <2 trades/day. May need to relax gates.[/yellow]")
     elif trades_per_day > 10:
         console.print(f"  [yellow]⚠ HIGH FREQUENCY: >{10} trades/day. Consider tightening gates.[/yellow]")
     else:
         console.print(f"  [green]✓ Good frequency: {trades_per_day:.1f} trades/day[/green]")
-    
+
     # Regime breakdown (if regime info available)
     # Note: This requires regime classifier to be active
-    console.print(f"\n[bold]Gate Pass Rates:[/bold]")
+    console.print("\n[bold]Gate Pass Rates:[/bold]")
     total_candles = test_candles
     conf_pass_rate = (total_candles - gate_failures['confidence']) / total_candles * 100
     mom_pass_rate = (total_candles - gate_failures['momentum']) / total_candles * 100
@@ -2906,17 +2877,17 @@ def _buddy_test_modular_ensemble(
     console.print(f"  Confidence gate: {conf_pass_rate:.1f}% pass rate")
     console.print(f"  Momentum gate:   {mom_pass_rate:.1f}% pass rate")
     console.print(f"  Risk gate:       {risk_pass_rate:.1f}% pass rate")
-    
+
     console.print("-" * 70)
     if raw_accuracy >= 52:
         console.print(f"[green]✓ TCN direction: {raw_accuracy:.1f}% (above 50% random)[/green]")
     else:
         console.print(f"[yellow]⚠ TCN direction: {raw_accuracy:.1f}% (near random)[/yellow]")
-    
+
     if trades_taken > 0 and gated_accuracy >= 55:
         console.print(f"[green]✓ Gated trades: {gated_accuracy:.1f}% accuracy with {trades_taken} trades[/green]")
     elif trades_taken == 0:
-        console.print(f"[yellow]⚠ Gates too strict - try training with more data or adjust thresholds[/yellow]")
+        console.print("[yellow]⚠ Gates too strict - try training with more data or adjust thresholds[/yellow]")
     console.print("=" * 70)
 
 
@@ -2934,7 +2905,7 @@ def buddy_validate(
     """
     Professional model validation with bias detection, statistical tests,
     and risk metrics. Use this before live trading to verify model integrity.
-    
+
     Checks:
     - Direction bias (model stuck predicting one direction)
     - Accuracy vs baselines (random, market bias, buy-and-hold)
@@ -2942,17 +2913,17 @@ def buddy_validate(
     - Confidence calibration (high confidence = higher accuracy)
     - Time stability (consistent accuracy across periods)
     - Risk metrics (Sharpe, Sortino, max drawdown, profit factor)
-    
+
     Usage:
         buddy validate --instrument EUR_USD
         buddy validate --all-pairs
         buddy validate --instrument USD_JPY --candles 1000
     """
     from tests.validation.validate_model import validate_pair_model, validate_all_pairs
-    
+
     # Normalize instrument
     instrument = _normalize_instrument(instrument)
-    
+
     if all_pairs:
         validate_all_pairs(
             candles=candles,
@@ -2982,64 +2953,64 @@ def buddy_test(
 ) -> None:
     """
     [DEPRECATED] Use 'buddy validate' instead.
-    
+
     This redirects to the professional validation system.
     """
     console.print("[yellow]⚠️ 'buddy test' is deprecated. Using 'buddy validate' instead.[/yellow]")
     console.print("[dim]For professional validation, use: buddy validate --instrument EUR_USD[/dim]\n")
-    
+
     # Load model metadata - prefer candidate if it exists (newer model)
     meta_path = Path("trained_data") / "models" / BUDDY_META_FILENAME
     candidate_meta_path = Path("trained_data") / "models" / "buddy_tf_candidate.meta.json"
-    
+
     # Prefer candidate model (newer) if it exists
     if candidate_meta_path.exists():
         meta_path = candidate_meta_path
     elif not meta_path.exists():
         console.print("[red]No trained model found. Run: buddy train --oanda-live[/red]")
         return
-    
+
     meta = json.loads(meta_path.read_text())
     seq_len = int(meta.get("seq_len", 60))
     feature_columns = list(meta.get("feature_columns", []))
-    
+
     std = meta.get("standardize", {})
     mu = np.asarray(std.get("mean", []), dtype=np.float32).reshape(1, -1)
     sigma = np.asarray(std.get("std", []), dtype=np.float32).reshape(1, -1)
-    
+
     # Fetch candles: need seq_len + test_candles + buffer for feature engineering NaN rows
     # Feature engineering drops ~200 rows for rolling calculations
     fetch_count = seq_len + test_candles + 300
-    
+
     console.print(f"[dim]Fetching {fetch_count} candles from OANDA...[/dim]")
-    
+
     from src.utils.fx_paper import candles_to_ohlcv_df
     from src.utils.oanda_practice import OandaPracticeClient
-    
+
     client = OandaPracticeClient.from_env()
     resp = client.get_candles(instrument, granularity=granularity, count=fetch_count, price="MBA")
     df_raw = candles_to_ohlcv_df(resp)
-    
+
     # Feature engineering
     from src.data.feature_engineering import FeatureEngineering
     fe = FeatureEngineering()
     df = fe.create_features(df_raw.copy(), include_all=True)
-    
+
     # Ensure we have required columns
     missing_cols = [c for c in feature_columns if c not in df.columns]
     for c in missing_cols:
         df[c] = 0.0
-    
+
     # Load model
     _configure_tf_metal(verbose=verbose)
     import tensorflow as tf
-    
+
     from ml_head_engine import MLEngineHead
     from mr_engine import MREngineHead
     from ms_head_engine import MSEngineHead
     from mt_engine import MTEngineHead
     from mx_head_engine import MXEngineHead
-    
+
     custom_objects = {
         "MLEngineHead": MLEngineHead,
         "MREngineHead": MREngineHead,
@@ -3047,10 +3018,10 @@ def buddy_test(
         "MTEngineHead": MTEngineHead,
         "MXEngineHead": MXEngineHead,
     }
-    
+
     model_path = meta.get("model_path")
     model = None
-    
+
     # Try loading with different strategies to handle Keras version mismatches
     try:
         model = tf.keras.models.load_model(model_path, compile=False, custom_objects=custom_objects)
@@ -3060,7 +3031,7 @@ def buddy_test(
             try:
                 model = tf.keras.models.load_model(model_path, compile=False, custom_objects=custom_objects, safe_mode=False)
             except Exception as e2:
-                console.print(f"[red]Failed to load model (Keras version mismatch)[/red]")
+                console.print("[red]Failed to load model (Keras version mismatch)[/red]")
                 console.print(f"[dim]Error: {str(e2)[:200]}[/dim]")
                 console.print("[yellow]The model was saved with a different Keras version.[/yellow]")
                 console.print("[cyan]Solution: Retrain the model with current version:[/cyan]")
@@ -3070,77 +3041,77 @@ def buddy_test(
             console.print(f"[red]Failed to load model: {str(e1)[:200]}[/red]")
             console.print("[cyan]Solution: Retrain the model: buddy train --oanda-live[/cyan]")
             return
-    
+
     if model is None:
         console.print("[red]Could not load model[/red]")
         return
-    
+
     # Check if model expects dict input
     _inputs_struct = getattr(model, "_inputs_struct", None)
     _expects_features_dict = isinstance(_inputs_struct, dict) and "features" in _inputs_struct
-    
+
     def _predict(x_in):
         if _expects_features_dict:
             return model({"features": x_in}, training=False)
         return model(x_in, training=False)
-    
+
     # Run hindcast
     min_confidence = 0.0  # Default confidence threshold
     if min_confidence > 0:
         console.print(f"\n[bold]Testing predictions (min confidence: {min_confidence:.0%})...[/bold]\n")
     else:
-        console.print(f"\n[bold]Testing predictions...[/bold]\n")
-    
+        console.print("\n[bold]Testing predictions...[/bold]\n")
+
     results = []
     x2d = df[feature_columns].values.astype(np.float32)
     closes = df["close"].values
-    
+
     # Test window: from (seq_len) to (len - 1) so we can see next candle
     test_start = len(df) - test_candles - 1
     test_end = len(df) - 1
-    
+
     correct = 0
     wrong = 0
     skipped = 0
     wins_pips = []
     losses_pips = []
-    
+
     for i in range(test_start, test_end):
         # Get features for prediction window
         window_start = i - seq_len
         if window_start < 0:
             continue
-        
+
         x_window = x2d[window_start:i]
         if len(x_window) != seq_len:
             continue
-        
+
         # Standardize
         x_std = (x_window - mu) / np.where(sigma < 1e-6, 1.0, sigma)
         x_std = np.clip(x_std, -10.0, 10.0).astype(np.float32)
         x_batch = x_std.reshape(1, seq_len, -1)
-        
+
         # Predict
         pred = _predict(x_batch)
         p_dir = float(np.asarray(pred["direction"]).reshape(-1)[0])
         p_conf = float(np.asarray(pred["confidence"]).reshape(-1)[0])
-        
+
         predicted_side = "BUY" if p_dir >= 0.5 else "SELL"
-        
+
         # Skip if below confidence threshold
         if p_conf < min_confidence:
             skipped += 1
             continue
-        
+
         # Actual movement
         entry_price = closes[i]
         exit_price = closes[i + 1]
         pip_size = 0.01 if "JPY" in instrument else 0.0001
         actual_pips = (exit_price - entry_price) / pip_size
-        
+
         actual_direction = "↑" if actual_pips > 0 else "↓"
         is_correct = (predicted_side == "BUY" and actual_pips > 0) or (predicted_side == "SELL" and actual_pips < 0)
-        
+
         # Record result
         if is_correct:
             correct += 1
@@ -3150,14 +3121,14 @@ def buddy_test(
             wrong += 1
             losses_pips.append(abs(actual_pips))
             status = "[red]❌[/red]"
-        
+
         # Get timestamp
         try:
             ts = df.index[i]
             ts_str = ts.strftime("%Y-%m-%d %H:%M") if hasattr(ts, "strftime") else str(ts)[:16]
         except Exception:
             ts_str = f"candle_{i}"
-        
+
         # Print result
         if verbose or len(results) < 10 or not is_correct:
             conf_color = "green" if p_conf >= 0.6 else "yellow" if p_conf >= 0.5 else "red"
@@ -3166,7 +3137,7 @@ def buddy_test(
                 f"[{conf_color}]conf={p_conf:.1%}[/{conf_color}] | "
                 f"Actual: {actual_direction} {actual_pips:+.1f} pips | {status}"
             )
-        
+
         results.append({
             "time": ts_str,
             "predicted": predicted_side,
@@ -3175,13 +3146,13 @@ def buddy_test(
             "actual_pips": actual_pips,
             "correct": is_correct,
         })
-    
+
     # Summary
     total = correct + wrong
     accuracy = correct / total if total > 0 else 0
     avg_win = np.mean(wins_pips) if wins_pips else 0
     avg_loss = np.mean(losses_pips) if losses_pips else 0
-    
+
     console.print("\n" + "=" * 60)
     console.print("[bold]📊 HINDCAST RESULTS[/bold]")
     console.print("=" * 60)
@@ -3193,13 +3164,13 @@ def buddy_test(
     console.print(f"  Wrong:              [red]{wrong}[/red] ({1-accuracy:.1%})")
     console.print(f"  Avg Win:            [green]+{avg_win:.1f} pips[/green]")
     console.print(f"  Avg Loss:           [red]-{avg_loss:.1f} pips[/red]")
-    
+
     # Expected value calculation
     if accuracy > 0 and (avg_win > 0 or avg_loss > 0):
         ev = (accuracy * avg_win) - ((1 - accuracy) * avg_loss)
         ev_color = "green" if ev > 0 else "red"
         console.print(f"  Expected Value:     [{ev_color}]{ev:+.2f} pips/trade[/{ev_color}]")
-    
+
     # Verdict
     console.print("-" * 60)
     if accuracy >= 0.55:

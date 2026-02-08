@@ -2,7 +2,6 @@
 """Debug validation predictions to see actual values."""
 import pickle
 import numpy as np
-import pandas as pd
 from pathlib import Path
 
 # Load model and meta
@@ -16,15 +15,15 @@ print('n_features:', meta.get('n_features'))
 print('feature_names count:', len(meta.get('feature_names', [])))
 
 # Load model
-import keras
+import keras  # noqa: E402
 model_path = Path('trained_data/models/EUR_USD/transformer_direction.keras')
 model = keras.models.load_model(str(model_path), compile=False)
 
 # Load real data
-from oanda_practice import OandaPracticeClient
-from fx_paper import candles_to_ohlcv_df
-from src.core.modular_data_loaders import compute_normalized_features
-from src.data.feature_engineering import FeatureEngineering
+from oanda_practice import OandaPracticeClient  # noqa: E402
+from fx_paper import candles_to_ohlcv_df  # noqa: E402
+from src.core.modular_data_loaders import compute_normalized_features  # noqa: E402
+from src.data.feature_engineering import FeatureEngineering  # noqa: E402
 
 client = OandaPracticeClient.from_env()
 resp = client.get_candles('EUR_USD', granularity='H1', count=800, price='MBA')

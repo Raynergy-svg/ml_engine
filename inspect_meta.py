@@ -3,7 +3,6 @@
 import pickle
 import os
 import sys
-import numpy as np
 import pandas as pd
 
 # Check meta file
@@ -62,7 +61,7 @@ print("2. CURRENT FEATURE GENERATION")
 print("="*60)
 
 # Now compute current features to compare
-from src.core.modular_data_loaders import compute_normalized_features, load_direction_data
+from src.core.modular_data_loaders import compute_normalized_features, load_direction_data  # noqa: E402
 
 # Load sample data
 csv_path = 'market_data/USD_JPY_H1.csv'
@@ -122,16 +121,16 @@ if checkpoint_features and current_features:
     
     if missing_from_current:
         print(f'❌ MISSING from current (checkpoint expects but not provided): {len(missing_from_current)}')
-        for f in sorted(missing_from_current)[:20]:
-            print(f'  - {f}')
+        for feat in sorted(missing_from_current)[:20]:
+            print(f'  - {feat}')
         if len(missing_from_current) > 20:
             print(f'  ... and {len(missing_from_current) - 20} more')
         print()
     
     if new_in_current:
         print(f'⚠️  NEW in current (not in checkpoint, will be passed to wrong input): {len(new_in_current)}')
-        for f in sorted(new_in_current)[:20]:
-            print(f'  + {f}')
+        for feat in sorted(new_in_current)[:20]:
+            print(f'  + {feat}')
         if len(new_in_current) > 20:
             print(f'  ... and {len(new_in_current) - 20} more')
         print()
@@ -144,8 +143,8 @@ if checkpoint_features and current_features:
                 order_mismatches.append((i, cp_f, curr_f))
         
         if order_mismatches:
-            print(f'❌ ORDER MISMATCH: Features at same index have different names!')
-            print(f'   First 10 mismatches:')
+            print('❌ ORDER MISMATCH: Features at same index have different names!')
+            print('   First 10 mismatches:')
             for i, cp_f, curr_f in order_mismatches[:10]:
                 print(f'   Index {i}: checkpoint="{cp_f}" vs current="{curr_f}"')
             print()
@@ -163,7 +162,7 @@ if checkpoint_features and current_features:
     print("="*60)
     
     if len(checkpoint_features) != len(current_features):
-        print(f'🔴 CRITICAL: Feature count mismatch!')
+        print('🔴 CRITICAL: Feature count mismatch!')
         print(f'   Checkpoint model expects {len(checkpoint_features)} features')
         print(f'   Current data provides {len(current_features)} features')
         print()
@@ -173,7 +172,7 @@ if checkpoint_features and current_features:
         print()
         print('   FIX: The training code must align features before warm-start!')
     elif checkpoint_features != current_features:
-        print(f'🟠 WARNING: Feature names/order mismatch')
+        print('🟠 WARNING: Feature names/order mismatch')
         print(f'   Same count ({len(checkpoint_features)}) but different features')
         print()
         print('   This causes warm-start degradation because neurons')

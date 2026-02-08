@@ -88,6 +88,7 @@ def analyze_confidence_adjustment():
         ]
     }
 
+
 def generate_trading_recommendation(adjusted_confidence):
     """
     Generate trading recommendation based on adjusted confidence level.
@@ -107,6 +108,7 @@ def generate_trading_recommendation(adjusted_confidence):
         return "LOW CONFIDENCE: Consider very small position size or avoid trade"
     else:
         return "VERY LOW CONFIDENCE: Avoid trade or wait for better setup"
+
 
 if __name__ == "__main__":
     # Run the analysis

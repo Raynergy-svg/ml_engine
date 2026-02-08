@@ -166,11 +166,11 @@ def _fetch_and_prepare_data(
     x_all = np.concatenate([x_train, x_val], axis=0)
     y_all = np.concatenate([y_train, y_val], axis=0)
     w_all = np.concatenate([w_train, data.get("w_val", np.ones(len(y_val)))], axis=0) if w_train is not None else None
-    
+
     data["X_all"] = x_all
     data["y_all"] = y_all
     data["w_all"] = w_all
-    
+
     return df, data, n_clear, feature_names
 
 
@@ -327,7 +327,7 @@ def _evaluate_candle_count(
     fold_pfs: List[float] = []
 
     try:
-        for fold_idx, (train_idx, val_idx, test_idx) in enumerate(validator.split(x_all)):
+        for fold_idx, (train_idx, val_idx, _test_idx) in enumerate(validator.split(x_all)):
             if progress_cb:
                 progress_cb(fold_idx + 1, n_folds)
 
@@ -335,7 +335,7 @@ def _evaluate_candle_count(
                 fold_idx, train_idx, val_idx, x_all, y_all, w_all,
                 df, feature_names, trainer_cfg, effective_seq_len,
             )
-            
+
             if bal_acc is not None:
                 fold_bal_accs.append(bal_acc)
                 fold_sharpes.append(sharpe)

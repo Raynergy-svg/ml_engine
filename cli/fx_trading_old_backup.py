@@ -2,21 +2,17 @@
 """FX trading execution and paper trading utilities."""
 from __future__ import annotations
 
-import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, TYPE_CHECKING
 
-import numpy as np
-import pandas as pd
 from rich.layout import Layout
 from rich.table import Table
 from rich.panel import Panel
 
 from cli.io_utils import (
     console,
-    logger,
     load_config,
     BUDDY_META_FILENAME,
     TABLE_HEADER_STYLE,
@@ -319,7 +315,7 @@ def _fx_execution_guard_price_bound(_policy: Any, client: Any, *, instrument: st
     # Determine buffer in pips. Prefer policy-level override `costs.price_bound_buffer_pips` if available.
     buffer_pips = None
     try:
-        buffer_pips = float(getattr(_policy.costs, "price_bound_buffer_pips"))
+        buffer_pips = float(_policy.costs.price_bound_buffer_pips)
     except Exception:
         try:
             # support dict-like policy.costs
@@ -355,8 +351,8 @@ def _schedule_auto_close(client: Any, instrument: str, delay_s: float, *, verbos
             try:
                 # Prefer closing the specific trade if the create_market_order returned a trade id
                 # The client may expose `close_trade(trade_id=...)` or fall back to close_position.
-                if hasattr(client, "close_trade") and hasattr(client, "_last_trade_id") and getattr(client, "_last_trade_id"):
-                    tid = getattr(client, "_last_trade_id")
+                if hasattr(client, "close_trade") and hasattr(client, "_last_trade_id") and client._last_trade_id:
+                    tid = client._last_trade_id
                     try:
                         res = client.close_trade(trade_id=tid)
                         console.print(f"[dim]Auto-close[/dim]: closed trade {tid} for {instrument}: {res}")
@@ -850,7 +846,7 @@ def _fx_execute_paper_trade_plan(
         if trade_id:
             try:
                 # attach to client for auto-close worker to use
-                setattr(client, "_last_trade_id", str(trade_id))
+                client._last_trade_id = str(trade_id)
             except Exception:
                 pass
     except Exception:

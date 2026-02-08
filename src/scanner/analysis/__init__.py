@@ -14,7 +14,7 @@ from src.scanner.analysis.drift import DriftDetector, DriftResult
 __all__ = [
     "QuickBacktester",
     "BacktestResult",
-    "CorrelationAnalyzer", 
+    "CorrelationAnalyzer",
     "CorrelationResult",
     "DriftDetector",
     "DriftResult",

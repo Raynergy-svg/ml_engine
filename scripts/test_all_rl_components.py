@@ -5,6 +5,7 @@ import numpy as np
 import sys
 sys.path.insert(0, '.')
 
+
 def main():
     # Test 1: RL Position Sizer loads and works
     print('=' * 60)
@@ -31,7 +32,7 @@ def main():
     
     from stable_baselines3 import PPO
     exit_model = PPO.load('trained_data/models/ppo_optimal_exit.zip')
-    print(f'✓ Exit model loaded')
+    print('✓ Exit model loaded')
     
     # Simulate exit observation
     obs = np.random.randn(exit_model.observation_space.shape[0]).astype(np.float32)
@@ -47,7 +48,7 @@ def main():
     
     from stable_baselines3 import SAC
     gate_model = SAC.load('trained_data/models/sac_gate_thresholds.zip')
-    print(f'✓ Gate model loaded')
+    print('✓ Gate model loaded')
     
     obs = np.random.randn(gate_model.observation_space.shape[0]).astype(np.float32)
     action, _ = gate_model.predict(obs, deterministic=True)
@@ -57,6 +58,7 @@ def main():
     print('=' * 60)
     print('ALL 3 RL COMPONENTS WORKING ✅')
     print('=' * 60)
+
 
 if __name__ == '__main__':
     main()

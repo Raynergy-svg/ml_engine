@@ -5,6 +5,7 @@ import re
 import sys
 from pathlib import Path
 
+
 def main():
     main_py = Path(__file__).parent.parent / "main.py"
     
@@ -43,6 +44,7 @@ def main():
         print("\nNo changes made")
     
     return 0
+
 
 if __name__ == "__main__":
     sys.exit(main())

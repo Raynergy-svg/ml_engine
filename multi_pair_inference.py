@@ -18,7 +18,6 @@ Usage:
     model.get_model_status()
 """
 
-import json
 import logging
 import sys
 from pathlib import Path
@@ -130,8 +129,9 @@ class PairModel:
                 # Override accuracy from meta if trainer didn't have it
                 if self.accuracy <= 0.55:
                     metrics = self.meta.get('metrics', {})
-                    self.accuracy = metrics.get('best_val_accuracy', 
-                                               metrics.get('val_accuracy', 0.55))
+                    self.accuracy = metrics.get(
+                        'best_val_accuracy',
+                        metrics.get('val_accuracy', 0.55))
             
             self.is_loaded = True
             logger.debug(f"Loaded model for {self.pair}: {self.accuracy:.1%}")
@@ -520,7 +520,7 @@ def test_multi_pair_inference():
     logging.basicConfig(level=logging.INFO)
     
     model = MultiPairInference()
-    loaded = model.load()
+    model.load()
     
     print(f"\n{'='*60}")
     print("Multi-Pair Inference Status")
@@ -531,7 +531,7 @@ def test_multi_pair_inference():
     print(f"Loaded: {status['loaded_pairs']}")
     print(f"Fallback available: {status['fallback_available']}")
     
-    print(f"\nPer-pair status:")
+    print("\nPer-pair status:")
     for pair, info in status["models"].items():
         if info.get("loaded"):
             acc = info.get("accuracy", 0)

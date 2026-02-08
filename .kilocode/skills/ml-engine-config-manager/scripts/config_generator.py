@@ -360,26 +360,31 @@ Examples:
     
     # Generate command
     generate_parser = subparsers.add_parser('generate', help='Generate configuration file')
-    generate_parser.add_argument('--template', '-t', default='default',
-                             choices=['default', 'pair_specific', 'volatility', 'platform'],
-                             help='Template to use')
+    generate_parser.add_argument(
+        '--template', '-t', default='default',
+        choices=['default', 'pair_specific', 'volatility', 'platform'],
+        help='Template to use')
     generate_parser.add_argument('--pair', '-p', help='Currency pair (e.g., EUR_USD)')
-    generate_parser.add_argument('--volatility', '-v',
-                             choices=['volatile', 'stable'],
-                             help='Volatility tier')
-    generate_parser.add_argument('--platform',
-                             choices=['m1_metal', 'gpu', 'cpu'],
-                             help='Platform type')
-    generate_parser.add_argument('--overrides', '-o',
-                             help='Custom overrides (JSON format)')
+    generate_parser.add_argument(
+        '--volatility', '-v',
+        choices=['volatile', 'stable'],
+        help='Volatility tier')
+    generate_parser.add_argument(
+        '--platform',
+        choices=['m1_metal', 'gpu', 'cpu'],
+        help='Platform type')
+    generate_parser.add_argument(
+        '--overrides', '-o',
+        help='Custom overrides (JSON format)')
     generate_parser.add_argument('--seq-len', type=int, help='Sequence length')
     generate_parser.add_argument('--epochs', type=int, help='Training epochs')
     generate_parser.add_argument('--batch-size', type=int, help='Batch size')
-    generate_parser.add_argument('--output', required=True, type=Path,
-                             help='Output configuration file path')
+    generate_parser.add_argument(
+        '--output', required=True, type=Path,
+        help='Output configuration file path')
     
     # List templates command
-    list_parser = subparsers.add_parser('list-templates', help='List available templates')
+    subparsers.add_parser('list-templates', help='List available templates')
     
     args = parser.parse_args()
     

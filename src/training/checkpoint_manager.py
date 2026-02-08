@@ -11,16 +11,16 @@ Handles:
 
 Example usage:
     from src.training.checkpoint_manager import CheckpointManager, CheckpointMetadata
-    
+
     manager = CheckpointManager(model_dir="trained_data/models")
-    
+
     # Load a checkpoint
     model = manager.load_checkpoint(
         model_path="trained_data/models/EUR_USD/transformer_direction.keras",
         seq_len=60,
         feature_dim=42,
     )
-    
+
     # Get metadata path
     meta_path = manager.get_meta_path("trained_data/models/buddy_tf.keras")
 """
@@ -47,7 +47,7 @@ DEFAULT_MODEL_DIR = Path("trained_data/models")
 @dataclass
 class CheckpointMetadata:
     """Metadata associated with a model checkpoint.
-    
+
     Attributes:
         created_at: Timestamp when checkpoint was created.
         instrument: Trading instrument the model was trained on.
@@ -101,7 +101,7 @@ class CheckpointMetadata:
             "tier2_calibration", "training_config", "scaler_params",
         }
         extra = {k: v for k, v in data.items() if k not in known_keys}
-        
+
         return cls(
             created_at=data.get("created_at", datetime.now().isoformat()),
             instrument=data.get("instrument", "GENERIC"),
@@ -123,8 +123,8 @@ class CheckpointMetadata:
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(f"Metadata file not found: {path}")
-        
-        with open(path, "r") as f:
+
+        with open(path) as f:
             data = json.load(f)
         return cls.from_dict(data)
 
@@ -139,25 +139,25 @@ class CheckpointMetadata:
 
 class CheckpointManager:
     """Manages model checkpoint loading, saving, and metadata.
-    
+
     Provides centralized handling for:
     - Loading Keras models with custom objects
     - Automatic Keras 2 to Keras 3 migration
     - Metadata file management
     - Input shape validation
-    
+
     Attributes:
         model_dir: Base directory for model storage.
         custom_objects: Custom Keras objects for model loading.
     """
-    
+
     def __init__(
         self,
         model_dir: str | Path = DEFAULT_MODEL_DIR,
         custom_objects: dict[str, Any] | None = None,
     ) -> None:
         """Initialize CheckpointManager.
-        
+
         Args:
             model_dir: Base directory for model storage.
             custom_objects: Custom Keras objects for model loading.
@@ -170,12 +170,12 @@ class CheckpointManager:
     @property
     def custom_objects(self) -> dict[str, Any]:
         """Get custom objects for Keras model loading.
-        
+
         Lazily loads custom head classes if not already provided.
         """
         if self._custom_objects is not None:
             return self._custom_objects
-        
+
         # Try to load standard custom objects
         try:
             from ml_head_engine import MLEngineHead
@@ -183,7 +183,7 @@ class CheckpointManager:
             from ms_head_engine import MSEngineHead
             from mt_engine import MTEngineHead
             from mx_head_engine import MXEngineHead
-            
+
             self._custom_objects = {
                 "MLEngineHead": MLEngineHead,
                 "MREngineHead": MREngineHead,
@@ -194,24 +194,24 @@ class CheckpointManager:
         except ImportError as e:
             logger.warning(f"Could not load custom head classes: {e}")
             self._custom_objects = {}
-        
+
         return self._custom_objects
 
     def get_meta_path(self, model_path: str | Path) -> Path | None:
         """Get the metadata file path for a checkpoint.
-        
+
         Searches for metadata in the following order:
         1. Same path with .meta.json suffix
         2. Default Buddy metadata location (for buddy_tf.keras)
-        
+
         Args:
             model_path: Path to the model checkpoint file.
-            
+
         Returns:
             Path to metadata file if found, None otherwise.
         """
         p = Path(model_path)
-        
+
         # Try standard .meta.json suffix
         try:
             if p.suffix == ".keras":
@@ -230,22 +230,22 @@ class CheckpointManager:
                     return candidate
         except Exception:
             pass
-        
+
         return None
 
     def load_metadata(self, model_path: str | Path) -> CheckpointMetadata | None:
         """Load metadata for a checkpoint if available.
-        
+
         Args:
             model_path: Path to the model checkpoint file.
-            
+
         Returns:
             CheckpointMetadata if found, None otherwise.
         """
         meta_path = self.get_meta_path(model_path)
         if meta_path is None:
             return None
-        
+
         try:
             return CheckpointMetadata.from_json_file(meta_path)
         except Exception as e:
@@ -260,28 +260,28 @@ class CheckpointManager:
         validate_shape: bool = True,
     ) -> Any:
         """Load a model checkpoint with validation.
-        
+
         Args:
             model_path: Path to the model checkpoint file.
             seq_len: Expected sequence length.
             feature_dim: Expected feature dimension.
             validate_shape: Whether to validate input shape matches expectations.
-            
+
         Returns:
             Loaded Keras model.
-            
+
         Raises:
             FileNotFoundError: If checkpoint file doesn't exist.
             ValueError: If input shape validation fails.
         """
         import tensorflow as tf
-        
+
         model_path = Path(model_path)
         if not model_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {model_path}")
-        
+
         logger.info(f"Loading checkpoint: {model_path}")
-        
+
         # Try standard load first
         try:
             model = tf.keras.models.load_model(
@@ -310,7 +310,7 @@ class CheckpointManager:
                         f"Checkpoint input_shape {in_shape} incompatible with "
                         f"seq_len={seq_len}, feature_dim={feature_dim}"
                     )
-        
+
         logger.info(f"Successfully loaded checkpoint: {model_path}")
         return model
 
@@ -322,50 +322,50 @@ class CheckpointManager:
         custom_objects: dict[str, Any],
     ) -> Any:
         """Migrate a Keras 2 model to Keras 3 format.
-        
+
         This handles the transition from Keras 2 (TF 2.x) to Keras 3 (TF 2.16+)
         by extracting weights and rebuilding the model architecture.
-        
+
         Args:
             model_path: Path to the Keras 2 model file.
             seq_len: Sequence length for the model.
             feature_dim: Feature dimension for the model.
             custom_objects: Custom Keras objects.
-            
+
         Returns:
             Migrated Keras 3 model.
-            
+
         Raises:
             ValueError: If migration fails.
         """
         import shutil
         import tempfile
         import zipfile
-        
+
         import tensorflow as tf
         from tensorflow.keras import layers
-        
+
         from rich.console import Console
         console = Console()
-        
+
         try:
             console.print(f"[yellow]Attempting Keras 2→3 migration for: {model_path}[/yellow]")
-            
+
             # Extract weights from old archive
             with tempfile.TemporaryDirectory() as tmpdir:
                 with zipfile.ZipFile(model_path, 'r') as zf:
                     zf.extractall(tmpdir)
-                
+
                 weights_path = Path(tmpdir) / "model.weights.h5"
                 if not weights_path.exists():
                     # Try alternate path
                     weights_path = Path(tmpdir) / "variables" / "variables.data-00000-of-00001"
                     if not weights_path.exists():
                         raise ValueError("Cannot find weights in old model archive")
-            
+
             # Build fresh model with same architecture
             inp = layers.Input(shape=(seq_len, feature_dim), name='input_features')
-            
+
             # TCN-style encoder
             x = layers.Conv1D(64, 3, padding='causal', activation='relu')(inp)
             x = layers.BatchNormalization()(x)
@@ -373,20 +373,20 @@ class CheckpointManager:
             x = layers.BatchNormalization()(x)
             x = layers.Conv1D(64, 3, padding='causal', activation='relu', dilation_rate=4)(x)
             x = layers.GlobalAveragePooling1D()(x)
-            
+
             # Multi-head outputs
             dir_branch = layers.Dense(32, activation='relu')(x)
             price_branch = layers.Dense(32, activation='relu')(x)
             risk_branch = layers.Dense(32, activation='relu')(x)
             state_branch = layers.Dense(32, activation='relu')(x)
             trend_branch = layers.Dense(32, activation='relu')(x)
-            
+
             direction = layers.Dense(1, activation='sigmoid', name='direction', dtype='float32')(dir_branch)
             price = layers.Dense(1, activation='linear', name='price', dtype='float32')(price_branch)
             risk = layers.Dense(1, activation='sigmoid', name='risk', dtype='float32')(risk_branch)
             state_logits = layers.Dense(2, activation='softmax', name='state_logits', dtype='float32')(state_branch)
             trend = layers.Dense(1, activation='linear', name='trend', dtype='float32')(trend_branch)
-            
+
             fresh_model = tf.keras.Model(
                 inputs=inp,
                 outputs={
@@ -409,7 +409,7 @@ class CheckpointManager:
                 if not Path(backup_path).exists():
                     shutil.copy(model_path, backup_path)
                     console.print(f"[dim]Backup saved: {backup_path}[/dim]")
-                
+
                 fresh_model.save(model_path)
                 console.print(f"[green]✓ Model migrated to Keras 3: {model_path}[/green]")
                 return fresh_model
@@ -428,35 +428,35 @@ class CheckpointManager:
         metadata: CheckpointMetadata | None = None,
     ) -> Path:
         """Save a model checkpoint with optional metadata.
-        
+
         Args:
             model: Keras model to save.
             checkpoint_path: Path to save the checkpoint.
             metadata: Optional metadata to save alongside.
-            
+
         Returns:
             Path to the saved checkpoint.
         """
         checkpoint_path = Path(checkpoint_path)
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Save the model
         model.save(str(checkpoint_path))
         logger.info(f"Saved checkpoint to {checkpoint_path}")
-        
+
         # Save metadata if provided
         if metadata is not None:
             meta_path = checkpoint_path.with_suffix(".meta.json")
             metadata.save(meta_path)
-        
+
         return checkpoint_path
 
     def list_checkpoints(self, pattern: str = "*.keras") -> list[Path]:
         """List all checkpoints matching a pattern.
-        
+
         Args:
             pattern: Glob pattern for checkpoint files.
-            
+
         Returns:
             List of checkpoint paths.
         """
@@ -469,12 +469,12 @@ class CheckpointManager:
         filename: str = "direction",
     ) -> Path:
         """Get the checkpoint path for a specific trading pair.
-        
+
         Args:
             instrument: Trading instrument (e.g., "EUR_USD").
             model_type: Model architecture type.
             filename: Base filename for the checkpoint.
-            
+
         Returns:
             Path to the checkpoint file.
         """
@@ -482,9 +482,9 @@ class CheckpointManager:
             pair_dir = self.model_dir / instrument
         else:
             pair_dir = self.model_dir
-        
+
         pair_dir.mkdir(parents=True, exist_ok=True)
-        
+
         return pair_dir / f"{model_type}_{filename}.keras"
 
 
@@ -496,15 +496,15 @@ def load_buddy_checkpoint(
     model_dir: str | Path = DEFAULT_MODEL_DIR,
 ) -> Any:
     """Convenience function to load a Buddy checkpoint.
-    
+
     This is a backward-compatible function that wraps CheckpointManager.
-    
+
     Args:
         model_path: Path to the model checkpoint.
         seq_len: Expected sequence length.
         feature_dim: Expected feature dimension.
         model_dir: Base model directory.
-        
+
     Returns:
         Loaded Keras model.
     """
@@ -514,10 +514,10 @@ def load_buddy_checkpoint(
 
 def meta_path_for_checkpoint(model_path: str) -> Path | None:
     """Get metadata path for a checkpoint (backward compatibility).
-    
+
     Args:
         model_path: Path to the checkpoint.
-        
+
     Returns:
         Path to metadata file if found, None otherwise.
     """

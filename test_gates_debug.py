@@ -2,7 +2,6 @@
 """Debug gate evaluation."""
 
 import pandas as pd
-import numpy as np
 from src.scanner.gates import GateEvaluator
 from src.core.modular_data_loaders import compute_normalized_features
 from pathlib import Path
@@ -12,12 +11,12 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
-import requests
+import requests  # noqa: E402
+
 
 def get_candles(instrument, count=100, granularity='H1'):
     """Fetch candles from OANDA."""
     api_token = os.getenv('OANDA_API_TOKEN')
-    account_id = os.getenv('OANDA_ACCOUNT_ID')
     
     url = f"https://api-fxpractice.oanda.com/v3/instruments/{instrument}/candles"
     headers = {"Authorization": f"Bearer {api_token}"}
@@ -34,6 +33,7 @@ def get_candles(instrument, count=100, granularity='H1'):
         'close': float(c['mid']['c']),
         'volume': int(c['volume']),
     } for c in data['candles']])
+
 
 # Fetch some data
 df = get_candles('EUR_USD', count=100)

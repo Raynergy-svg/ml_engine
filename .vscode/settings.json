@@ -49,5 +49,24 @@
     "idf.pythonInstallPath": "/Users/davidcertan/miniforge3/bin/python",
     "robotcode.disableExtension": true,
     "python-envs.defaultPackageManager": "ms-python.python:conda",
-    "diffEditor.maxComputationTime": 0
+    "diffEditor.maxComputationTime": 0,
+    "sonarlint.rules": {
+        "python:S117": {
+            "level": "off"
+        },
+        "python:S3776": {
+            "level": "off"
+        }
+    },
+    "sonarlint.pathsToExclude": [
+        "**/debug_*.py",
+        "**/demo_*.py",
+        "**/check_*.py",
+        "**/inspect_*.py",
+        "**/*_diag_*.py",
+        "**/*_old*.py",
+        "**/*_backup*",
+        "**/trained_data/**",
+        "**/market_data/**"
+    ]
 }

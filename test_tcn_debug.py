@@ -4,9 +4,9 @@
 import logging
 logging.basicConfig(level=logging.DEBUG, format='%(name)s:%(message)s')
 
-from src.scanner.engine import Scanner
-from src.scanner.config import ScannerConfig
-from src.core.modular_data_loaders import compute_normalized_features
+from src.scanner.engine import Scanner  # noqa: E402
+from src.scanner.config import ScannerConfig  # noqa: E402
+from src.core.modular_data_loaders import compute_normalized_features  # noqa: E402
 
 config = ScannerConfig()
 scanner = Scanner(config)
@@ -15,7 +15,7 @@ scanner = Scanner(config)
 scanner._init_gate_evaluator()
 
 # Get data from OANDA (same as scanner does)
-from src.utils.oanda_practice import OandaPracticeClient
+from src.utils.oanda_practice import OandaPracticeClient  # noqa: E402
 oanda = OandaPracticeClient.from_env()
 raw = oanda.get_candles(instrument='EUR_USD', granularity='H1', count=500)
 
@@ -35,7 +35,7 @@ for c in candles:
         "volume": int(c.get("volume", 0)),
     })
 
-import pandas as pd
+import pandas as pd  # noqa: E402
 df = pd.DataFrame(data)
 df["time"] = pd.to_datetime(df["time"])
 df = df.set_index("time")

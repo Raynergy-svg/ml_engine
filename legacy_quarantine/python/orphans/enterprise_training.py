@@ -46,21 +46,20 @@ import subprocess
 import threading
 import time
 import traceback
-from abc import ABC, abstractmethod
+from abc import ABC  # noqa: F401
 from contextlib import contextmanager
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import (
-    Any, Callable, Dict, Generator, List, Optional, 
-    Tuple, TypeVar, Union
+    Any, Callable, Dict, Generator, List, Optional,
+    Tuple, Union
 )
 
 import numpy as np
 
 try:
     import mlflow
-    from mlflow.tracking import MlflowClient
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False
@@ -869,7 +868,7 @@ class WalkForwardValidator:
                 pass
             
             # Fit model
-            history = model.fit(
+            model.fit(
                 X_train, y_train,
                 validation_data=(X_test, y_test),
                 verbose=0,

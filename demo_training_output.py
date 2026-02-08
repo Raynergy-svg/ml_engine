@@ -10,6 +10,7 @@ from rich.table import Table
 
 console = Console()
 
+
 def demo_training_output():
     """Demonstrate the improved training output."""
     
@@ -133,6 +134,7 @@ def demo_training_output():
     print("✓ Spacing rows in tables for better readability")
     print("✓ Enterprise-grade quality messaging in final summary")
     print("="*80 + "\n")
+
 
 if __name__ == "__main__":
     demo_training_output()

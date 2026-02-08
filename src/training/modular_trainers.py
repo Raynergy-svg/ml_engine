@@ -162,7 +162,7 @@ def _get_numpy_dtype(keras_dtype) -> np.dtype:
 
 class TrainingDisplay:
     """Clean, professional training output using Rich."""
-    
+
     def __init__(self, model_name: str = "Model"):
         from rich.console import Console
         from rich.table import Table
@@ -177,7 +177,7 @@ class TrainingDisplay:
         self._TextColumn = TextColumn
         self._BarColumn = BarColumn
         self._TaskProgressColumn = TaskProgressColumn
-    
+
     def show_config(self, config: dict):
         """Display configuration as a clean table."""
         table = self._Table(show_header=False, box=None, padding=(0, 2))
@@ -186,7 +186,7 @@ class TrainingDisplay:
         for k, v in config.items():
             table.add_row(str(k), str(v))
         self.console.print(self._Panel(table, title=f"[bold]{self.model_name}[/bold]", border_style="blue"))
-    
+
     def show_summary(self, metrics: dict, title: str = "Results"):
         """Display training results summary."""
         table = self._Table(show_header=False, box=None, padding=(0, 2))
@@ -198,19 +198,19 @@ class TrainingDisplay:
             else:
                 table.add_row(str(k), str(v))
         self.console.print(self._Panel(table, title=f"[bold]{title}[/bold]", border_style="green"))
-    
+
     def status(self, message: str, style: str = ""):
         """Print a status message."""
         self.console.print(f"  {message}", style=style)
-    
+
     def warn(self, message: str):
         """Print a warning message."""
         self.console.print(f"  [yellow]⚠ {message}[/yellow]")
-    
+
     def error(self, message: str):
         """Print an error message."""
         self.console.print(f"  [red]✗ {message}[/red]")
-    
+
     def success(self, message: str):
         """Print a success message."""
         self.console.print(f"  [green]✓ {message}[/green]")
@@ -361,7 +361,7 @@ class TrainerConfig:
 
     # Drift detection for auto-retraining
     drift_threshold: float = 0.03  # Retrain if val_acc drops by >3%
-    
+
     # === OVERFIT PREVENTION SETTINGS ===
     overfit_threshold: float = 0.08       # 8% train-val gap triggers warning
     critical_threshold: float = 0.15      # 15% gap triggers intervention (LR reduction)
@@ -371,17 +371,17 @@ class TrainerConfig:
     auto_adjust_dropout: bool = True      # Dynamically increase dropout on overfitting
     auto_reduce_lr: bool = True           # Dynamically reduce LR on overfitting
     max_dropout_increase: float = 0.3     # Cap on dropout increase
-    
+
     # === SWA (Stochastic Weight Averaging) ===
     enable_swa: bool = True               # Average weights in final 25% for flatter optima
     swa_start_fraction: float = 0.75      # Start SWA at 75% of training
     swa_lr_factor: float = 0.5            # SWA constant LR = initial_lr * factor
-    
+
     # === COSINE ANNEALING WITH WARM RESTARTS ===
     enable_cosine_restarts: bool = True    # Periodic LR resets to escape sharp minima
     cosine_restart_period: int = 10       # Restart every N epochs
     cosine_restart_lr_mult: float = 0.8   # Each restart uses 80% of prev LR
-    
+
     # === WARM-START OVERFIT RECOVERY ===
     enable_warmstart_detection: bool = True
     warmstart_reset_threshold: float = 0.15  # If initial gap > 15%, intervene
@@ -665,7 +665,7 @@ class EMACallback:
         weight_names: List[str],
     ) -> Tuple[int, int]:
         """Load EMA weights using name-based matching.
-        
+
         Returns:
             Tuple of (loaded_count, skipped_count)
         """
@@ -683,7 +683,7 @@ class EMACallback:
             if loaded:
                 loaded_count += 1
                 continue
-            
+
             loaded = self._try_load_by_partial_name(
                 i, model_w, model_name, checkpoint_weight_map
             )
@@ -691,7 +691,7 @@ class EMACallback:
                 loaded_count += 1
             else:
                 skipped_count += 1
-        
+
         return loaded_count, skipped_count
 
     def _try_load_by_exact_name(
@@ -724,18 +724,18 @@ class EMACallback:
         weights: List[np.ndarray],
     ) -> Tuple[int, int]:
         """Load EMA weights using position-based matching with shape validation.
-        
+
         Returns:
             Tuple of (loaded_count, skipped_count)
         """
         loaded_count = 0
         skipped_count = 0
-        
+
         for i, model_w in enumerate(model_weights):
             if i >= len(weights):
                 skipped_count += 1
                 continue
-            
+
             ckpt_weight = weights[i]
             if model_w.shape == ckpt_weight.shape:
                 self.ema_weights[i] = ckpt_weight.copy()
@@ -746,7 +746,7 @@ class EMACallback:
                     f"(model={model_w.shape}, checkpoint={ckpt_weight.shape})"
                 )
                 skipped_count += 1
-        
+
         return loaded_count, skipped_count
 
     def set_ema_weights(
@@ -879,7 +879,7 @@ class EWCPenalty:
         if is_binary:
             logger.debug("EWC using BinaryCrossentropy (binary classification)")
             return tf.keras.losses.BinaryCrossentropy(from_logits=False), True
-        
+
         logger.debug("EWC using SparseCategoricalCrossentropy (multi-class)")
         return tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False), False
 
@@ -1197,7 +1197,7 @@ def _safe_set_learning_rate(optimizer, new_lr: float) -> bool:
 @dataclass
 class OverfitPreventionConfig:
     """Configuration for OverfitPreventionCallback.
-    
+
     Groups all configurable parameters to reduce __init__ parameter count
     and improve code readability.
     """
@@ -1210,27 +1210,27 @@ class OverfitPreventionConfig:
     auto_adjust_dropout: bool = True
     auto_reduce_lr: bool = True
     max_dropout_increase: float = 0.3
-    
+
     # SWA settings - helps find flatter minima that generalize better
     enable_swa: bool = True  # Averages weights for better generalization
     swa_start_fraction: float = 0.5  # Start SWA at 50% of training
     swa_lr_factor: float = 0.5  # SWA uses lower constant LR
-    
+
     # Cosine restart settings - helps escape local minima
     enable_cosine_restarts: bool = True  # Warm restarts improve convergence
     restart_period: int = 15  # Restart every 15 epochs
     restart_lr_mult: float = 0.9  # Each restart uses 90% of prev LR
-    
+
     # Mixup augmentation (applied at batch level)
     enable_mixup: bool = False  # Disabled by default
     mixup_alpha: float = 0.2
-    
+
     # Warm-start overfit recovery
     enable_warmstart_detection: bool = True
     warmstart_reset_threshold: float = 0.15  # If initial gap > 15%, intervene
     weight_perturbation_scale: float = 0.02  # Noise to break memorization
     reset_optimizer_on_overfit: bool = True  # Reset momentum on critical overfit
-    
+
     # Continual learning: Previous best accuracy (prevents saving worse models)
     warm_start_best_acc: float = 0.0  # Set from loaded checkpoint
 
@@ -1278,14 +1278,14 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         config: Optional["OverfitPreventionConfig"] = None,
     ):
         super().__init__()
-        
+
         # Use provided config or create default
         cfg = config if config is not None else OverfitPreventionConfig()
-        
+
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.model_name = model_name
-        
+
         # Threshold settings
         self.overfit_threshold = cfg.overfit_threshold
         self.critical_threshold = cfg.critical_threshold
@@ -1394,7 +1394,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
 
     def _reinitialize_kernel_weight(self, weight) -> bool:
         """Reinitialize a kernel weight using Glorot uniform initialization.
-        
+
         Returns:
             True if reinitialized, False otherwise
         """
@@ -1413,7 +1413,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
 
     def _reinitialize_bias_weight(self, weight) -> bool:
         """Reinitialize a bias weight to zeros.
-        
+
         Returns:
             True if reinitialized, False otherwise
         """
@@ -2048,7 +2048,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         """Print gap statistics and suggestions."""
         if len(self.gap_history) == 0:
             return
-        
+
         avg_gap = np.mean(self.gap_history)
         max_gap = max(self.gap_history)
         min_gap = min(self.gap_history)
@@ -2448,13 +2448,13 @@ class RichEpochCallback(tf.keras.callbacks.Callback):
 class AutoAdjustCallback(tf.keras.callbacks.Callback):
     """
     Auto-adjusts training when stuck (plateau detection).
-    
+
     Actions taken when stuck:
     1. Reduce learning rate by factor
     2. If still stuck, increase dropout via noise injection
     3. Log adjustments for transparency
     """
-    
+
     def __init__(
         self,
         patience: int = 5,          # Epochs without improvement before adjusting
@@ -2471,32 +2471,32 @@ class AutoAdjustCallback(tf.keras.callbacks.Callback):
         self.max_adjustments = max_adjustments
         self.min_delta = min_delta
         self.verbose = verbose
-        
+
         self.best_val_acc = 0.0
         self.wait = 0
         self.adjustments_made = 0
         self._console = None
-    
+
     @property
     def console(self):
         if self._console is None:
             from rich.console import Console
             self._console = Console()
         return self._console
-    
+
     def on_epoch_end(self, epoch, logs=None):
         if logs is None:
             return
-        
+
         val_acc = logs.get('val_accuracy', logs.get('accuracy', 0))
-        
+
         # Check if improved
         if val_acc > self.best_val_acc + self.min_delta:
             self.best_val_acc = val_acc
             self.wait = 0
         else:
             self.wait += 1
-        
+
         # Check if stuck
         if self.wait >= self.patience and self.adjustments_made < self.max_adjustments:
             # Get current learning rate
@@ -2504,17 +2504,17 @@ class AutoAdjustCallback(tf.keras.callbacks.Callback):
                 current_lr = float(self.model.optimizer.learning_rate)
             except Exception:
                 current_lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
-            
+
             if current_lr > self.min_lr:
                 # Reduce learning rate
                 new_lr = max(current_lr * self.lr_factor, self.min_lr)
-                
+
                 # Keras 3.x compatible way to set LR
                 self.model.optimizer.learning_rate.assign(new_lr)
-                
+
                 self.adjustments_made += 1
                 self.wait = 0  # Reset patience
-                
+
                 if self.verbose:
                     self.console.print(
                         f"  [yellow]⚙ Auto-adjust #{self.adjustments_made}: "
@@ -2526,7 +2526,7 @@ class AutoAdjustCallback(tf.keras.callbacks.Callback):
                     self.console.print(
                         f"  [dim]⚙ LR already at minimum ({self.min_lr:.2e}), cannot adjust further[/dim]"
                     )
-    
+
     def on_train_end(self, logs=None):
         if self.adjustments_made > 0 and self.verbose:
             self.console.print(
@@ -2764,7 +2764,7 @@ class ReplayBuffer:
         # Load metadata
         meta_path = load_dir / "buffer_meta.json"
         if meta_path.exists():
-            with open(meta_path, "r") as f:
+            with open(meta_path) as f:
                 meta = json.load(f)
             self._sample_count = meta.get("sample_count", len(self.x_buffer))
             self.metadata = meta
@@ -2964,7 +2964,7 @@ class DriftDetector:
         if not path.exists():
             return False
 
-        with open(path, "r") as f:
+        with open(path) as f:
             data = json.load(f)
 
         self.performance_threshold = data.get(
@@ -3035,11 +3035,11 @@ class DriftDetector:
         """Check if feature means shifted beyond threshold."""
         if not self.baseline_stats or "feature_stats" not in self.baseline_stats:
             return False, ""
-        
+
         baseline_means = self.baseline_stats["feature_stats"].get("mean")
         if baseline_means is None or len(baseline_means) != len(current_means):
             return False, ""
-        
+
         mean_shift = np.abs(current_means - baseline_means).mean()
         if mean_shift > self.feature_drift_threshold:
             return True, f"Feature means shifted by {mean_shift:.2%}"
@@ -3049,15 +3049,15 @@ class DriftDetector:
         """Check for declining accuracy trend over recent sessions."""
         if len(self._history) < 3:
             return False, ""
-        
+
         recent = self._history[-3:]
         accs = [h["val_accuracy"] for h in recent]
-        
+
         # Check if all sequential pairs show decline
         is_declining = all(accs[i] > accs[i + 1] for i in range(len(accs) - 1))
         if not is_declining:
             return False, ""
-        
+
         decline = accs[0] - accs[-1]
         if decline > self.performance_threshold:
             return True, f"Declining trend: {decline:.2%} over last 3 sessions"
@@ -3074,7 +3074,7 @@ class DriftDetector:
             return False, "Insufficient history"
 
         current = self._history[-1]
-        
+
         # Check performance drop
         drift, reason = self._check_performance_drop(current["val_accuracy"])
         if drift:
@@ -3206,7 +3206,7 @@ class TrainingLineage:
         y_sample = y[indices]
 
         data_bytes = x_sample.tobytes() + y_sample.tobytes()
-        return hashlib.md5(data_bytes).hexdigest()[:12]
+        return hashlib.md5(data_bytes, usedforsecurity=False).hexdigest()[:12]
 
     def get_training_summary(self) -> str:
         """Get human-readable summary of training lineage."""
@@ -3345,22 +3345,18 @@ class BaseTrainer(ABC):
         y_val: np.ndarray,
     ) -> Dict[str, float]:
         """Train the model and return metrics."""
-        pass
 
     @abstractmethod
     def predict(self, X: np.ndarray) -> Dict[str, Any]:
         """Make predictions."""
-        pass
 
     @abstractmethod
     def save(self, path: str) -> None:
         """Save model to disk."""
-        pass
 
     @abstractmethod
     def load(self, path: str) -> None:
         """Load model from disk."""
-        pass
 
 
 # =============================================================================
@@ -3581,7 +3577,7 @@ class TCNTrainer(BaseTrainer):
         self, warm_start_path: str, keras_module: Any
     ) -> Tuple[bool, float]:
         """Load weights from warm-start checkpoint.
-        
+
         Returns:
             Tuple of (weights_loaded, previous_val_acc)
         """
@@ -3591,10 +3587,10 @@ class TCNTrainer(BaseTrainer):
             or self._try_load_direct_weights(warm_start_path)
             or self._try_load_full_model_weights(warm_start_path, keras_module)
         )
-        
+
         # Load previous best accuracy from metadata if weights loaded
         prev_val_acc = self._load_warm_start_metadata(warm_start_path) if weights_loaded else 0.0
-        
+
         return weights_loaded, prev_val_acc
 
     def _create_tcn_callbacks(
@@ -3655,7 +3651,7 @@ class TCNTrainer(BaseTrainer):
         if not (arch_path.exists() and weights_path.exists()):
             return False
         try:
-            with open(arch_path, "r") as f:
+            with open(arch_path) as f:
                 arch_json = f.read()
             self.model = keras_module.models.model_from_json(arch_json)
             self.model.load_weights(str(weights_path))
@@ -3704,7 +3700,7 @@ class TCNTrainer(BaseTrainer):
         instrument: str = "UNKNOWN",
     ) -> Dict[str, float]:
         """Train TCN for volatility regime classification.
-        
+
         Args:
             warm_start_path: Path to existing model to load weights from (warm-start training)
             instrument: Trading instrument (e.g., "EUR_USD") for logging
@@ -3714,7 +3710,7 @@ class TCNTrainer(BaseTrainer):
 
         logger.info("Training TCN (Volatility Regime Filter)...")
         logger.info(f"  Classes: {self.REGIME_NAMES}")
-        
+
         # Initialize warm-start tracking
         self._is_warm_start = False
         self._warm_start_val_acc = 0.0
@@ -3754,11 +3750,11 @@ class TCNTrainer(BaseTrainer):
             try:
                 logger.info(f"🔥 WARM-START: Loading weights from {warm_start_path}")
                 weights_loaded, prev_val_acc = self._load_warm_start_weights(warm_start_path, keras)
-                
+
                 if weights_loaded:
                     self._is_warm_start = True
                     self._warm_start_val_acc = prev_val_acc
-                    
+
                     # Reduce learning rate for warm-start (use 10% of base LR)
                     warm_start_lr_factor = getattr(self.config, 'warm_start_lr_factor', 0.1)
                     effective_lr = self.config.learning_rate * warm_start_lr_factor
@@ -3972,10 +3968,10 @@ class TCNTrainer(BaseTrainer):
 
         # Try loading strategies in order
         model_loaded = self._load_model_native(path, keras)
-        
+
         if not model_loaded:
             model_loaded = self._load_model_from_arch_json(arch_path, weights_path, meta, keras)
-        
+
         if not model_loaded:
             model_loaded = self._load_model_rebuild_architecture(weights_path, meta)
 
@@ -3996,38 +3992,38 @@ class TCNTrainer(BaseTrainer):
 class TCNVolatilityRegimeTrainer(BaseTrainer):
     """
     TCN model for FORWARD-LOOKING 4-class volatility regime prediction.
-    
+
     CRITICAL CHANGE (2025): Now predicts FUTURE volatility regime, not current.
     Uses dual-head architecture: classification + regression for robustness.
-    
+
     Research-backed architecture (Bai et al. / Unit8):
     - Dilated causal convolutions with exponential dilation
     - Residual connections for stable deep training
     - Weight normalization to prevent gradient explosion
     - Full receptive field coverage (≥ seq_len)
-    
+
     Forward Volatility Regimes (predicted 48 bars ahead):
         - 0 = QUIET_NEXT: Future ATR < 25th percentile (skip trading)
         - 1 = STABLE_NEXT: Future ATR 25th-60th percentile (normal)
         - 2 = ACTIVE_NEXT: Future ATR 60th-85th percentile (opportunity!)
         - 3 = EXTREME_NEXT: Future ATR > 85th percentile (caution)
-    
+
     Dual-Head Output:
         - Classification: 4-class softmax for regime
         - Regression: % change in volatility (fallback/tiebreaker)
-    
+
     Anti-Collapse Mechanisms:
         - PredictionCollapseCallback: Detects >80% single-class predictions
         - CategoricalFocalCrossentropy: Boosts minority classes
         - Class weights: Inverse frequency weighting
         - Sample weights: Higher weight for large volatility changes
-    
+
     Success Criteria:
         - Classification accuracy >60% on validation (harder task than current regime)
         - All 4 classes represented in predictions (no collapse)
         - F1-score >0.50 for ACTIVE_NEXT and EXTREME_NEXT classes
     """
-    
+
     def __init__(self, config: Optional[TrainerConfig] = None):
         super().__init__(config)
         self.scaler = None
@@ -4036,10 +4032,10 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         self.seq_len = None
         self.n_classes = 4
         self.class_names = ['QUIET_NEXT', 'STABLE_NEXT', 'ACTIVE_NEXT', 'EXTREME_NEXT']
-        
+
         # Forward-looking parameters
         self.lookahead = getattr(self.config, 'tcn_lookahead', 48)  # 48 bars = 2 days for H1
-        
+
         # TCN architecture hyperparameters
         self.kernel_size = getattr(self.config, 'tcn_kernel_size', 5)
         self.dilation_base = getattr(self.config, 'tcn_dilation_base', 2)
@@ -4047,25 +4043,25 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         self.num_residual_blocks = getattr(self.config, 'tcn_num_residual_blocks', 5)
         self.dropout = getattr(self.config, 'tcn_dropout', 0.2)
         self.use_weight_norm = getattr(self.config, 'tcn_weight_norm', True)
-        
+
         # Loss weights for dual-head
         self.classification_weight = 0.7
         self.regression_weight = 0.3
-        
+
         # Focal loss parameters - will be overridden by class_weights if provided
         self.focal_gamma = 2.0
         self.focal_alpha = None  # Will use class_weights or config
-        
+
         # Regression thresholds for fallback mapping
         self.reg_thresholds = {
             'quiet': -0.15,
             'stable_high': 0.15,
             'active_high': 0.40,
         }
-        
+
         # Dual-head model flag
         self.use_dual_head = True
-    
+
     def _compute_receptive_field(self) -> int:
         """Compute receptive field size for current architecture."""
         k = self.kernel_size
@@ -4073,11 +4069,11 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         n = self.num_residual_blocks
         receptive_field = 1 + 2 * (k - 1) * (b ** n - 1) // (b - 1)
         return receptive_field
-    
+
     def _build_model(self, input_shape: Tuple[int, int]) -> Any:
         """
         Build dual-head TCN model for forward volatility prediction.
-        
+
         Uses TCNVolatilityDualHead from tensorflow_models.py.
         """
         # Import the dual-head model
@@ -4085,15 +4081,15 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             from src.models.tensorflow_models import TCNVolatilityDualHead
         except ImportError:
             from models.tensorflow_models import TCNVolatilityDualHead
-        
+
         seq_len, n_features = input_shape
-        
+
         # Verify receptive field coverage
         receptive_field = self._compute_receptive_field()
         if receptive_field < seq_len:
             logger.warning(f"Receptive field ({receptive_field}) < seq_len ({seq_len}). "
                            f"Consider increasing num_residual_blocks.")
-        
+
         # Build dual-head model
         model = TCNVolatilityDualHead(
             n_features=n_features,
@@ -4105,13 +4101,13 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             dilation_base=self.dilation_base,
             dropout=self.dropout,
         )
-        
+
         # Build model by calling it once
         dummy_input = tf.zeros((1, seq_len, n_features))
         _ = model(dummy_input)
-        
+
         return model
-    
+
     def train(
         self,
         X_train: np.ndarray,
@@ -4129,7 +4125,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
     ) -> Dict[str, float]:
         """
         Train dual-head TCN for forward 4-class volatility regime prediction.
-        
+
         Args:
             X_train: Training sequences (batch, seq_len, features)
             y_train: Training labels (batch,) with values 0-3
@@ -4143,52 +4139,52 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             y_val_reg: Regression targets for validation
             w_train: Sample weights for training
             w_val: Sample weights for validation
-        
+
         Returns:
             Dict with training metrics
         """
         from tensorflow import keras
         from sklearn.metrics import f1_score
-        
+
         # Initialize clean display
         display = TrainingDisplay("TCN Forward Volatility")
-        
+
         # Save metadata
         self.feature_names = feature_names
         self.n_features = X_train.shape[-1]
         self.seq_len = seq_len if X_train.ndim == 3 else 60
         self.scaler = None  # Assume pre-scaled from data loader
-        
+
         # Ensure correct shape
         if X_train.ndim != 3:
             raise ValueError(f"Expected 3D input (batch, seq_len, features), got {X_train.shape}")
-        
+
         # Use provided sample weights or fall back to deprecated parameter
         if w_train is None:
             w_train = sample_weights if sample_weights is not None else np.ones(len(y_train))
         if w_val is None:
             w_val = np.ones(len(y_val))
-        
+
         # Create regression targets if not provided (default to zeros)
         if y_train_reg is None:
             y_train_reg = np.zeros(len(y_train), dtype=np.float32)
         if y_val_reg is None:
             y_val_reg = np.zeros(len(y_val), dtype=np.float32)
-        
+
         # Convert to one-hot for classification
         y_train_onehot = tf.keras.utils.to_categorical(y_train, num_classes=self.n_classes)
         y_val_onehot = tf.keras.utils.to_categorical(y_val, num_classes=self.n_classes)
         logger.debug(f"Labels shape: {y_train_onehot.shape}")
-        
+
         # Build model
         self.model = self._build_model((self.seq_len, self.n_features))
-        
+
         # === COMPILE WITH CUSTOM TRAINING STEP ===
         # We need custom training because of dual outputs
-        
+
         # Learning rate
         tcn_lr = min(self.config.learning_rate, 0.001)  # Conservative for forward prediction
-        
+
         # Determine focal alpha from class_weights (sklearn balanced) or use default
         # Class weights from sklearn are inverse frequency, so higher = rarer class
         if class_weights is not None:
@@ -4201,9 +4197,9 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             # Default focal alpha: boost minority classes
             effective_alpha = [0.30, 0.20, 0.25, 0.25]  # QUIET, STABLE, ACTIVE, EXTREME
             logger.debug(f"Using default focal alpha: {effective_alpha}")
-        
+
         self.focal_alpha = effective_alpha
-        
+
         # Create separate losses
         classification_loss_fn = keras.losses.CategoricalFocalCrossentropy(
             gamma=self.focal_gamma,
@@ -4211,18 +4207,18 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             from_logits=False,
         )
         regression_loss_fn = keras.losses.MeanSquaredError()
-        
+
         # Optimizer
         optimizer = keras.optimizers.Adam(learning_rate=tcn_lr)
-        
+
         # Assign optimizer to model so callbacks can access it
         self.model.optimizer = optimizer
-        
+
         # Show clean configuration summary
         train_valid_mask = w_train > 0
         valid_labels = y_train[train_valid_mask]
         class_counts = np.bincount(valid_labels, minlength=self.n_classes) if len(valid_labels) > 0 else [0]*4
-        
+
         display.show_config({
             "Lookahead": f"{self.lookahead} bars",
             "Params": f"{self.model.count_params():,}",
@@ -4230,7 +4226,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             "Loss": f"FocalCE(γ={self.focal_gamma})",
             "Classes": f"QUI:{class_counts[0]/len(valid_labels):.0%} STA:{class_counts[1]/len(valid_labels):.0%} ACT:{class_counts[2]/len(valid_labels):.0%} EXT:{class_counts[3]/len(valid_labels):.0%}",
         })
-        
+
         # === PREDICTION COLLAPSE CALLBACK (4-class version) ===
         class RegimeCollapseCallback(keras.callbacks.Callback):
             def __init__(self, X_val, y_val, class_names, check_every=5):
@@ -4241,20 +4237,20 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
                 self.check_every = check_every
                 self.collapse_warned = False
                 self.display = display
-            
+
             def on_epoch_end(self, epoch, logs=None):
                 if (epoch + 1) % self.check_every != 0:
                     return
-                
+
                 outputs = self.model.predict(self.X_val, verbose=0)
                 if isinstance(outputs, dict):
                     preds = outputs['classification']
                 else:
                     preds = outputs
-                
+
                 pred_classes = np.argmax(preds, axis=1)
                 pred_dist = np.bincount(pred_classes, minlength=4) / len(pred_classes)
-                
+
                 # Check for collapse (>80% same prediction)
                 max_pct = max(pred_dist)
                 if max_pct > 0.80:
@@ -4264,7 +4260,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
                         self.collapse_warned = True
                 else:
                     self.collapse_warned = False
-        
+
         # Callbacks
         callbacks = [
             RichEpochCallback(
@@ -4296,7 +4292,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             ),
             RegimeCollapseCallback(X_val, y_val, self.class_names, check_every=5),
         ]
-        
+
         # === CUSTOM TRAINING LOOP for dual-head ===
         # Create datasets
         train_dataset = tf.data.Dataset.from_tensor_slices((
@@ -4304,102 +4300,102 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             {'classification': y_train_onehot, 'regression': y_train_reg.reshape(-1, 1)},
             w_train
         )).shuffle(1024).batch(self.config.batch_size).prefetch(tf.data.AUTOTUNE)
-        
+
         val_dataset = tf.data.Dataset.from_tensor_slices((
             X_val,
             {'classification': y_val_onehot, 'regression': y_val_reg.reshape(-1, 1)},
             w_val
         )).batch(self.config.batch_size).prefetch(tf.data.AUTOTUNE)
-        
+
         # Training metrics
         train_loss_metric = keras.metrics.Mean(name='train_loss')
         train_acc_metric = keras.metrics.CategoricalAccuracy(name='train_accuracy')
         val_loss_metric = keras.metrics.Mean(name='val_loss')
         val_acc_metric = keras.metrics.CategoricalAccuracy(name='val_accuracy')
-        
+
         # Class weights are now integrated into focal_alpha above
-        
+
         @tf.function
         def train_step(x, y, sample_weight):
             with tf.GradientTape() as tape:
                 outputs = self.model(x, training=True)
-                
+
                 # Classification loss
                 class_loss = classification_loss_fn(
-                    y['classification'], 
+                    y['classification'],
                     outputs['classification'],
                     sample_weight=sample_weight
                 )
-                
+
                 # Regression loss
                 reg_loss = regression_loss_fn(y['regression'], outputs['regression'])
-                
+
                 # Combined loss
                 total_loss = (self.classification_weight * class_loss +
                               self.regression_weight * reg_loss)
-                
+
                 # Add regularization losses
                 if self.model.losses:
                     total_loss += tf.add_n(self.model.losses)
-            
+
             gradients = tape.gradient(total_loss, self.model.trainable_variables)
             optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
-            
+
             train_loss_metric.update_state(total_loss)
             train_acc_metric.update_state(y['classification'], outputs['classification'])
-            
+
             return total_loss
-        
+
         @tf.function
         def val_step(x, y, sample_weight):
             outputs = self.model(x, training=False)
-            
+
             class_loss = classification_loss_fn(
-                y['classification'], 
+                y['classification'],
                 outputs['classification'],
                 sample_weight=sample_weight
             )
             reg_loss = regression_loss_fn(y['regression'], outputs['regression'])
             total_loss = (self.classification_weight * class_loss +
                           self.regression_weight * reg_loss)
-            
+
             val_loss_metric.update_state(total_loss)
             val_acc_metric.update_state(y['classification'], outputs['classification'])
-            
+
             return total_loss
-        
+
         # Training loop
         best_val_loss = float('inf')
         best_weights = None
         patience_counter = 0
         history = {'loss': [], 'accuracy': [], 'val_loss': [], 'val_accuracy': []}
-        
+
         for epoch in range(self.config.epochs):
             # Reset metrics
             train_loss_metric.reset_state()
             train_acc_metric.reset_state()
             val_loss_metric.reset_state()
             val_acc_metric.reset_state()
-            
+
             # Training
             for x_batch, y_batch, w_batch in train_dataset:
                 train_step(x_batch, y_batch, w_batch)
-            
+
             # Validation
             for x_batch, y_batch, w_batch in val_dataset:
                 val_step(x_batch, y_batch, w_batch)
-            
+
             # Get metrics
             train_loss = train_loss_metric.result().numpy()
             train_acc = train_acc_metric.result().numpy()
             val_loss = val_loss_metric.result().numpy()
             val_acc = val_acc_metric.result().numpy()
-            
+
             history['loss'].append(train_loss)
             history['accuracy'].append(train_acc)
             history['val_loss'].append(val_loss)
             history['val_accuracy'].append(val_acc)
-            
+
             # Call callbacks
             logs = {'loss': train_loss, 'accuracy': train_acc,
                     'val_loss': val_loss, 'val_accuracy': val_acc}
@@ -4410,7 +4406,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
                 elif hasattr(callback, '_model'):
                     callback._model = self.model
                 callback.on_epoch_end(epoch, logs)
-            
+
             # Early stopping logic
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -4418,44 +4414,44 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
                 patience_counter = 0
             else:
                 patience_counter += 1
-            
+
             if patience_counter >= self.config.patience and epoch >= self.config.min_epochs:
                 logger.info(f"Early stopping at epoch {epoch+1}")
                 break
-        
+
         # Restore best weights
         if best_weights is not None:
             self.model.set_weights(best_weights)
-        
+
         self.is_trained = True
-        
+
         # Evaluate on validation set
         val_outputs = self.model.predict(X_val, verbose=0)
         if isinstance(val_outputs, dict):
             val_pred_probs = val_outputs['classification']
         else:
             val_pred_probs = val_outputs
-        
+
         val_pred_classes = np.argmax(val_pred_probs, axis=1)
         val_acc = np.mean(val_pred_classes == y_val)
-        
+
         # Calculate distributions (logged via display)
         pred_dist = np.bincount(val_pred_classes, minlength=self.n_classes) / len(val_pred_classes)
-        
+
         # Calculate F1 scores per class
         f1_scores = f1_score(y_val, val_pred_classes, average=None, zero_division=0)
         f1_macro = f1_score(y_val, val_pred_classes, average='macro', zero_division=0)
-        
+
         # ACTIVE/EXTREME detection accuracy (classes 2 and 3 - the actionable ones)
         active_extreme_mask = (y_val >= 2)
         if active_extreme_mask.sum() > 0:
             active_extreme_acc = np.mean(val_pred_classes[active_extreme_mask] >= 2)
         else:
             active_extreme_acc = 0.0
-        
+
         # Check for collapse
         all_classes_present = all(pred_dist[i] > 0.05 for i in range(4))
-        
+
         self.metrics = {
             'train_accuracy': float(history['accuracy'][-1]) if history['accuracy'] else 0.0,
             'val_accuracy': float(val_acc),
@@ -4470,7 +4466,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             'receptive_field': self._compute_receptive_field(),
             'lookahead': self.lookahead,
         }
-        
+
         # Show clean results summary
         display.show_summary({
             'Val Accuracy': f"{val_acc:.1%}",
@@ -4480,13 +4476,13 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             'Epochs': len(history['loss']),
             'Status': "✓ Healthy" if all_classes_present else "⚠ Collapse",
         }, title="Training Complete")
-        
+
         return self.metrics
-    
+
     def predict(self, X: np.ndarray) -> Dict[str, Any]:
         """
         Predict forward volatility regime for input sequence.
-        
+
         Returns:
             Dict with:
                 - regime: int (0=QUIET_NEXT, 1=STABLE_NEXT, 2=ACTIVE_NEXT, 3=EXTREME_NEXT)
@@ -4499,7 +4495,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         """
         if not self.is_trained:
             raise RuntimeError("Model not trained")
-        
+
         # Handle input shape
         if X.ndim == 2:
             if len(X) >= self.seq_len:
@@ -4512,20 +4508,20 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             X_seq = X
         else:
             raise ValueError(f"Expected 2D or 3D input, got shape {X.shape}")
-        
+
         # Get predictions
         outputs = self.model.predict(X_seq, verbose=0)
-        
+
         if isinstance(outputs, dict):
             probs = outputs['classification'][0]
             vol_change = float(outputs['regression'][0, 0])
         else:
             probs = outputs[0]
             vol_change = 0.0
-        
+
         regime = int(np.argmax(probs))
         confidence = float(probs[regime])
-        
+
         # Regression fallback mapping
         if vol_change < self.reg_thresholds['quiet']:
             reg_regime = 0  # QUIET_NEXT
@@ -4535,13 +4531,13 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             reg_regime = 2  # ACTIVE_NEXT
         else:
             reg_regime = 3  # EXTREME_NEXT
-        
+
         # Use regression fallback if classification confidence is low
         final_regime = regime
         if confidence < 0.60:
             logger.debug(f"Low classification confidence ({confidence:.1%}), using regression fallback")
             final_regime = reg_regime
-        
+
         return {
             'regime': final_regime,
             'regime_name': self.class_names[final_regime],
@@ -4553,14 +4549,14 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             'is_opportunity': final_regime in [1, 2],  # STABLE or ACTIVE - allow trading
             'is_high_volatility': final_regime >= 2,  # ACTIVE or EXTREME
         }
-    
+
     def save(self, path: str) -> None:
         """Save TCN Forward Volatility model."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         self.model.save(str(path))
-        
+
         meta = {
             'scaler': self.scaler,
             'seq_len': self.seq_len,
@@ -4583,19 +4579,19 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
                 'focal_alpha': self.focal_alpha,
             },
         }
-        
+
         meta_path = path.with_suffix('.meta.pkl')
         with open(meta_path, 'wb') as f:
             pickle.dump(meta, f)
-        
+
         logger.info(f"TCN Forward Volatility saved to {path}")
-    
+
     def load(self, path: str) -> None:
         """Load TCN Forward Volatility model."""
         from tensorflow import keras
-        
+
         path = Path(path)
-        
+
         # Try to load with custom objects
         try:
             from src.models.tensorflow_models import TCNVolatilityDualHead
@@ -4604,17 +4600,17 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
                 from models.tensorflow_models import TCNVolatilityDualHead
             except ImportError:
                 TCNVolatilityDualHead = None
-        
+
         custom_objects = {}
         if TCNVolatilityDualHead is not None:
             custom_objects['TCNVolatilityDualHead'] = TCNVolatilityDualHead
-        
+
         self.model = keras.models.load_model(str(path), custom_objects=custom_objects)
-        
+
         meta_path = path.with_suffix('.meta.pkl')
         with open(meta_path, 'rb') as f:
             meta = pickle.load(f)
-        
+
         self.scaler = meta.get('scaler')
         self.seq_len = meta['seq_len']
         self.n_features = meta['n_features']
@@ -4626,7 +4622,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         self.reg_thresholds = meta.get('reg_thresholds', {
             'quiet': -0.15, 'stable_high': 0.15, 'active_high': 0.40
         })
-        
+
         # Restore architecture config
         arch_config = meta.get('config', {})
         self.kernel_size = arch_config.get('kernel_size', 5)
@@ -4637,9 +4633,9 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         self.use_weight_norm = arch_config.get('use_weight_norm', True)
         self.focal_gamma = arch_config.get('focal_gamma', 2.0)
         self.focal_alpha = arch_config.get('focal_alpha', [0.35, 0.25, 0.25, 0.15])
-        
+
         self.is_trained = True
-        
+
         logger.info(f"TCN Forward Volatility loaded from {path}")
 
 
@@ -5397,10 +5393,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             return True
 
         # Strategy 3: Try loading from meta.pkl
-        if self._try_load_meta_weights(warm_start_path):
-            return True
-
-        return False
+        return bool(self._try_load_meta_weights(warm_start_path))
 
     def _try_load_weights_h5(self, warm_start_path: str) -> bool:
         """Strategy 1: Try loading weights from .h5 file."""
@@ -5525,31 +5518,31 @@ class TransformerDirectionTrainer(BaseTrainer):
 
     def _handle_warm_start(self, warm_start_path: str) -> float:
         """Handle warm-start loading: weights, layer freezing, lineage, EWC, EMA.
-        
+
         Returns the effective learning rate to use.
         """
         try:
             weights_loaded = self._load_warm_start_weights(warm_start_path)
-            
+
             if weights_loaded:
                 self._is_warm_start = True
                 self._warm_start_weights = self.model.get_weights()
                 logger.info(f"✓ Successfully loaded {self.model.count_params():,} parameters from checkpoint")
-                
+
                 # Freeze encoder layers if configured
                 if self.config.warm_start_freeze_encoder:
                     frozen_count, trainable_head_layers = self._freeze_encoder_layers()
                     self._log_frozen_layers(frozen_count, trainable_head_layers)
-                
+
                 # Load metadata (lineage, metrics, training state)
                 self._load_warm_start_metadata(warm_start_path)
-                
+
                 # Load EWC state
                 self._load_warm_start_ewc(warm_start_path)
-                
+
                 # Load EMA weights
                 self._load_warm_start_ema(warm_start_path)
-                
+
                 # Compute effective learning rate
                 effective_lr = self.config.learning_rate * self.config.warm_start_lr_factor
                 logger.info(
@@ -5569,10 +5562,10 @@ class TransformerDirectionTrainer(BaseTrainer):
         meta_path = Path(warm_start_path).with_suffix(META_PKL_SUFFIX)
         if not meta_path.exists():
             return
-            
+
         with open(meta_path, "rb") as f:
             meta = pickle.load(f)
-        
+
         # Load lineage
         if "lineage" in meta:
             parent_lineage = TrainingLineage.from_dict(meta["lineage"])
@@ -5586,7 +5579,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                 f"(cumulative epochs: {self.lineage.cumulative_epochs}, "
                 f"instrument: {self._loaded_model_instrument})"
             )
-            
+
             # Restore dynamic training state
             self._restored_variance_weight = getattr(parent_lineage, "auto_variance_weight", 0.0)
             self._restored_lr_reductions = getattr(parent_lineage, "lr_reductions_count", 0)
@@ -5596,7 +5589,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                     f"🔄 Restored training state: variance_weight={self._restored_variance_weight:.3f}, "
                     f"lr_reductions={self._restored_lr_reductions}, last_lr={self._restored_lr:.2e}"
                 )
-        
+
         # Load previous best accuracy
         prev_metrics = meta.get("metrics", {})
         self._warm_start_val_acc = prev_metrics.get("val_accuracy", 0.0)
@@ -5874,7 +5867,6 @@ class TransformerDirectionTrainer(BaseTrainer):
         self, x_val_filtered: np.ndarray, y_val_filtered: np.ndarray
     ) -> list:
         """Create collapse detection and prevention callbacks."""
-        from tensorflow import keras
 
         # Define callbacks inline to avoid class definition complexity
         self._collapse_callback = self._make_prediction_collapse_callback(
@@ -6001,7 +5993,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             def _check_bias(self):
                 try:
                     output_layer = next(
-                        (l for l in self.model.layers if l.name == "direction"), None
+                        (layer for layer in self.model.layers if layer.name == "direction"), None
                     )
                     if output_layer is None or not hasattr(output_layer, 'bias'):
                         return
@@ -6133,8 +6125,8 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         y_true = y_val_filtered.flatten()
         y_pred = val_pred.flatten()
-        up_acc = np.mean(y_pred[y_true == 1] == 1) if (y_true == 1).sum() > 0 else 0
-        down_acc = np.mean(y_pred[y_true == 0] == 0) if (y_true == 0).sum() > 0 else 0
+        np.mean(y_pred[y_true == 1] == 1) if (y_true == 1).sum() > 0 else 0
+        np.mean(y_pred[y_true == 0] == 0) if (y_true == 0).sum() > 0 else 0
 
         raw_mean = float(np.mean(val_raw_pred))
         raw_std = float(np.std(val_raw_pred))
@@ -6406,7 +6398,7 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         if warm_start_path and Path(warm_start_path).exists():
             if not features_compatible:
-                logger.warning(f"🔥 WARM-START SKIPPED: Feature dimensions incompatible")
+                logger.warning("🔥 WARM-START SKIPPED: Feature dimensions incompatible")
                 logger.info("   Training will start fresh with new architecture")
             else:
                 effective_lr = self._handle_warm_start(warm_start_path)
@@ -6728,7 +6720,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         weights_path = path.with_suffix(WEIGHTS_H5_SUFFIX)
         if model is None and arch_path.exists() and weights_path.exists():
             try:
-                with open(arch_path, "r") as f:
+                with open(arch_path) as f:
                     arch_json = f.read()
                 model = keras.models.model_from_json(arch_json)
                 model.load_weights(str(weights_path))
@@ -9543,20 +9535,20 @@ class JointMultiPairTrainer:
                         # Separate base features from instrument one-hot features
                         instrument_cols = [f for f in expected_feature_names if f.startswith('instrument_')]
                         base_features = [f for f in expected_feature_names if not f.startswith('instrument_')]
-                        
+
                         # Check which base features exist in dataframe
                         available_base = [f for f in base_features if f in df.columns]
-                        
+
                         if len(available_base) == len(base_features):
                             # All base features exist - extract directly
                             n = len(df)
                             train_end = int(n * 0.7)
                             val_end = int(n * 0.9)
                             x_val_base = df[available_base].iloc[train_end:val_end].values.astype(np.float32)
-                            
+
                             # Clean NaN/Inf
                             x_val_base = np.nan_to_num(x_val_base, nan=0.0, posinf=0.0, neginf=0.0)
-                            
+
                             # Now construct instrument one-hot columns if needed
                             if instrument_cols:
                                 n_samples = x_val_base.shape[0]
@@ -10415,7 +10407,7 @@ def train_all_modular(
                     # Check for existing TCN model for warm-start
                     tcn_checkpoint = save_dir / "tcn_volatility_regime.keras"
                     warm_start_tcn_path = str(tcn_checkpoint) if warm_start and tcn_checkpoint.exists() else None
-                    
+
                     tcn_trainer.train(
                         vol_regime_data["X_train"],
                         vol_regime_data["y_train"],

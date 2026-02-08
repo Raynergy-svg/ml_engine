@@ -2,9 +2,7 @@
 """CLI Configuration dataclasses for ML Engine Trading Bot."""
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, replace
-from pathlib import Path
-from typing import Any, Optional
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -45,24 +43,24 @@ class BuddyTrainingAdvancedOptions:
 @dataclass(frozen=True)
 class BuddyTrainingOptions:
     """Training options for Buddy model.
-    
+
     M1 Metal Optimizations Applied:
     - model_type: "tcn" - 2-3x faster than LSTM (parallelizable convolutions)
     - batch_size: 128 (was 32) - better GPU utilization
     - mixed_precision: False (default) - enable in config for M1 Metal 1.5-2x speedup
     - steps_per_execution: 10 (was 1) - reduces Python overhead
     - lr: 0.0005 (was 0.001) - more stable convergence
-    
+
     Model Types:
     - "tcn": Temporal Convolutional Network (RECOMMENDED for M1 - fastest)
     - "lstm": Legacy LSTM (slower on Metal, avoid unless necessary)
     - "attention_lstm": LSTM with attention (slower but more accurate)
-    
+
     Enterprise Training (MLOps):
     - enterprise: Enable MLflow tracking, CV, bootstrap CI
     - cv_folds: Walk-forward cross-validation folds
     - bootstrap: Bootstrap confidence intervals
-    
+
     Multi-Pair Pre-training:
     - multi_pair: Train foundation model on multiple pairs simultaneously
     - foundation_pairs: Comma-separated list of pairs for pre-training

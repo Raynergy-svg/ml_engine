@@ -4,7 +4,8 @@
 import logging
 logging.basicConfig(level=logging.INFO)
 
-from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
+from src.core.modular_inference import ModularEnsembleInference, InferenceConfig  # noqa: E402
+
 
 def test_calibration_integration():
     """Test the calibration integration in modular_inference."""
@@ -63,6 +64,7 @@ def test_calibration_integration():
         print("  To train calibration: python main.py train-buddy --calibrate")
     else:
         print("\n⚠ Calibration is DISABLED")
+
 
 if __name__ == "__main__":
     test_calibration_integration()

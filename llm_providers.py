@@ -25,13 +25,12 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List
 
 # Load .env file to get API keys
 try:
@@ -78,7 +77,6 @@ def configure_llm(
     temperature: float | None = None,
 ) -> None:
     """Configure LLM provider settings."""
-    global _config
     if ollama_base_url:
         _config.ollama_base_url = ollama_base_url
     if ollama_model:

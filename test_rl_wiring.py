@@ -4,7 +4,6 @@ Test to verify RL Position Sizer integration in training pipeline.
 Validates that RL training is properly wired up and called.
 """
 
-import ast
 import re
 from pathlib import Path
 

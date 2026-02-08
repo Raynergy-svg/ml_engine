@@ -12,11 +12,8 @@ Checks:
 import sys
 sys.path.insert(0, '.')
 
-from src.scanner import Scanner, ScannerConfig
-from src.core.modular_inference import ModularEnsembleInference
-from src.core.modular_data_loaders import compute_normalized_features
-import pandas as pd
-import numpy as np
+from src.scanner import Scanner, ScannerConfig  # noqa: E402
+
 
 def validate_scanner():
     print("=" * 60)
@@ -43,7 +40,7 @@ def validate_scanner():
     for analysis in result.analyses:
         pair = analysis.pair
         print(f"\n   === {pair} ===")
-        print(f"   Scanner says:")
+        print("   Scanner says:")
         print(f"     Direction: {analysis.direction}")
         print(f"     Confidence: {analysis.confidence:.1%}")
         print(f"     TCN Conf: {analysis.tcn_confidence:.1%}")
@@ -61,14 +58,14 @@ def validate_scanner():
         expected_mom_pass = analysis.momentum >= mom_threshold
         expected_conf_pass = analysis.ridge_confidence >= conf_threshold
         
-        print(f"\n   Gate Validation:")
+        print("\n   Gate Validation:")
         print(f"     Momentum {analysis.momentum:.1%} >= {mom_threshold:.1%}: {expected_mom_pass} (reported: {analysis.momentum_passed})")
         print(f"     Confidence {analysis.ridge_confidence:.1%} >= {conf_threshold:.1%}: {expected_conf_pass} (reported: {analysis.confidence_passed})")
         
         if expected_mom_pass != analysis.momentum_passed:
-            print(f"     ⚠️ MOMENTUM GATE MISMATCH!")
+            print("     ⚠️ MOMENTUM GATE MISMATCH!")
         if expected_conf_pass != analysis.confidence_passed:
-            print(f"     ⚠️ CONFIDENCE GATE MISMATCH!")
+            print("     ⚠️ CONFIDENCE GATE MISMATCH!")
         
         # Check if tradeable status is consistent
         vol_pass = analysis.volatility_gate_passed
@@ -80,12 +77,12 @@ def validate_scanner():
         expected_tradeable = gates_pass and has_direction and no_error and no_block
         actual_tradeable = analysis.is_tradeable
         
-        print(f"\n   Tradeable Validation:")
+        print("\n   Tradeable Validation:")
         print(f"     Vol Gate: {vol_pass}, All Gates: {gates_pass}, Direction: {has_direction}, No Error: {no_error}, No Block: {no_block}")
         print(f"     Expected: {expected_tradeable}, Actual: {actual_tradeable}")
         
         if expected_tradeable != actual_tradeable:
-            print(f"     ⚠️ TRADEABLE STATUS MISMATCH!")
+            print("     ⚠️ TRADEABLE STATUS MISMATCH!")
     
     # Summary
     print("\n" + "=" * 60)
@@ -106,6 +103,7 @@ def validate_scanner():
     
     print("\n✅ Validation complete")
     return True
+
 
 if __name__ == "__main__":
     validate_scanner()

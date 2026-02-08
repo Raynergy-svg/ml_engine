@@ -13,9 +13,9 @@ Usage:
 import json
 import logging
 from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from collections import defaultdict
 
 try:
@@ -478,8 +478,8 @@ class TradeAnalyzer:
             "",
             "## Summary",
             "",
-            f"| Metric | Value |",
-            f"|--------|-------|",
+            "| Metric | Value |",
+            "|--------|-------|",
             f"| Total Trades | {report.total_trades} |",
             f"| Wins | {report.wins} |",
             f"| Losses | {report.losses} |",

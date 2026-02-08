@@ -55,43 +55,43 @@ def get_pair_normalization_stats(
 ) -> Dict[str, Dict[str, float]]:
     """
     Compute per-pair normalization statistics for multi-pair training.
-    
+
     Returns pair-specific mean/std for each feature, computed from training
     data only to prevent data leakage.
-    
+
     Args:
         df: DataFrame with features
         instrument: Pair name (e.g., 'EUR_USD')
         feature_cols: List of feature columns to compute stats for.
                       If None, uses all return-based columns.
         train_idx: Training indices. If None, uses first 70% of data.
-    
+
     Returns:
         Dict mapping feature names to {mean, std, min, max, p25, p75}
     """
     if feature_cols is None:
         # Default to return-based features (most affected by pair volatility)
         feature_cols = [c for c in df.columns if 'return' in c.lower()]
-    
+
     # Use training data only
     if train_idx is None:
         train_end = int(len(df) * 0.7)
         train_data = df.iloc[:train_end]
     else:
         train_data = df.iloc[train_idx]
-    
+
     stats = {}
     for col in feature_cols:
         if col not in train_data.columns:
             continue
-        
+
         values = train_data[col].values
         values = values[np.isfinite(values)]  # Remove NaN/inf
-        
+
         if len(values) == 0:
             stats[col] = {'mean': 0.0, 'std': 1.0, 'min': 0.0, 'max': 1.0, 'p25': 0.0, 'p75': 1.0}
             continue
-        
+
         stats[col] = {
             'mean': float(np.mean(values)),
             'std': float(np.std(values)) if np.std(values) > 1e-10 else 1.0,
@@ -100,7 +100,7 @@ def get_pair_normalization_stats(
             'p25': float(np.percentile(values, 25)),
             'p75': float(np.percentile(values, 75)),
         }
-    
+
     logger.info(f"Computed normalization stats for {instrument}: {len(stats)} features")
     return stats
 
@@ -112,26 +112,26 @@ def save_pair_normalization_stats(
 ) -> Path:
     """
     Save per-pair normalization statistics to disk.
-    
+
     Args:
         stats: Normalization stats from get_pair_normalization_stats()
         instrument: Pair name
         base_path: Base directory for model artifacts
-    
+
     Returns:
         Path to saved file
     """
     save_dir = Path(base_path) / instrument
     save_dir.mkdir(parents=True, exist_ok=True)
-    
+
     save_path = save_dir / "normalization_stats.pkl"
-    
+
     with open(save_path, 'wb') as f:
         pickle.dump({
             'instrument': instrument,
             'stats': stats,
         }, f)
-    
+
     logger.info(f"Saved normalization stats to {save_path}")
     return save_path
 
@@ -142,23 +142,23 @@ def load_pair_normalization_stats(
 ) -> Optional[Dict[str, Dict[str, float]]]:
     """
     Load per-pair normalization statistics from disk.
-    
+
     Args:
         instrument: Pair name
         base_path: Base directory for model artifacts
-    
+
     Returns:
         Normalization stats dict or None if not found
     """
     load_path = Path(base_path) / instrument / "normalization_stats.pkl"
-    
+
     if not load_path.exists():
         logger.warning(f"No normalization stats found at {load_path}")
         return None
-    
+
     with open(load_path, 'rb') as f:
         data = pickle.load(f)
-    
+
     logger.info(f"Loaded normalization stats for {data.get('instrument', instrument)}")
     return data.get('stats', data)
 
@@ -170,41 +170,41 @@ def apply_pair_normalization(
 ) -> pd.DataFrame:
     """
     Apply per-pair normalization using pre-computed statistics.
-    
+
     Z-score normalizes features using pair-specific mean/std to prevent
     bias toward high-volatility instruments in joint training.
-    
+
     Args:
         df: DataFrame with features
         stats: Normalization stats from get_pair_normalization_stats()
         feature_cols: Feature columns to normalize. If None, normalizes all in stats.
-    
+
     Returns:
         DataFrame with normalized features (suffixed with '_zscore')
     """
     df = df.copy()
-    
+
     if feature_cols is None:
         feature_cols = list(stats.keys())
-    
+
     for col in feature_cols:
         if col not in df.columns or col not in stats:
             continue
-        
+
         col_stats = stats[col]
         mean = col_stats.get('mean', 0.0)
         std = col_stats.get('std', 1.0)
-        
+
         if std < 1e-10:
             std = 1.0
-        
+
         # Z-score normalization
         zscore_col = f"{col}_zscore"
         df[zscore_col] = (df[col] - mean) / std
-        
+
         # Clip extreme values
         df[zscore_col] = df[zscore_col].clip(-5, 5)
-    
+
     return df
 
 
@@ -218,49 +218,49 @@ def encode_instrument_onehot(
 ) -> np.ndarray:
     """
     Create one-hot encoding for an instrument.
-    
+
     Used for joint multi-pair training to identify which pair the features
     belong to. Enables model to learn pair-specific patterns.
-    
+
     Args:
         instrument: Pair name (e.g., 'EUR_USD')
         instruments: List of all instruments. If None, uses VALID_INSTRUMENTS.
-    
+
     Returns:
         One-hot encoded array of shape (n_instruments,)
-    
+
     Example:
         >>> encode_instrument_onehot('EUR_USD')
         array([1., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
     """
     if instruments is None:
         instruments = VALID_INSTRUMENTS
-    
+
     n_instruments = len(instruments)
     encoding = np.zeros(n_instruments, dtype=np.float32)
-    
+
     if instrument in instruments:
         idx = instruments.index(instrument)
         encoding[idx] = 1.0
     else:
         logger.warning(f"Unknown instrument {instrument}, encoding as zeros")
-    
+
     return encoding
 
 
 def get_instrument_feature_names(instruments: Optional[List[str]] = None) -> List[str]:
     """
     Get feature names for instrument one-hot encoding.
-    
+
     Args:
         instruments: List of instruments. If None, uses VALID_INSTRUMENTS.
-    
+
     Returns:
         List of feature names like ['instrument_EUR_USD', 'instrument_GBP_USD', ...]
     """
     if instruments is None:
         instruments = VALID_INSTRUMENTS
-    
+
     return [f"instrument_{inst}" for inst in instruments]
 
 
@@ -272,38 +272,38 @@ def append_instrument_features(
 ) -> Tuple[np.ndarray, List[str]]:
     """
     Append instrument one-hot encoding to feature matrix.
-    
+
     Used for joint multi-pair training to include instrument identity
     in the feature set for XGBoost/RF/Ridge models.
-    
+
     Args:
         X: Feature matrix of shape (n_samples, n_features)
         instrument: Pair name
         instruments: List of all instruments
         original_feature_names: Feature names from the data loader (optional)
-    
+
     Returns:
         Tuple of (augmented_X, combined_feature_names)
     """
     encoding = encode_instrument_onehot(instrument, instruments)
-    
+
     # Broadcast encoding to all samples
     n_samples = X.shape[0]
     instrument_features = np.tile(encoding, (n_samples, 1))
-    
+
     # Concatenate
     X_augmented = np.hstack([X, instrument_features])
-    
+
     # Build complete feature names list
     instrument_feature_names = get_instrument_feature_names(instruments)
-    
+
     if original_feature_names is not None:
         feature_names = list(original_feature_names) + instrument_feature_names
     else:
         # Generate placeholder names for original features
         n_original = X.shape[1]
         feature_names = [f'feature_{i}' for i in range(n_original)] + instrument_feature_names
-    
+
     return X_augmented, feature_names
 
 
@@ -331,25 +331,25 @@ REGIME_IDS = {v: k for k, v in REGIME_NAMES.items()}
 
 class RegimeConfig:
     """Configuration for 5-class regime detection."""
-    
+
     # ADX thresholds
     adx_strong_trend: float = 40.0   # ADX >= 40 = strong trend
     adx_weak_trend: float = 25.0     # ADX 25-40 = weak trend
     adx_chop: float = 20.0           # ADX < 20 = chop/ranging
-    
+
     # RSI thresholds for mean reversion
     rsi_extreme_low: float = 30.0    # RSI < 30 = oversold
     rsi_extreme_high: float = 70.0   # RSI > 70 = overbought
-    
+
     # ATR expansion ratio for breakout detection
     atr_expansion_ratio: float = 1.3  # Current ATR > 1.3x recent average
-    
+
     # Breakout ADX threshold (rising but not yet trending)
     breakout_adx_max: float = 30.0
-    
+
     # Regime transition cooldown
     transition_cooldown_bars: int = 3
-    
+
     # Minimum confidence to report
     min_regime_confidence: float = 0.6
 
@@ -358,71 +358,71 @@ def classify_market_regime(
     df: pd.DataFrame,
     config: Optional[RegimeConfig] = None,
     return_confidence: bool = True,
-) -> Tuple[pd.Series, pd.Series] if return_confidence else pd.Series:
+) -> Tuple[pd.Series, pd.Series]:
     """
     Classify market into 5 regimes based on ADX, RSI, and ATR dynamics.
-    
+
     Regimes:
     - STRONG_TREND (0): ADX >= 40 + high ATR - strong directional momentum
     - WEAK_TREND (1): ADX 25-40 - moderate trend, use tighter stops
     - CHOP (2): ADX < 20 + neutral RSI - avoid trading
     - MEAN_REVERT (3): RSI < 30 or > 70 - fade momentum
     - BREAKOUT (4): ATR expanding 1.3x + ADX rising but < 30 - volatility expansion
-    
+
     Args:
         df: DataFrame with OHLCV data and indicators (adx, rsi, atr_pct_14)
         config: Regime detection thresholds. Uses defaults if None.
         return_confidence: If True, returns (regime, confidence) tuple
-    
+
     Returns:
         If return_confidence=True: Tuple of (regime_series, confidence_series)
         If return_confidence=False: regime_series only
-        
+
     Example:
         >>> regimes, confidences = classify_market_regime(df)
         >>> print(f"Current regime: {REGIME_NAMES[regimes.iloc[-1]]}")
     """
     config = config or RegimeConfig()
     n = len(df)
-    
+
     # Initialize arrays
     regimes = np.full(n, REGIME_CHOP, dtype=np.int32)  # Default: CHOP (safest)
     confidences = np.full(n, 0.5, dtype=np.float32)
-    
+
     # Extract indicators (compute if missing)
     if 'adx' not in df.columns:
         adx = _compute_adx_fast(df)
     else:
         adx = df['adx'].values
-    
+
     if 'rsi' not in df.columns:
         rsi = _compute_rsi_fast(df['close'].values)
     else:
         rsi = df['rsi'].values
-    
+
     if 'atr_pct_14' not in df.columns:
         atr_pct = _compute_atr_pct_fast(df)
     else:
         atr_pct = df['atr_pct_14'].values
-    
+
     # Compute ATR expansion (current vs 5-bar rolling mean)
     atr_ma5 = pd.Series(atr_pct).rolling(5, min_periods=1).mean().values
     atr_expanding = atr_pct > (atr_ma5 * config.atr_expansion_ratio)
-    
+
     # Compute ADX momentum (rising ADX)
     adx_series = pd.Series(adx)
     adx_diff = adx_series.diff(3).fillna(0).values  # 3-bar ADX change
     adx_rising = adx_diff > 2  # ADX increased by > 2 points
-    
+
     # Classify each bar
     for i in range(n):
         current_adx = adx[i] if not np.isnan(adx[i]) else 20.0
         current_rsi = rsi[i] if not np.isnan(rsi[i]) else 50.0
         current_atr_expanding = atr_expanding[i]
         current_adx_rising = adx_rising[i]
-        
+
         # Priority order: MEAN_REVERT > BREAKOUT > STRONG_TREND > WEAK_TREND > CHOP
-        
+
         # 1. MEAN_REVERT: Extreme RSI (overrides trend if RSI extreme)
         if current_rsi < config.rsi_extreme_low or current_rsi > config.rsi_extreme_high:
             regimes[i] = REGIME_MEAN_REVERT
@@ -432,7 +432,7 @@ def classify_market_regime(
             else:
                 confidences[i] = min(1.0, (current_rsi - config.rsi_extreme_high) / 15 + 0.6)
             continue
-        
+
         # 2. BREAKOUT: ATR expanding + ADX rising but not yet high
         if current_atr_expanding and current_adx_rising and current_adx < config.breakout_adx_max:
             regimes[i] = REGIME_BREAKOUT
@@ -440,21 +440,21 @@ def classify_market_regime(
             expansion_ratio = atr_pct[i] / max(atr_ma5[i], 1e-10)
             confidences[i] = min(1.0, 0.5 + (expansion_ratio - 1.0) * 0.3)
             continue
-        
+
         # 3. STRONG_TREND: ADX >= 40
         if current_adx >= config.adx_strong_trend:
             regimes[i] = REGIME_STRONG_TREND
             # Confidence based on ADX strength
             confidences[i] = min(1.0, 0.6 + (current_adx - 40) / 40)
             continue
-        
+
         # 4. WEAK_TREND: ADX 25-40
         if current_adx >= config.adx_weak_trend:
             regimes[i] = REGIME_WEAK_TREND
             # Confidence based on ADX position in range
             confidences[i] = 0.5 + (current_adx - 25) / 30
             continue
-        
+
         # 5. CHOP: ADX < 20 (default case)
         if current_adx < config.adx_chop:
             regimes[i] = REGIME_CHOP
@@ -464,11 +464,11 @@ def classify_market_regime(
             # Ambiguous zone (ADX 20-25): WEAK_TREND with low confidence
             regimes[i] = REGIME_WEAK_TREND
             confidences[i] = 0.4
-    
+
     # Convert to Series with index
     regime_series = pd.Series(regimes, index=df.index, name='regime')
     confidence_series = pd.Series(confidences, index=df.index, name='regime_confidence')
-    
+
     if return_confidence:
         return regime_series, confidence_series
     return regime_series
@@ -480,7 +480,7 @@ def _compute_adx_fast(df: pd.DataFrame, period: int = 14) -> np.ndarray:
     low = df['low'].values
     close = df['close'].values
     n = len(close)
-    
+
     # True Range
     tr = np.zeros(n)
     for i in range(1, n):
@@ -489,30 +489,30 @@ def _compute_adx_fast(df: pd.DataFrame, period: int = 14) -> np.ndarray:
             abs(high[i] - close[i-1]),
             abs(low[i] - close[i-1])
         )
-    
+
     # Directional movement
     plus_dm = np.zeros(n)
     minus_dm = np.zeros(n)
     for i in range(1, n):
         up_move = high[i] - high[i-1]
         down_move = low[i-1] - low[i]
-        
+
         if up_move > down_move and up_move > 0:
             plus_dm[i] = up_move
         if down_move > up_move and down_move > 0:
             minus_dm[i] = down_move
-    
+
     # Smoothed averages (Wilder's smoothing)
     atr = pd.Series(tr).ewm(span=period, adjust=False).mean().values
     plus_di = 100 * pd.Series(plus_dm).ewm(span=period, adjust=False).mean().values / np.maximum(atr, 1e-10)
     minus_di = 100 * pd.Series(minus_dm).ewm(span=period, adjust=False).mean().values / np.maximum(atr, 1e-10)
-    
+
     # DX and ADX
     di_sum = plus_di + minus_di
     di_diff = np.abs(plus_di - minus_di)
     dx = 100 * di_diff / np.maximum(di_sum, 1e-10)
     adx = pd.Series(dx).ewm(span=period, adjust=False).mean().values
-    
+
     return adx
 
 
@@ -520,19 +520,19 @@ def _compute_rsi_fast(close: np.ndarray, period: int = 14) -> np.ndarray:
     """Fast RSI computation for regime detection."""
     n = len(close)
     delta = np.diff(close)
-    
+
     gains = np.zeros(n)
     losses = np.zeros(n)
-    
+
     gains[1:] = np.where(delta > 0, delta, 0)
     losses[1:] = np.where(delta < 0, -delta, 0)
-    
+
     avg_gain = pd.Series(gains).ewm(span=period, adjust=False).mean().values
     avg_loss = pd.Series(losses).ewm(span=period, adjust=False).mean().values
-    
+
     rs = avg_gain / np.maximum(avg_loss, 1e-10)
     rsi = 100 - (100 / (1 + rs))
-    
+
     return rsi
 
 
@@ -542,7 +542,7 @@ def _compute_atr_pct_fast(df: pd.DataFrame, period: int = 14) -> np.ndarray:
     low = df['low'].values
     close = df['close'].values
     n = len(close)
-    
+
     tr_pct = np.zeros(n)
     for i in range(1, n):
         tr = max(
@@ -551,7 +551,7 @@ def _compute_atr_pct_fast(df: pd.DataFrame, period: int = 14) -> np.ndarray:
             abs(low[i] - close[i-1])
         )
         tr_pct[i] = tr / max(close[i-1], 1e-10)
-    
+
     atr_pct = pd.Series(tr_pct).rolling(period, min_periods=1).mean().values
     return atr_pct
 
@@ -589,53 +589,53 @@ def compute_volatility_regime(
 ) -> np.ndarray:
     """
     Compute volatility regime labels using rolling ATR percentile.
-    
+
     Uses ATR (Average True Range) percentile within a rolling window to classify
     volatility into 4 regimes:
     - LOW (0): ATR below 25th percentile - quiet market, avoid trading
     - NORMAL (1): ATR 25th-60th percentile - average conditions
     - HIGH (2): ATR 60th-85th percentile - good trading conditions
     - EXTREME (3): ATR above 85th percentile - high opportunity/risk
-    
+
     This is used as a TCN training target for entry timing filtering.
-    
+
     Args:
         df: DataFrame with OHLCV data
         config: Volatility regime configuration (thresholds, lookback)
-    
+
     Returns:
         np.ndarray of regime labels (0-3) with shape (len(df),)
     """
     config = config or VolatilityRegimeConfig()
     n = len(df)
-    
+
     # Compute ATR percentage if not present
     if 'atr_pct_14' not in df.columns:
         atr_pct = _compute_atr_pct_fast(df)
     else:
         atr_pct = df['atr_pct_14'].values.copy()
-    
+
     # Handle NaN/inf values
     atr_pct = np.nan_to_num(atr_pct, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Initialize regime array
     regimes = np.full(n, VOL_REGIME_NORMAL, dtype=np.int32)  # Default: NORMAL
-    
+
     lookback = config.lookback_bars
     thresholds = config.thresholds  # [0.25, 0.60, 0.85]
-    
+
     # Compute rolling percentile rank for each bar
     for i in range(lookback, n):
         window = atr_pct[i - lookback:i]
         current_atr = atr_pct[i]
-        
+
         # Skip if window has no variance
         if np.std(window) < 1e-10:
             continue
-        
+
         # Percentile rank: what fraction of window is <= current value
         pct_rank = np.sum(window <= current_atr) / len(window)
-        
+
         # Classify based on percentile thresholds
         if pct_rank < thresholds[0]:
             regimes[i] = VOL_REGIME_LOW
@@ -645,14 +645,14 @@ def compute_volatility_regime(
             regimes[i] = VOL_REGIME_HIGH
         else:
             regimes[i] = VOL_REGIME_EXTREME
-    
+
     # Fill initial bars with NORMAL (insufficient lookback)
     regimes[:lookback] = VOL_REGIME_NORMAL
-    
+
     logger.info(f"Volatility regime distribution: "
-                f"LOW={np.sum(regimes==0)}, NORMAL={np.sum(regimes==1)}, "
-                f"HIGH={np.sum(regimes==2)}, EXTREME={np.sum(regimes==3)}")
-    
+                f"LOW={np.sum(regimes == 0)}, NORMAL={np.sum(regimes == 1)}, "
+                f"HIGH={np.sum(regimes == 2)}, EXTREME={np.sum(regimes == 3)}")
+
     return regimes
 
 
@@ -690,12 +690,12 @@ def filter_by_regime(
 def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Compute instrument-agnostic normalized features from OHLCV data.
-    
+
     All features are relative/normalized so models work across any instrument:
     - Returns instead of raw prices
     - Z-scores instead of absolute values
     - Ratios and percentiles instead of raw values
-    
+
     This function should be called BEFORE the individual data loaders.
     """
     df = df.copy()
@@ -704,30 +704,30 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
     low = df['low'].values
     open_ = df['open'].values
     volume = df['volume'].values if 'volume' in df.columns else np.ones(len(close))
-    
+
     n = len(close)
-    
+
     # =================================================================
     # 1. RETURNS (percentage changes) - Core normalized features
     # =================================================================
-    
+
     # Simple returns
     df['returns_1'] = np.concatenate([[0], np.diff(close) / np.maximum(close[:-1], 1e-10)])
-    
+
     # Multi-period returns
     for period in [2, 3, 5, 10, 20]:
         returns = np.zeros(n)
         for i in range(period, n):
             returns[i] = (close[i] - close[i-period]) / np.maximum(close[i-period], 1e-10)
         df[f'returns_{period}'] = returns
-    
+
     # Log returns (more stable for compounding)
     df['log_returns_1'] = np.concatenate([[0], np.log(np.maximum(close[1:], 1e-10) / np.maximum(close[:-1], 1e-10))])
-    
+
     # =================================================================
     # 2. VOLATILITY (normalized) - ATR ratio, not absolute ATR
     # =================================================================
-    
+
     # True Range as percentage of price
     tr = np.zeros(n)
     for i in range(1, n):
@@ -737,7 +737,7 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             abs(low[i] - close[i-1])
         ) / np.maximum(close[i-1], 1e-10)
     df['tr_pct'] = tr
-    
+
     # ATR as percentage (rolling average of TR%)
     for period in [5, 10, 14, 20]:
         col_name = f'atr_pct_{period}'
@@ -746,7 +746,7 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             for i in range(period, n):
                 atr_pct[i] = np.mean(tr[i-period:i])
             df[col_name] = atr_pct
-    
+
     # Volatility (std of returns)
     for period in [5, 10, 20]:
         vol = np.zeros(n)
@@ -754,11 +754,11 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
         for i in range(period, n):
             vol[i] = np.std(returns[i-period:i])
         df[f'volatility_{period}'] = vol
-    
+
     # =================================================================
     # 3. Z-SCORES - Price position relative to recent history
     # =================================================================
-    
+
     for period in [10, 20, 50]:
         zscore = np.zeros(n)
         for i in range(period, n):
@@ -770,11 +770,11 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 zscore[i] = 0
         df[f'zscore_{period}'] = np.clip(zscore, -4, 4)  # Clip extreme values
-    
+
     # =================================================================
     # 4. PERCENTILE RANKS - Where is price in recent range?
     # =================================================================
-    
+
     for period in [10, 20, 50]:
         pct_rank = np.zeros(n)
         for i in range(period, n):
@@ -782,17 +782,17 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             rank = np.sum(window <= close[i]) / len(window)
             pct_rank[i] = rank
         df[f'pct_rank_{period}'] = pct_rank
-    
+
     # =================================================================
     # 5. PRICE STRUCTURE (normalized ratios)
     # =================================================================
-    
+
     # High-Low range as percentage
     df['hl_range_pct'] = (high - low) / np.maximum(close, 1e-10)
-    
+
     # Body size as percentage (open-close range)
     df['body_pct'] = (close - open_) / np.maximum(close, 1e-10)
-    
+
     # Upper/lower wick ratios
     body_high = np.maximum(close, open_)
     body_low = np.minimum(close, open_)
@@ -800,11 +800,11 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
     df['upper_wick_ratio'] = (high - body_high) / hl_range
     df['lower_wick_ratio'] = (body_low - low) / hl_range
     df['body_ratio'] = np.abs(close - open_) / hl_range
-    
+
     # =================================================================
     # 6. MOMENTUM INDICATORS (already normalized 0-100 or -1 to 1)
     # =================================================================
-    
+
     # RSI (0-100) - keep if exists, otherwise compute
     if 'rsi' not in df.columns:
         rsi = np.full(n, 50.0)
@@ -825,10 +825,10 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 rsi[i] = 100 if avg_gain > 0 else 50
         df['rsi'] = rsi
-    
+
     # Normalize RSI to 0-1
     df['rsi_norm'] = df['rsi'].values / 100.0
-    
+
     # Stochastic %K (0-100) - keep if exists, otherwise compute
     if 'stoch_k' not in df.columns:
         stoch_k = np.full(n, 50.0)
@@ -839,11 +839,11 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
                 stoch_k[i] = 100 * (close[i] - lowest) / (highest - lowest)
         df['stoch_k'] = stoch_k
     df['stoch_k_norm'] = df['stoch_k'].values / 100.0
-    
+
     # =================================================================
     # 7. TREND INDICATORS (normalized)
     # =================================================================
-    
+
     # SMA ratios (price relative to moving average)
     for period in [5, 10, 20, 50]:
         sma = np.zeros(n)
@@ -854,7 +854,7 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             if sma[i] > 1e-10:
                 sma_ratio[i] = (close[i] - sma[i]) / sma[i]
         df[f'sma_ratio_{period}'] = sma_ratio
-    
+
     # EMA ratios
     for period in [12, 26]:
         ema = np.zeros(n)
@@ -867,7 +867,7 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             if ema[i] > 1e-10:
                 ema_ratio[i] = (close[i] - ema[i]) / ema[i]
         df[f'ema_ratio_{period}'] = ema_ratio
-    
+
     # MACD (normalized by price)
     ema12 = np.zeros(n)
     ema26 = np.zeros(n)
@@ -880,7 +880,7 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
         ema26[i] = alpha26 * close[i] + (1 - alpha26) * ema26[i-1]
     macd_line = ema12 - ema26
     df['macd_norm'] = macd_line / np.maximum(close, 1e-10)  # Normalize by price
-    
+
     # MACD signal
     signal = np.zeros(n)
     alpha9 = 2 / 10
@@ -889,11 +889,11 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
         signal[i] = alpha9 * macd_line[i] + (1 - alpha9) * signal[i-1]
     df['macd_signal_norm'] = signal / np.maximum(close, 1e-10)
     df['macd_hist_norm'] = (macd_line - signal) / np.maximum(close, 1e-10)
-    
+
     # =================================================================
     # 8. VOLUME INDICATORS (normalized)
     # =================================================================
-    
+
     # Volume ratio (current vs average)
     for period in [5, 10, 20]:
         vol_avg = np.zeros(n)
@@ -904,7 +904,7 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             if vol_avg[i] > 1e-10:
                 vol_ratio[i] = volume[i] / vol_avg[i]
         df[f'volume_ratio_{period}'] = np.clip(vol_ratio, 0, 5)  # Clip extreme spikes
-    
+
     # Volume z-score
     vol_zscore = np.zeros(n)
     for i in range(20, n):
@@ -914,26 +914,26 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
         if std > 1e-10:
             vol_zscore[i] = (volume[i] - mean) / std
     df['volume_zscore'] = np.clip(vol_zscore, -4, 4)
-    
+
     # =================================================================
     # 9. CROSSOVER SIGNALS (binary 0/1)
     # =================================================================
-    
+
     # SMA crossovers
     if 'sma_ratio_5' in df.columns and 'sma_ratio_20' in df.columns:
         df['sma_cross_5_20'] = (df['sma_ratio_5'] > df['sma_ratio_20']).astype(np.float32)
-    
+
     # MACD crossover
     df['macd_cross'] = (df['macd_norm'] > df['macd_signal_norm']).astype(np.float32)
-    
+
     # RSI overbought/oversold
     df['rsi_oversold'] = (df['rsi'] < 30).astype(np.float32)
     df['rsi_overbought'] = (df['rsi'] > 70).astype(np.float32)
-    
+
     # =================================================================
     # 10. HIGHER HIGHS / LOWER LOWS (normalized counts)
     # =================================================================
-    
+
     hh_count = np.zeros(n, dtype=np.float32)
     ll_count = np.zeros(n, dtype=np.float32)
     for i in range(10, n):
@@ -948,11 +948,11 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
         ll_count[i] = ll / 9.0
     df['higher_high_ratio'] = hh_count
     df['lower_low_ratio'] = ll_count
-    
+
     # =================================================================
     # 11. TIME-BASED FEATURES (for session/day patterns)
     # =================================================================
-    
+
     # Try to extract hour and day-of-week from index or time column
     time_col = None
     if isinstance(df.index, pd.DatetimeIndex):
@@ -967,18 +967,18 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             time_col = pd.to_datetime(df['timestamp'])
         except Exception:
             pass
-    
+
     if time_col is not None:
         try:
             hours = time_col.hour.values.astype(np.float64)
             dow = time_col.dayofweek.values.astype(np.float64)
-            
+
             # Cyclical encoding (sin/cos) - captures circular nature of time
             df['hour_sin'] = np.sin(2 * np.pi * hours / 24.0)
             df['hour_cos'] = np.cos(2 * np.pi * hours / 24.0)
             df['dow_sin'] = np.sin(2 * np.pi * dow / 5.0)  # 5 trading days
             df['dow_cos'] = np.cos(2 * np.pi * dow / 5.0)
-            
+
             # Session indicators (London/NY overlap = higher vol)
             # London: 7-16 UTC, NY: 13-22 UTC, Overlap: 13-16 UTC
             df['session_london'] = ((hours >= 7) & (hours < 16)).astype(np.float32)
@@ -986,11 +986,11 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             df['session_overlap'] = ((hours >= 13) & (hours < 16)).astype(np.float32)
         except Exception as e:
             logger.debug(f"Could not extract time features: {e}")
-    
+
     # =================================================================
     # 12. VOLUME-MA RATIO (volume leads volatility)
     # =================================================================
-    
+
     if 'volume_ratio_20' not in df.columns and volume is not None:
         vol_ma_20 = np.zeros(n)
         for i in range(20, n):
@@ -1000,26 +1000,26 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
             if vol_ma_20[i] > 1e-10:
                 vol_ma_ratio[i] = volume[i] / vol_ma_20[i]
         df['volume_ma_ratio'] = np.clip(vol_ma_ratio, 0, 5)
-    
+
     # =================================================================
     # CRITICAL: SANITIZE NaN/Inf VALUES
     # =================================================================
     # This MUST be done to prevent NaN propagation during training which
     # causes loss to become NaN and gradient explosion
     numeric_cols = df.select_dtypes(include=[np.number]).columns
-    
+
     # Replace infinities with NaN first
     df[numeric_cols] = df[numeric_cols].replace([np.inf, -np.inf], np.nan)
-    
+
     # Forward-fill NaN (use most recent valid value)
     df[numeric_cols] = df[numeric_cols].ffill()
-    
+
     # Backward-fill any remaining NaN at the start
     df[numeric_cols] = df[numeric_cols].bfill()
-    
+
     # Final safety: fill any remaining NaN with 0
     df[numeric_cols] = df[numeric_cols].fillna(0.0)
-    
+
     # Verify no NaN/Inf remain
     nan_count = df[numeric_cols].isna().sum().sum()
     try:
@@ -1031,9 +1031,9 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
         inf_count = 0
     if nan_count > 0 or inf_count > 0:
         logger.warning(f"⚠️ Remaining NaN: {nan_count}, Inf: {inf_count} after sanitization")
-    
+
     logger.debug(f"Computed {len([c for c in df.columns if c not in ['open', 'high', 'low', 'close', 'volume', 'time']])} normalized features")
-    
+
     return df
 
 
@@ -1282,25 +1282,25 @@ def temporal_split(
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Create chronological train/val/test indices (no shuffle, no overlap).
-    
+
     Args:
         n_samples: Total number of samples
         train_frac: Fraction for training (default 0.7)
         val_frac: Fraction for validation (default 0.2)
         test_frac: Fraction for test (default 0.1)
-    
+
     Returns:
         Tuple of (train_idx, val_idx, test_idx) numpy arrays
     """
     assert abs(train_frac + val_frac + test_frac - 1.0) < 0.001, "Fractions must sum to 1"
-    
+
     train_end = int(n_samples * train_frac)
     val_end = int(n_samples * (train_frac + val_frac))
-    
+
     train_idx = np.arange(0, train_end)
     val_idx = np.arange(train_end, val_end)
     test_idx = np.arange(val_end, n_samples)
-    
+
     return train_idx, val_idx, test_idx
 
 
@@ -1338,23 +1338,23 @@ def _select_features_for_task(
 ) -> List[str]:
     """
     Select features for a task, with fallbacks.
-    
+
     1. First try exact matches from preferred_features
     2. If not enough, try pattern matching with fallback_patterns
     3. If still not enough, use any available numeric columns
     """
     exclude_cols = exclude_cols or ['open', 'high', 'low', 'close', 'volume', 'time', 'timestamp']
-    
+
     # Try exact matches first
     features = _ensure_features_exist(df, preferred_features)
-    
+
     # If not enough, try pattern matching
     if len(features) < min_features:
         pattern_features = _find_features_by_pattern(df, fallback_patterns)
         for f in pattern_features:
             if f not in features and f not in exclude_cols:
                 features.append(f)
-    
+
     # If still not enough, use any numeric columns
     if len(features) < min_features:
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -1363,7 +1363,7 @@ def _select_features_for_task(
                 features.append(col)
             if len(features) >= min_features:
                 break
-    
+
     return features
 
 
@@ -1379,28 +1379,28 @@ def load_regime_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for market regime classification (3 classes).
-    
+
     Regimes:
     - 0 = TREND: Strong directional movement (ADX high, consistent direction)
     - 1 = CHOP: Sideways, no clear direction (low ADX, high reversals)
     - 2 = MEAN_REVERT: Overextended, likely to reverse (RSI extreme, z-score extreme)
-    
+
     The Transformer becomes a "bouncer" - it tells you WHAT KIND of market you're in,
     not which direction to trade. Direction decisions are delegated to other models
     based on regime:
     - TREND: Let XGBoost/Ridge/RF decide direction
     - CHOP: Skip trading entirely
     - MEAN_REVERT: Fade 2-bar momentum
-    
+
     Features: NORMALIZED regime indicators (instrument-agnostic)
     Target: 3-class regime (0=trend, 1=chop, 2=mean_revert)
     """
     logger.info(f"Loading regime data (lookback={lookback}, lookahead={lookahead})...")
-    
+
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
         df = compute_normalized_features(df)
-    
+
     # REGIME FEATURES - indicators that describe market state
     regime_features = [
         # Trend strength
@@ -1417,10 +1417,10 @@ def load_regime_data(
         # Volume context
         'volume_ratio_10', 'volume_zscore',
     ]
-    
+
     # Get available features
     features = _ensure_features_exist(df, regime_features)
-    
+
     # Fallback if needed
     if len(features) < 10:
         fallback = ['adx', 'rsi', 'atr', 'volatility', 'zscore', 'returns', 'bb_position']
@@ -1428,44 +1428,44 @@ def load_regime_data(
         for f in pattern_features:
             if f not in features and f not in ['open', 'high', 'low', 'close', 'volume', 'time']:
                 features.append(f)
-    
+
     if len(features) < 5:
         raise ValueError(f"Regime model needs at least 5 features, got {len(features)}")
-    
+
     logger.info(f"Regime features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
-    
+
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
-    
+
     # Create regime labels
     close = df['close'].values
     high = df['high'].values
     low = df['low'].values
     n = len(close)
-    
+
     # Get ADX and RSI if available (key regime indicators)
     adx = df['adx'].values if 'adx' in df.columns else np.full(n, 25.0)
     rsi = df['rsi'].values if 'rsi' in df.columns else np.full(n, 50.0)
     zscore = df['zscore_20'].values if 'zscore_20' in df.columns else np.zeros(n)
-    
+
     # Initialize labels
     y = np.full(n, 1, dtype=np.int32)  # Default: CHOP (safest default)
-    
+
     n_trend = 0
     n_chop = 0
     n_mean_revert = 0
-    
+
     for i in range(lookback, n - lookahead):
         # === REGIME DETECTION LOGIC ===
-        
+
         # Look at recent price action
         recent_close = close[i-lookback:i+1]
-        recent_high = high[i-lookback:i+1]
-        recent_low = low[i-lookback:i+1]
-        
+        high[i-lookback:i+1]
+        low[i-lookback:i+1]
+
         # Calculate metrics
         # price_range = (recent_high.max() - recent_low.min()) / close[i] if close[i] > 0 else 0
-        
+
         # Directional consistency: how often did price move in same direction?
         returns = np.diff(recent_close) / recent_close[:-1]
         returns = returns[~np.isnan(returns)]
@@ -1474,71 +1474,59 @@ def load_regime_data(
             consistency = max(up_ratio, 1 - up_ratio)  # 0.5 = random, 1.0 = perfectly consistent
         else:
             consistency = 0.5
-        
+
         # Current indicators
         current_adx = adx[i] if not np.isnan(adx[i]) else 25.0
         current_rsi = rsi[i] if not np.isnan(rsi[i]) else 50.0
         current_zscore = zscore[i] if not np.isnan(zscore[i]) else 0.0
-        
+
         # === CLASSIFICATION RULES ===
-        
+
         # MEAN REVERT: Overextended (RSI extreme OR z-score extreme)
         rsi_extreme = current_rsi < 25 or current_rsi > 75
         zscore_extreme = abs(current_zscore) > 2.0
-        
+
         if rsi_extreme or zscore_extreme:
             # Confirm with lookahead: did price actually revert?
             future_close = close[i + lookahead]
             current_close = close[i]
             future_return = (future_close - current_close) / current_close if current_close > 0 else 0
-            
+
             # Mean revert confirmed if price moved opposite to extension
-            if current_rsi > 75 and future_return < -0.001:  # Overbought -> went down
+            if current_rsi > 75 and future_return < -0.001 or current_rsi < 25 and future_return > 0.001 or current_zscore > 2.0 and future_return < -0.001 or current_zscore < -2.0 and future_return > 0.001:  # Overbought -> went down
                 y[i] = 2  # MEAN_REVERT
                 n_mean_revert += 1
                 continue
-            elif current_rsi < 25 and future_return > 0.001:  # Oversold -> went up
-                y[i] = 2  # MEAN_REVERT
-                n_mean_revert += 1
-                continue
-            elif current_zscore > 2.0 and future_return < -0.001:
-                y[i] = 2  # MEAN_REVERT
-                n_mean_revert += 1
-                continue
-            elif current_zscore < -2.0 and future_return > 0.001:
-                y[i] = 2  # MEAN_REVERT
-                n_mean_revert += 1
-                continue
-        
+
         # TREND: Strong ADX + directional consistency
         if current_adx > 25 and consistency > 0.6:
             # Confirm with lookahead: did trend continue?
             future_close = close[i + lookahead]
             current_close = close[i]
             future_return = (future_close - current_close) / current_close if current_close > 0 else 0
-            
+
             # Trend confirmed if price moved significantly in either direction
             if abs(future_return) > 0.002:  # 0.2% move confirms trend
                 y[i] = 0  # TREND
                 n_trend += 1
                 continue
-        
+
         # CHOP: Everything else (low ADX, inconsistent, no clear signal)
         y[i] = 1  # CHOP
         n_chop += 1
-    
+
     # Trim edges (no lookback/lookahead data)
     valid_start = lookback
     valid_end = n - lookahead
     X = X[valid_start:valid_end]
     y = y[valid_start:valid_end]
-    
+
     # Handle NaN/Inf
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Temporal split
     train_idx, val_idx, test_idx = temporal_split(len(X), *split)
-    
+
     # Label statistics
     total = n_trend + n_chop + n_mean_revert
     label_stats = {
@@ -1551,11 +1539,11 @@ def load_regime_data(
         'lookback': lookback,
         'lookahead': lookahead,
     }
-    
+
     logger.info(f"Regime labels: {n_trend} trend ({label_stats['trend_rate']:.1%}), "
                 f"{n_chop} chop ({label_stats['chop_rate']:.1%}), "
                 f"{n_mean_revert} mean_revert ({label_stats['mean_revert_rate']:.1%})")
-    
+
     result = {
         'X_train': X[train_idx],
         'y_train': y[train_idx],
@@ -1567,7 +1555,7 @@ def load_regime_data(
         'label_stats': label_stats,
         'class_names': ['trend', 'chop', 'mean_revert'],
     }
-    
+
     logger.info(f"Regime data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
     return result
 
@@ -1585,14 +1573,14 @@ def load_direction_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for direction prediction model (TCN or Transformer).
-    
+
     Uses threshold-based labeling to filter out noise:
     - Only labels moves >= threshold as clear signals (weight=1.0)
     - Moves below threshold are marked unclear (label=0.5, weight=0.0)
-    
+
     Features: NORMALIZED directional indicators (instrument-agnostic)
     Target: Binary direction (1=up, 0=down) over next `lookahead` bars
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
@@ -1600,29 +1588,29 @@ def load_direction_data(
         threshold: Minimum price change (as fraction) to assign clear label
         locked_feature_names: If provided, use these exact features (for warm-start consistency).
             Features not found in df are zero-filled. Skips dynamic feature selection.
-    
+
     Returns:
-        Dict with X_train, y_train, w_train (weights), X_val, y_val, w_val, 
+        Dict with X_train, y_train, w_train (weights), X_val, y_val, w_val,
         X_test, y_test, w_test, feature_names, label_stats
     """
     logger.info(f"Loading direction data (threshold={threshold:.3%}, lookahead={lookahead})...")
-    
+
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
         df = compute_normalized_features(df)
-    
+
     # USE ALL AVAILABLE NUMERIC FEATURES (not just hardcoded 24!)
     # This allows the model to leverage all 186+ features from feature engineering
-    exclude_cols = {'open', 'high', 'low', 'close', 'volume', 'time', 'timestamp', 'date', 
+    exclude_cols = {'open', 'high', 'low', 'close', 'volume', 'time', 'timestamp', 'date',
                     'target', 'label', 'direction', 'y', 'target_direction'}
-    
+
     # Get all numeric columns that aren't excluded
     all_numeric = df.select_dtypes(include=[np.number]).columns.tolist()
     features = [col for col in all_numeric if col.lower() not in exclude_cols and col not in exclude_cols]
-    
+
     # Remove any columns that look like targets/labels
     features = [f for f in features if not any(x in f.lower() for x in ['target', 'label', 'future', 'forward'])]
-    
+
     # =========================================================================
     # LOCKED FEATURE NAMES: Use exact features from previous model for warm-start
     # This guarantees identical feature ordering between training sessions
@@ -1631,7 +1619,7 @@ def load_direction_data(
         available = set(df.columns)
         n_found = sum(1 for f in locked_feature_names if f in available)
         n_missing = len(locked_feature_names) - n_found
-        
+
         if n_found < len(locked_feature_names) // 2:
             logger.warning(f"⚠️ Locked features: only {n_found}/{len(locked_feature_names)} found in data. "
                            f"Falling back to dynamic selection.")
@@ -1643,11 +1631,11 @@ def load_direction_data(
                 # Add missing columns as zeros
                 for f in missing:
                     df[f] = 0.0
-            
+
             features = list(locked_feature_names)
             logger.info(f"🔒 Using {len(features)} locked features from previous model "
                         f"({n_found} found, {n_missing} zero-filled)")
-    
+
     # =========================================================================
     # SMART FEATURE SELECTION: Keep top ~60 uncorrelated features
     # =========================================================================
@@ -1655,18 +1643,18 @@ def load_direction_data(
     # Select features with high variance and remove redundant ones
     max_features = 80  # Use more features since we're not overfitting to target
     correlation_threshold = 0.80  # Remove features correlated > 80%
-    
+
     # Skip dynamic selection if features are already locked from previous model
     features_already_locked = (locked_feature_names is not None and
                                len(locked_feature_names) > 0 and
                                features == list(locked_feature_names))
-    
+
     if len(features) > max_features and not features_already_locked:
         logger.info(f"Selecting top {max_features} uncorrelated features from {len(features)}...")
-        
+
         # Build numeric feature matrix
         feature_matrix = df[features].values.astype(np.float64)
-        
+
         # Score features by VARIANCE (normalized) - no target leakage
         # High variance = potentially informative, avoids near-constant features
         feature_scores = {}
@@ -1687,7 +1675,7 @@ def load_direction_data(
                         feature_scores[f] = std_val
             except Exception:
                 pass
-        
+
         # Priority features that are known to be useful for direction prediction
         priority_features = [
             'macd_norm', 'macd_signal_norm', 'macd_hist_momentum',
@@ -1699,37 +1687,37 @@ def load_direction_data(
             'returns_1', 'returns_5', 'returns_10', 'returns_20',
             'volatility_10', 'volatility_20'
         ]
-        
+
         # Start with priority features that exist and have good variance
         selected = []
         for pf in priority_features:
             if pf in feature_scores and len(selected) < max_features // 2:
                 selected.append(pf)
-        
+
         # Sort remaining by variance score
-        remaining = [f for f in feature_scores.keys() if f not in selected]
+        remaining = [f for f in feature_scores if f not in selected]
         sorted_remaining = sorted(remaining, key=lambda x: feature_scores[x], reverse=True)
-        
+
         # Rebuild feature matrix with selected + sorted remaining
         all_candidates = selected + sorted_remaining
         candidate_indices = [features.index(f) for f in all_candidates if f in features]
         candidate_matrix = feature_matrix[:, candidate_indices]
         candidate_features = [all_candidates[i] for i in range(len(all_candidates)) if all_candidates[i] in features]
-        
+
         # Remove highly correlated features
         final_selected = []
         for i, f in enumerate(candidate_features):
             if len(final_selected) >= max_features:
                 break
-            
+
             # Check correlation with already selected features
             is_redundant = False
             f_values = candidate_matrix[:, i]
-            
+
             for sel_f in final_selected:
                 sel_idx = candidate_features.index(sel_f)
                 sel_values = candidate_matrix[:, sel_idx]
-                
+
                 # Calculate correlation
                 valid = np.isfinite(f_values) & np.isfinite(sel_values)
                 if valid.sum() > 100:
@@ -1737,40 +1725,40 @@ def load_direction_data(
                     if np.isfinite(corr) and corr > correlation_threshold:
                         is_redundant = True
                         break
-            
+
             if not is_redundant:
                 final_selected.append(f)
-        
+
         features = final_selected
         logger.info(f"Selected {len(features)} uncorrelated features (variance-based, no target leakage)")
-    
+
     logger.info(f"Direction features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
-    
+
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
-    
+
     # Create direction labels with THRESHOLD FILTERING
     close = df['close'].values
     n = len(close)
     y = np.full(n, 0.5, dtype=np.float32)  # Default: unclear
     weights = np.zeros(n, dtype=np.float32)  # Default: excluded
-    
+
     n_clear_up = 0
     n_clear_down = 0
     n_unclear = 0
-    
+
     # Handle threshold=0 case: include ALL samples with simple up/down labeling
     use_all_samples = (threshold <= 0)
-    
+
     for i in range(n - lookahead):
         future_close = close[i + lookahead]
         current_close = close[i]
-        
+
         if current_close <= 0:
             continue
-        
+
         pct_change = (future_close - current_close) / current_close
-        
+
         if use_all_samples or abs(pct_change) >= threshold:
             # Label based on direction (with small threshold to handle float precision)
             if pct_change > 1e-10:
@@ -1791,36 +1779,36 @@ def load_direction_data(
             y[i] = 0.5
             weights[i] = 0.0  # Exclude from training
             n_unclear += 1
-    
+
     # Drop last `lookahead` rows (no future data)
     X = X[:-lookahead]
     y = y[:-lookahead]
     weights = weights[:-lookahead]
-    
+
     # Handle NaN/Inf
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Temporal split (BEFORE scaling to avoid data leakage)
     train_idx, val_idx, test_idx = temporal_split(len(X), *split)
-    
+
     # =========================================================================
     # FEATURE SCALING: Fit on train, apply to all (prevents data leakage)
     # =========================================================================
     from sklearn.preprocessing import RobustScaler
-    
+
     scaler = RobustScaler()  # Robust to outliers (better for financial data)
-    
+
     # Fit ONLY on training data
     X_train_scaled = scaler.fit_transform(X[train_idx])
     X_val_scaled = scaler.transform(X[val_idx])
     X_test_scaled = scaler.transform(X[test_idx])
-    
+
     # Clip extreme values after scaling (prevents numerical issues)
     clip_value = 10.0  # Clip to [-10, 10] after robust scaling
     X_train_scaled = np.clip(X_train_scaled, -clip_value, clip_value)
     X_val_scaled = np.clip(X_val_scaled, -clip_value, clip_value)
     X_test_scaled = np.clip(X_test_scaled, -clip_value, clip_value)
-    
+
     # Remove constant features (zero variance after scaling)
     feature_stds = np.std(X_train_scaled, axis=0)
     valid_features = feature_stds > 1e-6
@@ -1831,10 +1819,10 @@ def load_direction_data(
         X_val_scaled = X_val_scaled[:, valid_features]
         X_test_scaled = X_test_scaled[:, valid_features]
         features = [f for f, v in zip(features, valid_features) if v]
-    
+
     logger.info(f"Feature scaling: max={np.max(np.abs(X_train_scaled)):.2f}, "
                 f"mean_abs={np.mean(np.abs(X_train_scaled)):.4f}")
-    
+
     # Label statistics
     total_clear = n_clear_up + n_clear_down
     label_stats = {
@@ -1846,16 +1834,16 @@ def load_direction_data(
         'threshold': threshold,
         'lookahead': lookahead,
     }
-    
+
     logger.info(f"Direction labels: {n_clear_up} up, {n_clear_down} down, {n_unclear} unclear "
                 f"({label_stats['clear_rate']:.1%} clear, {label_stats['up_rate']:.1%} up)")
-    
+
     # =========================================================================
     # CLASS DISTRIBUTION VALIDATION - Prevent training with extreme imbalance
     # =========================================================================
     min_class_ratio = 0.1  # Each class must be at least 10% of clear samples
     min_clear_samples = 100  # Need at least 100 clear samples total
-    
+
     if total_clear < min_clear_samples:
         raise ValueError(
             f"❌ INSUFFICIENT TRAINING DATA: Only {total_clear} clear samples "
@@ -1864,15 +1852,15 @@ def load_direction_data(
             f"  2. Lower threshold (current: {threshold:.3%})\n"
             f"  3. Use threshold=0 to include all samples"
         )
-    
+
     up_ratio = n_clear_up / total_clear
     down_ratio = n_clear_down / total_clear
-    
+
     if up_ratio < min_class_ratio or down_ratio < min_class_ratio:
         minority_class = "UP" if up_ratio < down_ratio else "DOWN"
         minority_count = n_clear_up if up_ratio < down_ratio else n_clear_down
         majority_count = n_clear_down if up_ratio < down_ratio else n_clear_up
-        
+
         raise ValueError(
             f"❌ EXTREME CLASS IMBALANCE: {minority_class} class has only {minority_count} samples "
             f"({min(up_ratio, down_ratio):.1%}) vs {majority_count} for other class.\n"
@@ -1882,7 +1870,7 @@ def load_direction_data(
             f"  2. Lower threshold from {threshold:.3%} to include more small moves\n"
             f"  3. Use threshold=0 for all samples (let the model learn from noise too)"
         )
-    
+
     result = {
         'X_train': X_train_scaled.astype(np.float32),
         'y_train': y[train_idx],
@@ -1897,7 +1885,7 @@ def load_direction_data(
         'label_stats': label_stats,
         'scaler': scaler,  # Save scaler for inference
     }
-    
+
     logger.info(f"Direction data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
     return result
 
@@ -1905,18 +1893,18 @@ def load_direction_data(
 def _add_directional_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Add computed directional features to dataframe.
-    
+
     These features capture market structure and trend direction,
     which are more predictive of direction than volatility features.
     """
     # SMA crossover: 1 if sma_5 > sma_20, else 0
     if 'sma_5' in df.columns and 'sma_20' in df.columns:
         df['sma_cross_5_20'] = (df['sma_5'] > df['sma_20']).astype(np.float32)
-    
+
     # MACD crossover: 1 if macd > signal, else 0
     if 'macd' in df.columns and 'macd_signal' in df.columns:
         df['macd_cross'] = (df['macd'] > df['macd_signal']).astype(np.float32)
-    
+
     # Higher high count: How many of last 10 bars made higher highs
     if 'high' in df.columns:
         highs = df['high'].values
@@ -1928,7 +1916,7 @@ def _add_directional_features(df: pd.DataFrame) -> pd.DataFrame:
                     count += 1
             hh_count[i] = count / 9.0  # Normalize to 0-1
         df['higher_high_count'] = hh_count
-    
+
     # Lower low count: How many of last 10 bars made lower lows
     if 'low' in df.columns:
         lows = df['low'].values
@@ -1940,7 +1928,7 @@ def _add_directional_features(df: pd.DataFrame) -> pd.DataFrame:
                     count += 1
             ll_count[i] = count / 9.0  # Normalize to 0-1
         df['lower_low_count'] = ll_count
-    
+
     # Volume direction: Are up bars getting more volume?
     if 'volume' in df.columns and 'close' in df.columns:
         close = df['close'].values
@@ -1957,7 +1945,7 @@ def _add_directional_features(df: pd.DataFrame) -> pd.DataFrame:
             total = up_vol + down_vol
             vol_dir[i] = up_vol / max(total, 1e-8) if total > 0 else 0.5
         df['volume_direction'] = vol_dir
-    
+
     # Trend direction: Combined signal from multiple indicators
     trend_components = []
     if 'sma_cross_5_20' in df.columns:
@@ -1966,10 +1954,10 @@ def _add_directional_features(df: pd.DataFrame) -> pd.DataFrame:
         trend_components.append(df['macd_cross'].values)
     if 'rsi' in df.columns:
         trend_components.append((df['rsi'].values > 50).astype(np.float32))
-    
+
     if trend_components:
         df['trend_direction'] = np.mean(trend_components, axis=0)
-    
+
     return df
 
 
@@ -1985,35 +1973,35 @@ def load_tcn_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for TCN model (explicit loader, not an alias).
-    
+
     Uses the same features and targets as direction model but with
     TCN-specific documentation and parameters.
-    
+
     Features: NORMALIZED directional indicators (instrument-agnostic)
     Target: Binary direction (1=up, 0=down) over next `lookahead` bars
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
         lookahead: Number of bars ahead for direction label
         threshold: Minimum price change (as fraction) to assign clear label
-    
+
     Returns:
-        Dict with X_train, y_train, w_train, X_val, y_val, w_val, 
+        Dict with X_train, y_train, w_train, X_val, y_val, w_val,
         X_test, y_test, w_test, feature_names, label_stats, scaler
     """
     logger.info(f"Loading TCN data (threshold={threshold:.3%}, lookahead={lookahead})...")
-    
+
     # Reuse direction data loader with TCN-specific parameters
     result = load_direction_data(df, split, lookahead, threshold)
-    
+
     # Add TCN-specific metadata
     result['model_type'] = 'tcn'
     result['task'] = 'direction'
-    
+
     logger.info(f"TCN data: train={len(result['X_train'])}, val={len(result['X_val'])}, "
                 f"test={len(result['X_test'])}, features={len(result['feature_names'])}")
-    
+
     return result
 
 
@@ -2030,36 +2018,36 @@ def load_lightgbm_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for LightGBM confidence model (explicit loader).
-    
+
     Uses the same features and targets as Ridge model but with
     LightGBM-specific documentation and parameters.
-    
+
     Features: NORMALIZED confidence features (instrument-agnostic)
     Target: Confidence score (0-100)
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
         confidence_window: Window for stability calculation
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
-    
+
     Returns:
-        Dict with X_train, y_train, X_val, y_val, X_test, y_test, 
+        Dict with X_train, y_train, X_val, y_val, X_test, y_test,
         feature_names, adx_p25, adx_p75, instrument
     """
     logger.info("Loading LightGBM data (confidence scoring)...")
-    
+
     # Reuse ridge data loader (same features and targets)
     result = load_ridge_data(df, split, confidence_window, instrument, include_instrument_features)
-    
+
     # Add LightGBM-specific metadata
     result['model_type'] = 'lightgbm'
     result['task'] = 'confidence'
-    
+
     logger.info(f"LightGBM data: train={len(result['X_train'])}, val={len(result['X_val'])}, "
                 f"test={len(result['X_test'])}, features={len(result['feature_names'])}")
-    
+
     return result
 
 
@@ -2076,7 +2064,7 @@ def load_tcn_data_legacy(
 ) -> Dict[str, np.ndarray]:
     """
     DEPRECATED: Use load_tcn_data() instead.
-    
+
     This is a backward compatibility alias for load_direction_data.
     """
     logger.warning("load_tcn_data_legacy() is deprecated, use load_tcn_data() instead")
@@ -2084,10 +2072,10 @@ def load_tcn_data_legacy(
 
 
 # =============================================================================
-# TCN VOLATILITY REGIME DATA LOADER - 4-Class Classification
+# TCN VOLATILITY REGIME DATA LOADER - 4-Class Classification (LEGACY)
 # =============================================================================
 
-def load_volatility_regime_data(
+def _load_volatility_regime_data_legacy(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
     seq_len: int = 60,
@@ -2097,16 +2085,16 @@ def load_volatility_regime_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for TCN Volatility Regime model: 4-class classification.
-    
+
     Classifies volatility regimes based on ATR percentiles:
         - 0 = LOW: ATR < 25th percentile (quiet market, tight ranges)
         - 1 = NORMAL: ATR 25th-50th percentile (typical conditions)
         - 2 = HIGH: ATR 50th-75th percentile (elevated volatility)
         - 3 = EXTREME: ATR > 75th percentile (major moves, news events)
-    
+
     Features: NORMALIZED volatility, momentum, and risk indicators
     Target: Volatility regime class (0-3)
-    
+
     Research-backed hyperparameters for TCN (Bai et al. / Unit8):
         - kernel_size: 5 (≥ dilation_base for no receptive field holes)
         - dilation_base: 2 (exponential dilation)
@@ -2114,7 +2102,7 @@ def load_volatility_regime_data(
         - num_filters: 64 (increased capacity for 4-class)
         - dropout: 0.2 (lower than Transformer, TCN more stable)
         - weight_norm: True (prevents gradient explosion)
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
@@ -2122,20 +2110,20 @@ def load_volatility_regime_data(
         vol_low_threshold: ATR percentile threshold for LOW (default 0.25)
         vol_normal_threshold: ATR percentile threshold for NORMAL (default 0.50)
         vol_high_threshold: ATR percentile threshold for HIGH (default 0.75)
-    
+
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names, class_weights
     """
     logger.info("Loading TCN Volatility Regime data (4-class classification)...")
-    
+
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
         df = compute_normalized_features(df)
-    
+
     # =========================================================================
     # FEATURE SELECTION - Volatility and Risk Indicators
     # =========================================================================
-    
+
     # Primary normalized volatility features (instrument-agnostic)
     volatility_features = [
         # ATR-based (primary)
@@ -2147,14 +2135,14 @@ def load_volatility_regime_data(
         # Candle structure
         'upper_wick_ratio', 'lower_wick_ratio', 'body_ratio',
     ]
-    
+
     # Momentum features (regime changes often correlate with momentum shifts)
     momentum_features = [
         'returns_1', 'returns_2', 'returns_3', 'returns_5', 'returns_10',
         'log_returns_1', 'log_returns_5',
         'roc_5', 'roc_10', 'roc_20',
     ]
-    
+
     # Trend/Regime indicators
     regime_features = [
         'adx', 'rsi_norm', 'stoch_k_norm', 'stoch_d_norm',
@@ -2162,19 +2150,19 @@ def load_volatility_regime_data(
         'bb_position_20', 'bb_width_20',
         'zscore_20', 'zscore_50',
     ]
-    
+
     # Volume features (volume often leads volatility)
     volume_features = [
         'volume_ratio_5', 'volume_ratio_10', 'volume_ratio_20',
         'volume_momentum_5',
     ]
-    
+
     # Combine all features
     all_features = volatility_features + momentum_features + regime_features + volume_features
-    
+
     # Filter to available features
     features = _ensure_features_exist(df, all_features)
-    
+
     # Fallback to pattern matching if not enough features
     if len(features) < 20:
         fallback_patterns = ['atr', 'volatility', 'returns', 'rsi', 'adx', 'volume']
@@ -2182,42 +2170,42 @@ def load_volatility_regime_data(
         for f in pattern_features:
             if f not in features and f not in ['open', 'high', 'low', 'close', 'volume', 'time']:
                 features.append(f)
-    
+
     if len(features) < 10:
         raise ValueError(f"Volatility regime needs at least 10 features, got {len(features)}")
-    
+
     logger.info(f"Volatility regime features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
-    
+
     # =========================================================================
     # TARGET CREATION - 4-Class Volatility Regime
     # =========================================================================
-    
+
     # Calculate ATR percentage for regime classification
     atr_pct = None
-    
+
     # Try to use pre-computed ATR percentage
     if 'atr_pct_14' in df.columns:
         atr_pct = df['atr_pct_14'].values.astype(np.float64)
         valid_mask = ~np.isnan(atr_pct) & (atr_pct > 0)
         if np.sum(valid_mask) < 100:
             atr_pct = None
-    
+
     # Fallback: Calculate ATR percentage manually
     if atr_pct is None:
         logger.info("Computing ATR percentage manually for regime classification")
         close = df['close'].values.astype(np.float64)
         high = df['high'].values.astype(np.float64)
         low = df['low'].values.astype(np.float64)
-        
+
         prev_close = np.roll(close, 1)
         prev_close[0] = close[0]
-        
+
         tr = np.maximum.reduce([
             high - low,
             np.abs(high - prev_close),
             np.abs(low - prev_close)
         ])
-        
+
         # Rolling ATR (14 periods)
         atr = np.zeros(len(close), dtype=np.float64)
         for i in range(len(close)):
@@ -2225,22 +2213,22 @@ def load_volatility_regime_data(
                 atr[i] = np.mean(tr[:i+1]) if i > 0 else tr[0]
             else:
                 atr[i] = np.mean(tr[i-13:i+1])
-        
+
         atr_pct = atr / np.maximum(close, 1e-8)
-    
+
     # Calculate rolling percentile of ATR (100-bar lookback for stability)
     lookback = 100
     atr_percentile = np.zeros(len(atr_pct), dtype=np.float64)
-    
+
     for i in range(len(atr_pct)):
         if i < lookback:
             window = atr_pct[:i+1]
         else:
             window = atr_pct[i-lookback+1:i+1]
-        
+
         # Percentile rank of current ATR within window
         atr_percentile[i] = np.sum(window <= atr_pct[i]) / len(window)
-    
+
     # Classify into 4 regimes based on ATR percentile
     # 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
     regime_labels = np.zeros(len(atr_percentile), dtype=np.int32)
@@ -2248,13 +2236,13 @@ def load_volatility_regime_data(
     regime_labels[(atr_percentile >= vol_low_threshold) & (atr_percentile < vol_normal_threshold)] = 1  # NORMAL
     regime_labels[(atr_percentile >= vol_normal_threshold) & (atr_percentile < vol_high_threshold)] = 2  # HIGH
     regime_labels[atr_percentile >= vol_high_threshold] = 3    # EXTREME
-    
+
     # Log class distribution
     unique, counts = np.unique(regime_labels, return_counts=True)
     class_dist = dict(zip(unique, counts))
     regime_names = ['LOW', 'NORMAL', 'HIGH', 'EXTREME']
     logger.info(f"Volatility regime distribution: {', '.join([f'{regime_names[k]}={v}' for k, v in class_dist.items()])}")
-    
+
     # Calculate label stats for summary display
     total = len(regime_labels)
     label_stats = {
@@ -2263,73 +2251,73 @@ def load_volatility_regime_data(
         'HIGH': class_dist.get(2, 0) / total if total > 0 else 0,
         'EXTREME': class_dist.get(3, 0) / total if total > 0 else 0,
     }
-    
+
     # =========================================================================
     # SEQUENCE CREATION
     # =========================================================================
-    
+
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
     y = regime_labels
-    
+
     # Handle NaN/Inf
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Create sequences for TCN
     def create_sequences(X, y, seq_len):
         n_samples = len(X) - seq_len
         X_seq = np.zeros((n_samples, seq_len, X.shape[1]), dtype=np.float32)
         y_seq = np.zeros(n_samples, dtype=np.int32)
-        
+
         for i in range(n_samples):
             X_seq[i] = X[i:i+seq_len]
             y_seq[i] = y[i+seq_len-1]  # Label at end of sequence
-        
+
         return X_seq, y_seq
-    
+
     X_seq, y_seq = create_sequences(X, y, seq_len)
-    
+
     logger.info(f"Created {len(X_seq)} sequences of length {seq_len}")
-    
+
     # =========================================================================
     # TEMPORAL SPLIT
     # =========================================================================
-    
+
     train_frac, val_frac, test_frac = split
     n = len(X_seq)
     train_end = int(n * train_frac)
     val_end = int(n * (train_frac + val_frac))
-    
+
     X_train = X_seq[:train_end]
     y_train = y_seq[:train_end]
     X_val = X_seq[train_end:val_end]
     y_val = y_seq[train_end:val_end]
     X_test = X_seq[val_end:]
     y_test = y_seq[val_end:]
-    
+
     # =========================================================================
     # CLASS WEIGHTS (for imbalanced classes)
     # =========================================================================
-    
+
     # Calculate class weights inversely proportional to frequency
     class_counts = np.bincount(y_train, minlength=4)
     total_samples = len(y_train)
-    
+
     # Avoid division by zero
     class_counts = np.maximum(class_counts, 1)
-    
+
     # Inverse frequency weighting (higher weight for minority classes)
     class_weights = total_samples / (4 * class_counts)
     class_weights = class_weights / class_weights.sum() * 4  # Normalize to sum to 4
-    
+
     # Convert to dict format for Keras
     class_weight_dict = {i: float(class_weights[i]) for i in range(4)}
-    
+
     logger.info(f"Class weights: {class_weight_dict}")
-    
+
     # Calculate sample weights for training
     sample_weights = np.array([class_weights[y] for y in y_train], dtype=np.float32)
-    
+
     result = {
         'X_train': X_train,
         'y_train': y_train,
@@ -2345,10 +2333,10 @@ def load_volatility_regime_data(
         'class_names': regime_names,
         'label_stats': label_stats,
     }
-    
+
     logger.info(f"Volatility regime data: train={len(X_train)}, val={len(X_val)}, test={len(X_test)}, "
                 f"features={len(features)}, seq_len={seq_len}")
-    
+
     return result
 
 
@@ -2368,26 +2356,26 @@ def load_forward_volatility_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for TCN Forward Volatility model: 4-class PREDICTION.
-    
+
     FORWARD-LOOKING: Predicts what volatility regime will exist in `lookahead` bars.
     Unlike load_volatility_regime_data() which classifies CURRENT volatility,
     this function creates labels based on FUTURE ATR percentile.
-    
+
     Classes:
         - 0 = QUIET_NEXT: Future ATR < 25th percentile (skip - low vol expected)
         - 1 = STABLE_NEXT: Future ATR 25th-60th percentile (normal trading)
         - 2 = ACTIVE_NEXT: Future ATR 60th-85th percentile (opportunity!)
         - 3 = EXTREME_NEXT: Future ATR > 85th percentile (caution - reduce size)
-    
+
     Also returns REGRESSION TARGET (% change in volatility) for dual-head model.
-    
+
     Key differences from load_volatility_regime_data():
     1. Uses FUTURE ATR percentile (lookahead bars ahead), not current
     2. Asymmetric thresholds (25/60/85) emphasize ACTIVE_NEXT class
     3. Confidence-based sample weights (large vol changes = high weight)
     4. Returns both classification labels AND regression targets
     5. Includes time features (hour, dow) that predict volatility patterns
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
@@ -2397,20 +2385,20 @@ def load_forward_volatility_data(
         active_threshold: Percentile threshold for ACTIVE_NEXT (default 0.60)
         extreme_threshold: Percentile threshold for EXTREME_NEXT (default 0.85)
         min_change_for_clear: Minimum vol change to count as "clear" label
-    
+
     Returns:
         Dict with X_train, y_train, w_train (weights), regression targets, etc.
     """
     logger.info(f"Loading FORWARD Volatility data (lookahead={lookahead}, thresholds={quiet_threshold}/{active_threshold}/{extreme_threshold})...")
-    
+
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
         df = compute_normalized_features(df)
-    
+
     # =========================================================================
     # FEATURE SELECTION - Volatility predictors (NOT including atr_pct_14 directly)
     # =========================================================================
-    
+
     # Features that PREDICT future volatility (not just measure current)
     volatility_predictors = [
         # Lagged volatility (volatility is autocorrelated)
@@ -2421,13 +2409,13 @@ def load_forward_volatility_data(
         # Candle structure (body/wick ratios predict future moves)
         'upper_wick_ratio', 'lower_wick_ratio', 'body_ratio',
     ]
-    
+
     # Volume features (volume LEADS volatility - key predictor)
     volume_predictors = [
         'volume_ratio_5', 'volume_ratio_10', 'volume_ratio_20',
         'volume_zscore', 'volume_ma_ratio',
     ]
-    
+
     # Momentum features (momentum shifts often precede vol changes)
     momentum_features = [
         'returns_1', 'returns_2', 'returns_5', 'returns_10',
@@ -2435,26 +2423,26 @@ def load_forward_volatility_data(
         'rsi_norm', 'stoch_k_norm',
         'macd_norm', 'macd_hist_norm',
     ]
-    
+
     # Time features (session/day patterns predict volatility)
     time_features = [
         'hour_sin', 'hour_cos', 'dow_sin', 'dow_cos',
         'session_london', 'session_ny', 'session_overlap',
     ]
-    
+
     # Trend/Regime context
     context_features = [
         'zscore_20', 'zscore_50',
         'sma_ratio_20', 'ema_ratio_26',
         'pct_rank_20',
     ]
-    
+
     # Combine all features
     all_features = volatility_predictors + volume_predictors + momentum_features + time_features + context_features
-    
+
     # Filter to available features
     features = _ensure_features_exist(df, all_features)
-    
+
     # Fallback to pattern matching if not enough features
     if len(features) < 15:
         fallback_patterns = ['atr', 'volatility', 'volume', 'returns', 'hour', 'dow', 'session']
@@ -2462,20 +2450,20 @@ def load_forward_volatility_data(
         for f in pattern_features:
             if f not in features and f not in ['open', 'high', 'low', 'close', 'volume', 'time', 'atr_pct_14']:
                 features.append(f)
-    
+
     # NOTE: We intentionally EXCLUDE atr_pct_14 from features if it's the primary
     # label source, to avoid circular feature-label dependency
     # (but include shorter/longer ATR periods as predictors)
-    
+
     if len(features) < 10:
         raise ValueError(f"Forward volatility needs at least 10 features, got {len(features)}")
-    
+
     logger.info(f"Forward volatility features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
-    
+
     # =========================================================================
     # TARGET CREATION - FORWARD-LOOKING 4-Class + Regression
     # =========================================================================
-    
+
     # Get ATR percentage for regime classification
     if 'atr_pct_14' in df.columns:
         atr_pct = df['atr_pct_14'].values.astype(np.float64)
@@ -2484,46 +2472,46 @@ def load_forward_volatility_data(
         close = df['close'].values.astype(np.float64)
         high = df['high'].values.astype(np.float64)
         low = df['low'].values.astype(np.float64)
-        
+
         prev_close = np.roll(close, 1)
         prev_close[0] = close[0]
-        
+
         tr = np.maximum.reduce([
             high - low,
             np.abs(high - prev_close),
             np.abs(low - prev_close)
         ])
-        
+
         atr = np.zeros(len(close), dtype=np.float64)
         for i in range(len(close)):
             if i < 14:
                 atr[i] = np.mean(tr[:i+1]) if i > 0 else tr[0]
             else:
                 atr[i] = np.mean(tr[i-13:i+1])
-        
+
         atr_pct = atr / np.maximum(close, 1e-8)
-    
+
     n = len(atr_pct)
-    
+
     # Calculate rolling percentile of ATR (100-bar lookback)
     lookback = 100
     atr_percentile = np.zeros(n, dtype=np.float64)
-    
+
     for i in range(n):
         if i < lookback:
             window = atr_pct[:i+1]
         else:
             window = atr_pct[i-lookback+1:i+1]
         atr_percentile[i] = np.sum(window <= atr_pct[i]) / len(window)
-    
+
     # FORWARD-LOOKING: Get FUTURE ATR percentile (lookahead bars ahead)
     future_atr_percentile = np.roll(atr_percentile, -lookahead)
     future_atr_pct = np.roll(atr_pct, -lookahead)
-    
+
     # Mark last lookahead rows as invalid (no future data)
     future_atr_percentile[-lookahead:] = np.nan
     future_atr_pct[-lookahead:] = np.nan
-    
+
     # Calculate % change in volatility (regression target)
     vol_change_pct = np.zeros(n, dtype=np.float64)
     for i in range(n - lookahead):
@@ -2534,24 +2522,24 @@ def load_forward_volatility_data(
         else:
             vol_change_pct[i] = 0.0
     vol_change_pct[-lookahead:] = np.nan
-    
+
     # Clip extreme regression targets
     vol_change_pct = np.clip(vol_change_pct, -2.0, 2.0)
-    
+
     # Create classification labels based on FUTURE percentile
     regime_labels = np.zeros(n, dtype=np.int32)
     sample_weights = np.ones(n, dtype=np.float32)
-    
+
     class_names = ['QUIET_NEXT', 'STABLE_NEXT', 'ACTIVE_NEXT', 'EXTREME_NEXT']
-    
+
     for i in range(n - lookahead):
         future_pct = future_atr_percentile[i]
         change = vol_change_pct[i]
-        
+
         if np.isnan(future_pct):
             sample_weights[i] = 0.0
             continue
-        
+
         # Classify by FUTURE percentile
         if future_pct < quiet_threshold:
             regime_labels[i] = 0  # QUIET_NEXT
@@ -2561,7 +2549,7 @@ def load_forward_volatility_data(
             regime_labels[i] = 2  # ACTIVE_NEXT
         else:
             regime_labels[i] = 3  # EXTREME_NEXT
-        
+
         # Confidence-based weighting: more weight on clear regime changes
         abs_change = np.abs(change)
         if abs_change < min_change_for_clear:
@@ -2573,11 +2561,11 @@ def load_forward_volatility_data(
         else:
             # Scale with change size
             sample_weights[i] = 0.5 + abs_change
-    
+
     # Zero weight for last lookahead rows (no future data)
     sample_weights[-lookahead:] = 0.0
     regime_labels[-lookahead:] = 1  # Default to STABLE (doesn't matter, weight=0)
-    
+
     # Log class distribution (before sequencing)
     valid_mask = sample_weights > 0
     valid_labels = regime_labels[valid_mask]
@@ -2585,34 +2573,34 @@ def load_forward_volatility_data(
         unique, counts = np.unique(valid_labels, return_counts=True)
         class_dist = dict(zip(unique, counts))
         logger.info(f"Forward volatility distribution: {', '.join([f'{class_names[k]}={v}' for k, v in class_dist.items()])}")
-    
+
     # =========================================================================
     # FEATURE SCALING (fit on training portion only)
     # =========================================================================
-    
+
     from sklearn.preprocessing import RobustScaler
-    
+
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Temporal split indices (before sequencing)
     train_frac, val_frac, test_frac = split
     n_valid = n - lookahead
     train_end = int(n_valid * train_frac)
     # val_end = int(n_valid * (train_frac + val_frac))
-    
+
     # Fit scaler on training data only
     scaler = RobustScaler()
     X_train_flat = X[:train_end]
     scaler.fit(X_train_flat)
     X_scaled = scaler.transform(X)
     X_scaled = np.clip(X_scaled, -10, 10)  # Clip extreme values
-    
+
     # =========================================================================
     # SEQUENCE CREATION
     # =========================================================================
-    
+
     def create_sequences_with_weights(X, y_class, y_reg, weights, seq_len):
         """Create sequences preserving per-sample weights and regression targets."""
         n_samples = len(X) - seq_len
@@ -2620,69 +2608,69 @@ def load_forward_volatility_data(
         y_class_seq = np.zeros(n_samples, dtype=np.int32)
         y_reg_seq = np.zeros(n_samples, dtype=np.float32)
         w_seq = np.zeros(n_samples, dtype=np.float32)
-        
+
         for i in range(n_samples):
             X_seq[i] = X[i:i+seq_len]
             y_class_seq[i] = y_class[i+seq_len-1]  # Label at end of sequence
             y_reg_seq[i] = y_reg[i+seq_len-1]
             w_seq[i] = weights[i+seq_len-1]
-        
+
         return X_seq, y_class_seq, y_reg_seq, w_seq
-    
+
     X_seq, y_class_seq, y_reg_seq, w_seq = create_sequences_with_weights(
         X_scaled, regime_labels, vol_change_pct, sample_weights, seq_len
     )
-    
+
     logger.info(f"Created {len(X_seq)} sequences of length {seq_len}")
-    
+
     # =========================================================================
     # TEMPORAL SPLIT (on sequences)
     # =========================================================================
-    
+
     n_seq = len(X_seq)
     train_end_seq = int(n_seq * train_frac)
     val_end_seq = int(n_seq * (train_frac + val_frac))
-    
+
     X_train = X_seq[:train_end_seq]
     y_train_class = y_class_seq[:train_end_seq]
     y_train_reg = y_reg_seq[:train_end_seq]
     w_train = w_seq[:train_end_seq]
-    
+
     X_val = X_seq[train_end_seq:val_end_seq]
     y_val_class = y_class_seq[train_end_seq:val_end_seq]
     y_val_reg = y_reg_seq[train_end_seq:val_end_seq]
     w_val = w_seq[train_end_seq:val_end_seq]
-    
+
     X_test = X_seq[val_end_seq:]
     y_test_class = y_class_seq[val_end_seq:]
     y_test_reg = y_reg_seq[val_end_seq:]
     w_test = w_seq[val_end_seq:]
-    
+
     # =========================================================================
     # CLASS WEIGHTS (inverse frequency, computed on training set only)
     # =========================================================================
-    
+
     # Only count samples with weight > 0
     train_valid_mask = w_train > 0
     valid_train_labels = y_train_class[train_valid_mask]
-    
+
     if len(valid_train_labels) > 0:
         class_counts = np.bincount(valid_train_labels, minlength=4)
         total_samples = len(valid_train_labels)
-        
+
         # Avoid division by zero
         class_counts = np.maximum(class_counts, 1)
-        
+
         # Inverse frequency weighting
         class_weights = total_samples / (4 * class_counts)
         class_weights = class_weights / class_weights.sum() * 4  # Normalize
-        
+
         class_weight_dict = {i: float(class_weights[i]) for i in range(4)}
     else:
         class_weight_dict = {0: 1.0, 1: 1.0, 2: 1.0, 3: 1.0}
-    
+
     logger.info(f"Class weights: {class_weight_dict}")
-    
+
     # Calculate label stats
     if len(valid_train_labels) > 0:
         total = len(valid_train_labels)
@@ -2696,7 +2684,7 @@ def load_forward_volatility_data(
         }
     else:
         label_stats = {}
-    
+
     result = {
         # Classification data
         'X_train': X_train,
@@ -2708,12 +2696,12 @@ def load_forward_volatility_data(
         'X_test': X_test,
         'y_test': y_test_class,
         'w_test': w_test,
-        
+
         # Regression data (dual-head)
         'y_train_reg': y_train_reg,
         'y_val_reg': y_val_reg,
         'y_test_reg': y_test_reg,
-        
+
         # Metadata
         'feature_names': features,
         'class_weights': class_weight_dict,
@@ -2723,7 +2711,7 @@ def load_forward_volatility_data(
         'class_names': class_names,
         'label_stats': label_stats,
         'scaler': scaler,
-        
+
         # Regression mapping thresholds (for inference fallback)
         'reg_thresholds': {
             'quiet': -0.15,  # <-15% → QUIET
@@ -2733,10 +2721,10 @@ def load_forward_volatility_data(
             # >+40% → EXTREME
         },
     }
-    
+
     logger.info(f"Forward volatility data: train={len(X_train)}, val={len(X_val)}, test={len(X_test)}, "
                 f"features={len(features)}, seq_len={seq_len}, lookahead={lookahead}")
-    
+
     return result
 
 
@@ -2753,38 +2741,38 @@ def load_xgboost_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for XGBoost model: Momentum analysis from normalized returns.
-    
+
     Features: NORMALIZED returns and momentum indicators (instrument-agnostic)
     Targets:
         - momentum_score (0-1): How fast price is moving
         - acceleration (bool): Is momentum growing or shrinking?
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
         momentum_window: Window for momentum calculation
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
-    
+
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
     """
     logger.info("Loading XGBoost data (momentum analysis)...")
-    
+
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
         df = compute_normalized_features(df)
-    
+
     # NORMALIZED MOMENTUM FEATURES - instrument-agnostic
     normalized_features = get_normalized_feature_names()['momentum']
-    
+
     # Legacy features as fallback
     legacy_features = [
         'returns', 'roc_5', 'roc_10', 'roc_20',
         'high_low_ratio', 'momentum_10', 'macd', 'macd_hist',
         'stoch_k', 'stoch_d', 'mfi',
     ]
-    
+
     # Prefer normalized features, fallback to legacy
     features = _ensure_features_exist(df, normalized_features)
     if len(features) < 10:
@@ -2793,7 +2781,7 @@ def load_xgboost_data(
         for f in legacy_available:
             if f not in features:
                 features.append(f)
-    
+
     # Fallback patterns
     fallback_patterns = ['return', 'atr_pct', 'volatility', 'volume_ratio', 'macd_norm', 'rsi_norm']
     if len(features) < 5:
@@ -2801,52 +2789,52 @@ def load_xgboost_data(
         for f in pattern_features:
             if f not in features and f not in ['open', 'high', 'low', 'close', 'volume', 'time']:
                 features.append(f)
-    
+
     if len(features) < 5:
         raise ValueError(f"XGBoost needs at least 5 features, got {len(features)}")
-    
+
     logger.info(f"XGBoost features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
-    
+
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
-    
+
     # Create momentum targets
     close = df['close'].values
     n = len(close)
-    
+
     # Calculate rolling momentum as absolute return rate
     returns = np.zeros(n, dtype=np.float32)
     for i in range(1, n):
         returns[i] = (close[i] - close[i-1]) / max(close[i-1], 1e-8)
-    
+
     # Calculate raw rolling momentum first
     raw_momentum_all = np.zeros(n, dtype=np.float32)
     for i in range(momentum_window, n):
         window_returns = np.abs(returns[i-momentum_window:i])
         raw_momentum_all[i] = np.mean(window_returns)
-    
+
     # Drop initial rows without valid momentum BEFORE splitting
     # This ensures consistent indexing for train/val/test
     valid_start = momentum_window + 5
     X = X[valid_start:]
     raw_momentum_valid = raw_momentum_all[valid_start:]
-    
+
     # Verify arrays have same length for consistent indexing
     assert len(X) == len(raw_momentum_valid), \
         f"Array length mismatch: X={len(X)}, raw_momentum_valid={len(raw_momentum_valid)}"
-    
+
     # Handle NaN/Inf in features
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Temporal split FIRST - before computing normalization factors
     # This prevents data leakage from val/test into training normalization
     train_idx, val_idx, test_idx = temporal_split(len(X), *split)
-    
+
     # STABLE NORMALIZATION: Compute percentiles from TRAINING DATA ONLY
     # This prevents data leakage - val/test distributions not seen during training
     train_raw_momentum = raw_momentum_valid[train_idx]
     train_raw_valid = train_raw_momentum[train_raw_momentum > 0]
-    
+
     if len(train_raw_valid) > 0:
         p50_momentum = np.percentile(train_raw_valid, 50)  # Median momentum (train only)
         p90_momentum = np.percentile(train_raw_valid, 90)  # High momentum (train only)
@@ -2857,13 +2845,13 @@ def load_xgboost_data(
         p50_momentum = 0.0
         p90_momentum = 0.0
         norm_factor = 0.001
-    
+
     logger.info(f"XGBoost momentum (train-only): P50={p50_momentum:.6f}, P90={p90_momentum:.6f}, norm_factor={norm_factor:.6f}")
-    
+
     # Normalize raw momentum to 0-1 scale using training-derived factor
     # Apply same normalization to all splits
     momentum_score = np.minimum(raw_momentum_valid / norm_factor, 1.0)
-    
+
     # Acceleration: Is momentum growing? Compare current vs previous momentum
     # Note: We already dropped momentum_window rows, so we have momentum for all remaining
     acceleration = np.zeros(len(momentum_score), dtype=np.float32)
@@ -2871,13 +2859,13 @@ def load_xgboost_data(
         current_mom = momentum_score[i]
         prev_mom = momentum_score[i - 5]
         acceleration[i] = 1.0 if current_mom > prev_mom else 0.0
-    
+
     # Combine targets: [momentum_score, acceleration]
     y = np.column_stack([momentum_score, acceleration]).astype(np.float32)
-    
+
     # Handle NaN/Inf in targets
     y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Optionally append instrument one-hot encoding for joint multi-pair training
     instrument_feature_names = []
     if include_instrument_features and instrument is not None:
@@ -2889,7 +2877,7 @@ def load_xgboost_data(
         X_train_aug = X[train_idx]
         X_val_aug = X[val_idx]
         X_test_aug = X[test_idx]
-    
+
     result = {
         'X_train': X_train_aug,
         'y_train': y[train_idx],
@@ -2901,7 +2889,7 @@ def load_xgboost_data(
         'momentum_norm_factor': float(norm_factor),  # Save for inference
         'instrument': instrument,
     }
-    
+
     logger.info(f"XGBoost data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
     return result
 
@@ -2919,38 +2907,38 @@ def load_rf_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for Random Forest model: Risk assessment.
-    
+
     Features: NORMALIZED volatility and risk indicators (instrument-agnostic)
     Targets:
         - expected_drawdown_pct: Max adverse excursion as % of price (not pips!)
         - streak_prob: Probability that losing streak exceeds threshold
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
         drawdown_horizon: Bars ahead to measure drawdown
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
-    
+
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
     """
     logger.info("Loading Random Forest data (risk assessment)...")
-    
+
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
         df = compute_normalized_features(df)
-    
+
     # NORMALIZED RISK FEATURES - instrument-agnostic
     normalized_features = get_normalized_feature_names()['risk']
-    
+
     # Legacy features as fallback
     legacy_features = [
         'atr', 'volatility_5', 'volatility_10', 'volatility_20',
         'high_low_ratio', 'bb_width_20',
         'returns', 'momentum_10',
     ]
-    
+
     # Prefer normalized features, fallback to legacy
     features = _ensure_features_exist(df, normalized_features)
     if len(features) < 10:
@@ -2959,7 +2947,7 @@ def load_rf_data(
         for f in legacy_available:
             if f not in features:
                 features.append(f)
-    
+
     # Fallback patterns
     fallback_patterns = ['atr_pct', 'volatility', 'tr_pct', 'hl_range', 'zscore', 'return']
     if len(features) < 5:
@@ -2967,15 +2955,15 @@ def load_rf_data(
         for f in pattern_features:
             if f not in features and f not in ['open', 'high', 'low', 'close', 'volume', 'time']:
                 features.append(f)
-    
+
     if len(features) < 5:
         raise ValueError(f"RF needs at least 5 features, got {len(features)}")
-    
+
     logger.info(f"RF features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
-    
+
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
-    
+
     # Calculate risk targets based on ACTUAL FORWARD DRAWDOWN (no target leakage)
     # Previous approach used atr_pct * 2 which is trivially recoverable from input features.
     # Now we compute actual max adverse excursion over the next `drawdown_horizon` bars.
@@ -2984,9 +2972,9 @@ def load_rf_data(
     low = df['low'].values.astype(np.float64)
     n = len(close)
     drawdown_horizon = 24  # Look ahead 24 bars (1 day for H1)
-    
+
     # Compute actual forward max drawdown for each bar
-    # For LONG: max drawdown = (entry - min_low_ahead) / entry  
+    # For LONG: max drawdown = (entry - min_low_ahead) / entry
     # For SHORT: max drawdown = (max_high_ahead - entry) / entry
     # Use the WORST case (max of both directions)
     expected_drawdown_pct = np.zeros(n, dtype=np.float32)
@@ -2996,45 +2984,45 @@ def load_rf_data(
             continue
         future_lows = low[i+1:i+1+drawdown_horizon]
         future_highs = high[i+1:i+1+drawdown_horizon]
-        
+
         # Max adverse for long position
         long_drawdown = (entry - np.min(future_lows)) / entry
         # Max adverse for short position
         short_drawdown = (np.max(future_highs) - entry) / entry
         # Take the worst case
         expected_drawdown_pct[i] = max(long_drawdown, short_drawdown)
-    
+
     # Fill last `drawdown_horizon` bars with rolling mean
     if n > drawdown_horizon + 100:
         fill_val = np.mean(expected_drawdown_pct[n-drawdown_horizon-100:n-drawdown_horizon])
     else:
         fill_val = np.mean(expected_drawdown_pct[:max(1, n-drawdown_horizon)])
     expected_drawdown_pct[n-drawdown_horizon:] = fill_val
-    
+
     # Clip to realistic range
     expected_drawdown_pct = np.clip(expected_drawdown_pct, 0.0001, 0.10).astype(np.float32)
-    
+
     logger.info(f"RF: Forward drawdown range [{np.min(expected_drawdown_pct):.4f}, "
                 f"{np.max(expected_drawdown_pct):.4f}], mean={np.mean(expected_drawdown_pct):.4f}")
-    
+
     # Streak probability based on recent volatility trend
     # High volatility increasing = higher streak probability
     volatility_10 = df['volatility_10'].values.astype(np.float64) if 'volatility_10' in df.columns else None
     volatility_20 = df['volatility_20'].values.astype(np.float64) if 'volatility_20' in df.columns else None
-    
+
     # Fallback if volatility columns not available
     if volatility_10 is None or np.nansum(np.abs(volatility_10)) < 1e-10:
         logger.info("RF: Computing volatility_10 manually")
         returns = np.diff(close, prepend=close[0]) / np.maximum(np.roll(close, 1), 1e-8)
         returns[0] = 0
         volatility_10 = np.array([np.std(returns[max(0, i-9):i+1]) if i >= 1 else 0.01 for i in range(n)])
-    
+
     if volatility_20 is None or np.nansum(np.abs(volatility_20)) < 1e-10:
         logger.info("RF: Computing volatility_20 manually")
         returns = np.diff(close, prepend=close[0]) / np.maximum(np.roll(close, 1), 1e-8)
         returns[0] = 0
         volatility_20 = np.array([np.std(returns[max(0, i-19):i+1]) if i >= 1 else 0.01 for i in range(n)])
-    
+
     streak_prob = np.zeros(n, dtype=np.float32)
     for i in range(20, n):
         # If short-term vol > long-term vol, higher streak probability
@@ -3043,30 +3031,30 @@ def load_rf_data(
             streak_prob[i] = np.clip((vol_ratio - 0.8) / 0.4, 0, 1)  # 0.8->0, 1.2->1
         else:
             streak_prob[i] = 0.5
-    
+
     # Fill early values with mean
     mean_streak = np.mean(streak_prob[20:]) if n > 20 else 0.5
     streak_prob[:20] = mean_streak
-    
+
     logger.info(f"RF targets: drawdown_pct range [{np.min(expected_drawdown_pct):.4f}, {np.max(expected_drawdown_pct):.4f}], "
                 f"streak range [{np.min(streak_prob):.4f}, {np.max(streak_prob):.4f}]")
-    
+
     # Combine targets: [expected_drawdown_pct, streak_prob]
     y = np.column_stack([expected_drawdown_pct, streak_prob]).astype(np.float32)
-    
+
     # No need to drop rows - we're not using future data anymore
     # Just drop first 20 rows for volatility calculation warmup
     valid_start = 20
     X = X[valid_start:]
     y = y[valid_start:]
-    
+
     # Handle NaN/Inf
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     y = np.nan_to_num(y, nan=0.0, posinf=1.0, neginf=0.0)
-    
+
     # Temporal split
     train_idx, val_idx, test_idx = temporal_split(len(X), *split)
-    
+
     # Optionally append instrument one-hot encoding for joint multi-pair training
     instrument_feature_names = []
     if include_instrument_features and instrument is not None:
@@ -3078,7 +3066,7 @@ def load_rf_data(
         X_train_aug = X[train_idx]
         X_val_aug = X[val_idx]
         X_test_aug = X[test_idx]
-    
+
     result = {
         'X_train': X_train_aug,
         'y_train': y[train_idx],
@@ -3089,7 +3077,7 @@ def load_rf_data(
         'feature_names': features + instrument_feature_names,
         'instrument': instrument,
     }
-    
+
     logger.info(f"RF data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
     return result
 
@@ -3107,38 +3095,38 @@ def load_ridge_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for Ridge model: Confidence scoring from NORMALIZED variance and volume.
-    
+
     Features: NORMALIZED volatility, volume ratios, stability metrics (instrument-agnostic)
     Target: Confidence score (0-100)
         - High confidence: Low variance + smooth volume increase
         - Low confidence: High variance + volume spikes/drops
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
         confidence_window: Window for stability calculation
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
-    
+
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
     """
     logger.info("Loading Ridge data (confidence scoring)...")
-    
+
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
         df = compute_normalized_features(df)
-    
+
     # NORMALIZED CONFIDENCE FEATURES - instrument-agnostic
     normalized_features = get_normalized_feature_names()['confidence']
-    
+
     # Legacy features as fallback
     legacy_features = [
         'volatility_5', 'volatility_10', 'volatility_20',
         'atr', 'bb_width_20', 'bb_position_20',
         'adx', 'returns',
     ]
-    
+
     # Prefer normalized features, fallback to legacy
     features = _ensure_features_exist(df, normalized_features)
     if len(features) < 8:
@@ -3147,7 +3135,7 @@ def load_ridge_data(
         for f in legacy_available:
             if f not in features:
                 features.append(f)
-    
+
     # Fallback patterns
     fallback_patterns = ['atr_pct', 'volatility', 'volume_ratio', 'sma_ratio', 'return', 'zscore']
     if len(features) < 5:
@@ -3155,29 +3143,29 @@ def load_ridge_data(
         for f in pattern_features:
             if f not in features and f not in ['open', 'high', 'low', 'close', 'volume', 'time']:
                 features.append(f)
-    
+
     if len(features) < 5:
         raise ValueError(f"Ridge needs at least 5 features, got {len(features)}")
-    
+
     logger.info(f"Ridge features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
-    
+
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
-    
+
     # Calculate confidence based on TREND CLARITY (learnable from ADX, RSI, volatility)
     # High confidence = strong trend (high ADX) + RSI not extreme + low volatility
     # This IS learnable because these are computed from the same features!
     n = len(df)
-    
+
     # Get indicators
     adx = df['adx'].values if 'adx' in df.columns else np.ones(n) * 25
     rsi = df['rsi'].values if 'rsi' in df.columns else np.ones(n) * 50
     atr_pct = df['atr_pct_14'].values if 'atr_pct_14' in df.columns else np.ones(n) * 0.01
-    
+
     # Additional indicators for richer confidence signal
     bb_pos = df['bb_position_20'].values if 'bb_position_20' in df.columns else np.ones(n) * 0.5
     volume_ratio = df['volume_ratio_20'].values if 'volume_ratio_20' in df.columns else np.ones(n) * 1.0
-    
+
     # Drop initial rows without valid confidence BEFORE splitting
     valid_start = confidence_window
     X = X[valid_start:]
@@ -3186,18 +3174,18 @@ def load_ridge_data(
     atr_pct_valid_range = atr_pct[valid_start:]
     bb_pos_valid_range = bb_pos[valid_start:]
     volume_ratio_valid_range = volume_ratio[valid_start:]
-    
+
     # Verify arrays have same length for consistent indexing
     assert len(X) == len(adx_valid_range) == len(rsi_valid_range), \
         f"Array length mismatch: X={len(X)}, adx={len(adx_valid_range)}, rsi={len(rsi_valid_range)}"
-    
+
     # Handle NaN/Inf in features
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Temporal split FIRST - before computing normalization factors
     # This prevents data leakage from val/test into training normalization
     train_idx, val_idx, test_idx = temporal_split(len(X), *split)
-    
+
     # Compute ADX percentile thresholds from TRAINING DATA ONLY for better scaling
     # This prevents data leakage - val/test distributions not seen during training
     train_adx = adx_valid_range[train_idx]
@@ -3205,38 +3193,38 @@ def load_ridge_data(
     adx_p25 = np.percentile(train_adx_valid, 25) if len(train_adx_valid) > 0 else 15
     adx_p75 = np.percentile(train_adx_valid, 75) if len(train_adx_valid) > 0 else 30
     adx_range = max(adx_p75 - adx_p25, 5)  # Avoid division by zero
-    
+
     logger.info(f"Ridge ADX (train-only): P25={adx_p25:.2f}, P75={adx_p75:.2f}, range={adx_range:.2f}")
-    
+
     # Calculate confidence scores using training-derived percentiles
     # Apply same normalization to all data (train/val/test)
     confidence = np.zeros(len(X), dtype=np.float32)
-    
+
     for i in range(len(X)):
         # ===== ADX component: Strong trend = high confidence =====
         # Use percentile-based scaling for the instrument's actual ADX range (train-derived)
         # Maps ADX to [0, 1] where p25->0.25, p75->0.75, p90+->1.0
         adx_normalized = (adx_valid_range[i] - adx_p25) / adx_range
         adx_score = np.clip(adx_normalized * 0.5 + 0.25, 0.0, 1.0)
-        
+
         # ===== RSI component: Not extreme = high confidence =====
         # RSI 40-60: high confidence (centered), 30-70: medium, outside: low
         rsi_distance = abs(rsi_valid_range[i] - 50)
         rsi_score = max(0, 1.0 - rsi_distance / 25)  # 50->1, 25/75->0
-        
+
         # ===== Volatility component: Low vol = high confidence =====
         # Use instrument-relative scaling (ATR% typically 0.3%-1.5% for FX)
         vol_score = np.clip(1.0 - atr_pct_valid_range[i] / 0.015, 0.0, 1.0)
-        
+
         # ===== Bollinger Band position: Middle = high confidence =====
         # BB position 0.3-0.7: confident middle, extremes: overbought/oversold
         bb_distance = abs(bb_pos_valid_range[i] - 0.5)
         bb_score = max(0, 1.0 - bb_distance * 2.5)  # 0.5->1, 0.1/0.9->0
-        
+
         # ===== Volume confirmation: Above average = high confidence =====
         # Volume ratio > 1.0: good conviction, < 0.7: low conviction
         vol_conf_score = np.clip((volume_ratio_valid_range[i] - 0.7) / 0.6, 0.0, 1.0)
-        
+
         # ===== Combine with weights =====
         # ADX: 35% (trend strength)
         # RSI: 20% (not overbought/oversold)
@@ -3244,22 +3232,22 @@ def load_ridge_data(
         # BB Position: 15% (price location)
         # Volume: 10% (conviction)
         raw_conf = (
-            adx_score * 0.35 + 
-            rsi_score * 0.20 + 
-            vol_score * 0.20 + 
-            bb_score * 0.15 + 
+            adx_score * 0.35 +
+            rsi_score * 0.20 +
+            vol_score * 0.20 +
+            bb_score * 0.15 +
             vol_conf_score * 0.10
         )
-        
+
         # Scale to 0-100 with slight boost for high-quality setups
         # Base range 20-80, can reach 10-95 with extreme values
         confidence[i] = 20 + raw_conf * 75  # Maps [0,1] -> [20,95]
-    
+
     y = confidence.astype(np.float32)
-    
+
     # Handle NaN/Inf in targets
     y = np.nan_to_num(y, nan=50.0, posinf=100.0, neginf=0.0)
-    
+
     # Optionally append instrument one-hot encoding for joint multi-pair training
     instrument_feature_names = []
     if include_instrument_features and instrument is not None:
@@ -3271,7 +3259,7 @@ def load_ridge_data(
         X_train_aug = X[train_idx]
         X_val_aug = X[val_idx]
         X_test_aug = X[test_idx]
-    
+
     result = {
         'X_train': X_train_aug,
         'y_train': y[train_idx],
@@ -3284,7 +3272,7 @@ def load_ridge_data(
         'adx_p75': float(adx_p75),  # Save for inference
         'instrument': instrument,
     }
-    
+
     logger.info(f"Ridge data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
     return result
 
@@ -3303,13 +3291,13 @@ def load_volatility_regime_data(
 ) -> Dict[str, np.ndarray]:
     """
     Load data for TCN volatility regime classification.
-    
+
     TCN acts as entry timing filter - only trade when volatility is HIGH or EXTREME.
     Uses 4-class classification: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME based on ATR percentile.
-    
+
     Features: NORMALIZED volatility indicators (ATR, returns volatility, BB width)
     Target: Volatility regime (0-3) based on rolling ATR percentile
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
@@ -3317,19 +3305,19 @@ def load_volatility_regime_data(
         thresholds: Percentile boundaries [LOW/NORMAL, NORMAL/HIGH, HIGH/EXTREME]
         instrument: Optional pair name for instrument encoding
         include_instrument_features: If True, append instrument one-hot encoding
-    
+
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
     """
     if thresholds is None:
         thresholds = [0.25, 0.60, 0.85]
-    
+
     logger.info(f"Loading volatility regime data (lookback={lookback_bars}, thresholds={thresholds})...")
-    
+
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
         df = compute_normalized_features(df)
-    
+
     # VOLATILITY-FOCUSED FEATURES for regime classification
     # TCN needs features that capture volatility patterns at multiple scales
     volatility_features = [
@@ -3348,7 +3336,7 @@ def load_volatility_regime_data(
         # ADX (trend strength often correlates with volatility)
         'adx',
     ]
-    
+
     # Get available features
     features = _ensure_features_exist(df, volatility_features)
 
@@ -3367,12 +3355,12 @@ def load_volatility_regime_data(
 
     if len(features) < 5:
         raise ValueError(f"Volatility regime model needs at least 5 features, got {len(features)}")
-    
+
     logger.info(f"Volatility regime features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
-    
+
     # Extract feature matrix
     X = df[features].values.astype(np.float32)
-    
+
     # Compute volatility regime labels using compute_volatility_regime()
     vol_config = VolatilityRegimeConfig(
         lookback_bars=lookback_bars,
@@ -3393,25 +3381,25 @@ def load_volatility_regime_data(
             f"If you see float values like 0.5, ensure the continuous 'volatility_regime' "
             f"feature from FeatureEngineering is not being used as labels."
         )
-    
+
     # Skip initial bars where we don't have enough lookback
     valid_start = lookback_bars
     X = X[valid_start:]
     y = y[valid_start:]
-    
+
     # Handle NaN/Inf in features
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-    
+
     # Temporal split
     train_idx, val_idx, test_idx = temporal_split(len(X), *split)
-    
+
     # Log class distribution
     unique, counts = np.unique(y, return_counts=True)
     for cls, count in zip(unique, counts):
         pct = count / len(y) * 100
         regime_name = VOL_REGIME_NAMES.get(cls, f'REGIME_{cls}')
         logger.info(f"  {regime_name}: {count} ({pct:.1f}%)")
-    
+
     # Optionally append instrument one-hot encoding for joint multi-pair training
     instrument_feature_names = []
     if include_instrument_features and instrument is not None:
@@ -3423,7 +3411,7 @@ def load_volatility_regime_data(
         X_train_aug = X[train_idx]
         X_val_aug = X[val_idx]
         X_test_aug = X[test_idx]
-    
+
     result = {
         'X_train': X_train_aug,
         'y_train': y[train_idx],
@@ -3436,7 +3424,7 @@ def load_volatility_regime_data(
         'thresholds': thresholds,
         'instrument': instrument,
     }
-    
+
     logger.info(f"Volatility regime data: train={len(train_idx)}, val={len(val_idx)}, test={len(test_idx)}, features={len(features)}")
     return result
 
@@ -3457,18 +3445,18 @@ def validate_no_leakage(
 ) -> Dict[str, bool]:
     """
     Validate that there is no data leakage across train/val/test splits.
-    
+
     This function checks for common signs of data leakage:
     1. Feature means too similar across splits (suggests global normalization)
     2. Feature-target correlations identical across splits (suggests shared computation)
     3. Target distributions suspiciously similar
-    
+
     Args:
         X_train, X_val, X_test: Feature matrices
         y_train, y_val, y_test: Target arrays
         max_correlation: Maximum allowed correlation between split means (default 0.99)
         target_std_tolerance: Tolerance for target std comparison (default 0.01 = 1%)
-    
+
     Returns:
         Dict with validation results:
             - 'passed': Overall pass/fail
@@ -3477,75 +3465,75 @@ def validate_no_leakage(
             - 'warnings': List of any warnings
     """
     warnings = []
-    
+
     # Check 1: Feature means should differ across splits
     train_mean = X_train.mean(axis=0)
     val_mean = X_val.mean(axis=0)
     test_mean = X_test.mean(axis=0)
-    
+
     # Handle edge cases for correlation calculation
     # - Single feature: set correlation to 0 (can't compute meaningfully)
     # - Zero variance: corrcoef may produce NaN/inf
     train_val_corr = 0.0
     train_test_corr = 0.0
-    
+
     if len(train_mean) > 1:
         # Check for zero variance which would cause NaN in corrcoef
         train_std = np.std(train_mean)
         val_std = np.std(val_mean)
         test_std = np.std(test_mean)
-        
+
         if train_std > 1e-10 and val_std > 1e-10:
             try:
                 train_val_corr = np.corrcoef(train_mean, val_mean)[0, 1]
             except (FloatingPointError, RuntimeWarning):
                 train_val_corr = 0.0
-        
+
         if train_std > 1e-10 and test_std > 1e-10:
             try:
                 train_test_corr = np.corrcoef(train_mean, test_mean)[0, 1]
             except (FloatingPointError, RuntimeWarning):
                 train_test_corr = 0.0
-    
+
     # Handle NaN correlations (can still occur in edge cases)
     train_val_corr = 0.0 if np.isnan(train_val_corr) or np.isinf(train_val_corr) else train_val_corr
     train_test_corr = 0.0 if np.isnan(train_test_corr) or np.isinf(train_test_corr) else train_test_corr
-    
+
     feature_means_ok = train_val_corr < max_correlation and train_test_corr < max_correlation
-    
+
     if not feature_means_ok:
         warnings.append(f"Feature means too similar: train-val corr={train_val_corr:.4f}, train-test corr={train_test_corr:.4f}")
         logger.warning(f"⚠️ Potential data leakage: {warnings[-1]}")
-    
+
     # Check 2: Target distributions should differ across temporal splits
     y_train_flat = y_train.flatten() if len(y_train.shape) > 1 else y_train
     y_val_flat = y_val.flatten() if len(y_val.shape) > 1 else y_val
     y_test_flat = y_test.flatten() if len(y_test.shape) > 1 else y_test
-    
+
     train_target_std = np.std(y_train_flat)
     val_target_std = np.std(y_val_flat)
     test_target_std = np.std(y_test_flat)
-    
+
     # For temporal data, we expect some drift in target statistics
     # If all stds are identical (within tolerance), it might indicate shared computation
     std_ratio_val = val_target_std / max(train_target_std, 1e-8)
     std_ratio_test = test_target_std / max(train_target_std, 1e-8)
-    
+
     lower_bound = 1.0 - target_std_tolerance
     upper_bound = 1.0 + target_std_tolerance
     target_distributions_ok = not (lower_bound < std_ratio_val < upper_bound and lower_bound < std_ratio_test < upper_bound)
-    
+
     if not target_distributions_ok:
         warnings.append(f"Target std identical across splits: train={train_target_std:.6f}, val={val_target_std:.6f}, test={test_target_std:.6f}")
         logger.warning(f"⚠️ Possible target computation issue: {warnings[-1]}")
-    
+
     passed = feature_means_ok and target_distributions_ok
-    
+
     if passed:
         logger.info("✅ No data leakage detected")
     else:
         logger.warning("❌ Potential data leakage detected - review data preparation")
-    
+
     return {
         'passed': passed,
         'feature_means_ok': feature_means_ok,
@@ -3572,10 +3560,10 @@ def load_all_modular_data(
 ) -> Dict[str, Dict[str, np.ndarray]]:
     """
     Load data for all enabled models using unified configuration.
-    
+
     IMPORTANT: First computes normalized features that are instrument-agnostic.
     This allows models trained on one pair to work on any other pair.
-    
+
     Args:
         df: DataFrame with OHLCV and features
         split: (train_frac, val_frac, test_frac)
@@ -3585,7 +3573,7 @@ def load_all_modular_data(
         regime_lookback: Bars to look back for regime detection
         regime_lookahead: Bars ahead to confirm regime
         models_to_load: List of model names to load (None = all enabled)
-    
+
     Returns:
         Dict mapping model names to their data dictionaries
         Keys match data_key values from MODEL_REGISTRY:
@@ -3595,14 +3583,14 @@ def load_all_modular_data(
         - 'lightgbm', 'ridge' for confidence models
         - 'histgb' for hybrid voting model
     """
-    from src.training.model_config import get_registry, get_enabled_models, get_model_config
-    
+    from src.training.model_config import get_registry, get_enabled_models
+
     # FIRST: Compute normalized features (instrument-agnostic)
     # This is the key to making models work across different currency pairs
     logger.info("Computing normalized features for instrument-agnostic training...")
     df_normalized = compute_normalized_features(df)
     logger.info(f"DataFrame now has {len(df_normalized.columns)} columns after normalization")
-    
+
     # SECOND: Apply FeatureEngineering to add advanced features
     # This ensures training uses the same features as inference
     try:
@@ -3610,7 +3598,7 @@ def load_all_modular_data(
         fe = FeatureEngineering({})
         # Don't apply candle smoothing (already done by compute_normalized_features if needed)
         df_fe = fe.create_features(df.copy(), include_all=True, apply_candle_smoothing=False)
-        
+
         # Merge features from FeatureEngineering that aren't already present
         # Use index-based join to handle potential row count differences
         new_cols = [c for c in df_fe.columns if c not in df_normalized.columns]
@@ -3620,33 +3608,33 @@ def load_all_modular_data(
             logger.info(f"Added {len(new_cols)} features from FeatureEngineering, total={len(df_normalized.columns)}")
     except Exception as e:
         logger.warning(f"FeatureEngineering failed (features may be incomplete): {e}")
-    
+
     # Clean any NaN/inf from merged features
     df_normalized = df_normalized.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0)
-    
+
     # Get MODEL_REGISTRY with initialized imports
     registry = get_registry()
-    
+
     # Determine which models to load
     if models_to_load is None:
         models_to_load = get_enabled_models()
     else:
         # Filter to only include models that exist in registry
         models_to_load = [m for m in models_to_load if m in registry]
-    
+
     logger.info(f"Loading data for {len(models_to_load)} models: {models_to_load}")
-    
+
     # Load data for each model
     result = {}
-    
+
     for model_name in models_to_load:
         config = registry[model_name]
-        
+
         # Skip if data loader not available
         if config.data_loader_func is None:
             logger.warning(f"No data loader for {model_name}, skipping")
             continue
-        
+
         # Load data with model-specific parameters
         try:
             if model_name == 'transformer_regime':
@@ -3667,15 +3655,15 @@ def load_all_modular_data(
             else:
                 # Default: no extra params
                 data = config.data_loader_func(df_normalized, split)
-            
+
             # Store result using data_key from config
             result[config.data_key] = data
             logger.info(f"✓ Loaded data for {model_name} -> {config.data_key} "
-                       f"({len(data.get('X_train', []))} train samples)")
+                        f"({len(data.get('X_train', []))} train samples)")
         except Exception as e:
             logger.error(f"Failed to load data for {model_name}: {e}")
             result[config.data_key] = None
-    
+
     # Load volatility regime data for TCN volatility filter (separate from direction/regime)
     # This is used by train_all_modular() for the TCN Volatility Regime Filter
     # The TCN volatility filter is independent of direction/regime models
@@ -3707,9 +3695,9 @@ def load_all_modular_data(
             logger.info("Using DIRECTION prediction mode (Transformer)")
         elif 'tcn' in result and result['tcn'] is not None:
             logger.info("Using DIRECTION prediction mode (TCN)")
-    
+
     # Log summary
     loaded_keys = [k for k, v in result.items() if v is not None]
     logger.info(f"Data loading complete: {len(loaded_keys)} models loaded, {len(result) - len(loaded_keys)} failed")
-    
+
     return result

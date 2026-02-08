@@ -14,7 +14,7 @@ output_calibration = meta.get('output_calibration', {})
 print('Calibration:', output_calibration)
 
 # Load model and make a prediction
-import keras
+import keras  # noqa: E402
 model_path = Path('trained_data/models/EUR_USD/transformer_direction.keras')
 model = keras.models.load_model(str(model_path), compile=False)
 

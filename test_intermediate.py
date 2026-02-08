@@ -4,7 +4,6 @@ import pickle
 import numpy as np
 from pathlib import Path
 import keras
-import tensorflow as tf
 
 # Load model and meta
 meta_path = Path('trained_data/models/EUR_USD/transformer_direction.meta.pkl')

@@ -7,14 +7,14 @@ These configurations are optimized for Apple Silicon (M1/M2/M3) Metal GPU perfor
 
 Example usage:
     from src.training.training_config import BuddyTrainingOptions, OandaFetchOptions
-    
+
     # Create training options with OANDA fetch
     opts = BuddyTrainingOptions(
         oanda_fetch=OandaFetchOptions(instrument="EUR_USD", granularity="H1"),
         epochs=200,
         batch_size=128,
     )
-    
+
     # Create from dict (backward compatibility)
     opts = BuddyTrainingOptions.from_dict({"epochs": 100, "batch_size": 64})
 """
@@ -28,7 +28,7 @@ from typing import Any
 @dataclass(frozen=True)
 class OandaFetchOptions:
     """Configuration for fetching data from OANDA API.
-    
+
     Attributes:
         instrument: Trading instrument (e.g., "EUR_USD", "USD_JPY").
         granularity: Candle timeframe (e.g., "M5", "H1", "D").
@@ -48,8 +48,8 @@ class OandaFetchOptions:
             raise ValueError(f"candles must be positive, got {self.candles}")
         if not self.instrument:
             raise ValueError("instrument cannot be empty")
-        valid_granularities = {"S5", "S10", "S15", "S30", "M1", "M2", "M4", "M5", 
-                               "M10", "M15", "M30", "H1", "H2", "H3", "H4", "H6", 
+        valid_granularities = {"S5", "S10", "S15", "S30", "M1", "M2", "M4", "M5",
+                               "M10", "M15", "M30", "H1", "H2", "H3", "H4", "H6",
                                "H8", "H12", "D", "W", "M"}
         if self.granularity not in valid_granularities:
             raise ValueError(f"Invalid granularity: {self.granularity}. Must be one of {valid_granularities}")
@@ -57,10 +57,10 @@ class OandaFetchOptions:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> OandaFetchOptions:
         """Create OandaFetchOptions from a dictionary (for backward compatibility).
-        
+
         Args:
             data: Dictionary with option values.
-            
+
         Returns:
             New OandaFetchOptions instance.
         """
@@ -76,13 +76,13 @@ class OandaFetchOptions:
 @dataclass(frozen=True)
 class BuddyTrainingAdvancedOptions:
     """Advanced training options for Buddy model.
-    
+
     Includes options for:
     - Checkpoint initialization
     - Early stopping configuration
     - Feature engineering (smoothing, top features, filtering)
     - Tier-2 calibration for win probability estimation
-    
+
     Attributes:
         init_from: Path to checkpoint for weight initialization.
         es_monitor: Early stopping monitor metric (direction|combined|val_loss|loss).
@@ -143,10 +143,10 @@ class BuddyTrainingAdvancedOptions:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BuddyTrainingAdvancedOptions:
         """Create BuddyTrainingAdvancedOptions from a dictionary.
-        
+
         Args:
             data: Dictionary with option values.
-            
+
         Returns:
             New BuddyTrainingAdvancedOptions instance.
         """
@@ -177,28 +177,28 @@ class BuddyTrainingAdvancedOptions:
 @dataclass(frozen=True)
 class BuddyTrainingOptions:
     """Training options for Buddy model.
-    
+
     M1 Metal Optimizations Applied:
     - model_type: "tcn" - 2-3x faster than LSTM (parallelizable convolutions)
     - batch_size: 128 (was 32) - better GPU utilization
     - mixed_precision: True (was False) - 1.5-2x speedup
     - steps_per_execution: 10 (was 1) - reduces Python overhead
     - lr: 0.0005 (was 0.001) - more stable convergence
-    
+
     Model Types:
     - "tcn": Temporal Convolutional Network (RECOMMENDED for M1 - fastest)
     - "lstm": Legacy LSTM (slower on Metal, avoid unless necessary)
     - "attention_lstm": LSTM with attention (slower but more accurate)
-    
+
     Enterprise Training (MLOps):
     - enterprise: Enable MLflow tracking, CV, bootstrap CI
     - cv_folds: Walk-forward cross-validation folds
     - bootstrap: Bootstrap confidence intervals
-    
+
     Multi-Pair Pre-training:
     - multi_pair: Train foundation model on multiple pairs simultaneously
     - foundation_pairs: Comma-separated list of pairs for pre-training
-    
+
     Attributes:
         oanda_fetch: Options for OANDA data fetching.
         advanced: Advanced training options.
@@ -305,22 +305,22 @@ class BuddyTrainingOptions:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BuddyTrainingOptions:
         """Create BuddyTrainingOptions from a dictionary (for backward compatibility).
-        
+
         Args:
             data: Dictionary with option values. Nested dicts for 'oanda_fetch'
                   and 'advanced' are automatically converted.
-            
+
         Returns:
             New BuddyTrainingOptions instance.
         """
         oanda_fetch = None
         if "oanda_fetch" in data and data["oanda_fetch"]:
             oanda_fetch = OandaFetchOptions.from_dict(data["oanda_fetch"])
-        
+
         advanced = None
         if "advanced" in data and data["advanced"]:
             advanced = BuddyTrainingAdvancedOptions.from_dict(data["advanced"])
-        
+
         return cls(
             oanda_fetch=oanda_fetch,
             advanced=advanced,
@@ -364,7 +364,7 @@ class BuddyTrainingOptions:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation.
-        
+
         Returns:
             Dictionary with all option values.
         """
@@ -406,7 +406,7 @@ class BuddyTrainingOptions:
             "train_rl_sizer": self.train_rl_sizer,
             "rl_timesteps": self.rl_timesteps,
         }
-        
+
         if self.oanda_fetch:
             result["oanda_fetch"] = {
                 "instrument": self.oanda_fetch.instrument,
@@ -415,7 +415,7 @@ class BuddyTrainingOptions:
                 "price": self.oanda_fetch.price,
                 "save_csv": self.oanda_fetch.save_csv,
             }
-        
+
         if self.advanced:
             result["advanced"] = {
                 "init_from": self.advanced.init_from,
@@ -439,7 +439,7 @@ class BuddyTrainingOptions:
                 "tier2_calibration_bins": self.advanced.tier2_calibration_bins,
                 "tier2_calibration_stride": self.advanced.tier2_calibration_stride,
             }
-        
+
         return result
 
 
@@ -449,7 +449,7 @@ TrainingOptions = BuddyTrainingOptions
 
 __all__ = [
     "OandaFetchOptions",
-    "BuddyTrainingAdvancedOptions", 
+    "BuddyTrainingAdvancedOptions",
     "BuddyTrainingOptions",
     "TrainingOptions",
 ]

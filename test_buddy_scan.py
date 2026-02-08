@@ -8,6 +8,7 @@ import sys
 import logging
 logging.basicConfig(level=logging.INFO)
 
+
 def test_imports():
     """Test that all imports work correctly."""
     print("=" * 60)
@@ -16,7 +17,7 @@ def test_imports():
     
     try:
         # Test buddy_scanner imports
-        from buddy_scanner import BuddyScanner, EnhancedScanResult, ScanConfig, ALL_PAIRS, MAJOR_PAIRS, CROSS_PAIRS
+        from buddy_scanner import BuddyScanner, EnhancedScanResult, ScanConfig, ALL_PAIRS, MAJOR_PAIRS, CROSS_PAIRS  # noqa: F401
         print("✓ buddy_scanner imports successful")
         
         # Verify pair counts
@@ -26,32 +27,32 @@ def test_imports():
         print(f"✓ Pair counts correct: {len(MAJOR_PAIRS)} majors + {len(CROSS_PAIRS)} crosses = {len(ALL_PAIRS)} total")
         
         # Test cli.buddy_scanning imports
-        from cli.buddy_scanning import buddy_scan, buddy_predict_78
+        from cli.buddy_scanning import buddy_scan, buddy_predict_78  # noqa: F401
         print("✓ cli.buddy_scanning imports successful")
         
         # Test internal imports used by buddy_scanner
-        from src.utils import load_config
+        from src.utils import load_config  # noqa: F401
         print("✓ src.utils.load_config imports successful")
         
-        from src.risk.position_sizing import PositionSizingConfig
+        from src.risk.position_sizing import PositionSizingConfig  # noqa: F401
         print("✓ src.risk.position_sizing imports successful")
         
-        from src.risk.risk_management import RiskManagementConfig
+        from src.risk.risk_management import RiskManagementConfig  # noqa: F401
         print("✓ src.risk.risk_management imports successful")
         
-        from src.core.modular_inference import ModularEnsembleInference
+        from src.core.modular_inference import ModularEnsembleInference  # noqa: F401
         print("✓ src.core.modular_inference imports successful")
         
-        from src.utils.oanda_practice import OandaPracticeClient
+        from src.utils.oanda_practice import OandaPracticeClient  # noqa: F401
         print("✓ src.utils.oanda_practice imports successful")
         
-        from src.data.feature_engineering import FeatureEngineering
+        from src.data.feature_engineering import FeatureEngineering  # noqa: F401
         print("✓ src.data.feature_engineering imports successful")
         
-        from src.utils.fx_paper import candles_to_ohlcv_df, pip_size
+        from src.utils.fx_paper import candles_to_ohlcv_df, pip_size  # noqa: F401
         print("✓ src.utils.fx_paper imports successful")
         
-        from src.utils.pair_scanner import PairAnalysis
+        from src.utils.pair_scanner import PairAnalysis  # noqa: F401
         print("✓ src.utils.pair_scanner imports successful")
         
         print("\n✅ ALL IMPORTS PASSED\n")
@@ -62,6 +63,7 @@ def test_imports():
         import traceback
         traceback.print_exc()
         return False
+
 
 def test_scanner_initialization():
     """Test that BuddyScanner can be initialized."""
@@ -95,6 +97,7 @@ def test_scanner_initialization():
         import traceback
         traceback.print_exc()
         return False
+
 
 def test_scan_config():
     """Test ScanConfig dataclass."""
@@ -140,6 +143,7 @@ def test_scan_config():
         traceback.print_exc()
         return False
 
+
 def test_drift_detection_signature():
     """Test that drift detection has correct signature."""
     print("=" * 60)
@@ -176,6 +180,7 @@ def test_drift_detection_signature():
         traceback.print_exc()
         return False
 
+
 def main():
     """Run all tests."""
     print("\n" + "=" * 60)
@@ -211,6 +216,7 @@ def main():
     else:
         print(f"\n⚠️  {total - passed} test(s) failed. Check errors above.")
         return 1
+
 
 if __name__ == "__main__":
     sys.exit(main())

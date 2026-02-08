@@ -9,17 +9,17 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 sys.path.insert(0, _PROJECT_ROOT)
 os.chdir(_PROJECT_ROOT)
 
-from src.core.modular_data_loaders import compute_normalized_features
-from dotenv import load_dotenv
+from src.core.modular_data_loaders import compute_normalized_features  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
 load_dotenv()
 
 # Use requests directly for OANDA
-import requests
+import requests  # noqa: E402
+
 
 def fetch_candles(instrument, granularity, count):
     """Fetch candles from OANDA."""
     token = os.getenv('OANDA_API_TOKEN')
-    account = os.getenv('OANDA_ACCOUNT_ID')
     base_url = "https://api-fxpractice.oanda.com"
     
     url = f"{base_url}/v3/instruments/{instrument}/candles"
@@ -42,6 +42,7 @@ def fetch_candles(instrument, granularity, count):
                 'volume': int(c['volume'])
             })
     return pd.DataFrame(rows)
+
 
 print("=" * 60)
 print("TCN FEATURE DIAGNOSTIC")
@@ -72,14 +73,14 @@ if len(low_var) > 0:
     print(low_var.head(10))
 
 # Sample feature stats
-print(f'\n6. Sample feature statistics:')
+print('\n6. Sample feature statistics:')
 numeric_cols = numeric_features.columns.tolist()
 for col in numeric_cols[:8]:
     s = numeric_features[col].dropna()
     print(f'   {col:30s}: mean={s.mean():8.4f}, std={s.std():8.4f}, range=[{s.min():8.4f}, {s.max():8.4f}]')
 
 # Check if features are predictive of future volatility
-print(f'\n7. Feature correlation with ATR:')
+print('\n7. Feature correlation with ATR:')
 if 'atr_pct_14' in numeric_features.columns:
     atr = numeric_features['atr_pct_14']
     for col in ['rsi_14', 'macd_line', 'bb_width', 'adx_14']:
@@ -88,7 +89,7 @@ if 'atr_pct_14' in numeric_features.columns:
             print(f'   {col} vs ATR: {corr:.3f}')
 
 # Check vol_change distribution (the regression target)
-print(f'\n8. Volatility change analysis:')
+print('\n8. Volatility change analysis:')
 high = df['high']
 low = df['low']
 close = df['close']

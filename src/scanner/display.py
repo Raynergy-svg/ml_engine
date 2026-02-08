@@ -24,17 +24,17 @@ logger = logging.getLogger(__name__)
 
 class ScannerDisplay:
     """Rich-based display for scanner output.
-    
+
     Features:
     - Real-time Live display updates
     - Color-coded gate status
     - Account info header
     - Correlation warnings
     """
-    
+
     def __init__(self, console: Optional[Console] = None):
         """Initialize display.
-        
+
         Args:
             console: Rich Console instance (creates new if None)
         """
@@ -45,7 +45,7 @@ class ScannerDisplay:
         self._model_type: str = "unknown"
         self._granularity: str = "H1"
         self._scan_start_time: Optional[datetime] = None
-        
+
     def _format_direction(self, direction: str, confidence: float) -> Text:
         """Format direction with color based on confidence."""
         if direction == "LONG":
@@ -56,7 +56,7 @@ class ScannerDisplay:
             return Text(f"▼ {direction}", style=f"bold {color}")
         else:
             return Text("● HOLD", style="dim")
-    
+
     def _format_confidence(self, confidence: float) -> Text:
         """Format confidence percentage with color."""
         pct = confidence * 100
@@ -66,7 +66,7 @@ class ScannerDisplay:
             return Text(f"{pct:.0f}%", style="yellow")
         else:
             return Text(f"{pct:.0f}%", style="dim")
-    
+
     def _format_gate(self, passed: bool, value: Optional[float] = None) -> Text:
         """Format gate status."""
         if passed:
@@ -77,14 +77,14 @@ class ScannerDisplay:
             if value is not None:
                 return Text(f"✗ {value:.1f}", style="red")
             return Text("✗", style="red")
-    
+
     def _format_error(self, error: str) -> Text:
         """Format error message."""
         return Text(f"⚠ {error[:30]}", style="dim red")
-    
+
     def generate_table(self) -> Table:
         """Generate results table for Live display.
-        
+
         Returns:
             Rich Table with current scan results
         """
@@ -95,7 +95,7 @@ class ScannerDisplay:
             expand=True,
             padding=(0, 1),
         )
-        
+
         # Columns
         table.add_column("Pair", style="bold", width=10)
         table.add_column("Dir", justify="center", width=8)
@@ -107,14 +107,14 @@ class ScannerDisplay:
         table.add_column("Price", justify="right", width=10)
         table.add_column("ATR", justify="right", width=6)
         table.add_column("Note", width=20)
-        
+
         # Sort analyses: tradeable first, then by confidence
         sorted_analyses = sorted(
             self._current_analyses,
             key=lambda x: (x.is_tradeable, x.confidence),
             reverse=True,
         )
-        
+
         for analysis in sorted_analyses:
             # Handle errors
             if analysis.error:
@@ -131,16 +131,16 @@ class ScannerDisplay:
                     self._format_error(analysis.error),
                 )
                 continue
-            
+
             # Format each column
             pair_text = analysis.pair.replace("_", "/")
             if analysis.gates_passed:
                 pair_text = f"★ {pair_text}"
-            
+
             # Gates summary
             gates_text = analysis.gate_summary
             gates_style = "green bold" if analysis.gates_passed else "dim"
-            
+
             # Note (warnings or trade suggestion)
             note = ""
             if analysis.gates_passed:
@@ -151,7 +151,7 @@ class ScannerDisplay:
                 note = "low confidence"
             elif not analysis.risk_passed:
                 note = "high risk"
-            
+
             table.add_row(
                 pair_text,
                 self._format_direction(analysis.direction, analysis.confidence),
@@ -164,39 +164,39 @@ class ScannerDisplay:
                 f"{analysis.atr_pips:.1f}" if analysis.atr_pips else "-",
                 note,
             )
-        
+
         return table
-    
+
     def generate_header(self) -> Panel:
         """Generate header panel with account info."""
         # Account info
         nav = self._account_info.get("nav", 0)
         open_trades = self._account_info.get("open_trades", 0)
         unrealized_pl = self._account_info.get("unrealized_pl", 0)
-        
+
         # Build header text
         header_parts = [
-            f"[bold cyan]📡 BUDDY SCANNER[/bold cyan]",
+            "[bold cyan]📡 BUDDY SCANNER[/bold cyan]",
             f"[green]${nav:,.0f}[/green]" if nav > 0 else "",
             f"[dim]{open_trades} trades[/dim]" if open_trades > 0 else "",
         ]
-        
+
         if unrealized_pl != 0:
             pl_color = "green" if unrealized_pl > 0 else "red"
             header_parts.append(f"[{pl_color}]P/L: ${unrealized_pl:+,.2f}[/{pl_color}]")
-        
+
         header_parts.append(f"[dim]{self._model_type} | {self._granularity}[/dim]")
-        
+
         header = " | ".join([p for p in header_parts if p])
-        
+
         return Panel(header, border_style="cyan")
-    
+
     def show_scanning_progress(self, pairs: List[str]) -> Progress:
         """Create progress display for scanning phase.
-        
+
         Args:
             pairs: List of pairs being scanned
-            
+
         Returns:
             Rich Progress instance
         """
@@ -206,10 +206,10 @@ class ScannerDisplay:
             console=self.console,
             transient=True,
         )
-    
+
     def start_live(self) -> Live:
         """Start Live display for incremental updates.
-        
+
         Returns:
             Rich Live instance
         """
@@ -221,10 +221,10 @@ class ScannerDisplay:
         )
         self._live.start()
         return self._live
-    
+
     def update_live(self, analysis: PairAnalysis) -> None:
         """Update Live display with new analysis.
-        
+
         Args:
             analysis: New or updated pair analysis
         """
@@ -235,24 +235,24 @@ class ScannerDisplay:
                 break
         else:
             self._current_analyses.append(analysis)
-        
+
         # Update Live display
         if self._live is not None:
             self._live.update(self.generate_table())
-    
+
     def stop_live(self) -> None:
         """Stop Live display."""
         if self._live is not None:
             self._live.stop()
             self._live = None
-    
+
     def show_result(
         self,
         result: ScanResult,
         account_info: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Display complete scan result.
-        
+
         Args:
             result: Scan result with all analyses
             account_info: Optional account information
@@ -260,18 +260,18 @@ class ScannerDisplay:
         self._current_analyses = result.analyses
         self._model_type = result.model_type
         self._granularity = result.granularity
-        
+
         if account_info:
             self._account_info = account_info
-        
+
         # Print header
         self.console.print()
         self.console.print(self.generate_header())
         self.console.print()
-        
+
         # Print table
         self.console.print(self.generate_table())
-        
+
         # Summary
         tradeable = result.tradeable_pairs
         if tradeable:
@@ -283,21 +283,21 @@ class ScannerDisplay:
         else:
             self.console.print()
             self.console.print("[dim]No tradeable opportunities found[/dim]")
-        
+
         # Scan metadata
         self.console.print()
         self.console.print(
             f"[dim]Scanned {len(result.analyses)} pairs "
             f"at {result.scan_time.strftime('%H:%M:%S')} UTC[/dim]"
         )
-    
+
     def show_session_warning(self, current_hour: int, session_range: str) -> bool:
         """Show session timing warning and prompt.
-        
+
         Args:
             current_hour: Current UTC hour
             session_range: Active session range string
-            
+
         Returns:
             True if user wants to continue, False otherwise
         """
@@ -306,25 +306,25 @@ class ScannerDisplay:
         self.console.print(f"[yellow]Current time: {current_hour}:00 UTC[/yellow]")
         self.console.print(f"[dim]Best hours: {session_range} (London/NY overlap)[/dim]")
         self.console.print()
-        
+
         # Non-interactive mode
         try:
             response = self.console.input("[yellow]Continue anyway? [y/N]: [/yellow]")
             return response.strip().lower() in ('y', 'yes')
         except (EOFError, KeyboardInterrupt):
             return False
-    
+
     def show_error(self, message: str) -> None:
         """Display error message.
-        
+
         Args:
             message: Error message to display
         """
         self.console.print(f"[bold red]Error:[/bold red] {message}")
-    
+
     def show_success(self, message: str) -> None:
         """Display success message.
-        
+
         Args:
             message: Success message to display
         """

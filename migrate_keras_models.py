@@ -26,10 +26,10 @@ from pathlib import Path
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-import numpy as np
-import tensorflow as tf
-from rich.console import Console
-from rich.table import Table
+import numpy as np  # noqa: E402
+import tensorflow as tf  # noqa: E402
+from rich.console import Console  # noqa: E402
+from rich.table import Table  # noqa: E402
 
 console = Console()
 
@@ -245,7 +245,7 @@ def migrate_model(model_path: Path, arch_type: str, dry_run: bool = False) -> bo
     # Check version
     version = check_model_version(model_path)
     if version == "keras3":
-        console.print(f"  [green]✓ Already Keras 3 format[/green]")
+        console.print("  [green]✓ Already Keras 3 format[/green]")
         return True
     elif version.startswith("error"):
         console.print(f"  [red]✗ Error checking version: {version}[/red]")
@@ -254,7 +254,7 @@ def migrate_model(model_path: Path, arch_type: str, dry_run: bool = False) -> bo
     console.print(f"  [yellow]Detected: {version}[/yellow]")
     
     if dry_run:
-        console.print(f"  [dim]Would migrate to Keras 3[/dim]")
+        console.print("  [dim]Would migrate to Keras 3[/dim]")
         return True
     
     # Get input shape from old model
@@ -278,7 +278,7 @@ def migrate_model(model_path: Path, arch_type: str, dry_run: bool = False) -> bo
             
             weights_path = Path(tmpdir) / "model.weights.h5"
             if not weights_path.exists():
-                console.print(f"  [red]✗ No weights file found in archive[/red]")
+                console.print("  [red]✗ No weights file found in archive[/red]")
                 return False
             
             # Build fresh Keras 3 model
@@ -288,29 +288,29 @@ def migrate_model(model_path: Path, arch_type: str, dry_run: bool = False) -> bo
             # Try to load weights
             try:
                 fresh_model.load_weights(str(weights_path))
-                console.print(f"  [green]✓ Weights loaded successfully[/green]")
+                console.print("  [green]✓ Weights loaded successfully[/green]")
             except Exception as e:
                 console.print(f"  [yellow]⚠ Weight loading issue: {e}[/yellow]")
-                console.print(f"  [dim]Creating model with fresh weights instead[/dim]")
+                console.print("  [dim]Creating model with fresh weights instead[/dim]")
             
             # Save as Keras 3
             fresh_model.save(str(model_path))
-            console.print(f"  [green]✓ Saved as Keras 3 format[/green]")
+            console.print("  [green]✓ Saved as Keras 3 format[/green]")
             
             # Verify it loads
             try:
                 tf.keras.models.load_model(str(model_path), compile=False)
-                console.print(f"  [green]✓ Verified: loads successfully[/green]")
+                console.print("  [green]✓ Verified: loads successfully[/green]")
                 return True
             except Exception as e:
                 console.print(f"  [red]✗ Verification failed: {e}[/red]")
                 # Restore backup
                 shutil.copy(backup_path, model_path)
-                console.print(f"  [yellow]Restored from backup[/yellow]")
+                console.print("  [yellow]Restored from backup[/yellow]")
                 return False
                 
         except zipfile.BadZipFile:
-            console.print(f"  [red]✗ Not a valid .keras archive[/red]")
+            console.print("  [red]✗ Not a valid .keras archive[/red]")
             return False
         except Exception as e:
             console.print(f"  [red]✗ Migration failed: {e}[/red]")

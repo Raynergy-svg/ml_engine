@@ -41,7 +41,7 @@ COMMAND REFERENCE:
   buddy       Single-pair inference → execute one trade
   train       Train model for specific pair
   monitor     Show monitoring dashboard and alerts
-  
+
 EXAMPLES:
   buddy scan                     # Scan all majors, show recommendations
   buddy -I EUR_USD --execute     # Single EUR_USD trade
@@ -801,7 +801,7 @@ def _add_multi_pair_arguments(parser: argparse.ArgumentParser) -> None:
 
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the main argument parser.
-    
+
     Returns:
         Configured ArgumentParser with all CLI arguments.
     """
@@ -810,7 +810,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=CLI_EPILOG,
     )
-    
+
     # Add all argument groups
     _add_core_arguments(parser)
     _add_training_arguments(parser)
@@ -829,13 +829,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
     _add_enterprise_arguments(parser)
     _add_monitoring_arguments(parser)
     _add_multi_pair_arguments(parser)
-    
+
     return parser
 
 
 def parse_args() -> "Namespace":
     """Parse command line arguments.
-    
+
     Returns:
         Parsed argument namespace.
     """

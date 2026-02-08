@@ -1,5 +1,57 @@
-[tool.ruff.lint]
-select = ["NPY201"]
+[project]
+name = "ml-engine"
+version = "2.1.0"
+description = "FX trading bot using 4-model gated ensemble"
+requires-python = ">=3.10"
 
 [project.scripts]
 buddy = "cli_entry:main"
+
+# ── Ruff configuration ────────────────────────────────────────────────────
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src", "cli"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "F",      # pyflakes
+    "W",      # pycodestyle warnings
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "PIE",    # flake8-pie
+    "RET",    # flake8-return
+    "PERF",   # perflint
+    "FURB",   # refurb
+    "LOG",    # flake8-logging
+    "NPY201", # numpy 2.0 compat
+]
+ignore = [
+    "E501",     # line too long – handled by formatter
+    "E402",     # module-level import not at top – lazy imports are intentional
+    "B904",     # raise without from – too noisy for existing codebase patterns
+    "B905",     # zip-without-explicit-strict – Python 3.10+ target but many loops
+    "RET504",   # unnecessary-assign – readability preference
+    "RET505",   # superfluous-else-return – readability preference
+    "SIM102",   # collapsible-if – readability
+    "SIM105",   # suppressible-exception – contextlib.suppress not always clearer
+    "SIM108",   # if-else-block-instead-of-if-exp – readability
+    "PERF203",  # try-except-in-loop – necessary for resilient processing
+    "UP006",    # non-pep585-annotation – not all runtime contexts support it
+    "UP007",    # non-pep604-annotation – X | Y union syntax
+    "UP035",    # deprecated-import – typing compat
+    "UP037",    # quoted-annotation – forward refs intentional
+    "UP045",    # non-pep604-optional – Optional[X] style
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401", "F811", "E501"]
+"*_old*.py" = ["F401", "F811", "E501", "F841"]
+"*_backup*" = ["F401", "F811", "E501", "F841"]
+"debug_*.py" = ["F401", "F811", "T201", "E501"]
+"test_*.py" = ["F401", "F811", "E501", "F841"]
+"demo_*.py" = ["T201", "F401", "E501"]
+"check_*.py" = ["T201", "F401", "E501"]
+"inspect_*.py" = ["T201", "F401", "E501"]

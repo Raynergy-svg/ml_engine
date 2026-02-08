@@ -20,7 +20,7 @@ import logging
 import pickle
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -269,7 +269,7 @@ class OnlineRetrainer:
                     xgb_metrics = self._retrain_xgboost(X_train, y_train, X_val, y_val)
                     result['models_retrained'].append('xgboost')
                     result['metrics']['xgboost'] = xgb_metrics
-                    logger.info(f"  ✓ XGBoost retrained")
+                    logger.info("  ✓ XGBoost retrained")
                 except Exception as e:
                     logger.warning(f"  ✗ XGBoost retrain failed: {e}")
                     result['metrics']['xgboost'] = {'error': str(e)}
@@ -279,7 +279,7 @@ class OnlineRetrainer:
                     rf_metrics = self._retrain_rf(X_train, y_train, X_val, y_val)
                     result['models_retrained'].append('rf')
                     result['metrics']['rf'] = rf_metrics
-                    logger.info(f"  ✓ RandomForest retrained")
+                    logger.info("  ✓ RandomForest retrained")
                 except Exception as e:
                     logger.warning(f"  ✗ RF retrain failed: {e}")
                     result['metrics']['rf'] = {'error': str(e)}
@@ -289,7 +289,7 @@ class OnlineRetrainer:
                     ridge_metrics = self._retrain_ridge(X_train, y_train, X_val, y_val)
                     result['models_retrained'].append('ridge')
                     result['metrics']['ridge'] = ridge_metrics
-                    logger.info(f"  ✓ Ridge retrained")
+                    logger.info("  ✓ Ridge retrained")
                 except Exception as e:
                     logger.warning(f"  ✗ Ridge retrain failed: {e}")
                     result['metrics']['ridge'] = {'error': str(e)}
@@ -410,12 +410,11 @@ class OnlineRetrainer:
         
         # Load existing model if available
         model_path = self.model_dir / "xgb_momentum.pkl"
-        existing_model = None
         if model_path.exists():
             try:
                 with open(model_path, 'rb') as f:
                     existing_data = pickle.load(f)
-                existing_model = existing_data.get('momentum_model')
+                _ = existing_data.get('momentum_model')
             except Exception:
                 pass
         
