@@ -1,8 +1,14 @@
 import sys
 import types
+import pytest
+
+
+_main = pytest.importorskip("main", reason="main module cannot be imported in current environment")
 
 
 def test_launch_buddy_repl_calls_unified_talk(monkeypatch):
+    if not hasattr(_main, "launch_buddy_repl_from_wizard"):
+        pytest.skip("main.launch_buddy_repl_from_wizard not available")
     called = {}
 
     def fake_run_unified_talk(*a, **k):

@@ -220,8 +220,18 @@ def extract_gate_features(
             (df['atr'].iloc[-100:].max() - df['atr'].iloc[-100:].min() + 1e-8)
         )
 
-    # Win/loss streak (if available)
-    features['recent_drawdown'] = 0.0  # Placeholder
+    # Recent max drawdown from close prices over the lookback window
+    if 'close' in df.columns and len(df) >= lookback:
+        recent_close = df['close'].iloc[-lookback:]
+        # Compute running maximum and drawdown from peak
+        running_max = recent_close.cummax()
+        drawdowns = (running_max - recent_close) / running_max.replace(0, np.nan)
+        # Max drawdown as a positive fraction (e.g., 0.05 = 5% drawdown)
+        drawdowns = drawdowns.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+        features['recent_drawdown'] = float(drawdowns.max())
+    else:
+        # Not enough data; default to 0.0 (no observed drawdown)
+        features['recent_drawdown'] = 0.0
 
     return features
 

@@ -129,3 +129,8 @@ onnxruntime>=1.16.0  # Fast RL inference via ONNX
 # ta-lib      # Technical analysis - requires system lib first
 # wandb       # Weights & Biases tracking - install via: pip install wandb
 # optuna      # Hyperparameter optimization - install via: pip install optuna
+
+# ============================================================
+# News & Sentiment (optional)
+# ============================================================
+feedparser>=6.0.0  # RSS-based forex news fetching (optional, graceful fallback if missing)

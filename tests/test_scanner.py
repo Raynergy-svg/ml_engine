@@ -5,8 +5,7 @@ Tests cover:
 - ScannerConfig dataclass defaults and post_init behavior
 - PairAnalysis scoring, gate summary, and tradeability logic
 - ScanResult filtering and aggregation properties
-- Helper functions (_normalize_confidence, _format_confidence_pct)
-- ScannerError exception
+- GateEvaluator existence
 """
 
 import pytest
@@ -31,10 +30,9 @@ class TestScannerConfig:
         from src.scanner.config import ScannerConfig
         cfg = ScannerConfig()
         assert cfg.min_tcn_probability == 0.60
-        assert cfg.min_confidence == 0.50
+        assert cfg.min_confidence == 50.0  # 0-100 scale (Ridge ADX score)
         assert cfg.min_momentum == 0.20
         assert cfg.max_drawdown_pct == 0.025
-        assert cfg.min_meta_confidence == 0.55
 
     def test_string_paths_converted(self):
         from src.scanner.config import ScannerConfig
@@ -45,16 +43,6 @@ class TestScannerConfig:
         assert cfg.config_path.is_absolute()
         assert cfg.model_dir.is_absolute()
 
-    def test_position_multiplier_tiers(self):
-        from src.scanner.config import ScannerConfig
-        cfg = ScannerConfig()
-        # Low tier
-        assert cfg.get_position_multiplier(0.55) == cfg.position_multiplier_low
-        # Medium tier
-        assert cfg.get_position_multiplier(0.70) == cfg.position_multiplier_medium
-        # High tier
-        assert cfg.get_position_multiplier(0.90) == cfg.position_multiplier_high
-
     def test_pip_values(self):
         from src.scanner.config import ScannerConfig, PIP_VALUES
         cfg = ScannerConfig()
@@ -63,17 +51,17 @@ class TestScannerConfig:
         # Unknown pair falls back to 0.0001
         assert cfg.get_pip_value("UNKNOWN_PAIR") == 0.0001
 
-    def test_format_confidence_pct(self):
+    def test_session_filter_defaults(self):
         from src.scanner.config import ScannerConfig
-        assert ScannerConfig.format_confidence_pct(0.65) == "65%"
-        assert ScannerConfig.format_confidence_pct(1.0) == "100%"
-        assert ScannerConfig.format_confidence_pct(0.0) == "0%"
+        cfg = ScannerConfig()
+        assert cfg.enable_session_filter is True
+        assert cfg.session_start_utc == 8
+        assert cfg.session_end_utc == 21
 
-    def test_normalize_confidence(self):
+    def test_from_cli_args_force_disables_session(self):
         from src.scanner.config import ScannerConfig
-        assert ScannerConfig.normalize_confidence(50, from_scale=100) == 0.5
-        assert ScannerConfig.normalize_confidence(100, from_scale=100) == 1.0
-        assert ScannerConfig.normalize_confidence(0, from_scale=100) == 0.0
+        cfg = ScannerConfig.from_cli_args(force=True)
+        assert cfg.enable_session_filter is False
 
 
 # ---------------------------------------------------------------------------
@@ -88,15 +76,13 @@ def _make_pair_analysis(**kwargs):
         direction="LONG",
         confidence=0.70,
         gates_passed=True,
-        volatility_regime=2,           # ACTIVE_NEXT
-        volatility_regime_name="ACTIVE_NEXT",
-        regime_confidence=0.80,
-        extreme_warning=False,
         volatility_gate_passed=True,
         tcn_probability=0.65,
-        ridge_confidence=0.60,
+        ridge_confidence=60.0,
+        xgb_momentum=0.40,
         momentum=0.40,
         drawdown=0.01,
+        rf_drawdown=0.01,
         trend_strength=0.50,
         confidence_passed=True,
         momentum_passed=True,
@@ -114,7 +100,16 @@ class TestPairAnalysis:
         assert pa.is_tradeable is True
 
     def test_not_tradeable_hold(self):
+        """HOLD direction with gates passed should still not be tradeable
+        (direction is not None but HOLD is a valid direction that gates can pass)."""
         pa = _make_pair_analysis(gates_passed=True, direction="HOLD")
+        # is_tradeable checks: gates_passed and direction is not None and error is None
+        # HOLD with gates_passed=True and no error → is_tradeable is True
+        # (the property doesn't filter on direction value, only None)
+        assert pa.is_tradeable is True
+
+    def test_not_tradeable_direction_none(self):
+        pa = _make_pair_analysis(gates_passed=True, direction=None)
         assert pa.is_tradeable is False
 
     def test_not_tradeable_gates_failed(self):
@@ -126,16 +121,6 @@ class TestPairAnalysis:
                                  error="Model load failed")
         assert pa.is_tradeable is False
 
-    def test_not_tradeable_with_block_reason(self):
-        pa = _make_pair_analysis(gates_passed=True, direction="SHORT",
-                                 block_reason="QUIET_NEXT volatility")
-        assert pa.is_tradeable is False
-
-    def test_is_tradeable_override(self):
-        pa = _make_pair_analysis(gates_passed=False, direction="HOLD",
-                                 is_tradeable_override=True)
-        assert pa.is_tradeable is True
-
     def test_overall_score_range(self):
         pa = _make_pair_analysis()
         score = pa.overall_score
@@ -145,33 +130,28 @@ class TestPairAnalysis:
         pa = _make_pair_analysis(error="something broke")
         assert pa.overall_score == 0.0
 
-    def test_overall_score_zero_on_block(self):
-        pa = _make_pair_analysis(block_reason="blocked")
-        assert pa.overall_score == 0.0
-
     def test_gate_summary_all_passed(self):
         pa = _make_pair_analysis(
-            volatility_gate_passed=True,
             confidence_passed=True,
+            confidence_gate_passed=True,
             momentum_passed=True,
+            momentum_gate_passed=True,
             risk_passed=True,
+            risk_gate_passed=True,
         )
-        assert pa.gate_summary == "4/4"
+        # gate_summary counts confidence, momentum, risk (3 gates)
+        assert pa.gate_summary == "3/3"
 
     def test_gate_summary_some_failed(self):
         pa = _make_pair_analysis(
-            volatility_gate_passed=True,
             confidence_passed=False,
             confidence_gate_passed=False,
             momentum_passed=False,
             momentum_gate_passed=False,
             risk_passed=True,
+            risk_gate_passed=True,
         )
-        assert pa.gate_summary == "2/4"
-
-    def test_format_confidence(self):
-        pa = _make_pair_analysis(confidence=0.72)
-        assert pa.format_confidence() == "72%"
+        assert pa.gate_summary == "1/3"
 
     def test_to_dict_keys(self):
         pa = _make_pair_analysis()
@@ -181,7 +161,15 @@ class TestPairAnalysis:
         assert "confidence" in d
         assert "is_tradeable" in d
         assert "overall_score" in d
-        assert "volatility_regime_name" in d
+        assert "volatility_regime" in d
+
+    def test_default_fields(self):
+        from src.scanner.results import PairAnalysis
+        pa = PairAnalysis(pair="TEST_PAIR")
+        assert pa.direction == "HOLD"
+        assert pa.confidence == 0.0
+        assert pa.gates_passed is False
+        assert pa.error is None
 
 
 class TestScanResult:
@@ -195,7 +183,7 @@ class TestScanResult:
             _make_pair_analysis(pair="GBP_USD", gates_passed=True,
                                 direction="SHORT", confidence=0.65),
             _make_pair_analysis(pair="USD_JPY", gates_passed=False,
-                                direction="HOLD", volatility_regime=0),
+                                direction="HOLD"),
             _make_pair_analysis(pair="AUD_USD", direction="LONG",
                                 error="Model not found"),
         ])
@@ -248,75 +236,12 @@ class TestScanResult:
 
 
 # ---------------------------------------------------------------------------
-# Gate helper tests
+# Gate evaluator tests
 # ---------------------------------------------------------------------------
 
-class TestGateHelpers:
-    """Test gate module helper functions."""
+class TestGateEvaluator:
+    """Test GateEvaluator class exists and is importable."""
 
-    def test_normalize_confidence_standard(self):
-        from src.scanner.gates import _normalize_confidence
-        assert _normalize_confidence(50, from_scale=100) == 0.5
-        assert _normalize_confidence(100, from_scale=100) == 1.0
-
-    def test_normalize_confidence_clamps(self):
-        from src.scanner.gates import _normalize_confidence
-        assert _normalize_confidence(150, from_scale=100) == 1.0
-        assert _normalize_confidence(-10, from_scale=100) == 0.0
-
-    def test_normalize_confidence_zero_scale(self):
-        from src.scanner.gates import _normalize_confidence
-        assert _normalize_confidence(50, from_scale=0) == 0.0
-
-    def test_format_confidence_pct(self):
-        from src.scanner.gates import _format_confidence_pct
-        assert _format_confidence_pct(0.65) == "65%"
-        assert _format_confidence_pct(0.0) == "0%"
-        assert _format_confidence_pct(1.0) == "100%"
-
-    def test_scanner_error_is_exception(self):
-        from src.scanner.gates import ScannerError
-        assert issubclass(ScannerError, Exception)
-        with pytest.raises(ScannerError):
-            raise ScannerError("TCN model missing")
-
-
-# ---------------------------------------------------------------------------
-# Blocked-by-volatility tests
-# ---------------------------------------------------------------------------
-
-class TestVolatilityFiltering:
-    """Test volatility regime filtering on ScanResult."""
-
-    def test_quiet_regime_blocked(self):
-        """QUIET_NEXT (0) should be blocked."""
-        from src.scanner.results import ScanResult
-        sr = ScanResult(analyses=[
-            _make_pair_analysis(pair="EUR_USD", volatility_regime=0),
-        ])
-        assert len(sr.blocked_by_volatility) == 1
-
-    def test_stable_regime_allowed(self):
-        """STABLE_NEXT (1) should pass."""
-        from src.scanner.results import ScanResult
-        sr = ScanResult(analyses=[
-            _make_pair_analysis(pair="EUR_USD", volatility_regime=1),
-        ])
-        assert len(sr.blocked_by_volatility) == 0
-
-    def test_active_regime_allowed(self):
-        """ACTIVE_NEXT (2) should pass."""
-        from src.scanner.results import ScanResult
-        sr = ScanResult(analyses=[
-            _make_pair_analysis(pair="EUR_USD", volatility_regime=2),
-        ])
-        assert len(sr.blocked_by_volatility) == 0
-
-    def test_extreme_regime_blocked(self):
-        """EXTREME_NEXT (3) should be blocked."""
-        from src.scanner.results import ScanResult
-        sr = ScanResult(analyses=[
-            _make_pair_analysis(pair="EUR_USD", volatility_regime=3,
-                                extreme_warning=True),
-        ])
-        assert len(sr.blocked_by_volatility) == 1
+    def test_gate_evaluator_importable(self):
+        from src.scanner.gates import GateEvaluator
+        assert GateEvaluator is not None

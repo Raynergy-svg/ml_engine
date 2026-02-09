@@ -8,6 +8,10 @@ argparse, dispatches the chosen sub-command, and exits.
 """
 from __future__ import annotations
 
+# ── Suppress noisy third-party warnings (must precede library imports) ─────
+import warnings
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
+
 # ── TensorFlow noise suppression (must precede any TF import) ──────────────
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"

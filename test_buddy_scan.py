@@ -52,8 +52,8 @@ def test_imports():
         from src.utils.fx_paper import candles_to_ohlcv_df, pip_size  # noqa: F401
         print("✓ src.utils.fx_paper imports successful")
         
-        from src.utils.pair_scanner import PairAnalysis  # noqa: F401
-        print("✓ src.utils.pair_scanner imports successful")
+        from src.scanner.results import PairAnalysis  # noqa: F401
+        print("✓ src.scanner.results.PairAnalysis imports successful")
         
         print("\n✅ ALL IMPORTS PASSED\n")
         return True

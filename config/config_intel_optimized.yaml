@@ -98,7 +98,7 @@ model:
   
   # Multi-task heads
   multi_task: true
-  state_classes: 2
+  state_classes: 4    # Market states: LOW, NORMAL, HIGH, EXTREME volatility
   
   # Attention heads
   num_heads: 4

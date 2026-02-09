@@ -22,6 +22,7 @@ import hashlib
 import json
 import logging
 import pickle
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -246,19 +247,25 @@ class TrainerConfig:
     tcn_spatial_dropout: float = 0.3  # NEW: Spatial dropout on input
     tcn_noise_std: float = 0.05  # NEW: Input noise level
 
-    # Transformer specific (for direction prediction) - STRONGER REGULARIZATION
-    transformer_d_model: int = 32  # Model dimension (was 16, broke training)
-    transformer_num_heads: int = 4  # Number of attention heads (was 2)
-    transformer_num_layers: int = 2  # Number of encoder layers (was 1)
-    transformer_dff: int = 64  # Feedforward network dimension (was 32)
-    transformer_dropout: float = 0.2  # Was 0.4 - reduced to prevent output suppression
+    # Transformer specific (for direction prediction)
+    transformer_d_model: int = 32  # Model dimension
+    transformer_num_heads: int = 4  # Number of attention heads
+    transformer_num_layers: int = 2  # Number of encoder layers
+    transformer_dff: int = 64  # Feedforward network dimension
+    transformer_dropout: float = 0.2  # Dropout in transformer encoder layers
+
+    # Transformer regularization — wired from YAML transformer section
+    transformer_l2_reg: float = 0.003  # L2 kernel regularization weight
+    transformer_input_noise: float = 0.02  # Gaussian noise on input
+    transformer_spatial_dropout: float = 0.10  # SpatialDropout1D on input sequence
+    transformer_projection_dropout: float = 0.10  # Dropout after input projection
 
     # Output head settings (for direction model) - stored in metadata for fallback rebuild
     final_dense_units: int = 16  # Units in final dense layer before output
     final_dense_activation: str = (
         "tanh"  # Activation: tanh allows [-1,1] range for balanced sigmoid
     )
-    final_dense_dropout: float = 0.15  # Dropout before output layer
+    final_dense_dropout: float = 0.10  # Dropout before output layer (reduced from 0.15)
 
     # === CLASS-BALANCED LOSS SETTINGS (NEW - for extreme class imbalance) ===
     use_class_balanced_loss: bool = (
@@ -480,6 +487,84 @@ def get_config_seq_len(config: Optional[TrainerConfig], default: int = 60) -> in
 # =============================================================================
 
 
+def _safe_load_weights_ignoring_optimizer(
+    model, path: str, *, skip_mismatch: bool = True
+) -> bool:
+    """
+    Load model layer weights from a checkpoint, suppressing optimizer state warnings.
+
+    When loading from a checkpoint with a different architecture, the Adam optimizer's
+    moment estimates (m, v) may have a different variable count than the current model's
+    trainable variables.  This produces noisy warnings like:
+        "Adam optimizer currently has 2 variables whereas the saved optimizer state
+         has 9 variables, causing a loading skip."
+
+    These warnings are *benign* when the model is subsequently recompiled with a fresh
+    optimizer (as happens during warm-start training), but they confuse users.  This
+    helper intercepts them, logs them at DEBUG level, and returns success/failure.
+
+    Args:
+        model: The Keras model to load weights into.
+        path: Path to the weights file (.h5 or .keras).
+        skip_mismatch: If True, skip layers with incompatible shapes.
+
+    Returns:
+        True if weights were loaded successfully (even partially).
+    """
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            model.load_weights(path, skip_mismatch=skip_mismatch)
+
+        # Downgrade optimizer-related warnings to debug; keep others at warning
+        for w in caught:
+            msg = str(w.message)
+            if any(kw in msg.lower() for kw in ("optimizer", "skipping variable", "loading skip")):
+                logger.debug(f"Suppressed optimizer state warning: {msg}")
+            else:
+                logger.warning(f"Weight loading warning: {msg}")
+        return True
+    except Exception as e:
+        logger.debug(f"Weight loading failed: {e}")
+        return False
+
+
+def _safe_reset_optimizer_state(model) -> None:
+    """
+    Reset optimizer slot variables (moments) to zeros after a checkpoint load.
+
+    After loading weights from a structurally different checkpoint, Adam's first/second
+    moment estimates are invalid.  Zeroing them forces Adam to rebuild its running
+    averages from scratch on the next training step—equivalent to starting with a
+    fresh optimizer while preserving the current learning-rate schedule.
+
+    This is safe because:
+    - The model layer weights themselves are already loaded and valid.
+    - The optimizer is recompiled before training begins in the warm-start flow.
+    """
+    try:
+        opt = getattr(model, "optimizer", None)
+        if opt is None:
+            return
+        opt_vars = getattr(opt, "variables", [])
+        if not opt_vars:
+            return
+        reset_count = 0
+        for var in opt_vars:
+            try:
+                var.assign(tf.zeros_like(var))
+                reset_count += 1
+            except Exception:
+                pass  # Non-assignable variable (e.g., iteration counter)
+        if reset_count:
+            logger.info(
+                f"🔄 Optimizer state reset: zeroed {reset_count} slot variable(s) "
+                f"(will rebuild during training)"
+            )
+    except Exception as exc:
+        logger.debug(f"Optimizer reset skipped (not yet built): {exc}")
+
+
 def _validate_weight_shapes(
     model_weights: List[np.ndarray],
     checkpoint_weights: List[np.ndarray],
@@ -560,8 +645,8 @@ class EMACallback:
         self._initialized = False
 
     def _initialize_ema(self):
-        """Initialize EMA weights as copy of current model weights, keyed by path."""
-        self.ema_weights = {self._weight_key(w): w.numpy().copy() for w in self.model.trainable_weights}
+        """Initialize EMA weights as copy of current model weights."""
+        self.ema_weights = [w.numpy().copy() for w in self.model.trainable_weights]
         self._initialized = True
         logger.info(
             f"📊 EMA initialized with {len(self.ema_weights)} weight tensors (decay={self.decay})"
@@ -750,43 +835,70 @@ class EMACallback:
         return loaded_count, skipped_count
 
     def set_ema_weights(
-        self, weights: List[np.ndarray], weight_names: List[str] = None
+        self, weights: List[np.ndarray], weight_names: List[str] = None,
+        *, severe_ratio_threshold: float = 3.0,
     ):
         """Load EMA weights from checkpoint with graceful mismatch handling.
 
         Handles architectural differences between saved checkpoint and current model:
-        - Loads compatible weights (matching shapes)
-        - Skips mismatched weights and initializes them from current model
-        - Supports partial loading when model architecture has changed
+        - **Exact match** → fast-path load of all tensors.
+        - **Severe mismatch** (tensor count ratio > ``severe_ratio_threshold``) →
+          the checkpoint is too different to salvage; EMA is fully re-initialized
+          from the current model weights so training starts with a clean slate.
+        - **Moderate mismatch** → partial load: compatible weights (by name or
+          position) are copied from the checkpoint; the rest are initialized from
+          the current model weights.
 
         Args:
-            weights: List of numpy arrays from checkpoint
-            weight_names: Optional list of weight names from checkpoint for name-based matching
+            weights: List of numpy arrays from checkpoint.
+            weight_names: Optional list of weight names from checkpoint for
+                name-based matching.
+            severe_ratio_threshold: When ``max(n_model, n_ckpt) / min(n_model,
+                n_ckpt)`` exceeds this value the checkpoint is considered too
+                different and EMA is re-initialized entirely (default 3.0).
         """
         model_weights = self.model.trainable_weights
         model_weight_arrays = [w.numpy() for w in model_weights]
+        n_model = len(model_weight_arrays)
+        n_ckpt = len(weights)
 
-        # First, try exact match (fast path)
+        # ------------------------------------------------------------------
+        # Fast path: exact match
+        # ------------------------------------------------------------------
         is_compatible, error_msg = _validate_weight_shapes(
             model_weight_arrays, weights, context="EMA weights"
         )
 
         if is_compatible:
-            # Perfect match - load all weights
             self.ema_weights = [w.copy() for w in weights]
             self._initialized = True
-            logger.info(f"📊 EMA weights loaded ({len(weights)} tensors)")
+            logger.info(f"📊 EMA weights loaded ({n_ckpt} tensors)")
             return
 
-        # Mismatch detected - attempt graceful partial loading
+        # ------------------------------------------------------------------
+        # Severe mismatch → full re-initialization
+        # ------------------------------------------------------------------
+        count_ratio = (
+            max(n_model, n_ckpt) / max(min(n_model, n_ckpt), 1)
+        )
+        if count_ratio > severe_ratio_threshold:
+            logger.info(
+                f"📊 EMA architecture changed ({n_ckpt}→{n_model} tensors). "
+                f"Re-initializing EMA from current model weights."
+            )
+            self._initialize_ema()
+            return
+
+        # ------------------------------------------------------------------
+        # Moderate mismatch → partial load
+        # ------------------------------------------------------------------
         logger.warning(f"⚠️ EMA weight mismatch: {error_msg}")
         logger.info("📊 Attempting graceful partial EMA weight loading...")
 
-        # Initialize EMA from current model weights first
+        # Seed from current model weights first (safe baseline)
         self.ema_weights = [w.numpy().copy() for w in model_weights]
 
-        # Try name-based matching if weight names are provided
-        if weight_names and len(weight_names) == len(weights):
+        if weight_names and len(weight_names) == n_ckpt:
             loaded_count, skipped_count = self._load_ema_weights_by_name(
                 model_weights, weights, weight_names
             )
@@ -797,10 +909,17 @@ class EMACallback:
 
         self._initialized = True
 
-        if skipped_count > 0:
+        total = loaded_count + skipped_count
+        if loaded_count == 0 and total > 0:
+            # Nothing useful was transferred — treat as full reinit
             logger.warning(
-                f"📊 EMA partial load: {loaded_count} weights loaded, "
-                f"{skipped_count} initialized from current model (shape mismatch)"
+                "📊 EMA: no compatible weights found in checkpoint — "
+                "fully re-initialized from current model"
+            )
+        elif skipped_count > 0:
+            logger.warning(
+                f"📊 EMA partial load: {loaded_count}/{total} weights loaded, "
+                f"{skipped_count} re-initialized from current model"
             )
         else:
             logger.info(f"📊 EMA weights loaded ({loaded_count} tensors)")
@@ -1756,8 +1875,19 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             self._update_swa_weights()
 
     def _start_swa_phase(self, epoch: int) -> None:
-        """Start the SWA phase with reduced learning rate."""
+        """Start the SWA phase with reduced learning rate.
+        
+        IMPORTANT: Disables cosine restarts when SWA begins. SWA requires
+        a stable/declining LR to average weights along a flat loss landscape.
+        Cosine restarts would spike LR and destroy the averaging benefit.
+        """
         self.swa_started = True
+        # Disable cosine restarts — they conflict with SWA's constant low LR
+        if self.enable_cosine_restarts:
+            self.enable_cosine_restarts = False
+            self.console.print(
+                "  [magenta]⚙️ Cosine restarts disabled for SWA phase (stable LR needed)[/magenta]"
+            )
         swa_lr = self._initial_lr * self.swa_lr_factor
         if _safe_set_learning_rate(self.model.optimizer, swa_lr):
             self.console.print(
@@ -2385,6 +2515,9 @@ class RichEpochCallback(tf.keras.callbacks.Callback):
 
     def _get_loss_color(self, val_loss: float) -> str:
         """Determine color for loss display."""
+        import math
+        if val_loss is None or (isinstance(val_loss, float) and math.isnan(val_loss)):
+            return "yellow"
         if val_loss < self.prev_val_loss:
             return "green"
         if val_loss <= self.prev_val_loss * 1.1:
@@ -2425,7 +2558,11 @@ class RichEpochCallback(tf.keras.callbacks.Callback):
         # Format output
         epoch_str = f"[cyan]Epoch {epoch_num:3d}/{self.total_epochs}[/cyan]"
         acc_str = f"[{acc_color}]acc={val_acc:.1%}[/{acc_color}]"
-        loss_str = f"[{loss_color}]loss={val_loss:.4f}[/{loss_color}]"
+        import math
+        if val_loss is None or (isinstance(val_loss, float) and math.isnan(val_loss)):
+            loss_str = f"[yellow]loss=N/A[/yellow]"
+        else:
+            loss_str = f"[{loss_color}]loss={val_loss:.4f}[/{loss_color}]"
         train_str = f"[dim]train={train_acc:.1%}[/dim]"
         lr_str = f"[dim]lr={lr:.2e}[/dim]" if lr > 0 else ""
         status_str = f"[{acc_color}]{status}[/{acc_color}]"
@@ -3527,32 +3664,57 @@ class TCNTrainer(BaseTrainer):
         weights_h5_path = Path(warm_start_path).with_suffix(WEIGHTS_H5_SUFFIX)
         if not weights_h5_path.exists():
             return False
-        try:
-            self.model.load_weights(str(weights_h5_path), skip_mismatch=True)
+        if _safe_load_weights_ignoring_optimizer(self.model, str(weights_h5_path)):
             logger.info(f"✓ Loaded weights from {weights_h5_path}")
+            _safe_reset_optimizer_state(self.model)
             return True
-        except Exception as e:
-            logger.debug(f"H5 weights load failed: {e}")
-            return False
+        return False
 
     def _try_load_direct_weights(self, warm_start_path: str) -> bool:
         """Try loading weights from .keras file directly."""
-        try:
-            self.model.load_weights(str(warm_start_path), skip_mismatch=True)
+        if _safe_load_weights_ignoring_optimizer(self.model, str(warm_start_path)):
             logger.info(f"✓ Loaded weights from {warm_start_path}")
+            _safe_reset_optimizer_state(self.model)
             return True
-        except Exception as e:
-            logger.debug(f"Direct weights load failed: {e}")
-            return False
+        return False
 
     def _try_load_full_model_weights(self, warm_start_path: str, keras_module: Any) -> bool:
-        """Try full model load and extract weights."""
+        """Try full model load and extract weights (bypasses optimizer state)."""
         try:
             existing_model = keras_module.models.load_model(warm_start_path, compile=False)
-            self.model.set_weights(existing_model.get_weights())
-            logger.info(WEIGHTS_LOADED_FULL_MODEL_MSG)
+            checkpoint_weights = existing_model.get_weights()
+            model_weights = self.model.get_weights()
+
+            is_compatible, shape_error = _validate_weight_shapes(
+                model_weights, checkpoint_weights, context="model weights"
+            )
+
+            if is_compatible:
+                self.model.set_weights(checkpoint_weights)
+                logger.info(WEIGHTS_LOADED_FULL_MODEL_MSG)
+                del existing_model
+                return True
+
+            # Partial transfer by name matching
+            logger.warning(f"Architecture mismatch: {shape_error}")
+            logger.info("🔄 Attempting partial weight transfer by layer name...")
+            ckpt_weight_map = {w.name: w.numpy() for w in existing_model.weights}
+            loaded, skipped = 0, 0
+            for w in self.model.weights:
+                if w.name in ckpt_weight_map and w.shape == ckpt_weight_map[w.name].shape:
+                    w.assign(ckpt_weight_map[w.name].astype(_get_numpy_dtype(w.dtype)))
+                    loaded += 1
+                else:
+                    skipped += 1
             del existing_model
-            return True
+
+            if loaded > 0:
+                logger.info(
+                    f"✓ Partial weight transfer: {loaded} loaded, {skipped} re-initialized"
+                )
+                return True
+            logger.warning("⚠️ No compatible weights found in full model")
+            return False
         except Exception as e:
             logger.debug(f"Full model load failed: {e}")
             return False
@@ -3619,17 +3781,19 @@ class TCNTrainer(BaseTrainer):
             OverfitPreventionCallback(
                 checkpoint_dir=self.config.checkpoint_dir,
                 model_name="tcn_volatility_regime",
-                overfit_threshold=0.10,
-                critical_threshold=0.15,
-                severe_threshold=0.25,
-                max_acceptable_gap=0.12,
-                patience_epochs=2,
-                auto_adjust_dropout=True,
-                auto_reduce_lr=True,
-                enable_swa=True,
-                swa_start_fraction=0.5,
-                enable_cosine_restarts=True,
-                restart_period=15,
+                config=OverfitPreventionConfig(
+                    overfit_threshold=0.10,
+                    critical_threshold=0.15,
+                    severe_threshold=0.25,
+                    max_acceptable_gap=0.12,
+                    patience_epochs=2,
+                    auto_adjust_dropout=True,
+                    auto_reduce_lr=True,
+                    enable_swa=True,
+                    swa_start_fraction=0.5,
+                    enable_cosine_restarts=True,
+                    restart_period=15,
+                ),
             ),
         ]
 
@@ -4730,25 +4894,27 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         seq_len, n_features = input_shape
 
-        # L2 regularization - moderate to allow minority class learning
-        l2_weight = getattr(self.config, "l2_reg", 0.005) if self.config else 0.005
+        # L2 regularization — read from config (wired from YAML transformer.l2_reg)
+        l2_weight = getattr(self.config, "transformer_l2_reg", 0.003) if self.config else 0.003
         l2_reg = keras.regularizers.l2(l2_weight)
 
         # Input
         inp = keras.Input(shape=(seq_len, n_features), name="features")
 
-        # Input noise - mild to prevent overfitting without corrupting signal
-        noise_level = getattr(self.config, "input_noise", 0.03) if self.config else 0.03
+        # Input noise — read from config (wired from YAML transformer.input_noise)
+        noise_level = getattr(self.config, "transformer_input_noise", 0.02) if self.config else 0.02
         x = keras.layers.GaussianNoise(noise_level)(inp)
 
-        # Spatial dropout on input sequence - drops entire features
-        x = keras.layers.SpatialDropout1D(0.15)(x)
+        # Spatial dropout on input sequence — read from config (wired from YAML)
+        spatial_dropout = getattr(self.config, "transformer_spatial_dropout", 0.10) if self.config else 0.10
+        x = keras.layers.SpatialDropout1D(spatial_dropout)(x)
 
         # Project features to d_model dimension (with L2)
         x = keras.layers.Dense(
             self.transformer_d_model, kernel_regularizer=l2_reg, name="input_projection"
         )(x)
-        x = keras.layers.Dropout(0.15)(x)
+        proj_dropout = getattr(self.config, "transformer_projection_dropout", 0.10) if self.config else 0.10
+        x = keras.layers.Dropout(proj_dropout)(x)
 
         # Add positional encoding
         x = self._add_positional_encoding(x, seq_len, self.transformer_d_model)
@@ -4991,6 +5157,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         x_train_scaled = x_train_scaled[:, selected_indices]
         x_val_scaled = x_val_scaled[:, selected_indices]
 
+        self.selected_indices = selected_indices  # Store for inference/validation
         self.feature_names = [self.feature_names[i] for i in selected_indices]
         self.n_features = len(selected_indices)
 
@@ -5035,6 +5202,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         x_train_scaled = x_train_scaled[:, selected_indices]
         x_val_scaled = x_val_scaled[:, selected_indices]
 
+        self.selected_indices = selected_indices  # Store for inference/validation
         self.feature_names = [self.feature_names[i] for i in selected_indices]
         self.n_features = len(selected_indices)
 
@@ -5396,27 +5564,41 @@ class TransformerDirectionTrainer(BaseTrainer):
         return bool(self._try_load_meta_weights(warm_start_path))
 
     def _try_load_weights_h5(self, warm_start_path: str) -> bool:
-        """Strategy 1: Try loading weights from .h5 file."""
-        try:
-            weights_h5_path = Path(warm_start_path).with_suffix(WEIGHTS_H5_SUFFIX)
-            if weights_h5_path.exists():
-                self.model.load_weights(str(weights_h5_path), skip_mismatch=True)
-                logger.info(f"✓ Loaded weights from {weights_h5_path}")
-                return True
-            else:
-                self.model.load_weights(str(warm_start_path), skip_mismatch=True)
-                logger.info(f"✓ Loaded weights directly from {warm_start_path}")
-                return True
-        except Exception as e:
-            logger.debug(f"Direct load_weights failed: {e}")
-            return False
+        """Strategy 1: Try loading weights from .h5 file.
+
+        Uses _safe_load_weights_ignoring_optimizer to suppress optimizer-state
+        mismatch warnings that are benign during warm-start (the optimizer is
+        rebuilt with a fresh Adam before training begins).
+        """
+        weights_h5_path = Path(warm_start_path).with_suffix(WEIGHTS_H5_SUFFIX)
+        if weights_h5_path.exists():
+            target = str(weights_h5_path)
+        else:
+            target = str(warm_start_path)
+
+        if _safe_load_weights_ignoring_optimizer(self.model, target):
+            logger.info(f"✓ Loaded model weights from {target}")
+            # Reset optimizer slot variables – they belong to the old architecture
+            _safe_reset_optimizer_state(self.model)
+            return True
+        return False
 
     def _try_load_full_model_weights(self, warm_start_path: str) -> bool:
-        """Strategy 2: Try loading full model and extracting weights."""
+        """Strategy 2: Try loading full model and extracting weights.
+
+        When architectures differ (e.g. different layer count or frozen layers),
+        falls back to *name-based partial weight transfer* so that compatible
+        layers still benefit from the checkpoint.
+        """
         from tensorflow import keras
 
         try:
             existing_model = keras.models.load_model(warm_start_path, compile=False)
+        except Exception as e:
+            logger.debug(f"Full model load failed: {e}")
+            return False
+
+        try:
             checkpoint_weights = existing_model.get_weights()
             model_weights = self.model.get_weights()
 
@@ -5427,15 +5609,54 @@ class TransformerDirectionTrainer(BaseTrainer):
             if is_compatible:
                 self.model.set_weights(checkpoint_weights)
                 logger.info(WEIGHTS_LOADED_FULL_MODEL_MSG)
-                del existing_model
+                return True
+
+            # --- Partial weight transfer via name-based matching ---
+            logger.warning(f"Architecture mismatch: {shape_error}")
+            logger.info("🔄 Attempting partial weight transfer by layer name...")
+
+            ckpt_weight_map = {
+                w.name: w.numpy() for w in existing_model.weights
+            }
+            loaded, skipped = 0, 0
+            for w in self.model.weights:
+                if w.name in ckpt_weight_map:
+                    ckpt_val = ckpt_weight_map[w.name]
+                    if w.shape == ckpt_val.shape:
+                        w.assign(ckpt_val.astype(_get_numpy_dtype(w.dtype)))
+                        loaded += 1
+                    else:
+                        skipped += 1
+                        logger.debug(
+                            f"  Shape mismatch for {w.name}: "
+                            f"model={w.shape}, checkpoint={ckpt_val.shape}"
+                        )
+                else:
+                    # Try partial (base) name match
+                    base = w.name.split("/")[-1].split(":")[0]
+                    matched = False
+                    for cn, cv in ckpt_weight_map.items():
+                        cb = cn.split("/")[-1].split(":")[0]
+                        if base == cb and w.shape == cv.shape:
+                            w.assign(cv.astype(_get_numpy_dtype(w.dtype)))
+                            loaded += 1
+                            matched = True
+                            break
+                    if not matched:
+                        skipped += 1
+
+            if loaded > 0:
+                logger.info(
+                    f"✓ Partial weight transfer: {loaded} weights loaded, "
+                    f"{skipped} re-initialized from scratch"
+                )
+                _safe_reset_optimizer_state(self.model)
                 return True
             else:
-                logger.warning(f"Architecture mismatch: {shape_error}")
-                del existing_model
+                logger.warning("⚠️ No compatible weights found – starting fresh")
                 return False
-        except Exception as e:
-            logger.debug(f"Full model load failed: {e}")
-            return False
+        finally:
+            del existing_model
 
     def _try_load_meta_weights(self, warm_start_path: str) -> bool:
         """Strategy 3: Try loading weights from meta.pkl."""
@@ -5618,6 +5839,23 @@ class TransformerDirectionTrainer(BaseTrainer):
         if ema_meta_path.exists():
             with open(ema_meta_path, "rb") as f:
                 ema_data = pickle.load(f)
+
+            # Quick check: if tensor count differs drastically, skip loading
+            # and remove the stale file so it won't warn on future runs.
+            n_model = len(self.model.trainable_weights)
+            n_ckpt = len(ema_data.get("ema_weights", []))
+            ratio = max(n_model, n_ckpt) / max(min(n_model, n_ckpt), 1)
+            if ratio > 3.0:
+                logger.info(
+                    f"📊 Stale EMA checkpoint ({n_ckpt} tensors) doesn't match "
+                    f"current model ({n_model} tensors) — starting fresh EMA."
+                )
+                try:
+                    ema_meta_path.unlink()
+                except OSError:
+                    pass
+                return
+
             self.ema = EMACallback(
                 self.model,
                 decay=self.config.ema_decay,
@@ -5823,18 +6061,20 @@ class TransformerDirectionTrainer(BaseTrainer):
             OverfitPreventionCallback(
                 checkpoint_dir=self.config.checkpoint_dir,
                 model_name="transformer_direction",
-                overfit_threshold=0.08,
-                critical_threshold=0.12,
-                severe_threshold=0.20,
-                max_acceptable_gap=0.10,
-                patience_epochs=2,
-                auto_adjust_dropout=True,
-                auto_reduce_lr=True,
-                enable_swa=True,
-                swa_start_fraction=0.5,
-                enable_cosine_restarts=True,
-                restart_period=15,
-                warm_start_best_acc=self._warm_start_val_acc,
+                config=OverfitPreventionConfig(
+                    overfit_threshold=0.08,
+                    critical_threshold=0.12,
+                    severe_threshold=0.20,
+                    max_acceptable_gap=0.10,
+                    patience_epochs=2,
+                    auto_adjust_dropout=True,
+                    auto_reduce_lr=True,
+                    enable_swa=True,
+                    swa_start_fraction=0.5,
+                    enable_cosine_restarts=True,
+                    restart_period=15,
+                    warm_start_best_acc=self._warm_start_val_acc,
+                ),
             ),
         ]
 

@@ -532,8 +532,8 @@ def _add_tf_performance_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--mixed-precision",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Enable mixed precision (mixed_float16) for Buddy training - 1.5-2x speedup on M1. (default: enabled; use --no-mixed-precision to disable)",
+        default=None,
+        help="Enable mixed precision (mixed_float16) for Buddy training - 1.5-2x speedup on M1. (default: from config; use --no-mixed-precision to disable)",
     )
     parser.add_argument(
         "--steps-per-execution",

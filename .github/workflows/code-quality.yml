@@ -59,3 +59,59 @@ jobs:
       if: success()
       run: |
         echo "✅ All Python files have valid syntax"
+
+  test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest numpy pandas rich PyYAML structlog scikit-learn
+
+    - name: Run integration tests
+      run: |
+        python -m pytest tests/ -v --tb=short -x 2>&1
+
+    - name: Report
+      if: failure()
+      run: |
+        echo "::error::Integration tests failed. Check test output for details."
+
+  import-validation:
+    name: Import Validation
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install core dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install numpy pandas rich PyYAML structlog
+
+    - name: Validate critical imports
+      run: |
+        python -c "from src.utils import setup_logging; print('src.utils OK')"
+        python -c "from src.rl.utils import compute_rl_features; print('src.rl.utils OK')"
+        python -c "from src.rl.curriculum import CurriculumScheduler; print('src.rl.curriculum OK')"
+        python -c "from online_retrainer import OnlineRetrainer, RetrainConfig; print('online_retrainer OK')"
+        python -c "from news_features import fetch_forex_news, check_economic_calendar; print('news_features OK')"
+        echo "✅ All critical imports validated"

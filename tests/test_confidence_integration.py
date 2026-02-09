@@ -223,8 +223,9 @@ class TestConfidenceIntegration:
             raw_confidence=0.9  # High confidence
         )
         
-        # Should be constrained by max_position_pct (10%)
-        max_allowed = int(10000000.0 * 0.10 / 1000) * 1000
+        # Should be constrained by max_position_pct (10%) using equity-based formula
+        # Code: max_position_from_equity = int(account_equity * max_position_pct * 100)
+        max_allowed = int(10000000.0 * 0.10 * 100)
         assert position_result.units <= max_allowed
         assert position_result.confidence_level == "high"
         
@@ -345,7 +346,7 @@ class TestUnifiedTalkIntegration:
     
     def test_talk_context_integration(self):
         """Test that TalkContext properly integrates confidence components."""
-        from unified_talk import _load_context
+        from src.utils.unified_talk import _load_context
         
         # Create a minimal config for testing
         config = {
@@ -361,8 +362,8 @@ class TestUnifiedTalkIntegration:
         }
         
         # Mock the config loading
-        with patch('unified_talk.load_config', return_value=config):
-            with patch('unified_talk.select_latest_checkpoint') as mock_select:
+        with patch('src.utils.unified_talk.load_config', return_value=config):
+            with patch('src.utils.unified_talk.select_latest_checkpoint') as mock_select:
                 mock_select.return_value = None  # No checkpoint for this test
                 
                 # This should still create the context with confidence components

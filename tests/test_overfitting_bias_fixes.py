@@ -22,24 +22,24 @@ from pathlib import Path
 # ============================================================================
 
 class TestLabelThreshold:
-    """Fix #1: Verify direction_threshold is reduced to 0.0015 (not 0.003)."""
+    """Fix #1: Verify direction_threshold is set to 0.003 for better class balance."""
     
     def test_config_threshold_value(self):
-        """Config should have threshold 0.0015 not 0.003."""
+        """Config should have threshold 0.003 for better class balance."""
         from src.utils.utils import load_config
         config = load_config("config/config_improved_H1.yaml")
         
         threshold = config.get("direction_threshold")
         assert threshold is not None, "direction_threshold not found in config"
-        assert threshold == 0.0015, f"Expected threshold 0.0015, got {threshold}"
+        assert threshold == 0.003, f"Expected threshold 0.003, got {threshold}"
     
-    def test_threshold_not_old_value(self):
-        """Ensure old problematic threshold 0.003 is not used."""
+    def test_threshold_is_production_value(self):
+        """Ensure production threshold 0.003 is used (increased from 0.0015 for class balance)."""
         from src.utils.utils import load_config
         config = load_config("config/config_improved_H1.yaml")
         
         threshold = config.get("direction_threshold")
-        assert threshold != 0.003, "Still using old threshold 0.003 - should be 0.0015"
+        assert threshold == 0.003, f"Expected production threshold 0.003, got {threshold}"
 
 
 # ============================================================================
@@ -391,7 +391,7 @@ class TestBiasFixesIntegration:
         config = load_config("config/config_improved_H1.yaml")
         
         # Fix #1: Label threshold
-        assert config.get("direction_threshold") == 0.0015
+        assert config.get("direction_threshold") == 0.003
         
         # Fix #2: Focal loss
         assert config.get("use_focal_loss") is True

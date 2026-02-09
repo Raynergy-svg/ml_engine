@@ -789,6 +789,7 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
 
     # High-Low range as percentage
     df['hl_range_pct'] = (high - low) / np.maximum(close, 1e-10)
+    df['high_low_range'] = df['hl_range_pct']  # Alias expected by volatility features
 
     # Body size as percentage (open-close range)
     df['body_pct'] = (close - open_) / np.maximum(close, 1e-10)
@@ -800,6 +801,32 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
     df['upper_wick_ratio'] = (high - body_high) / hl_range
     df['lower_wick_ratio'] = (body_low - low) / hl_range
     df['body_ratio'] = np.abs(close - open_) / hl_range
+
+    # =================================================================
+    # 5b. BOLLINGER BANDS (normalized) - needed by volatility features
+    # =================================================================
+
+    bb_period = 20
+    bb_sma = np.zeros(n)
+    bb_std = np.zeros(n)
+    for i in range(bb_period, n):
+        window = close[i-bb_period:i]
+        bb_sma[i] = np.mean(window)
+        bb_std[i] = np.std(window)
+
+    bb_upper = bb_sma + 2 * bb_std
+    bb_lower = bb_sma - 2 * bb_std
+    bb_width = bb_upper - bb_lower
+
+    # Raw BB width (used in some feature lists)
+    df['bb_width_20'] = bb_width
+
+    # Normalized BB width (width as fraction of price)
+    df['bb_width_norm'] = bb_width / np.maximum(close, 1e-10)
+
+    # BB position (where price sits within the bands, 0=lower, 1=upper)
+    bb_pos = np.where(bb_width > 1e-10, (close - bb_lower) / bb_width, 0.5)
+    df['bb_position_20'] = np.clip(bb_pos, -0.5, 1.5)
 
     # =================================================================
     # 6. MOMENTUM INDICATORS (already normalized 0-100 or -1 to 1)
@@ -2056,6 +2083,7 @@ def load_lightgbm_data(
 # =============================================================================
 
 # Backward compatibility alias (deprecated - use load_tcn_data instead)
+# Zero callers as of 2026-02-08 - safe to remove in next cleanup
 def load_tcn_data_legacy(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),

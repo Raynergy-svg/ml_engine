@@ -31,7 +31,8 @@ def test_collapse_callback_graduated_detection():
     mock_model.optimizer = mock_optimizer
     
     # Test 1: 82% UP - should trigger early warning
-    preds_82 = np.ones((100, 1)) * 0.82  # 82% will predict UP
+    # Create predictions where exactly 82 out of 100 predict UP (>0.5)
+    preds_82 = np.concatenate([np.ones((82, 1)) * 0.82, np.ones((18, 1)) * 0.3])
     mock_model.predict.return_value = preds_82
     
     # Import the callback class (we need to extract it from modular_trainers)
@@ -48,7 +49,7 @@ def test_collapse_callback_graduated_detection():
     assert 80 < pred_up_pct < 85
     
     # Test 2: 87% UP - should trigger moderate collapse warning
-    preds_87 = np.ones((100, 1)) * 0.87
+    preds_87 = np.concatenate([np.ones((87, 1)) * 0.87, np.ones((13, 1)) * 0.3])
     pred_classes = (preds_87 > 0.5).astype(float).flatten()
     pred_up_pct = pred_classes.mean() * 100
     
@@ -57,7 +58,7 @@ def test_collapse_callback_graduated_detection():
     assert 85 < pred_up_pct < 90
     
     # Test 3: 92% UP - should trigger severe collapse
-    preds_92 = np.ones((100, 1)) * 0.92
+    preds_92 = np.concatenate([np.ones((92, 1)) * 0.92, np.ones((8, 1)) * 0.3])
     pred_classes = (preds_92 > 0.5).astype(float).flatten()
     pred_up_pct = pred_classes.mean() * 100
     

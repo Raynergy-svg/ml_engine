@@ -107,8 +107,8 @@ class AntiCollapseFocalLoss(keras.losses.Loss):
         self.label_smoothing = label_smoothing
 
     def call(self, y_true, y_pred):
-        y_true = tf.cast(y_true, tf.float32)
-        y_pred = tf.cast(y_pred, tf.float32)
+        y_true = tf.cast(tf.reshape(y_true, [-1]), tf.float32)
+        y_pred = tf.cast(tf.reshape(y_pred, [-1]), tf.float32)
 
         # Apply label smoothing
         if self.label_smoothing > 0:
@@ -145,31 +145,22 @@ class AntiCollapseFocalLoss(keras.losses.Loss):
         # This ensures minority class samples always contribute to learning
         focal_weight = tf.maximum(focal_weight, self.min_gradient_scale)
 
-        focal_loss = focal_weight * bce
+        per_sample_loss = focal_weight * bce
 
         # === VARIANCE REGULARIZATION (replaces entropy) ===
         # Penalize LOW variance in predictions across the batch
-        # If all predictions are ~0.47, variance is near 0 → add penalty
-        # This forces the model to have diverse outputs, not collapse to constant
         pred_variance = tf.math.reduce_variance(y_pred)
-        # Target variance: 0.08 (std≈0.28) means predictions spread from ~0.22 to ~0.78
-        # Increased from 0.06 for stronger anti-collapse
         target_variance = 0.08
-        # Penalty increases as variance drops below target - use squared penalty for stronger effect
         variance_gap = tf.maximum(target_variance - pred_variance, 0.0)
-        # Scale penalty by collapse severity: gentle when balanced, aggressive when collapsed
-        variance_scale = 50.0 + 200.0 * collapse_severity  # 50-250x based on how collapsed
+        variance_scale = 50.0 + 200.0 * collapse_severity
         variance_penalty = self.variance_weight * tf.square(variance_gap) * variance_scale
 
         # === CLASS BALANCE PENALTY ===
-        # Additional penalty when predictions are too skewed (>70% one class)
-        # Lowered threshold from 0.30 to 0.20 for earlier intervention
         balance_gap = tf.maximum(tf.abs(mean_pred - 0.5) - 0.20, 0.0)
-        balance_penalty = self.variance_weight * tf.square(balance_gap) * 5.0  # Quadratic ramp
+        balance_penalty = self.variance_weight * tf.square(balance_gap) * 5.0
 
-        total_loss = tf.reduce_mean(focal_loss) + variance_penalty + balance_penalty
-
-        return total_loss
+        # Return per-sample losses + batch-level penalties (Keras 3.x handles reduction)
+        return per_sample_loss + variance_penalty + balance_penalty
 
     def get_config(self):
         config = super().get_config()
@@ -205,8 +196,8 @@ class BinaryFocalLoss(keras.losses.Loss):
         self.label_smoothing = label_smoothing
 
     def call(self, y_true, y_pred):
-        y_true = tf.cast(y_true, tf.float32)
-        y_pred = tf.cast(y_pred, tf.float32)
+        y_true = tf.cast(tf.reshape(y_true, [-1]), tf.float32)
+        y_pred = tf.cast(tf.reshape(y_pred, [-1]), tf.float32)
         if self.label_smoothing > 0:
             y_true = y_true * (1 - self.label_smoothing) + 0.5 * self.label_smoothing
 
@@ -219,7 +210,8 @@ class BinaryFocalLoss(keras.losses.Loss):
             alpha_weight = y_true * self.alpha + (1 - y_true) * (1 - self.alpha)
             focal_weight = focal_weight * alpha_weight
 
-        return tf.reduce_mean(focal_weight * bce)
+        # Return per-sample losses (Keras 3.x handles reduction)
+        return focal_weight * bce
 
     def get_config(self):
         config = super().get_config()
@@ -267,8 +259,8 @@ class ClassBalancedFocalLoss(keras.losses.Loss):
     def call(self, y_true, y_pred):
         import tensorflow as tf
 
-        y_true = tf.cast(y_true, tf.float32)
-        y_pred = tf.cast(y_pred, tf.float32)
+        y_true = tf.cast(tf.reshape(y_true, [-1]), tf.float32)
+        y_pred = tf.cast(tf.reshape(y_pred, [-1]), tf.float32)
 
         # Apply label smoothing
         if self.label_smoothing > 0:
@@ -278,61 +270,32 @@ class ClassBalancedFocalLoss(keras.losses.Loss):
         y_pred = tf.clip_by_value(y_pred, 1e-7, 1 - 1e-7)
 
         # === COMPUTE CLASS-BALANCED WEIGHTS ===
-        # Get batch size
         batch_size = tf.cast(tf.shape(y_true)[0], tf.float32)
-
-        # Count samples per class
-        n_up = tf.reduce_sum(y_true)
+        n_up = tf.reduce_sum(tf.cast(y_true > 0.5, tf.float32))
         n_down = batch_size - n_up
-
-        # Compute effective number of samples for each class
-        # n_eff = (1 - beta^(n/N)) / (1 - beta)
         total = n_up + n_down + tf.keras.backend.epsilon()
 
-        # Effective samples for UP class
         up_ratio = n_up / total
-        (1.0 - tf.pow(self.beta, up_ratio)) / (1.0 - self.beta + tf.keras.backend.epsilon())
-
-        # Effective samples for DOWN class
         down_ratio = n_down / total
-        (1.0 - tf.pow(self.beta, down_ratio)) / (1.0 - self.beta + tf.keras.backend.epsilon())
 
-        # Class-balanced weights (inverse of effective samples)
-        # w_CB = (1 - beta) / (1 - beta^(n/N))
         up_weight = (1.0 - self.beta) / (1.0 - tf.pow(self.beta, up_ratio) + tf.keras.backend.epsilon())
         down_weight = (1.0 - self.beta) / (1.0 - tf.pow(self.beta, down_ratio) + tf.keras.backend.epsilon())
 
-        # Normalize weights to sum to batch size (preserve effective batch size)
         total_weight = up_weight * n_up + down_weight * n_down
         up_weight = up_weight * batch_size / (total_weight + tf.keras.backend.epsilon())
         down_weight = down_weight * batch_size / (total_weight + tf.keras.backend.epsilon())
 
-        # Apply class-balanced weights per sample
-        cb_weight = y_true * up_weight + (1 - y_true) * down_weight
+        cb_weight = tf.where(y_true > 0.5, up_weight, down_weight)
 
         # === FOCAL LOSS COMPONENT ===
-        # Binary cross entropy
         bce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
-
-        # Focal weight
         pt = y_true * y_pred + (1 - y_true) * (1 - y_pred)
         focal_weight = tf.pow(1 - pt, self.gamma)
-
-        # Apply focal alpha
         alpha_weight = y_true * self.focal_alpha + (1 - y_true) * (1 - self.focal_alpha)
         focal_weight = focal_weight * alpha_weight
 
-        # === COMBINE CB WEIGHTS WITH FOCAL LOSS ===
-        # L = w_CB * L_Focal
-        focal_loss = focal_weight * bce
-
-        # Apply class-balanced weighting
-        weighted_loss = cb_weight * focal_loss
-
-        # Normalize by batch size to get average loss
-        total_loss = tf.reduce_mean(weighted_loss)
-
-        return total_loss
+        # Return per-sample losses (Keras 3.x handles reduction)
+        return cb_weight * focal_weight * bce
 
     def get_config(self):
         config = super().get_config()
@@ -388,8 +351,9 @@ class HybridClassBalancedAntiCollapseLoss(keras.losses.Loss):
     def call(self, y_true, y_pred):
         import tensorflow as tf
 
-        y_true = tf.cast(y_true, tf.float32)
-        y_pred = tf.cast(y_pred, tf.float32)
+        # Align shapes: model outputs (B,1), labels are (B,)
+        y_true = tf.cast(tf.reshape(y_true, [-1]), tf.float32)
+        y_pred = tf.cast(tf.reshape(y_pred, [-1]), tf.float32)
 
         # Apply label smoothing
         if self.label_smoothing > 0:
@@ -405,26 +369,28 @@ class HybridClassBalancedAntiCollapseLoss(keras.losses.Loss):
         e_pos = (1.0 - tf.pow(self.beta, n_pos)) / (1.0 - self.beta + 1e-7)
         e_neg = (1.0 - tf.pow(self.beta, n_neg)) / (1.0 - self.beta + 1e-7)
 
-        w_pos = 1.0 / e_pos
-        w_neg = 1.0 / e_neg
+        w_pos = 1.0 / (e_pos + 1e-7)
+        w_neg = 1.0 / (e_neg + 1e-7)
         total_w = w_pos + w_neg + 1e-7
         w_pos = 2.0 * w_pos / total_w
         w_neg = 2.0 * w_neg / total_w
 
-        # === FOCAL LOSS COMPUTATION ===
+        # === FOCAL LOSS COMPUTATION (per-sample) ===
         bce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
         pt = y_true * y_pred + (1 - y_true) * (1 - y_pred)
         focal_weight = tf.pow(1 - pt, self.gamma)
-        cb_weight = y_true * w_pos + (1 - y_true) * w_neg
-        cb_focal_loss = tf.reduce_mean(cb_weight * focal_weight * bce)
+        cb_weight = tf.where(y_true > 0.5, w_pos, w_neg)
+        per_sample_loss = cb_weight * focal_weight * bce
 
         # === VARIANCE PENALTY (Anti-Collapse) ===
-        # Penalize when prediction variance drops below target
-        # This prevents the model from collapsing to constant predictions
+        # FIX: Compute mean of per-sample losses first, then add batch-level penalty.
+        # Previously variance_loss (scalar) was broadcast to every sample, inflating
+        # the total loss by batch_size * variance_loss instead of just variance_loss.
         pred_var = tf.math.reduce_variance(y_pred)
         variance_loss = self.variance_weight * tf.maximum(0.0, self.variance_target - pred_var)
+        mean_loss = tf.reduce_mean(per_sample_loss)
 
-        return cb_focal_loss + variance_loss
+        return mean_loss + variance_loss
 
     def get_config(self):
         config = super().get_config()
@@ -480,12 +446,10 @@ class MADLLoss(keras.losses.Loss):
         Args:
             y_true: Ground truth labels (0=down, 1=up) or (direction, return) tuple
             y_pred: Predicted probabilities [0, 1]
-
-        Note: For full MADL with return weighting, y_true should contain returns.
-              If y_true is binary labels only, we fall back to weighted BCE.
         """
-        y_true = tf.cast(y_true, tf.float32)
-        y_pred = tf.cast(y_pred, tf.float32)
+        # Align shapes: model outputs (B,1), labels are (B,)
+        y_true = tf.cast(tf.reshape(y_true, [-1]), tf.float32)
+        y_pred = tf.cast(tf.reshape(y_pred, [-1]), tf.float32)
 
         # Apply label smoothing
         if self.label_smoothing > 0:
@@ -495,33 +459,23 @@ class MADLLoss(keras.losses.Loss):
         y_pred = tf.clip_by_value(y_pred, 1e-7, 1 - 1e-7)
 
         # === DIRECTIONAL LOSS COMPONENT ===
-        # Convert predictions to directional signal
-        pred_direction = tf.cast(y_pred >= 0.5, tf.float32)  # 1=up, 0=down
-        true_direction = tf.cast(y_true >= 0.5, tf.float32)  # 1=up, 0=down
-
-        # Direction mismatch indicator (1 if wrong, 0 if correct)
+        pred_direction = tf.cast(y_pred >= 0.5, tf.float32)
+        true_direction = tf.cast(y_true >= 0.5, tf.float32)
         direction_mismatch = tf.abs(pred_direction - true_direction)
 
         # === CONFIDENCE PENALTY ===
-        # Penalize confident wrong predictions more than uncertain wrong predictions
-        # If pred=0.9 and true=0, penalty is higher than if pred=0.6 and true=0
-        confidence = tf.abs(y_pred - 0.5) * 2  # [0, 1] confidence scale
+        confidence = tf.abs(y_pred - 0.5) * 2
 
         # === COMBINED MADL ===
-        # Base loss: direction mismatch weighted by prediction confidence
-        # Wrong + confident = high loss, Wrong + uncertain = medium loss, Right = low loss
         base_loss = direction_mismatch * (0.5 + confidence * 0.5)
-
-        # Add BCE component for gradient smoothness (MADL alone has harsh gradients)
         bce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
 
         # Combine: direction_weight for MADL, (1-direction_weight) for BCE
-        total_loss = (
+        # Return per-sample losses (Keras 3.x handles reduction)
+        return (
             self.direction_weight * base_loss +
             (1 - self.direction_weight) * bce
         )
-
-        return tf.reduce_mean(total_loss)
 
     def get_config(self):
         config = super().get_config()

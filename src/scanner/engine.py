@@ -634,6 +634,15 @@ class Scanner:
                 if volatility_regime < getattr(self.config, 'min_volatility_regime', 2):
                     error_msg = f"Blocked: {regime_name} volatility regime"
 
+            # Compute recent drawdown from close prices (lookback ~100 bars)
+            _drawdown_val = 0.02  # Sensible default fallback
+            if "close" in df_raw.columns and len(df_raw) >= 20:
+                _close = df_raw["close"].iloc[-100:]
+                _running_max = _close.cummax()
+                _dd_series = (_running_max - _close) / _running_max.replace(0, np.nan)
+                _dd_series = _dd_series.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+                _drawdown_val = max(float(_dd_series.max()), 0.001)  # Floor at 0.1%
+
             # Create analysis result
             result = PairAnalysis(
                 pair=pair,
@@ -646,7 +655,7 @@ class Scanner:
                 momentum_passed=confidence >= self.config.min_momentum,
                 confidence_score=ridge_conf,
                 confidence_passed=ridge_conf >= self.config.min_confidence,
-                drawdown=0.02,  # Placeholder
+                drawdown=_drawdown_val,
                 risk_passed=True,  # Simplified
                 gates_passed=gates_passed,
                 current_price=metrics["current_price"],

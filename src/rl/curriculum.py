@@ -271,15 +271,38 @@ def generate_curriculum_data(
         adx[i] = 100 * abs(np.sum(np.sign(returns[i-14:i]))) / 14
     adx = np.clip(adx, 0, 100)
 
+    # Multi-timeframe returns: rolling sum over 2 periods (approximates 2x timeframe)
+    returns_2 = np.zeros(n_samples)
+    for i in range(2, n_samples):
+        returns_2[i] = returns[i] + returns[i - 1]
+    # Replace any inf/-inf with nan, then fill nan with 0.0
+    returns_2 = np.where(np.isfinite(returns_2), returns_2, 0.0)
+
+    # Bollinger Band position: normalized 0-1 showing where price sits within bands
+    bb_window = 20
+    bb_position = np.full(n_samples, 0.5)  # Default to midpoint
+    for i in range(bb_window, n_samples):
+        window_prices = prices[i - bb_window:i]
+        sma = np.mean(window_prices)
+        std = np.std(window_prices, ddof=1)
+        if std > 1e-10:
+            upper_band = sma + 2.0 * std
+            lower_band = sma - 2.0 * std
+            band_width = upper_band - lower_band
+            # Normalize price position within bands to [0, 1]
+            bb_position[i] = np.clip((prices[i] - lower_band) / band_width, 0.0, 1.0)
+    # Replace any nan with 0.5 (midpoint fallback)
+    bb_position = np.where(np.isfinite(bb_position), bb_position, 0.5)
+
     # Features array
     features = np.column_stack([
         returns,
-        np.zeros_like(returns),  # returns_2 placeholder
+        returns_2,
         atr,
         adx,
         momentum,
         rsi / 100,
-        np.zeros_like(returns),  # bb_position placeholder
+        bb_position,
     ])
 
     # Ensemble predictions (clearer signals in easier levels)

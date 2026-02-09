@@ -22,6 +22,8 @@ from cli.tf_config import _configure_tf_metal
 
 from src.utils import load_config
 
+logger = logging.getLogger(__name__)
+
 # Import from refactored modules
 from cli.buddy_helpers import (
     _tier2_apply_calibration, _configure_predict_output, _buddy_live_enabled_from_meta,
@@ -30,10 +32,8 @@ from cli.buddy_helpers import (
 from cli.wizard import _buddy_interactive_wizard, launch_buddy_repl_from_wizard
 
 
-# Forward declaration - train_buddy is defined later in this file
-def train_buddy(config_path: str, csv_path: str | None = None, *, all_features: bool = False) -> None:
-    """Forward declaration - implemented in Part 2."""
-    raise NotImplementedError("train_buddy not yet implemented in commands.py")
+# train_buddy is implemented in cli.training - re-export for backward compatibility
+from cli.training import train_buddy  # noqa: F401, E402
 
 
 # Major FX pairs for "all" mode
@@ -1838,6 +1838,37 @@ def buddy_loop(
     # Simple trace counter for debugging / liveness checks.
     trace_iter = 0
 
+    # =========================================================================
+    # ONLINE RETRAINER: Connect drift detection to model retraining
+    # =========================================================================
+    market_intel = None
+    try:
+        from market_intelligence import MarketIntelligence
+        market_intel = MarketIntelligence(
+            enable_sentiment=False,
+            enable_calendar=False,
+            enable_online_learning=True,
+            enable_drift_detection=True,
+        )
+        logger.info("MarketIntelligence initialized for buddy_loop")
+    except Exception as _mi_err:
+        logger.warning("MarketIntelligence unavailable in buddy_loop: %s", _mi_err)
+
+    try:
+        from online_retrainer import OnlineRetrainer, create_retrain_callback
+
+        retrainer = OnlineRetrainer()
+        retrain_callback = create_retrain_callback(retrainer=retrainer, market_intel=market_intel)
+
+        # Connect to drift detection
+        if hasattr(market_intel, 'drift_manager') and market_intel.drift_manager is not None:
+            market_intel.drift_manager.set_retrain_callback(retrain_callback)
+            logger.info("Online retrainer connected to drift detection")
+        else:
+            logger.info("Online retrainer created but no drift_manager available to connect")
+    except Exception as _or_err:
+        logger.warning("Online retrainer integration skipped: %s", _or_err)
+
     while True:
         # Quick pre-sleep checks:
         # - If weekend (Sat/Sun) pause briefly.
@@ -2355,9 +2386,10 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
     )
 
     # M1 METAL CRITICAL SETTINGS - now properly read from config
-    # For store_true flags: CLI True overrides config, otherwise use config
+    # For BooleanOptionalAction: None means user didn't pass flag, use config
+    _mp_cli = getattr(args, "mixed_precision", None)
     mixed_precision_eff = (
-        True if bool(getattr(args, "mixed_precision", False))
+        bool(_mp_cli) if _mp_cli is not None
         else bool(_cfg_get("mixed_precision", False))  # Default False; enable explicitly in config
     )
     jit_compile_eff = (

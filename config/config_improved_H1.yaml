@@ -112,14 +112,17 @@ model:
 # ----- TRANSFORMER DIRECTION MODEL -----
 # Replaces TCN for direction prediction - better at capturing trends
 transformer:
-  d_model: 16          # Reduced model dimension (was 32) for less overfitting
-  num_heads: 2         # Reduced heads (was 4)
-  num_layers: 2        # Single layer (was 2) - simpler model
-  dff: 32              # Reduced feedforward (was 64)
-  dropout: 0.3         # Moderate dropout (reduced from 0.6 - was suppressing minority)
-  label_smoothing: 0.05 # Mild smoothing (reduced from 0.15 - was too aggressive)
-  l2_reg: 0.005        # Moderate L2 (reduced from 0.02 - was preventing learning)
-  input_noise: 0.03    # Mild input noise (reduced from 0.08 - was corrupting signal)
+  d_model: 32          # Increased from 16 — 16 was too small for 50-feature input
+  num_heads: 4         # Increased from 2 — allows richer attention patterns
+  num_layers: 2        # 2 encoder layers (good balance)
+  dff: 64              # Increased from 32 — feedforward needs 2x d_model minimum
+  dropout: 0.2         # Reduced from 0.3 — less regularization for larger model
+  label_smoothing: 0.05 # Mild smoothing
+  l2_reg: 0.003        # Reduced from 0.005 — lighter L2 for larger model
+  input_noise: 0.02    # Reduced from 0.03 — less signal corruption
+  spatial_dropout: 0.10 # NEW: Wired through config (was hardcoded 0.15)
+  projection_dropout: 0.10 # NEW: Wired through config (was hardcoded 0.15)
+  head_dropout: 0.10   # NEW: Wired through config (was hardcoded 0.15)
   use_transformer: true  # Use Transformer instead of TCN for direction
 
 # ----- TCN VOLATILITY REGIME FILTER -----
@@ -292,6 +295,14 @@ inference:
   # Calibration
   enable_calibration: true
   calibration_method: platt
+
+# ----- NEWS & SENTIMENT DATA SOURCE -----
+# Configuration for news_features.py callback system
+news:
+  enabled: true
+  source: "rss"  # or "api" for future premium sources
+  max_headlines: 10
+  sentiment_model: "finbert"  # or "simple" for lexicon-based fallback
 
 # ----- WALK-FORWARD CROSS-VALIDATION -----
 # Robust time-series validation to prevent look-ahead bias
@@ -645,3 +656,11 @@ scan:
     - AUD_USD
     - USD_CAD
     - NZD_USD
+
+# ----- ONLINE RETRAINING CONFIGURATION -----
+# Drift-triggered incremental model retraining (via OnlineRetrainer)
+online_retraining:
+  enabled: true
+  cooldown_minutes: 60
+  max_retrains_per_day: 3
+  min_samples_for_retrain: 50

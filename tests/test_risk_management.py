@@ -17,22 +17,22 @@ class TestRiskManagementConfig:
     def test_default_config(self):
         """Test default configuration values."""
         config = RiskManagementConfig()
-        assert config.low_confidence_rr == 1.5
-        assert config.medium_confidence_rr == 2.0
+        assert config.low_confidence_rr == 2.0
+        assert config.medium_confidence_rr == 2.5
         assert config.high_confidence_rr == 3.0
-        assert config.low_confidence_threshold == 0.5
-        assert config.medium_confidence_threshold == 0.7
-        assert config.high_confidence_threshold == 0.85
-        assert config.min_rr_ratio == 1.0
+        assert config.low_confidence_threshold == 0.55
+        assert config.medium_confidence_threshold == 0.65
+        assert config.high_confidence_threshold == 0.75
+        assert config.min_rr_ratio == 1.5
         assert config.max_rr_ratio == 5.0
-        assert config.low_confidence_sl_multiplier == 1.2
+        assert config.low_confidence_sl_multiplier == 1.3
         assert config.medium_confidence_sl_multiplier == 1.0
-        assert config.high_confidence_sl_multiplier == 0.8
+        assert config.high_confidence_sl_multiplier == 0.85
         assert config.low_confidence_tp_multiplier == 0.8
         assert config.medium_confidence_tp_multiplier == 1.0
         assert config.high_confidence_tp_multiplier == 1.5
-        assert config.max_stop_loss_pips == 100.0
-        assert config.min_take_profit_pips == 5.0
+        assert config.max_stop_loss_pips == 80.0
+        assert config.min_take_profit_pips == 20.0
     
     def test_custom_config(self):
         """Test custom configuration values."""

@@ -69,7 +69,6 @@ def buddy_scan(
     try:
         # Use new enhanced BuddyScanner
         from buddy_scanner import BuddyScanner, suppress_logging
-        from pair_scanner import PairAnalysis
 
         # Don't override account_equity unless explicitly passed
         # Let config file value be used by default
@@ -100,25 +99,8 @@ def buddy_scan(
             force=force,
         )
 
-        # Convert to legacy format for backward compatibility
-        legacy_results = []
-        for r in results:
-            # Create PairAnalysis-compatible object
-            analysis = PairAnalysis(
-                pair=r.pair,
-                direction=r.direction,
-                confidence=r.confidence,
-                volatility_percentile=r.volatility_percentile,
-                trend_strength=r.trend_strength,
-                optimal_entry_score=r.entry_score,
-                historical_accuracy=r.historical_accuracy,
-                current_price=r.current_price,
-                atr=r.atr,
-                timestamp=r.timestamp,
-            )
-            legacy_results.append((analysis, r.gates_passed))
-
-        return legacy_results
+        # Return results as (PairAnalysis, gates_passed) tuples
+        return [(r, r.gates_passed) for r in results]
 
     except ImportError as e:
         # Fallback to legacy implementation if buddy_scanner not available
@@ -339,7 +321,7 @@ def _buddy_scan_legacy(
     _utils_logger.setLevel(_utils_prev)
 
     # Parse pairs
-    from src.utils.pair_scanner import MAJOR_PAIRS, PairAnalysis
+    from pair_scanner import MAJOR_PAIRS, PairAnalysis
 
     if pairs:
         pair_list = [p.strip().upper().replace("/", "_") for p in pairs.split(",")]

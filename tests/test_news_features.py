@@ -58,15 +58,15 @@ class TestNewsFetching(unittest.TestCase):
 
     def setUp(self):
         """Save original fetcher state."""
-        self._original_news_fetcher = news_features.NEWS_FETCHER
+        self._original_news_fetcher = news_features._NEWS_FETCHER
     
     def tearDown(self):
         """Restore original fetcher state."""
-        news_features.NEWS_FETCHER = self._original_news_fetcher
+        news_features._NEWS_FETCHER = self._original_news_fetcher
 
     def test_fetch_forex_news_default_empty(self):
         """Default fetcher returns empty list."""
-        news_features.NEWS_FETCHER = None
+        news_features._NEWS_FETCHER = None
         
         news = fetch_forex_news("EUR_USD")
         self.assertEqual(news, [])
@@ -89,7 +89,7 @@ class TestAddSentimentFeatures(unittest.TestCase):
 
     def setUp(self):
         """Create test dataframe and save original fetcher state."""
-        self._original_news_fetcher = news_features.NEWS_FETCHER
+        self._original_news_fetcher = news_features._NEWS_FETCHER
         self.df = pd.DataFrame({
             "close": [1.1000, 1.1010, 1.1020],
             "open": [1.0990, 1.1000, 1.1010],
@@ -100,11 +100,11 @@ class TestAddSentimentFeatures(unittest.TestCase):
     
     def tearDown(self):
         """Restore original fetcher state."""
-        news_features.NEWS_FETCHER = self._original_news_fetcher
+        news_features._NEWS_FETCHER = self._original_news_fetcher
 
     def test_add_sentiment_no_news(self):
         """When no news available, adds neutral features."""
-        news_features.NEWS_FETCHER = None
+        news_features._NEWS_FETCHER = None
         
         result = add_sentiment_features(self.df, "EUR_USD")
         
@@ -119,7 +119,7 @@ class TestAddSentimentFeatures(unittest.TestCase):
         def mock_fetcher(instrument: str, max_headlines: int):
             return ["Bull market continues", "Strong growth ahead"]
         
-        news_features.NEWS_FETCHER = mock_fetcher
+        news_features._NEWS_FETCHER = mock_fetcher
         
         result = add_sentiment_features(self.df, "EUR_USD", use_finbert=False)
         
@@ -131,7 +131,7 @@ class TestAddSentimentFeatures(unittest.TestCase):
 
     def test_add_sentiment_preserves_original(self):
         """Original dataframe is not modified."""
-        news_features.NEWS_FETCHER = None
+        news_features._NEWS_FETCHER = None
         
         original_cols = list(self.df.columns)
         result = add_sentiment_features(self.df, "EUR_USD")
@@ -147,15 +147,15 @@ class TestEconomicCalendar(unittest.TestCase):
 
     def setUp(self):
         """Save original calendar fetcher state."""
-        self._original_calendar_fetcher = news_features.CALENDAR_FETCHER
+        self._original_calendar_fetcher = news_features._CALENDAR_FETCHER
     
     def tearDown(self):
         """Restore original calendar fetcher state."""
-        news_features.CALENDAR_FETCHER = self._original_calendar_fetcher
+        news_features._CALENDAR_FETCHER = self._original_calendar_fetcher
 
     def test_fetch_calendar_default_empty(self):
         """Default calendar fetcher returns empty list."""
-        news_features.CALENDAR_FETCHER = None
+        news_features._CALENDAR_FETCHER = None
         
         events = fetch_forexfactory_calendar()
         self.assertEqual(events, [])
@@ -180,7 +180,7 @@ class TestEconomicCalendar(unittest.TestCase):
 
     def test_check_calendar_no_events(self):
         """No events means safe to trade."""
-        news_features.CALENDAR_FETCHER = None
+        news_features._CALENDAR_FETCHER = None
         
         result = check_economic_calendar()
         
@@ -200,7 +200,7 @@ class TestEconomicCalendar(unittest.TestCase):
             )
         ]
         
-        news_features.CALENDAR_FETCHER = lambda: mock_events
+        news_features._CALENDAR_FETCHER = lambda: mock_events
         
         result = check_economic_calendar(minutes_threshold=120)
         
@@ -221,7 +221,7 @@ class TestEconomicCalendar(unittest.TestCase):
             )
         ]
         
-        news_features.CALENDAR_FETCHER = lambda: mock_events
+        news_features._CALENDAR_FETCHER = lambda: mock_events
         
         result = check_economic_calendar(minutes_threshold=120)  # 2 hour threshold
         
@@ -240,7 +240,7 @@ class TestEconomicCalendar(unittest.TestCase):
             )
         ]
         
-        news_features.CALENDAR_FETCHER = lambda: mock_events
+        news_features._CALENDAR_FETCHER = lambda: mock_events
         
         result = check_economic_calendar()
         

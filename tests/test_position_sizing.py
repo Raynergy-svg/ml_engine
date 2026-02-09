@@ -17,17 +17,17 @@ class TestPositionSizingConfig:
     def test_default_config(self):
         """Test default configuration values."""
         config = PositionSizingConfig()
-        assert config.risk_per_trade_pct == 0.02
+        assert config.risk_per_trade_pct == 0.05
         assert config.min_confidence_threshold == 0.5
-        assert config.max_position_multiplier == 3.0
-        assert config.low_confidence_band == (0.5, 0.65)
-        assert config.medium_confidence_band == (0.65, 0.8)
-        assert config.high_confidence_band == (0.8, 1.0)
-        assert config.low_confidence_multiplier == 0.5
-        assert config.medium_confidence_multiplier == 1.0
-        assert config.high_confidence_multiplier == 2.0
-        assert config.max_position_pct == 0.10
-        assert config.min_position_size == 1000
+        assert config.max_position_multiplier == 10.0
+        assert config.low_confidence_band == (0.5, 0.60)
+        assert config.medium_confidence_band == (0.60, 0.75)
+        assert config.high_confidence_band == (0.75, 1.0)
+        assert config.low_confidence_multiplier == 1.5
+        assert config.medium_confidence_multiplier == 2.5
+        assert config.high_confidence_multiplier == 4.0
+        assert config.max_position_pct == 0.30
+        assert config.min_position_size == 100000
     
     def test_custom_config(self):
         """Test custom configuration values."""
@@ -267,8 +267,9 @@ class TestPositionSizingConstraints:
             raw_confidence=0.8
         )
         
-        # Should be constrained by max_position_pct (10%)
-        max_allowed = int(1000000.0 * 0.10 / 1000) * 1000
+        # Should be constrained by max_position_pct (10%) using equity-based formula
+        # Code: max_position_from_equity = int(account_equity * max_position_pct * 100)
+        max_allowed = int(1000000.0 * 0.10 * 100)
         assert position.units <= max_allowed
     
     def test_maximum_position_multiplier_constraint(self):

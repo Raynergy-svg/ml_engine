@@ -256,7 +256,7 @@ class BuddyTrainingOptions:
     device: str = "auto"  # auto|cpu|gpu
     ignore_input_mismatches: bool = False
     disable_tier2_on_mismatch: bool = False
-    mixed_precision: bool = True  # M1 CRITICAL: Enable for 1.5-2x speedup (was False)
+    mixed_precision: bool = False  # Default off; set true in config for M1 Metal speedup
     steps_per_execution: int = 10  # M1 CRITICAL: Reduces Python overhead (was 1)
     jit_compile: bool = False  # Keep False for stability (XLA can cause issues)
     shuffle_buffer: int | None = None
@@ -298,7 +298,7 @@ class BuddyTrainingOptions:
         valid_devices = {"auto", "cpu", "gpu"}
         if self.device not in valid_devices:
             raise ValueError(f"device must be one of {valid_devices}, got {self.device}")
-        valid_model_types = {"tcn", "lstm", "attention_lstm", "transformer", "tft"}
+        valid_model_types = {"tcn", "lstm", "attention_lstm", "transformer", "tft", "ensemble"}
         if self.model_type not in valid_model_types:
             raise ValueError(f"model_type must be one of {valid_model_types}, got {self.model_type}")
 
@@ -338,7 +338,7 @@ class BuddyTrainingOptions:
             device=data.get("device", "auto"),
             ignore_input_mismatches=data.get("ignore_input_mismatches", False),
             disable_tier2_on_mismatch=data.get("disable_tier2_on_mismatch", False),
-            mixed_precision=data.get("mixed_precision", True),
+            mixed_precision=data.get("mixed_precision", False),
             steps_per_execution=data.get("steps_per_execution", 10),
             jit_compile=data.get("jit_compile", False),
             shuffle_buffer=data.get("shuffle_buffer"),

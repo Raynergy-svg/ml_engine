@@ -36,6 +36,7 @@ def _deprecated(func):
     return wrapper
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def train_model(config_path: str) -> None:
     """Run model training with live progress dashboard.
@@ -128,6 +129,7 @@ def train_model(config_path: str) -> None:
         raise
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def evaluate_model(config_path: str) -> None:
     """Run model evaluation with results dashboard.
@@ -174,6 +176,7 @@ def evaluate_model(config_path: str) -> None:
         raise
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def visualize_dashboard(config_path: str) -> None:
     """Display dashboard visualizations using the visualizer module.
@@ -189,6 +192,7 @@ def visualize_dashboard(config_path: str) -> None:
     )  # Assumes implementation exists in visualizer.py
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def openai_tune(config_path: str) -> None:
     """Execute OpenAI-based auto-tuning using the openai_integration module.
@@ -247,6 +251,7 @@ def openai_tune(config_path: str) -> None:
         )
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def predict_price(config_path: str) -> None:
     """Use ML engine to predict prices given a dataset.
@@ -282,6 +287,7 @@ def predict_price(config_path: str) -> None:
         raise
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def realtime_loop(config_path: str) -> None:
     """Run the ML engine in a real-time loop for continuous inference.
@@ -296,6 +302,7 @@ def realtime_loop(config_path: str) -> None:
     console.print("[bold yellow]Realtime Loop command executed[/bold yellow]")
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def tune_model(config_path: str) -> None:
     """Perform advanced hyperparameter tuning using ML engine methods.
@@ -310,6 +317,7 @@ def tune_model(config_path: str) -> None:
     console.print("[bold yellow]Tune Model command executed[/bold yellow]")
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def profile_pipeline(config_path: str) -> None:
     """Profile the ML pipeline for bottlenecks.
@@ -324,6 +332,7 @@ def profile_pipeline(config_path: str) -> None:
     console.print("[bold yellow]Profile Pipeline command executed[/bold yellow]")
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def run_ai_assistant(config_path: str) -> None:
     """Legacy AI assistant entrypoint.
@@ -334,6 +343,7 @@ def run_ai_assistant(config_path: str) -> None:
     raise RuntimeError("Retired: AI assistant entrypoint removed. Use `python main.py buddy` / `python main.py train-buddy`.")
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_path: str | None = None) -> None:
     """Legacy alias: train Buddy TF model from main.py only.
@@ -346,6 +356,7 @@ def train_unified(config_path: str, csv_path: str | None = None, *, checkpoint_p
     train_buddy(config_path, csv_path)
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def train_oanda_unified(
     config_path: str,
@@ -366,6 +377,7 @@ def train_oanda_unified(
     train_buddy(config_path, None, all_features=all_features)
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def chat_unified(config_path: str, metrics_path: str | None = None) -> None:
     """Interactive chat over the latest unified head metrics.
@@ -377,6 +389,7 @@ def chat_unified(config_path: str, metrics_path: str | None = None) -> None:
     run_unified_chat(config_path, metrics_path=metrics_path)
 
 
+# Zero callers as of 2026-02-08
 @_deprecated
 def talk_unified(
     config_path: str,

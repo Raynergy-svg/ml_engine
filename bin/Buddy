@@ -9,15 +9,23 @@ while [[ -L "$SOURCE" ]]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 ROOT_DIR="$(cd -P "${SCRIPT_DIR}/.." && pwd)"
-CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
 
-# Auto-detect conda environment based on architecture
+# Auto-detect conda environment AND config based on architecture
 if [[ -n "${BUDDY_CONDA_ENV:-}" ]]; then
     ENV_NAME="${BUDDY_CONDA_ENV}"
 elif [[ "$(uname -m)" == "x86_64" ]]; then
     ENV_NAME="intel"  # Intel Mac
 else
     ENV_NAME="tf-metal"  # Apple Silicon (M1/M2/M3)
+fi
+
+# Auto-select config: Intel uses intel-optimized, Apple Silicon uses H1
+if [[ -n "${BUDDY_CONFIG:-}" ]]; then
+    CONFIG_FILE="${BUDDY_CONFIG}"
+elif [[ "$(uname -m)" == "x86_64" ]]; then
+    CONFIG_FILE="${ROOT_DIR}/config/config_intel_optimized.yaml"
+else
+    CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
 fi
 
 get_conda() {

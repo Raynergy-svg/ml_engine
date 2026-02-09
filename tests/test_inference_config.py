@@ -19,8 +19,10 @@ class TestInferenceConfig:
         """Test that default InferenceConfig values are correct."""
         config = InferenceConfig()
         
-        # Gate 1: TCN probability
-        assert config.min_tcn_probability == 0.60
+        # TCN volatility regime filter (replaces old TCN probability gate)
+        assert config.use_tcn_volatility_filter is True
+        assert config.min_volatility_regime == 2
+        assert config.tcn_required is True
         
         # Gate 2: Confidence
         assert config.min_confidence == 50.0
@@ -60,7 +62,6 @@ class TestInferenceConfig:
         
         # Create InferenceConfig from YAML
         config = InferenceConfig(
-            min_tcn_probability=inf_cfg.get('min_tcn_probability', 0.60),
             min_confidence=inf_cfg.get('min_confidence', 50.0),
             min_momentum=inf_cfg.get('min_momentum', 0.20),
             require_fresh_or_accel=inf_cfg.get('require_fresh_or_accel', True),
@@ -72,7 +73,7 @@ class TestInferenceConfig:
         
         # Verify values match YAML
         assert config.max_streak_prob == 0.95
-        assert config.min_tcn_probability == 0.60
+        assert config.use_tcn_volatility_filter is True
         assert config.max_drawdown_pct == 0.025
     
     def test_streak_risk_gate_behavior(self):
@@ -145,20 +146,24 @@ class TestInferenceConfig:
 class TestGateThresholds:
     """Test individual gate threshold logic."""
     
-    def test_tcn_probability_gate(self):
-        """Test Gate 1: TCN probability threshold."""
+    def test_tcn_volatility_regime_gate(self):
+        """Test Gate 1: TCN volatility regime filter (replaces old probability gate)."""
         config = InferenceConfig()
         
-        # Below threshold - should fail
-        assert 0.50 < config.min_tcn_probability
-        assert 0.55 < config.min_tcn_probability
+        # TCN now filters by volatility regime, not direction probability
+        assert config.use_tcn_volatility_filter is True
+        assert config.min_volatility_regime == 2  # 2=HIGH, 3=EXTREME
+        assert config.tcn_required is True  # Block trades if TCN unavailable
+        
+        # Regime below threshold - should fail
+        assert 0 < config.min_volatility_regime  # LOW regime blocked
+        assert 1 < config.min_volatility_regime  # NORMAL regime blocked
         
         # At threshold - should pass
-        assert 0.60 >= config.min_tcn_probability
+        assert 2 >= config.min_volatility_regime  # HIGH regime passes
         
         # Above threshold - should pass
-        assert 0.70 >= config.min_tcn_probability
-        assert 0.80 >= config.min_tcn_probability
+        assert 3 >= config.min_volatility_regime  # EXTREME regime passes
     
     def test_confidence_gate(self):
         """Test Gate 2: Ridge confidence threshold."""

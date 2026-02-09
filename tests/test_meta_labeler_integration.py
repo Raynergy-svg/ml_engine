@@ -45,15 +45,18 @@ class TestMetaLabelerIntegration(unittest.TestCase):
         self.assertFalse(labeler.is_fitted)
         self.assertEqual(labeler._primary_accuracy, 0.5)
 
-    @patch('src.training.meta_labeling.xgb')
-    def test_meta_labeler_training_mock(self, mock_xgb):
+    @patch('xgboost.XGBClassifier')
+    def test_meta_labeler_training_mock(self, mock_xgb_classifier):
         """Test meta-labeler training with mocked XGBoost."""
         from src.training.meta_labeling import train_meta_labeler, MetaLabelingConfig
         
-        # Setup mock
+        # Setup mock - needs to handle .fit(), .predict(), .predict_proba()
         mock_model = MagicMock()
-        mock_model.predict.return_value = np.array([0.7, 0.6, 0.8])
-        mock_xgb.XGBClassifier.return_value = mock_model
+        mock_model.predict.side_effect = lambda X, **kw: np.random.randint(0, 2, len(X)).astype(float)
+        mock_model.predict_proba.side_effect = lambda X, **kw: np.column_stack([
+            np.random.rand(len(X)), np.random.rand(len(X))
+        ])
+        mock_xgb_classifier.return_value = mock_model
         
         # Create dummy data
         X_train = np.random.randn(100, 10)
@@ -82,7 +85,7 @@ class TestMetaLabelerIntegration(unittest.TestCase):
         self.assertIsNotNone(metrics)
         
         # Verify XGBoost was called
-        mock_xgb.XGBClassifier.assert_called_once()
+        mock_xgb_classifier.assert_called_once()
 
     def test_inference_config_has_meta_threshold(self):
         """Test that InferenceConfig includes meta-labeler threshold."""

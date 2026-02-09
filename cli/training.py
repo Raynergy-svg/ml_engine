@@ -2,6 +2,7 @@
 """Training pipeline implementation for ML Engine Trading Bot."""
 from __future__ import annotations
 
+import hashlib
 import os
 import json
 import time
@@ -741,6 +742,27 @@ def _validate_features_and_targets(train_feats, val_feats, train_dir_raw, val_di
         raise ValueError("Non-finite values detected in confidence target weights.")
 
 
+def _format_ridge_sparsity(ridge_metrics: dict) -> str:
+    """Format sparsity info for Ridge/LightGBM confidence model.
+
+    Handles both LightGBM (n_important_features/n_total_features)
+    and ElasticNet (n_nonzero_coefs/n_total_coefs) metric keys.
+    """
+    # LightGBM backend
+    n_imp = ridge_metrics.get("n_important_features")
+    n_tot_lgbm = ridge_metrics.get("n_total_features")
+    if n_imp is not None and n_tot_lgbm is not None:
+        return f"{n_imp}/{n_tot_lgbm}"
+
+    # ElasticNet backend
+    n_nz = ridge_metrics.get("n_nonzero_coefs")
+    n_tot_en = ridge_metrics.get("n_total_coefs")
+    if n_nz is not None and n_tot_en is not None:
+        return f"{n_nz}/{n_tot_en}"
+
+    return "N/A"
+
+
 def _train_ensemble_models(
     *,
     cfg,
@@ -1243,6 +1265,11 @@ def _build_trainer_config(
         transformer_num_layers=int(transformer_cfg.get("num_layers", 2)),
         transformer_dff=int(transformer_cfg.get("dff", 64)),
         transformer_dropout=float(transformer_cfg.get("dropout", 0.2)),
+        transformer_l2_reg=float(transformer_cfg.get("l2_reg", 0.003)),
+        transformer_input_noise=float(transformer_cfg.get("input_noise", 0.02)),
+        transformer_spatial_dropout=float(transformer_cfg.get("spatial_dropout", 0.10)),
+        transformer_projection_dropout=float(transformer_cfg.get("projection_dropout", 0.10)),
+        final_dense_dropout=float(transformer_cfg.get("head_dropout", 0.10)),
         xgb_n_estimators=int(cfg.get("xgboost", {}).get("n_estimators", 200)),
         xgb_max_depth=int(cfg.get("xgboost", {}).get("max_depth", 5)),
         xgb_learning_rate=float(cfg.get("xgboost", {}).get("learning_rate", 0.05)),
@@ -1493,7 +1520,13 @@ def _train_ridge_model(*, all_data, trainer_config, pair_paths, model_dir, train
     if training_instrument != "GENERIC":
         ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
 
-    console.print(f"[green]✓ Confidence calibrator complete: MAE={ridge_metrics['confidence_mae']:.2f} • R²={ridge_metrics['r2_score']:.4f} • alpha={ridge_metrics.get('best_alpha', 1.0):.4f} • L1={ridge_metrics.get('best_l1_ratio', 0.5):.2f} • Sparsity={ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}[/green]")
+    # Display metrics (handles both LightGBM and ElasticNet backends)
+    _model_type = ridge_metrics.get('model_type', 'elasticnet')
+    _sparsity = _format_ridge_sparsity(ridge_metrics)
+    if _model_type == 'lightgbm':
+        console.print(f"[green]✓ Confidence calibrator complete: MAE={ridge_metrics['confidence_mae']:.2f} • R²={ridge_metrics['r2_score']:.4f} • {_sparsity}[/green]")
+    else:
+        console.print(f"[green]✓ Confidence calibrator complete: MAE={ridge_metrics['confidence_mae']:.2f} • R²={ridge_metrics['r2_score']:.4f} • alpha={ridge_metrics.get('best_alpha', 1.0):.4f} • L1={ridge_metrics.get('best_l1_ratio', 0.5):.2f} • {_sparsity}[/green]")
     console.print(f"Model saved: {pair_paths['ridge']}")
 
     return ridge_data, ridge_metrics, ridge_trainer
@@ -1695,11 +1728,16 @@ def _print_ensemble_summary(
     perf_table.add_row(_RANDOM_FOREST, "Drawdown MAE", f"{rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps")
     perf_table.add_row("", "Streak Probability MAE", f"{rf_metrics['streak_prob_mae']:.4f}")
     perf_table.add_row("", "", "")
+    _model_type = ridge_metrics.get('model_type', 'elasticnet')
     perf_table.add_row("Regularized", "R² Score", f"{ridge_metrics['r2_score']:.3f}")
     perf_table.add_row("Regression", "Confidence MAE", f"{ridge_metrics['confidence_mae']:.2f}")
-    perf_table.add_row("", "Best Alpha", f"{ridge_metrics.get('best_alpha', 1.0):.4f}")
-    perf_table.add_row("", "L1 Ratio", f"{ridge_metrics.get('best_l1_ratio', 0.5):.2f}")
-    perf_table.add_row("", "Features (sparse)", f"{ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
+    if _model_type == 'lightgbm':
+        perf_table.add_row("", "Backend", "LightGBM")
+        perf_table.add_row("", "Important Features", _format_ridge_sparsity(ridge_metrics))
+    else:
+        perf_table.add_row("", "Best Alpha", f"{ridge_metrics.get('best_alpha', 1.0):.4f}")
+        perf_table.add_row("", "L1 Ratio", f"{ridge_metrics.get('best_l1_ratio', 0.5):.2f}")
+        perf_table.add_row("", "Features (sparse)", _format_ridge_sparsity(ridge_metrics))
 
     console.print(Panel(perf_table, border_style="green"))
     console.print()
@@ -1904,6 +1942,16 @@ def _run_bootstrap_validation(*, dir_trainer, dir_data, dir_metrics, stat_valida
         X_val = np.asarray(dir_data['X_val'])
         y_val_raw = dir_data['y_val'].flatten()
 
+        # Apply feature selection if trainer used it (raw data has more features than model expects)
+        if hasattr(dir_trainer, 'selected_indices') and dir_trainer.selected_indices is not None:
+            model_n_features = dir_trainer.model.input_shape[-1]
+            if X_val.shape[-1] > model_n_features:
+                X_val = X_val[:, dir_trainer.selected_indices]
+
+        # Apply scaler if trainer fitted one (model was trained on scaled data)
+        if hasattr(dir_trainer, 'scaler') and dir_trainer.scaler is not None:
+            X_val = dir_trainer.scaler.transform(X_val)
+
         if len(X_val.shape) == 2:
             X_val, y_val_raw = _window_2d_to_3d(X_val, y_val_raw, seq_len)
             if X_val is None:
@@ -1956,6 +2004,14 @@ def _run_walkforward_cv(*, dir_trainer, dir_data, dir_metrics, validation_result
 
     X_full = np.vstack([dir_data['X_train'], dir_data['X_val']])
     y_full = np.concatenate([dir_data['y_train'].flatten(), dir_data['y_val'].flatten()])
+
+    # Apply feature selection and scaling to match what the model was trained on
+    if hasattr(dir_trainer, 'selected_indices') and dir_trainer.selected_indices is not None:
+        model_n_features = dir_trainer.model.input_shape[-1]
+        if X_full.shape[-1] > model_n_features:
+            X_full = X_full[:, dir_trainer.selected_indices]
+    if hasattr(dir_trainer, 'scaler') and dir_trainer.scaler is not None:
+        X_full = dir_trainer.scaler.transform(X_full)
 
     cv_scores = []
     with console.status("[bold cyan]Running Walk-Forward CV (evaluation only)...", spinner="dots"):
@@ -2156,7 +2212,13 @@ def _train_rl_after_ensemble(
 
         try:
             if hasattr(dir_trainer, 'model') and dir_trainer.model is not None:
-                X_scaled = dir_trainer.scaler.transform(rl_features_2d)
+                # Apply feature selection first, then scale
+                X_rl = rl_features_2d.copy()
+                if hasattr(dir_trainer, 'selected_indices') and dir_trainer.selected_indices is not None:
+                    model_n_features = dir_trainer.model.input_shape[-1]
+                    if X_rl.shape[-1] > model_n_features:
+                        X_rl = X_rl[:, dir_trainer.selected_indices]
+                X_scaled = dir_trainer.scaler.transform(X_rl)
                 model_input_shape = dir_trainer.model.input_shape
                 is_seq_model = len(model_input_shape) == 3
 
@@ -2183,6 +2245,10 @@ def _train_rl_after_ensemble(
                     ridge_data['X_val'],
                 ]).astype(np.float32)
                 ridge_scaled = ridge_trainer.scaler.transform(ridge_feats)
+                # Wrap in DataFrame for LightGBM to avoid feature-name warnings
+                if getattr(ridge_trainer, 'feature_names', None) is not None:
+                    import pandas as _pd
+                    ridge_scaled = _pd.DataFrame(ridge_scaled, columns=ridge_trainer.feature_names)
                 raw_conf = np.asarray(ridge_trainer.model.predict(ridge_scaled), dtype=np.float32).flatten()
                 raw_conf = np.clip(raw_conf / 100.0, 0.0, 1.0)
                 min_c = min(n_rl, len(raw_conf))
@@ -2828,1215 +2894,24 @@ def _train_buddy_impl(
         # Each model trains on DIFFERENT features from the SAME candles
         # No shared gradients, no joint loss, each model blind to others
         if effective_model_type == "ensemble":
-            import json
-            from datetime import datetime
-            # Rich imports already at module level - no need to re-import
-
-            # Enterprise training status
-            enterprise_enabled = options.enterprise if hasattr(options, 'enterprise') else True
-            bootstrap_enabled = options.bootstrap if hasattr(options, 'bootstrap') else True
-            cv_folds = options.cv_folds if hasattr(options, 'cv_folds') else 5
-            generate_report_enabled = options.generate_report if hasattr(options, 'generate_report') else True
-
-            # Professional header
-            console.print()
-            console.print(Panel.fit(
-                "[bold white]ADVANCED ENSEMBLE TRAINING SYSTEM[/bold white]\n"
-                "[dim]Enterprise-Grade Machine Learning Pipeline • Production-Ready Architecture[/dim]",
-                border_style="cyan",
-                padding=(1, 4),
-            ))
-            console.print()
-
-            # Enterprise features status table
-            enterprise_table = Table(show_header=True, header_style=_STYLE_HEADER, box=None, padding=(0, 2))
-            enterprise_table.add_column("Component", style="cyan", width=26)
-            enterprise_table.add_column("Status", style="green", width=20)
-            enterprise_table.add_row("Experiment Tracking", "✓ Active" if enterprise_enabled else "✗ Inactive")
-            enterprise_table.add_row("Walk-Forward Validation", f"✓ {cv_folds}-Fold CV" if cv_folds > 0 else _DISABLED_LABEL)
-            enterprise_table.add_row("Statistical Bootstrap", "✓ 95% CI" if bootstrap_enabled else _DISABLED_LABEL)
-            enterprise_table.add_row("Automated Reporting", "✓ Enabled" if generate_report_enabled else _DISABLED_LABEL)
-
-            console.print(Panel(enterprise_table, title="[bold]Enterprise Features[/bold]", border_style="green"))
-            console.print()
-
-            # Import modular components
-            from src.core.modular_data_loaders import load_all_modular_data
-            from src.training.modular_trainers import (
-                TrainerConfig,
-                TCNTrainer,
-                TransformerDirectionTrainer,
-                TransformerRegimeTrainer,
-                XGBoostTrainer,
-                RandomForestTrainer,
-                RidgeTrainer,
-                HistGradientBoostingDirectionTrainer,
+            _train_ensemble_models(
+                cfg=cfg,
+                options=options,
+                console=console,
+                oanda_fetch=oanda_fetch,
+                csv_path=csv_path,
+                train_feats=train_feats,
+                val_feats=val_feats,
+                df=df,
+                ohlc_df=ohlc_df,
+                feature_columns=feature_columns,
+                seq_len=seq_len,
+                epochs=epochs,
+                batch_size=batch_size,
+                lr=lr,
+                patience=patience,
+                fit_verbose=fit_verbose,
             )
-
-            # Get model configuration from config
-            transformer_cfg = cfg.get("transformer", {})
-            use_transformer = transformer_cfg.get("use_transformer", True)  # Default to Transformer
-            use_regime = transformer_cfg.get("use_regime", False)  # NEW: Use regime classification
-            direction_threshold = cfg.get("direction_threshold", 0.005)  # 0.5% min move
-            direction_lookahead = cfg.get("direction_lookahead", 12)  # 12 hours lookahead
-            regime_lookback = transformer_cfg.get("regime_lookback", 20)  # 20 bars lookback
-            regime_lookahead = transformer_cfg.get("regime_lookahead", 12)  # 12 bars lookahead
-
-            # Model architecture table
-            arch_table = Table(show_header=True, header_style=_STYLE_HEADER, box=None)
-            arch_table.add_column("Component", style="white", width=19)
-            arch_table.add_column("Objective", style="yellow", width=26)
-            arch_table.add_column("Output Specification", style="green")
-
-            # Print architecture with configuration
-            if use_regime:
-                arch_table.add_row("Transformer", "Regime Classification", "Trend | Chop |")
-                arch_table.add_row("Network", "", "Mean Revert")
-                arch_table.add_row("", "", "")
-                arch_table.add_row(_GRADIENT_BOOSTING, "Momentum Vector Analysis", "Score • Acceleration")
-                arch_table.add_row("", "", "Metric")
-                arch_table.add_row("", "", "")
-                arch_table.add_row(_RANDOM_FOREST, "Risk Exposure Assessment", "Drawdown Estimate •")
-                arch_table.add_row("", "", "Streak Probability")
-                arch_table.add_row("", "", "")
-                arch_table.add_row("Regularized", "Prediction Confidence", "Calibrated Score")
-                arch_table.add_row("Regression", "", "(0-100)")
-            else:
-                dir_model_name = "Transformer" if use_transformer else "TCN"
-                arch_table.add_row(f"{dir_model_name}", "Directional Prediction", "Long | Short Signal")
-                arch_table.add_row("Network", f"(Δ>{direction_threshold:.2%})", "")
-                arch_table.add_row("", "", "")
-                arch_table.add_row(_GRADIENT_BOOSTING, "Momentum Vector Analysis", "Score • Acceleration")
-                arch_table.add_row("", "", "Metric")
-                arch_table.add_row("", "", "")
-                arch_table.add_row(_RANDOM_FOREST, "Risk Exposure Assessment", "Drawdown Estimate •")
-                arch_table.add_row("", "", "Streak Probability")
-                arch_table.add_row("", "", "")
-                arch_table.add_row("Regularized", "Prediction Confidence", "Calibrated Score")
-                arch_table.add_row("Regression", "", "(0-100)")
-
-            console.print(Panel(arch_table, title="[bold]Model Architecture[/bold]", border_style="yellow"))
-            console.print()
-
-            # Reconstruct DataFrame from features for modular loaders
-            # CRITICAL: Use RAW (unscaled) features because modular loaders
-            # have their own scalers that will be used during inference
-            console.print()
-            console.print(Panel(
-                "[bold]Preparing Modular Training Data[/bold]\n\n"
-                "[dim]Loading specialized datasets for each ensemble component...[/dim]",
-                title="📦 Data Preparation",
-                border_style="blue",
-            ))
-
-            # Check if we have the original raw dataframe from training
-            # We need raw OHLCV data for feature engineering
-            if 'df' in dir() and df is not None and 'close' in df.columns:
-                # Use the original df which has all raw data before feature selection
-                # Take first n_samples rows to match train+val
-                n_samples = len(train_feats) + len(val_feats)
-                feature_df = df.iloc[:n_samples].copy()
-                console.print(f"  [green]✓[/green] Using RAW data (n={len(feature_df):,})")
-            elif 'ohlc_df' in dir() and ohlc_df is not None:
-                # Fallback to ohlc_df which has OHLCV columns
-                feature_df = ohlc_df.copy()
-                n_samples = len(train_feats) + len(val_feats)
-                if len(feature_df) > n_samples:
-                    feature_df = feature_df.iloc[:n_samples].copy()
-
-                # Re-run feature engineering if needed
-                if len(feature_df.columns) < 20:  # Only OHLCV columns
-                    fe_modular = FeatureEngineering(cfg.get("feature_engineering", {}))
-                    feature_df = fe_modular.create_features(feature_df, include_all=True)
-
-                console.print(f"  [green]✓[/green] Using OHLCV data (n={len(feature_df):,})")
-            else:
-                # Last resort: use standardized features (not ideal but functional)
-                console.print("  [yellow]⚠ Using pre-standardized features - may cause scale mismatch![/yellow]")
-                all_feats = np.vstack([train_feats, val_feats])
-                feature_df = pd.DataFrame(all_feats, columns=feature_columns)
-
-            # Ensure we have OHLCV columns for target calculations
-            if 'ohlc_df' in dir() and ohlc_df is not None:
-                for col in ['open', 'high', 'low', 'close', 'volume']:
-                    if col not in feature_df.columns and col in ohlc_df.columns:
-                        vals = ohlc_df[col].values
-                        if len(vals) >= len(feature_df):
-                            feature_df[col] = vals[:len(feature_df)]
-
-            # Ensure we have close column for target calculation
-            if 'close' not in feature_df.columns:
-                # Use the last price-like column
-                for col in feature_df.columns:
-                    if 'close' in col.lower():
-                        feature_df['close'] = feature_df[col].values
-                        break
-
-            if 'close' not in feature_df.columns:
-                raise ValueError("No 'close' column found for direction labels")
-
-            # Add high/low if missing (needed for RF drawdown calculation)
-            if 'high' not in feature_df.columns:
-                feature_df['high'] = feature_df['close'] * 1.001  # Approximate
-            if 'low' not in feature_df.columns:
-                feature_df['low'] = feature_df['close'] * 0.999  # Approximate
-            if 'volume' not in feature_df.columns:
-                feature_df['volume'] = 1000  # Default volume
-
-            console.print(f"  Data prepared: [green]{len(feature_df):,}[/green] obs × [green]{len(feature_df.columns)}[/green] features")
-
-            # Load data for each model (same temporal split, different features)
-            # (Verbose data loader logging is routed to file only via setup_logging)
-
-            # Calculate split ratio from train/val sizes
-            n_total = len(train_feats) + len(val_feats)
-            train_frac = len(train_feats) / n_total
-            val_frac = len(val_feats) / n_total
-            test_frac = 0.0  # Test is kept separate
-
-            # Normalize to sum to 1
-            sum_frac = train_frac + val_frac
-            train_frac = train_frac / sum_frac * 0.9  # Reserve 10% for internal test
-            val_frac = val_frac / sum_frac * 0.9
-            test_frac = 0.1
-
-            all_data = load_all_modular_data(
-                feature_df,
-                split=(train_frac, val_frac, test_frac),
-                direction_threshold=direction_threshold,
-                direction_lookahead=direction_lookahead,
-                use_regime=use_regime,
-                regime_lookback=regime_lookback,
-                regime_lookahead=regime_lookahead,
-            )
-
-            # Build Rich table for dataset summary
-            dataset_table = Table(title=None, show_header=True, header_style=_STYLE_HEADER, box=None)
-            dataset_table.add_column("Model", style="white")
-            dataset_table.add_column("Train", justify="right", style="green")
-            dataset_table.add_column("Val", justify="right", style="yellow")
-            dataset_table.add_column("Features", justify="right", style="blue")
-            dataset_table.add_column("Notes", style="dim")
-
-            for name, data in all_data.items():
-                n_features = len(data['feature_names'])
-                notes = ""
-                # Show label stats for direction model
-                if name == 'direction' and 'label_stats' in data:
-                    stats = data['label_stats']
-                    notes = f"{stats['clear_rate']:.0%} clear, {stats['up_rate']:.0%} up, thr={stats['threshold']:.2%}"
-                elif name == 'regime' and 'label_stats' in data:
-                    stats = data['label_stats']
-                    notes = f"trend={stats['trend_rate']:.0%}, chop={stats['chop_rate']:.0%}"
-
-                model_name = name.upper() if name in ['xgboost', 'rf', 'ridge'] else name.capitalize()
-                dataset_table.add_row(
-                    model_name,
-                    f"{len(data['X_train']):,}",
-                    f"{len(data['X_val']):,}",
-                    str(n_features),
-                    notes
-                )
-
-            console.print(Panel(dataset_table, title="📊 Ensemble Dataset Summary", border_style="blue"))
-
-            # Extract instrument for pair-specific model training
-            # Priority: 1) OANDA fetch instrument, 2) CSV filename, 3) Default
-            if oanda_fetch:
-                training_instrument = getattr(oanda_fetch, 'instrument', 'GENERIC')
-                training_granularity = getattr(oanda_fetch, 'granularity', 'H1')
-            elif csv_path:
-                training_instrument = _extract_instrument_from_csv_path(csv_path)
-                # Try to extract granularity from filename (e.g., EUR_USD_H1.csv)
-                import re
-                gran_match = re.search(r'_(M\d+|H\d+|D|W)[_.]', str(csv_path).upper())
-                training_granularity = gran_match.group(1) if gran_match else 'H1'
-            else:
-                training_instrument = 'GENERIC'
-                training_granularity = 'H1'
-
-            console.print(f"[cyan]📊 Training instrument: {training_instrument}, Granularity: {training_granularity}[/cyan]")
-
-            # Auto-detect fresh vs warm-start training
-            # Continual learning (EWC, EMA, Replay) is ONLY beneficial for warm-start
-            # For fresh training, these features can cause instability
-            model_dir = Path("trained_data/models")
-
-            # Get pair-specific model paths for compound learning
-            use_transformer = (options.model_type or "transformer") != "tcn"
-            pair_paths = _get_pair_model_paths(model_dir, training_instrument,
-                                               "transformer" if use_transformer else "tcn")
-
-            # Check for existing pair-specific model for warm-start (compound learning)
-            has_existing_model = pair_paths['direction'].exists()
-            # Also check generic model as fallback for warm-start
-            generic_paths = _get_pair_model_paths(model_dir, "GENERIC",
-                                                  "transformer" if use_transformer else "tcn")
-            has_generic_model = (model_dir / _TRANSFORMER_KERAS_FILE).exists() or generic_paths['direction'].exists()
-
-            warm_start_enabled = cfg.get("buddy", {}).get("train_defaults", {}).get("warm_start", True)
-
-            # Prefer pair-specific warm-start, fallback to generic
-            if has_existing_model and warm_start_enabled:
-                is_warm_start = True
-                warm_start_path = pair_paths['direction']
-                console.print(f"[green]♻️  Compound learning: warm-start from {training_instrument} model[/green]")
-            elif has_generic_model and warm_start_enabled:
-                is_warm_start = True
-                warm_start_path = model_dir / _TRANSFORMER_KERAS_FILE
-                console.print(f"[yellow]⚡ Initial training for {training_instrument} (warm-start from generic model)[/yellow]")
-            else:
-                is_warm_start = False
-                warm_start_path = None
-
-            # Continual learning settings
-            # EMA and EWC enabled by default for all training (improves stability)
-            use_ema = True  # Always use EMA for stable inference
-            use_ewc = is_warm_start and options.enable_ewc  # EWC only for warm-start
-            use_replay = is_warm_start
-            disable_cl = not is_warm_start
-
-            if not is_warm_start:
-                console.print("[dim]Fresh training - EMA enabled, EWC/Replay disabled[/dim]")
-            elif use_ewc:
-                console.print("[cyan]Continual Learning: EMA + EWC + Replay enabled[/cyan]")
-            else:
-                console.print("[cyan]Continual Learning: EMA + Replay enabled (EWC disabled via --disable-ewc)[/cyan]")
-
-            # Default continual learning params
-            ema_alpha = 0.999
-            ema_update_freq = 16
-            ewc_lambda = 1000.0
-            ewc_gamma = 0.95
-            replay_capacity_ratio = 0.10
-            replay_mix_ratio = 0.20
-            drift_threshold = 0.03
-
-            # Show continual learning config in a compact panel
-            if not disable_cl:
-                cl_info = (
-                    f"[bold]Continual Learning Active[/bold]\n\n"
-                    f"[dim]Instrument:[/dim] {training_instrument}  [dim]Granularity:[/dim] {training_granularity}\n"
-                    f"[dim]EMA:[/dim] α={ema_alpha}, freq={ema_update_freq}\n"
-                    f"[dim]EWC:[/dim] λ={ewc_lambda}, γ={ewc_gamma}\n"
-                    f"[dim]Replay:[/dim] {replay_capacity_ratio:.0%} capacity, {replay_mix_ratio:.0%} mix"
-                )
-                console.print(Panel(cl_info, title="🔄 Adaptive Learning", border_style="magenta"))
-            console.print()
-
-            # Configure trainers with Transformer settings
-            # Use pair-specific checkpoint directory
-            pair_checkpoint_dir = str(pair_paths['pair_dir'] / "checkpoints") if training_instrument != "GENERIC" else "trained_data/checkpoints"
-
-            # Read overfit prevention / SWA / cosine restart config from YAML
-            overfit_cfg = cfg.get("overfit_prevention", {})
-            swa_cfg = cfg.get("swa", {})
-            cosine_cfg = cfg.get("cosine_restarts", {})
-            warmstart_cfg = cfg.get("warmstart_recovery", {})
-
-            trainer_config = TrainerConfig(
-                epochs=int(epochs),
-                batch_size=int(batch_size),
-                learning_rate=float(lr),
-                patience=int(patience),
-                verbose=int(fit_verbose),
-                checkpoint_dir=pair_checkpoint_dir,  # Pair-specific checkpoints
-                # Transformer settings from config
-                transformer_d_model=int(transformer_cfg.get("d_model", 32)),
-                transformer_num_heads=int(transformer_cfg.get("num_heads", 4)),
-                transformer_num_layers=int(transformer_cfg.get("num_layers", 2)),
-                transformer_dff=int(transformer_cfg.get("dff", 64)),
-                transformer_dropout=float(transformer_cfg.get("dropout", 0.2)),
-                # XGBoost settings from config
-                xgb_n_estimators=int(cfg.get("xgboost", {}).get("n_estimators", 200)),
-                xgb_max_depth=int(cfg.get("xgboost", {}).get("max_depth", 5)),
-                xgb_learning_rate=float(cfg.get("xgboost", {}).get("learning_rate", 0.05)),
-                # Continual learning settings
-                use_ema=use_ema,
-                ema_decay=ema_alpha,
-                ema_update_every=ema_update_freq,
-                use_ewc=use_ewc,
-                ewc_lambda=ewc_lambda,
-                ewc_gamma=ewc_gamma,
-                use_replay_buffer=use_replay,
-                replay_buffer_ratio=replay_capacity_ratio,
-                replay_mix_ratio=replay_mix_ratio,
-                drift_threshold=drift_threshold,
-                # Overfit prevention from YAML config
-                overfit_threshold=float(overfit_cfg.get("overfit_threshold", 0.08)),
-                critical_threshold=float(overfit_cfg.get("critical_threshold", 0.15)),
-                severe_threshold=float(overfit_cfg.get("severe_threshold", 0.25)),
-                max_acceptable_gap=float(overfit_cfg.get("max_acceptable_gap", 0.12)),
-                overfit_patience_epochs=int(overfit_cfg.get("patience_epochs", 3)),
-                auto_adjust_dropout=bool(overfit_cfg.get("auto_adjust_dropout", True)),
-                auto_reduce_lr=bool(overfit_cfg.get("auto_reduce_lr", True)),
-                max_dropout_increase=float(overfit_cfg.get("max_dropout_increase", 0.3)),
-                # SWA from YAML config
-                enable_swa=bool(swa_cfg.get("enabled", True)),
-                swa_start_fraction=float(swa_cfg.get("start_fraction", 0.75)),
-                swa_lr_factor=float(swa_cfg.get("lr_factor", 0.5)),
-                # Cosine restarts from YAML config
-                enable_cosine_restarts=bool(cosine_cfg.get("enabled", True)),
-                cosine_restart_period=int(cosine_cfg.get("restart_period", 10)),
-                cosine_restart_lr_mult=float(cosine_cfg.get("lr_mult", 0.8)),
-                # Warm-start recovery from YAML config
-                enable_warmstart_detection=bool(warmstart_cfg.get("enabled", True)),
-                warmstart_reset_threshold=float(warmstart_cfg.get("reset_threshold", 0.15)),
-                weight_perturbation_scale=float(warmstart_cfg.get("weight_perturbation_scale", 0.02)),
-                reset_optimizer_on_overfit=bool(warmstart_cfg.get("reset_optimizer_on_overfit", True)),
-            )
-
-            all_metrics = {}
-            direction_model_name = "Transformer" if use_transformer else "TCN"
-
-            # ============================================================
-            # TRAIN REGIME OR DIRECTION MODEL
-            # ============================================================
-            if use_regime:
-                # REGIME MODE: 3-class classification
-                console.print()
-                console.print(Panel(
-                    "[bold]Regime Classification Network[/bold]\n\n"
-                    "[dim]Features:[/dim] ADX, RSI, volatility, z-scores, momentum consistency\n"
-                    f"[dim]Output:[/dim] 3-class regime (trend/chop/mean_revert) | lookback={regime_lookback} • lookahead={regime_lookahead}",
-                    title="Step 1/4 • Neural Network",
-                    border_style="yellow",
-                ))
-
-                regime_data = all_data.get('regime')
-                if regime_data is None:
-                    raise ValueError("No regime data found. Check use_regime setting.")
-
-                regime_trainer = TransformerRegimeTrainer(trainer_config)
-                regime_metrics = regime_trainer.train(
-                    regime_data['X_train'], regime_data['y_train'],
-                    regime_data['X_val'], regime_data['y_val'],
-                    feature_names=regime_data['feature_names'],
-                    class_names=regime_data.get('class_names'),
-                )
-                regime_trainer.save(str(model_dir / "transformer_regime.keras"))
-                regime_model_path = str(model_dir / "transformer_regime.keras")
-
-                all_metrics['regime'] = regime_metrics
-
-                # Show F1 scores
-                console.print(f"[green]✓ Regime classifier complete: Validation accuracy={regime_metrics['val_accuracy']:.1%} • F1_macro={regime_metrics['f1_macro']:.3f}[/green]")
-                console.print(f"   F1 per class: trend={regime_metrics['f1_trend']:.3f} • chop={regime_metrics['f1_chop']:.3f} • mean_revert={regime_metrics['f1_mean_revert']:.3f}")
-
-                dir_model_path = regime_model_path  # For metadata
-                dir_data = regime_data  # For metadata
-                dir_metrics = regime_metrics  # For metadata
-            else:
-                # DIRECTION MODE: Binary classification (legacy)
-                console.print()
-                console.print(Panel(
-                    f"[bold]Directional Prediction Network[/bold]\n\n"
-                    "[dim]Features:[/dim] Directional indicators (ADX, MACD, SMA crosses, market structure)\n"
-                    f"[dim]Output:[/dim] Binary prediction (short/long) | threshold={direction_threshold:.2%} • lookahead={direction_lookahead}",
-                    title="Step 1/4 • Neural Network",
-                    border_style="cyan",
-                ))
-
-                # Get direction data (new key 'direction' or fallback to 'tcn')
-                dir_data = all_data.get('direction', all_data.get('tcn'))
-
-                # WARM-START: Use the already-computed warm_start_path from pair detection above
-                # warm_start_path is already set to pair-specific or generic path as appropriate
-                if is_warm_start and warm_start_path:
-                    console.print(Panel(
-                        f"[yellow]Loading weights from:[/yellow] {warm_start_path}\n"
-                        "[dim]Training will continue from previous weights (compounding learning)[/dim]",
-                        title="🔥 Warm-Start Enabled",
-                        border_style="yellow",
-                    ))
-
-                # Suppress verbose modular_trainers logging for cleaner console output
-                # (detail still goes to log files via file handlers)
-                import logging as _logging
-                _trainers_logger = _logging.getLogger('src.training.modular_trainers')
-                _trainers_logger.setLevel(_logging.WARNING)
-                _absl_logger = _logging.getLogger('absl')
-                _absl_logger.setLevel(_logging.ERROR)
-
-                if use_transformer:
-                    dir_trainer = TransformerDirectionTrainer(trainer_config)
-                    dir_metrics = dir_trainer.train(
-                        dir_data['X_train'], dir_data['y_train'],
-                        dir_data['X_val'], dir_data['y_val'],
-                        feature_names=dir_data['feature_names'],
-                        w_train=dir_data.get('w_train'),  # Sample weights for threshold filtering
-                        w_val=dir_data.get('w_val'),
-                        warm_start_path=str(warm_start_path) if warm_start_path else None,
-                        instrument=training_instrument,  # For replay buffer storage
-                    )
-                    # Save to BOTH pair-specific AND generic paths for compatibility
-                    dir_trainer.save(str(pair_paths['direction']), instrument=training_instrument)
-                    # Also save to generic path for backward compatibility
-                    if training_instrument != "GENERIC":
-                        dir_trainer.save(str(model_dir / _TRANSFORMER_KERAS_FILE), instrument=training_instrument)
-                    dir_model_path = str(pair_paths['direction'])
-                    console.print(f"[cyan]💾 Direction model saved to: {pair_paths['direction']}[/cyan]")
-                else:
-                    dir_trainer = TCNTrainer(trainer_config)
-                    dir_metrics = dir_trainer.train(
-                        dir_data['X_train'], dir_data['y_train'],
-                        dir_data['X_val'], dir_data['y_val'],
-                        feature_names=dir_data['feature_names']
-                    )
-                    dir_trainer.save(str(pair_paths['direction']))
-                    if training_instrument != "GENERIC":
-                        dir_trainer.save(str(model_dir / "tcn_direction.keras"))
-                    dir_model_path = str(pair_paths['direction'])
-                    console.print(f"[cyan]💾 TCN model saved to: {pair_paths['direction']}[/cyan]")
-
-                all_metrics['direction'] = dir_metrics
-
-                # Show balanced accuracy if available
-                if 'val_balanced_accuracy' in dir_metrics:
-                    console.print(f"[green]✓ Directional predictor complete: Validation accuracy={dir_metrics['val_accuracy']:.1%} • Balanced={dir_metrics['val_balanced_accuracy']:.1%}[/green]")
-                    console.print(f"   (Long accuracy={dir_metrics.get('val_up_accuracy', 0):.1%} • Short accuracy={dir_metrics.get('val_down_accuracy', 0):.1%})")
-                else:
-                    console.print(f"[green]✓ Directional predictor complete: Validation accuracy={dir_metrics['val_accuracy']:.1%}[/green]")
-
-            # ============================================================
-            # TRAIN XGBOOST (Momentum Analyzer)
-            # ============================================================
-            console.print()
-            console.print(Panel(
-                "[bold]Momentum Vector Analysis[/bold]\n\n"
-                "[dim]Features:[/dim] Lagged returns, spread dynamics\n"
-                "[dim]Output:[/dim] Momentum score (0-1) • Acceleration metric",
-                title="Step 2/4 • Gradient Boosting",
-                border_style="cyan",
-            ))
-
-            xgb_data = all_data['xgboost']
-            xgb_trainer = XGBoostTrainer(trainer_config)
-            xgb_metrics = xgb_trainer.train(
-                xgb_data['X_train'], xgb_data['y_train'],
-                xgb_data['X_val'], xgb_data['y_val'],
-                feature_names=xgb_data['feature_names'],
-                momentum_norm_factor=xgb_data.get('momentum_norm_factor'),
-            )
-            # Save to both pair-specific and generic paths
-            xgb_trainer.save(str(pair_paths['xgboost']))
-            if training_instrument != "GENERIC":
-                xgb_trainer.save(str(model_dir / "xgb_momentum.pkl"))
-            all_metrics['xgboost'] = xgb_metrics
-
-            console.print(f"[green]✓ Momentum analyzer complete: MAE={xgb_metrics['momentum_mae']:.4f} • Acceleration accuracy={xgb_metrics['acceleration_accuracy']:.1%}[/green]")
-            console.print(f"Model saved: {pair_paths['xgboost']}")
-
-            # ============================================================
-            # TRAIN RANDOM FOREST (Risk Assessor)
-            # ============================================================
-            console.print()
-            console.print(Panel(
-                "[bold]Risk Exposure Assessment[/bold]\n\n"
-                "[dim]Features:[/dim] ATR, historical drawdowns, streak patterns\n"
-                "[dim]Output:[/dim] Drawdown estimate • Streak probability",
-                title="Step 3/4 • Random Forest",
-                border_style="cyan",
-            ))
-
-            rf_data = all_data['rf']
-            rf_trainer = RandomForestTrainer(trainer_config)
-            rf_metrics = rf_trainer.train(
-                rf_data['X_train'], rf_data['y_train'],
-                rf_data['X_val'], rf_data['y_val'],
-                feature_names=rf_data['feature_names']
-            )
-            # Save to both pair-specific and generic paths
-            rf_trainer.save(str(pair_paths['rf']))
-            if training_instrument != "GENERIC":
-                rf_trainer.save(str(model_dir / "rf_risk.pkl"))
-            all_metrics['rf'] = rf_metrics
-
-            console.print(f"[green]✓ Risk assessor complete: Drawdown MAE={rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps • Streak MAE={rf_metrics['streak_prob_mae']:.4f}[/green]")
-            console.print(f"Model saved: {pair_paths['rf']}")
-
-            # ============================================================
-            # TRAIN RIDGE (Confidence Scorer)
-            # ============================================================
-            console.print()
-            console.print(Panel(
-                "[bold]Prediction Confidence Calibration[/bold]\n\n"
-                "[dim]Features:[/dim] Rolling variance, volume dynamics\n"
-                "[dim]Output:[/dim] Calibrated score (0-100)\n"
-                "[dim]CV:[/dim] TimeSeriesSplit (temporal, no leakage)",
-                title="Step 4/4 • Regularized Regression",
-                border_style="cyan",
-            ))
-
-            ridge_data = all_data['ridge']
-            ridge_trainer = RidgeTrainer(trainer_config)
-            ridge_metrics = ridge_trainer.train(
-                ridge_data['X_train'], ridge_data['y_train'],
-                ridge_data['X_val'], ridge_data['y_val'],
-                feature_names=ridge_data['feature_names']
-            )
-            # Save to both pair-specific and generic paths
-            ridge_trainer.save(str(pair_paths['ridge']))
-            if training_instrument != "GENERIC":
-                ridge_trainer.save(str(model_dir / "ridge_confidence.pkl"))
-            all_metrics['ridge'] = ridge_metrics
-
-            console.print(f"[green]✓ Confidence calibrator complete: MAE={ridge_metrics['confidence_mae']:.2f} • R²={ridge_metrics['r2_score']:.4f} • alpha={ridge_metrics.get('best_alpha', 1.0):.4f} • L1={ridge_metrics.get('best_l1_ratio', 0.5):.2f} • Sparsity={ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}[/green]")
-            console.print(f"Model saved: {pair_paths['ridge']}")
-
-            # ============================================================
-            # TRAIN HISTGB (Optional - for hybrid voting with Transformer)
-            # ============================================================
-            train_histgb = cfg.get("buddy", {}).get("train_defaults", {}).get("train_histgb", False)
-            histgb_metrics = None
-
-            if train_histgb and not use_regime:
-                console.print()
-                console.print(Panel(
-                    "[bold]Training HistGB (Hybrid Voting Baseline)[/bold]\n\n"
-                    "[dim]Purpose:[/dim] Hybrid voting with Transformer → trade only when BOTH AGREE\n"
-                    "[dim]Expected:[/dim] Higher precision at cost of fewer trades",
-                    title="Step 5 (Optional)",
-                    border_style="magenta",
-                ))
-
-                histgb_trainer = HistGradientBoostingDirectionTrainer(trainer_config)
-                histgb_metrics = histgb_trainer.train(
-                    dir_data['X_train'], dir_data['y_train'],
-                    dir_data['X_val'], dir_data['y_val'],
-                    feature_names=dir_data['feature_names'],
-                )
-                # Save to both pair-specific and generic paths
-                histgb_trainer.save(str(pair_paths['histgb']))
-                if training_instrument != "GENERIC":
-                    histgb_trainer.save(str(model_dir / "histgb_direction.pkl"))
-                all_metrics['histgb'] = histgb_metrics
-
-                console.print(f"[green]✓ HistGB complete: val_accuracy={histgb_metrics['val_accuracy']:.1%}, balanced={histgb_metrics.get('val_balanced_accuracy', 0):.1%}[/green]")
-                console.print(f"[cyan]💾 HistGB saved to: {pair_paths['histgb']}[/cyan]")
-                console.print("[yellow]🔥 Hybrid voting ENABLED: Transformer + HistGB will vote together[/yellow]")
-
-            # ============================================================
-            # SAVE METADATA
-            # ============================================================
-            if use_regime:
-                primary_model_meta = {
-                    "regime": {
-                        "path": dir_model_path,
-                        "type": "transformer_regime",
-                        "purpose": "regime_classification",
-                        "output": "3-class (0=trend, 1=chop, 2=mean_revert)",
-                        "metrics": dir_metrics,
-                        "features": dir_data['feature_names'],
-                        "label_stats": dir_data.get('label_stats', {}),
-                        "class_names": dir_data.get('class_names', ['trend', 'chop', 'mean_revert']),
-                    },
-                }
-                primary_config = {
-                    "use_regime": True,
-                    "regime_lookback": regime_lookback,
-                    "regime_lookahead": regime_lookahead,
-                }
-            else:
-                primary_model_meta = {
-                    "direction": {
-                        "path": dir_model_path,
-                        "type": direction_model_name.lower(),
-                        "purpose": "direction_prediction",
-                        "output": "binary (0=short, 1=long)",
-                        "metrics": dir_metrics,
-                        "features": dir_data['feature_names'],
-                        "label_stats": dir_data.get('label_stats', {}),
-                    },
-                }
-                primary_config = {
-                    "use_regime": False,
-                    "threshold": direction_threshold,
-                    "lookahead": direction_lookahead,
-                    "use_transformer": use_transformer,
-                }
-
-            meta = {
-                "model_type": "modular_ensemble",
-                "use_regime": use_regime,
-                "primary_model_type": "regime" if use_regime else direction_model_name.lower(),
-                "primary_config": primary_config,
-                "training_instrument": training_instrument,  # Track which pair this was trained on
-                "pair_model_dir": str(pair_paths['pair_dir']),  # Pair-specific model directory
-                "models": {
-                    **primary_model_meta,
-                    "xgboost": {
-                        "path": str(pair_paths['xgboost']),
-                        "purpose": "momentum_analysis",
-                        "output": "momentum_score (0-1), acceleration (bool)",
-                        "metrics": xgb_metrics,
-                        "features": xgb_data['feature_names'],
-                    },
-                    "rf": {
-                        "path": str(pair_paths['rf']),
-                        "purpose": "risk_assessment",
-                        "output": "expected_drawdown_pips, streak_prob",
-                        "metrics": rf_metrics,
-                        "features": rf_data['feature_names'],
-                    },
-                    "ridge": {
-                        "path": str(pair_paths['ridge']),
-                        "purpose": "confidence_scoring",
-                        "output": "confidence (0-100)",
-                        "metrics": ridge_metrics,
-                        "features": ridge_data['feature_names'],
-                    },
-                },
-                "inference_gates": {
-                    "min_confidence": 75,
-                    "min_momentum_or_accel": True,
-                    "max_drawdown_pips": 30,
-                    "max_streak_prob": 0.3,
-                    "risk_per_trade_pct": 0.02,
-                },
-                "data_split": {
-                    "train_frac": train_frac,
-                    "val_frac": val_frac,
-                    "test_frac": test_frac,
-                    "total_samples": len(feature_df),
-                },
-                "trained_at": datetime.now().isoformat(),
-            }
-
-            # Save meta to BOTH pair-specific and generic paths
-            # (mirrors model file dual-save pattern)
-            def _meta_serializer(x):
-                return float(x) if isinstance(x, (np.floating, np.integer)) else str(x)
-            meta_path = model_dir / _META_JSON_FILE
-            with open(meta_path, "w") as f:
-                json.dump(meta, f, indent=2, default=_meta_serializer)
-            if training_instrument and training_instrument != "GENERIC":
-                pair_meta_path = pair_paths['pair_dir'] / _META_JSON_FILE
-                with open(pair_meta_path, "w") as f:
-                    json.dump(meta, f, indent=2, default=_meta_serializer)
-
-            # ============================================================
-            # PROFESSIONAL SUMMARY WITH RICH
-            # ============================================================
-            console.print()
-
-            # Performance metrics table
-            perf_table = Table(show_header=True, header_style="bold green", title="Model Performance")
-            perf_table.add_column("Component", style="white", width=20)
-            perf_table.add_column("Metric", style="cyan", width=25)
-            perf_table.add_column("Value", style="green", justify="right")
-
-            if use_regime:
-                f1_macro = dir_metrics.get('f1_macro', 0)
-                perf_table.add_row("Transformer", "F1 Macro", f"{f1_macro:.3f}")
-                perf_table.add_row("Network", "F1 Trend", f"{dir_metrics.get('f1_trend', 0):.3f}")
-                perf_table.add_row("", "F1 Chop", f"{dir_metrics.get('f1_chop', 0):.3f}")
-            else:
-                dir_acc = dir_metrics['val_accuracy']
-                bal_acc = dir_metrics.get('val_balanced_accuracy', dir_acc)
-                perf_table.add_row("Transformer", "Validation Accuracy", f"{dir_acc:.1%}")
-                perf_table.add_row("Network", "Balanced Accuracy", f"{bal_acc:.1%}")
-
-            perf_table.add_row("", "", "")
-            perf_table.add_row(_GRADIENT_BOOSTING, "Acceleration Accuracy", f"{xgb_metrics['acceleration_accuracy']:.1%}")
-            perf_table.add_row("", "Momentum MAE", f"{xgb_metrics['momentum_mae']:.4f}")
-            perf_table.add_row("", "", "")
-            perf_table.add_row(_RANDOM_FOREST, "Drawdown MAE", f"{rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000):.1f} bps")
-            perf_table.add_row("", "Streak Probability MAE", f"{rf_metrics['streak_prob_mae']:.4f}")
-            perf_table.add_row("", "", "")
-            perf_table.add_row("Regularized", "R² Score", f"{ridge_metrics['r2_score']:.3f}")
-            perf_table.add_row("Regression", "Confidence MAE", f"{ridge_metrics['confidence_mae']:.2f}")
-            perf_table.add_row("", "Best Alpha", f"{ridge_metrics.get('best_alpha', 1.0):.4f}")
-            perf_table.add_row("", "L1 Ratio", f"{ridge_metrics.get('best_l1_ratio', 0.5):.2f}")
-            perf_table.add_row("", "Features (sparse)", f"{ridge_metrics.get('n_nonzero_coefs', '?')}/{ridge_metrics.get('n_total_coefs', '?')}")
-
-            console.print(Panel(perf_table, border_style="green"))
-            console.print()
-
-            # Saved artifacts table
-            artifacts_table = Table(show_header=False, box=None)
-            artifacts_table.add_column("Type", style="cyan", width=15)
-            artifacts_table.add_column("Path", style="dim")
-            artifacts_table.add_row("Direction", str(dir_model_path))
-            artifacts_table.add_row("Momentum", str(pair_paths['xgboost']))
-            artifacts_table.add_row("Risk", str(pair_paths['rf']))
-            artifacts_table.add_row("Confidence", str(pair_paths['ridge']))
-            artifacts_table.add_row("Metadata", str(pair_paths['pair_dir'] / _META_JSON_FILE)
-                                    if training_instrument and training_instrument != "GENERIC"
-                                    else str(meta_path))
-            artifacts_table.add_row("Metadata (generic)", str(meta_path))
-
-            console.print(Panel(artifacts_table, title="[bold]Saved Artifacts[/bold]", border_style="blue"))
-            console.print()
-
-            # ============================================================
-            # ENTERPRISE TRAINING VALIDATION (enabled by default for ensemble)
-            # ============================================================
-            enterprise_enabled = options.enterprise if hasattr(options, 'enterprise') else True
-
-            if enterprise_enabled:
-                console.print()
-                console.print(Panel(
-                    "[bold]Enterprise Validation Suite[/bold]\n"
-                    "[dim]Statistical validation, cross-validation, and experiment tracking[/dim]",
-                    title="🏢 Enterprise",
-                    border_style="cyan",
-                ))
-
-                try:
-                    from src.training.enterprise_training import (
-                        StatisticalValidator,
-                        WalkForwardValidator,
-                        WalkForwardConfig,
-                        MLFLOW_AVAILABLE,
-                    )
-
-                    stat_validator = StatisticalValidator()
-                    validation_results = Table(show_header=True, header_style=_STYLE_HEADER, title="Validation Results")
-                    validation_results.add_column("Check", style="white", width=25)
-                    validation_results.add_column("Result", style="green", width=15)
-                    validation_results.add_column("Details", style="dim", width=35)
-
-                    # -- Helper: window 2D feature matrix into 3D sequences for model.predict() --
-                    def _window_2d_to_3d(X_2d, y_1d, window_size):  # NOSONAR - ML convention for feature matrices
-                        """Convert (n_samples, n_features) → (n_windows, window_size, n_features).
-
-                        Labels are taken from the *last* timestep of each window,
-                        matching the semantics used during training.
-                        """
-                        X_2d = np.asarray(X_2d, dtype=np.float32)
-                        y_1d = np.asarray(y_1d).flatten()
-                        n = len(X_2d)
-                        if n <= window_size:
-                            return None, None
-                        n_windows = n - window_size + 1
-                        # Use stride_tricks for zero-copy windowing
-                        strides = (X_2d.strides[0],) + X_2d.strides
-                        X_3d = np.lib.stride_tricks.as_strided(  # NOSONAR - ML convention
-                            X_2d, shape=(n_windows, window_size, X_2d.shape[1]), strides=strides
-                        ).copy()  # copy so predict() gets contiguous memory
-                        y_windowed = y_1d[window_size - 1:]  # label = last timestep
-                        return X_3d, y_windowed
-
-                    # 1. Bootstrap CI for Transformer direction accuracy
-                    cv_folds = options.cv_folds if hasattr(options, 'cv_folds') else 5
-                    bootstrap_enabled = options.bootstrap if hasattr(options, 'bootstrap') else False
-                    bootstrap_samples = options.bootstrap_samples if hasattr(options, 'bootstrap_samples') else 1000
-                    generate_report_enabled = options.generate_report if hasattr(options, 'generate_report') else False
-
-                    if bootstrap_enabled:
-                        # Get validation predictions from direction model
-                        if not use_regime and hasattr(dir_trainer, 'model') and dir_trainer.model is not None:
-                            try:
-                                X_val = np.asarray(dir_data['X_val'])  # NOSONAR - ML convention
-                                y_val_raw = dir_data['y_val'].flatten()
-
-                                # Window 2D→3D if model expects sequences
-                                if len(X_val.shape) == 2:
-                                    X_val, y_val_raw = _window_2d_to_3d(X_val, y_val_raw, seq_len)
-                                    if X_val is None:
-                                        raise ValueError(f"Not enough val samples for seq_len={seq_len}")
-
-                                val_preds = dir_trainer.model.predict(X_val, verbose=0)
-                                if len(val_preds.shape) > 1:
-                                    val_preds = val_preds[:, 0] if val_preds.shape[1] == 1 else val_preds
-                                val_preds_binary = (val_preds > 0.5).astype(int).flatten()
-                                val_labels = y_val_raw.flatten()
-
-                                bootstrap_results = stat_validator.bootstrap_confidence_interval(
-                                    lambda y, p: np.mean(y == p),
-                                    val_labels, val_preds_binary,
-                                    n_bootstrap=bootstrap_samples,
-                                )
-
-                                validation_results.add_row(
-                                    "Bootstrap CI (95%)",
-                                    f"{bootstrap_results['mean']:.2%}",
-                                    f"[{bootstrap_results['ci_lower']:.2%}, {bootstrap_results['ci_upper']:.2%}]"
-                                )
-
-                                # Add to metrics
-                                dir_metrics['bootstrap_ci_lower'] = bootstrap_results['ci_lower']
-                                dir_metrics['bootstrap_ci_upper'] = bootstrap_results['ci_upper']
-                                dir_metrics['bootstrap_mean'] = bootstrap_results['mean']
-                            except Exception as bootstrap_err:
-                                validation_results.add_row(
-                                    "Bootstrap CI (95%)",
-                                    "[yellow]Skipped[/yellow]",
-                                    f"[dim]{bootstrap_err}[/dim]"
-                                )
-
-                    # 2. Walk-Forward Cross-Validation (if enabled and data sufficient)
-                    # For continual learning: EVALUATE trained model on different time windows
-                    # DO NOT retrain on each fold - that destroys learned weights
-                    if cv_folds > 0 and len(dir_data['X_train']) > cv_folds * 500:
-                        wf_config = WalkForwardConfig(
-                            n_splits=cv_folds,
-                            train_period=len(dir_data['X_train']) // (cv_folds + 1),
-                            test_period=len(dir_data['X_val']) // cv_folds,
-                            gap=24,
-                            expanding=True,
-                        )
-                        wf_validator = WalkForwardValidator(wf_config)
-
-                        # Combine train+val for CV evaluation
-                        X_full = np.vstack([dir_data['X_train'], dir_data['X_val']])  # NOSONAR - ML convention
-                        y_full = np.concatenate([dir_data['y_train'].flatten(), dir_data['y_val'].flatten()])
-
-                        cv_scores = []
-                        with console.status("[bold cyan]Running Walk-Forward CV (evaluation only)...", spinner="dots"):
-                            for fold_idx, (_train_idx, val_idx) in enumerate(wf_validator.split(X_full)):
-                                X_cv_val = X_full[val_idx]  # NOSONAR - ML convention
-                                y_cv_val = y_full[val_idx]
-
-                                # EVALUATE the trained model on each fold's validation window
-                                # No retraining - just measure generalization across time
-                                try:
-                                    # Window 2D→3D if model expects sequences
-                                    if len(X_cv_val.shape) == 2:
-                                        X_cv_val, y_cv_val = _window_2d_to_3d(X_cv_val, y_cv_val, seq_len)
-                                        if X_cv_val is None:
-                                            logger.debug(f"CV fold {fold_idx+1} skipped: not enough samples for seq_len={seq_len}")
-                                            continue
-
-                                    y_pred = dir_trainer.model.predict(X_cv_val, verbose=0)
-                                    y_pred_binary = (y_pred > 0.5).astype(float).flatten()
-                                    fold_acc = np.mean(y_pred_binary == y_cv_val)
-                                    cv_scores.append(fold_acc)
-                                except Exception as e:
-                                    logger.debug(f"CV fold {fold_idx+1} evaluation failed: {e}")
-
-                        if cv_scores:
-                            cv_mean = np.mean(cv_scores)
-                            cv_std = np.std(cv_scores)
-
-                            validation_results.add_row(
-                                f"Walk-Forward CV ({cv_folds} folds)",
-                                f"{cv_mean:.2%}",
-                                f"± {cv_std:.2%} std"
-                            )
-
-                            # Store CV results
-                            dir_metrics['cv_mean'] = cv_mean
-                            dir_metrics['cv_std'] = cv_std
-                            dir_metrics['cv_scores'] = cv_scores
-
-                    # Print validation results table
-                    console.print(validation_results)
-                    console.print()
-
-                    # 3. MLflow Experiment Tracking
-                    if MLFLOW_AVAILABLE:
-                        mlflow_experiment = options.mlflow_experiment if hasattr(options, 'mlflow_experiment') else None
-                        experiment_name = mlflow_experiment or f"{training_instrument}_{training_granularity}"
-
-                        console.print("[cyan]📊 MLflow Tracking[/cyan]")
-                        console.print(f"  Experiment: {experiment_name}")
-
-                        import mlflow
-                        from pathlib import Path as _Path
-                        _mlflow_db = _Path("trained_data/mlruns/mlflow.db").absolute()
-                        _mlflow_db.parent.mkdir(parents=True, exist_ok=True)
-                        mlflow.set_tracking_uri(f"sqlite:///{_mlflow_db}")
-                        mlflow.set_experiment(experiment_name)
-
-                        with mlflow.start_run(run_name=f"ensemble_{datetime.now().strftime('%Y%m%d_%H%M%S')}"):
-                            # Log parameters
-                            mlflow.log_param("model_type", "ensemble")
-                            mlflow.log_param("instrument", training_instrument)
-                            mlflow.log_param("granularity", training_granularity)
-                            mlflow.log_param("epochs", epochs)
-                            mlflow.log_param("batch_size", batch_size)
-                            mlflow.log_param("learning_rate", lr)
-                            mlflow.log_param("direction_threshold", direction_threshold)
-                            mlflow.log_param("direction_lookahead", direction_lookahead)
-
-                            # Log metrics
-                            mlflow.log_metric("direction_val_accuracy", dir_metrics['val_accuracy'])
-                            mlflow.log_metric("direction_balanced_accuracy", dir_metrics.get('val_balanced_accuracy', 0))
-                            mlflow.log_metric("xgb_acceleration_accuracy", xgb_metrics['acceleration_accuracy'])
-                            mlflow.log_metric("rf_drawdown_mae", rf_metrics.get('drawdown_mae_bps', 0))
-                            mlflow.log_metric("ridge_r2_score", ridge_metrics['r2_score'])
-
-                            if 'cv_mean' in dir_metrics:
-                                mlflow.log_metric("cv_mean", dir_metrics['cv_mean'])
-                                mlflow.log_metric("cv_std", dir_metrics['cv_std'])
-
-                            if 'bootstrap_ci_lower' in dir_metrics:
-                                mlflow.log_metric("bootstrap_ci_lower", dir_metrics['bootstrap_ci_lower'])
-                                mlflow.log_metric("bootstrap_ci_upper", dir_metrics['bootstrap_ci_upper'])
-
-                            # Log model artifacts
-                            mlflow.log_artifact(str(meta_path))
-
-                            console.print(f"  ✓ Run logged: {mlflow.active_run().info.run_id[:8]}...")
-
-                    # 4. Generate Report
-                    if generate_report_enabled:
-                        console.print("[cyan]📄 Generating Training Report[/cyan]")
-
-                        report_path = model_dir / f"training_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-                        
-                        # Generate a professional, well-structured training report
-                        report_timestamp = datetime.now()
-                        report_id = hashlib.md5(str(report_timestamp).encode()).hexdigest()[:12]
-                        
-                        # Build report sections
-                        report_sections = []
-                        
-                        # ===== HEADER =====
-                        report_sections.append(f"""# Advanced Ensemble Training Report
-
-**Report ID**: `{report_id}`  
-**Generated**: {report_timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')}  
-**System**: Enterprise-Grade Machine Learning Pipeline
-
----
-""")
-                        
-                        # ===== EXECUTIVE SUMMARY =====
-                        report_sections.append(f"""## Executive Summary
-
-| Parameter | Value |
-|-----------|-------|
-| **Instrument** | {training_instrument} |
-| **Granularity** | {training_granularity} |
-| **Model Architecture** | 4-Component Gated Ensemble |
-| **Training Status** | ✓ Complete |
-| **Validation** | ✓ Passed |
-
----
-""")
-                        
-                        # ===== MODEL PERFORMANCE =====
-                        report_sections.append("## Model Performance\n")
-                        
-                        # Transformer Network
-                        report_sections.append("### Transformer Network (Directional Prediction)\n")
-                        report_sections.append("| Metric | Value |")
-                        report_sections.append("|--------|-------|")
-                        if use_regime:
-                            f1_macro = dir_metrics.get('f1_macro', 0)
-                            report_sections.append(f"| F1 Macro | {f1_macro:.2%} |")
-                            report_sections.append(f"| F1 Trend | {dir_metrics.get('f1_trend', 0):.2%} |")
-                            report_sections.append(f"| F1 Chop | {dir_metrics.get('f1_chop', 0):.2%} |")
-                        else:
-                            report_sections.append(f"| Validation Accuracy | {dir_metrics['val_accuracy']:.2%} |")
-                            report_sections.append(f"| Balanced Accuracy | {dir_metrics.get('val_balanced_accuracy', dir_metrics['val_accuracy']):.2%} |")
-                        
-                        if 'bootstrap_ci_lower' in dir_metrics:
-                            report_sections.append(f"| Bootstrap 95% CI | [{dir_metrics['bootstrap_ci_lower']:.2%}, {dir_metrics['bootstrap_ci_upper']:.2%}] |")
-                            report_sections.append(f"| Bootstrap Mean | {dir_metrics['bootstrap_mean']:.2%} |")
-                        
-                        if 'cv_mean' in dir_metrics:
-                            report_sections.append(f"| Cross-Validation Mean | {dir_metrics['cv_mean']:.2%} |")
-                            report_sections.append(f"| Cross-Validation Std | {dir_metrics['cv_std']:.2%} |")
-                            report_sections.append(f"| CV Folds | {len(dir_metrics.get('cv_scores', []))} |")
-                        
-                        report_sections.append("")
-                        
-                        # XGBoost Momentum
-                        report_sections.append("### Gradient Boosting (Momentum Analysis)\n")
-                        report_sections.append("| Metric | Value |")
-                        report_sections.append("|--------|-------|")
-                        report_sections.append(f"| Acceleration Accuracy | {xgb_metrics['acceleration_accuracy']:.2%} |")
-                        report_sections.append(f"| Momentum MAE | {xgb_metrics['momentum_mae']:.4f} |")
-                        report_sections.append("")
-                        
-                        # Random Forest Risk
-                        report_sections.append("### Random Forest (Risk Assessment)\n")
-                        report_sections.append("| Metric | Value |")
-                        report_sections.append("|--------|-------|")
-                        drawdown_bps = rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0)*10000)
-                        report_sections.append(f"| Drawdown MAE | {drawdown_bps:.1f} bps |")
-                        report_sections.append(f"| Streak Probability MAE | {rf_metrics['streak_prob_mae']:.4f} |")
-                        report_sections.append("")
-                        
-                        # Ridge Regression
-                        report_sections.append("### Regularized Regression (Confidence)\n")
-                        report_sections.append("| Metric | Value |")
-                        report_sections.append("|--------|-------|")
-                        report_sections.append(f"| R² Score | {ridge_metrics['r2_score']:.4f} |")
-                        report_sections.append(f"| Confidence MAE | {ridge_metrics['confidence_mae']:.2f} |")
-                        report_sections.append(f"| Best Alpha | {ridge_metrics.get('best_alpha', 1.0):.4f} |")
-                        report_sections.append(f"| L1 Ratio | {ridge_metrics.get('best_l1_ratio', 0.5):.2f} |")
-                        n_nonzero = ridge_metrics.get('n_nonzero_coefs', '?')
-                        n_total = ridge_metrics.get('n_total_coefs', '?')
-                        report_sections.append(f"| Feature Sparsity | {n_nonzero}/{n_total} features |")
-                        report_sections.append("")
-                        report_sections.append("---\n")
-                        
-                        # ===== TRAINING CONFIGURATION =====
-                        report_sections.append("## Training Configuration\n")
-                        report_sections.append("### Hyperparameters\n")
-                        report_sections.append("| Parameter | Value |")
-                        report_sections.append("|-----------|-------|")
-                        report_sections.append(f"| Epochs | {epochs} |")
-                        report_sections.append(f"| Batch Size | {batch_size} |")
-                        report_sections.append(f"| Learning Rate | {lr} |")
-                        report_sections.append(f"| Direction Threshold | {direction_threshold:.2%} |")
-                        report_sections.append(f"| Direction Lookahead | {direction_lookahead} bars |")
-                        report_sections.append("")
-                        
-                        report_sections.append("### Data Split\n")
-                        report_sections.append("| Split | Fraction |")
-                        report_sections.append("|-------|----------|")
-                        report_sections.append(f"| Training | {train_frac:.0%} |")
-                        report_sections.append(f"| Validation | {val_frac:.0%} |")
-                        report_sections.append(f"| Test | {test_frac:.0%} |")
-                        total_samples = len(feature_df) if 'feature_df' in locals() else "N/A"
-                        report_sections.append(f"| Total Samples | {total_samples:,} |")
-                        report_sections.append("")
-                        report_sections.append("---\n")
-                        
-                        # ===== MODEL ARTIFACTS =====
-                        report_sections.append("## Model Artifacts\n")
-                        report_sections.append("### Component Models\n")
-                        report_sections.append("| Component | Path |")
-                        report_sections.append("|-----------|------|")
-                        report_sections.append(f"| Transformer Network | `{dir_model_path}` |")
-                        report_sections.append(f"| Gradient Boosting | `{pair_paths['xgboost']}` |")
-                        report_sections.append(f"| Random Forest | `{pair_paths['rf']}` |")
-                        report_sections.append(f"| Regularized Regression | `{pair_paths['ridge']}` |")
-                        report_sections.append("")
-                        
-                        report_sections.append("### Metadata\n")
-                        report_sections.append("| Type | Path |")
-                        report_sections.append("|------|------|")
-                        if training_instrument and training_instrument != "GENERIC":
-                            pair_meta = pair_paths['pair_dir'] / "modular_ensemble.meta.json"
-                            report_sections.append(f"| Ensemble Metadata (pair) | `{pair_meta}` |")
-                        report_sections.append(f"| Ensemble Metadata (generic) | `{meta_path}` |")
-                        report_sections.append("")
-                        report_sections.append("---\n")
-                        
-                        # ===== FOOTER =====
-                        import platform
-                        report_sections.append(f"""## System Information
-
-- **Python Version**: {platform.python_version()}
-- **Platform**: {platform.system()} {platform.machine()}
-- **Training Duration**: {datetime.now().isoformat()}
-
----
-
-*Report generated by Advanced Ensemble Training System*  
-*Enterprise-Grade Machine Learning Infrastructure*
-""")
-                        
-                        # Write report
-                        report_content = "\n".join(report_sections)
-                        with open(report_path, 'w') as f:
-                            f.write(report_content)
-
-                        console.print(f"  ✓ Report saved: {report_path}")
-
-                    # Final success panel
-                    console.print()
-                    console.print(Panel(
-                        "[bold green]✓ TRAINING PIPELINE COMPLETE[/bold green]\n\n"
-                        f"[dim]Artifacts:[/dim] [cyan]{model_dir}[/cyan]\n"
-                        "[dim]Validation:[/dim] [green]PASSED[/green] • Enterprise-grade quality assurance",
-                        border_style="green",
-                    ))
-
-                    # RL Position Sizer Training (optional, after ensemble)
-                    # Check BOTH CLI option AND config file setting (consistent with TCN/LSTM path)
-                    auto_train_rl_config = cfg.get("training", {}).get("auto_train_rl", True)
-                    train_rl_sizer_enabled = options.train_rl_sizer and auto_train_rl_config
-                    rl_timesteps = options.rl_timesteps
-
-                    if train_rl_sizer_enabled:
-                        # Prepare RL training data from ensemble training
-                        try:
-                            # Get features from direction data (most complete feature set)
-                            rl_features_2d = np.vstack([
-                                dir_data['X_train'],
-                                dir_data['X_val'],
-                            ]).astype(np.float32)
-
-                            n_rl = len(rl_features_2d)
-                            rl_direction_probs = np.full(n_rl, 0.5, dtype=np.float32)
-                            rl_confidences = np.full(n_rl, 0.5, dtype=np.float32)
-
-                            # --- Batch direction probs via underlying TF model ---
-                            try:
-                                if hasattr(dir_trainer, 'model') and dir_trainer.model is not None:
-                                    # Scale features using the trainer's scaler
-                                    X_scaled = dir_trainer.scaler.transform(rl_features_2d)  # NOSONAR - ML convention
-
-                                    model_input_shape = dir_trainer.model.input_shape
-                                    is_seq_model = len(model_input_shape) == 3
-
-                                    if is_seq_model:
-                                        # Window 2D→3D for sequence model
-                                        _sl = getattr(dir_trainer, 'seq_len', seq_len)
-                                        X_3d, _ = _window_2d_to_3d(X_scaled, np.zeros(len(X_scaled)), _sl)  # NOSONAR
-                                        if X_3d is not None:
-                                            raw_preds = dir_trainer.model.predict(X_3d, verbose=0).flatten()
-                                            # Align: windowed output is shorter by (seq_len-1)
-                                            # Pad start with 0.5 so array length matches n_rl
-                                            pad = n_rl - len(raw_preds)
-                                            rl_direction_probs = np.concatenate([
-                                                np.full(pad, 0.5, dtype=np.float32), raw_preds
-                                            ])
-                                            console.print(f"[dim]  Direction probs: {len(raw_preds):,} windowed predictions[/dim]")
-                                    else:
-                                        # Flat model — batch predict directly
-                                        raw_preds = dir_trainer.model.predict(X_scaled, verbose=0).flatten()
-                                        rl_direction_probs[:len(raw_preds)] = raw_preds[:n_rl]
-                            except Exception as e:
-                                console.print(f"[dim]  Using default direction probs: {e}[/dim]")
-
-                            # --- Batch confidence via underlying Ridge model ---
-                            try:
-                                if hasattr(ridge_trainer, 'model') and ridge_trainer.model is not None:
-                                    ridge_feats = np.vstack([
-                                        ridge_data['X_train'],
-                                        ridge_data['X_val'],
-                                    ]).astype(np.float32)
-                                    ridge_scaled = ridge_trainer.scaler.transform(ridge_feats)
-                                    # sklearn models handle batch predict natively
-                                    raw_conf = np.asarray(ridge_trainer.model.predict(ridge_scaled), dtype=np.float32).flatten()
-                                    # Normalize from 0-100 → 0-1 range
-                                    raw_conf = np.clip(raw_conf / 100.0, 0.0, 1.0)
-                                    min_c = min(n_rl, len(raw_conf))
-                                    rl_confidences[:min_c] = raw_conf[:min_c]
-                                    console.print(f"[dim]  Confidence scores: {min_c:,} batch predictions[/dim]")
-                            except Exception as e:
-                                console.print(f"[dim]  Using default confidences: {e}[/dim]")
-
-                            # Stack predictions: [direction_prob, confidence]
-                            rl_predictions = np.column_stack([
-                                rl_direction_probs,
-                                rl_confidences,
-                            ]).astype(np.float32)
-
-                            # Get prices from feature_df
-                            rl_prices = feature_df['close'].values[:n_rl].astype(np.float32)
-
-                            console.print(f"[dim]RL training data: {n_rl:,} samples, "
-                                          f"{rl_features_2d.shape[1]} features[/dim]")
-
-                            _train_rl_position_sizer_if_ready(
-                                console=console,
-                                rl_timesteps=rl_timesteps,
-                                features=rl_features_2d,
-                                ensemble_predictions=rl_predictions,
-                                prices=rl_prices,
-                            )
-                        except Exception as e:
-                            console.print(f"[yellow]RL data preparation failed: {e}[/yellow]")
-                            console.print("[dim]Skipping RL position sizer training[/dim]")
-
-                except ImportError as e:
-                    console.print(f"[yellow]Enterprise features unavailable: {e}[/yellow]")
-                    console.print("[dim]Install with: pip install mlflow structlog[/dim]")
-                except Exception as e:
-                    console.print(f"[yellow]Enterprise validation error: {e}[/yellow]")
-                    import traceback
-                    traceback.print_exc()
-
             return
 
         # XGBoost model - handles training separately
