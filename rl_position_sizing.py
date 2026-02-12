@@ -56,6 +56,7 @@ EvalCallback = None
 StopTrainingOnNoModelImprovement = None
 DummyVecEnv = None
 BaseCallback = None
+Monitor = None
 
 
 def _ensure_gym_imported():
@@ -75,7 +76,7 @@ def _ensure_gym_imported():
 
 def _ensure_sb3_imported():
     """Lazy import stable-baselines3 only when needed."""
-    global PPO, EvalCallback, StopTrainingOnNoModelImprovement, DummyVecEnv, BaseCallback, SB3_AVAILABLE
+    global PPO, EvalCallback, StopTrainingOnNoModelImprovement, DummyVecEnv, BaseCallback, Monitor, SB3_AVAILABLE
     if SB3_AVAILABLE is None:
         try:
             from stable_baselines3 import PPO as _PPO
@@ -83,11 +84,13 @@ def _ensure_sb3_imported():
             from stable_baselines3.common.callbacks import EvalCallback as _EvalCallback
             from stable_baselines3.common.callbacks import StopTrainingOnNoModelImprovement as _Stop
             from stable_baselines3.common.vec_env import DummyVecEnv as _DummyVecEnv
+            from stable_baselines3.common.monitor import Monitor as _Monitor
             PPO = _PPO
             BaseCallback = _BaseCallback
             EvalCallback = _EvalCallback
             StopTrainingOnNoModelImprovement = _Stop
             DummyVecEnv = _DummyVecEnv
+            Monitor = _Monitor
             SB3_AVAILABLE = True
         except (ImportError, AttributeError, Exception) as e:
             # Can fail due to ImportError, or protobuf/tensorflow compatibility issues
@@ -104,14 +107,17 @@ if _import_time > 5.0:
 RL_MODEL_PATH = Path("trained_data/models/rl_position_sizer.zip")
 RL_SCALER_PATH = Path("trained_data/models/rl_scaler.pkl")
 
+# Discrete position size levels (percentage of equity)
+POSITION_LEVELS = [0.0, 0.01, 0.03, 0.05, 0.07, 0.10]
+
 
 @dataclass
 class RLConfig:
     """Configuration for RL position sizing."""
     # Environment
     sequence_length: int = 60  # Observation window
-    max_position_pct: float = 0.05  # Max 5% of account per trade
-    min_position_pct: float = 0.005  # Min 0.5% of account per trade
+    max_position_pct: float = 0.10  # Max 10% of account per trade
+    min_position_pct: float = 0.01  # Min 1% of account per trade
 
     # Reward shaping
     sharpe_weight: float = 0.1  # Weight for Sharpe ratio in reward
@@ -216,9 +222,9 @@ class TradingEnv(_get_gym_env_base()):
         )
 
         # Action space: position size as percentage [0, max_position_pct]
-        # Discretized into 6 levels for stability
-        self.action_space = spaces.Discrete(6)  # [0%, 0.5%, 1%, 2%, 3%, 5%]
-        self.position_levels = [0.0, 0.005, 0.01, 0.02, 0.03, 0.05]
+        # Discretized into stable levels for consistency
+        self.action_space = spaces.Discrete(len(POSITION_LEVELS))
+        self.position_levels = POSITION_LEVELS
 
     def _get_observation(self) -> np.ndarray:
         """Construct observation vector."""
@@ -537,13 +543,13 @@ class RLPositionSizer:
         )
         print("  PPO model created. Setting up evaluation callback...")
 
-        # Setup evaluation callback
-        eval_env = DummyVecEnv([lambda: TradingEnv(
+        # Setup evaluation callback (wrap with Monitor to avoid SB3 warning)
+        eval_env = DummyVecEnv([lambda: Monitor(TradingEnv(
             features=features_scaled,
             ensemble_predictions=ensemble_predictions,
             prices=prices,
             config=self.config,
-        )])
+        ))])
 
         stop_callback = StopTrainingOnNoModelImprovement(
             max_no_improvement_evals=5,
@@ -642,8 +648,7 @@ class RLPositionSizer:
         action, _ = self.model.predict(obs, deterministic=True)
 
         # Convert action to position size
-        position_levels = [0.0, 0.005, 0.01, 0.02, 0.03, 0.05]
-        position_pct = position_levels[int(action)]
+        position_pct = POSITION_LEVELS[int(action)]
 
         return account_equity * position_pct
 

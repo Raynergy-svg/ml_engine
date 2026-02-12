@@ -26,6 +26,7 @@ from rich.progress import (
     SpinnerColumn,
     TaskProgressColumn,
     TextColumn,
+    TimeRemainingColumn,
     track,
 )
 from rich.table import Table
@@ -137,35 +138,47 @@ def train_rl_sizer(
     all_predictions = []
     all_prices = []
 
+    # Sample every Nth bar to avoid ~4900 full-model predict() calls per pair
+    SAMPLE_STEP = 10  # predict every 10th bar (still ~480 samples/pair)
+
     console.print("[bold]Generating Training Data[/bold]")
+
+    # Pre-calculate total samples across all pairs for accurate progress
+    # Estimate: (candles - 100) / SAMPLE_STEP per pair
+    est_samples_per_pair = max(1, (candles - 100) // SAMPLE_STEP)
+    total_est = est_samples_per_pair * len(pair_list)
 
     with Progress(
         SpinnerColumn(),
         TextColumn("[cyan]{task.description}[/cyan]"),
         BarColumn(bar_width=40),
         TaskProgressColumn(),
+        TimeRemainingColumn(),
         console=console,
     ) as progress:
-        # Task for pairs
-        pairs_task = progress.add_task(f"Processing {len(pair_list)} pairs", total=len(pair_list))
+        main_task = progress.add_task("Starting...", total=total_est)
 
-        for pair in pair_list:
-            progress.update(pairs_task, description=f"[cyan]{pair}[/cyan]")
+        for pair_idx, pair in enumerate(pair_list):
+            progress.update(main_task, description=f"[cyan]{pair}[/cyan] ({pair_idx+1}/{len(pair_list)})")
 
             try:
                 resp = oanda.get_candles(pair, granularity=granularity, count=candles, price="MBA")
                 df_raw = candles_to_ohlcv_df(resp)
 
                 if df_raw is None or len(df_raw) < 200:
-                    progress.advance(pairs_task)
+                    progress.advance(main_task, advance=est_samples_per_pair)
                     continue
 
                 df = fe.create_features(df_raw.copy(), include_all=True)
                 df = df.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
                 prices = df['close'].values
 
-                # Generate predictions (silently)
-                for i in range(100, len(df) - 1):
+                # Generate predictions - sample every SAMPLE_STEP bars
+                sample_indices = range(100, len(df) - 1, SAMPLE_STEP)
+                # Adjust progress total for actual count
+                actual_samples = len(list(sample_indices))
+
+                for i in sample_indices:
                     df_slice = df.iloc[:i+1].copy()
                     try:
                         signal = ensemble.predict(df_slice)
@@ -183,10 +196,17 @@ def train_rl_sizer(
                     except Exception:
                         continue
 
-            except Exception:
-                pass
+                    progress.advance(main_task)
 
-            progress.advance(pairs_task)
+                # If actual samples differ from estimate, adjust
+                leftover = est_samples_per_pair - actual_samples
+                if leftover > 0:
+                    progress.advance(main_task, advance=leftover)
+
+            except Exception:
+                progress.advance(main_task, advance=est_samples_per_pair)
+
+            
 
     if not all_features:
         steps[2] = ["✗", "Generate predictions", "No data"]
@@ -212,8 +232,19 @@ def train_rl_sizer(
     console.print("[bold]Training PPO Agent (subprocess)[/bold]")
     console.print()
 
-    script_path = Path(__file__).parent / "train_rl_standalone.py"
-    cmd = [sys.executable, str(script_path), "--data", str(data_file), "--timesteps", str(timesteps)]
+    script_path = Path(__file__).resolve().parent.parent / "train_rl_standalone.py"
+
+    # Use the Python from the active conda env (CONDA_PREFIX) if available,
+    # falling back to sys.executable. This prevents mismatches when the user
+    # invokes main.py from a different env than the one with RL deps.
+    conda_prefix = os.environ.get("CONDA_PREFIX")
+    if conda_prefix:
+        conda_python = Path(conda_prefix) / "bin" / "python"
+        python_exe = str(conda_python) if conda_python.exists() else sys.executable
+    else:
+        python_exe = sys.executable
+
+    cmd = [python_exe, str(script_path), "--data", str(data_file), "--timesteps", str(timesteps)]
     if verbose:
         cmd.append("--verbose")
 
@@ -226,7 +257,7 @@ def train_rl_sizer(
             stderr=subprocess.STDOUT,
             text=True,
             bufsize=1,
-            cwd=Path(__file__).parent,
+            cwd=Path(__file__).resolve().parent.parent,
         )
 
         for line in process.stdout:

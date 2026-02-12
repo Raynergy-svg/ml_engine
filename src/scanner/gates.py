@@ -35,6 +35,15 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+# Suppress harmless LightGBM feature name warnings during inference.
+# Models trained with DataFrames emit this when predicted with numpy arrays;
+# the predictions are identical regardless.
+warnings.filterwarnings(
+    "ignore",
+    message="X does not have valid feature names, but LGBM.*was fitted with feature names",
+    category=UserWarning,
+)
+
 # Import normalized feature computation for alignment with inference
 try:
     from src.core.modular_data_loaders import (
@@ -121,6 +130,10 @@ class GateEvaluator:
         self._xgb_feature_names = None
         self._xgb_scaler = None
 
+        # Risk model metadata
+        self._rf_feature_names = None
+        self._rf_scaler = None
+
         # TCN metadata
         self._tcn_scaler = None
         self._tcn_feature_names = None
@@ -174,9 +187,17 @@ class GateEvaluator:
         if not status["momentum"]:
             status["momentum"] = self._load_xgboost_momentum()
 
+        # Fallback to LightGBM if both CatBoost and XGBoost failed
+        if not status["momentum"]:
+            status["momentum"] = self._load_lgbm_momentum()
+
         # Load other gate models
         status["confidence"] = self._load_ridge_confidence()
         status["risk"] = self._load_rf_risk()
+
+        # Fallback to LightGBM risk if RF not found
+        if not status["risk"]:
+            status["risk"] = self._load_lgbm_risk()
 
         # Load optional advanced gates
         status["transformer"] = self._load_transformer()
@@ -549,6 +570,81 @@ class GateEvaluator:
             logger.debug(f"Failed to load XGBoost from .pkl file path: {e}")
             return False
 
+    def _load_lgbm_momentum(self) -> bool:
+        """Load LightGBM momentum model (fallback when CatBoost/XGBoost unavailable).
+
+        Joint training produces lgbm_momentum.pkl which the gate evaluator
+        previously couldn't load (only looked for CatBoost/XGBoost).
+
+        Returns:
+            True if loaded successfully
+        """
+        model_path = self.model_dir / "lgbm_momentum.pkl"
+
+        if not model_path.exists():
+            logger.debug(f"LightGBM momentum model not found at {model_path}")
+            return False
+
+        try:
+            with open(model_path, 'rb') as f:
+                loaded_obj = pickle.load(f)
+
+            # Handle dict wrapper (from modular_trainers.py)
+            if isinstance(loaded_obj, dict):
+                model = loaded_obj.get('momentum_model', loaded_obj.get('model'))
+                if model is None:
+                    model = loaded_obj
+                self._xgb_feature_names = loaded_obj.get('feature_names')
+                self._xgb_scaler = loaded_obj.get('scaler')
+            else:
+                model = loaded_obj
+
+            self._xgboost_momentum = model
+            self._momentum_model_type = "lightgbm"
+            logger.info("✓ LightGBM momentum gate loaded (joint fallback)")
+            return True
+
+        except Exception as e:
+            logger.warning(f"Failed to load LightGBM momentum: {e}")
+            return False
+
+    def _load_lgbm_risk(self) -> bool:
+        """Load LightGBM risk model (fallback when RF unavailable).
+
+        Joint training produces lgbm_risk.pkl which the gate evaluator
+        previously couldn't load (only looked for rf_risk.pkl).
+
+        Returns:
+            True if loaded successfully
+        """
+        model_path = self.model_dir / "lgbm_risk.pkl"
+
+        if not model_path.exists():
+            logger.debug(f"LightGBM risk model not found at {model_path}")
+            return False
+
+        try:
+            with open(model_path, 'rb') as f:
+                loaded_obj = pickle.load(f)
+
+            # Handle dict wrapper (keys: drawdown_model, streak_model)
+            if isinstance(loaded_obj, dict):
+                model = loaded_obj.get('drawdown_model', loaded_obj.get('risk_model', loaded_obj.get('model')))
+                if model is None:
+                    model = loaded_obj
+                self._rf_feature_names = loaded_obj.get('feature_names')
+                self._rf_scaler = loaded_obj.get('scaler')
+            else:
+                model = loaded_obj
+
+            self._rf_risk = model
+            logger.info("✓ LightGBM risk gate loaded (joint fallback)")
+            return True
+
+        except Exception as e:
+            logger.warning(f"Failed to load LightGBM risk: {e}")
+            return False
+
     def _load_ridge_confidence(self) -> bool:
         """Load Ridge confidence model and metadata.
 
@@ -567,14 +663,22 @@ class GateEvaluator:
 
         try:
             with open(model_path, 'rb') as f:
-                self._ridge_confidence = pickle.load(f)
+                loaded_obj = pickle.load(f)
 
-            # Try to load metadata with scaler and feature names
-            if meta_path.exists():
+            # Handle dict wrapper (from RidgeTrainer.save())
+            if isinstance(loaded_obj, dict):
+                self._ridge_confidence = loaded_obj.get('model', loaded_obj)
+                self._ridge_scaler = loaded_obj.get('scaler')
+                self._ridge_feature_names = loaded_obj.get('feature_names')
+            else:
+                self._ridge_confidence = loaded_obj
+
+            # Try to load separate metadata file if feature names still missing
+            if self._ridge_feature_names is None and meta_path.exists():
                 try:
                     with open(meta_path, 'rb') as f:
                         meta = pickle.load(f)
-                    self._ridge_scaler = meta.get('scaler')
+                    self._ridge_scaler = self._ridge_scaler or meta.get('scaler')
                     self._ridge_feature_names = meta.get('feature_names')
                     logger.debug("✓ Ridge metadata loaded (scaler + feature names)")
                 except Exception as e:
@@ -842,6 +946,55 @@ class GateEvaluator:
         except (ValueError, IndexError, AttributeError, TypeError) as e:
             raise RuntimeError(f"XGBoost prediction error: {e}") from e
 
+    def _predict_generic(
+        self,
+        X: np.ndarray,
+    ) -> Tuple[float, bool]:
+        """Predict momentum using generic sklearn-compatible interface.
+
+        Works with LightGBM, sklearn models, and any estimator that
+        exposes predict() or predict_proba().
+
+        Args:
+            X: Feature array for prediction
+
+        Returns:
+            Tuple of (momentum_score, acceleration_detected)
+
+        Raises:
+            RuntimeError: If prediction fails
+        """
+        model = self._xgboost_momentum
+        try:
+            # Apply scaler if available
+            if self._xgb_scaler is not None:
+                try:
+                    X = self._xgb_scaler.transform(X)
+                except Exception:
+                    pass  # Use raw features
+
+            # Convert to DataFrame for LightGBM to avoid feature name warning
+            X_pred = X
+            if self._momentum_model_type == "lightgbm" and self._xgb_feature_names is not None:
+                if X.shape[1] == len(self._xgb_feature_names):
+                    X_pred = pd.DataFrame(X, columns=self._xgb_feature_names)
+
+            if hasattr(model, 'predict_proba'):
+                proba = model.predict_proba(X_pred)
+                momentum_score = self._extract_momentum_score(proba)
+            elif hasattr(model, 'predict'):
+                prediction = model.predict(X_pred)
+                momentum_score = float(prediction[0])
+                momentum_score = max(0.0, min(1.0, momentum_score))
+            else:
+                raise RuntimeError(f"Model {type(model)} has no predict method")
+
+            acceleration = momentum_score > self.ACCELERATION_THRESHOLD
+            return momentum_score, acceleration
+
+        except (ValueError, IndexError, AttributeError, TypeError) as e:
+            raise RuntimeError(f"Generic prediction error: {e}") from e
+
     def evaluate_momentum(
         self,
         features: pd.DataFrame,
@@ -905,13 +1058,23 @@ class GateEvaluator:
             try:
                 momentum_score, acceleration = self._predict_with_xgboost(X)
                 logger.info(
-                    f"Momentum gate evaluated (XGBoost): score={momentum_score:.3f}, "
+                    f"Momentum gate evaluated ({self._momentum_model_type}): score={momentum_score:.3f}, "
                     f"acceleration={acceleration}"
                 )
                 return momentum_score, acceleration
 
             except RuntimeError as e:
-                logger.debug(f"XGBoost momentum prediction failed: {e}")
+                logger.debug(f"{self._momentum_model_type} momentum prediction failed, trying generic predict: {e}")
+                # Last resort: try generic sklearn predict interface (works for LightGBM, etc.)
+                try:
+                    momentum_score, acceleration = self._predict_generic(X)
+                    logger.info(
+                        f"Momentum gate evaluated (generic/{self._momentum_model_type}): "
+                        f"score={momentum_score:.3f}, acceleration={acceleration}"
+                    )
+                    return momentum_score, acceleration
+                except Exception as e2:
+                    logger.debug(f"Generic momentum prediction also failed: {e2}")
 
         # No model available - return neutral value
         logger.warning(
@@ -923,6 +1086,7 @@ class GateEvaluator:
     def evaluate_confidence(
         self,
         features: pd.DataFrame,
+        instrument: Optional[str] = None,
     ) -> float:
         """Evaluate confidence gate (ADX-based).
 
@@ -933,6 +1097,7 @@ class GateEvaluator:
 
         Args:
             features: DataFrame with engineered features
+            instrument: Optional instrument name (e.g. 'EUR_USD') for one-hot encoding
 
         Returns:
             Confidence score 0-100 (50+ is strong trend)
@@ -943,9 +1108,31 @@ class GateEvaluator:
         # Try Ridge model first
         if self._ridge_confidence is not None:
             try:
-                X = last_row.values if hasattr(last_row, 'values') else last_row
-                if len(X.shape) == 1:
-                    X = X.reshape(1, -1)
+                feature_names = getattr(self, '_ridge_feature_names', None)
+                if feature_names is not None and hasattr(last_row, 'columns'):
+                    # Build a single-row DataFrame with exactly the expected features
+                    row = pd.DataFrame(0.0, index=[0], columns=feature_names)
+                    for col in feature_names:
+                        if col in last_row.columns:
+                            val = last_row[col].iloc[0] if hasattr(last_row[col], 'iloc') else last_row[col]
+                            row[col] = float(val) if pd.notna(val) else 0.0
+                        elif col.startswith('instrument_') and instrument:
+                            # One-hot: set 1.0 if this is the current instrument
+                            expected_instr = col.replace('instrument_', '')
+                            row[col] = 1.0 if instrument == expected_instr else 0.0
+                    X = row.values
+                else:
+                    X = last_row.values if hasattr(last_row, 'values') else last_row
+                    if len(X.shape) == 1:
+                        X = X.reshape(1, -1)
+
+                # Apply scaler (must match feature count)
+                if self._ridge_scaler is not None:
+                    X = self._ridge_scaler.transform(X)
+
+                # Convert to DataFrame for LightGBM
+                if feature_names is not None and len(feature_names) == X.shape[1]:
+                    X = pd.DataFrame(X, columns=feature_names)
 
                 raw_confidence = float(self._ridge_confidence.predict(X)[0])
 
@@ -964,7 +1151,7 @@ class GateEvaluator:
                     return float(confidence)
 
             except Exception as e:
-                logger.debug(f"Ridge confidence prediction failed: {e}")
+                logger.warning(f"Ridge confidence prediction failed: {e}")
 
         # Fallback: use ADX directly if available in features
         if 'adx' in features.columns:
@@ -1064,7 +1251,18 @@ class GateEvaluator:
             if len(X.shape) == 1:
                 X = X.reshape(1, -1)
 
-            # RF predicts drawdown percentage
+            # Apply scaler and convert to DataFrame for LightGBM models
+            rf_scaler = getattr(self, '_rf_scaler', None)
+            if rf_scaler is not None:
+                try:
+                    X = rf_scaler.transform(X)
+                except Exception:
+                    pass
+            rf_feature_names = getattr(self, '_rf_feature_names', None)
+            if rf_feature_names is not None and len(rf_feature_names) == X.shape[1]:
+                X = pd.DataFrame(X, columns=rf_feature_names)
+
+            # RF/LightGBM predicts drawdown percentage
             drawdown = float(self._rf_risk.predict(X)[0])
 
             # Estimate streak probability from drawdown
@@ -1186,6 +1384,7 @@ class GateEvaluator:
         max_drawdown_pct: float = 0.025,
         min_transformer_prob: float = 0.60,
         min_meta_confidence: float = 0.55,
+        instrument: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Evaluate all trading gates including advanced gates.
 
@@ -1196,6 +1395,7 @@ class GateEvaluator:
             max_drawdown_pct: Maximum drawdown threshold
             min_transformer_prob: Minimum Transformer probability threshold
             min_meta_confidence: Minimum meta-labeler confidence threshold
+            instrument: Optional instrument name (e.g. 'EUR_USD') for one-hot encoding
 
         Returns:
             Dict with comprehensive gate results including:
@@ -1205,7 +1405,7 @@ class GateEvaluator:
         """
         # Evaluate basic gates
         momentum, acceleration = self.evaluate_momentum(features)
-        confidence = self.evaluate_confidence(features)
+        confidence = self.evaluate_confidence(features, instrument=instrument)
         drawdown, streak_prob = self.evaluate_risk(features)
 
         # Check basic thresholds

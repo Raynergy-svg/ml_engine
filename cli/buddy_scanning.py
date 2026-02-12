@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import json
+import logging
 import warnings
 from pathlib import Path
 from datetime import datetime
@@ -89,15 +90,16 @@ def buddy_scan(
             pair_list = [p.strip().upper().replace("/", "_") for p in pairs.split(",")]
 
         # Run enhanced scan (display only, no execution prompt)
-        results = scanner.scan(
-            pairs=pair_list,
-            granularity=granularity,
-            top_n=top_n,
-            verbose=True,  # Always verbose for CLI
-            prompt_train=prompt_train,
-            diversified=diversified,
-            force=force,
-        )
+        with suppress_logging(level=logging.ERROR):
+            results = scanner.scan(
+                pairs=pair_list,
+                granularity=granularity,
+                top_n=top_n,
+                verbose=True,  # Always verbose for CLI
+                prompt_train=prompt_train,
+                diversified=diversified,
+                force=force,
+            )
 
         # Return results as (PairAnalysis, gates_passed) tuples
         return [(r, r.gates_passed) for r in results]
