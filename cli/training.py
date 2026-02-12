@@ -29,6 +29,7 @@ from cli.models import _build_buddy_model_for_type, _build_buddy_model_shared_en
 
 from src.utils import load_config
 from src.utils.seed_manager import set_global_seed, get_global_seed
+from src.core.constants import DIRECTION_DEFAULTS
 
 # ── String constants (SonarQube duplicate-literal fix) ──────────────
 _STYLE_HEADER = "bold cyan"
@@ -817,8 +818,8 @@ def _train_ensemble_models(
     transformer_cfg = cfg.get("transformer", {})
     use_transformer = transformer_cfg.get("use_transformer", True)
     use_regime = transformer_cfg.get("use_regime", False)
-    direction_threshold = cfg.get("direction_threshold", 0.005)
-    direction_lookahead = cfg.get("direction_lookahead", 12)
+    direction_threshold = cfg.get("direction_threshold", DIRECTION_DEFAULTS['threshold'])
+    direction_lookahead = cfg.get("direction_lookahead", DIRECTION_DEFAULTS['lookahead'])
     regime_lookback = transformer_cfg.get("regime_lookback", 20)
     regime_lookahead = transformer_cfg.get("regime_lookahead", 12)
 
