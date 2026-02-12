@@ -113,16 +113,34 @@ class RandomForestTrainer(BaseTrainer):
         # Convert to basis points for meaningful display (0.001 = 10 bps)
         drawdown_mae_bps = drawdown_mae * 10000
 
+        # === PHASE 4: MAE TARGET TRACKING ===
+        # Target: Drawdown MAE < 10 bps (0.001 in decimal)
+        target_bps = 10.0
+        target_achieved = drawdown_mae_bps <= target_bps
+        target_gap_bps = max(0, drawdown_mae_bps - target_bps)
+
         self.metrics = {
             "drawdown_mae_pct": drawdown_mae,  # Raw percentage (0-1)
             "drawdown_mae_bps": drawdown_mae_bps,  # Basis points for display
             "streak_prob_mae": streak_mae,
+            # Phase 4 target tracking
+            "target_achieved": target_achieved,
+            "target_gap_bps": target_gap_bps,
         }
 
         logger.info(
             f"RF trained: drawdown_mae={drawdown_mae_bps:.1f} bps ({drawdown_mae * 100:.3f}%), "
             f"streak_mae={streak_mae:.4f}"
         )
+        
+        if target_achieved:
+            logger.info(f"✅ Phase 4 Target ACHIEVED: Drawdown MAE {drawdown_mae_bps:.1f} bps ≤ {target_bps} bps")
+        else:
+            logger.warning(
+                f"⚠️ Phase 4 Target NOT MET: Drawdown MAE {drawdown_mae_bps:.1f} bps exceeds {target_bps} bps "
+                f"by {target_gap_bps:.1f} bps. Consider hyperparameter tuning."
+            )
+        
         return self.metrics
 
     def predict(self, X: np.ndarray) -> Dict[str, Any]:
