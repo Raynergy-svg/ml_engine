@@ -13,7 +13,10 @@ import uuid
 
 import os
 import sys
-import requests
+try:
+    import requests  # type: ignore
+except Exception:  # pragma: no cover
+    requests = None
 
 
 def _load_project_dotenv() -> None:
@@ -100,6 +103,10 @@ class OandaPracticeConfig:
 
 class OandaPracticeClient:
     def __init__(self, config: OandaPracticeConfig):
+        if requests is None:
+            raise ModuleNotFoundError(
+                "The 'requests' package is required for OANDA client usage. Install it with: pip install requests"
+            )
         self._config = config
         self._session = requests.Session()
         self._session.headers.update(
