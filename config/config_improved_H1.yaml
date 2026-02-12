@@ -671,3 +671,52 @@ online_retraining:
   cooldown_minutes: 60
   max_retrains_per_day: 3
   min_samples_for_retrain: 50
+
+# ----- HYPERPARAMETER OPTIMIZATION (OPTUNA) -----
+optuna:
+  enabled: false  # Set to true to enable automatic hyperparameter tuning
+  
+  # Study configuration
+  study_name: fx_trading_bot_optimization
+  n_trials: 100  # Number of trials to run
+  timeout: null  # Maximum time in seconds (null = no limit)
+  n_jobs: 1  # Number of parallel jobs (-1 for all cores)
+  
+  # Storage configuration
+  storage: "sqlite:///trained_data/optuna/studies.db"
+  load_if_exists: true  # Load existing study or create new
+  
+  # Optimization direction
+  direction: minimize  # 'minimize' or 'maximize'
+  # For multi-objective optimization:
+  # directions: ['minimize', 'maximize']
+  # metric_names: ['val_loss', 'f1_score']
+  
+  # Sampler configuration
+  sampler: tpe  # 'tpe', 'cmaes', 'random'
+  sampler_n_startup_trials: 10
+  sampler_seed: null  # Use reproducibility.global_seed if null
+  
+  # Pruner configuration (for early stopping of unpromising trials)
+  pruner: median  # 'median', 'successive_halving', 'hyperband', null
+  pruner_n_startup_trials: 5
+  pruner_n_warmup_steps: 10
+  pruner_interval_steps: 1
+  
+  # Visualization and logging
+  show_progress_bar: true
+  verbosity: 1  # 0=silent, 1=info, 2=debug
+  
+  # Parameter search space for Transformer model
+  param_space:
+    d_model: [16, 32, 64, 128]  # categorical
+    num_heads: [2, 4, 8]  # categorical
+    num_layers: [1, 2, 3, 4]  # integer range
+    dropout: [0.1, 0.5]  # float range
+    learning_rate: [1e-5, 1e-2]  # log-scale float range
+    batch_size: [32, 64, 128, 256]  # categorical
+    
+  # Fixed parameters (not optimized)
+  fixed_params:
+    epochs: 50  # Shorter training for faster trials
+    early_stopping_patience: 10
