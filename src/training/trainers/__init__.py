@@ -11,6 +11,9 @@ This package contains:
 - tcn_volatility_trainer: TCN trainer for forward-looking volatility prediction
 - transformer_trainer: Transformer trainer for direction prediction
 - transformer_regime_trainer: Transformer trainer for regime classification
+- lightgbm_trainers: LightGBM-based trainers (regime, momentum, risk)
+- histgb_trainer: HistGradientBoosting baseline trainer
+- joint_trainer: Joint multi-pair training with contrastive learning
 """
 
 from src.training.trainers.base import BaseTrainer
@@ -23,6 +26,13 @@ from src.training.trainers.transformer_regime_trainer import TransformerRegimeTr
 from src.training.trainers.xgboost_trainer import XGBoostTrainer
 from src.training.trainers.random_forest_trainer import RandomForestTrainer
 from src.training.trainers.ridge_trainer import RidgeTrainer
+from src.training.trainers.lightgbm_trainers import (
+    RegimeLGBMTrainer,
+    LightGBMMomentumTrainer,
+    LightGBMRiskTrainer,
+)
+from src.training.trainers.histgb_trainer import HistGradientBoostingDirectionTrainer
+from src.training.trainers.joint_trainer import JointMultiPairTrainer
 from src.training.trainers.callbacks import (
     EMACallback,
     EWCPenalty,
@@ -93,6 +103,13 @@ __all__ = [
     "XGBoostTrainer",
     "RandomForestTrainer",
     "RidgeTrainer",
+    # LightGBM Trainers
+    "RegimeLGBMTrainer",
+    "LightGBMMomentumTrainer",
+    "LightGBMRiskTrainer",
+    # Other Trainers
+    "HistGradientBoostingDirectionTrainer",
+    "JointMultiPairTrainer",
     # Callbacks
     "EMACallback",
     "EWCPenalty",
