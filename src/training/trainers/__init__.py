@@ -14,6 +14,8 @@ This package contains:
 - lightgbm_trainers: LightGBM-based trainers (regime, momentum, risk)
 - histgb_trainer: HistGradientBoosting baseline trainer
 - joint_trainer: Joint multi-pair training with contrastive learning
+- migration: Model migration utilities for version compatibility
+- train_all: Main training orchestration function
 """
 
 from src.training.trainers.base import BaseTrainer
@@ -86,6 +88,11 @@ from src.training.trainers.utils import (
     _create_lgbm_regressor,
     _create_lgbm_classifier,
 )
+from src.training.trainers.migration import (
+    migrate_xgboost_model,
+    migrate_all_models,
+)
+from src.training.trainers.train_all import train_all_modular
 
 __all__ = [
     # Base class
@@ -160,4 +167,9 @@ __all__ = [
     "get_regime_lgbm_params",
     "_create_lgbm_regressor",
     "_create_lgbm_classifier",
+    # Migration utilities
+    "migrate_xgboost_model",
+    "migrate_all_models",
+    # Training orchestration
+    "train_all_modular",
 ]
