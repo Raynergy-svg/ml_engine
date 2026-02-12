@@ -111,11 +111,21 @@ def main():
         prices = data['prices']
         steps[0] = ["✓", "Load training data", f"{len(features):,} samples"]
         
-        # Step 2: Import RL
-        from rl_position_sizing import RLPositionSizer, RLConfig, GYM_AVAILABLE, SB3_AVAILABLE
-        
-        if not GYM_AVAILABLE or not SB3_AVAILABLE:
-            steps[1] = ["✗", "Import RL components", "Missing deps"]
+        # Step 2: Import RL (trigger lazy imports before checking flags)
+        from rl_position_sizing import (
+            RLPositionSizer, RLConfig,
+            _ensure_gym_imported, _ensure_sb3_imported,
+        )
+        gym_ok = _ensure_gym_imported()
+        sb3_ok = _ensure_sb3_imported()
+
+        if not gym_ok or not sb3_ok:
+            missing = []
+            if not gym_ok:
+                missing.append("gymnasium")
+            if not sb3_ok:
+                missing.append("stable-baselines3")
+            steps[1] = ["✗", "Import RL components", f"Missing: {', '.join(missing)}"]
             print_checklist()
             sys.exit(1)
         steps[1] = ["✓", "Import RL components", "gymnasium + SB3"]

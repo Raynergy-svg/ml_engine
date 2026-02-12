@@ -17,7 +17,10 @@ try:
     import yaml  # type: ignore
 except Exception:  # pragma: no cover
     yaml = None
-from joblib import Memory
+try:
+    from joblib import Memory  # type: ignore
+except Exception:  # pragma: no cover
+    Memory = None
 import functools
 import copy
 from functools import lru_cache
@@ -27,7 +30,19 @@ logger = logging.getLogger(__name__)
 # Add caching capabilities
 CACHE_DIR = Path(__file__).parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
-memory = Memory(location=str(CACHE_DIR), verbose=0)
+
+
+if Memory is None:  # pragma: no cover
+    class _NoopMemory:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def cache(self, func: Callable) -> Callable:
+            return func
+
+    memory = _NoopMemory()
+else:
+    memory = Memory(location=str(CACHE_DIR), verbose=0)
 
 
 def cache(func):

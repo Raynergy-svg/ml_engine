@@ -5,6 +5,8 @@ import sys
 import pytest
 from unittest.mock import patch, MagicMock
 
+pytest.importorskip("openai_integration")
+
 # Mock openai and optuna modules before importing openai_integration
 sys.modules['openai'] = MagicMock()
 sys.modules['optuna'] = MagicMock()

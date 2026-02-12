@@ -176,10 +176,19 @@ class Scanner:
 
         try:
             status = self._gate_evaluator.load_models(require_tcn=require_tcn)
+            loaded = [k for k, v in status.items() if v]
+            if not loaded:
+                logger.warning(
+                    "No gate models could be loaded (missing packages?).\n"
+                    "Scanner will use technical indicator fallback only."
+                )
             return any(status.values())
         except FileNotFoundError as e:
             logger.warning(f"Model loading issue: {e}")
             # Still return False but don't raise - allow scan to continue with reduced functionality
+            return False
+        except Exception as e:
+            logger.warning(f"Gate evaluator init failed: {e}")
             return False
 
     def _init_feature_engineer(self) -> bool:
@@ -210,16 +219,33 @@ class Scanner:
             True if ensemble loaded successfully
         """
         if self._modular_ensemble is not None:
-            return True
+            return self._ensemble_loaded
 
+        self._ensemble_loaded = False
         try:
             from src.core.modular_inference import ModularEnsembleInference
 
             self._modular_ensemble = ModularEnsembleInference(
                 model_dir=str(self.config.model_dir),
+                use_rl_sizer=self.config.use_rl_sizer,
+                use_rl_gates=self.config.use_rl_gates,
+                use_rl_exits=self.config.use_rl_exits,
             )
+            # Eagerly load models so we can check what actually loaded.
+            # ModularEnsembleInference lazy-loads in predict(), but the
+            # scanner needs to know the loaded state *now* to decide
+            # whether to fall back to the gate evaluator.
+            self._modular_ensemble.load_models()
+
             # Check if at least the main direction model loaded
-            return self._modular_ensemble.tcn is not None or self._modular_ensemble.histgb is not None
+            self._ensemble_loaded = (
+                self._modular_ensemble._loaded
+                and (
+                    self._modular_ensemble.tcn is not None
+                    or self._modular_ensemble.histgb is not None
+                )
+            )
+            return self._ensemble_loaded
 
         except ImportError:
             logger.debug("ModularEnsembleInference not available")
@@ -266,6 +292,8 @@ class Scanner:
     ) -> Optional[pd.DataFrame]:
         """Fetch OHLCV data for a pair.
 
+        Tries OANDA API first, falls back to local CSV files in market_data/.
+
         Args:
             pair: Instrument name (e.g., "EUR_USD")
             count: Number of candles to fetch
@@ -273,53 +301,113 @@ class Scanner:
         Returns:
             DataFrame with OHLCV columns or None on failure
         """
-        if not self._init_oanda_client():
+        # === Try OANDA API first ===
+        if self._init_oanda_client():
+            try:
+                raw = self._oanda.get_candles(
+                    instrument=pair,
+                    granularity=self.config.granularity,
+                    count=count,
+                )
+
+                # Parse OANDA JSON response into DataFrame
+                candles = raw.get("candles", [])
+                if candles:
+                    data = []
+                    for c in candles:
+                        if not c.get("complete", True):
+                            continue
+                        mid = c.get("mid", {})
+                        data.append({
+                            "time": c.get("time"),
+                            "open": float(mid.get("o", 0)),
+                            "high": float(mid.get("h", 0)),
+                            "low": float(mid.get("l", 0)),
+                            "close": float(mid.get("c", 0)),
+                            "volume": int(c.get("volume", 0)),
+                        })
+
+                    if data:
+                        df = pd.DataFrame(data)
+                        df["time"] = pd.to_datetime(df["time"])
+                        df = df.set_index("time")
+
+                        if len(df) >= self.config.min_candles:
+                            return df
+                        else:
+                            logger.debug(f"{pair}: Insufficient OANDA data ({len(df)} candles)")
+
+            except Exception as e:
+                logger.debug(f"{pair}: OANDA fetch failed - {e}")
+
+        # === Fallback to local CSV files ===
+        df = self._load_local_csv(pair)
+        if df is not None:
+            return df
+
+        logger.warning(f"{pair}: No data available (OANDA offline, no local CSV)")
+        return None
+
+    def _load_local_csv(self, pair: str) -> Optional[pd.DataFrame]:
+        """Load most recent local CSV data for a pair.
+
+        Searches market_data/ for the most recent H1 CSV matching the pair.
+
+        Args:
+            pair: Instrument name (e.g., "EUR_USD")
+
+        Returns:
+            DataFrame with OHLCV columns or None if not found
+        """
+        data_dir = Path(self.config.model_dir).parent.parent / "market_data"
+        if not data_dir.exists():
             return None
 
+        # Find matching CSVs for this pair and granularity
+        pattern = f"oanda_{pair}_{self.config.granularity}_*.csv"
+        csv_files = sorted(data_dir.glob(pattern), reverse=True)  # Most recent first
+
+        if not csv_files:
+            logger.debug(f"{pair}: No local CSV files matching {pattern}")
+            return None
+
+        csv_path = csv_files[0]
+        logger.info(f"{pair}: Using local CSV: {csv_path.name}")
+
         try:
-            raw = self._oanda.get_candles(
-                instrument=pair,
-                granularity=self.config.granularity,
-                count=count,
-            )
+            df = pd.read_csv(csv_path)
 
-            # Parse OANDA JSON response into DataFrame
-            candles = raw.get("candles", [])
-            if not candles:
-                logger.debug(f"{pair}: No candles returned")
+            # Normalize column names to lowercase
+            df.columns = [c.lower() for c in df.columns]
+
+            # Try common time column names
+            time_col = None
+            for col in ["time", "timestamp", "date", "datetime"]:
+                if col in df.columns:
+                    time_col = col
+                    break
+
+            if time_col:
+                df[time_col] = pd.to_datetime(df[time_col])
+                df = df.set_index(time_col)
+
+            # Ensure required OHLCV columns exist
+            required = ["open", "high", "low", "close"]
+            if not all(c in df.columns for c in required):
+                logger.debug(f"{pair}: CSV missing required columns: {required}")
                 return None
 
-            # Extract OHLCV from mid prices
-            data = []
-            for c in candles:
-                if not c.get("complete", True):
-                    continue
-                mid = c.get("mid", {})
-                data.append({
-                    "time": c.get("time"),
-                    "open": float(mid.get("o", 0)),
-                    "high": float(mid.get("h", 0)),
-                    "low": float(mid.get("l", 0)),
-                    "close": float(mid.get("c", 0)),
-                    "volume": int(c.get("volume", 0)),
-                })
-
-            if not data:
-                logger.debug(f"{pair}: No complete candles")
-                return None
-
-            df = pd.DataFrame(data)
-            df["time"] = pd.to_datetime(df["time"])
-            df = df.set_index("time")
+            if "volume" not in df.columns:
+                df["volume"] = 0
 
             if len(df) < self.config.min_candles:
-                logger.debug(f"{pair}: Insufficient data ({len(df)} candles)")
+                logger.debug(f"{pair}: Insufficient CSV data ({len(df)} candles)")
                 return None
 
             return df
 
         except Exception as e:
-            logger.debug(f"{pair}: Data fetch failed - {e}")
+            logger.warning(f"{pair}: Failed to load CSV {csv_path.name}: {e}")
             return None
 
     def _compute_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -354,12 +442,164 @@ class Scanner:
             logger.warning(f"Feature engineering failed: {e}")
             return df.ffill().bfill().fillna(0)
 
+    def _check_volatility_regime(
+        self,
+        df_feat: pd.DataFrame,
+        pair: str,
+    ) -> Tuple[bool, Optional[int]]:
+        """Check TCN Volatility Regime as a global gate.
+
+        Args:
+            df_feat: Engineered features
+            pair: Instrument name
+
+        Returns:
+            Tuple of (vol_allowed, volatility_regime)
+        """
+        if not self._init_gate_evaluator() or self._gate_evaluator is None:
+            return True, None
+
+        if not self._gate_evaluator.tcn_volatility_available:
+            return True, None
+
+        regime, _vol_conf, vol_allowed = self._gate_evaluator.evaluate_volatility_regime(df_feat)
+
+        if not vol_allowed:
+            regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
+            logger.info(f"{pair}: Blocked by TCN Volatility Regime ({regime_names[regime]})")
+
+        return vol_allowed, regime
+
+    def _infer_from_ensemble(
+        self,
+        df_feat: pd.DataFrame,
+        pair: str,
+    ) -> Tuple[Optional[str], Optional[float], Optional[float], Optional[float], Optional[bool]]:
+        """Run inference using modular ensemble if available.
+
+        Args:
+            df_feat: Engineered features
+            pair: Instrument name
+
+        Returns:
+            Tuple of (direction, confidence, tcn_conf, ridge_conf, gates_passed) or all None if not available
+        """
+        if not self._init_modular_ensemble() or self._modular_ensemble is None:
+            return None, None, None, None, None
+
+        try:
+            signal = self._modular_ensemble.predict(df_feat)
+
+            if signal.tcn_direction is not None:
+                direction = "LONG" if signal.tcn_direction == 1 else "SHORT"
+                tcn_conf = abs(signal.tcn_probability - 0.5) * 200
+                ridge_conf = signal.ridge_confidence
+                confidence = max(tcn_conf, ridge_conf) / 100
+                gates_passed = signal.trade
+            elif signal.direction is not None:
+                direction = signal.direction.upper()
+                confidence = signal.confidence if signal.confidence > 0 else 0.5
+                ridge_conf = signal.ridge_confidence
+                tcn_conf = confidence * 100
+                gates_passed = signal.trade
+            else:
+                return None, None, None, None, None
+
+            return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed
+
+        except Exception as e:
+            logger.warning(f"{pair}: Ensemble inference failed - {e}")
+            return None, None, None, None, None
+
+    def _infer_from_gates(
+        self,
+        df_feat: pd.DataFrame,
+        pair: str,
+    ) -> Tuple[Optional[str], Optional[float], Optional[float], Optional[float], Optional[bool]]:
+        """Run inference using gate evaluator if available.
+
+        Args:
+            df_feat: Engineered features
+            pair: Instrument name
+
+        Returns:
+            Tuple of (direction, confidence, tcn_conf, ridge_conf, gates_passed) or all None if not available
+        """
+        if not self._init_gate_evaluator() or self._gate_evaluator is None:
+            return None, None, None, None, None
+
+        try:
+            gate_result = self._gate_evaluator.evaluate_all_gates(
+                df_feat,
+                min_confidence=self.config.min_confidence,
+                min_momentum=self.config.min_momentum,
+                max_drawdown_pct=self.config.max_drawdown_pct,
+                instrument=pair,
+            )
+
+            ridge_conf = gate_result["confidence"]
+            gates_passed = gate_result["all_passed"]
+
+            # Use direction from gates if Transformer provided it
+            if gate_result.get("transformer_direction"):
+                direction = gate_result["transformer_direction"]
+                tcn_conf = gate_result.get("transformer_prob", 0.5) * 100
+            elif "rsi" in df_feat.columns:
+                rsi = df_feat["rsi"].iloc[-1]
+                direction = "LONG" if rsi < 50 else "SHORT"
+                tcn_conf = 0.0
+            else:
+                return None, None, None, None, None
+
+            # Overall confidence: use ridge confidence (0-100) scaled to 0-1,
+            # consistent with the ensemble path which does max(tcn_conf, ridge_conf) / 100.
+            confidence = max(tcn_conf, ridge_conf) / 100
+
+            return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed
+
+        except Exception as e:
+            logger.warning(f"{pair}: Gate evaluation failed - {e}")
+            return None, None, None, None, None
+
+    def _infer_from_technicals(
+        self,
+        df_feat: pd.DataFrame,
+    ) -> Tuple[Optional[str], Optional[float]]:
+        """Run inference using technical indicators as fallback.
+
+        Args:
+            df_feat: Engineered features
+
+        Returns:
+            Tuple of (direction, confidence) or (None, None) if not available
+        """
+        if "rsi" not in df_feat.columns:
+            return None, None
+
+        rsi = df_feat["rsi"].iloc[-1]
+
+        if rsi < 30:
+            direction = "LONG"
+            confidence = 0.5 + (30 - rsi) / 60
+        elif rsi > 70:
+            direction = "SHORT"
+            confidence = 0.5 + (rsi - 70) / 60
+        elif "macd" in df_feat.columns:
+            macd = df_feat["macd"].iloc[-1]
+            direction = "LONG" if macd > 0 else "SHORT"
+            confidence = 0.5 + min(abs(macd) * 10, 0.2)
+        else:
+            direction = "LONG" if rsi < 50 else "SHORT"
+            confidence = 0.5 + abs(rsi - 50) / 100
+
+        return direction, min(confidence, 0.95)
+
     def _run_inference(
         self,
         df_raw: pd.DataFrame,
         df_feat: pd.DataFrame,
         pair: str,
-    ) -> Tuple[str, float, float, float, bool, Optional[int]]:
+    ) -> Tuple[str, float, float, float, bool, Optional[int], bool]:
         """Run model inference on features.
 
         IMPORTANT: TCN Volatility Regime is evaluated FIRST as a global filter.
@@ -371,95 +611,40 @@ class Scanner:
             pair: Instrument name
 
         Returns:
-            Tuple of (direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime)
+            Tuple of (direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, inference_succeeded)
         """
-        direction = "LONG"
-        confidence = 0.5
+        direction = "HOLD"
+        confidence = 0.0
         tcn_conf = 0.0
         ridge_conf = 0.0
         gates_passed = False
         volatility_regime = None
+        _inference_succeeded = False
 
         # === FIRST: Check TCN Volatility Regime (GLOBAL GATE) ===
-        if self._init_gate_evaluator() and self._gate_evaluator is not None:
-            if self._gate_evaluator.tcn_volatility_available:
-                regime, _vol_conf, vol_allowed = self._gate_evaluator.evaluate_volatility_regime(df_feat)
-                volatility_regime = regime
+        vol_allowed, volatility_regime = self._check_volatility_regime(df_feat, pair)
+        if not vol_allowed:
+            return direction, confidence, tcn_conf, ridge_conf, False, volatility_regime, True
 
-                if not vol_allowed:
-                    # LOW or NORMAL volatility - block ALL trades
-                    regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
-                    logger.info(f"{pair}: Blocked by TCN Volatility Regime ({regime_names[regime]})")
-                    return direction, confidence, tcn_conf, ridge_conf, False, volatility_regime
-            # If TCN not available, just skip the volatility check (don't block)
+        # === SECOND: Try ensemble inference ===
+        result = self._infer_from_ensemble(df_feat, pair)
+        if result[0] is not None:
+            direction, confidence, tcn_conf, ridge_conf, gates_passed = result
+            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True
 
-        # === SECOND: Evaluate direction and other gates ===
-        # Try modular ensemble first
-        if self._init_modular_ensemble() and self._modular_ensemble is not None:
-            try:
-                signal = self._modular_ensemble.predict(df_feat)
+        # === THIRD: Try gate evaluator ===
+        result = self._infer_from_gates(df_feat, pair)
+        if result[0] is not None:
+            direction, confidence, tcn_conf, ridge_conf, gates_passed = result
+            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True
 
-                if signal.tcn_direction is not None:
-                    direction = "LONG" if signal.tcn_direction == 1 else "SHORT"
-                    tcn_conf = abs(signal.tcn_probability - 0.5) * 200
-                    ridge_conf = signal.ridge_confidence
-                    confidence = max(tcn_conf, ridge_conf) / 100
-                    gates_passed = signal.trade
-                elif signal.direction is not None:
-                    direction = signal.direction.upper()
-                    confidence = signal.confidence if signal.confidence > 0 else 0.5
-                    ridge_conf = signal.ridge_confidence
-                    tcn_conf = confidence * 100
-                    gates_passed = signal.trade
+        # === FOURTH: Technical indicator fallback ===
+        result = self._infer_from_technicals(df_feat)
+        if result[0] is not None:
+            direction, confidence = result
+            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True
 
-                return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed, volatility_regime
-
-            except Exception as e:
-                logger.debug(f"{pair}: Ensemble inference failed - {e}")
-
-        # Evaluate gates directly if ensemble not available
-        if self._init_gate_evaluator() and self._gate_evaluator is not None:
-            try:
-                # Pass full DataFrame for Transformer (needs sequence)
-                # but last row features for XGB/Ridge/RF
-                gate_result = self._gate_evaluator.evaluate_all_gates(
-                    df_feat,  # Full DataFrame for Transformer sequence
-                    min_confidence=self.config.min_confidence,
-                    min_momentum=self.config.min_momentum,
-                    max_drawdown_pct=self.config.max_drawdown_pct,
-                )
-
-                confidence = gate_result["momentum"]
-                ridge_conf = gate_result["confidence"]
-                gates_passed = gate_result["all_passed"]
-
-                # Use direction from gates if Transformer provided it
-                if gate_result.get("transformer_direction"):
-                    direction = gate_result["transformer_direction"]
-                    tcn_conf = gate_result.get("transformer_prob", 0.5) * 100
-                elif "rsi" in df_feat.columns:
-                    # Fallback to RSI-based direction
-                    rsi = df_feat["rsi"].iloc[-1]
-                    direction = "LONG" if rsi < 50 else "SHORT"
-
-            except Exception as e:
-                logger.debug(f"{pair}: Gate evaluation failed - {e}")
-
-        # Technical indicator fallback
-        if "rsi" in df_feat.columns:
-            rsi = df_feat["rsi"].iloc[-1]
-            if rsi < 30:
-                direction = "LONG"
-                confidence = 0.5 + (30 - rsi) / 60
-            elif rsi > 70:
-                direction = "SHORT"
-                confidence = 0.5 + (rsi - 70) / 60
-            elif "macd" in df_feat.columns:
-                macd = df_feat["macd"].iloc[-1]
-                direction = "LONG" if macd > 0 else "SHORT"
-                confidence = 0.5 + min(abs(macd) * 10, 0.2)
-
-        return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed, volatility_regime
+        return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, _inference_succeeded
 
     def _calculate_metrics(
         self,
@@ -568,7 +753,7 @@ class Scanner:
                     pair=pair,
                     direction="HOLD",
                     confidence=0.0,
-                    error="Data fetch failed",
+                    error="No data (OANDA offline, no CSV)",
                 )
 
             # Check incremental cache
@@ -608,8 +793,8 @@ class Scanner:
                 )
 
             # Run inference (TCN Volatility Regime is checked FIRST inside)
-            direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime = self._run_inference(
-                df_raw, df_feat, pair
+            direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, _inference_ok = (
+                self._run_inference(df_raw, df_feat, pair)
             )
 
             # Calculate metrics
@@ -625,8 +810,10 @@ class Scanner:
                 # Higher confidence = slightly larger position
                 risk_pct = min(risk_pct * 1.25, 0.03)
 
-            # Build error message if volatility regime blocked the trade
+            # Build error message if volatility regime blocked the trade or inference failed
             error_msg = None
+            if not _inference_ok and direction == "HOLD" and confidence < 0.01:
+                error_msg = "No models loaded"
             regime_name = "UNKNOWN"
             if volatility_regime is not None:
                 regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
@@ -644,19 +831,21 @@ class Scanner:
                 _drawdown_val = max(float(_dd_series.max()), 0.001)  # Floor at 0.1%
 
             # Create analysis result
+            # When inference failed completely (all defaults), don't fake passing gates
+            _risk_ok = _drawdown_val <= self.config.max_drawdown_pct if _inference_ok else False
             result = PairAnalysis(
                 pair=pair,
                 direction=direction,
                 confidence=confidence,
                 tcn_confidence=tcn_conf,
                 ridge_confidence=ridge_conf,
-                momentum=confidence,  # Use as proxy
+                momentum=confidence,
                 momentum_acceleration=gates_passed,
-                momentum_passed=confidence >= self.config.min_momentum,
+                momentum_passed=(confidence >= self.config.min_momentum) if _inference_ok else False,
                 confidence_score=ridge_conf,
-                confidence_passed=ridge_conf >= self.config.min_confidence,
+                confidence_passed=(ridge_conf >= self.config.min_confidence) if _inference_ok else False,
                 drawdown=_drawdown_val,
-                risk_passed=True,  # Simplified
+                risk_passed=_risk_ok,
                 gates_passed=gates_passed,
                 current_price=metrics["current_price"],
                 atr=metrics["atr"],

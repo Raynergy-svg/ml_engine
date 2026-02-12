@@ -171,6 +171,7 @@ def test_volatility_feature_extraction_handles_missing_features(sample_volatilit
 
 def test_scaler_n_features_in_matches_feature_names():
     """Test that sklearn scaler's n_features_in_ matches saved feature_names count."""
+    pytest.importorskip("sklearn")
     from sklearn.preprocessing import StandardScaler
     
     # Simulate what happens during training

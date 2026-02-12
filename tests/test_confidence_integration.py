@@ -8,6 +8,8 @@ import pytest
 import numpy as np
 from unittest.mock import Mock, patch
 
+pytest.importorskip("tensorflow")
+
 from src.risk.confidence_calibration import (
     create_default_calibrator,
     create_adjuster,

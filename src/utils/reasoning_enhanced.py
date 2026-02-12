@@ -7,7 +7,10 @@ import logging
 import numpy as np
 from typing import Dict, List, Optional, Any
 from pathlib import Path
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except Exception:  # pragma: no cover
+    plt = None
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
 # Configure logging
@@ -728,7 +731,7 @@ class ReasoningEngine:
         actual_values: Optional[np.ndarray] = None,
         save_path: Optional[str] = None,
         show_plot: bool = False
-    ) -> Optional[plt.Figure]:
+    ) -> Optional[Any]:
         """
         Visualize predictions with uncertainties and actual values.
 
@@ -748,6 +751,10 @@ class ReasoningEngine:
 
         if predictions is None:
             logger.warning("No predictions available for visualization")
+            return None
+
+        if plt is None:
+            logger.warning("matplotlib is not installed; skipping visualization")
             return None
 
         # Create figure

@@ -2,6 +2,9 @@
 
 import pytest
 from unittest.mock import MagicMock, patch
+
+pytest.importorskip("openai")
+
 from self_refine import (
     buddy_self_improve,
     get_feedback_only,

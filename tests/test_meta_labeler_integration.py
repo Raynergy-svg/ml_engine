@@ -6,6 +6,10 @@ import unittest
 from unittest.mock import MagicMock, patch
 import numpy as np
 
+import pytest
+
+pytest.importorskip("xgboost")
+
 
 class TestMetaLabelerIntegration(unittest.TestCase):
     """Test that meta-labeler is properly integrated into training pipeline."""

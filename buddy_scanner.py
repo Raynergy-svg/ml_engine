@@ -20,7 +20,8 @@ class BuddyScanner:
     ):
         cfg = ScannerConfig()
         if config_path:
-            cfg.config_path = config_path
+            from pathlib import Path
+            cfg.config_path = Path(config_path) if isinstance(config_path, str) else config_path
         if account_equity is not None:
             cfg.account_equity = account_equity
         cfg.non_interactive = True  # CLI never prompts
@@ -60,7 +61,7 @@ class BuddyScanner:
 
 
 @contextlib.contextmanager
-def suppress_logging(level: int = logging.ERROR):
+def suppress_logging(level: int = logging.WARNING):
     """Context manager that temporarily raises the root log level."""
     root = logging.getLogger()
     prev = root.level

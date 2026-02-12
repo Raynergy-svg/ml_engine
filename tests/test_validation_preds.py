@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 """Debug validation predictions to see actual values."""
+
+import pytest
+
+pytest.skip("Debug-only script (requires keras/OANDA/local artifacts).", allow_module_level=True)
+
 import pickle
 import numpy as np
 from pathlib import Path

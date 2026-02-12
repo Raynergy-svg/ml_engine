@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """Test balance fetching for buddy command."""
 
+import os
+import pytest
+
+_token = os.getenv("OANDA_API_TOKEN") or os.getenv("OANDA_API_KEY")
+_acct = os.getenv("OANDA_ACCOUNT_ID")
+if not _token or not _acct:
+    pytest.skip("Requires OANDA env vars; skipping in CI.", allow_module_level=True)
+
 from rich.console import Console
 console = Console()
 

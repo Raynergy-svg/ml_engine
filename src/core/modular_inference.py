@@ -31,9 +31,10 @@ instrument-agnostic. Models trained on GBP_USD work on USD_JPY, EUR_USD, etc.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
+import pickle
 import os
 import threading
 import time
@@ -574,6 +575,9 @@ class ModularEnsembleInference:
         self.rf = None
         self.ridge = None
 
+        # Model load report (for CLI visibility)
+        self._model_load_report: List[Dict[str, Any]] = []
+
         # LLM Integration (NEW)
         self.enable_llm = enable_llm_integration
         self._llm_sentiment_cache = {}  # Cache LLM sentiment by headlines hash
@@ -603,6 +607,9 @@ class ModularEnsembleInference:
         self._recent_trades: List[Dict] = []
         self._recent_win_rate: float = 0.5
         self._current_drawdown: float = 0.0
+
+        # Last sizing details (for transparency in output)
+        self._last_size_details: Dict[str, Any] = {}
 
         # Market Intelligence with drift detection
         self.market_intel = None
@@ -1339,7 +1346,7 @@ class ModularEnsembleInference:
             self.instrument = instrument
         import warnings
         from src.training.modular_trainers import (
-            TCNTrainer, TransformerDirectionTrainer, TransformerRegimeTrainer,
+            TCNTrainer, TCNVolatilityRegimeTrainer, TransformerDirectionTrainer, TransformerRegimeTrainer,
             XGBoostTrainer, RandomForestTrainer, RidgeTrainer,
             HistGradientBoostingDirectionTrainer
         )
@@ -1381,6 +1388,7 @@ class ModularEnsembleInference:
                 self.regime_model.load(str(regime_path))
                 self.use_regime = True
                 logger.info(f"✓ Transformer REGIME model loaded from {regime_path}")
+                self._log_model_trained_at(regime_path, "Transformer regime", category="direction")
             except Exception as e:
                 self.regime_model = None
                 self.use_regime = False
@@ -1396,6 +1404,7 @@ class ModularEnsembleInference:
                 self.tcn.load(str(transformer_path))
                 self.use_regime = False
                 logger.info(f"✓ Transformer direction model loaded from {transformer_path}")
+                self._log_model_trained_at(transformer_path, "Transformer direction", category="direction")
 
                 # === Log training state from lineage (v2) ===
                 if hasattr(self.tcn, 'lineage') and self.tcn.lineage:
@@ -1424,6 +1433,7 @@ class ModularEnsembleInference:
             self.tcn.load(str(tcn_legacy_path))
             self.use_regime = False
             logger.info(f"✓ TCN direction model loaded from {tcn_legacy_path} (legacy)")
+            self._log_model_trained_at(tcn_legacy_path, "TCN direction", category="direction")
         else:
             logger.warning(f"No direction/regime model found for {self.instrument or 'generic'}")
 
@@ -1432,11 +1442,12 @@ class ModularEnsembleInference:
         # Used as mandatory entry timing filter - blocks trades in LOW/NORMAL volatility
         if tcn_path.exists():
             try:
-                self.tcn_volatility_model = TCNTrainer()
+                self.tcn_volatility_model = TCNVolatilityRegimeTrainer()
                 self.tcn_volatility_model.load(str(tcn_path))
                 self.use_tcn_volatility_filter = True
                 logger.info(f"✓ TCN Volatility Regime filter loaded from {tcn_path}")
                 logger.info(f"🎯 TCN Volatility Filter ENABLED (min_regime={self.config.min_volatility_regime})")
+                self._log_model_trained_at(tcn_path, "TCN volatility regime", category="volatility")
             except Exception as e:
                 # Handle cross-Keras-version incompatibility gracefully
                 self.tcn_volatility_model = None
@@ -1459,6 +1470,7 @@ class ModularEnsembleInference:
             self.histgb.load(str(histgb_path))
             self.use_hybrid = True
             logger.info(f"✓ HistGB baseline loaded from {histgb_path}")
+            self._log_model_trained_at(histgb_path, "HistGB baseline", category="ensemble")
         else:
             self.use_hybrid = False
             logger.info("ℹ HistGB not found - single-model mode")
@@ -1481,6 +1493,7 @@ class ModularEnsembleInference:
                 self.xgb = LightGBMMomentumTrainer()
                 self.xgb.load(str(momentum_path))
                 logger.info(f"✓ LightGBM Momentum loaded from {momentum_path}")
+                self._log_model_trained_at(momentum_path, "LightGBM momentum", category="gates")
             except Exception as e:
                 logger.warning(f"Failed to load LightGBM momentum from {momentum_path}: {e}")
                 # Fall back to XGBoost loader
@@ -1491,6 +1504,8 @@ class ModularEnsembleInference:
                 except Exception as e2:
                     logger.warning(f"Failed to load XGBoost momentum from {momentum_path}: {e2}")
                     self.xgb = None
+                else:
+                    self._log_model_trained_at(momentum_path, "XGBoost momentum", category="gates")
         else:
             logger.warning("Momentum model not found (tried lgbm_momentum.pkl and xgb_momentum.pkl)")
 
@@ -1505,6 +1520,7 @@ class ModularEnsembleInference:
                 self.rf = LightGBMRiskTrainer()
                 self.rf.load(str(lgbm_risk_path))
                 logger.info(f"✓ LightGBM Risk loaded from {lgbm_risk_path}")
+                self._log_model_trained_at(lgbm_risk_path, "LightGBM risk", category="gates")
             except Exception as e:
                 logger.warning(f"Failed to load LightGBM risk: {e}")
                 # Fall back to RandomForest
@@ -1512,10 +1528,12 @@ class ModularEnsembleInference:
                     self.rf = RandomForestTrainer()
                     self.rf.load(str(rf_path))
                     logger.info(f"✓ Random Forest loaded from {rf_path} (fallback)")
+                    self._log_model_trained_at(rf_path, "Random Forest risk", category="gates")
         elif rf_path.exists():
             self.rf = RandomForestTrainer()
             self.rf.load(str(rf_path))
             logger.info(f"✓ Random Forest loaded from {rf_path}")
+            self._log_model_trained_at(rf_path, "Random Forest risk", category="gates")
         else:
             logger.warning("Risk model not found (tried lgbm_risk.pkl and rf_risk.pkl)")
 
@@ -1525,6 +1543,7 @@ class ModularEnsembleInference:
             self.ridge = RidgeTrainer()
             self.ridge.load(str(ridge_path))
             logger.info(f"✓ Ridge loaded from {ridge_path}")
+            self._log_model_trained_at(ridge_path, "Ridge confidence", category="gates")
         else:
             logger.warning(f"Ridge model not found at {ridge_path}")
 
@@ -1565,6 +1584,11 @@ class ModularEnsembleInference:
                     load_kwargs['scaler_path'] = rl_scaler_path
                 if self.rl_sizer.load(**load_kwargs):
                     logger.info(f"✓ RL Position Sizer loaded (PPO) from {rl_model_path}")
+                    self._log_model_trained_at(
+                        rl_model_path or RL_MODEL_PATH,
+                        "RL position sizer",
+                        category="rl_sizer",
+                    )
                 else:
                     logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
                     self.rl_sizer = None
@@ -1610,6 +1634,7 @@ class ModularEnsembleInference:
                     logger.info("✓ RL Gate Threshold Optimizer loaded (SAC) [subprocess]")
                     self._rl_gates_loaded = True
                     self.rl_gate_optimizer = None
+                    self._log_model_trained_at(RL_GATE_MODEL_PATH, "RL gate thresholds", category="rl_gates")
                 else:
                     logger.warning("⚠️ RL Gates worker failed to start - using fixed thresholds")
                     self._rl_gates_loaded = False
@@ -1625,6 +1650,7 @@ class ModularEnsembleInference:
                         if loaded:
                             logger.info("✓ RL Gate Threshold Optimizer loaded (SAC)")
                             self._rl_gates_loaded = True
+                            self._log_model_trained_at(RL_GATE_MODEL_PATH, "RL gate thresholds", category="rl_gates")
                         else:
                             logger.info("ℹ RL Gates not trained - using fixed thresholds")
                             self.rl_gate_optimizer = None
@@ -1648,6 +1674,7 @@ class ModularEnsembleInference:
                     logger.info("✓ RL Optimal Exit Timing loaded (PPO) [subprocess]")
                     self._rl_exits_loaded = True
                     self.rl_exit_optimizer = None
+                    self._log_model_trained_at(RL_EXIT_MODEL_PATH, "RL optimal exits", category="rl_exits")
                 else:
                     logger.warning("⚠️ RL Exits worker failed to start - using fixed R:R ratios")
                     self._rl_exits_loaded = False
@@ -1663,6 +1690,7 @@ class ModularEnsembleInference:
                         if loaded:
                             logger.info("✓ RL Optimal Exit Timing loaded (PPO)")
                             self._rl_exits_loaded = True
+                            self._log_model_trained_at(RL_EXIT_MODEL_PATH, "RL optimal exits", category="rl_exits")
                         else:
                             logger.info("ℹ RL Exits not trained - using fixed R:R ratios")
                             self.rl_exit_optimizer = None
@@ -1692,6 +1720,111 @@ class ModularEnsembleInference:
         self._loaded = True
         self._loaded_instrument = self.instrument
         logger.info(f"Modular ensemble loaded{pair_info}.")
+
+    def _log_model_trained_at(self, model_path: Path, label: str, category: str = "model") -> None:
+        """Log trained_at metadata for a model if available."""
+        if model_path is None:
+            return
+
+        category = category or "model"
+
+        try:
+            display_path = str(model_path.relative_to(self.model_dir))
+        except Exception:
+            display_path = str(model_path)
+
+        meta_candidates = [
+            model_path.with_suffix(".meta.pkl"),
+            model_path.with_suffix(".meta.json"),
+        ]
+
+        meta: Optional[Dict[str, Any]] = None
+        for candidate in meta_candidates:
+            if not candidate.exists():
+                continue
+            try:
+                if candidate.suffix == ".pkl":
+                    with open(candidate, "rb") as handle:
+                        meta = pickle.load(handle)
+                else:
+                    with open(candidate, "r") as handle:
+                        meta = json.load(handle)
+                break
+            except Exception:
+                meta = None
+
+        trained_at = None
+        if meta:
+            trained_at = meta.get("trained_at") or meta.get("retrained_at") or meta.get("gate_models_retrained_at")
+
+        source = "metadata"
+        if trained_at is None:
+            try:
+                mtime = model_path.stat().st_mtime
+                trained_at = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+                source = "file_mtime"
+            except Exception:
+                trained_at = None
+                source = "unknown"
+
+        trained_at_display = str(trained_at) if trained_at else "unknown"
+        age_days = None
+        if trained_at:
+            try:
+                trained_dt = datetime.fromisoformat(trained_at_display.replace("Z", "+00:00"))
+                if trained_dt.tzinfo is None:
+                    trained_dt = trained_dt.replace(tzinfo=timezone.utc)
+                age_days = (datetime.now(timezone.utc) - trained_dt).days
+            except Exception:
+                age_days = None
+
+        metrics = None
+        if meta:
+            metrics = meta.get("metrics") or meta.get("results")
+            if metrics is None:
+                # Common single-metric keys
+                metrics = {
+                    "val_accuracy": meta.get("val_accuracy"),
+                    "best_val_accuracy": meta.get("best_val_accuracy"),
+                }
+
+        self._model_load_report.append(
+            {
+                "label": label,
+                "path": display_path,
+                "path_source": self._get_model_source(model_path),
+                "category": category,
+                "trained_at": trained_at_display,
+                "age_days": age_days,
+                "timestamp_source": source,
+                "metrics": metrics,
+            }
+        )
+
+        if trained_at is None:
+            logger.info(f"🕒 {label} trained_at=unknown")
+        elif age_days is not None:
+            logger.info(f"🕒 {label} trained_at={trained_at_display} ({age_days}d ago, {source})")
+        else:
+            logger.info(f"🕒 {label} trained_at={trained_at_display} ({source})")
+
+    def _get_model_source(self, model_path: Path) -> str:
+        """Return model source: pair, joint, or generic."""
+        try:
+            if self.instrument and self.instrument != "GENERIC":
+                pair_dir = self.model_dir / self.instrument
+                if pair_dir in model_path.parents:
+                    return "pair"
+            joint_dir = self.model_dir / "joint"
+            if joint_dir in model_path.parents:
+                return "joint"
+        except Exception:
+            return "unknown"
+        return "generic"
+
+    def get_model_load_report(self) -> List[Dict[str, Any]]:
+        """Return model load metadata collected during load_models."""
+        return list(self._model_load_report)
 
     def _check_sklearn_version_mismatch(self) -> None:
         """
@@ -1973,6 +2106,7 @@ class ModularEnsembleInference:
                     primary_acc = getattr(self.meta_labeler, '_primary_accuracy', 0.5)
                     logger.info(f"✓ Meta-labeler loaded from {path}")
                     logger.info(f"  Threshold: {threshold:.0%}, Primary accuracy: {primary_acc:.1%}")
+                    self._log_model_trained_at(path, "Meta labeler", category="meta")
                     return
                 except Exception as e:
                     logger.warning(f"Failed to load meta-labeler from {path}: {e}")
@@ -2454,16 +2588,24 @@ class ModularEnsembleInference:
             raise RuntimeError("TCN Volatility model not loaded - cannot get regime")
 
         # Ensure normalized features exist
-        if 'returns_1' not in df.columns:
+        required_features = set(get_normalized_feature_names().get('volatility', []))
+        if any(fname not in df.columns for fname in required_features):
             df = compute_normalized_features(df)
 
         # Extract VOLATILITY-SPECIFIC features and predict
         tcn_features = self._extract_tcn_volatility_features(df)
         vol_pred = self.tcn_volatility_model.predict(tcn_features)
 
-        regime = vol_pred['volatility_regime']
-        regime_name = vol_pred['volatility_regime_name']
-        confidence = vol_pred['regime_confidence']
+        if 'volatility_regime' in vol_pred:
+            regime = vol_pred['volatility_regime']
+            regime_name = vol_pred.get('volatility_regime_name')
+            confidence = vol_pred.get('regime_confidence', vol_pred.get('confidence', 0.0))
+        elif 'regime' in vol_pred:
+            regime = vol_pred['regime']
+            regime_name = vol_pred.get('regime_name')
+            confidence = vol_pred.get('confidence', 0.0)
+        else:
+            raise KeyError("volatility_regime")
 
         logger.debug(f"Volatility regime: {regime_name} ({regime}) conf={confidence:.1%}")
 
@@ -2853,6 +2995,15 @@ class ModularEnsembleInference:
                 ) if instrument else 1.0
                 size_lots = min(size_lots, max_lots)
 
+                self._last_size_details = {
+                    "mode": "rl",
+                    "equity": equity,
+                    "size_dollars": size_dollars,
+                    "position_pct": size_dollars / equity if equity else 0.0,
+                    "size_lots": size_lots,
+                    "max_lots": max_lots,
+                }
+
                 logger.debug(f"RL position size: {size_lots:.2f} lots (${size_dollars:.0f})")
 
                 # Enforce minimum meaningful position size (same floor as heuristic)
@@ -2903,6 +3054,18 @@ class ModularEnsembleInference:
             f"dd_pips={expected_drawdown_pips:.1f} → {size_lots:.2f} lots "
             f"({int(size_lots * 100000):,} units) [max={max_lots:.1f}]"
         )
+
+        self._last_size_details = {
+            "mode": "heuristic",
+            "equity": equity,
+            "risk_amount": risk_amount,
+            "risk_pct": self.config.risk_per_trade_pct,
+            "expected_drawdown_pips": expected_drawdown_pips,
+            "pip_value": self.config.pip_value,
+            "size_lots": size_lots,
+            "max_lots": max_lots,
+            "min_lots": min_lots,
+        }
 
         return round(size_lots, 2)
 
@@ -3045,6 +3208,14 @@ class ModularEnsembleInference:
             else:
                 intel_data['atr_pips'] = atr_pips
 
+        # Ensure normalized features exist for volatility + gate models
+        required_groups = ['direction', 'momentum', 'risk', 'confidence', 'volatility']
+        required_features = set()
+        for group in required_groups:
+            required_features.update(get_normalized_feature_names().get(group, []))
+        if any(fname not in df.columns for fname in required_features):
+            df = compute_normalized_features(df)
+
         # === TCN VOLATILITY REGIME FILTER (NEW - MANDATORY) ===
         # TCN predicts volatility regime: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
         # Only allow trades when regime >= min_volatility_regime (default: 2=HIGH)
@@ -3087,9 +3258,18 @@ class ModularEnsembleInference:
                     tcn_features = self._extract_tcn_volatility_features(df)
                     vol_pred = self.tcn_volatility_model.predict(tcn_features)
 
-                    volatility_regime = vol_pred['volatility_regime']
-                    volatility_regime_name = vol_pred['volatility_regime_name']
-                    volatility_regime_confidence = vol_pred['regime_confidence']
+                    if 'volatility_regime' in vol_pred:
+                        volatility_regime = vol_pred['volatility_regime']
+                        volatility_regime_name = vol_pred.get('volatility_regime_name')
+                        volatility_regime_confidence = vol_pred.get(
+                            'regime_confidence', vol_pred.get('confidence', 0.0)
+                        )
+                    elif 'regime' in vol_pred:
+                        volatility_regime = vol_pred['regime']
+                        volatility_regime_name = vol_pred.get('regime_name')
+                        volatility_regime_confidence = vol_pred.get('confidence', 0.0)
+                    else:
+                        raise KeyError("volatility_regime")
 
                     # Check if regime meets minimum threshold
                     volatility_gate_passed = volatility_regime >= self.config.min_volatility_regime
@@ -3152,6 +3332,10 @@ class ModularEnsembleInference:
                             metadata={'intel_data': intel_data},
                         )
 
+        # FIRST: Compute normalized features for instrument-agnostic inference
+        # (already ensured above, but keep as defensive fallback)
+        if 'returns_1' not in df.columns:
+            df = compute_normalized_features(df)
         # Initialize with defaults
         regime = None
         regime_confidence = 0.0
@@ -4168,6 +4352,27 @@ class ModularEnsembleInference:
             gate_checks.append(f"Meta: confidence={signal.meta_confidence:.2f} (threshold={self.config.min_meta_confidence}) {status}")
         elif self.config.enable_meta_labeling:
             gate_checks.append("Meta: not loaded (skipped)")
+
+        # Position sizing transparency
+        if self._last_size_details:
+            details = self._last_size_details
+            if details.get("mode") == "rl":
+                pct = details.get("position_pct", 0.0) * 100
+                size_usd = details.get("size_dollars", 0.0)
+                size_lots = details.get("size_lots", 0.0)
+                max_lots = details.get("max_lots", 0.0)
+                gate_checks.append(
+                    f"Sizing: RL {pct:.1f}% equity (${size_usd:,.0f}) -> {size_lots:.2f} lots (cap {max_lots:.2f})"
+                )
+            else:
+                risk_pct = details.get("risk_pct", 0.0) * 100
+                risk_amount = details.get("risk_amount", 0.0)
+                dd_pips = details.get("expected_drawdown_pips", 0.0)
+                size_lots = details.get("size_lots", 0.0)
+                max_lots = details.get("max_lots", 0.0)
+                gate_checks.append(
+                    f"Sizing: {risk_pct:.1f}% risk (${risk_amount:,.0f}) / {dd_pips:.1f} pips -> {size_lots:.2f} lots (cap {max_lots:.2f})"
+                )
 
         # Final decision
         if signal.trade:

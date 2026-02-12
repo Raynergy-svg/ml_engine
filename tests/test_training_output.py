@@ -7,8 +7,9 @@ from pathlib import Path
 def test_training_output_improvements():
     """Verify all professional output improvements are implemented."""
     
-    training_file = Path("/home/runner/work/ml_engine/ml_engine/cli/training.py")
-    content = training_file.read_text()
+    repo_root = Path(__file__).resolve().parents[1]
+    training_file = repo_root / "cli" / "training.py"
+    content = training_file.read_text(encoding="utf-8")
     
     # Test 1: System header
     assert "ADVANCED ENSEMBLE TRAINING SYSTEM" in content, \
@@ -96,7 +97,7 @@ def test_training_output_improvements():
     print("   - Feature engineering: Professional terminology")
     print("   - Final completion: Professional messaging")
     print(f"   - Bullet separators (•): {bullet_count} instances found")
-    return True
+    return
 
 
 if __name__ == "__main__":

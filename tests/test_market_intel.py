@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 """Test market intelligence components."""
+
+import pytest
+
+pytest.skip("Manual smoke script (network/calendar/sentiment).", allow_module_level=True)
+
 from market_intelligence import MarketIntelligence, fetch_forex_news
 
 # Test 1: Calendar

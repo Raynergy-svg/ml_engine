@@ -57,6 +57,8 @@ def load_yaml_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
         Dict containing parsed YAML config
     """
     path = config_path or DEFAULT_CONFIG_PATH
+    if isinstance(path, str):
+        path = Path(path)
 
     if not path.exists():
         logger.warning(f"Config file not found: {path}")
@@ -125,10 +127,12 @@ class ScannerConfig:
     leverage: int = 50
 
     # Session filter (UTC hours)
+    # FX markets are open 24/5 (Sun 22:00 UTC – Fri 22:00 UTC).
+    # Enabled by default to restrict scanning to London+NY hours only.
     enable_session_filter: bool = True
     session_filter_enabled: bool = True  # Alias for compatibility
     session_start_utc: int = 8   # London open
-    session_end_utc: int = 21    # NY close
+    session_end_utc: int = 21    # NY close (17:00 ET ≈ 21:00 UTC in summer)
 
     # Volatility filter
     min_atr_pips: float = 5.0  # Minimum ATR in pips to trade
@@ -153,6 +157,11 @@ class ScannerConfig:
     daily_trade_limit: int = 30  # Max trades per day
     position_sizing_enabled: bool = True
     aggressive_mode: bool = True  # Enable larger positions for compounding
+
+    # RL model settings (disabled by default to avoid TF/PyTorch GPU conflicts)
+    use_rl_sizer: bool = False  # RL position sizing (PPO model)
+    use_rl_gates: bool = False  # RL gate threshold optimizer (SAC model)
+    use_rl_exits: bool = False  # RL optimal exit timing (PPO model)
 
     # ATR-based SL/TP (from buddy_scanner)
     atr_sl_multiplier: float = 1.0  # SL = 1.0x ATR

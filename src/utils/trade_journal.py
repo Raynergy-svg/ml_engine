@@ -57,14 +57,14 @@ class TradeEntry:
     xgb_momentum: float
     rf_drawdown_pips: float
 
+    # Execution
+    slippage_pips: float = 0.0
+    fill_price: float = 0.0
+
     # Volatility regime (NEW - TCN entry timing filter)
     volatility_regime: Optional[int] = None  # 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
     volatility_regime_name: Optional[str] = None  # Human-readable name
     volatility_regime_confidence: Optional[float] = None  # Softmax confidence
-
-    # Execution
-    slippage_pips: float = 0.0
-    fill_price: float = 0.0
 
     # Outcome (filled later when trade closes)
     status: str = "open"  # 'open', 'win', 'loss', 'breakeven'

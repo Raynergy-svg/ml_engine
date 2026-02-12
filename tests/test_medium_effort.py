@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Test all 3 medium-effort improvements."""
 
+import pytest
+
+pytest.skip("Local-only benchmark script.", allow_module_level=True)
+
 # Test all 3 medium-effort improvements
 
 # 1. Test CosineDecayRestarts scheduler

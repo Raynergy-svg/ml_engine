@@ -15,6 +15,7 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
+from rich.box import SIMPLE_HEAVY
 from rich.text import Text
 
 from .results import PairAnalysis, ScanResult
@@ -71,12 +72,18 @@ class ScannerDisplay:
         """Format gate status."""
         if passed:
             if value is not None:
-                return Text(f"✓ {value:.1f}", style="green")
-            return Text("✓", style="green")
+                return Text(f"\u2713{value:.0f}" if value >= 1 else f"\u2713{value:.2f}", style="green")
+            return Text("\u2713", style="green")
         else:
             if value is not None:
-                return Text(f"✗ {value:.1f}", style="red")
+                return Text(f"\u2717{value:.0f}" if value >= 1 else f"\u2717{value:.2f}", style="red")
             return Text("✗", style="red")
+
+    def _format_gate_compact(self, passed: bool) -> Text:
+        """Format gate as single checkmark/cross."""
+        if passed:
+            return Text("\u2713", style="green")
+        return Text("\u2717", style="red")
 
     def _format_error(self, error: str) -> Text:
         """Format error message."""
@@ -92,21 +99,22 @@ class ScannerDisplay:
             title=None,
             show_header=True,
             header_style="bold cyan",
-            expand=True,
+            expand=False,
             padding=(0, 1),
+            box=SIMPLE_HEAVY,
         )
 
-        # Columns
-        table.add_column("Pair", style="bold", width=10)
-        table.add_column("Dir", justify="center", width=8)
-        table.add_column("Conf", justify="right", width=6)
-        table.add_column("Mom", justify="center", width=5)
-        table.add_column("ADX", justify="center", width=5)
-        table.add_column("Risk", justify="center", width=5)
-        table.add_column("Gates", justify="center", width=6)
-        table.add_column("Price", justify="right", width=10)
-        table.add_column("ATR", justify="right", width=6)
-        table.add_column("Note", width=20)
+        # Columns – compact layout for 80-char terminals
+        # Total: 7+1+7+1+4+1+3+1+3+1+3+1+3+1+9+1+15 = ~62 data + separators
+        table.add_column("Pair", style="bold", no_wrap=True)
+        table.add_column("Dir", justify="center", no_wrap=True)
+        table.add_column("Conf", justify="right", no_wrap=True)
+        table.add_column("M", justify="center", no_wrap=True)  # Momentum
+        table.add_column("A", justify="center", no_wrap=True)  # ADX
+        table.add_column("R", justify="center", no_wrap=True)  # Risk
+        table.add_column("G", justify="center", no_wrap=True)  # Gates
+        table.add_column("Price", justify="right", no_wrap=True)
+        table.add_column("Note")
 
         # Sort analyses: tradeable first, then by confidence
         sorted_analyses = sorted(
@@ -116,11 +124,10 @@ class ScannerDisplay:
         )
 
         for analysis in sorted_analyses:
-            # Handle errors
-            if analysis.error:
+            # Handle hard errors (no data at all)
+            if analysis.error and analysis.current_price < 0.0001:
                 table.add_row(
                     analysis.pair.replace("_", "/"),
-                    Text("-", style="dim"),
                     Text("-", style="dim"),
                     Text("-", style="dim"),
                     Text("-", style="dim"),
@@ -143,12 +150,14 @@ class ScannerDisplay:
 
             # Note (warnings or trade suggestion)
             note = ""
-            if analysis.gates_passed:
+            if analysis.error:
+                note = analysis.error
+            elif analysis.gates_passed:
                 note = f"SL:{analysis.sl_pips:.0f} TP:{analysis.tp_pips:.0f}"
             elif not analysis.momentum_passed:
                 note = "low momentum"
             elif not analysis.confidence_passed:
-                note = "low confidence"
+                note = "low ADX"
             elif not analysis.risk_passed:
                 note = "high risk"
 
@@ -156,12 +165,11 @@ class ScannerDisplay:
                 pair_text,
                 self._format_direction(analysis.direction, analysis.confidence),
                 self._format_confidence(analysis.confidence),
-                self._format_gate(analysis.momentum_passed, analysis.momentum),
-                self._format_gate(analysis.confidence_passed, analysis.confidence_score),
-                self._format_gate(analysis.risk_passed),
+                self._format_gate_compact(analysis.momentum_passed),
+                self._format_gate_compact(analysis.confidence_passed),
+                self._format_gate_compact(analysis.risk_passed),
                 Text(gates_text, style=gates_style),
-                f"{analysis.current_price:.5f}" if analysis.current_price else "-",
-                f"{analysis.atr_pips:.1f}" if analysis.atr_pips else "-",
+                f"{analysis.current_price:.4f}" if analysis.current_price else "-",
                 note,
             )
 
@@ -283,6 +291,22 @@ class ScannerDisplay:
         else:
             self.console.print()
             self.console.print("[dim]No tradeable opportunities found[/dim]")
+
+        # Show warnings for common issues
+        error_pairs = [a for a in result.analyses if a.error]
+        no_data = [a for a in error_pairs if "No data" in (a.error or "")]
+        no_models = [a for a in error_pairs if "No models" in (a.error or "")]
+
+        if no_data:
+            self.console.print(
+                "[yellow]⚠ Some pairs have no data. Check OANDA credentials "
+                "or place CSV files in market_data/[/yellow]"
+            )
+        if no_models:
+            self.console.print(
+                "[yellow]⚠ Models not loaded. Ensure you're in the correct conda env "
+                "(tf-metal / intel) with tensorflow, xgboost, etc. installed[/yellow]"
+            )
 
         # Scan metadata
         self.console.print()

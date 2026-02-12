@@ -185,7 +185,26 @@ ml_engine/
 │   │   └── ensemble_model.py       # Ensemble stacking
 │   │
 │   ├── training/
-│   │   ├── modular_trainers.py     # Model trainers
+│   │   ├── modular_trainers.py     # Backward compatibility facade
+│   │   ├── trainers/               # ⭐ NEW: Modular trainer components
+│   │   │   ├── __init__.py         # Public API exports
+│   │   │   ├── base.py             # BaseTrainer abstract class
+│   │   │   ├── config.py           # TrainerConfig, OverfitPreventionConfig
+│   │   │   ├── display.py          # TrainingDisplay
+│   │   │   ├── callbacks.py        # 12 callback classes (EMA, EWC, etc.)
+│   │   │   ├── utils.py            # Helper functions and constants
+│   │   │   ├── tcn_trainer.py      # TCN volatility regime trainer
+│   │   │   ├── tcn_volatility_trainer.py # TCN volatility predictor
+│   │   │   ├── transformer_trainer.py # Transformer direction trainer
+│   │   │   ├── transformer_regime_trainer.py # Transformer regime classifier
+│   │   │   ├── xgboost_trainer.py  # XGBoost momentum gate
+│   │   │   ├── random_forest_trainer.py # RandomForest risk gate
+│   │   │   ├── ridge_trainer.py    # Ridge confidence gate
+│   │   │   ├── lightgbm_trainers.py # 3 LightGBM trainers
+│   │   │   ├── histgb_trainer.py   # HistGradientBoosting baseline
+│   │   │   ├── joint_trainer.py    # Multi-pair joint training
+│   │   │   ├── migration.py        # Model migration utilities
+│   │   │   └── train_all.py        # Training orchestration
 │   │   ├── buddy_training_helpers.py # Training orchestration
 │   │   ├── walkforward_validation.py # Time-series CV
 │   │   └── meta_labeling.py       # Meta-labeling implementation
@@ -223,6 +242,60 @@ ml_engine/
 ├── market_data/                    # Downloaded price data (gitignored)
 └── trained_data/models/            # Model artifacts (gitignored)
 ```
+
+---
+
+## Refactored Modular Structure ⭐ NEW
+
+### Trainer Modules (`src/training/trainers/`)
+
+The original `modular_trainers.py` (10,820 lines) has been refactored into **18 focused modules** for improved maintainability:
+
+#### Core Components
+- **`base.py`** (95 lines) - `BaseTrainer` abstract class with standard interface
+- **`config.py`** (232 lines) - `TrainerConfig`, `OverfitPreventionConfig`
+- **`display.py`** (64 lines) - `TrainingDisplay` for clean output
+- **`callbacks.py`** (2,782 lines) - 12 callback classes:
+  - `EMACallback` - Exponential Moving Average for stable inference
+  - `EWCPenalty` - Elastic Weight Consolidation for continual learning
+  - `OverfitPreventionCallback` - Advanced overfit detection
+  - `ReplayBuffer` - Memory replay to prevent catastrophic forgetting
+  - `DriftDetector` - Performance/data/concept drift detection
+  - `TrainingLineage` - Training history tracking
+  - And 6 more specialized callbacks
+- **`utils.py`** (705 lines) - Helper functions, constants, pair volatility classification
+
+#### Trainer Classes
+- **`transformer_trainer.py`** (2,438 lines) - `TransformerDirectionTrainer` for Gate 1
+- **`transformer_regime_trainer.py`** (401 lines) - `TransformerRegimeTrainer` for market regime
+- **`tcn_trainer.py`** (700 lines) - `TCNTrainer` for current volatility regime
+- **`tcn_volatility_trainer.py`** (706 lines) - `TCNVolatilityRegimeTrainer` for future volatility
+- **`xgboost_trainer.py`** (241 lines) - `XGBoostTrainer` for Gate 3 (momentum)
+- **`random_forest_trainer.py`** (212 lines) - `RandomForestTrainer` for Gate 4 (risk)
+- **`ridge_trainer.py`** (398 lines) - `RidgeTrainer` for Gate 2 (confidence)
+- **`lightgbm_trainers.py`** (847 lines) - 3 LightGBM trainers (regime, momentum, risk)
+- **`histgb_trainer.py`** (279 lines) - `HistGradientBoostingDirectionTrainer` baseline
+- **`joint_trainer.py`** (853 lines) - `JointMultiPairTrainer` for multi-pair learning
+
+#### Utilities
+- **`migration.py`** (85 lines) - Model migration utilities
+- **`train_all.py`** (299 lines) - `train_all_modular()` orchestration function
+
+### Backward Compatibility
+
+The `src/training/modular_trainers.py` file now acts as a **facade** that re-exports all components. **All existing imports continue to work:**
+
+```python
+# Still works - 100% backward compatible
+from src.training.modular_trainers import TransformerDirectionTrainer, XGBoostTrainer
+
+# New modular imports - recommended for new code
+from src.training.trainers import TransformerDirectionTrainer, XGBoostTrainer
+from src.training.trainers.config import TrainerConfig
+from src.training.trainers.callbacks import EMACallback, ReplayBuffer
+```
+
+See [`docs/REFACTORING_MIGRATION_GUIDE.md`](../docs/REFACTORING_MIGRATION_GUIDE.md) for complete migration details.
 
 ---
 

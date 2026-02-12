@@ -825,9 +825,10 @@ def compute_normalized_features(df: pd.DataFrame) -> pd.DataFrame:
     df['bb_width_norm'] = bb_width / np.maximum(close, 1e-10)
 
     # BB position (where price sits within the bands, 0=lower, 1=upper)
-    safe_bb_width = np.where(bb_width > 1e-10, bb_width, 1.0)
-    bb_pos = (close - bb_lower) / safe_bb_width
-    bb_pos = np.where(bb_width > 1e-10, bb_pos, 0.5)
+    # Use np.divide with out/where to avoid divide-by-zero warning
+    bb_pos = np.full(n, 0.5)  # Default value where bb_width is too small
+    mask = bb_width > 1e-10
+    np.divide(close - bb_lower, bb_width, out=bb_pos, where=mask)
     df['bb_position_20'] = np.clip(bb_pos, -0.5, 1.5)
 
     # =================================================================
@@ -1577,7 +1578,7 @@ def load_regime_data(
         # price_range = (recent_high.max() - recent_low.min()) / close[i] if close[i] > 0 else 0
 
         # Directional consistency: how often did price move in same direction?
-        returns = np.diff(recent_close) / recent_close[:-1]
+        returns = np.diff(recent_close) / np.maximum(recent_close[:-1], 1e-10)
         returns = returns[~np.isnan(returns)]
         if len(returns) > 0:
             up_ratio = (returns > 0).mean()

@@ -1,3 +1,7 @@
+import pytest
+
+pytest.importorskip("multitask_labels")
+
 import numpy as np
 import pandas as pd
 
