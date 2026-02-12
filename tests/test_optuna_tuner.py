@@ -180,7 +180,7 @@ class TestOptimization:
         )
         
         tuner = OptunaTuner(config)
-        results = tuner.optimize(objective)
+        tuner.optimize(objective)
         
         # Check that some trials were pruned
         stats = tuner.get_study_statistics()
@@ -196,7 +196,8 @@ class TestMultiObjective:
         """Test multi-objective optimization."""
         def objective(trial):
             x = trial.suggest_float('x', -10, 10)
-            y = trial.suggest_float('y', -10, 10)
+            # y is used in the comment but not in calculation for this simple test
+            _ = trial.suggest_float('y', -10, 10)
             
             # Two conflicting objectives
             obj1 = (x - 2) ** 2  # Minimize (best at x=2)

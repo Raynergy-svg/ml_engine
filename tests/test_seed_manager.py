@@ -112,7 +112,7 @@ def test_get_thread_rng():
     
     # Verify it produces consistent results
     rng1 = get_thread_rng()
-    val1 = rng1.random()
+    _ = rng1.random()  # Generate value to test RNG works
     
     # Same thread should get same RNG instance
     rng2 = get_thread_rng()
