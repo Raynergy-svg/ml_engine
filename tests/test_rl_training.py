@@ -1,41 +1,38 @@
-#!/usr/bin/env python3
-"""Test RL training with synthetic data."""
+"""Smoke tests for RL training components.
+
+These tests must never call `exit()` at import time (pytest collection safety).
+RL dependencies (stable-baselines3, gymnasium/gym) are optional in some envs.
+"""
+
+from __future__ import annotations
 
 import numpy as np
-from rl_position_sizing import RLPositionSizer, RLConfig, SB3_AVAILABLE, GYM_AVAILABLE
+import pytest
 
-print('Testing RL Training with synthetic data...')
 
-if not SB3_AVAILABLE or not GYM_AVAILABLE:
-    print('Missing dependencies')
-    exit(1)
+def test_rl_training_smoke():
+    from rl_position_sizing import GYM_AVAILABLE, SB3_AVAILABLE, RLConfig, RLPositionSizer
 
-# Create synthetic training data
-n_samples = 150  # More than min_trades=100
+    if not SB3_AVAILABLE or not GYM_AVAILABLE:
+        pytest.skip("Optional RL dependencies not installed (SB3/gym).")
 
-features = np.random.randn(n_samples, 20)  # 20 features
-predictions = np.column_stack([
-    np.random.uniform(0.45, 0.65, n_samples),  # direction_prob
-    np.random.uniform(0.4, 0.7, n_samples),   # confidence
-])
-prices = 100 + np.cumsum(np.random.randn(n_samples) * 0.3)
+    # Create synthetic training data (small + fast)
+    n_samples = 120  # > min_trades=100 in default config
+    features = np.random.randn(n_samples, 20)
+    predictions = np.column_stack(
+        [
+            np.random.uniform(0.45, 0.65, n_samples),
+            np.random.uniform(0.4, 0.7, n_samples),
+        ]
+    )
+    prices = 100 + np.cumsum(np.random.randn(n_samples) * 0.3)
 
-print(f'Features shape: {features.shape}')
-print(f'Predictions shape: {predictions.shape}')
-print(f'Prices shape: {prices.shape}')
+    config = RLConfig(total_timesteps=256)
+    sizer = RLPositionSizer(config)
+    sizer.train(features, predictions, prices)
 
-# Quick training test
-config = RLConfig(total_timesteps=2000)  # Very quick for testing
-sizer = RLPositionSizer(config)
+    test_features = np.random.randn(20)
+    test_pred = np.array([0.6, 0.7])
+    position_size = sizer.get_position_size(test_features, test_pred)
 
-print('\nStarting training (2000 timesteps)...')
-sizer.train(features, predictions, prices)
-print('Training complete!')
-
-# Test inference
-test_features = np.random.randn(1, 20)
-test_pred = np.array([[0.6, 0.7]])
-position_size = sizer.get_position_size(test_features[0], test_pred[0])
-print(f'\nTest inference - Position size: {position_size:.4f}')
-
-print('\n✅ RL Position Sizer is WORKING!')
+    assert np.isfinite(position_size)

@@ -325,8 +325,6 @@ class RegimeLGBMTrainer(BaseTrainer):
 
         # Save metadata
         meta_path = save_dir / "regime_lgbm_meta.json"
-        import json
-
         meta = {
             "instrument": instrument,
             "regimes_trained": list(self.regime_models.keys()),

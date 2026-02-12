@@ -54,7 +54,6 @@ def _create_lgbm_regressor(**kwargs) -> Any:
         logger.warning("LightGBM not installed, falling back to ElasticNetCV")
         return None
 
-    import warnings
     import platform
 
     # Default hyperparameters optimized for confidence scoring
@@ -359,8 +358,6 @@ class RidgeTrainer(BaseTrainer):
 
     def load(self, path: str) -> None:
         """Load confidence model (supports both LightGBM and ElasticNet)."""
-        import warnings
-
         # Suppress sklearn version warnings
         try:
             from sklearn.exceptions import InconsistentVersionWarning

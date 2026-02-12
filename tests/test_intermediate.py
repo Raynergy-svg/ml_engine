@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 """Check intermediate layer outputs."""
+
+import pytest
+
+pytest.skip("Debug-only script (requires local artifacts + keras).", allow_module_level=True)
+
 import pickle
 import numpy as np
 from pathlib import Path

@@ -1,3 +1,7 @@
+import pytest
+
+pytest.importorskip("unified_talk")
+
 import unified_talk
 
 

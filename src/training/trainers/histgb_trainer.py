@@ -254,8 +254,6 @@ class HistGradientBoostingDirectionTrainer(BaseTrainer):
 
     def load(self, path: str) -> None:
         """Load HistGB model."""
-        import warnings
-
         # Suppress sklearn version warnings
         try:
             from sklearn.exceptions import InconsistentVersionWarning

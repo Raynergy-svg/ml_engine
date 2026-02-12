@@ -16,6 +16,8 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
+pytest.importorskip("tensorflow")
+
 
 # ============================================================================
 # TEST #1: LABEL THRESHOLD

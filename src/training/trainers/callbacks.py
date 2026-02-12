@@ -35,6 +35,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import pickle
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -43,15 +44,17 @@ from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 import numpy as np
 import tensorflow as tf
 
-from src.training.trainers.config import TrainerConfig, OverfitPreventionConfig
+from src.training.trainers.config import OverfitPreventionConfig
 from src.training.trainers.utils import (
+    PRODUCTION_MODELS_DIR,
+    _get_numpy_dtype,
     _validate_weight_shapes,
     _safe_get_learning_rate,
     _safe_set_learning_rate,
 )
 
 if TYPE_CHECKING:
-    import pandas as pd
+    import pandas as pd  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -319,7 +322,6 @@ class EMACallback:
         is_compatible, error_msg = _validate_weight_shapes(
             model_weight_arrays, weights, context="EMA weights"
         )
-
         if is_compatible:
             self.ema_weights = [w.copy() for w in weights]
             self._initialized = True
@@ -1877,7 +1879,7 @@ class RichEpochCallback(tf.keras.callbacks.Callback):
         acc_str = f"[{acc_color}]acc={val_acc:.1%}[/{acc_color}]"
         import math
         if val_loss is None or (isinstance(val_loss, float) and math.isnan(val_loss)):
-            loss_str = f"[yellow]loss=N/A[/yellow]"
+            loss_str = "[yellow]loss=N/A[/yellow]"
         else:
             loss_str = f"[{loss_color}]loss={val_loss:.4f}[/{loss_color}]"
         train_str = f"[dim]train={train_acc:.1%}[/dim]"
@@ -2780,3 +2782,4 @@ class TrainingLineage:
             collapse_recovery_count=data.get("collapse_recovery_count", 0),
         )
 
+# EOF

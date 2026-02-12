@@ -183,8 +183,6 @@ class RandomForestTrainer(BaseTrainer):
 
     def load(self, path: str) -> None:
         """Load Random Forest models."""
-        import warnings
-
         # Suppress sklearn version warnings
         try:
             from sklearn.exceptions import InconsistentVersionWarning

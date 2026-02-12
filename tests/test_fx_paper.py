@@ -6,7 +6,7 @@ import pandas as pd
 
 import numpy as np
 
-from ml_engine.fx_paper import (
+from src.utils.fx_paper import (
     candles_to_ohlcv_df,
     atr,
     pip_size,

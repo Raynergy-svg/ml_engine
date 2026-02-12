@@ -199,7 +199,7 @@ def extract_gate_features(
     Returns:
         Dictionary of gate-relevant features
     """
-    features = {}
+    features: Dict[str, float] = {}
 
     # ADX-based confidence proxy
     if 'adx' in df.columns:
@@ -234,6 +234,32 @@ def extract_gate_features(
         features['recent_drawdown'] = 0.0
 
     return features
+
+
+def compute_rl_features(
+    df: pd.DataFrame,
+    lookback: int = 20,
+    *,
+    as_array: bool = True,
+) -> np.ndarray | Dict[str, float]:
+    """Compute a lightweight RL feature vector from market data.
+
+    This is a backward-compatibility helper referenced by CI import validation.
+
+    Args:
+        df: Market DataFrame.
+        lookback: Rolling window used by :func:`extract_gate_features`.
+        as_array: When True returns a deterministic 1D numpy array (sorted by key).
+
+    Returns:
+        1D float32 feature array or the raw feature dict.
+    """
+
+    features = extract_gate_features(df=df, lookback=lookback)
+    if not as_array:
+        return features
+    keys = sorted(features.keys())
+    return np.array([float(features[k]) for k in keys], dtype=np.float32)
 
 
 def simulate_trade(

@@ -18,22 +18,22 @@ from __future__ import annotations
 import logging
 import pickle
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import tensorflow as tf
 
 from src.training.trainers.base import BaseTrainer
 from src.training.trainers.config import TrainerConfig
-from src.training.trainers.display import TrainingDisplay
-
-if TYPE_CHECKING:
-    import pandas as pd
+from src.training.trainers.callbacks import QuietProgressCallback, RichEpochCallback
+from src.training.trainers.utils import (
+    META_PKL_SUFFIX,
+    MODEL_NOT_TRAINED_ERROR,
+    create_sequences,
+    get_config_seq_len,
+)
 
 logger = logging.getLogger(__name__)
-
-# Module-level constants
-META_PKL_SUFFIX = ".meta.pkl"
 
 
 class TransformerRegimeTrainer(BaseTrainer):
@@ -116,8 +116,6 @@ class TransformerRegimeTrainer(BaseTrainer):
 
     def _add_positional_encoding(self, x, seq_len: int, d_model: int):
         """Add sinusoidal positional encoding."""
-        import tensorflow as tf
-
         positions = np.arange(seq_len)[:, np.newaxis]
         dims = np.arange(d_model)[np.newaxis, :]
 
@@ -395,7 +393,6 @@ class TransformerRegimeTrainer(BaseTrainer):
         self.n_features = meta.get("n_features")
         self.class_names = meta.get("class_names", ["trend", "chop", "mean_revert"])
         self.is_trained = True
-
         logger.info(f"Transformer Regime loaded from {path}")
 
-
+# EOF

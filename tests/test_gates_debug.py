@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Debug gate evaluation."""
 
+import pytest
+
+pytest.skip("Debug-only script (requires OANDA + network + optional deps).", allow_module_level=True)
+
 import pandas as pd
 from src.scanner.gates import GateEvaluator
 from src.core.modular_data_loaders import compute_normalized_features

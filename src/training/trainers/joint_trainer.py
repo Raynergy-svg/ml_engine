@@ -762,8 +762,6 @@ class JointMultiPairTrainer:
         results: Dict[str, Dict],
     ) -> None:
         """Save joint training metadata."""
-        import json
-
         meta = {
             "training_type": "joint_multi_pair",
             "instruments": instruments,

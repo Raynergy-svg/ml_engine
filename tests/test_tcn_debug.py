@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Debug TCN volatility regime evaluation."""
 
+import pytest
+
+pytest.skip("Debug-only script (requires OANDA + local models).", allow_module_level=True)
+
 import logging
 logging.basicConfig(level=logging.DEBUG, format='%(name)s:%(message)s')
 

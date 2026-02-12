@@ -18,32 +18,48 @@ from __future__ import annotations
 
 import logging
 import pickle
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import tensorflow as tf
 
 from src.training.trainers.base import BaseTrainer
-from src.training.trainers.config import TrainerConfig
+from src.training.trainers.config import OverfitPreventionConfig, TrainerConfig
 from src.training.trainers.callbacks import (
+    EWCTrainingCallback,
     EMACallback,
     EWCPenalty,
+    OverfitPreventionCallback,
+    QuietProgressCallback,
+    RichEpochCallback,
+    GradualUnfreezeCallback,
     ReplayBuffer,
     DriftDetector,
     TrainingLineage,
 )
-from src.training.trainers.display import TrainingDisplay
-
-if TYPE_CHECKING:
-    import pandas as pd
+from src.training.trainers.utils import (
+    ARCH_JSON_SUFFIX,
+    EMA_PKL_SUFFIX,
+    EWC_PKL_SUFFIX,
+    META_PKL_SUFFIX,
+    MODEL_NOT_TRAINED_ERROR,
+    WEIGHTS_H5_SUFFIX,
+    WEIGHTS_LOADED_FULL_MODEL_MSG,
+    _get_numpy_dtype,
+    _safe_get_learning_rate,
+    _safe_load_weights_ignoring_optimizer,
+    _safe_reset_optimizer_state,
+    _safe_set_learning_rate,
+    _validate_weight_shapes,
+    compute_auto_variance_weight,
+    create_ewc_loss,
+    create_sequences_with_weights,
+    get_config_seq_len,
+)
 
 logger = logging.getLogger(__name__)
-
-# Module-level constants
-META_PKL_SUFFIX = ".meta.pkl"
-EWC_PKL_SUFFIX = ".ewc.pkl"
-EMA_PKL_SUFFIX = ".ema.pkl"
 
 
 class TransformerDirectionTrainer(BaseTrainer):
@@ -2435,4 +2451,4 @@ class TransformerDirectionTrainer(BaseTrainer):
                     "📊 Model performance below historical best - consider retraining if persistent"
                 )
 
-
+# EOF

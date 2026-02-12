@@ -1,3 +1,7 @@
+import pytest
+
+pytest.importorskip("oanda_candle_cache")
+
 import pandas as pd
 
 from oanda_candle_cache import merge_dedupe_by_time

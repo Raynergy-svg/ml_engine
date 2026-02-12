@@ -128,12 +128,11 @@ class ScannerConfig:
 
     # Session filter (UTC hours)
     # FX markets are open 24/5 (Sun 22:00 UTC – Fri 22:00 UTC).
-    # Disabled by default; the gate system handles risk. Enable to restrict
-    # scanning to London+NY hours only.
-    enable_session_filter: bool = False
-    session_filter_enabled: bool = False  # Alias for compatibility
+    # Enabled by default to restrict scanning to London+NY hours only.
+    enable_session_filter: bool = True
+    session_filter_enabled: bool = True  # Alias for compatibility
     session_start_utc: int = 8   # London open
-    session_end_utc: int = 22    # NY close (17:00 ET = 22:00 UTC in winter)
+    session_end_utc: int = 21    # NY close (17:00 ET ≈ 21:00 UTC in summer)
 
     # Volatility filter
     min_atr_pips: float = 5.0  # Minimum ATR in pips to trade

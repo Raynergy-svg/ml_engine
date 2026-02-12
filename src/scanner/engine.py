@@ -537,7 +537,6 @@ class Scanner:
                 instrument=pair,
             )
 
-            momentum = gate_result["momentum"]
             ridge_conf = gate_result["confidence"]
             gates_passed = gate_result["all_passed"]
 

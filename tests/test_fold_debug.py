@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 """Debug why folds fail in candle_optimizer."""
+
+import pytest
+
+pytest.skip("Debug-only script (requires local market data).", allow_module_level=True)
+
 import numpy as np
 import sys
 import os

@@ -209,8 +209,6 @@ class XGBoostTrainer(BaseTrainer):
 
     def load(self, path: str) -> None:
         """Load XGBoost models."""
-        import warnings
-
         # Suppress XGBoost version warnings (common when loading older serialized models)
         warnings.filterwarnings("ignore", category=UserWarning, module="xgboost")
         warnings.filterwarnings("ignore", message=SERIALIZED_MODEL_WARNING)

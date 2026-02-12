@@ -49,10 +49,6 @@ from src.training.trainers.callbacks import (
     AutoAdjustCallback,
 )
 from src.training.trainers.display import TrainingDisplay
-from src.training.trainers.utils import (
-    MODEL_NOT_TRAINED_ERROR,
-)
-
 logger = logging.getLogger(__name__)
 
 

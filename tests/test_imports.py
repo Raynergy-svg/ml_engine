@@ -1,32 +1,18 @@
-#!/usr/bin/env python3
-"""Test if all imports work correctly after restructuring."""
+"""Import smoke tests.
 
-import sys
-import traceback
+These tests ensure key modules can be imported after repo refactors.
+"""
 
+from __future__ import annotations
 
-def test_import(module_path, items=None):
-    """Test importing a module or specific items from it."""
-    try:
-        import importlib
-        mod = importlib.import_module(module_path)
-        if items:
-            for item in items:
-                getattr(mod, item)
-            print(f"✓ from {module_path} import {', '.join(items)}")
-        else:
-            print(f"✓ import {module_path}")
-        return True
-    except Exception as e:
-        print(f"✗ Error importing {module_path}: {e}")
-        traceback.print_exc()
-        return False
+import importlib
+
+import pytest
 
 
-if __name__ == "__main__":
-    print("Testing imports after restructuring...\n")
-
-    tests = [
+@pytest.mark.parametrize(
+    ("module_path", "items"),
+    [
         # Core utilities
         ("src.utils", ["setup_logging", "load_config"]),
 
@@ -47,21 +33,15 @@ if __name__ == "__main__":
         ("src.risk.confidence_calibration", None),
         ("src.risk.fx_guardrails", None),
 
-        # Utils
+        # OANDA client is importable (does not require env vars for import)
         ("src.utils.oanda_practice", ["OandaPracticeClient"]),
-    ]
+    ],
+)
+def test_import_smoke(module_path: str, items: list[str] | None):
+    if module_path.startswith("src.models.tensorflow") or module_path == "src.models.ensemble_model":
+        pytest.importorskip("tensorflow")
 
-    passed = 0
-    failed = 0
-
-    for module_path, items in tests:
-        if test_import(module_path, items):
-            passed += 1
-        else:
-            failed += 1
-
-    print(f"\n{'='*60}")
-    print(f"Results: {passed} passed, {failed} failed")
-    print(f"{'='*60}")
-
-    sys.exit(0 if failed == 0 else 1)
+    mod = importlib.import_module(module_path)
+    if items:
+        for item in items:
+            assert hasattr(mod, item)
