@@ -2206,7 +2206,17 @@ def _run_enterprise_validation(
                 console=console,
             )
 
-        # 4. Report
+        # 4. Deployment Validation
+        deployment_result = _run_deployment_validation(
+            dir_metrics=dir_metrics,
+            xgb_metrics=xgb_metrics,
+            rf_metrics=rf_metrics,
+            ridge_metrics=ridge_metrics,
+            training_data_size=len(dir_data.get('X_train', [])),
+            console=console,
+        )
+
+        # 5. Report
         if generate_report_enabled:
             _generate_training_report(
                 model_dir=model_dir,
@@ -2223,16 +2233,23 @@ def _run_enterprise_validation(
                 lr=lr,
                 direction_threshold=direction_threshold,
                 direction_lookahead=direction_lookahead,
+                deployment_result=deployment_result,
                 console=console,
             )
 
         # Final success
         console.print()
+        deployment_status = (
+            "[green]APPROVED[/green]" if deployment_result.deployment_approved
+            else "[yellow]NEEDS REVIEW[/yellow]"
+        )
         console.print(Panel(
             "[bold green]✓ TRAINING PIPELINE COMPLETE[/bold green]\n\n"
             f"[dim]Artifacts:[/dim] [cyan]{model_dir}[/cyan]\n"
-            "[dim]Validation:[/dim] [green]PASSED[/green] • Enterprise-grade quality assurance",
-            border_style="green",
+            f"[dim]Validation:[/dim] [green]PASSED[/green] • Enterprise-grade quality assurance\n"
+            f"[dim]Deployment:[/dim] {deployment_status} • "
+            f"{deployment_result.total_checks - deployment_result.checks_failed}/{deployment_result.total_checks} checks passed",
+            border_style="green" if deployment_result.deployment_approved else "yellow",
         ))
 
         # RL Position Sizer Training
@@ -2375,6 +2392,92 @@ def _run_walkforward_cv(*, dir_trainer, dir_data, dir_metrics, validation_result
         dir_metrics['cv_scores'] = cv_scores
 
 
+def _run_deployment_validation(
+    *,
+    dir_metrics,
+    xgb_metrics,
+    rf_metrics,
+    ridge_metrics,
+    training_data_size,
+    console,
+):
+    """Run deployment validation gate."""
+    from src.training.deployment_gate import DeploymentValidator, ValidationCriteria
+    from rich.table import Table
+
+    console.print()
+    console.print(Panel(
+        "[bold]Deployment Validation Gate[/bold]\n"
+        "[dim]Checking if model meets production quality standards[/dim]",
+        title="🚦 Deployment",
+        border_style="cyan",
+    ))
+
+    # Create validator with default criteria
+    validator = DeploymentValidator(criteria=ValidationCriteria())
+
+    # Run validation
+    result = validator.validate(
+        dir_metrics=dir_metrics,
+        xgb_metrics=xgb_metrics,
+        rf_metrics=rf_metrics,
+        ridge_metrics=ridge_metrics,
+        training_data_size=training_data_size,
+    )
+
+    # Display results in table
+    validation_table = Table(show_header=True, header_style=_STYLE_HEADER, title="Validation Checks")
+    validation_table.add_column("Check", style="white", width=35)
+    validation_table.add_column("Status", style="white", width=10)
+    validation_table.add_column("Value", style="dim", width=30)
+
+    for check_name, passed in result.checks_passed.items():
+        status = "[green]✓ PASS[/green]" if passed else "[red]✗ FAIL[/red]"
+        check_data = result.check_values.get(check_name, {})
+        value = check_data.get('value')
+        threshold = check_data.get('threshold')
+
+        if value is not None and threshold is not None:
+            if isinstance(value, (int, float)):
+                value_str = f"{value:.4f} (threshold: {threshold:.4f})"
+            else:
+                value_str = f"{value} (threshold: {threshold})"
+        else:
+            value_str = "N/A"
+
+        validation_table.add_row(check_name, status, value_str)
+
+    console.print(validation_table)
+
+    # Display summary
+    summary = result.get_summary()
+    console.print()
+    if result.deployment_approved:
+        console.print(f"[bold green]✓ DEPLOYMENT APPROVED[/bold green] • "
+                     f"{summary['checks_passed']}/{summary['total_checks']} checks passed")
+    else:
+        console.print(f"[bold yellow]⚠ DEPLOYMENT NEEDS REVIEW[/bold yellow] • "
+                     f"{summary['checks_failed']} checks failed ({summary['critical_failures']} critical)")
+
+    # Display failure reasons
+    if result.failure_reasons:
+        console.print()
+        console.print("[yellow]Failure Reasons:[/yellow]")
+        for reason in result.failure_reasons[:5]:  # Show first 5
+            console.print(f"  • {reason}")
+
+    # Display recommendations
+    if result.recommendations:
+        console.print()
+        console.print("[cyan]Recommendations:[/cyan]")
+        for rec in result.recommendations[:3]:  # Show first 3
+            console.print(f"  → {rec}")
+
+    console.print()
+
+    return result
+
+
 def _log_to_mlflow(
     *,
     options,
@@ -2453,6 +2556,7 @@ def _generate_training_report(
     lr,
     direction_threshold,
     direction_lookahead,
+    deployment_result,
     console,
 ):
     """Generate a Markdown training report."""
@@ -2495,6 +2599,43 @@ def _generate_training_report(
 - R² Score: {ridge_metrics['r2_score']:.4f}
 - Confidence MAE: {ridge_metrics['confidence_mae']:.2f}
 
+## Deployment Validation
+
+**Status**: {'✓ APPROVED' if deployment_result.deployment_approved else '✗ NEEDS REVIEW'}
+
+**Summary**: {deployment_result.total_checks - deployment_result.checks_failed}/{deployment_result.total_checks} checks passed
+"""
+
+    # Add deployment validation checks
+    if deployment_result.checks_passed:
+        report_content += "\n### Validation Checks\n\n"
+        report_content += "| Check | Status | Value | Threshold |\n"
+        report_content += "|-------|--------|-------|----------|\n"
+
+        for check_name, passed in deployment_result.checks_passed.items():
+            status = "✓ PASS" if passed else "✗ FAIL"
+            check_data = deployment_result.check_values.get(check_name, {})
+            value = check_data.get('value', 'N/A')
+            threshold = check_data.get('threshold', 'N/A')
+
+            if isinstance(value, (int, float)) and isinstance(threshold, (int, float)):
+                report_content += f"| {check_name} | {status} | {value:.4f} | {threshold:.4f} |\n"
+            else:
+                report_content += f"| {check_name} | {status} | {value} | {threshold} |\n"
+
+    # Add failure reasons if any
+    if deployment_result.failure_reasons:
+        report_content += "\n### Failure Reasons\n\n"
+        for reason in deployment_result.failure_reasons:
+            report_content += f"- {reason}\n"
+
+    # Add recommendations if any
+    if deployment_result.recommendations:
+        report_content += "\n### Recommendations\n\n"
+        for rec in deployment_result.recommendations:
+            report_content += f"- {rec}\n"
+
+    report_content += f"""
 ## Configuration
 - Epochs: {epochs}
 - Batch Size: {batch_size}
