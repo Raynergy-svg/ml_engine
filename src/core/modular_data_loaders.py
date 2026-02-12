@@ -1390,6 +1390,7 @@ def temporal_split(
     train_frac: float = 0.7,
     val_frac: float = 0.2,
     test_frac: float = 0.1,
+    gap: int = 0,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Create chronological train/val/test indices (no shuffle, no overlap).
@@ -1399,6 +1400,8 @@ def temporal_split(
         train_frac: Fraction for training (default 0.7)
         val_frac: Fraction for validation (default 0.2)
         test_frac: Fraction for test (default 0.1)
+        gap: Number of samples to skip between train/val and val/test to prevent
+             data leakage from temporal autocorrelation (default 0 for backward compatibility)
 
     Returns:
         Tuple of (train_idx, val_idx, test_idx) numpy arrays
@@ -1408,9 +1411,10 @@ def temporal_split(
     train_end = int(n_samples * train_frac)
     val_end = int(n_samples * (train_frac + val_frac))
 
+    # Apply gap between splits to prevent temporal leakage
     train_idx = np.arange(0, train_end)
-    val_idx = np.arange(train_end, val_end)
-    test_idx = np.arange(val_end, n_samples)
+    val_idx = np.arange(train_end + gap, val_end)
+    test_idx = np.arange(val_end + gap, n_samples)
 
     return train_idx, val_idx, test_idx
 
@@ -1763,15 +1767,25 @@ def load_direction_data(
     if len(features) > max_features and not features_already_locked:
         logger.info(f"Selecting top {max_features} uncorrelated features from {len(features)}...")
 
-        # Build numeric feature matrix
+        # Build numeric feature matrix from FULL data first
+        # We'll use only training portion for selection to prevent data leakage
         feature_matrix = df[features].values.astype(np.float64)
+        
+        # Preliminary temporal split to identify training indices
+        # This ensures feature selection uses only training data
+        n_total = len(df)
+        train_end_prelim = int(n_total * split[0])
+        train_mask = np.arange(n_total) < train_end_prelim
+        
+        # Use ONLY training data for feature scoring and correlation analysis
+        feature_matrix_train = feature_matrix[train_mask]
 
-        # Score features by VARIANCE (normalized) - no target leakage
+        # Score features by VARIANCE (normalized) - using TRAINING data only
         # High variance = potentially informative, avoids near-constant features
         feature_scores = {}
         for idx, f in enumerate(features):
             try:
-                f_values = feature_matrix[:, idx]
+                f_values = feature_matrix_train[:, idx]
                 valid_mask = np.isfinite(f_values)
                 if valid_mask.sum() > 100:
                     vals = f_values[valid_mask]
@@ -1809,13 +1823,13 @@ def load_direction_data(
         remaining = [f for f in feature_scores if f not in selected]
         sorted_remaining = sorted(remaining, key=lambda x: feature_scores[x], reverse=True)
 
-        # Rebuild feature matrix with selected + sorted remaining
+        # Rebuild feature matrix with selected + sorted remaining (TRAINING DATA ONLY)
         all_candidates = selected + sorted_remaining
         candidate_indices = [features.index(f) for f in all_candidates if f in features]
-        candidate_matrix = feature_matrix[:, candidate_indices]
+        candidate_matrix = feature_matrix_train[:, candidate_indices]
         candidate_features = [all_candidates[i] for i in range(len(all_candidates)) if all_candidates[i] in features]
 
-        # Remove highly correlated features
+        # Remove highly correlated features (using TRAINING data correlation)
         final_selected = []
         for i, f in enumerate(candidate_features):
             if len(final_selected) >= max_features:
@@ -1829,7 +1843,7 @@ def load_direction_data(
                 sel_idx = candidate_features.index(sel_f)
                 sel_values = candidate_matrix[:, sel_idx]
 
-                # Calculate correlation
+                # Calculate correlation (on TRAINING data only)
                 valid = np.isfinite(f_values) & np.isfinite(sel_values)
                 if valid.sum() > 100:
                     corr = np.abs(np.corrcoef(f_values[valid], sel_values[valid])[0, 1])
@@ -1841,7 +1855,7 @@ def load_direction_data(
                 final_selected.append(f)
 
         features = final_selected
-        logger.info(f"Selected {len(features)} uncorrelated features (variance-based, no target leakage)")
+        logger.info(f"Selected {len(features)} uncorrelated features (variance-based on TRAINING data only - no leakage)")
 
     logger.info(f"Direction features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
 
@@ -3083,7 +3097,6 @@ def load_rf_data(
     high = df['high'].values.astype(np.float64)
     low = df['low'].values.astype(np.float64)
     n = len(close)
-    drawdown_horizon = 24  # Look ahead 24 bars (1 day for H1)
 
     # Compute actual forward max drawdown for each bar
     # For LONG: max drawdown = (entry - min_low_ahead) / entry
