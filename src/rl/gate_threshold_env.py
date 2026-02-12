@@ -753,16 +753,16 @@ class GateThresholdRL:
     def get_adjusted_thresholds(
         self,
         features: np.ndarray,
-        current_win_rate: float = 0.5,
-        current_drawdown: float = 0.0,
+        win_rate: float = 0.5,
+        drawdown: float = 0.0,
     ) -> Dict[str, float]:
         """
         Get optimal gate thresholds for current market state.
 
         Args:
             features: Current market features
-            current_win_rate: Recent win rate
-            current_drawdown: Current drawdown
+            win_rate: Recent win rate
+            drawdown: Current drawdown
 
         Returns:
             Dictionary with adjusted thresholds
@@ -783,8 +783,8 @@ class GateThresholdRL:
             regime_onehot[0],
             regime_onehot[1],
             regime_onehot[2],
-            current_win_rate,
-            current_drawdown,
+            win_rate,
+            drawdown,
         ], dtype=np.float32)
 
         # Get action
@@ -801,9 +801,9 @@ class GateThresholdRL:
         risk = np.clip(self.config.base_risk + risk_delta, 0.01, 0.05)
 
         return {
-            'confidence': float(conf),
-            'momentum': float(mom),
-            'risk': float(risk),
+            'min_confidence': float(conf),
+            'min_momentum': float(mom),
+            'max_drawdown_pct': float(risk),
         }
 
     def save(self):
@@ -825,7 +825,11 @@ class GateThresholdRL:
         logger.info(f"💾 Gate RL config saved to {config_path}")
 
     def load(self) -> bool:
-        """Load model and scaler."""
+        """Load model and scaler.
+
+        When TensorFlow is already loaded, uses subprocess to avoid
+        TF/PyTorch deadlock on macOS (Intel and Metal).
+        """
         _ensure_sb3_imported()
         if not SB3_AVAILABLE:
             logger.debug("stable-baselines3 not available")
@@ -833,9 +837,13 @@ class GateThresholdRL:
 
         try:
             if GATE_RL_MODEL_PATH.exists():
-                self.model = SAC.load(str(GATE_RL_MODEL_PATH), device="cpu")
-                self._is_trained = True
-                logger.info(f"📂 Gate RL model loaded from {GATE_RL_MODEL_PATH}")
+                import sys
+                if 'tensorflow' in sys.modules:
+                    self._load_via_subprocess(GATE_RL_MODEL_PATH)
+                else:
+                    self.model = SAC.load(str(GATE_RL_MODEL_PATH), device="cpu")
+                    self._is_trained = True
+                    logger.info(f"📂 Gate RL model loaded from {GATE_RL_MODEL_PATH}")
 
             if GATE_RL_SCALER_PATH.exists():
                 with open(GATE_RL_SCALER_PATH, "rb") as f:
@@ -845,3 +853,55 @@ class GateThresholdRL:
         except Exception as e:
             logger.warning(f"Failed to load Gate RL model: {e}")
             return False
+
+    def _load_via_subprocess(self, model_path: Path) -> None:
+        """Load SAC model in a child process to avoid TF/PyTorch deadlock.
+
+        The child process doesn't have TF imported, so SAC.load() works fine.
+        We transfer the loaded model back via cloudpickle (handles lambdas).
+        """
+        import subprocess
+        import tempfile
+        import sys
+
+        with tempfile.NamedTemporaryFile(suffix='.pkl', delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            script = (
+                "import sys\n"
+                "try:\n"
+                "    import cloudpickle\n"
+                "    from stable_baselines3 import SAC\n"
+                f'    model = SAC.load("{model_path}", device="cpu")\n'
+                f'    with open("{tmp_path}", "wb") as f:\n'
+                "        cloudpickle.dump(model, f)\n"
+                "    sys.exit(0)\n"
+                "except Exception as e:\n"
+                '    print(f"Gate RL subprocess load failed: {e}", file=sys.stderr)\n'
+                "    sys.exit(1)\n"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True, timeout=30,
+                cwd=str(Path.cwd()),
+            )
+
+            if result.returncode == 0 and Path(tmp_path).exists():
+                import cloudpickle
+                with open(tmp_path, 'rb') as f:
+                    self.model = cloudpickle.load(f)
+                self._is_trained = True
+                logger.info(f"📂 Gate RL model loaded from {model_path} (via subprocess)")
+            else:
+                err = result.stderr.strip() if result.stderr else "unknown error"
+                logger.warning(f"Gate RL subprocess load failed: {err}")
+        except subprocess.TimeoutExpired:
+            logger.warning("Gate RL subprocess load timed out (30s)")
+        except Exception as e:
+            logger.warning(f"Gate RL subprocess load failed: {e}")
+        finally:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass

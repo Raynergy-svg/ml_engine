@@ -171,26 +171,26 @@ class TrainingDisplay:
         from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
         self.console = Console()
         self.model_name = model_name
-        self._Table = Table
-        self._Panel = Panel
-        self._Progress = Progress
-        self._SpinnerColumn = SpinnerColumn
-        self._TextColumn = TextColumn
-        self._BarColumn = BarColumn
-        self._TaskProgressColumn = TaskProgressColumn
+        self._table_cls = Table
+        self._panel_cls = Panel
+        self._progress_cls = Progress
+        self._spinner_column_cls = SpinnerColumn
+        self._text_column_cls = TextColumn
+        self._bar_column_cls = BarColumn
+        self._task_progress_column_cls = TaskProgressColumn
 
     def show_config(self, config: dict):
         """Display configuration as a clean table."""
-        table = self._Table(show_header=False, box=None, padding=(0, 2))
+        table = self._table_cls(show_header=False, box=None, padding=(0, 2))
         table.add_column("Key", style="dim")
         table.add_column("Value", style="cyan")
         for k, v in config.items():
             table.add_row(str(k), str(v))
-        self.console.print(self._Panel(table, title=f"[bold]{self.model_name}[/bold]", border_style="blue"))
+        self.console.print(self._panel_cls(table, title=f"[bold]{self.model_name}[/bold]", border_style="blue"))
 
     def show_summary(self, metrics: dict, title: str = "Results"):
         """Display training results summary."""
-        table = self._Table(show_header=False, box=None, padding=(0, 2))
+        table = self._table_cls(show_header=False, box=None, padding=(0, 2))
         table.add_column("Metric", style="dim")
         table.add_column("Value", style="green")
         for k, v in metrics.items():
@@ -198,7 +198,7 @@ class TrainingDisplay:
                 table.add_row(str(k), f"{v:.4f}")
             else:
                 table.add_row(str(k), str(v))
-        self.console.print(self._Panel(table, title=f"[bold]{title}[/bold]", border_style="green"))
+        self.console.print(self._panel_cls(table, title=f"[bold]{title}[/bold]", border_style="green"))
 
     def status(self, message: str, style: str = ""):
         """Print a status message."""
@@ -2560,7 +2560,7 @@ class RichEpochCallback(tf.keras.callbacks.Callback):
         acc_str = f"[{acc_color}]acc={val_acc:.1%}[/{acc_color}]"
         import math
         if val_loss is None or (isinstance(val_loss, float) and math.isnan(val_loss)):
-            loss_str = f"[yellow]loss=N/A[/yellow]"
+            loss_str = "[yellow]loss=N/A[/yellow]"
         else:
             loss_str = f"[{loss_color}]loss={val_loss:.4f}[/{loss_color}]"
         train_str = f"[dim]train={train_acc:.1%}[/dim]"
@@ -2621,6 +2621,36 @@ class AutoAdjustCallback(tf.keras.callbacks.Callback):
             self._console = Console()
         return self._console
 
+    def _get_current_lr(self) -> float:
+        """Get current learning rate from optimizer."""
+        try:
+            return float(self.model.optimizer.learning_rate)
+        except Exception:
+            return float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
+
+    def _try_reduce_lr(self) -> None:
+        """Attempt to reduce learning rate when stuck on a plateau."""
+        current_lr = self._get_current_lr()
+
+        if current_lr <= self.min_lr:
+            if self.verbose and self.wait == self.patience:
+                self.console.print(
+                    f"  [dim]⚙ LR already at minimum ({self.min_lr:.2e}), cannot adjust further[/dim]"
+                )
+            return
+
+        new_lr = max(current_lr * self.lr_factor, self.min_lr)
+        self.model.optimizer.learning_rate.assign(new_lr)
+        self.adjustments_made += 1
+        self.wait = 0  # Reset patience
+
+        if self.verbose:
+            self.console.print(
+                f"  [yellow]⚙ Auto-adjust #{self.adjustments_made}: "
+                f"LR {current_lr:.2e} → {new_lr:.2e} "
+                f"(stuck for {self.patience} epochs at {self.best_val_acc:.1%})[/yellow]"
+            )
+
     def on_epoch_end(self, epoch, logs=None):
         if logs is None:
             return
@@ -2636,33 +2666,7 @@ class AutoAdjustCallback(tf.keras.callbacks.Callback):
 
         # Check if stuck
         if self.wait >= self.patience and self.adjustments_made < self.max_adjustments:
-            # Get current learning rate
-            try:
-                current_lr = float(self.model.optimizer.learning_rate)
-            except Exception:
-                current_lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
-
-            if current_lr > self.min_lr:
-                # Reduce learning rate
-                new_lr = max(current_lr * self.lr_factor, self.min_lr)
-
-                # Keras 3.x compatible way to set LR
-                self.model.optimizer.learning_rate.assign(new_lr)
-
-                self.adjustments_made += 1
-                self.wait = 0  # Reset patience
-
-                if self.verbose:
-                    self.console.print(
-                        f"  [yellow]⚙ Auto-adjust #{self.adjustments_made}: "
-                        f"LR {current_lr:.2e} → {new_lr:.2e} "
-                        f"(stuck for {self.patience} epochs at {self.best_val_acc:.1%})[/yellow]"
-                    )
-            else:
-                if self.verbose and self.wait == self.patience:
-                    self.console.print(
-                        f"  [dim]⚙ LR already at minimum ({self.min_lr:.2e}), cannot adjust further[/dim]"
-                    )
+            self._try_reduce_lr()
 
     def on_train_end(self, logs=None):
         if self.adjustments_made > 0 and self.verbose:
@@ -2806,7 +2810,6 @@ class ReplayBuffer:
     def get_replay_samples(
         self,
         n_new_samples: int,
-        current_feature_names: Optional[List[str]] = None,
     ) -> Tuple[Optional[np.ndarray], Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Get replay samples to mix with new training data.
@@ -3800,6 +3803,15 @@ class TCNTrainer(BaseTrainer):
     def _load_model_native(self, path: Path, keras_module: Any) -> bool:
         """Try loading model in native .keras format."""
         try:
+            # Import custom class so @register_keras_serializable runs before load
+            try:
+                from src.models.tensorflow_models import TCNVolatilityDualHead  # noqa: F401
+            except ImportError:
+                try:
+                    from models.tensorflow_models import TCNVolatilityDualHead  # noqa: F401
+                except ImportError:
+                    pass
+
             self.model = keras_module.models.load_model(str(path), compile=False)
             logger.info(f"TCN Volatility Regime loaded from {path} (native format, compile=False)")
             return True
@@ -4114,6 +4126,15 @@ class TCNTrainer(BaseTrainer):
         """
         from tensorflow import keras
 
+        # Import custom class so @register_keras_serializable runs before load
+        try:
+            from src.models.tensorflow_models import TCNVolatilityDualHead  # noqa: F401
+        except ImportError:
+            try:
+                from models.tensorflow_models import TCNVolatilityDualHead  # noqa: F401
+            except ImportError:
+                logger.warning("Could not import TCNVolatilityDualHead for registration")
+
         path = Path(path)
         meta_path = path.with_suffix(META_PKL_SUFFIX)
         weights_path = path.with_suffix(WEIGHTS_H5_SUFFIX)
@@ -4152,6 +4173,179 @@ class TCNTrainer(BaseTrainer):
 # =============================================================================
 # TCN VOLATILITY REGIME TRAINER - Forward-Looking 4-Class Prediction
 # =============================================================================
+
+
+class _VolTrainStepModule(tf.Module):
+    """Encapsulates all state for the volatility training step as a tf.Module.
+
+    Using a tf.Module subclass instead of a closure eliminates free-variable
+    capture inside @tf.function, which avoids TensorFlow tracing issues.
+    All TF ops (GradientTape, add_n) are stored as attributes to avoid
+    depending on global/free variables inside the @tf.function body.
+    """
+
+    def __init__(
+        self, model, optimizer, cls_loss_fn, reg_loss_fn,
+        cls_w, reg_w, train_loss_metric, train_acc_metric,
+    ):
+        super().__init__()
+        self._model = model
+        self._optimizer = optimizer
+        self._cls_loss_fn = cls_loss_fn
+        self._reg_loss_fn = reg_loss_fn
+        self._cls_w = cls_w
+        self._reg_w = reg_w
+        self._train_loss_metric = train_loss_metric
+        self._train_acc_metric = train_acc_metric
+        # Store TF ops as attributes to avoid free-variable capture in @tf.function
+        self._gradient_tape_cls = tf.GradientTape
+        self._add_n = tf.add_n
+
+    @tf.function
+    def __call__(self, x, y, sample_weight):  # NOSONAR - all TF ops stored as tf.Module attributes
+        with self._gradient_tape_cls() as tape:
+            outputs = self._model(x, training=True)
+            class_loss = self._cls_loss_fn(
+                y['classification'], outputs['classification'],
+                sample_weight=sample_weight,
+            )
+            reg_loss = self._reg_loss_fn(y['regression'], outputs['regression'])
+            total_loss = self._cls_w * class_loss + self._reg_w * reg_loss
+            if self._model.losses:
+                total_loss += self._add_n(self._model.losses)
+        gradients = tape.gradient(total_loss, self._model.trainable_variables)
+        self._optimizer.apply_gradients(
+            zip(gradients, self._model.trainable_variables)
+        )
+        self._train_loss_metric.update_state(total_loss)
+        self._train_acc_metric.update_state(
+            y['classification'], outputs['classification']
+        )
+        return total_loss
+
+
+class _VolValStepModule(tf.Module):
+    """Encapsulates all state for the volatility validation step as a tf.Module.
+
+    Using a tf.Module subclass instead of a closure eliminates free-variable
+    capture inside @tf.function, which avoids TensorFlow tracing issues.
+    All TF ops are stored as attributes to avoid depending on global/free
+    variables inside the @tf.function body.
+    """
+
+    def __init__(
+        self, model, cls_loss_fn, reg_loss_fn,
+        cls_w, reg_w, val_loss_metric, val_acc_metric,
+    ):
+        super().__init__()
+        self._model = model
+        self._cls_loss_fn = cls_loss_fn
+        self._reg_loss_fn = reg_loss_fn
+        self._cls_w = cls_w
+        self._reg_w = reg_w
+        self._val_loss_metric = val_loss_metric
+        self._val_acc_metric = val_acc_metric
+        # Store TF ops as attributes to avoid free-variable capture in @tf.function
+        self._add_n = tf.add_n
+
+    @tf.function
+    def __call__(self, x, y, sample_weight):  # NOSONAR - all TF ops stored as tf.Module attributes
+        outputs = self._model(x, training=False)
+        class_loss = self._cls_loss_fn(
+            y['classification'], outputs['classification'],
+            sample_weight=sample_weight,
+        )
+        reg_loss = self._reg_loss_fn(y['regression'], outputs['regression'])
+        total_loss = self._cls_w * class_loss + self._reg_w * reg_loss
+        if self._model.losses:
+            total_loss += self._add_n(self._model.losses)
+        self._val_loss_metric.update_state(total_loss)
+        self._val_acc_metric.update_state(
+            y['classification'], outputs['classification']
+        )
+        return total_loss
+
+
+def _build_vol_train_step(
+    model, optimizer, cls_loss_fn, reg_loss_fn,
+    cls_w, reg_w,
+    train_loss_metric, train_acc_metric,
+):
+    """Build a training step module with zero free-variable captures."""
+    return _VolTrainStepModule(
+        model, optimizer, cls_loss_fn, reg_loss_fn,
+        cls_w, reg_w, train_loss_metric, train_acc_metric,
+    )
+
+
+def _build_vol_val_step(
+    model, cls_loss_fn, reg_loss_fn,
+    cls_w, reg_w,
+    val_loss_metric, val_acc_metric,
+):
+    """Build a validation step module with zero free-variable captures."""
+    return _VolValStepModule(
+        model, cls_loss_fn, reg_loss_fn,
+        cls_w, reg_w, val_loss_metric, val_acc_metric,
+    )
+
+
+class _RegimeCollapseCallback(tf.keras.callbacks.Callback):
+    """Detect and warn when regime predictions collapse to a single class.
+
+    Checks validation predictions every ``check_every`` epochs and warns
+    if any single class accounts for more than ``collapse_threshold`` of
+    all predictions.  This is a sign that the model is ignoring minority
+    classes and needs intervention (e.g. stronger focal loss alpha or
+    class weights).
+
+    Args:
+        x_val: Validation input sequences.
+        display: :class:`TrainingDisplay` instance for console output.
+        class_names: List of human-readable class names (length = n_classes).
+        check_every: Check interval in epochs (default 5).
+        collapse_threshold: Fraction above which a single class is
+            considered "collapsed" (default 0.80 = 80%).
+    """
+
+    def __init__(
+        self,
+        x_val: np.ndarray,
+        display: "TrainingDisplay",
+        class_names: List[str],
+        check_every: int = 5,
+        collapse_threshold: float = 0.80,
+    ):
+        super().__init__()
+        self.x_val = x_val
+        self.display = display
+        self.class_names = class_names
+        self.check_every = check_every
+        self.collapse_threshold = collapse_threshold
+        self.n_classes = len(class_names)
+
+    def on_epoch_end(self, epoch: int, logs=None):
+        if (epoch + 1) % self.check_every != 0:
+            return
+        try:
+            outputs = self.model(self.x_val, training=False)
+            probs = outputs["classification"] if isinstance(outputs, dict) else outputs
+            pred_classes = tf.argmax(probs, axis=1).numpy()
+            counts = np.bincount(pred_classes, minlength=self.n_classes)
+            fracs = counts / max(len(pred_classes), 1)
+
+            dominant_idx = int(np.argmax(fracs))
+            dominant_frac = float(fracs[dominant_idx])
+
+            if dominant_frac >= self.collapse_threshold:
+                self.display.warn(
+                    f"Regime collapse at epoch {epoch + 1}: "
+                    f"{self.class_names[dominant_idx]} = {dominant_frac:.0%} "
+                    f"(threshold {self.collapse_threshold:.0%})"
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Regime collapse check failed: %s", exc)
+
 
 class TCNVolatilityRegimeTrainer(BaseTrainer):
     """
@@ -4272,11 +4466,301 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
 
         return model
 
+    def _resolve_sample_weights(
+        self,
+        w_train: Optional[np.ndarray],
+        w_val: Optional[np.ndarray],
+        sample_weights: Optional[np.ndarray],
+        n_train: int,
+        n_val: int,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """Resolve sample weights from multiple sources."""
+        if w_train is None:
+            w_train = sample_weights if sample_weights is not None else np.ones(n_train)
+        if w_val is None:
+            w_val = np.ones(n_val)
+        return w_train, w_val
+
+    def _compute_focal_alpha(
+        self, class_weights: Optional[Dict[int, float]]
+    ) -> List[float]:
+        """Compute focal alpha from class weights or use defaults."""
+        if class_weights is not None:
+            cw_values = [class_weights.get(i, 1.0) for i in range(self.n_classes)]
+            cw_sum = sum(cw_values)
+            alpha = [v / cw_sum for v in cw_values]
+            logger.debug(f"Focal alpha from class weights: {[f'{a:.3f}' for a in alpha]}")
+        else:
+            alpha = [0.30, 0.20, 0.25, 0.25]  # QUIET, STABLE, ACTIVE, EXTREME
+            logger.debug(f"Using default focal alpha: {alpha}")
+        return alpha
+
+    def _show_train_config(
+        self,
+        display: "TrainingDisplay",
+        w_train: np.ndarray,
+        y_train: np.ndarray,
+        tcn_lr: float,
+    ) -> None:
+        """Show clean configuration summary."""
+        train_valid_mask = w_train > 0
+        valid_labels = y_train[train_valid_mask]
+        class_counts = np.bincount(valid_labels, minlength=self.n_classes) if len(valid_labels) > 0 else [0] * 4
+        n_valid = max(len(valid_labels), 1)
+
+        display.show_config({
+            "Lookahead": f"{self.lookahead} bars",
+            "Params": f"{self.model.count_params():,}",
+            "LR": f"{tcn_lr:.1e}",
+            "Loss": f"FocalCE(γ={self.focal_gamma})",
+            "Classes": (
+                f"QUI:{class_counts[0]/n_valid:.0%} STA:{class_counts[1]/n_valid:.0%} "
+                f"ACT:{class_counts[2]/n_valid:.0%} EXT:{class_counts[3]/n_valid:.0%}"
+            ),
+        })
+
+    def _create_regime_collapse_callback(
+        self, x_val: np.ndarray, display: "TrainingDisplay"
+    ) -> Any:
+        """Create a regime collapse detection callback."""
+        return _RegimeCollapseCallback(x_val, display, list(self.class_names))
+
+    def _create_vol_regime_callbacks(
+        self, x_val: np.ndarray, display: "TrainingDisplay"
+    ) -> list:
+        """Create all callbacks for TCN volatility regime training."""
+        from tensorflow import keras
+
+        return [
+            RichEpochCallback(
+                model_name="TCN Forward Volatility",
+                total_epochs=self.config.epochs,
+            ),
+            AutoAdjustCallback(
+                patience=8, lr_factor=0.5, min_lr=1e-6,
+                max_adjustments=4, min_delta=0.005, verbose=True,
+            ),
+            keras.callbacks.EarlyStopping(
+                monitor='val_loss', patience=self.config.patience, mode='min',
+                restore_best_weights=True, verbose=0,
+                start_from_epoch=max(10, self.config.min_epochs),
+            ),
+            keras.callbacks.ReduceLROnPlateau(
+                monitor='val_loss', factor=0.5,
+                patience=max(5, self.config.patience // 3),
+                min_lr=1e-6, verbose=0,
+            ),
+            self._create_regime_collapse_callback(x_val, display),
+        ]
+
+    def _create_vol_datasets(
+        self,
+        x_train: np.ndarray,
+        y_train_onehot: np.ndarray,
+        y_train_reg: np.ndarray,
+        w_train: np.ndarray,
+        x_val: np.ndarray,
+        y_val_onehot: np.ndarray,
+        y_val_reg: np.ndarray,
+        w_val: np.ndarray,
+    ) -> Tuple[Any, Any]:
+        """Create tf.data.Dataset for training and validation."""
+        train_dataset = tf.data.Dataset.from_tensor_slices((
+            x_train,
+            {'classification': y_train_onehot, 'regression': y_train_reg.reshape(-1, 1)},
+            w_train,
+        )).shuffle(1024).batch(self.config.batch_size).prefetch(tf.data.AUTOTUNE)
+
+        val_dataset = tf.data.Dataset.from_tensor_slices((
+            x_val,
+            {'classification': y_val_onehot, 'regression': y_val_reg.reshape(-1, 1)},
+            w_val,
+        )).batch(self.config.batch_size).prefetch(tf.data.AUTOTUNE)
+
+        return train_dataset, val_dataset
+
+    def _build_train_val_steps(
+        self,
+        optimizer: Any,
+        classification_loss_fn: Any,
+        regression_loss_fn: Any,
+        metrics: Dict[str, Any],
+    ) -> Tuple[Any, Any]:
+        """Build tf.function train and validation step functions.
+
+        Uses a tf.Module subclass to hold all dependencies as tracked
+        attributes, eliminating free-variable capture in @tf.function
+        closures which can cause issues with TensorFlow tracing.
+
+        Returns:
+            Tuple of (train_step_fn, val_step_fn)
+        """
+
+        cls_w = tf.constant(self.classification_weight, dtype=tf.float32)
+        reg_w = tf.constant(self.regression_weight, dtype=tf.float32)
+
+        train_step_fn = _build_vol_train_step(
+            model=self.model,
+            optimizer=optimizer,
+            cls_loss_fn=classification_loss_fn,
+            reg_loss_fn=regression_loss_fn,
+            cls_w=cls_w,
+            reg_w=reg_w,
+            train_loss_metric=metrics['train_loss'],
+            train_acc_metric=metrics['train_acc'],
+        )
+
+        val_step_fn = _build_vol_val_step(
+            model=self.model,
+            cls_loss_fn=classification_loss_fn,
+            reg_loss_fn=regression_loss_fn,
+            cls_w=cls_w,
+            reg_w=reg_w,
+            val_loss_metric=metrics['val_loss'],
+            val_acc_metric=metrics['val_acc'],
+        )
+
+        return train_step_fn, val_step_fn
+
+    def _run_epoch(
+        self,
+        train_dataset: Any,
+        val_dataset: Any,
+        train_step: Any,
+        val_step: Any,
+        metrics: Dict[str, Any],
+    ) -> Tuple[float, float, float, float]:
+        """Run a single training epoch and return (train_loss, train_acc, val_loss, val_acc)."""
+        metrics['train_loss'].reset_state()
+        metrics['train_acc'].reset_state()
+        metrics['val_loss'].reset_state()
+        metrics['val_acc'].reset_state()
+
+        for x_batch, y_batch, w_batch in train_dataset:
+            train_step(x_batch, y_batch, w_batch)
+        for x_batch, y_batch, w_batch in val_dataset:
+            val_step(x_batch, y_batch, w_batch)
+
+        return (
+            metrics['train_loss'].result().numpy(),
+            metrics['train_acc'].result().numpy(),
+            metrics['val_loss'].result().numpy(),
+            metrics['val_acc'].result().numpy(),
+        )
+
+    def _notify_callbacks(self, callbacks: list, epoch: int, logs: dict) -> None:
+        """Notify all callbacks of epoch end."""
+        for callback in callbacks:
+            if hasattr(callback, 'set_model'):
+                callback.set_model(self.model)
+            callback.on_epoch_end(epoch, logs)
+
+    def _run_dual_head_training_loop(
+        self,
+        train_dataset: Any,
+        val_dataset: Any,
+        optimizer: Any,
+        classification_loss_fn: Any,
+        regression_loss_fn: Any,
+        callbacks: list,
+    ) -> dict:
+        """Run the custom dual-head training loop and return history."""
+        from tensorflow import keras
+
+        metrics_dict = {
+            'train_loss': keras.metrics.Mean(name='train_loss'),
+            'train_acc': keras.metrics.CategoricalAccuracy(name='train_accuracy'),
+            'val_loss': keras.metrics.Mean(name='val_loss'),
+            'val_acc': keras.metrics.CategoricalAccuracy(name='val_accuracy'),
+        }
+
+        train_step, val_step = self._build_train_val_steps(
+            optimizer, classification_loss_fn, regression_loss_fn, metrics_dict,
+        )
+
+        best_val_loss = float('inf')
+        best_weights = None
+        patience_counter = 0
+        history: Dict[str, list] = {'loss': [], 'accuracy': [], 'val_loss': [], 'val_accuracy': []}
+
+        for epoch in range(self.config.epochs):
+            train_loss, train_acc, val_loss, val_acc = self._run_epoch(
+                train_dataset, val_dataset, train_step, val_step, metrics_dict,
+            )
+
+            history['loss'].append(train_loss)
+            history['accuracy'].append(train_acc)
+            history['val_loss'].append(val_loss)
+            history['val_accuracy'].append(val_acc)
+
+            logs = {'loss': train_loss, 'accuracy': train_acc,
+                    'val_loss': val_loss, 'val_accuracy': val_acc}
+            self._notify_callbacks(callbacks, epoch, logs)
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_weights = self.model.get_weights()
+                patience_counter = 0
+            else:
+                patience_counter += 1
+
+            if patience_counter >= self.config.patience and epoch >= self.config.min_epochs:
+                logger.info(f"Early stopping at epoch {epoch+1}")
+                break
+
+        if best_weights is not None:
+            self.model.set_weights(best_weights)
+
+        return history
+
+    def _compute_vol_regime_metrics(
+        self,
+        x_val: np.ndarray,
+        y_val: np.ndarray,
+        history: dict,
+    ) -> Dict[str, float]:
+        """Compute final metrics for the volatility regime model."""
+        from sklearn.metrics import f1_score
+
+        val_outputs = self.model.predict(x_val, verbose=0)
+        val_pred_probs = val_outputs['classification'] if isinstance(val_outputs, dict) else val_outputs
+        val_pred_classes = np.argmax(val_pred_probs, axis=1)
+        val_acc = np.mean(val_pred_classes == y_val)
+
+        pred_dist = np.bincount(val_pred_classes, minlength=self.n_classes) / len(val_pred_classes)
+        f1_scores = f1_score(y_val, val_pred_classes, average=None, zero_division=0)
+        f1_macro = f1_score(y_val, val_pred_classes, average='macro', zero_division=0)
+
+        active_extreme_mask = (y_val >= 2)
+        active_extreme_acc = (
+            float(np.mean(val_pred_classes[active_extreme_mask] >= 2))
+            if active_extreme_mask.sum() > 0 else 0.0
+        )
+
+        all_classes_present = all(pred_dist[i] > 0.05 for i in range(4))
+
+        return {
+            'train_accuracy': float(history['accuracy'][-1]) if history['accuracy'] else 0.0,
+            'val_accuracy': float(val_acc),
+            'val_f1_macro': float(f1_macro),
+            'val_f1_quiet': float(f1_scores[0]) if len(f1_scores) > 0 else 0.0,
+            'val_f1_stable': float(f1_scores[1]) if len(f1_scores) > 1 else 0.0,
+            'val_f1_active': float(f1_scores[2]) if len(f1_scores) > 2 else 0.0,
+            'val_f1_extreme': float(f1_scores[3]) if len(f1_scores) > 3 else 0.0,
+            'active_extreme_detection': active_extreme_acc,
+            'all_classes_present': all_classes_present,
+            'epochs_trained': len(history['loss']),
+            'receptive_field': self._compute_receptive_field(),
+            'lookahead': self.lookahead,
+            '_f1_scores': f1_scores,  # Temp key for display
+            '_pred_dist': pred_dist,  # Temp key for display
+        }
+
     def train(
         self,
         X_train: np.ndarray,
         y_train: np.ndarray,
-        X_val: np.ndarray,
+        x_val: np.ndarray,
         y_val: np.ndarray,
         feature_names: Optional[list] = None,
         class_weights: Optional[Dict[int, float]] = None,
@@ -4293,7 +4777,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         Args:
             X_train: Training sequences (batch, seq_len, features)
             y_train: Training labels (batch,) with values 0-3
-            X_val: Validation sequences
+            x_val: Validation sequences
             y_val: Validation labels
             feature_names: Feature names for interpretability
             class_weights: Class weights for imbalanced data
@@ -4308,9 +4792,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             Dict with training metrics
         """
         from tensorflow import keras
-        from sklearn.metrics import f1_score
 
-        # Initialize clean display
         display = TrainingDisplay("TCN Forward Volatility")
 
         # Save metadata
@@ -4319,326 +4801,67 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         self.seq_len = seq_len if X_train.ndim == 3 else 60
         self.scaler = None  # Assume pre-scaled from data loader
 
-        # Ensure correct shape
         if X_train.ndim != 3:
             raise ValueError(f"Expected 3D input (batch, seq_len, features), got {X_train.shape}")
 
-        # Use provided sample weights or fall back to deprecated parameter
-        if w_train is None:
-            w_train = sample_weights if sample_weights is not None else np.ones(len(y_train))
-        if w_val is None:
-            w_val = np.ones(len(y_val))
-
-        # Create regression targets if not provided (default to zeros)
+        # Resolve weights and regression targets
+        w_train, w_val = self._resolve_sample_weights(
+            w_train, w_val, sample_weights, len(y_train), len(y_val),
+        )
         if y_train_reg is None:
             y_train_reg = np.zeros(len(y_train), dtype=np.float32)
         if y_val_reg is None:
             y_val_reg = np.zeros(len(y_val), dtype=np.float32)
 
-        # Convert to one-hot for classification
+        # Convert to one-hot and build model
         y_train_onehot = tf.keras.utils.to_categorical(y_train, num_classes=self.n_classes)
         y_val_onehot = tf.keras.utils.to_categorical(y_val, num_classes=self.n_classes)
-        logger.debug(f"Labels shape: {y_train_onehot.shape}")
-
-        # Build model
         self.model = self._build_model((self.seq_len, self.n_features))
 
-        # === COMPILE WITH CUSTOM TRAINING STEP ===
-        # We need custom training because of dual outputs
+        # Learning rate and focal alpha
+        tcn_lr = min(self.config.learning_rate, 0.001)
+        self.focal_alpha = self._compute_focal_alpha(class_weights)
 
-        # Learning rate
-        tcn_lr = min(self.config.learning_rate, 0.001)  # Conservative for forward prediction
-
-        # Determine focal alpha from class_weights (sklearn balanced) or use default
-        # Class weights from sklearn are inverse frequency, so higher = rarer class
-        if class_weights is not None:
-            # Normalize class weights to sum to 1 for focal alpha
-            cw_values = [class_weights.get(i, 1.0) for i in range(self.n_classes)]
-            cw_sum = sum(cw_values)
-            effective_alpha = [v / cw_sum for v in cw_values]
-            logger.debug(f"Focal alpha from class weights: {[f'{a:.3f}' for a in effective_alpha]}")
-        else:
-            # Default focal alpha: boost minority classes
-            effective_alpha = [0.30, 0.20, 0.25, 0.25]  # QUIET, STABLE, ACTIVE, EXTREME
-            logger.debug(f"Using default focal alpha: {effective_alpha}")
-
-        self.focal_alpha = effective_alpha
-
-        # Create separate losses
+        # Losses and optimizer
         classification_loss_fn = keras.losses.CategoricalFocalCrossentropy(
-            gamma=self.focal_gamma,
-            alpha=self.focal_alpha,
-            from_logits=False,
+            gamma=self.focal_gamma, alpha=self.focal_alpha, from_logits=False,
         )
         regression_loss_fn = keras.losses.MeanSquaredError()
-
-        # Optimizer
         optimizer = keras.optimizers.Adam(learning_rate=tcn_lr)
-
-        # Assign optimizer to model so callbacks can access it
         self.model.optimizer = optimizer
 
-        # Show clean configuration summary
-        train_valid_mask = w_train > 0
-        valid_labels = y_train[train_valid_mask]
-        class_counts = np.bincount(valid_labels, minlength=self.n_classes) if len(valid_labels) > 0 else [0]*4
+        # Display and callbacks
+        self._show_train_config(display, w_train, y_train, tcn_lr)
+        callbacks = self._create_vol_regime_callbacks(x_val, display)
 
-        display.show_config({
-            "Lookahead": f"{self.lookahead} bars",
-            "Params": f"{self.model.count_params():,}",
-            "LR": f"{tcn_lr:.1e}",
-            "Loss": f"FocalCE(γ={self.focal_gamma})",
-            "Classes": f"QUI:{class_counts[0]/len(valid_labels):.0%} STA:{class_counts[1]/len(valid_labels):.0%} ACT:{class_counts[2]/len(valid_labels):.0%} EXT:{class_counts[3]/len(valid_labels):.0%}",
-        })
-
-        # === PREDICTION COLLAPSE CALLBACK (4-class version) ===
-        class RegimeCollapseCallback(keras.callbacks.Callback):
-            def __init__(self, X_val, y_val, class_names, check_every=5):
-                super().__init__()
-                self.X_val = X_val
-                self.y_val = y_val
-                self.class_names = class_names
-                self.check_every = check_every
-                self.collapse_warned = False
-                self.display = display
-
-            def on_epoch_end(self, epoch, logs=None):
-                if (epoch + 1) % self.check_every != 0:
-                    return
-
-                outputs = self.model.predict(self.X_val, verbose=0)
-                if isinstance(outputs, dict):
-                    preds = outputs['classification']
-                else:
-                    preds = outputs
-
-                pred_classes = np.argmax(preds, axis=1)
-                pred_dist = np.bincount(pred_classes, minlength=4) / len(pred_classes)
-
-                # Check for collapse (>80% same prediction)
-                max_pct = max(pred_dist)
-                if max_pct > 0.80:
-                    dominant = np.argmax(pred_dist)
-                    if not self.collapse_warned:
-                        self.display.warn(f"Collapse detected: {max_pct:.0%} -> {self.class_names[dominant]}")
-                        self.collapse_warned = True
-                else:
-                    self.collapse_warned = False
-
-        # Callbacks
-        callbacks = [
-            RichEpochCallback(
-                model_name="TCN Forward Volatility",
-                total_epochs=self.config.epochs,
-            ),
-            AutoAdjustCallback(
-                patience=8,           # Stuck for 8 epochs → adjust
-                lr_factor=0.5,        # Halve LR when stuck
-                min_lr=1e-6,
-                max_adjustments=4,    # Up to 4 LR reductions
-                min_delta=0.005,      # 0.5% improvement threshold
-                verbose=True
-            ),
-            keras.callbacks.EarlyStopping(
-                monitor='val_loss',
-                patience=self.config.patience,
-                mode='min',
-                restore_best_weights=True,
-                verbose=0,
-                start_from_epoch=max(10, self.config.min_epochs),
-            ),
-            keras.callbacks.ReduceLROnPlateau(
-                monitor='val_loss',
-                factor=0.5,
-                patience=max(5, self.config.patience // 3),
-                min_lr=1e-6,
-                verbose=0,
-            ),
-            RegimeCollapseCallback(X_val, y_val, self.class_names, check_every=5),
-        ]
-
-        # === CUSTOM TRAINING LOOP for dual-head ===
         # Create datasets
-        train_dataset = tf.data.Dataset.from_tensor_slices((
-            X_train,
-            {'classification': y_train_onehot, 'regression': y_train_reg.reshape(-1, 1)},
-            w_train
-        )).shuffle(1024).batch(self.config.batch_size).prefetch(tf.data.AUTOTUNE)
+        train_dataset, val_dataset = self._create_vol_datasets(
+            X_train, y_train_onehot, y_train_reg, w_train,
+            x_val, y_val_onehot, y_val_reg, w_val,
+        )
 
-        val_dataset = tf.data.Dataset.from_tensor_slices((
-            X_val,
-            {'classification': y_val_onehot, 'regression': y_val_reg.reshape(-1, 1)},
-            w_val
-        )).batch(self.config.batch_size).prefetch(tf.data.AUTOTUNE)
-
-        # Training metrics
-        train_loss_metric = keras.metrics.Mean(name='train_loss')
-        train_acc_metric = keras.metrics.CategoricalAccuracy(name='train_accuracy')
-        val_loss_metric = keras.metrics.Mean(name='val_loss')
-        val_acc_metric = keras.metrics.CategoricalAccuracy(name='val_accuracy')
-
-        # Class weights are now integrated into focal_alpha above
-
-        @tf.function
-        def train_step(x, y, sample_weight):
-            with tf.GradientTape() as tape:
-                outputs = self.model(x, training=True)
-
-                # Classification loss
-                class_loss = classification_loss_fn(
-                    y['classification'],
-                    outputs['classification'],
-                    sample_weight=sample_weight
-                )
-
-                # Regression loss
-                reg_loss = regression_loss_fn(y['regression'], outputs['regression'])
-
-                # Combined loss
-                total_loss = (self.classification_weight * class_loss +
-                              self.regression_weight * reg_loss)
-
-                # Add regularization losses
-                if self.model.losses:
-                    total_loss += tf.add_n(self.model.losses)
-
-            gradients = tape.gradient(total_loss, self.model.trainable_variables)
-            optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
-
-            train_loss_metric.update_state(total_loss)
-            train_acc_metric.update_state(y['classification'], outputs['classification'])
-
-            return total_loss
-
-        @tf.function
-        def val_step(x, y, sample_weight):
-            outputs = self.model(x, training=False)
-
-            class_loss = classification_loss_fn(
-                y['classification'],
-                outputs['classification'],
-                sample_weight=sample_weight
-            )
-            reg_loss = regression_loss_fn(y['regression'], outputs['regression'])
-            total_loss = (self.classification_weight * class_loss +
-                          self.regression_weight * reg_loss)
-
-            val_loss_metric.update_state(total_loss)
-            val_acc_metric.update_state(y['classification'], outputs['classification'])
-
-            return total_loss
-
-        # Training loop
-        best_val_loss = float('inf')
-        best_weights = None
-        patience_counter = 0
-        history = {'loss': [], 'accuracy': [], 'val_loss': [], 'val_accuracy': []}
-
-        for epoch in range(self.config.epochs):
-            # Reset metrics
-            train_loss_metric.reset_state()
-            train_acc_metric.reset_state()
-            val_loss_metric.reset_state()
-            val_acc_metric.reset_state()
-
-            # Training
-            for x_batch, y_batch, w_batch in train_dataset:
-                train_step(x_batch, y_batch, w_batch)
-
-            # Validation
-            for x_batch, y_batch, w_batch in val_dataset:
-                val_step(x_batch, y_batch, w_batch)
-
-            # Get metrics
-            train_loss = train_loss_metric.result().numpy()
-            train_acc = train_acc_metric.result().numpy()
-            val_loss = val_loss_metric.result().numpy()
-            val_acc = val_acc_metric.result().numpy()
-
-            history['loss'].append(train_loss)
-            history['accuracy'].append(train_acc)
-            history['val_loss'].append(val_loss)
-            history['val_accuracy'].append(val_acc)
-
-            # Call callbacks
-            logs = {'loss': train_loss, 'accuracy': train_acc,
-                    'val_loss': val_loss, 'val_accuracy': val_acc}
-            for callback in callbacks:
-                # Set model via set_model() for Keras callbacks, or _model for custom
-                if hasattr(callback, 'set_model'):
-                    callback.set_model(self.model)
-                elif hasattr(callback, '_model'):
-                    callback._model = self.model
-                callback.on_epoch_end(epoch, logs)
-
-            # Early stopping logic
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                best_weights = self.model.get_weights()
-                patience_counter = 0
-            else:
-                patience_counter += 1
-
-            if patience_counter >= self.config.patience and epoch >= self.config.min_epochs:
-                logger.info(f"Early stopping at epoch {epoch+1}")
-                break
-
-        # Restore best weights
-        if best_weights is not None:
-            self.model.set_weights(best_weights)
+        # Run training loop
+        history = self._run_dual_head_training_loop(
+            train_dataset, val_dataset, optimizer,
+            classification_loss_fn, regression_loss_fn, callbacks,
+        )
 
         self.is_trained = True
 
-        # Evaluate on validation set
-        val_outputs = self.model.predict(X_val, verbose=0)
-        if isinstance(val_outputs, dict):
-            val_pred_probs = val_outputs['classification']
-        else:
-            val_pred_probs = val_outputs
+        # Compute and display metrics
+        self.metrics = self._compute_vol_regime_metrics(x_val, y_val, history)
 
-        val_pred_classes = np.argmax(val_pred_probs, axis=1)
-        val_acc = np.mean(val_pred_classes == y_val)
+        # Extract temp keys for display then remove them
+        f1_scores = self.metrics.pop('_f1_scores')
+        self.metrics.pop('_pred_dist')
 
-        # Calculate distributions (logged via display)
-        pred_dist = np.bincount(val_pred_classes, minlength=self.n_classes) / len(val_pred_classes)
-
-        # Calculate F1 scores per class
-        f1_scores = f1_score(y_val, val_pred_classes, average=None, zero_division=0)
-        f1_macro = f1_score(y_val, val_pred_classes, average='macro', zero_division=0)
-
-        # ACTIVE/EXTREME detection accuracy (classes 2 and 3 - the actionable ones)
-        active_extreme_mask = (y_val >= 2)
-        if active_extreme_mask.sum() > 0:
-            active_extreme_acc = np.mean(val_pred_classes[active_extreme_mask] >= 2)
-        else:
-            active_extreme_acc = 0.0
-
-        # Check for collapse
-        all_classes_present = all(pred_dist[i] > 0.05 for i in range(4))
-
-        self.metrics = {
-            'train_accuracy': float(history['accuracy'][-1]) if history['accuracy'] else 0.0,
-            'val_accuracy': float(val_acc),
-            'val_f1_macro': float(f1_macro),
-            'val_f1_quiet': float(f1_scores[0]) if len(f1_scores) > 0 else 0.0,
-            'val_f1_stable': float(f1_scores[1]) if len(f1_scores) > 1 else 0.0,
-            'val_f1_active': float(f1_scores[2]) if len(f1_scores) > 2 else 0.0,
-            'val_f1_extreme': float(f1_scores[3]) if len(f1_scores) > 3 else 0.0,
-            'active_extreme_detection': float(active_extreme_acc),
-            'all_classes_present': all_classes_present,
-            'epochs_trained': len(history['loss']),
-            'receptive_field': self._compute_receptive_field(),
-            'lookahead': self.lookahead,
-        }
-
-        # Show clean results summary
         display.show_summary({
-            'Val Accuracy': f"{val_acc:.1%}",
-            'F1 Macro': f"{f1_macro:.3f}",
+            'Val Accuracy': f"{self.metrics['val_accuracy']:.1%}",
+            'F1 Macro': f"{self.metrics['val_f1_macro']:.3f}",
             'F1 (QUI/STA/ACT/EXT)': f"{f1_scores[0]:.2f} / {f1_scores[1]:.2f} / {f1_scores[2]:.2f} / {f1_scores[3]:.2f}",
-            'Active/Extreme Det': f"{active_extreme_acc:.1%}",
-            'Epochs': len(history['loss']),
-            'Status': "✓ Healthy" if all_classes_present else "⚠ Collapse",
+            'Active/Extreme Det': f"{self.metrics['active_extreme_detection']:.1%}",
+            'Epochs': self.metrics['epochs_trained'],
+            'Status': "✓ Healthy" if self.metrics['all_classes_present'] else "⚠ Collapse",
         }, title="Training Complete")
 
         return self.metrics
@@ -4663,18 +4886,18 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         # Handle input shape
         if X.ndim == 2:
             if len(X) >= self.seq_len:
-                X_seq = X[-self.seq_len:].reshape(1, self.seq_len, -1)
+                x_seq = X[-self.seq_len:].reshape(1, self.seq_len, -1)
             else:
                 pad_len = self.seq_len - len(X)
-                X_padded = np.vstack([np.zeros((pad_len, X.shape[1])), X])
-                X_seq = X_padded.reshape(1, self.seq_len, -1)
+                x_padded = np.vstack([np.zeros((pad_len, X.shape[1])), X])
+                x_seq = x_padded.reshape(1, self.seq_len, -1)
         elif X.ndim == 3:
-            X_seq = X
+            x_seq = X
         else:
             raise ValueError(f"Expected 2D or 3D input, got shape {X.shape}")
 
         # Get predictions
-        outputs = self.model.predict(X_seq, verbose=0)
+        outputs = self.model.predict(x_seq, verbose=0)
 
         if isinstance(outputs, dict):
             probs = outputs['classification'][0]
@@ -4758,16 +4981,16 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
 
         # Try to load with custom objects
         try:
-            from src.models.tensorflow_models import TCNVolatilityDualHead
+            from src.models.tensorflow_models import TCNVolatilityDualHead as _tcn_vol_cls
         except ImportError:
             try:
-                from models.tensorflow_models import TCNVolatilityDualHead
+                from models.tensorflow_models import TCNVolatilityDualHead as _tcn_vol_cls
             except ImportError:
-                TCNVolatilityDualHead = None
+                _tcn_vol_cls = None
 
         custom_objects = {}
-        if TCNVolatilityDualHead is not None:
-            custom_objects['TCNVolatilityDualHead'] = TCNVolatilityDualHead
+        if _tcn_vol_cls is not None:
+            custom_objects['TCNVolatilityDualHead'] = _tcn_vol_cls
 
         self.model = keras.models.load_model(str(path), custom_objects=custom_objects)
 
@@ -4806,6 +5029,100 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
 # =============================================================================
 # TRANSFORMER TRAINER - Direction Prediction (Replacement for TCN)
 # =============================================================================
+
+
+class _PredictionCollapseCallback(tf.keras.callbacks.Callback):
+    """Detect and recover from prediction collapse during training.
+
+    Monitors validation predictions for excessive class imbalance (>95% one class)
+    and applies progressive recovery strategies: LR reduction, weight perturbation,
+    and training stop with best-weight restoration.
+    """
+
+    def __init__(self, x_val, y_val, initial_lr_reductions=0):
+        super().__init__()
+        self.x_val = x_val
+        self.y_val = y_val
+        self.check_every = 5
+        self.max_consecutive = 5
+        self.warmup_epochs = 15
+        self.consecutive_collapses = 0
+        self.lr_reductions = initial_lr_reductions
+        self.recovery_count = 0
+        self.weight_perturbations = 0
+        self.best_weights = None
+        self.best_diversity = 0.0
+
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch < self.warmup_epochs or (epoch + 1) % self.check_every != 0:
+            return
+        self._check_collapse(epoch)
+
+    def _check_collapse(self, epoch):
+        try:
+            preds = self.model.predict(self.x_val, verbose=0).flatten()
+            pred_up_pct = (preds > 0.5).mean() * 100
+            diversity = min(pred_up_pct, 100 - pred_up_pct)
+
+            if diversity > self.best_diversity:
+                self.best_diversity = diversity
+                self.best_weights = self.model.get_weights()
+
+            if pred_up_pct > 95 or pred_up_pct < 5:
+                self._handle_collapse(epoch, pred_up_pct)
+            elif self.consecutive_collapses > 0:
+                self._handle_recovery(diversity)
+        except Exception as e:
+            logger.warning(f"⚠️ Collapse check failed at epoch {epoch + 1}: {e}")
+
+    def _handle_collapse(self, epoch, pred_up_pct):
+        self.consecutive_collapses += 1
+        collapse_dir = "UP" if pred_up_pct > 95 else "DOWN"
+        logger.warning(
+            f"⚠️ PREDICTION COLLAPSE #{self.consecutive_collapses}/{self.max_consecutive} "
+            f"at epoch {epoch + 1}: {pred_up_pct:.1f}% {collapse_dir}"
+        )
+        self._apply_recovery_strategy()
+
+    def _apply_recovery_strategy(self):
+        if self.consecutive_collapses <= 2 and self.lr_reductions < 2:
+            self._reduce_learning_rate()
+        elif self.consecutive_collapses <= 4 and self.weight_perturbations < 2:
+            self._perturb_weights()
+
+        if self.consecutive_collapses >= self.max_consecutive:
+            self._stop_training()
+
+    def _reduce_learning_rate(self):
+        old_lr = _safe_get_learning_rate(self.model.optimizer)
+        new_lr = old_lr * 0.5
+        if _safe_set_learning_rate(self.model.optimizer, new_lr):
+            self.lr_reductions += 1
+            logger.warning(f"🔻 LR reduced #{self.lr_reductions}: {old_lr:.2e} → {new_lr:.2e}")
+
+    def _perturb_weights(self):
+        try:
+            weights = self.model.get_weights()
+            rng = np.random.default_rng(seed=42 + self.weight_perturbations)
+            noise_scale = 0.01 * (1 + self.weight_perturbations)
+            perturbed = [w + rng.normal(0, noise_scale, w.shape).astype(w.dtype) for w in weights]
+            self.model.set_weights(perturbed)
+            self.weight_perturbations += 1
+            logger.warning(f"🎲 Weight perturbation #{self.weight_perturbations} applied")
+        except Exception as e:
+            logger.warning(f"⚠️ Weight perturbation failed: {e}")
+
+    def _stop_training(self):
+        if self.best_weights is not None:
+            self.model.set_weights(self.best_weights)
+            logger.warning(f"🔄 Restored best weights (diversity={self.best_diversity:.1f}%)")
+        logger.error(f"🛑 STOPPING TRAINING: {self.consecutive_collapses} consecutive collapses")
+        self.model.stop_training = True
+
+    def _handle_recovery(self, diversity):
+        self.recovery_count += 1
+        logger.info(f"✅ Recovered from collapse (diversity={diversity:.1f}%)")
+        self.consecutive_collapses = 0
 
 
 class TransformerDirectionTrainer(BaseTrainer):
@@ -5261,8 +5578,7 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         feature_cols = (
             self.feature_names
-            if self.feature_names
-            else [f"feat_{i}" for i in range(x_train_flat.shape[-1])]
+            or [f"feat_{i}" for i in range(x_train_flat.shape[-1])]
         )
         df_train = pd.DataFrame(x_train_flat, columns=feature_cols)
         df_train["_target_"] = y_train_flat
@@ -5583,6 +5899,47 @@ class TransformerDirectionTrainer(BaseTrainer):
             return True
         return False
 
+    def _transfer_weights_by_name(
+        self, ckpt_weight_map: Dict[str, np.ndarray]
+    ) -> Tuple[int, int]:
+        """Transfer weights from checkpoint to model by matching layer names.
+
+        Returns:
+            Tuple of (loaded_count, skipped_count).
+        """
+        loaded, skipped = 0, 0
+        for w in self.model.weights:
+            if w.name in ckpt_weight_map:
+                ckpt_val = ckpt_weight_map[w.name]
+                if w.shape == ckpt_val.shape:
+                    w.assign(ckpt_val.astype(_get_numpy_dtype(w.dtype)))
+                    loaded += 1
+                else:
+                    skipped += 1
+                    logger.debug(
+                        f"  Shape mismatch for {w.name}: "
+                        f"model={w.shape}, checkpoint={ckpt_val.shape}"
+                    )
+            else:
+                matched = self._try_partial_name_match(w, ckpt_weight_map)
+                if matched:
+                    loaded += 1
+                else:
+                    skipped += 1
+        return loaded, skipped
+
+    def _try_partial_name_match(
+        self, weight, ckpt_weight_map: Dict[str, np.ndarray]
+    ) -> bool:
+        """Try matching a model weight to checkpoint by base name."""
+        base = weight.name.split("/")[-1].split(":")[0]
+        for cn, cv in ckpt_weight_map.items():
+            cb = cn.split("/")[-1].split(":")[0]
+            if base == cb and weight.shape == cv.shape:
+                weight.assign(cv.astype(_get_numpy_dtype(weight.dtype)))
+                return True
+        return False
+
     def _try_load_full_model_weights(self, warm_start_path: str) -> bool:
         """Strategy 2: Try loading full model and extracting weights.
 
@@ -5618,32 +5975,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             ckpt_weight_map = {
                 w.name: w.numpy() for w in existing_model.weights
             }
-            loaded, skipped = 0, 0
-            for w in self.model.weights:
-                if w.name in ckpt_weight_map:
-                    ckpt_val = ckpt_weight_map[w.name]
-                    if w.shape == ckpt_val.shape:
-                        w.assign(ckpt_val.astype(_get_numpy_dtype(w.dtype)))
-                        loaded += 1
-                    else:
-                        skipped += 1
-                        logger.debug(
-                            f"  Shape mismatch for {w.name}: "
-                            f"model={w.shape}, checkpoint={ckpt_val.shape}"
-                        )
-                else:
-                    # Try partial (base) name match
-                    base = w.name.split("/")[-1].split(":")[0]
-                    matched = False
-                    for cn, cv in ckpt_weight_map.items():
-                        cb = cn.split("/")[-1].split(":")[0]
-                        if base == cb and w.shape == cv.shape:
-                            w.assign(cv.astype(_get_numpy_dtype(w.dtype)))
-                            loaded += 1
-                            matched = True
-                            break
-                    if not matched:
-                        skipped += 1
+            loaded, skipped = self._transfer_weights_by_name(ckpt_weight_map)
 
             if loaded > 0:
                 logger.info(
@@ -5652,9 +5984,9 @@ class TransformerDirectionTrainer(BaseTrainer):
                 )
                 _safe_reset_optimizer_state(self.model)
                 return True
-            else:
-                logger.warning("⚠️ No compatible weights found – starting fresh")
-                return False
+
+            logger.warning("⚠️ No compatible weights found – starting fresh")
+            return False
         finally:
             del existing_model
 
@@ -6120,97 +6452,8 @@ class TransformerDirectionTrainer(BaseTrainer):
         self, x_val: np.ndarray, y_val: np.ndarray
     ) -> Any:
         """Create prediction collapse detection callback."""
-        from tensorflow import keras
-
-        trainer_self = self
-
-        class PredictionCollapseCallback(keras.callbacks.Callback):
-            def __init__(self):
-                super().__init__()
-                self.x_val = x_val
-                self.y_val = y_val
-                self.check_every = 5
-                self.max_consecutive = 5
-                self.warmup_epochs = 15
-                self.consecutive_collapses = 0
-                self.lr_reductions = getattr(trainer_self, "_restored_lr_reductions", 0)
-                self.recovery_count = 0
-                self.weight_perturbations = 0
-                self.best_weights = None
-                self.best_diversity = 0.0
-
-            def on_epoch_end(self, epoch, logs=None):
-                if epoch < self.warmup_epochs or (epoch + 1) % self.check_every != 0:
-                    return
-                self._check_collapse(epoch)
-
-            def _check_collapse(self, epoch):
-                try:
-                    preds = self.model.predict(self.x_val, verbose=0).flatten()
-                    pred_up_pct = (preds > 0.5).mean() * 100
-                    diversity = min(pred_up_pct, 100 - pred_up_pct)
-
-                    if diversity > self.best_diversity:
-                        self.best_diversity = diversity
-                        self.best_weights = self.model.get_weights()
-
-                    if pred_up_pct > 95 or pred_up_pct < 5:
-                        self._handle_collapse(epoch, pred_up_pct)
-                    elif self.consecutive_collapses > 0:
-                        self._handle_recovery(diversity)
-                except Exception as e:
-                    logger.warning(f"⚠️ Collapse check failed at epoch {epoch + 1}: {e}")
-
-            def _handle_collapse(self, epoch, pred_up_pct):
-                self.consecutive_collapses += 1
-                collapse_dir = "UP" if pred_up_pct > 95 else "DOWN"
-                logger.warning(
-                    f"⚠️ PREDICTION COLLAPSE #{self.consecutive_collapses}/{self.max_consecutive} "
-                    f"at epoch {epoch + 1}: {pred_up_pct:.1f}% {collapse_dir}"
-                )
-                self._apply_recovery_strategy()
-
-            def _apply_recovery_strategy(self):
-                if self.consecutive_collapses <= 2 and self.lr_reductions < 2:
-                    self._reduce_learning_rate()
-                elif self.consecutive_collapses <= 4 and self.weight_perturbations < 2:
-                    self._perturb_weights()
-
-                if self.consecutive_collapses >= self.max_consecutive:
-                    self._stop_training()
-
-            def _reduce_learning_rate(self):
-                old_lr = _safe_get_learning_rate(self.model.optimizer)
-                new_lr = old_lr * 0.5
-                if _safe_set_learning_rate(self.model.optimizer, new_lr):
-                    self.lr_reductions += 1
-                    logger.warning(f"🔻 LR reduced #{self.lr_reductions}: {old_lr:.2e} → {new_lr:.2e}")
-
-            def _perturb_weights(self):
-                try:
-                    weights = self.model.get_weights()
-                    rng = np.random.default_rng(seed=42 + self.weight_perturbations)
-                    noise_scale = 0.01 * (1 + self.weight_perturbations)
-                    perturbed = [w + rng.normal(0, noise_scale, w.shape).astype(w.dtype) for w in weights]
-                    self.model.set_weights(perturbed)
-                    self.weight_perturbations += 1
-                    logger.warning(f"🎲 Weight perturbation #{self.weight_perturbations} applied")
-                except Exception as e:
-                    logger.warning(f"⚠️ Weight perturbation failed: {e}")
-
-            def _stop_training(self):
-                if self.best_weights is not None:
-                    self.model.set_weights(self.best_weights)
-                    logger.warning(f"🔄 Restored best weights (diversity={self.best_diversity:.1f}%)")
-                logger.error(f"🛑 STOPPING TRAINING: {self.consecutive_collapses} consecutive collapses")
-                self.model.stop_training = True
-
-            def _handle_recovery(self, diversity):
-                self.recovery_count += 1
-                logger.info(f"✅ Recovered from collapse (diversity={diversity:.1f}%)")
-                self.consecutive_collapses = 0
-
-        return PredictionCollapseCallback()
+        initial_lr_reductions = getattr(self, "_restored_lr_reductions", 0)
+        return _PredictionCollapseCallback(x_val, y_val, initial_lr_reductions)
 
     def _make_proactive_collapse_callback(self) -> Any:
         """Create proactive collapse prevention callback."""
@@ -6439,11 +6682,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         """Add weight norm metrics for regularization monitoring."""
         try:
             total_weight_norm = 0.0
-            trainable_params = 0
             for layer in self.model.layers:
                 for w in layer.trainable_weights:
                     total_weight_norm += float(tf.norm(w).numpy())
-                    trainable_params += int(tf.size(w).numpy())
             avg_weight_norm = total_weight_norm / max(
                 1, len([w for layer in self.model.layers for w in layer.trainable_weights])
             )
@@ -6647,6 +6888,56 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         return effective_lr
 
+    def _align_features(self, x_reshaped: np.ndarray) -> np.ndarray:
+        """Align input features to match model's expected feature count."""
+        model_n_features = self.model.input_shape[-1]
+        current_n_features = x_reshaped.shape[-1]
+
+        if current_n_features <= model_n_features:
+            return x_reshaped
+
+        if (
+            self.selected_indices is not None
+            and len(self.selected_indices) == model_n_features
+        ):
+            try:
+                return x_reshaped[:, self.selected_indices]
+            except (IndexError, ValueError) as e:
+                logger.warning(f"Feature selection failed: {e}")
+
+        logger.warning(
+            f"Feature count mismatch: input has {current_n_features}, "
+            f"model expects {model_n_features}. Using first {model_n_features} features."
+        )
+        return x_reshaped[:, :model_n_features]
+
+    def _prepare_predict_input(self, x_scaled: np.ndarray) -> np.ndarray:
+        """Prepare scaled data for model prediction (flat or sequence)."""
+        model_input_shape = self.model.input_shape
+        is_flat_model = len(model_input_shape) == 2  # (None, n_features)
+
+        if is_flat_model:
+            return x_scaled[-1:] if len(x_scaled) > 1 else x_scaled
+
+        # Sequence model - create sequence from last seq_len rows
+        if len(x_scaled) >= self.seq_len:
+            return x_scaled[-self.seq_len:].reshape(1, self.seq_len, -1)
+
+        # Pad with zeros if not enough data
+        pad_len = self.seq_len - len(x_scaled)
+        x_padded = np.vstack([np.zeros((pad_len, x_scaled.shape[1])), x_scaled])
+        return x_padded.reshape(1, self.seq_len, -1)
+
+    def _should_use_ema(self, use_ema: bool) -> bool:
+        """Check whether EMA weights should be applied for inference."""
+        return (
+            use_ema
+            and self._use_ema
+            and self.ema is not None
+            and self.ema._initialized
+            and self.config.use_ema_for_inference
+        )
+
     def predict(self, X: np.ndarray, use_ema: bool = True) -> Dict[str, Any]:
         """
         Predict direction (0 or 1) with probability.
@@ -6663,85 +6954,31 @@ class TransformerDirectionTrainer(BaseTrainer):
         if not self.is_trained:
             raise RuntimeError(MODEL_NOT_TRAINED_ERROR)
 
-        # Apply feature selection if used during training
-        x_reshaped = X.reshape(-1, X.shape[-1])
-
-        # Get expected number of features from model input shape
-        model_n_features = self.model.input_shape[-1]
-        current_n_features = x_reshaped.shape[-1]
-
-        # Apply feature selection if input has more features than model expects
-        if current_n_features > model_n_features:
-            if (
-                self.selected_indices is not None
-                and len(self.selected_indices) == model_n_features
-            ):
-                try:
-                    x_reshaped = x_reshaped[:, self.selected_indices]
-                except (IndexError, ValueError) as e:
-                    logger.warning(f"Feature selection failed: {e}")
-            else:
-                # No valid selection indices - try to use first N features as fallback
-                logger.warning(
-                    f"Feature count mismatch: input has {current_n_features}, "
-                    f"model expects {model_n_features}. Using first {model_n_features} features."
-                )
-                x_reshaped = x_reshaped[:, :model_n_features]
-
-        # Scale
+        x_reshaped = self._align_features(X.reshape(-1, X.shape[-1]))
         x_scaled = self.scaler.transform(x_reshaped)
+        x_input = self._prepare_predict_input(x_scaled)
 
-        # Check model input shape to determine if sequence or flat input
-        model_input_shape = self.model.input_shape
-        is_flat_model = len(model_input_shape) == 2  # (None, n_features)
-
-        if is_flat_model:
-            # Flat input model - use last row only
-            x_input = x_scaled[-1:] if len(x_scaled) > 1 else x_scaled
-        else:
-            # Sequence model - create sequence from last seq_len rows
-            if len(x_scaled) >= self.seq_len:
-                x_input = x_scaled[-self.seq_len :].reshape(1, self.seq_len, -1)
-            else:
-                # Pad with zeros if not enough data
-                pad_len = self.seq_len - len(x_scaled)
-                x_padded = np.vstack([np.zeros((pad_len, x_scaled.shape[1])), x_scaled])
-                x_input = x_padded.reshape(1, self.seq_len, -1)
-
-        # Use EMA weights for stable inference if available
-        use_ema_weights = (
-            use_ema
-            and self._use_ema
-            and self.ema is not None
-            and self.ema._initialized
-            and self.config.use_ema_for_inference
-        )
-
+        use_ema_weights = self._should_use_ema(use_ema)
         if use_ema_weights:
-            self.ema.apply()  # Apply EMA weights
+            self.ema.apply()
 
         try:
             prob_raw = float(self.model.predict(x_input, verbose=0)[0, 0])
         finally:
             if use_ema_weights:
-                self.ema.restore()  # Restore training weights
+                self.ema.restore()
 
         # === APPLY OUTPUT CALIBRATION ===
-        # Use adaptive threshold instead of shifting probabilities
         calibration = getattr(self, "output_calibration", None)
-        threshold = 0.5  # Default threshold
+        threshold = 0.5
         if calibration and calibration.get("enabled", False):
             threshold = calibration.get("threshold", 0.5)
 
         direction = 1 if prob_raw > threshold else 0
 
-        # For confidence, measure distance from threshold (not from 0.5)
-        # Normalize to 0-1 range based on typical distribution
         std = calibration.get("std", 0.15) if calibration else 0.15
-        confidence_distance = abs(prob_raw - threshold) / (
-            2 * std
-        )  # Normalize by 2 std
-        confidence = min(1.0, confidence_distance)  # Cap at 1.0
+        confidence_distance = abs(prob_raw - threshold) / (2 * std)
+        confidence = min(1.0, confidence_distance)
 
         return {
             "direction": direction,
@@ -6885,6 +7122,296 @@ class TransformerDirectionTrainer(BaseTrainer):
             f"(EMA={self._use_ema}, EWC={self._use_ewc}, Replay={self._use_replay}, cross-version=True)"
         )
 
+    def _load_model_cross_version(self, path: Path) -> Tuple[Any, list]:
+        """Strategy 0: Load model with cross-version loader."""
+        errors = []
+        try:
+            from src.utils.keras_model_loader import load_keras_model
+            model, load_metadata = load_keras_model(str(path), compile=False)
+            if load_metadata.get("success"):
+                logger.info(
+                    f"✓ Model loaded with cross-version loader ({load_metadata.get('approach_used')})"
+                )
+                return model, errors
+            return None, errors
+        except ImportError:
+            errors.append("Cross-version loader not available")
+        except Exception as e:
+            errors.append(f"Cross-version: {e}")
+        return None, errors
+
+    def _load_model_standard(self, path: Path) -> Tuple[Any, list]:
+        """Strategy 1-3: Try standard, tf.keras, and safe_mode=False loaders."""
+        import tensorflow as tf
+        from tensorflow import keras
+
+        errors = []
+        loaders = [
+            ("Standard", lambda: keras.models.load_model(str(path), compile=False)),
+            ("TF-native", lambda: tf.keras.models.load_model(str(path), compile=False)),
+            ("Safe-mode", lambda: keras.models.load_model(str(path), compile=False, safe_mode=False)),
+        ]
+        for name, loader_fn in loaders:
+            try:
+                model = loader_fn()
+                logger.info(f"✓ Model loaded with {name} loader")
+                return model, errors
+            except Exception as e:
+                errors.append(f"{name}: {e}")
+        return None, errors
+
+    def _load_model_from_arch_weights(self, path: Path) -> Tuple[Any, list]:
+        """Strategy 3.5: Load from arch.json + weights.h5."""
+        from tensorflow import keras
+
+        errors = []
+        arch_path = path.with_suffix(ARCH_JSON_SUFFIX)
+        weights_path = path.with_suffix(WEIGHTS_H5_SUFFIX)
+        if not (arch_path.exists() and weights_path.exists()):
+            return None, errors
+        try:
+            with open(arch_path) as f:
+                arch_json = f.read()
+            model = keras.models.model_from_json(arch_json)
+            model.load_weights(str(weights_path))
+            logger.info("✓ Model loaded from arch.json + weights.h5 (cross-version)")
+            return model, errors
+        except Exception as e:
+            errors.append(f"Arch+Weights: {e}")
+        return None, errors
+
+    def _rebuild_transformer_from_meta(self, path: Path) -> Tuple[Any, list]:
+        """Strategy 4: Rebuild model from metadata and load weights."""
+        import tensorflow as tf
+        from tensorflow import keras
+
+        errors = []
+        meta_path = path.with_suffix(META_PKL_SUFFIX)
+        if not meta_path.exists():
+            return None, errors
+
+        try:
+            with open(meta_path, "rb") as f:
+                meta = pickle.load(f)
+
+            model = self._build_transformer_from_config(meta, keras, tf)
+            self._try_apply_ema_to_rebuilt_model(model, path)
+            return model, errors
+        except Exception as e:
+            errors.append(f"Rebuild: {e}")
+        return None, errors
+
+    def _build_transformer_from_config(self, meta: dict, keras: Any, tf: Any) -> Any:
+        """Reconstruct Transformer architecture from saved metadata."""
+        n_features = meta.get("n_features", 59)
+        seq_len = meta.get("seq_len", 60)
+        config = meta.get("config", {})
+
+        d_model = config.get("transformer_d_model", 32)
+        num_heads = config.get("transformer_num_heads", 4)
+        num_layers = config.get("transformer_num_layers", 2)
+        dff = config.get("transformer_dff", 64)
+        dropout = config.get("transformer_dropout", 0.2)
+        final_dense_units = config.get("final_dense_units", 16)
+        final_dense_activation = config.get("final_dense_activation", "tanh")
+        final_dense_dropout = config.get("final_dense_dropout", 0.15)
+
+        logger.info(
+            f"Rebuilding Transformer: n_features={n_features}, seq_len={seq_len}, "
+            f"d_model={d_model}, final_dense={final_dense_units}"
+        )
+
+        inp = keras.Input(shape=(seq_len, n_features), name="features")
+        x = keras.layers.GaussianNoise(0.15)(inp)
+        x = keras.layers.SpatialDropout1D(0.2)(x)
+        x = keras.layers.Dense(d_model, name="input_projection")(x)
+        x = keras.layers.Dropout(0.3)(x)
+
+        # Positional encoding
+        positions = np.arange(seq_len)[:, np.newaxis]
+        dims = np.arange(d_model)[np.newaxis, :]
+        angles = positions / np.power(10000, (2 * (dims // 2)) / d_model)
+        pos_encoding = np.zeros((seq_len, d_model))
+        pos_encoding[:, 0::2] = np.sin(angles[:, 0::2])
+        pos_encoding[:, 1::2] = np.cos(angles[:, 1::2])
+        x = x + tf.constant(pos_encoding[np.newaxis, :, :].astype(np.float32))
+
+        for i in range(num_layers):
+            attn_output = keras.layers.MultiHeadAttention(
+                num_heads=num_heads,
+                key_dim=d_model // num_heads,
+                name=f"transformer_{i}_mha",
+            )(x, x)
+            attn_output = keras.layers.Dropout(dropout)(attn_output)
+            x = keras.layers.LayerNormalization(
+                epsilon=1e-6, name=f"transformer_{i}_ln1"
+            )(x + attn_output)
+
+            ffn = keras.layers.Dense(
+                dff, activation="relu", name=f"transformer_{i}_ffn1"
+            )(x)
+            ffn = keras.layers.Dense(d_model, name=f"transformer_{i}_ffn2")(ffn)
+            ffn = keras.layers.Dropout(dropout)(ffn)
+            x = keras.layers.LayerNormalization(
+                epsilon=1e-6, name=f"transformer_{i}_ln2"
+            )(x + ffn)
+
+        x = keras.layers.GlobalAveragePooling1D()(x)
+        x = keras.layers.Dense(final_dense_units, activation=final_dense_activation)(x)
+        x = keras.layers.Dropout(final_dense_dropout)(x)
+        direction = keras.layers.Dense(
+            1, activation="sigmoid", name="direction", dtype="float32"
+        )(x)
+
+        model = keras.Model(inputs=inp, outputs=direction, name="transformer_direction")
+        logger.info("✓ Model architecture rebuilt from metadata")
+        return model
+
+    def _try_apply_ema_to_rebuilt_model(self, model: Any, path: Path) -> None:
+        """Try to load and apply EMA weights to a rebuilt model."""
+        ema_path = path.with_suffix(EMA_PKL_SUFFIX)
+        if not ema_path.exists():
+            return
+
+        with open(ema_path, "rb") as f:
+            ema_data = pickle.load(f)
+        ema_weights = ema_data.get("ema_weights", [])
+        model_weights = model.trainable_weights
+
+        if len(ema_weights) != len(model_weights):
+            logger.debug(
+                f"EMA weights count ({len(ema_weights)}) != "
+                f"model weights ({len(model_weights)}), will re-init"
+            )
+            return
+
+        loaded_count, skipped_count = 0, 0
+        for w, ema_w in zip(model_weights, ema_weights):
+            if w.shape != tuple(ema_w.shape):
+                logger.warning(f"Shape mismatch for {w.name}: model={w.shape}, EMA={ema_w.shape}")
+                skipped_count += 1
+                continue
+            try:
+                w.assign(ema_w.astype(_get_numpy_dtype(w.dtype)))
+                loaded_count += 1
+            except Exception as assign_err:
+                logger.warning(f"Could not assign EMA weight to {w.name}: {assign_err}")
+                skipped_count += 1
+
+        if skipped_count > 0:
+            logger.warning(
+                f"⚠️ Loaded {loaded_count} EMA weights, "
+                f"skipped {skipped_count} due to shape mismatch"
+            )
+        else:
+            logger.info(f"✓ Loaded {loaded_count} EMA weights into rebuilt model")
+
+    def _load_model_with_strategies(self, path: Path) -> Any:
+        """Try all model loading strategies in order, returning loaded model or raising."""
+        all_errors = []
+
+        strategies = [
+            self._load_model_cross_version,
+            self._load_model_standard,
+            self._load_model_from_arch_weights,
+            self._rebuild_transformer_from_meta,
+        ]
+
+        for strategy in strategies:
+            model, errors = strategy(path)
+            all_errors.extend(errors)
+            if model is not None:
+                return model
+
+        raise RuntimeError(
+            f"Failed to load model from {path}. Errors: {'; '.join(all_errors)}"
+        )
+
+    def _load_metadata(self, path: Path) -> None:
+        """Load model metadata from .meta.pkl file."""
+        meta_path = path.with_suffix(META_PKL_SUFFIX)
+        with open(meta_path, "rb") as f:
+            meta = pickle.load(f)
+
+        self.scaler = meta["scaler"]
+        self.seq_len = meta["seq_len"]
+        self.metrics = meta["metrics"]
+        self.feature_names = meta.get("feature_names")
+        self.n_features = meta.get("n_features")
+        self.selected_indices = meta.get("selected_indices")
+        self._is_warm_start = meta.get("is_warm_start", False)
+        self._use_ema = meta.get("ema_enabled", True)
+        self._use_ewc = meta.get("ewc_enabled", True)
+        self._use_replay = meta.get("replay_enabled", True)
+
+        self.output_calibration = meta.get("output_calibration", None)
+        if self.output_calibration and self.output_calibration.get("enabled"):
+            logger.info(
+                f"📐 Output calibration loaded: bias={self.output_calibration['bias']:.4f}"
+            )
+
+        if meta.get("lineage"):
+            self.lineage = TrainingLineage.from_dict(meta["lineage"])
+            logger.info(
+                f"📊 Lineage loaded: checkpoint={self.lineage.checkpoint_id}, "
+                f"cumulative_epochs={self.lineage.cumulative_epochs}"
+            )
+
+    def _load_ema_state(self, path: Path) -> None:
+        """Load EMA weights for inference."""
+        ema_path = path.with_suffix(EMA_PKL_SUFFIX)
+        if not (ema_path.exists() and self._use_ema):
+            return
+
+        try:
+            with open(ema_path, "rb") as f:
+                ema_data = pickle.load(f)
+
+            ema_weights = ema_data.get("ema_weights")
+            if not isinstance(ema_weights, list) or not ema_weights:
+                raise ValueError("EMA weights missing or invalid")
+
+            if any(getattr(w, "shape", ()) == () for w in ema_weights):
+                raise ValueError("EMA weights contain scalar tensors")
+
+            self.ema = EMACallback(
+                self.model,
+                decay=ema_data.get("decay", self.config.ema_decay),
+                update_every=ema_data.get("update_every", self.config.ema_update_every),
+            )
+            self.ema.set_ema_weights(
+                ema_weights, weight_names=ema_data.get("ema_weight_names")
+            )
+            self.ema.step_counter = ema_data.get("step_counter", 0)
+            logger.info(f"📊 EMA weights loaded (decay={self.ema.decay})")
+        except Exception as e:
+            logger.info(f"ℹ EMA load skipped: {e}")
+            try:
+                ema_path.unlink()
+            except OSError:
+                pass
+
+    def _load_ewc_state(self, path: Path) -> None:
+        """Load EWC penalty state for continual learning."""
+        ewc_path = path.with_suffix(EWC_PKL_SUFFIX)
+        if ewc_path.exists() and self._use_ewc:
+            self.ewc = EWCPenalty(
+                self.model,
+                ewc_lambda=self.config.ewc_lambda,
+                gamma=self.config.ewc_gamma,
+            )
+            self.ewc.load(str(ewc_path))
+
+    def _load_replay_state(self, instrument: str) -> None:
+        """Load replay buffer for continual learning."""
+        if self._use_replay:
+            self.replay_buffer = ReplayBuffer(
+                capacity_ratio=self.config.replay_buffer_ratio,
+                mix_ratio=self.config.replay_mix_ratio,
+                buffer_dir=self.config.replay_buffer_dir,
+            )
+            self.replay_buffer.load(instrument)
+
     def load(self, path: str, instrument: str = "UNKNOWN") -> None:
         """
         Load Transformer model with all continual learning state.
@@ -6898,304 +7425,27 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         Handles Keras 2.x/3.x compatibility for models trained on Colab.
         """
-        import tensorflow as tf
-        from tensorflow import keras
-
         path = Path(path)
 
-        # Try multiple loading strategies for Keras 2.x/3.x compatibility
-        model = None
-        load_errors = []
-
-        # Strategy 0: Use cross-version loader (handles Keras 2.15.0 -> 3.x migration)
-        try:
-            from src.utils.keras_model_loader import load_keras_model
-
-            model, load_metadata = load_keras_model(
-                str(path),
-                compile=False,
-                # Let the loader auto-detect the best approach based on Keras version
-                # For Keras 3.x, this will try keras_native first
-            )
-            if load_metadata.get("success"):
-                logger.info(
-                    f"✓ Model loaded with cross-version loader ({load_metadata.get('approach_used')})"
-                )
-            else:
-                model = None
-        except ImportError:
-            load_errors.append("Cross-version loader not available")
-        except Exception as e:
-            load_errors.append(f"Cross-version: {e}")
-            model = None
-
-        # Strategy 1: Standard load (works if same Keras version)
-        if model is None:
-            try:
-                model = keras.models.load_model(str(path), compile=False)
-                logger.info("✓ Model loaded with standard loader")
-            except Exception as e:
-                load_errors.append(f"Standard: {e}")
-
-        # Strategy 2: Use tf.keras.models.load_model (TF-native)
-        if model is None:
-            try:
-                model = tf.keras.models.load_model(str(path), compile=False)
-                logger.info("✓ Model loaded with tf.keras loader")
-            except Exception as e:
-                load_errors.append(f"TF-native: {e}")
-
-        # Strategy 3: Load with safe_mode=False for Keras 3 models
-        if model is None:
-            try:
-                model = keras.models.load_model(
-                    str(path), compile=False, safe_mode=False
-                )
-                logger.info("✓ Model loaded with safe_mode=False")
-            except Exception as e:
-                load_errors.append(f"Safe-mode: {e}")
-
-        # Strategy 3.5: Load from arch.json + weights.h5 (cross-version portable format)
-        arch_path = path.with_suffix(ARCH_JSON_SUFFIX)
-        weights_path = path.with_suffix(WEIGHTS_H5_SUFFIX)
-        if model is None and arch_path.exists() and weights_path.exists():
-            try:
-                with open(arch_path) as f:
-                    arch_json = f.read()
-                model = keras.models.model_from_json(arch_json)
-                model.load_weights(str(weights_path))
-                logger.info(
-                    "✓ Model loaded from arch.json + weights.h5 (cross-version)"
-                )
-            except Exception as e:
-                load_errors.append(f"Arch+Weights: {e}")
-
-        # Strategy 4: Rebuild model from metadata and load weights only
-        if model is None:
-            meta_path = path.with_suffix(META_PKL_SUFFIX)
-            if meta_path.exists():
-                try:
-                    with open(meta_path, "rb") as f:
-                        meta = pickle.load(f)
-
-                    n_features = meta.get("n_features", 59)
-                    seq_len = meta.get("seq_len", 60)
-                    config = meta.get("config", {})
-
-                    # Get transformer hyperparams from config
-                    d_model = config.get("transformer_d_model", 32)
-                    num_heads = config.get("transformer_num_heads", 4)
-                    num_layers = config.get("transformer_num_layers", 2)
-                    dff = config.get("transformer_dff", 64)
-                    dropout = config.get("transformer_dropout", 0.2)
-
-                    # Get output head config (critical for EMA weight compatibility)
-                    final_dense_units = config.get("final_dense_units", 16)
-                    final_dense_activation = config.get(
-                        "final_dense_activation", "tanh"
-                    )
-                    final_dense_dropout = config.get("final_dense_dropout", 0.15)
-
-                    logger.info(
-                        f"Rebuilding Transformer: n_features={n_features}, seq_len={seq_len}, "
-                        f"d_model={d_model}, final_dense={final_dense_units}"
-                    )
-
-                    # Rebuild the actual Transformer architecture
-                    inp = keras.Input(shape=(seq_len, n_features), name="features")
-                    x = keras.layers.GaussianNoise(0.15)(inp)
-                    x = keras.layers.SpatialDropout1D(0.2)(x)
-
-                    # Input projection
-                    x = keras.layers.Dense(d_model, name="input_projection")(x)
-                    x = keras.layers.Dropout(0.3)(x)
-
-                    # Add positional encoding (simplified for rebuild)
-                    positions = np.arange(seq_len)[:, np.newaxis]
-                    dims = np.arange(d_model)[np.newaxis, :]
-                    angles = positions / np.power(10000, (2 * (dims // 2)) / d_model)
-                    pos_encoding = np.zeros((seq_len, d_model))
-                    pos_encoding[:, 0::2] = np.sin(angles[:, 0::2])
-                    pos_encoding[:, 1::2] = np.cos(angles[:, 1::2])
-                    pos_encoding = pos_encoding[np.newaxis, :, :].astype(np.float32)
-                    x = x + tf.constant(pos_encoding)
-
-                    # Transformer encoder layers
-                    for i in range(num_layers):
-                        # Multi-head attention
-                        attn_output = keras.layers.MultiHeadAttention(
-                            num_heads=num_heads,
-                            key_dim=d_model // num_heads,
-                            name=f"transformer_{i}_mha",
-                        )(x, x)
-                        attn_output = keras.layers.Dropout(dropout)(attn_output)
-                        x = keras.layers.LayerNormalization(
-                            epsilon=1e-6, name=f"transformer_{i}_ln1"
-                        )(x + attn_output)
-
-                        # FFN
-                        ffn = keras.layers.Dense(
-                            dff, activation="relu", name=f"transformer_{i}_ffn1"
-                        )(x)
-                        ffn = keras.layers.Dense(d_model, name=f"transformer_{i}_ffn2")(
-                            ffn
-                        )
-                        ffn = keras.layers.Dropout(dropout)(ffn)
-                        x = keras.layers.LayerNormalization(
-                            epsilon=1e-6, name=f"transformer_{i}_ln2"
-                        )(x + ffn)
-
-                    # Global pooling and output
-                    x = keras.layers.GlobalAveragePooling1D()(x)
-                    x = keras.layers.Dense(
-                        final_dense_units, activation=final_dense_activation
-                    )(x)
-                    x = keras.layers.Dropout(final_dense_dropout)(x)
-                    direction = keras.layers.Dense(
-                        1, activation="sigmoid", name="direction", dtype="float32"
-                    )(x)
-
-                    model = keras.Model(
-                        inputs=inp, outputs=direction, name="transformer_direction"
-                    )
-                    logger.info("✓ Model architecture rebuilt from metadata")
-
-                    # If model was rebuilt, we need to load weights from EMA
-                    ema_path = path.with_suffix(EMA_PKL_SUFFIX)
-                    if ema_path.exists():
-                        with open(ema_path, "rb") as f:
-                            ema_data = pickle.load(f)
-                        ema_weights = ema_data.get("ema_weights", [])
-
-                        # Try to apply EMA weights directly to rebuilt model
-                        # Cast to match dtype for Metal/Keras 3.x compatibility
-                        model_weights = model.trainable_weights
-                        if len(ema_weights) == len(model_weights):
-                            loaded_count = 0
-                            skipped_count = 0
-                            for w, ema_w in zip(model_weights, ema_weights):
-                                # Shape validation safety net
-                                if w.shape != tuple(ema_w.shape):
-                                    logger.warning(
-                                        f"Shape mismatch for {w.name}: model={w.shape}, EMA={ema_w.shape}"
-                                    )
-                                    skipped_count += 1
-                                    continue
-                                try:
-                                    w.assign(ema_w.astype(_get_numpy_dtype(w.dtype)))
-                                    loaded_count += 1
-                                except Exception as assign_err:
-                                    logger.warning(
-                                        f"Could not assign EMA weight to {w.name}: {assign_err}"
-                                    )
-                                    skipped_count += 1
-                            if skipped_count > 0:
-                                logger.warning(
-                                    f"⚠️ Loaded {loaded_count} EMA weights, "
-                                    f"skipped {skipped_count} due to shape mismatch"
-                                )
-                            else:
-                                logger.info(
-                                    f"✓ Loaded {loaded_count} EMA weights into rebuilt model"
-                                )
-                        else:
-                            logger.debug(
-                                f"EMA weights count ({len(ema_weights)}) != "
-                                f"model weights ({len(model_weights)}), will re-init"
-                            )
-
-                except Exception as e:
-                    load_errors.append(f"Rebuild: {e}")
-
-        if model is None:
-            all_errors = "; ".join(load_errors)
-            raise RuntimeError(
-                f"Failed to load model from {path}. Errors: {all_errors}"
-            )
-
-        self.model = model
-
-        # Load metadata
-        meta_path = path.with_suffix(META_PKL_SUFFIX)
-        with open(meta_path, "rb") as f:
-            meta = pickle.load(f)
-
-        self.scaler = meta["scaler"]
-        self.seq_len = meta["seq_len"]
-        self.metrics = meta["metrics"]
-        self.feature_names = meta.get("feature_names")
-        self.n_features = meta.get("n_features")
-        self.selected_indices = meta.get(
-            "selected_indices"
-        )  # Feature selection indices
-        self._is_warm_start = meta.get("is_warm_start", False)
-        self._use_ema = meta.get("ema_enabled", True)
-        self._use_ewc = meta.get("ewc_enabled", True)
-        self._use_replay = meta.get("replay_enabled", True)
-
-        # Load output calibration (for bias correction)
-        self.output_calibration = meta.get("output_calibration", None)
-        if self.output_calibration and self.output_calibration.get("enabled"):
-            logger.info(
-                f"📐 Output calibration loaded: bias={self.output_calibration['bias']:.4f}"
-            )
-
-        # Load lineage
-        if meta.get("lineage"):
-            self.lineage = TrainingLineage.from_dict(meta["lineage"])
-            logger.info(
-                f"📊 Lineage loaded: checkpoint={self.lineage.checkpoint_id}, "
-                f"cumulative_epochs={self.lineage.cumulative_epochs}"
-            )
-
-        # Load EMA weights
-        ema_path = path.with_suffix(EMA_PKL_SUFFIX)
-        if ema_path.exists() and self._use_ema:
-            with open(ema_path, "rb") as f:
-                ema_data = pickle.load(f)
-            self.ema = EMACallback(
-                self.model,
-                decay=ema_data.get("decay", self.config.ema_decay),
-                update_every=ema_data.get("update_every", self.config.ema_update_every),
-            )
-            # Pass weight names for graceful mismatch handling
-            self.ema.set_ema_weights(
-                ema_data["ema_weights"], weight_names=ema_data.get("ema_weight_names")
-            )
-            self.ema.step_counter = ema_data.get("step_counter", 0)
-            logger.info(f"📊 EMA weights loaded (decay={self.ema.decay})")
-
-        # Load EWC state
-        ewc_path = path.with_suffix(EWC_PKL_SUFFIX)
-        if ewc_path.exists() and self._use_ewc:
-            self.ewc = EWCPenalty(
-                self.model,
-                ewc_lambda=self.config.ewc_lambda,
-                gamma=self.config.ewc_gamma,
-            )
-            self.ewc.load(str(ewc_path))
-
-        # Load replay buffer
-        if self._use_replay:
-            self.replay_buffer = ReplayBuffer(
-                capacity_ratio=self.config.replay_buffer_ratio,
-                mix_ratio=self.config.replay_mix_ratio,
-                buffer_dir=self.config.replay_buffer_dir,
-            )
-            self.replay_buffer.load(instrument)
+        self.model = self._load_model_with_strategies(path)
+        self._load_metadata(path)
+        self._load_ema_state(path)
+        self._load_ewc_state(path)
+        self._load_replay_state(instrument)
 
         self.is_trained = True
-
         logger.info(f"✅ Transformer loaded from {path}")
 
-        # Check for drift if lineage exists
-        if self.lineage and self.metrics.get("val_accuracy"):
-            if self.lineage.check_drift(
+        if (
+            self.lineage
+            and self.metrics.get("val_accuracy")
+            and self.lineage.check_drift(
                 self.metrics["val_accuracy"], self.config.drift_threshold
-            ):
-                logger.info(
-                    "📊 Model performance below historical best - consider retraining if persistent"
-                )
+            )
+        ):
+            logger.info(
+                "📊 Model performance below historical best - consider retraining if persistent"
+            )
 
 
 # =============================================================================
@@ -8495,14 +8745,11 @@ class RegimeLGBMTrainer(BaseTrainer):
             Dict mapping regime name to metrics dict
         """
         try:
-            import lightgbm as lgb
+            import lightgbm  # noqa: F401 - verify availability
+            del lightgbm
         except ImportError:
             logger.error(LGBM_NOT_INSTALLED_ERROR)
             raise
-
-        from sklearn.preprocessing import StandardScaler
-        from sklearn.metrics import accuracy_score, f1_score
-        import pandas as pd
 
         # Import regime names from data loaders
         try:
@@ -8527,109 +8774,123 @@ class RegimeLGBMTrainer(BaseTrainer):
 
         for regime_id in range(5):
             regime_name = REGIME_NAMES.get(regime_id, f"REGIME_{regime_id}")
-
-            # Filter data for this regime
-            train_mask = regimes_train == regime_id
-            val_mask = regimes_val == regime_id
-
-            n_train = train_mask.sum()
-            n_val = val_mask.sum()
-
-            logger.info(f"\n{'=' * 60}")
-            logger.info(f"Training {regime_name} model (train={n_train}, val={n_val})")
-            logger.info(f"{'=' * 60}")
-
-            # Skip if insufficient samples
-            if n_train < min_samples_per_regime:
-                logger.warning(
-                    f"Skipping {regime_name}: only {n_train} samples "
-                    f"(min={min_samples_per_regime})"
-                )
-                all_metrics[regime_name] = {
-                    "status": "skipped",
-                    "reason": f"insufficient_samples ({n_train})",
-                    "n_train": n_train,
-                    "n_val": n_val,
-                }
-                continue
-
-            x_train_regime = X_train[train_mask]
-            y_train_regime = y_train[train_mask]
-            x_val_regime = x_val[val_mask] if n_val > 0 else x_train_regime[:100]
-            y_val_regime = y_val[val_mask] if n_val > 0 else y_train_regime[:100]
-
-            # Scale features per regime
-            scaler = StandardScaler()
-            x_train_scaled = scaler.fit_transform(x_train_regime)
-            x_val_scaled = scaler.transform(x_val_regime)
-
-            # Convert to DataFrame for LightGBM
-            x_train_df = pd.DataFrame(x_train_scaled, columns=self.feature_names)
-            x_val_df = pd.DataFrame(x_val_scaled, columns=self.feature_names)
-
-            # Get regime-specific hyperparameters
-            params = get_regime_lgbm_params(regime_name)
-
-            # Create and train model
-            model = lgb.LGBMClassifier(**params)
-
-            try:
-                model.fit(
-                    x_train_df,
-                    y_train_regime,
-                    eval_set=[(x_val_df, y_val_regime)],
-                )
-            except Exception as e:
-                logger.error(f"Training failed for {regime_name}: {e}")
-                all_metrics[regime_name] = {
-                    "status": "failed",
-                    "reason": str(e),
-                }
-                continue
-
-            # Calculate metrics
-            y_pred_train = model.predict(x_train_df)
-            y_pred_val = model.predict(x_val_df)
-
-            train_acc = accuracy_score(y_train_regime, y_pred_train)
-            val_acc = accuracy_score(y_val_regime, y_pred_val) if n_val > 0 else 0.0
-            val_f1 = (
-                f1_score(y_val_regime, y_pred_val, zero_division=0)
-                if n_val > 0
-                else 0.0
+            metrics = self._train_single_regime(
+                regime_id, regime_name,
+                X_train, y_train, regimes_train,
+                x_val, y_val, regimes_val,
+                min_samples_per_regime,
             )
-
-            # Feature importance
-            importances = model.feature_importances_
-            top_features = sorted(
-                zip(self.feature_names, importances), key=lambda x: x[1], reverse=True
-            )[:5]
-
-            # Store model and scaler
-            self.regime_models[regime_name] = model
-            self.regime_scalers[regime_name] = scaler
-
-            metrics = {
-                "status": "trained",
-                "n_train": n_train,
-                "n_val": n_val,
-                "train_accuracy": float(train_acc),
-                "val_accuracy": float(val_acc),
-                "val_f1": float(val_f1),
-                "params": params,
-                "top_features": [(f, float(i)) for f, i in top_features],
-            }
-
-            self.regime_metrics[regime_name] = metrics
             all_metrics[regime_name] = metrics
-
-            logger.info(
-                f"{regime_name}: train_acc={train_acc:.3f}, val_acc={val_acc:.3f}, "
-                f"val_f1={val_f1:.3f}"
-            )
 
         self.is_trained = True
         return all_metrics
+
+    def _train_single_regime(
+        self,
+        regime_id: int,
+        regime_name: str,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        regimes_train: np.ndarray,
+        x_val: np.ndarray,
+        y_val: np.ndarray,
+        regimes_val: np.ndarray,
+        min_samples_per_regime: int,
+    ) -> Dict[str, Any]:
+        """Train a single regime-specific LightGBM model."""
+        try:
+            import lightgbm as lgb
+        except ImportError:
+            logger.error(LGBM_NOT_INSTALLED_ERROR)
+            raise
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.metrics import accuracy_score, f1_score
+        import pandas as pd
+
+        train_mask = regimes_train == regime_id
+        val_mask = regimes_val == regime_id
+        n_train = train_mask.sum()
+        n_val = val_mask.sum()
+
+        logger.info(f"\n{'=' * 60}")
+        logger.info(f"Training {regime_name} model (train={n_train}, val={n_val})")
+        logger.info(f"{'=' * 60}")
+
+        if n_train < min_samples_per_regime:
+            logger.warning(
+                f"Skipping {regime_name}: only {n_train} samples "
+                f"(min={min_samples_per_regime})"
+            )
+            return {
+                "status": "skipped",
+                "reason": f"insufficient_samples ({n_train})",
+                "n_train": n_train,
+                "n_val": n_val,
+            }
+
+        x_train_regime = X_train[train_mask]
+        y_train_regime = y_train[train_mask]
+        x_val_regime = x_val[val_mask] if n_val > 0 else x_train_regime[:100]
+        y_val_regime = y_val[val_mask] if n_val > 0 else y_train_regime[:100]
+
+        scaler = StandardScaler()
+        x_train_scaled = scaler.fit_transform(x_train_regime)
+        x_val_scaled = scaler.transform(x_val_regime)
+
+        x_train_df = pd.DataFrame(x_train_scaled, columns=self.feature_names)
+        x_val_df = pd.DataFrame(x_val_scaled, columns=self.feature_names)
+
+        params = get_regime_lgbm_params(regime_name)
+        model = lgb.LGBMClassifier(**params)
+
+        try:
+            model.fit(
+                x_train_df,
+                y_train_regime,
+                eval_set=[(x_val_df, y_val_regime)],
+            )
+        except Exception as e:
+            logger.error(f"Training failed for {regime_name}: {e}")
+            return {"status": "failed", "reason": str(e)}
+
+        y_pred_train = model.predict(x_train_df)
+        y_pred_val = model.predict(x_val_df)
+
+        train_acc = accuracy_score(y_train_regime, y_pred_train)
+        val_acc = accuracy_score(y_val_regime, y_pred_val) if n_val > 0 else 0.0
+        val_f1 = (
+            f1_score(y_val_regime, y_pred_val, zero_division=0)
+            if n_val > 0
+            else 0.0
+        )
+
+        importances = model.feature_importances_
+        top_features = sorted(
+            zip(self.feature_names, importances), key=lambda x: x[1], reverse=True
+        )[:5]
+
+        self.regime_models[regime_name] = model
+        self.regime_scalers[regime_name] = scaler
+
+        metrics = {
+            "status": "trained",
+            "n_train": n_train,
+            "n_val": n_val,
+            "train_accuracy": float(train_acc),
+            "val_accuracy": float(val_acc),
+            "val_f1": float(val_f1),
+            "params": params,
+            "top_features": [(f, float(i)) for f, i in top_features],
+        }
+
+        self.regime_metrics[regime_name] = metrics
+        logger.info(
+            f"{regime_name}: train_acc={train_acc:.3f}, val_acc={val_acc:.3f}, "
+            f"val_f1={val_f1:.3f}"
+        )
+
+        self.is_trained = True
+        return metrics
 
     def predict(
         self,
@@ -9389,6 +9650,76 @@ class JointMultiPairTrainer:
 
         self.is_trained = False
 
+    def _append_model_result(
+        self,
+        combined_data: dict,
+        model_key: str,
+        result: dict,
+        instrument: str,
+        instruments: list,
+        append_instrument_features,
+    ) -> None:
+        """Append a single model's data result to the combined data dict."""
+        if result is None:
+            return
+
+        x_train, feature_names = append_instrument_features(
+            result["X_train"],
+            instrument,
+            instruments,
+            original_feature_names=result.get("feature_names"),
+        )
+        x_val, _ = append_instrument_features(
+            result["X_val"],
+            instrument,
+            instruments,
+            original_feature_names=result.get("feature_names"),
+        )
+
+        combined_data[model_key]["X_train"].append(x_train)
+        combined_data[model_key]["y_train"].append(result["y_train"])
+        combined_data[model_key]["X_val"].append(x_val)
+        combined_data[model_key]["y_val"].append(result["y_val"])
+
+        # Append weights if the model type supports them (direction)
+        if "w_train" in combined_data[model_key]:
+            combined_data[model_key]["w_train"].append(
+                result.get("w_train", np.ones(len(result["y_train"])))
+            )
+            combined_data[model_key]["w_val"].append(
+                result.get("w_val", np.ones(len(result["y_val"])))
+            )
+
+        if combined_data[model_key]["feature_names"] is None:
+            combined_data[model_key]["feature_names"] = feature_names
+
+    def _load_instrument_data(
+        self,
+        df,
+        instrument: str,
+        instruments: list,
+        combined_data: dict,
+        load_direction_data,
+        load_xgboost_data,
+        load_rf_data,
+        load_ridge_data,
+        append_instrument_features,
+    ) -> None:
+        """Load all model data for a single instrument and append to combined_data."""
+        loaders = [
+            ("direction", load_direction_data),
+            ("momentum", load_xgboost_data),
+            ("risk", load_rf_data),
+            ("confidence", load_ridge_data),
+        ]
+
+        for model_key, loader_fn in loaders:
+            result = loader_fn(df)
+            self._append_model_result(
+                combined_data, model_key, result,
+                instrument, instruments, append_instrument_features,
+            )
+
     def prepare_joint_data(
         self,
         dfs: Dict[str, "pd.DataFrame"],
@@ -9458,105 +9789,13 @@ class JointMultiPairTrainer:
             df = dfs[instrument]
             logger.info(f"Processing {instrument}: {len(df)} rows")
 
-            # Load each model's data (pass individual params, not config object)
             try:
-                # Direction data (for Transformer)
-                dir_result = load_direction_data(df)
-                if dir_result:
-                    # Add instrument features - pass original feature names to get combined list
-                    x_train, feature_names = append_instrument_features(
-                        dir_result["X_train"],
-                        instrument,
-                        instruments,
-                        original_feature_names=dir_result.get("feature_names"),
-                    )
-                    x_val, _ = append_instrument_features(
-                        dir_result["X_val"],
-                        instrument,
-                        instruments,
-                        original_feature_names=dir_result.get("feature_names"),
-                    )
-                    combined_data["direction"]["X_train"].append(x_train)
-                    combined_data["direction"]["y_train"].append(dir_result["y_train"])
-                    combined_data["direction"]["w_train"].append(
-                        dir_result.get("w_train", np.ones(len(dir_result["y_train"])))
-                    )
-                    combined_data["direction"]["X_val"].append(x_val)
-                    combined_data["direction"]["y_val"].append(dir_result["y_val"])
-                    combined_data["direction"]["w_val"].append(
-                        dir_result.get("w_val", np.ones(len(dir_result["y_val"])))
-                    )
-                    if combined_data["direction"]["feature_names"] is None:
-                        combined_data["direction"]["feature_names"] = feature_names
-
-                # Momentum data (for LightGBM)
-                mom_result = load_xgboost_data(df)
-                if mom_result:
-                    x_train, feature_names = append_instrument_features(
-                        mom_result["X_train"],
-                        instrument,
-                        instruments,
-                        original_feature_names=mom_result.get("feature_names"),
-                    )
-                    x_val, _ = append_instrument_features(
-                        mom_result["X_val"],
-                        instrument,
-                        instruments,
-                        original_feature_names=mom_result.get("feature_names"),
-                    )
-                    combined_data["momentum"]["X_train"].append(x_train)
-                    combined_data["momentum"]["y_train"].append(mom_result["y_train"])
-                    combined_data["momentum"]["X_val"].append(x_val)
-                    combined_data["momentum"]["y_val"].append(mom_result["y_val"])
-                    if combined_data["momentum"]["feature_names"] is None:
-                        combined_data["momentum"]["feature_names"] = feature_names
-
-                # Risk data (for LightGBM)
-                risk_result = load_rf_data(df)
-                if risk_result:
-                    x_train, feature_names = append_instrument_features(
-                        risk_result["X_train"],
-                        instrument,
-                        instruments,
-                        original_feature_names=risk_result.get("feature_names"),
-                    )
-                    x_val, _ = append_instrument_features(
-                        risk_result["X_val"],
-                        instrument,
-                        instruments,
-                        original_feature_names=risk_result.get("feature_names"),
-                    )
-                    combined_data["risk"]["X_train"].append(x_train)
-                    combined_data["risk"]["y_train"].append(risk_result["y_train"])
-                    combined_data["risk"]["X_val"].append(x_val)
-                    combined_data["risk"]["y_val"].append(risk_result["y_val"])
-                    if combined_data["risk"]["feature_names"] is None:
-                        combined_data["risk"]["feature_names"] = feature_names
-
-                # Confidence data (for Ridge/LightGBM)
-                conf_result = load_ridge_data(df)
-                if conf_result:
-                    x_train, feature_names = append_instrument_features(
-                        conf_result["X_train"],
-                        instrument,
-                        instruments,
-                        original_feature_names=conf_result.get("feature_names"),
-                    )
-                    x_val, _ = append_instrument_features(
-                        conf_result["X_val"],
-                        instrument,
-                        instruments,
-                        original_feature_names=conf_result.get("feature_names"),
-                    )
-                    combined_data["confidence"]["X_train"].append(x_train)
-                    combined_data["confidence"]["y_train"].append(
-                        conf_result["y_train"]
-                    )
-                    combined_data["confidence"]["X_val"].append(x_val)
-                    combined_data["confidence"]["y_val"].append(conf_result["y_val"])
-                    if combined_data["confidence"]["feature_names"] is None:
-                        combined_data["confidence"]["feature_names"] = feature_names
-
+                self._load_instrument_data(
+                    df, instrument, instruments, combined_data,
+                    load_direction_data, load_xgboost_data,
+                    load_rf_data, load_ridge_data,
+                    append_instrument_features,
+                )
             except Exception as e:
                 logger.error(f"Error loading data for {instrument}: {e}")
                 continue
@@ -9757,130 +9996,125 @@ class JointMultiPairTrainer:
             if instrument not in dfs:
                 continue
 
-            df = dfs[instrument]
-
             try:
-                # Evaluate direction model
-                dir_result = load_direction_data(df)
-                if dir_result and self.direction_trainer:
-                    # Get expected feature count and names from trained model
-                    expected_n_features = self.direction_trainer.n_features
-                    expected_feature_names = self.direction_trainer.feature_names
-                    # Note: raw feature count and names from dir_result are available via:
-                    # dir_result["X_val"].shape[-1] and dir_result.get("feature_names")
-
-                    # PRIMARY FIX: If model has saved feature names, extract features directly from df
-                    # Handle instrument one-hot columns separately since they won't exist in per-instrument df
-                    if expected_feature_names and len(expected_feature_names) > 0:
-                        # Separate base features from instrument one-hot features
-                        instrument_cols = [f for f in expected_feature_names if f.startswith('instrument_')]
-                        base_features = [f for f in expected_feature_names if not f.startswith('instrument_')]
-
-                        # Check which base features exist in dataframe
-                        available_base = [f for f in base_features if f in df.columns]
-
-                        if len(available_base) == len(base_features):
-                            # All base features exist - extract directly
-                            n = len(df)
-                            train_end = int(n * 0.7)
-                            val_end = int(n * 0.9)
-                            x_val_base = df[available_base].iloc[train_end:val_end].values.astype(np.float32)
-
-                            # Clean NaN/Inf
-                            x_val_base = np.nan_to_num(x_val_base, nan=0.0, posinf=0.0, neginf=0.0)
-
-                            # Now construct instrument one-hot columns if needed
-                            if instrument_cols:
-                                n_samples = x_val_base.shape[0]
-                                instrument_onehot = np.zeros((n_samples, len(instrument_cols)), dtype=np.float32)
-                                # Set the correct instrument column to 1
-                                current_col = f"instrument_{instrument}"
-                                if current_col in instrument_cols:
-                                    col_idx = instrument_cols.index(current_col)
-                                    instrument_onehot[:, col_idx] = 1.0
-                                # Concatenate base features with instrument one-hot
-                                x_val_2d = np.hstack([x_val_base, instrument_onehot])
-                                logger.debug(f"{instrument}: Extracted {len(base_features)} base + {len(instrument_cols)} instrument features")
-                            else:
-                                x_val_2d = x_val_base
-                                logger.debug(f"{instrument}: Extracted {len(available_base)} features directly from df")
-                        else:
-                            # Some base features missing - fall through to existing logic
-                            missing = set(base_features) - set(available_base)
-                            logger.warning(f"{instrument}: Missing {len(missing)} base features: {list(missing)[:5]}...")
-                            x_val_2d = dir_result["X_val"]
-                    else:
-                        x_val_2d = dir_result["X_val"]
-
-                    # Determine if we should add instrument features (fallback for older models)
-                    # Only add them if:
-                    # 1. Model expects more features than current data provides, AND
-                    # 2. The difference equals the number of instrument one-hot columns
-                    n_instrument_features = len(instruments)
-                    should_add_instrument_features = (
-                        expected_n_features is not None
-                        and expected_n_features
-                        == x_val_2d.shape[-1] + n_instrument_features
-                    )
-
-                    if should_add_instrument_features:
-                        x_val_2d, _ = append_instrument_features(
-                            x_val_2d, instrument, instruments
-                        )
-                        logger.debug(
-                            f"{instrument}: Added instrument features, shape {x_val_2d.shape}"
-                        )
-                    elif expected_n_features is not None and x_val_2d.shape[-1] != expected_n_features:
-                        # Feature count still doesn't match - try alignment or truncation
-                        if x_val_2d.shape[-1] > expected_n_features:
-                            # Too many features - truncate
-                            logger.warning(
-                                f"{instrument}: Feature mismatch - "
-                                f"data has {x_val_2d.shape[-1]}, "
-                                f"model expects {expected_n_features}. "
-                                f"Using first {expected_n_features} features."
-                            )
-                            x_val_2d = x_val_2d[:, :expected_n_features]
-                        else:
-                            # Too few features - pad with zeros (better than failing)
-                            n_pad = expected_n_features - x_val_2d.shape[-1]
-                            logger.warning(
-                                f"{instrument}: Feature mismatch - "
-                                f"data has {x_val_2d.shape[-1]}, "
-                                f"model expects {expected_n_features}. "
-                                f"Padding with {n_pad} zero columns."
-                            )
-                            padding = np.zeros((x_val_2d.shape[0], n_pad), dtype=np.float32)
-                            x_val_2d = np.hstack([x_val_2d, padding])
-
-                    # Properly create sequences from 2D data
-                    seq_len = get_config_seq_len(self.config)
-                    x_val_seq, y_val_seq, _ = create_sequences_with_weights(
-                        x_val_2d, dir_result["y_val"], dir_result.get("w_val"), seq_len
-                    )
-
-                    if len(x_val_seq) == 0:
-                        logger.warning(
-                            f"{instrument}: No sequences created for evaluation"
-                        )
-                        continue
-
-                    # Get predictions
-                    preds = self.direction_trainer.model.predict(x_val_seq)
-                    y_pred = (preds > 0.5).astype(int).flatten()
-                    y_true = y_val_seq[: len(y_pred)]
-
-                    accuracy = float(np.mean(y_pred == y_true))
-                    results[instrument] = {"direction_accuracy": accuracy}
-
-                    logger.info(f"{instrument}: direction_accuracy={accuracy:.4f}")
-
+                result = self._evaluate_instrument_direction(
+                    dfs[instrument], instrument, instruments,
+                    load_direction_data, append_instrument_features,
+                )
+                if result is not None:
+                    results[instrument] = result
             except Exception as e:
                 logger.error(f"Error evaluating {instrument}: {e}")
                 results[instrument] = {"error": str(e)}
 
         self.per_instrument_metrics = results
         return results
+
+    def _extract_features_from_df(
+        self, df, instrument: str, expected_feature_names: list
+    ) -> Optional[np.ndarray]:
+        """Extract validation features from DataFrame using expected feature names."""
+        instrument_cols = [f for f in expected_feature_names if f.startswith('instrument_')]
+        base_features = [f for f in expected_feature_names if not f.startswith('instrument_')]
+        available_base = [f for f in base_features if f in df.columns]
+
+        if len(available_base) != len(base_features):
+            missing = set(base_features) - set(available_base)
+            logger.warning(f"{instrument}: Missing {len(missing)} base features: {list(missing)[:5]}...")
+            return None
+
+        n = len(df)
+        train_end = int(n * 0.7)
+        val_end = int(n * 0.9)
+        x_val_base = df[available_base].iloc[train_end:val_end].values.astype(np.float32)
+        x_val_base = np.nan_to_num(x_val_base, nan=0.0, posinf=0.0, neginf=0.0)
+
+        if not instrument_cols:
+            logger.debug(f"{instrument}: Extracted {len(available_base)} features directly from df")
+            return x_val_base
+
+        n_samples = x_val_base.shape[0]
+        instrument_onehot = np.zeros((n_samples, len(instrument_cols)), dtype=np.float32)
+        current_col = f"instrument_{instrument}"
+        if current_col in instrument_cols:
+            col_idx = instrument_cols.index(current_col)
+            instrument_onehot[:, col_idx] = 1.0
+        logger.debug(f"{instrument}: Extracted {len(base_features)} base + {len(instrument_cols)} instrument features")
+        return np.hstack([x_val_base, instrument_onehot])
+
+    def _align_eval_features(
+        self, x_val_2d: np.ndarray, instrument: str, instruments: list,
+        expected_n_features: Optional[int], append_instrument_features,
+    ) -> np.ndarray:
+        """Align evaluation features to match model expectations."""
+        if expected_n_features is None:
+            return x_val_2d
+
+        n_instrument_features = len(instruments)
+        if expected_n_features == x_val_2d.shape[-1] + n_instrument_features:
+            x_val_2d, _ = append_instrument_features(x_val_2d, instrument, instruments)
+            logger.debug(f"{instrument}: Added instrument features, shape {x_val_2d.shape}")
+            return x_val_2d
+
+        if x_val_2d.shape[-1] == expected_n_features:
+            return x_val_2d
+
+        if x_val_2d.shape[-1] > expected_n_features:
+            logger.warning(
+                f"{instrument}: Feature mismatch - data has {x_val_2d.shape[-1]}, "
+                f"model expects {expected_n_features}. Using first {expected_n_features} features."
+            )
+            return x_val_2d[:, :expected_n_features]
+
+        n_pad = expected_n_features - x_val_2d.shape[-1]
+        logger.warning(
+            f"{instrument}: Feature mismatch - data has {x_val_2d.shape[-1]}, "
+            f"model expects {expected_n_features}. Padding with {n_pad} zero columns."
+        )
+        padding = np.zeros((x_val_2d.shape[0], n_pad), dtype=np.float32)
+        return np.hstack([x_val_2d, padding])
+
+    def _evaluate_instrument_direction(
+        self, df, instrument: str, instruments: list,
+        load_direction_data, append_instrument_features,
+    ) -> Optional[Dict[str, float]]:
+        """Evaluate direction model for a single instrument."""
+        dir_result = load_direction_data(df)
+        if not dir_result or not self.direction_trainer:
+            return None
+
+        expected_n_features = self.direction_trainer.n_features
+        expected_feature_names = self.direction_trainer.feature_names
+
+        # Try extracting features directly from DataFrame
+        x_val_2d = None
+        if expected_feature_names:
+            x_val_2d = self._extract_features_from_df(df, instrument, expected_feature_names)
+
+        if x_val_2d is None:
+            x_val_2d = dir_result["X_val"]
+
+        x_val_2d = self._align_eval_features(
+            x_val_2d, instrument, instruments,
+            expected_n_features, append_instrument_features,
+        )
+
+        seq_len = get_config_seq_len(self.config)
+        x_val_seq, y_val_seq, _ = create_sequences_with_weights(
+            x_val_2d, dir_result["y_val"], dir_result.get("w_val"), seq_len
+        )
+
+        if len(x_val_seq) == 0:
+            logger.warning(f"{instrument}: No sequences created for evaluation")
+            return None
+
+        preds = self.direction_trainer.model.predict(x_val_seq)
+        y_pred = (preds > 0.5).astype(int).flatten()
+        y_true = y_val_seq[:len(y_pred)]
+
+        accuracy = float(np.mean(y_pred == y_true))
+        logger.info(f"{instrument}: direction_accuracy={accuracy:.4f}")
+        return {"direction_accuracy": accuracy}
 
     def should_fine_tune(
         self,
@@ -9978,93 +10212,85 @@ class JointMultiPairTrainer:
 
         results = {}
 
-        # Fine-tune Momentum (LightGBM with init_model)
-        if self.momentum_trainer and self.momentum_trainer.is_trained:
-            try:
-                mom_result = load_xgboost_data(df)
-                if mom_result:
-                    x_train, feature_names = append_instrument_features(
-                        mom_result["X_train"], instrument, self.instruments
-                    )
-                    x_val, _ = append_instrument_features(
-                        mom_result["X_val"], instrument, self.instruments
-                    )
+        fine_tune_specs = [
+            {
+                "name": "momentum",
+                "trainer": self.momentum_trainer,
+                "loader": load_xgboost_data,
+                "trainer_cls": LightGBMMomentumTrainer,
+                "filename": LGBM_MOMENTUM_FILENAME,
+                "init_kwargs_fn": lambda t: {
+                    "init_momentum_model": t.get_booster("momentum"),
+                    "init_accel_model": t.get_booster("accel"),
+                },
+            },
+            {
+                "name": "risk",
+                "trainer": self.risk_trainer,
+                "loader": load_rf_data,
+                "trainer_cls": LightGBMRiskTrainer,
+                "filename": LGBM_RISK_FILENAME,
+                "init_kwargs_fn": lambda t: {
+                    "init_drawdown_model": t.get_booster("drawdown"),
+                    "init_streak_model": t.get_booster("streak"),
+                },
+            },
+            {
+                "name": "confidence",
+                "trainer": self.confidence_trainer,
+                "loader": load_ridge_data,
+                "trainer_cls": RidgeTrainer,
+                "filename": RIDGE_CONFIDENCE_FILENAME,
+                "init_kwargs_fn": lambda _t: {},
+            },
+        ]
 
-                    # Create new trainer with warm-start
-                    fine_tuned_momentum = LightGBMMomentumTrainer(self.config)
-                    metrics = fine_tuned_momentum.train(
-                        x_train,
-                        mom_result["y_train"],
-                        x_val,
-                        mom_result["y_val"],
-                        feature_names=feature_names,
-                        init_momentum_model=self.momentum_trainer.get_booster(
-                            "momentum"
-                        ),
-                        init_accel_model=self.momentum_trainer.get_booster("accel"),
-                    )
-                    fine_tuned_momentum.save(str(pair_save_dir / LGBM_MOMENTUM_FILENAME))
-                    results["momentum"] = metrics
-                    logger.info(f"  Momentum fine-tuned: {metrics}")
-            except Exception as e:
-                logger.error(f"  Momentum fine-tune failed: {e}")
-
-        # Fine-tune Risk (LightGBM with init_model)
-        if self.risk_trainer and self.risk_trainer.is_trained:
-            try:
-                risk_result = load_rf_data(df)
-                if risk_result:
-                    x_train, feature_names = append_instrument_features(
-                        risk_result["X_train"], instrument, self.instruments
-                    )
-                    x_val, _ = append_instrument_features(
-                        risk_result["X_val"], instrument, self.instruments
-                    )
-
-                    fine_tuned_risk = LightGBMRiskTrainer(self.config)
-                    metrics = fine_tuned_risk.train(
-                        x_train,
-                        risk_result["y_train"],
-                        x_val,
-                        risk_result["y_val"],
-                        feature_names=feature_names,
-                        init_drawdown_model=self.risk_trainer.get_booster("drawdown"),
-                        init_streak_model=self.risk_trainer.get_booster("streak"),
-                    )
-                    fine_tuned_risk.save(str(pair_save_dir / LGBM_RISK_FILENAME))
-                    results["risk"] = metrics
-                    logger.info(f"  Risk fine-tuned: {metrics}")
-            except Exception as e:
-                logger.error(f"  Risk fine-tune failed: {e}")
-
-        # Fine-tune Confidence (Ridge/LightGBM)
-        if self.confidence_trainer and self.confidence_trainer.is_trained:
-            try:
-                conf_result = load_ridge_data(df)
-                if conf_result:
-                    x_train, feature_names = append_instrument_features(
-                        conf_result["X_train"], instrument, self.instruments
-                    )
-                    x_val, _ = append_instrument_features(
-                        conf_result["X_val"], instrument, self.instruments
-                    )
-
-                    fine_tuned_conf = RidgeTrainer(self.config)
-                    metrics = fine_tuned_conf.train(
-                        x_train,
-                        conf_result["y_train"],
-                        x_val,
-                        conf_result["y_val"],
-                        feature_names=feature_names,
-                    )
-                    fine_tuned_conf.save(str(pair_save_dir / RIDGE_CONFIDENCE_FILENAME))
-                    results["confidence"] = metrics
-                    logger.info(f"  Confidence fine-tuned: {metrics}")
-            except Exception as e:
-                logger.error(f"  Confidence fine-tune failed: {e}")
+        for spec in fine_tune_specs:
+            self._fine_tune_single_model(
+                spec, df, instrument, pair_save_dir, append_instrument_features, results
+            )
 
         logger.info(f"Fine-tuned models saved to: {pair_save_dir}")
         return results
+
+    def _fine_tune_single_model(
+        self,
+        spec: Dict,
+        df: "pd.DataFrame",
+        instrument: str,
+        pair_save_dir: Path,
+        append_instrument_features,
+        results: Dict,
+    ) -> None:
+        """Fine-tune a single model type using the spec dict."""
+        trainer = spec["trainer"]
+        if not trainer or not trainer.is_trained:
+            return
+        try:
+            data_result = spec["loader"](df)
+            if not data_result:
+                return
+            x_train, feature_names = append_instrument_features(
+                data_result["X_train"], instrument, self.instruments
+            )
+            x_val, _ = append_instrument_features(
+                data_result["X_val"], instrument, self.instruments
+            )
+            init_kwargs = spec["init_kwargs_fn"](trainer)
+            new_trainer = spec["trainer_cls"](self.config)
+            metrics = new_trainer.train(
+                x_train,
+                data_result["y_train"],
+                x_val,
+                data_result["y_val"],
+                feature_names=feature_names,
+                **init_kwargs,
+            )
+            new_trainer.save(str(pair_save_dir / spec["filename"]))
+            results[spec["name"]] = metrics
+            logger.info(f"  {spec['name'].title()} fine-tuned: {metrics}")
+        except Exception as e:
+            logger.error(f"  {spec['name'].title()} fine-tune failed: {e}")
 
     def _save_metadata(
         self,
@@ -10562,259 +10788,328 @@ def train_all_modular(
     logger.info("\n" + "=" * 50)
 
     if use_regime:
-        # REGIME MODE: 3-class classification (trend/chop/mean_revert)
-        logger.info("Training Transformer (REGIME Classifier - 3 classes)")
-        logger.info("  Classes: trend, chop, mean_revert")
-        logger.info("=" * 50)
-
-        regime_data = data.get("regime")
-        if regime_data is None:
-            raise ValueError(
-                "No regime data found. Set use_regime=True in load_all_modular_data()"
-            )
-
-        regime_trainer = TransformerRegimeTrainer(config)
-        regime_trainer.train(
-            regime_data["X_train"],
-            regime_data["y_train"],
-            regime_data["X_val"],
-            regime_data["y_val"],
-            feature_names=regime_data.get("feature_names"),
-            class_names=regime_data.get("class_names"),
-        )
-        regime_trainer.save(str(save_dir / "transformer_regime.keras"))
-        trainers["regime"] = regime_trainer
-        trainers["transformer"] = regime_trainer  # Alias
-
+        _train_regime_direction(data, config, save_dir, trainers)
     else:
-        # DIRECTION MODE: Binary classification (legacy)
-        # Check if we should use TCN+Transformer ensemble
-        use_ensemble = (
-            getattr(config, "use_tcn_transformer_ensemble", True) if config else True
+        _train_standard_direction(
+            data, config, save_dir, trainers,
+            use_transformer, warm_start, transformer_checkpoint,
+            instrument, data_range,
         )
 
-        if use_ensemble:
-            # ENSEMBLE MODE: Train BOTH TCN and Transformer for direction
-            logger.info("Training TCN + Transformer Ensemble (Direction Predictors)")
-            logger.info("=" * 50)
-
-            # Get direction data (try 'direction' key first, fallback to 'tcn')
-            dir_data = data.get("direction", data.get("tcn"))
-            if dir_data is None:
-                raise ValueError(
-                    NO_DIRECTION_DATA_ERROR
-                )
-
-            # 1. Train Transformer
-            logger.info("\n[1/2] Training Transformer (Direction)")
-            logger.info("-" * 40)
-            transformer_trainer = TransformerDirectionTrainer(config)
-
-            if (
-                warm_start
-                and transformer_checkpoint
-                and transformer_checkpoint.exists()
-            ):
-                logger.info(
-                    f"🔥 WARM-START enabled: Loading weights from {transformer_checkpoint}"
-                )
-
-            transformer_trainer.train(
-                dir_data["X_train"],
-                dir_data["y_train"],
-                dir_data["X_val"],
-                dir_data["y_val"],
-                feature_names=dir_data.get("feature_names"),
-                w_train=dir_data.get("w_train"),
-                w_val=dir_data.get("w_val"),
-                warm_start_path=str(transformer_checkpoint) if warm_start else None,
-                instrument=instrument,
-                data_range=data_range,
-            )
-            transformer_trainer.save(str(save_dir / TRANSFORMER_DIRECTION_FILENAME))
-            trainers["transformer"] = transformer_trainer
-
-            # 2. Train TCN Volatility Regime Filter (replaces old direction-based TCN)
-            logger.info("\n[2/2] Training TCN (Volatility Regime Filter)")
-            logger.info("-" * 40)
-            tcn_trainer = TCNTrainer(config)
-
-            # Get volatility regime data from the data dict (loaded by load_all_modular_data)
-            # This data uses 4-class classification: LOW/NORMAL/HIGH/EXTREME based on ATR percentile
-            vol_regime_data = data.get("volatility_regime")
-            if vol_regime_data is not None:
-                try:
-                    # Check for existing TCN model for warm-start
-                    tcn_checkpoint = save_dir / "tcn_volatility_regime.keras"
-                    warm_start_tcn_path = str(tcn_checkpoint) if warm_start and tcn_checkpoint.exists() else None
-
-                    tcn_trainer.train(
-                        vol_regime_data["X_train"],
-                        vol_regime_data["y_train"],
-                        vol_regime_data["X_val"],
-                        vol_regime_data["y_val"],
-                        feature_names=vol_regime_data.get("feature_names"),
-                        warm_start_path=warm_start_tcn_path,
-                        instrument=instrument,
-                    )
-                    tcn_trainer.save(str(save_dir / "tcn_volatility_regime.keras"))
-                    trainers["tcn_volatility"] = tcn_trainer
-                    logger.info("✓ TCN Volatility Regime model trained and saved")
-                except Exception as e:
-                    logger.warning(f"TCN Volatility Regime training failed: {e}")
-                    logger.warning(
-                        "Continuing with Transformer-only (no volatility filter)"
-                    )
-            else:
-                logger.warning("No volatility_regime data found in data dict")
-                logger.warning(
-                    "Add 'volatility_regime' to load_all_modular_data or train TCN separately"
-                )
-
-            # Use transformer as primary direction model for backward compatibility
-            trainers["direction"] = transformer_trainer
-
-            logger.info("\n✓ TCN + Transformer Ensemble training complete")
-            logger.info(
-                f"  - Transformer saved: {save_dir / TRANSFORMER_DIRECTION_FILENAME}"
-            )
-            logger.info(f"  - TCN saved: {save_dir / 'tcn_direction.keras'}")
-
-        elif use_transformer:
-            logger.info("Training Transformer (Direction Predictor)")
-            logger.info("=" * 50)
-
-            # Get direction data (try 'direction' key first, fallback to 'tcn')
-            dir_data = data.get("direction", data.get("tcn"))
-            if dir_data is None:
-                raise ValueError(
-                    NO_DIRECTION_DATA_ERROR
-                )
-
-            dir_trainer = TransformerDirectionTrainer(config)
-
-            # Log warm-start status
-            if (
-                warm_start
-                and transformer_checkpoint
-                and transformer_checkpoint.exists()
-            ):
-                logger.info(
-                    f"🔥 WARM-START enabled: Loading weights from {transformer_checkpoint}"
-                )
-
-            dir_trainer.train(
-                dir_data["X_train"],
-                dir_data["y_train"],
-                dir_data["X_val"],
-                dir_data["y_val"],
-                feature_names=dir_data.get("feature_names"),
-                w_train=dir_data.get("w_train"),
-                w_val=dir_data.get("w_val"),
-                warm_start_path=str(transformer_checkpoint) if warm_start else None,
-                instrument=instrument,
-                data_range=data_range,
-            )
-            dir_trainer.save(str(save_dir / TRANSFORMER_DIRECTION_FILENAME))
-            trainers["direction"] = dir_trainer
-            trainers["transformer"] = dir_trainer  # Alias
-        else:
-            logger.info("Training TCN (Direction Predictor)")
-            logger.info("=" * 50)
-
-            # Get direction data
-            dir_data = data.get("direction", data.get("tcn"))
-            if dir_data is None:
-                raise ValueError(
-                    NO_DIRECTION_DATA_ERROR
-                )
-
-            dir_trainer = TCNTrainer(config)
-            dir_trainer.train(
-                dir_data["X_train"],
-                dir_data["y_train"],
-                dir_data["X_val"],
-                dir_data["y_val"],
-                feature_names=dir_data.get("feature_names"),
-            )
-            dir_trainer.save(str(save_dir / "tcn_direction.keras"))
-            trainers["direction"] = dir_trainer
-            trainers["tcn"] = dir_trainer  # Alias
-
-    # 2. XGBoost
-    logger.info("\n" + "=" * 50)
-    logger.info("Training XGBoost (Momentum Analyzer)")
-    logger.info("=" * 50)
-    xgb_data = data["xgboost"]
-    xgb_trainer = XGBoostTrainer(config)
-    xgb_trainer.train(
-        xgb_data["X_train"],
-        xgb_data["y_train"],
-        xgb_data["X_val"],
-        xgb_data["y_val"],
-        feature_names=xgb_data.get("feature_names"),
+    # 2-5. Auxiliary models (XGBoost, RF, Ridge, HistGB)
+    _train_auxiliary_models(
+        data, config, save_dir, trainers, train_histgb, use_regime
     )
-    xgb_trainer.save(str(save_dir / "xgb_momentum.pkl"))
-    trainers["xgboost"] = xgb_trainer
-
-    # 3. Random Forest
-    logger.info("\n" + "=" * 50)
-    logger.info("Training Random Forest (Risk Assessor)")
-    logger.info("=" * 50)
-    rf_data = data["rf"]
-    rf_trainer = RandomForestTrainer(config)
-    rf_trainer.train(
-        rf_data["X_train"],
-        rf_data["y_train"],
-        rf_data["X_val"],
-        rf_data["y_val"],
-        feature_names=rf_data.get("feature_names"),
-    )
-    rf_trainer.save(str(save_dir / "rf_risk.pkl"))
-    trainers["rf"] = rf_trainer
-
-    # 4. Ridge
-    logger.info("\n" + "=" * 50)
-    logger.info("Training Ridge (Confidence Scorer)")
-    logger.info("=" * 50)
-    ridge_data = data["ridge"]
-    ridge_trainer = RidgeTrainer(config)
-    ridge_trainer.train(
-        ridge_data["X_train"],
-        ridge_data["y_train"],
-        ridge_data["X_val"],
-        ridge_data["y_val"],
-        feature_names=ridge_data.get("feature_names"),
-    )
-    ridge_trainer.save(str(save_dir / RIDGE_CONFIDENCE_FILENAME))
-    trainers["ridge"] = ridge_trainer
-
-    # 5. HistGradientBoosting (Optional - for hybrid voting)
-    if train_histgb and not use_regime:
-        logger.info("\n" + "=" * 50)
-        logger.info(
-            "Training HistGradientBoosting (Direction Baseline for Hybrid Voting)"
-        )
-        logger.info("=" * 50)
-
-        dir_data = data.get("direction", data.get("tcn"))
-        if dir_data is not None:
-            histgb_trainer = HistGradientBoostingDirectionTrainer(config)
-            histgb_trainer.train(
-                dir_data["X_train"],
-                dir_data["y_train"],
-                dir_data["X_val"],
-                dir_data["y_val"],
-                feature_names=dir_data.get("feature_names"),
-            )
-            histgb_trainer.save(str(save_dir / "histgb_direction.pkl"))
-            trainers["histgb"] = histgb_trainer
-            logger.info("✓ HistGB trained for hybrid voting with Transformer")
-        else:
-            logger.warning("No direction data found for HistGB training")
 
     logger.info("\n" + "=" * 50)
     logger.info("All 4 models trained independently!")
     logger.info("=" * 50)
 
     return trainers
+
+
+def _train_regime_direction(
+    data: Dict, config: TrainerConfig, save_dir: Path, trainers: Dict
+) -> None:
+    """Train regime classifier (3-class: trend/chop/mean_revert)."""
+    logger.info("Training Transformer (REGIME Classifier - 3 classes)")
+    logger.info("  Classes: trend, chop, mean_revert")
+    logger.info("=" * 50)
+
+    regime_data = data.get("regime")
+    if regime_data is None:
+        raise ValueError(
+            "No regime data found. Set use_regime=True in load_all_modular_data()"
+        )
+
+    regime_trainer = TransformerRegimeTrainer(config)
+    regime_trainer.train(
+        regime_data["X_train"],
+        regime_data["y_train"],
+        regime_data["X_val"],
+        regime_data["y_val"],
+        feature_names=regime_data.get("feature_names"),
+        class_names=regime_data.get("class_names"),
+    )
+    regime_trainer.save(str(save_dir / "transformer_regime.keras"))
+    trainers["regime"] = regime_trainer
+    trainers["transformer"] = regime_trainer
+
+
+def _train_standard_direction(
+    data: Dict,
+    config: TrainerConfig,
+    save_dir: Path,
+    trainers: Dict,
+    use_transformer: bool,
+    warm_start: bool,
+    transformer_checkpoint: Optional[Path],
+    instrument: str,
+    data_range: str,
+) -> None:
+    """Train direction model (ensemble, transformer-only, or TCN-only)."""
+    use_ensemble = (
+        getattr(config, "use_tcn_transformer_ensemble", True) if config else True
+    )
+
+    if use_ensemble:
+        _train_ensemble_direction(
+            data, config, save_dir, trainers,
+            warm_start, transformer_checkpoint, instrument, data_range,
+        )
+    elif use_transformer:
+        _train_transformer_only_direction(
+            data, config, save_dir, trainers,
+            warm_start, transformer_checkpoint, instrument, data_range,
+        )
+    else:
+        _train_tcn_only_direction(data, config, save_dir, trainers)
+
+
+def _get_direction_data(data: Dict) -> Dict:
+    """Get direction data from data dict, raising if missing."""
+    dir_data = data.get("direction", data.get("tcn"))
+    if dir_data is None:
+        raise ValueError(NO_DIRECTION_DATA_ERROR)
+    return dir_data
+
+
+def _log_warm_start(warm_start: bool, checkpoint: Optional[Path]) -> None:
+    """Log warm-start status if applicable."""
+    if warm_start and checkpoint and checkpoint.exists():
+        logger.info(
+            f"🔥 WARM-START enabled: Loading weights from {checkpoint}"
+        )
+
+
+def _train_transformer_direction_core(
+    dir_data: Dict,
+    config: TrainerConfig,
+    save_dir: Path,
+    warm_start: bool,
+    transformer_checkpoint: Optional[Path],
+    instrument: str,
+    data_range: str,
+) -> TransformerDirectionTrainer:
+    """Train a single Transformer direction model and save it."""
+    _log_warm_start(warm_start, transformer_checkpoint)
+    trainer = TransformerDirectionTrainer(config)
+    trainer.train(
+        dir_data["X_train"],
+        dir_data["y_train"],
+        dir_data["X_val"],
+        dir_data["y_val"],
+        feature_names=dir_data.get("feature_names"),
+        w_train=dir_data.get("w_train"),
+        w_val=dir_data.get("w_val"),
+        warm_start_path=str(transformer_checkpoint) if warm_start else None,
+        instrument=instrument,
+        data_range=data_range,
+    )
+    trainer.save(str(save_dir / TRANSFORMER_DIRECTION_FILENAME))
+    return trainer
+
+
+def _train_ensemble_direction(
+    data: Dict,
+    config: TrainerConfig,
+    save_dir: Path,
+    trainers: Dict,
+    warm_start: bool,
+    transformer_checkpoint: Optional[Path],
+    instrument: str,
+    data_range: str,
+) -> None:
+    """Train TCN + Transformer ensemble for direction."""
+    logger.info("Training TCN + Transformer Ensemble (Direction Predictors)")
+    logger.info("=" * 50)
+
+    dir_data = _get_direction_data(data)
+
+    # 1. Train Transformer
+    logger.info("\n[1/2] Training Transformer (Direction)")
+    logger.info("-" * 40)
+    transformer_trainer = _train_transformer_direction_core(
+        dir_data, config, save_dir,
+        warm_start, transformer_checkpoint, instrument, data_range,
+    )
+    trainers["transformer"] = transformer_trainer
+
+    # 2. Train TCN Volatility Regime Filter
+    logger.info("\n[2/2] Training TCN (Volatility Regime Filter)")
+    logger.info("-" * 40)
+    _train_tcn_volatility_regime(data, config, save_dir, trainers, warm_start, instrument)
+
+    # Use transformer as primary direction model for backward compatibility
+    trainers["direction"] = transformer_trainer
+
+    logger.info("\n✓ TCN + Transformer Ensemble training complete")
+    logger.info(
+        f"  - Transformer saved: {save_dir / TRANSFORMER_DIRECTION_FILENAME}"
+    )
+    logger.info(f"  - TCN saved: {save_dir / 'tcn_direction.keras'}")
+
+
+def _train_tcn_volatility_regime(
+    data: Dict,
+    config: TrainerConfig,
+    save_dir: Path,
+    trainers: Dict,
+    warm_start: bool,
+    instrument: str,
+) -> None:
+    """Train TCN volatility regime filter (4-class: LOW/NORMAL/HIGH/EXTREME)."""
+    tcn_trainer = TCNTrainer(config)
+    vol_regime_data = data.get("volatility_regime")
+    if vol_regime_data is None:
+        logger.warning("No volatility_regime data found in data dict")
+        logger.warning(
+            "Add 'volatility_regime' to load_all_modular_data or train TCN separately"
+        )
+        return
+
+    try:
+        tcn_checkpoint = save_dir / "tcn_volatility_regime.keras"
+        warm_start_tcn_path = str(tcn_checkpoint) if warm_start and tcn_checkpoint.exists() else None
+
+        tcn_trainer.train(
+            vol_regime_data["X_train"],
+            vol_regime_data["y_train"],
+            vol_regime_data["X_val"],
+            vol_regime_data["y_val"],
+            feature_names=vol_regime_data.get("feature_names"),
+            warm_start_path=warm_start_tcn_path,
+            instrument=instrument,
+        )
+        tcn_trainer.save(str(save_dir / "tcn_volatility_regime.keras"))
+        trainers["tcn_volatility"] = tcn_trainer
+        logger.info("✓ TCN Volatility Regime model trained and saved")
+    except Exception as e:
+        logger.warning(f"TCN Volatility Regime training failed: {e}")
+        logger.warning(
+            "Continuing with Transformer-only (no volatility filter)"
+        )
+
+
+def _train_transformer_only_direction(
+    data: Dict,
+    config: TrainerConfig,
+    save_dir: Path,
+    trainers: Dict,
+    warm_start: bool,
+    transformer_checkpoint: Optional[Path],
+    instrument: str,
+    data_range: str,
+) -> None:
+    """Train Transformer-only direction model."""
+    logger.info("Training Transformer (Direction Predictor)")
+    logger.info("=" * 50)
+
+    dir_data = _get_direction_data(data)
+    dir_trainer = _train_transformer_direction_core(
+        dir_data, config, save_dir,
+        warm_start, transformer_checkpoint, instrument, data_range,
+    )
+    trainers["direction"] = dir_trainer
+    trainers["transformer"] = dir_trainer
+
+
+def _train_tcn_only_direction(
+    data: Dict, config: TrainerConfig, save_dir: Path, trainers: Dict
+) -> None:
+    """Train TCN-only direction model."""
+    logger.info("Training TCN (Direction Predictor)")
+    logger.info("=" * 50)
+
+    dir_data = _get_direction_data(data)
+    dir_trainer = TCNTrainer(config)
+    dir_trainer.train(
+        dir_data["X_train"],
+        dir_data["y_train"],
+        dir_data["X_val"],
+        dir_data["y_val"],
+        feature_names=dir_data.get("feature_names"),
+    )
+    dir_trainer.save(str(save_dir / "tcn_direction.keras"))
+    trainers["direction"] = dir_trainer
+    trainers["tcn"] = dir_trainer
+
+
+def _train_simple_model(
+    data: Dict,
+    key: str,
+    trainer_cls,
+    config: TrainerConfig,
+    save_dir: Path,
+    save_name: str,
+    label: str,
+) -> BaseTrainer:
+    """Train a simple (non-direction) model and save it."""
+    logger.info("\n" + "=" * 50)
+    logger.info(f"Training {label}")
+    logger.info("=" * 50)
+    model_data = data[key]
+    trainer = trainer_cls(config)
+    trainer.train(
+        model_data["X_train"],
+        model_data["y_train"],
+        model_data["X_val"],
+        model_data["y_val"],
+        feature_names=model_data.get("feature_names"),
+    )
+    trainer.save(str(save_dir / save_name))
+    return trainer
+
+
+def _train_auxiliary_models(
+    data: Dict,
+    config: TrainerConfig,
+    save_dir: Path,
+    trainers: Dict,
+    train_histgb: bool,
+    use_regime: bool,
+) -> None:
+    """Train auxiliary models: XGBoost, RF, Ridge, and optionally HistGB."""
+    trainers["xgboost"] = _train_simple_model(
+        data, "xgboost", XGBoostTrainer, config, save_dir,
+        "xgb_momentum.pkl", "XGBoost (Momentum Analyzer)",
+    )
+    trainers["rf"] = _train_simple_model(
+        data, "rf", RandomForestTrainer, config, save_dir,
+        "rf_risk.pkl", "Random Forest (Risk Assessor)",
+    )
+    trainers["ridge"] = _train_simple_model(
+        data, "ridge", RidgeTrainer, config, save_dir,
+        RIDGE_CONFIDENCE_FILENAME, "Ridge (Confidence Scorer)",
+    )
+
+    if train_histgb and not use_regime:
+        _train_histgb_model(data, config, save_dir, trainers)
+
+
+def _train_histgb_model(
+    data: Dict, config: TrainerConfig, save_dir: Path, trainers: Dict
+) -> None:
+    """Train HistGradientBoosting for hybrid voting."""
+    logger.info("\n" + "=" * 50)
+    logger.info(
+        "Training HistGradientBoosting (Direction Baseline for Hybrid Voting)"
+    )
+    logger.info("=" * 50)
+
+    dir_data = data.get("direction", data.get("tcn"))
+    if dir_data is None:
+        logger.warning("No direction data found for HistGB training")
+        return
+
+    histgb_trainer = HistGradientBoostingDirectionTrainer(config)
+    histgb_trainer.train(
+        dir_data["X_train"],
+        dir_data["y_train"],
+        dir_data["X_val"],
+        dir_data["y_val"],
+        feature_names=dir_data.get("feature_names"),
+    )
+    histgb_trainer.save(str(save_dir / "histgb_direction.pkl"))
+    trainers["histgb"] = histgb_trainer
+    logger.info("✓ HistGB trained for hybrid voting with Transformer")

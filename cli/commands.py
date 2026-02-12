@@ -674,6 +674,43 @@ def buddy(
         )
         ensemble.load_models(instrument=normalized_instrument)
 
+        # Show model timestamps to validate correct model loading
+        if hasattr(ensemble, "get_model_load_report"):
+            report = ensemble.get_model_load_report()
+            if report:
+                console.print("[dim]Model load order:[/dim]")
+                order = [
+                    "direction",
+                    "volatility",
+                    "ensemble",
+                    "gates",
+                    "rl_sizer",
+                    "rl_gates",
+                    "rl_exits",
+                    "meta",
+                    "model",
+                ]
+                ordered_items = []
+                for category in order:
+                    ordered_items.extend([i for i in report if i.get("category") == category])
+
+                for item in ordered_items:
+                    trained_at = item.get("trained_at", "unknown")
+                    age_days = item.get("age_days")
+                    age_str = f"{age_days}d ago" if age_days is not None else "unknown"
+                    path_source = item.get("path_source", "unknown")
+                    ts_source = item.get("timestamp_source", "unknown")
+                    label = item.get("label", "model")
+                    path = item.get("path", "")
+
+                    metrics = item.get("metrics") or {}
+                    acc = metrics.get("val_accuracy") or metrics.get("best_val_accuracy")
+                    metric_str = f" | acc={acc:.1%}" if isinstance(acc, (int, float)) else ""
+
+                    console.print(
+                        f"[dim]  {label}: {trained_at} ({age_str}, {ts_source}; {path_source}) | {path}{metric_str}[/dim]"
+                    )
+
         # Fetch candles for inference
         from src.utils.fx_paper import candles_to_ohlcv_df
         from src.utils.oanda_practice import OandaPracticeClient

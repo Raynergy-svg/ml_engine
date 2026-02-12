@@ -668,7 +668,11 @@ class OptimalExitRL:
             logger.info(f"💾 Exit RL model saved to {EXIT_RL_MODEL_PATH}")
 
     def load(self) -> bool:
-        """Load model."""
+        """Load model.
+
+        When TensorFlow is already loaded, uses subprocess to avoid
+        TF/PyTorch deadlock on macOS (Intel and Metal).
+        """
         _ensure_sb3_imported()
         if not SB3_AVAILABLE:
             logger.debug("stable-baselines3 not available")
@@ -676,10 +680,66 @@ class OptimalExitRL:
 
         try:
             if EXIT_RL_MODEL_PATH.exists():
-                self.model = PPO.load(str(EXIT_RL_MODEL_PATH), device="cpu")
-                self._is_trained = True
-                logger.info(f"📂 Exit RL model loaded from {EXIT_RL_MODEL_PATH}")
+                import sys
+                if 'tensorflow' in sys.modules:
+                    self._load_via_subprocess(EXIT_RL_MODEL_PATH)
+                else:
+                    self.model = PPO.load(str(EXIT_RL_MODEL_PATH), device="cpu")
+                    self._is_trained = True
+                    logger.info(f"📂 Exit RL model loaded from {EXIT_RL_MODEL_PATH}")
             return self._is_trained
         except Exception as e:
             logger.warning(f"Failed to load Exit RL model: {e}")
             return False
+
+    def _load_via_subprocess(self, model_path: Path) -> None:
+        """Load PPO model in a child process to avoid TF/PyTorch deadlock.
+
+        The child process doesn't have TF imported, so PPO.load() works fine.
+        We transfer the loaded model back via cloudpickle (handles lambdas).
+        """
+        import subprocess
+        import tempfile
+        import sys
+
+        with tempfile.NamedTemporaryFile(suffix='.pkl', delete=False) as tmp:
+            tmp_path = tmp.name
+
+        try:
+            script = (
+                "import sys\n"
+                "try:\n"
+                "    import cloudpickle\n"
+                "    from stable_baselines3 import PPO\n"
+                f'    model = PPO.load("{model_path}", device="cpu")\n'
+                f'    with open("{tmp_path}", "wb") as f:\n'
+                "        cloudpickle.dump(model, f)\n"
+                "    sys.exit(0)\n"
+                "except Exception as e:\n"
+                '    print(f"Exit RL subprocess load failed: {e}", file=sys.stderr)\n'
+                "    sys.exit(1)\n"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True, timeout=30,
+                cwd=str(Path.cwd()),
+            )
+
+            if result.returncode == 0 and Path(tmp_path).exists():
+                import cloudpickle
+                with open(tmp_path, 'rb') as f:
+                    self.model = cloudpickle.load(f)
+                self._is_trained = True
+                logger.info(f"📂 Exit RL model loaded from {model_path} (via subprocess)")
+            else:
+                err = result.stderr.strip() if result.stderr else "unknown error"
+                logger.warning(f"Exit RL subprocess load failed: {err}")
+        except subprocess.TimeoutExpired:
+            logger.warning("Exit RL subprocess load timed out (30s)")
+        except Exception as e:
+            logger.warning(f"Exit RL subprocess load failed: {e}")
+        finally:
+            try:
+                Path(tmp_path).unlink(missing_ok=True)
+            except Exception:
+                pass

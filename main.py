@@ -99,7 +99,7 @@ def _dispatch_scan(args: Any) -> None:
     import logging as _logging
     root_logger = _logging.getLogger()
     prev_level = root_logger.level
-    root_logger.setLevel(_logging.CRITICAL)
+    root_logger.setLevel(_logging.ERROR)
     try:
         watch_mode = bool(getattr(args, "watch", False))
         if watch_mode:
