@@ -824,11 +824,16 @@ class GateThresholdRL:
             pickle.dump(self.config, f)
         logger.info(f"💾 Gate RL config saved to {config_path}")
 
-    def load(self) -> bool:
+    def load(self, force_direct: bool = False) -> bool:
         """Load model and scaler.
 
         When TensorFlow is already loaded, uses subprocess to avoid
         TF/PyTorch deadlock on macOS (Intel and Metal).
+
+        Args:
+            force_direct: If True, skip the subprocess fallback and load
+                directly with SAC.load(). Use when already in a child process
+                (e.g. rl_worker) where the TF import is just an SB3 side-effect.
         """
         _ensure_sb3_imported()
         if not SB3_AVAILABLE:
@@ -838,7 +843,7 @@ class GateThresholdRL:
         try:
             if GATE_RL_MODEL_PATH.exists():
                 import sys
-                if 'tensorflow' in sys.modules:
+                if not force_direct and 'tensorflow' in sys.modules:
                     self._load_via_subprocess(GATE_RL_MODEL_PATH)
                 else:
                     self.model = SAC.load(str(GATE_RL_MODEL_PATH), device="cpu")

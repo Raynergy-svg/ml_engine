@@ -974,7 +974,30 @@ def _train_ensemble_models(
             console=console,
         )
 
+    # Train meta-labeler (predicts trade success probability)
+    meta_labeling_enabled = bool(cfg.get("buddy", {}).get("meta_labeling", {}).get("enabled", False))
+    if meta_labeling_enabled:
+        _train_meta_labeler_cli(
+            dir_trainer=dir_trainer,
+            dir_data=dir_data,
+            pair_paths=pair_paths,
+            model_dir=model_dir,
+            training_instrument=training_instrument,
+            cfg=cfg,
+            console=console,
+        )
+
     # Save metadata
+    # Fit confidence calibrator (Platt scaling) after all models are trained
+    _fit_post_training_calibrator_cli(
+        dir_trainer=dir_trainer,
+        dir_data=dir_data,
+        pair_paths=pair_paths,
+        training_instrument=training_instrument,
+        model_dir=model_dir,
+        console=console,
+    )
+
     meta = _build_ensemble_metadata(
         use_regime=use_regime,
         dir_model_path=dir_model_path,
@@ -1558,6 +1581,309 @@ def _train_histgb_model(*, dir_data, trainer_config, pair_paths, model_dir, trai
     all_metrics['histgb'] = histgb_metrics
 
     console.print(f"[green]✓ HistGB complete: val_accuracy={histgb_metrics['val_accuracy']:.1%}, balanced={histgb_metrics.get('val_balanced_accuracy', 0):.1%}[/green]")
+
+
+def _train_meta_labeler_cli(
+    *,
+    dir_trainer,
+    dir_data,
+    pair_paths,
+    model_dir,
+    training_instrument,
+    cfg,
+    console,
+):
+    """Train meta-labeler using the Transformer's predictions on direction data.
+
+    The meta-labeler predicts *whether* a trade signal will be profitable,
+    providing a 5th gate.  It uses the same features extracted during inference
+    (last-timestep of direction features + primary probability).
+
+    Training uses the Transformer's own scaler + sequencing so that the
+    resulting meta_labeler.pkl is compatible with inference-time features.
+    """
+    import logging as _logging
+    import numpy as np
+    _logger = _logging.getLogger(__name__)
+
+    if dir_trainer is None or not getattr(dir_trainer, 'is_trained', False):
+        console.print("[yellow]⚠ No trained Transformer — skipping meta-labeler[/yellow]")
+        return
+
+    if dir_data is None:
+        console.print("[yellow]⚠ No direction data — skipping meta-labeler[/yellow]")
+        return
+
+    try:
+        from src.training.meta_labeling import MetaLabeler, MetaLabelingConfig
+    except ImportError:
+        console.print("[yellow]⚠ Meta-labeling module not available — skipping[/yellow]")
+        return
+
+    console.print("\n[cyan]🏷️  Training meta-labeler (trade filter)...[/cyan]")
+
+    X_train = dir_data.get('X_train')
+    y_train = dir_data.get('y_train')
+    X_val = dir_data.get('X_val')
+    y_val = dir_data.get('y_val')
+
+    if X_train is None or y_train is None:
+        console.print("[yellow]⚠ Missing training data — skipping meta-labeler[/yellow]")
+        return
+
+    try:
+        # Get Transformer predictions on train/val data using the trainer pipeline
+        seq_len = getattr(dir_trainer, 'seq_len', 60)
+        scaler = getattr(dir_trainer, 'scaler', None)
+
+        def _get_predictions_and_features(X_raw, y_raw):
+            """Scale, sequence, and predict — returning aligned features + predictions + labels."""
+            x_2d = np.asarray(X_raw, dtype=np.float32).reshape(-1, X_raw.shape[-1])
+            if scaler is not None:
+                x_scaled = scaler.transform(x_2d)
+            else:
+                x_scaled = x_2d
+
+            n = len(x_scaled)
+            if n < seq_len:
+                return None, None, None
+
+            # Create sequences
+            sequences = np.array([
+                x_scaled[i:i + seq_len]
+                for i in range(n - seq_len + 1)
+            ], dtype=np.float32)
+
+            # Apply EMA weights if available
+            use_ema = (
+                getattr(dir_trainer, '_use_ema', False)
+                and getattr(dir_trainer, 'ema', None) is not None
+                and getattr(dir_trainer.ema, '_initialized', False)
+                and getattr(dir_trainer.config, 'use_ema_for_inference', True)
+            )
+            if use_ema:
+                dir_trainer.ema.apply()
+            try:
+                preds = dir_trainer.model.predict(sequences, verbose=0, batch_size=128).flatten()
+            finally:
+                if use_ema:
+                    dir_trainer.ema.restore()
+
+            # Last timestep features for each sequence (matches inference _extract_tcn_features)
+            last_step_feats = sequences[:, -1, :]
+            # Align labels
+            aligned_labels = y_raw.flatten()[seq_len - 1:seq_len - 1 + len(preds)]
+
+            return last_step_feats, preds, aligned_labels
+
+        train_feats, train_preds, train_labels = _get_predictions_and_features(X_train, y_train)
+        if train_feats is None:
+            console.print("[yellow]⚠ Not enough training samples for meta-labeler sequencing[/yellow]")
+            return
+
+        val_feats, val_preds, val_labels = None, None, None
+        if X_val is not None and y_val is not None:
+            val_feats, val_preds, val_labels = _get_predictions_and_features(X_val, y_val)
+
+        # Configure meta-labeler
+        meta_cfg_yaml = cfg.get("buddy", {}).get("meta_labeling", {})
+        meta_cfg = MetaLabelingConfig(
+            use_xgboost=True,
+            n_estimators=int(meta_cfg_yaml.get("n_estimators", 200)),
+            max_depth=int(meta_cfg_yaml.get("max_depth", 4)),
+            learning_rate=float(meta_cfg_yaml.get("learning_rate", 0.1)),
+            reg_alpha=float(meta_cfg_yaml.get("reg_alpha", 1.0)),
+            reg_lambda=float(meta_cfg_yaml.get("reg_lambda", 5.0)),
+            subsample=float(meta_cfg_yaml.get("subsample", 0.7)),
+            colsample_bytree=float(meta_cfg_yaml.get("colsample_bytree", 0.7)),
+            min_child_weight=int(meta_cfg_yaml.get("min_child_weight", 5)),
+            early_stopping_rounds=int(meta_cfg_yaml.get("early_stopping_rounds", 30)),
+            max_overfitting_gap=float(meta_cfg_yaml.get("max_overfitting_gap", 0.15)),
+            auto_tune=bool(meta_cfg_yaml.get("auto_tune", False)),
+            min_confidence_threshold=float(meta_cfg_yaml.get("threshold", 0.55)),
+            use_reduced_features=True,
+            include_primary_proba=True,
+        )
+
+        labeler = MetaLabeler(meta_cfg)
+        metrics = labeler.fit(
+            train_feats,
+            train_preds,
+            train_labels,
+            features_val=val_feats,
+            predictions_val=val_preds,
+            outcomes_val=val_labels,
+            verbose=True,
+        )
+
+        train_acc = metrics.get("meta_train_accuracy", 0)
+        val_acc = metrics.get("meta_val_accuracy", 0)
+        overfit_gap = metrics.get("overfitting_gap", train_acc - val_acc)
+
+        # Tune threshold on validation if available
+        if val_feats is not None:
+            best_thresh, thresh_metrics = labeler.tune_threshold(
+                val_feats, val_preds, val_labels, verbose=True
+            )
+
+        console.print(
+            f"[green]✓ Meta-labeler: train_acc={train_acc:.1%}, "
+            f"val_acc={val_acc:.1%}, gap={overfit_gap:.1%}[/green]"
+        )
+
+        # Reject if severely overfitting
+        if overfit_gap > 0.20:
+            console.print(f"[yellow]⚠ Meta-labeler rejected (gap {overfit_gap:.1%} > 20%)[/yellow]")
+            return
+
+        # Save to pair-specific directory
+        pair_dir = pair_paths.get('pair_dir', model_dir)
+        meta_save_path = pair_dir / "meta_labeler.pkl"
+        labeler.save(meta_save_path)
+        console.print(f"[cyan]💾 Meta-labeler saved to: {meta_save_path}[/cyan]")
+
+        # Also save to generic directory
+        if training_instrument != "GENERIC":
+            generic_path = model_dir / "meta_labeler.pkl"
+            labeler.save(generic_path)
+            console.print(f"[dim]  Also saved to {generic_path}[/dim]")
+
+    except Exception as e:
+        _logger.warning(f"Meta-labeler training failed (non-fatal): {e}")
+        console.print(f"[yellow]⚠ Meta-labeler training failed (non-fatal): {e}[/yellow]")
+
+
+def _fit_post_training_calibrator_cli(
+    *,
+    dir_trainer,
+    dir_data,
+    pair_paths,
+    training_instrument,
+    model_dir,
+    console,
+):
+    """Fit Platt-scaling confidence calibrator and save to pair-specific + generic dirs.
+
+    Uses the just-trained Transformer model to produce raw probabilities on the
+    validation set, then fits a ConfidenceCalibrator (Platt scaling) mapping
+    those raw probabilities to actual direction outcomes.
+    """
+    import logging as _logging
+    _logger = _logging.getLogger(__name__)
+
+    try:
+        from src.risk.confidence_calibration import CalibrationConfig, ConfidenceCalibrator
+    except ImportError:
+        console.print("[yellow]⚠ Confidence calibration module not available — skipping calibrator fitting[/yellow]")
+        return
+
+    if dir_trainer is None or not hasattr(dir_trainer, 'model') or dir_trainer.model is None:
+        console.print("[yellow]⚠ No trained Transformer model available — skipping calibrator fitting[/yellow]")
+        return
+
+    if dir_data is None:
+        console.print("[yellow]⚠ No direction data available — skipping calibrator fitting[/yellow]")
+        return
+
+    import numpy as np
+
+    X_val = dir_data.get('X_val')
+    y_val = dir_data.get('y_val')
+    if X_val is None or y_val is None or len(X_val) == 0:
+        console.print("[yellow]⚠ Validation data missing — skipping calibrator fitting[/yellow]")
+        return
+
+    try:
+        # Use the trainer's own scaling + sequencing pipeline to get raw probabilities.
+        # Calling model.predict() directly on unscaled 2D data causes Keras 3 shape errors
+        # ("as_list() is not defined on an unknown TensorShape").
+        raw_probs = []
+        seq_len = getattr(dir_trainer, 'seq_len', 60)
+        x_val_2d = np.asarray(X_val, dtype=np.float32).reshape(-1, X_val.shape[-1])
+
+        # Scale using the trainer's fitted scaler
+        scaler = getattr(dir_trainer, 'scaler', None)
+        if scaler is not None:
+            x_val_scaled = scaler.transform(x_val_2d)
+        else:
+            x_val_scaled = x_val_2d
+
+        # Apply EMA weights if available (matches trainer's predict behavior)
+        use_ema = (
+            getattr(dir_trainer, '_use_ema', False)
+            and getattr(dir_trainer, 'ema', None) is not None
+            and getattr(dir_trainer.ema, '_initialized', False)
+            and getattr(dir_trainer.config, 'use_ema_for_inference', True)
+        )
+        if use_ema:
+            dir_trainer.ema.apply()
+
+        try:
+            # Create sequences and predict in batch for efficiency
+            n_samples = len(x_val_scaled)
+            if n_samples >= seq_len:
+                sequences = np.array([
+                    x_val_scaled[i:i + seq_len]
+                    for i in range(n_samples - seq_len + 1)
+                ], dtype=np.float32)
+                batch_preds = dir_trainer.model.predict(sequences, verbose=0, batch_size=128).flatten()
+                raw_probs = batch_preds.tolist()
+            else:
+                # Not enough data for a full sequence
+                console.print(f"[yellow]⚠ Only {n_samples} samples, need ≥{seq_len} for sequences — skipping calibrator[/yellow]")
+                return
+        finally:
+            if use_ema:
+                dir_trainer.ema.restore()
+
+        raw_probs = np.array(raw_probs, dtype=np.float32)
+        # Align labels — sequences start at index (seq_len - 1)
+        actual_outcomes = y_val.flatten()[seq_len - 1:seq_len - 1 + len(raw_probs)].astype(bool)
+
+        if len(raw_probs) < 10:
+            console.print(f"[yellow]⚠ Only {len(raw_probs)} validation samples — need ≥10 for calibration[/yellow]")
+            return
+
+        config = CalibrationConfig(
+            method="platt",
+            min_confidence_threshold=0.5,
+            max_confidence_threshold=0.95,
+            apply_directional_adjustment=True,
+            neutral_threshold=0.05,
+            directional_penalty=0.1,
+            apply_win_probability_adjustment=False,
+            apply_trading_context_adjustment=False,
+        )
+        calibrator = ConfidenceCalibrator(config)
+        calibrator.fit(raw_probs, actual_outcomes)
+
+        if not calibrator.is_fitted:
+            console.print("[yellow]⚠ Calibrator fitting failed — skipping save[/yellow]")
+            return
+
+        # Save to pair-specific directory
+        pair_dir = pair_paths.get('direction', model_dir).parent
+        pair_calib_path = pair_dir / "confidence_calibrator.pkl"
+        calibrator.save(pair_calib_path)
+        console.print(f"[green]✓ Confidence calibrator saved to {pair_calib_path}[/green]")
+
+        # Also save to generic directory
+        if training_instrument != "GENERIC":
+            generic_calib_path = model_dir / "confidence_calibrator.pkl"
+            calibrator.save(generic_calib_path)
+            console.print(f"[dim]  Also saved to {generic_calib_path}[/dim]")
+
+        # Show quick calibration preview
+        sample_probs = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
+        mappings = []
+        for p in sample_probs:
+            result = calibrator.calibrate_confidence(p)
+            mappings.append(f"{p:.2f}→{result.calibrated_confidence:.3f}")
+        console.print(f"[dim]  Calibration map: {', '.join(mappings)}[/dim]")
+
+    except Exception as e:
+        _logger.warning(f"Confidence calibration failed (non-fatal): {e}")
+        console.print(f"[yellow]⚠ Confidence calibration failed (non-fatal): {e}[/yellow]")
     console.print(f"[cyan]💾 HistGB saved to: {pair_paths['histgb']}[/cyan]")
     console.print("[yellow]🔥 Hybrid voting ENABLED: Transformer + HistGB will vote together[/yellow]")
 

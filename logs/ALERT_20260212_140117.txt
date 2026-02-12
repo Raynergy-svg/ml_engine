@@ -1,0 +1,15 @@
+Subject: Joint Retraining FAILED - 2026-02-12
+
+ML Engine Joint Retraining Failed
+
+Time: 2026-02-12T19:01:06.815246+00:00
+Duration: 10.9 seconds
+Pairs: ALL
+
+Error Details:
+Joint training failed: No data loaded
+
+Log file: /Users/davidcertan/Desktop/ml_engine/logs/retrain_20260212_140106.log
+
+---
+This is an automated alert. No action required if you're already investigating.

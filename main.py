@@ -150,6 +150,13 @@ def _dispatch_train_joint(args: Any) -> None:
 
     instruments_str = getattr(args, "instruments", "EUR_USD,GBP_USD,USD_JPY")
     instruments = [p.strip().upper().replace("/", "_") for p in instruments_str.split(",")]
+
+    # Expand "all" to the full list of default pairs
+    if len(instruments) == 1 and instruments[0] == "ALL":
+        from src.scanner.config import DEFAULT_PAIRS
+        instruments = DEFAULT_PAIRS.copy()
+        logger.info(f"Expanded 'all' to {len(instruments)} pairs: {', '.join(instruments)}")
+
     train_joint_multi_pair_ensemble(
         instruments=instruments,
         granularity=str(getattr(args, "granularity", "H1")),
