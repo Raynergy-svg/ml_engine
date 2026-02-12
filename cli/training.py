@@ -2453,11 +2453,16 @@ def _run_deployment_validation(
     summary = result.get_summary()
     console.print()
     if result.deployment_approved:
-        console.print(f"[bold green]✓ DEPLOYMENT APPROVED[/bold green] • "
-                     f"{summary['checks_passed']}/{summary['total_checks']} checks passed")
+        console.print(
+            f"[bold green]✓ DEPLOYMENT APPROVED[/bold green] • "
+            f"{summary['checks_passed']}/{summary['total_checks']} checks passed"
+        )
     else:
-        console.print(f"[bold yellow]⚠ DEPLOYMENT NEEDS REVIEW[/bold yellow] • "
-                     f"{summary['checks_failed']} checks failed ({summary['critical_failures']} critical)")
+        console.print(
+            f"[bold yellow]⚠ DEPLOYMENT NEEDS REVIEW[/bold yellow] • "
+            f"{summary['checks_failed']} checks failed "
+            f"({summary['critical_failures']} critical)"
+        )
 
     # Display failure reasons
     if result.failure_reasons:
