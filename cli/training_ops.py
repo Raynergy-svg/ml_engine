@@ -894,7 +894,7 @@ def retrain_all(
     config_path: str = DEFAULT_CONFIG_PATH,
     *,
     granularity: str = "H1",
-    candles: int = 15000,
+    candles: int = 25000,
     verbose: bool = False,
     **kwargs: Any,
 ) -> None:

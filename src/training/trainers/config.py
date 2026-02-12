@@ -49,6 +49,13 @@ class TrainerConfig:
     transformer_input_noise: float = 0.02  # Gaussian noise on input
     transformer_spatial_dropout: float = 0.10  # SpatialDropout1D on input sequence
     transformer_projection_dropout: float = 0.10  # Dropout after input projection
+    
+    # === TIME-SERIES AUGMENTATION SETTINGS (NEW - Phase 4) ===
+    use_augmentation: bool = True  # Enable time-series augmentation during training
+    augmentation_noise_std: float = 0.01  # Gaussian noise std dev
+    augmentation_scale_range: tuple = (0.98, 1.02)  # Random scaling range
+    augmentation_time_mask_prob: float = 0.1  # Probability of time masking
+    augmentation_time_mask_max_len: int = 5  # Max length of time mask
 
     # Output head settings (for direction model) - stored in metadata for fallback rebuild
     final_dense_units: int = 16  # Units in final dense layer before output

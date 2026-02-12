@@ -1210,6 +1210,76 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         return optimizer
 
+    def _create_augmentation_fn(self) -> Any:
+        """
+        Create time-series data augmentation function.
+        
+        Applies augmentations during training to improve generalization:
+        1. Gaussian noise injection
+        2. Random scaling
+        3. Time masking (like SpecAugment)
+        
+        Returns:
+            TensorFlow augmentation function or None if disabled
+        """
+        if not getattr(self.config, "use_augmentation", False):
+            return None
+        
+        noise_std = getattr(self.config, "augmentation_noise_std", 0.01)
+        scale_range = getattr(self.config, "augmentation_scale_range", (0.98, 1.02))
+        time_mask_prob = getattr(self.config, "augmentation_time_mask_prob", 0.1)
+        time_mask_max_len = getattr(self.config, "augmentation_time_mask_max_len", 5)
+        
+        @tf.function
+        def augment(x, y):
+            """Apply augmentation to a single batch."""
+            # Cast to float32 for operations
+            x = tf.cast(x, tf.float32)
+            
+            # 1. Add Gaussian noise
+            if noise_std > 0:
+                noise = tf.random.normal(tf.shape(x), mean=0.0, stddev=noise_std)
+                x = x + noise
+            
+            # 2. Random scaling
+            scale = tf.random.uniform([], scale_range[0], scale_range[1])
+            x = x * scale
+            
+            # 3. Time masking (randomly mask some timesteps)
+            if time_mask_prob > 0 and time_mask_max_len > 0:
+                # Apply time masking with probability
+                apply_mask = tf.random.uniform([]) < time_mask_prob
+                if apply_mask:
+                    batch_size = tf.shape(x)[0]
+                    seq_len = tf.shape(x)[1]
+                    n_features = tf.shape(x)[2]
+                    
+                    # Random mask length and start position for each batch item
+                    mask_len = tf.random.uniform([batch_size], 1, time_mask_max_len + 1, dtype=tf.int32)
+                    mask_start = tf.random.uniform([batch_size], 0, seq_len - time_mask_max_len, dtype=tf.int32)
+                    
+                    # Create mask for each batch item
+                    indices = tf.range(seq_len)  # [seq_len]
+                    indices = tf.tile(tf.expand_dims(indices, 0), [batch_size, 1])  # [batch, seq_len]
+                    
+                    mask_start_expanded = tf.expand_dims(mask_start, 1)  # [batch, 1]
+                    mask_len_expanded = tf.expand_dims(mask_len, 1)  # [batch, 1]
+                    
+                    # Mask: True where NOT masked, False where masked
+                    mask = tf.logical_or(
+                        indices < mask_start_expanded,
+                        indices >= mask_start_expanded + mask_len_expanded
+                    )
+                    mask = tf.cast(mask, tf.float32)  # [batch, seq_len]
+                    mask = tf.expand_dims(mask, -1)  # [batch, seq_len, 1]
+                    
+                    # Apply mask (zero out masked timesteps)
+                    x = x * mask
+            
+            return x, y
+        
+        return augment
+
     def _compile_model_with_loss(
         self,
         optimizer: Any,
@@ -1811,16 +1881,41 @@ class TransformerDirectionTrainer(BaseTrainer):
         self._initialize_ema()
         callbacks = self._create_training_callbacks(x_val_filtered, y_val_filtered)
 
-        # Train
-        history = self.model.fit(
-            x_train_filtered, y_train_filtered,
-            validation_data=(x_val_filtered, y_val_filtered),
-            epochs=self.config.epochs,
-            batch_size=self.config.batch_size,
-            callbacks=callbacks,
-            verbose=0,
-            sample_weight=sample_weights,
-        )
+        # === PHASE 4: DATA AUGMENTATION FOR SMALLER DATASET ===
+        augment_fn = self._create_augmentation_fn()
+        if augment_fn is not None:
+            logger.info("🎨 Time-series augmentation enabled (noise, scaling, time masking)")
+            # Create tf.data.Dataset with augmentation
+            train_dataset = tf.data.Dataset.from_tensor_slices((x_train_filtered, y_train_filtered))
+            train_dataset = train_dataset.shuffle(buffer_size=len(x_train_filtered))
+            train_dataset = train_dataset.batch(self.config.batch_size)
+            train_dataset = train_dataset.map(augment_fn, num_parallel_calls=tf.data.AUTOTUNE)
+            train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
+            
+            # Validation dataset (no augmentation)
+            val_dataset = tf.data.Dataset.from_tensor_slices((x_val_filtered, y_val_filtered))
+            val_dataset = val_dataset.batch(self.config.batch_size)
+            val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
+            
+            # Train with augmented dataset
+            history = self.model.fit(
+                train_dataset,
+                validation_data=val_dataset,
+                epochs=self.config.epochs,
+                callbacks=callbacks,
+                verbose=0,
+            )
+        else:
+            # Train without augmentation (original method)
+            history = self.model.fit(
+                x_train_filtered, y_train_filtered,
+                validation_data=(x_val_filtered, y_val_filtered),
+                epochs=self.config.epochs,
+                batch_size=self.config.batch_size,
+                callbacks=callbacks,
+                verbose=0,
+                sample_weight=sample_weights,
+            )
 
         self.is_trained = True
 

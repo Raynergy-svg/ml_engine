@@ -153,7 +153,7 @@ def _dispatch_train_joint(args: Any) -> None:
     train_joint_multi_pair_ensemble(
         instruments=instruments,
         granularity=str(getattr(args, "granularity", "H1")),
-        candles=int(getattr(args, "candles", 15000)),
+        candles=int(getattr(args, "candles", 25000)),
         fine_tune=bool(getattr(args, "fine_tune", True)),
         fine_tune_threshold=float(getattr(args, "fine_tune_threshold", 0.05)),
         console=console,
@@ -349,7 +349,7 @@ def _handle_retrain_all(args: Any) -> None:
     retrain_all(
         config_path=args.config,
         granularity=str(getattr(args, "granularity", "H1")),
-        candles=int(getattr(args, "candles", 15000)),
+        candles=int(getattr(args, "candles", 25000)),
         verbose=bool(getattr(args, "verbose", False)),
     )
 

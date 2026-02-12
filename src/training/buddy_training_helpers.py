@@ -1325,7 +1325,7 @@ def _build_joint_training_result(
 def train_joint_multi_pair_ensemble(
     instruments: list[str],
     granularity: str = "H1",
-    candles: int = 15000,
+    candles: int = 25000,
     model_dir: str = "trained_data/models",
     fine_tune: bool = True,
     fine_tune_threshold: float = 0.05,
