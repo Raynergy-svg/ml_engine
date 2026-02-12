@@ -28,6 +28,7 @@ from cli.tf_config import _configure_tf_metal
 from cli.models import _build_buddy_model_for_type, _build_buddy_model_shared_encoder
 
 from src.utils import load_config
+from src.utils.seed_manager import set_global_seed, get_global_seed
 
 # ── String constants (SonarQube duplicate-literal fix) ──────────────
 _STYLE_HEADER = "bold cyan"
@@ -2316,6 +2317,21 @@ def _train_buddy_impl(
 
     dev = str(opts["device"] or "auto").strip().lower()
     force_cpu = dev == "cpu"
+    
+    # === REPRODUCIBILITY: Initialize global seed ===
+    reproducibility_cfg = cfg.get("reproducibility", {}) if isinstance(cfg, dict) else {}
+    if reproducibility_cfg.get("enabled", True):
+        config_seed = reproducibility_cfg.get("global_seed", seed)
+        if config_seed is not None:
+            set_global_seed(config_seed)
+            console.print(f"[green]✅ Reproducibility enabled with global seed: {config_seed}[/green]")
+        elif seed is not None:
+            set_global_seed(seed)
+            console.print(f"[green]✅ Reproducibility enabled with CLI seed: {seed}[/green]")
+    elif seed is not None:
+        # Reproducibility disabled in config but seed provided via CLI
+        set_global_seed(seed)
+        console.print(f"[yellow]⚠️  Reproducibility disabled in config, but using CLI seed: {seed}[/yellow]")
 
     try:
         from src.utils.tracing_setup import setup_tracing as _setup_tracing

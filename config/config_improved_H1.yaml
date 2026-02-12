@@ -4,6 +4,13 @@
 # Optimized for H1 (Hourly) candles - less noise, cleaner patterns
 # =============================================================================
 
+# ----- REPRODUCIBILITY CONFIGURATION -----
+reproducibility:
+  enabled: true
+  global_seed: 42
+  # Set to null to disable seeding (non-deterministic training)
+  # Can be overridden via RANDOM_SEED environment variable
+
 # ----- PATH CONFIGURATION -----
 paths:
   data_dir: trained_data/data
