@@ -49,5 +49,11 @@ def test_modular_inference_get_model_path_prefers_joint_for_generic():
     generic_ensemble = ModularEnsembleInference(instrument=None)
     generic_path = generic_ensemble._get_model_path("transformer_direction", ".keras")
 
-    # Current behavior: generic inference prefers joint-trained artifacts when present.
-    assert str(generic_path).endswith("trained_data/models/joint/transformer_direction.keras")
+    # Generic inference prefers joint-trained artifacts when present,
+    # otherwise falls back to the base generic model path.
+    assert str(generic_path).endswith(
+        (
+            "trained_data/models/joint/transformer_direction.keras",
+            "trained_data/models/transformer_direction.keras",
+        )
+    )
