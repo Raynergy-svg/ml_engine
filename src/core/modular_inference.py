@@ -34,7 +34,9 @@ from __future__ import annotations
 from datetime import datetime
 import json
 import logging
+import os
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -137,6 +139,140 @@ RL_EXIT_MODEL_PATH = Path("trained_data/models/ppo_optimal_exit.zip")
 
 # Timeout for RL loading to prevent hangs
 RL_LOAD_TIMEOUT_SECONDS = 10
+RL_SUBPROCESS_LOAD_TIMEOUT_SECONDS = 60
+
+
+def _env_flag_true(name: str) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    return value in {"1", "true", "yes", "y", "on"}
+
+
+def _allow_rl_gates_exits_autoload() -> bool:
+    """Whether RL gates/exits should be auto-enabled when model files exist.
+
+    You can force-enable/disable via env vars.
+    """
+    if _env_flag_true("BUDDY_ENABLE_RL_GATES_EXITS"):
+        return True
+
+    if _env_flag_true("BUDDY_DISABLE_RL_GATES_EXITS"):
+        return False
+    return True
+
+
+def _rl_gates_worker_main(request_queue, response_queue) -> None:
+    """Child process: load RL gates model and serve threshold requests."""
+    try:
+        from src.rl.gate_threshold_env import GateThresholdRL
+
+        optimizer = GateThresholdRL()
+        loaded = optimizer.load()
+        response_queue.put({'type': 'status', 'ok': bool(loaded)})
+        if not loaded:
+            return
+
+        while True:
+            msg = request_queue.get()
+            if not isinstance(msg, dict):
+                continue
+            if msg.get('type') == 'shutdown':
+                return
+            if msg.get('type') != 'thresholds':
+                continue
+
+            req_id = msg.get('id')
+            features = msg.get('features') or {}
+            win_rate = float(msg.get('win_rate', 0.5))
+            drawdown = float(msg.get('drawdown', 0.0))
+            adjusted = optimizer.get_adjusted_thresholds(
+                features=features,
+                win_rate=win_rate,
+                drawdown=drawdown,
+            )
+            response_queue.put({'type': 'thresholds', 'id': req_id, 'ok': True, 'result': adjusted})
+    except BaseException as e:  # noqa: BLE001
+        try:
+            response_queue.put({'type': 'status', 'ok': False, 'error': str(e)})
+        except Exception:
+            pass
+
+
+def _rl_exits_worker_main(request_queue, response_queue) -> None:
+    """Child process: load RL exits model and serve exit-decision requests."""
+    try:
+        from src.rl.optimal_exit_env import OptimalExitRL
+
+        optimizer = OptimalExitRL()
+        loaded = optimizer.load()
+        response_queue.put({'type': 'status', 'ok': bool(loaded)})
+        if not loaded:
+            return
+
+        while True:
+            msg = request_queue.get()
+            if not isinstance(msg, dict):
+                continue
+            if msg.get('type') == 'shutdown':
+                return
+            if msg.get('type') != 'exit_decision':
+                continue
+
+            req_id = msg.get('id')
+            action, confidence = optimizer.get_exit_decision(
+                unrealized_pnl_pips=float(msg.get('unrealized_pnl_pips', 0.0)),
+                bars_in_trade=int(msg.get('bars_in_trade', 0)),
+                momentum=float(msg.get('momentum', 0.0)),
+                atr=float(msg.get('atr', 0.001)),
+            )
+            response_queue.put(
+                {
+                    'type': 'exit_decision',
+                    'id': req_id,
+                    'ok': True,
+                    'result': {'action': int(action), 'confidence': float(confidence)},
+                }
+            )
+    except BaseException as e:  # noqa: BLE001
+        try:
+            response_queue.put({'type': 'status', 'ok': False, 'error': str(e)})
+        except Exception:
+            pass
+
+
+def _call_with_timeout(fn, timeout_s: float):
+    """Run `fn` in a daemon thread and wait up to `timeout_s` seconds.
+
+    IMPORTANT: This intentionally does NOT attempt to stop the worker thread on timeout.
+    It is designed to avoid deadlocking the main thread when TF/PyTorch imports hang.
+
+    Returns:
+        (timed_out, result)
+
+    Raises:
+        Re-raises any exception raised by `fn` if it completes within the timeout.
+    """
+    import queue
+    import threading
+
+    result_queue: "queue.Queue[object]" = queue.Queue(maxsize=1)
+
+    def _runner():
+        try:
+            result_queue.put((True, fn(), None))
+        except Exception as e:
+            result_queue.put((True, None, e))
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join(timeout_s)
+
+    if thread.is_alive():
+        return True, None
+
+    _, result, err = result_queue.get_nowait()
+    if err is not None:
+        raise err
+    return False, result
 
 
 def _lazy_load_rl_sizer_unsafe():
@@ -151,22 +287,20 @@ def _lazy_load_rl_sizer():
     if RLPositionSizer is not None:
         return RLPositionSizer, RL_AVAILABLE
 
-    # Use ThreadPoolExecutor with timeout to prevent hangs
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
-
     try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_lazy_load_rl_sizer_unsafe)
-            try:
-                _RLPositionSizer, _ = future.result(timeout=RL_LOAD_TIMEOUT_SECONDS)
-                RLPositionSizer = _RLPositionSizer
-                RL_AVAILABLE = True
-                return RLPositionSizer, RL_AVAILABLE
-            except FutureTimeout:
-                logger.warning(f"RL sizer import timed out after {RL_LOAD_TIMEOUT_SECONDS}s - using heuristic sizing")
-                RL_AVAILABLE = False
-                RLPositionSizer = None
-                return None, False
+        timed_out, result = _call_with_timeout(_lazy_load_rl_sizer_unsafe, RL_LOAD_TIMEOUT_SECONDS)
+        if timed_out:
+            logger.warning(
+                f"RL sizer import timed out after {RL_LOAD_TIMEOUT_SECONDS}s - using heuristic sizing"
+            )
+            RL_AVAILABLE = False
+            RLPositionSizer = None
+            return None, False
+
+        rl_position_sizer_cls, _ = result
+        RLPositionSizer = rl_position_sizer_cls
+        RL_AVAILABLE = True
+        return RLPositionSizer, RL_AVAILABLE
     except ImportError:
         RL_AVAILABLE = False
         return None, False
@@ -177,33 +311,75 @@ def _lazy_load_rl_sizer():
         return None, False
 
 
+def _lazy_load_rl_gates_unsafe():
+    """Internal: Load GateThresholdRL (may hang on GPU conflicts)."""
+    from src.rl.gate_threshold_env import GateThresholdRL as _GateThresholdRL
+    return _GateThresholdRL, True
+
+
 def _lazy_load_rl_gates():
-    """Lazy load GateThresholdRL to avoid TF/PyTorch GPU conflicts."""
+    """Lazy load GateThresholdRL with timeout protection to avoid TF/PyTorch GPU conflicts."""
     global GateThresholdRL, RL_GATES_AVAILABLE
     if GateThresholdRL is not None:
         return GateThresholdRL, RL_GATES_AVAILABLE
+
     try:
-        from src.rl.gate_threshold_env import GateThresholdRL as _GateThresholdRL
-        GateThresholdRL = _GateThresholdRL
+        timed_out, result = _call_with_timeout(_lazy_load_rl_gates_unsafe, RL_LOAD_TIMEOUT_SECONDS)
+        if timed_out:
+            logger.warning(
+                f"RL gates import timed out after {RL_LOAD_TIMEOUT_SECONDS}s - using fixed thresholds"
+            )
+            RL_GATES_AVAILABLE = False
+            GateThresholdRL = None
+            return None, False
+
+        gate_threshold_rl_cls, _ = result
+        GateThresholdRL = gate_threshold_rl_cls
         RL_GATES_AVAILABLE = True
         return GateThresholdRL, RL_GATES_AVAILABLE
     except ImportError:
         RL_GATES_AVAILABLE = False
         GateThresholdRL = None
         return None, False
+    except Exception as e:
+        logger.warning(f"RL gates import failed: {type(e).__name__}: {e}")
+        RL_GATES_AVAILABLE = False
+        GateThresholdRL = None
+        return None, False
+
+
+def _lazy_load_rl_exits_unsafe():
+    """Internal: Load OptimalExitRL (may hang on GPU conflicts)."""
+    from src.rl.optimal_exit_env import OptimalExitRL as _OptimalExitRL
+    return _OptimalExitRL, True
 
 
 def _lazy_load_rl_exits():
-    """Lazy load OptimalExitRL to avoid TF/PyTorch GPU conflicts."""
+    """Lazy load OptimalExitRL with timeout protection to avoid TF/PyTorch GPU conflicts."""
     global OptimalExitRL, RL_EXITS_AVAILABLE
     if OptimalExitRL is not None:
         return OptimalExitRL, RL_EXITS_AVAILABLE
+
     try:
-        from src.rl.optimal_exit_env import OptimalExitRL as _OptimalExitRL
-        OptimalExitRL = _OptimalExitRL
+        timed_out, result = _call_with_timeout(_lazy_load_rl_exits_unsafe, RL_LOAD_TIMEOUT_SECONDS)
+        if timed_out:
+            logger.warning(
+                f"RL exits import timed out after {RL_LOAD_TIMEOUT_SECONDS}s - using fixed R:R ratios"
+            )
+            RL_EXITS_AVAILABLE = False
+            OptimalExitRL = None
+            return None, False
+
+        optimal_exit_rl_cls, _ = result
+        OptimalExitRL = optimal_exit_rl_cls
         RL_EXITS_AVAILABLE = True
         return OptimalExitRL, RL_EXITS_AVAILABLE
     except ImportError:
+        RL_EXITS_AVAILABLE = False
+        OptimalExitRL = None
+        return None, False
+    except Exception as e:
+        logger.warning(f"RL exits import failed: {type(e).__name__}: {e}")
         RL_EXITS_AVAILABLE = False
         OptimalExitRL = None
         return None, False
@@ -230,6 +406,10 @@ class InferenceConfig:
 
     # Confidence gate - ADX-based, 50+ is strong trend
     min_confidence: float = 50.0  # 0-100 scale (tightened from 45)
+
+    # Direction-confidence gate (Transformer/primary direction model)
+    # 0.55 means require >=55% (or <=45%) to consider the direction actionable.
+    min_tcn_probability: float = 0.55
 
     # Momentum gate - median momentum is 0.3, so 0.20 catches bottom 40%
     min_momentum: float = 0.20  # 0-1 scale (tightened from 0.15)
@@ -410,6 +590,15 @@ class ModularEnsembleInference:
         self._rl_gates_loaded = False
         self._rl_exits_loaded = False
 
+        # On macOS, load RL gates/exits in a subprocess to avoid TF+PyTorch segfaults.
+        self._rl_gates_proc = None
+        self._rl_gates_req_q = None
+        self._rl_gates_res_q = None
+        self._rl_exits_proc = None
+        self._rl_exits_req_q = None
+        self._rl_exits_res_q = None
+        self._rl_req_counter = 0
+
         # Track recent performance for RL gate adaptation
         self._recent_trades: List[Dict] = []
         self._recent_win_rate: float = 0.5
@@ -519,6 +708,128 @@ class ModularEnsembleInference:
         self._current_regime: Optional[str] = None
         self._regime_transition_cooldown: int = 0  # Bars since last transition
         self._regime_transition_cooldown_target: int = 3  # 3-bar cooldown after transition
+
+    def _next_rl_req_id(self) -> int:
+        self._rl_req_counter += 1
+        return self._rl_req_counter
+
+    def _start_rl_gates_worker(self) -> bool:
+        try:
+            import multiprocessing as mp
+            ctx = mp.get_context('spawn')
+            self._rl_gates_req_q = ctx.Queue(maxsize=8)
+            self._rl_gates_res_q = ctx.Queue(maxsize=8)
+            self._rl_gates_proc = ctx.Process(
+                target=__import__('src.rl.rl_worker', fromlist=['rl_gates_worker_main']).rl_gates_worker_main,
+                args=(self._rl_gates_req_q, self._rl_gates_res_q),
+                daemon=True,
+            )
+            self._rl_gates_proc.start()
+
+            start = time.time()
+            while time.time() - start < RL_SUBPROCESS_LOAD_TIMEOUT_SECONDS:
+                try:
+                    msg = self._rl_gates_res_q.get(timeout=0.5)
+                except Exception:
+                    if self._rl_gates_proc is not None and not self._rl_gates_proc.is_alive():
+                        break
+                    continue
+                if isinstance(msg, dict) and msg.get('type') == 'status':
+                    return bool(msg.get('ok'))
+            return False
+        except Exception as e:
+            logger.warning(f"RL gates worker start failed: {e}")
+            return False
+
+    def _start_rl_exits_worker(self) -> bool:
+        try:
+            import multiprocessing as mp
+            ctx = mp.get_context('spawn')
+            self._rl_exits_req_q = ctx.Queue(maxsize=8)
+            self._rl_exits_res_q = ctx.Queue(maxsize=8)
+            self._rl_exits_proc = ctx.Process(
+                target=__import__('src.rl.rl_worker', fromlist=['rl_exits_worker_main']).rl_exits_worker_main,
+                args=(self._rl_exits_req_q, self._rl_exits_res_q),
+                daemon=True,
+            )
+            self._rl_exits_proc.start()
+
+            start = time.time()
+            while time.time() - start < RL_SUBPROCESS_LOAD_TIMEOUT_SECONDS:
+                try:
+                    msg = self._rl_exits_res_q.get(timeout=0.5)
+                except Exception:
+                    if self._rl_exits_proc is not None and not self._rl_exits_proc.is_alive():
+                        break
+                    continue
+                if isinstance(msg, dict) and msg.get('type') == 'status':
+                    return bool(msg.get('ok'))
+            return False
+        except Exception as e:
+            logger.warning(f"RL exits worker start failed: {e}")
+            return False
+
+    def _get_rl_gate_thresholds_from_worker(self, features: Dict[str, Any], win_rate: float, drawdown: float) -> Optional[Dict[str, Any]]:
+        if self._rl_gates_proc is None or not self._rl_gates_proc.is_alive():
+            return None
+        if self._rl_gates_req_q is None or self._rl_gates_res_q is None:
+            return None
+
+        req_id = self._next_rl_req_id()
+        try:
+            self._rl_gates_req_q.put(
+                {'type': 'thresholds', 'id': req_id, 'features': features, 'win_rate': win_rate, 'drawdown': drawdown},
+                timeout=0.5,
+            )
+        except Exception:
+            return None
+
+        start = time.time()
+        while time.time() - start < 1.5:
+            try:
+                msg = self._rl_gates_res_q.get(timeout=0.5)
+            except Exception:
+                continue
+            if not isinstance(msg, dict):
+                continue
+            if msg.get('type') == 'thresholds' and msg.get('id') == req_id and msg.get('ok'):
+                return msg.get('result')
+        return None
+
+    def _get_rl_exit_decision_from_worker(self, unrealized_pnl_pips: float, bars_in_trade: int, momentum: float, atr: float) -> Optional[Tuple[int, float]]:
+        if self._rl_exits_proc is None or not self._rl_exits_proc.is_alive():
+            return None
+        if self._rl_exits_req_q is None or self._rl_exits_res_q is None:
+            return None
+
+        req_id = self._next_rl_req_id()
+        try:
+            self._rl_exits_req_q.put(
+                {
+                    'type': 'exit_decision',
+                    'id': req_id,
+                    'unrealized_pnl_pips': unrealized_pnl_pips,
+                    'bars_in_trade': bars_in_trade,
+                    'momentum': momentum,
+                    'atr': atr,
+                },
+                timeout=0.5,
+            )
+        except Exception:
+            return None
+
+        start = time.time()
+        while time.time() - start < 1.5:
+            try:
+                msg = self._rl_exits_res_q.get(timeout=0.5)
+            except Exception:
+                continue
+            if not isinstance(msg, dict):
+                continue
+            if msg.get('type') == 'exit_decision' and msg.get('id') == req_id and msg.get('ok'):
+                result = msg.get('result') or {}
+                return int(result.get('action', 0)), float(result.get('confidence', 0.5))
+        return None
 
     # =========================================================================
     # ONLINE LEARNING & DRIFT DETECTION
@@ -1156,24 +1467,30 @@ class ModularEnsembleInference:
         lgbm_momentum_path = self._get_model_path("lgbm_momentum", ".pkl")
         xgb_path = self._get_model_path("xgb_momentum", ".pkl")
 
-        if lgbm_momentum_path.exists():
-            # Use LightGBM momentum (from joint training)
+        # Choose the freshest available momentum artifact.
+        momentum_candidates = [p for p in [lgbm_momentum_path, xgb_path] if p.exists()]
+        momentum_path = None
+        if momentum_candidates:
+            momentum_path = max(momentum_candidates, key=lambda p: p.stat().st_mtime)
+
+        if momentum_path is not None:
+            # Try LightGBM loader first (some runs save LightGBM momentum under xgb_momentum.pkl).
             try:
                 from src.training.modular_trainers import LightGBMMomentumTrainer
+
                 self.xgb = LightGBMMomentumTrainer()
-                self.xgb.load(str(lgbm_momentum_path))
-                logger.info(f"✓ LightGBM Momentum loaded from {lgbm_momentum_path}")
+                self.xgb.load(str(momentum_path))
+                logger.info(f"✓ LightGBM Momentum loaded from {momentum_path}")
             except Exception as e:
-                logger.warning(f"Failed to load LightGBM momentum: {e}")
-                # Fall back to XGBoost
-                if xgb_path.exists():
+                logger.warning(f"Failed to load LightGBM momentum from {momentum_path}: {e}")
+                # Fall back to XGBoost loader
+                try:
                     self.xgb = XGBoostTrainer()
-                    self.xgb.load(str(xgb_path))
-                    logger.info(f"✓ XGBoost loaded from {xgb_path} (fallback)")
-        elif xgb_path.exists():
-            self.xgb = XGBoostTrainer()
-            self.xgb.load(str(xgb_path))
-            logger.info(f"✓ XGBoost loaded from {xgb_path}")
+                    self.xgb.load(str(momentum_path))
+                    logger.info(f"✓ XGBoost loaded from {momentum_path}")
+                except Exception as e2:
+                    logger.warning(f"Failed to load XGBoost momentum from {momentum_path}: {e2}")
+                    self.xgb = None
         else:
             logger.warning("Momentum model not found (tried lgbm_momentum.pkl and xgb_momentum.pkl)")
 
@@ -1212,9 +1529,26 @@ class ModularEnsembleInference:
             logger.warning(f"Ridge model not found at {ridge_path}")
 
         # RL Position Sizer (lazy loaded with timeout to avoid TF/PyTorch GPU conflicts)
+        # Check pair-specific path first, then generic
+        rl_model_path = None
+        rl_scaler_path = None
+        if self.instrument and self.instrument != "GENERIC":
+            pair_rl = self.model_dir / self.instrument / "rl_position_sizer.zip"
+            pair_rl_onnx = self.model_dir / self.instrument / "rl_position_sizer.onnx"
+            pair_rl_scaler = self.model_dir / self.instrument / "rl_scaler.pkl"
+            if pair_rl.exists() or pair_rl_onnx.exists():
+                rl_model_path = pair_rl if pair_rl.exists() else pair_rl_onnx
+                rl_scaler_path = pair_rl_scaler if pair_rl_scaler.exists() else None
+                logger.info(f"🤖 Pair-specific RL model found: {rl_model_path}")
+        if rl_model_path is None:
+            if RL_MODEL_PATH.exists():
+                rl_model_path = RL_MODEL_PATH
+            elif RL_ONNX_PATH.exists():
+                rl_model_path = RL_ONNX_PATH
+
         # Auto-detect: if use_rl_sizer is None, enable if model exists
         if self.use_rl_sizer is None:
-            if RL_MODEL_PATH.exists() or RL_ONNX_PATH.exists():
+            if rl_model_path is not None:
                 logger.info("🤖 RL model detected - auto-enabling RL position sizer")
                 self.use_rl_sizer = True
             else:
@@ -1224,8 +1558,13 @@ class ModularEnsembleInference:
             RLSizer, rl_available = _lazy_load_rl_sizer()
             if rl_available and RLSizer is not None:
                 self.rl_sizer = RLSizer()
-                if self.rl_sizer.load():
-                    logger.info("✓ RL Position Sizer loaded (PPO)")
+                load_kwargs = {}
+                if rl_model_path is not None:
+                    load_kwargs['model_path'] = rl_model_path
+                if rl_scaler_path is not None:
+                    load_kwargs['scaler_path'] = rl_scaler_path
+                if self.rl_sizer.load(**load_kwargs):
+                    logger.info(f"✓ RL Position Sizer loaded (PPO) from {rl_model_path}")
                 else:
                     logger.info("ℹ RL Position Sizer not trained - using heuristic sizing")
                     self.rl_sizer = None
@@ -1236,47 +1575,108 @@ class ModularEnsembleInference:
         # Auto-detect RL gates and exits if not explicitly set
         if self.use_rl_gates is None:
             if RL_GATE_MODEL_PATH.exists():
-                logger.info("🔍 RL Gate model detected - auto-enabling RL gates")
-                self.use_rl_gates = True
+                if _allow_rl_gates_exits_autoload():
+                    logger.info("🔍 RL Gate model detected - auto-enabling RL gates")
+                    self.use_rl_gates = True
+                else:
+                    logger.warning(
+                        "⚠️ RL Gate model detected but auto-enable is disabled. "
+                        "Unset BUDDY_DISABLE_RL_GATES_EXITS or set BUDDY_ENABLE_RL_GATES_EXITS=1 to override."
+                    )
+                    self.use_rl_gates = False
             else:
                 self.use_rl_gates = False
 
         if self.use_rl_exits is None:
             if RL_EXIT_MODEL_PATH.exists():
-                logger.info("🔍 RL Exit model detected - auto-enabling RL exits")
-                self.use_rl_exits = True
+                if _allow_rl_gates_exits_autoload():
+                    logger.info("🔍 RL Exit model detected - auto-enabling RL exits")
+                    self.use_rl_exits = True
+                else:
+                    logger.warning(
+                        "⚠️ RL Exit model detected but auto-enable is disabled. "
+                        "Unset BUDDY_DISABLE_RL_GATES_EXITS or set BUDDY_ENABLE_RL_GATES_EXITS=1 to override."
+                    )
+                    self.use_rl_exits = False
             else:
                 self.use_rl_exits = False
 
-        # RL Gate Threshold Optimizer (NEW - lazy loaded)
+        # RL Gate Threshold Optimizer (lazy loaded with timeout)
         if self.use_rl_gates:
-            GateRL, gates_available = _lazy_load_rl_gates()
-            if gates_available and GateRL is not None:
-                self.rl_gate_optimizer = GateRL()
-                if self.rl_gate_optimizer.load():
-                    logger.info("✓ RL Gate Threshold Optimizer loaded (SAC)")
+            import sys
+            if sys.platform == 'darwin':
+                # Avoid TF+PyTorch segfaults by keeping SB3/PyTorch in a child process.
+                if self._start_rl_gates_worker():
+                    logger.info("✓ RL Gate Threshold Optimizer loaded (SAC) [subprocess]")
                     self._rl_gates_loaded = True
+                    self.rl_gate_optimizer = None
                 else:
-                    logger.info("ℹ RL Gates not trained - using fixed thresholds")
+                    logger.warning("⚠️ RL Gates worker failed to start - using fixed thresholds")
+                    self._rl_gates_loaded = False
                     self.rl_gate_optimizer = None
             else:
-                logger.warning("⚠️ RL Gates requested but dependencies not available")
-                self.rl_gate_optimizer = None
-
-        # RL Optimal Exit Timing (NEW - lazy loaded)
-        if self.use_rl_exits:
-            ExitRL, exits_available = _lazy_load_rl_exits()
-            if exits_available and ExitRL is not None:
-                self.rl_exit_optimizer = ExitRL()
-                if self.rl_exit_optimizer.load():
-                    logger.info("✓ RL Optimal Exit Timing loaded (PPO)")
-                    self._rl_exits_loaded = True
+                GateRL, gates_available = _lazy_load_rl_gates()
+                if gates_available and GateRL is not None:
+                    try:
+                        self.rl_gate_optimizer = GateRL()
+                        timed_out, loaded = _call_with_timeout(self.rl_gate_optimizer.load, RL_LOAD_TIMEOUT_SECONDS)
+                        if timed_out:
+                            raise TimeoutError("RL gates load timed out")
+                        if loaded:
+                            logger.info("✓ RL Gate Threshold Optimizer loaded (SAC)")
+                            self._rl_gates_loaded = True
+                        else:
+                            logger.info("ℹ RL Gates not trained - using fixed thresholds")
+                            self.rl_gate_optimizer = None
+                    except TimeoutError:
+                        logger.warning(
+                            f"⚠️ RL Gates load timed out after {RL_LOAD_TIMEOUT_SECONDS}s - using fixed thresholds"
+                        )
+                        self.rl_gate_optimizer = None
+                    except Exception as e:
+                        logger.warning(f"⚠️ RL Gates load failed: {e}")
+                        self.rl_gate_optimizer = None
                 else:
-                    logger.info("ℹ RL Exits not trained - using fixed R:R ratios")
+                    logger.warning("⚠️ RL Gates requested but dependencies not available")
+                    self.rl_gate_optimizer = None
+
+        # RL Optimal Exit Timing (lazy loaded with timeout)
+        if self.use_rl_exits:
+            import sys
+            if sys.platform == 'darwin':
+                if self._start_rl_exits_worker():
+                    logger.info("✓ RL Optimal Exit Timing loaded (PPO) [subprocess]")
+                    self._rl_exits_loaded = True
+                    self.rl_exit_optimizer = None
+                else:
+                    logger.warning("⚠️ RL Exits worker failed to start - using fixed R:R ratios")
+                    self._rl_exits_loaded = False
                     self.rl_exit_optimizer = None
             else:
-                logger.warning("⚠️ RL Exits requested but dependencies not available")
-                self.rl_exit_optimizer = None
+                ExitRL, exits_available = _lazy_load_rl_exits()
+                if exits_available and ExitRL is not None:
+                    try:
+                        self.rl_exit_optimizer = ExitRL()
+                        timed_out, loaded = _call_with_timeout(self.rl_exit_optimizer.load, RL_LOAD_TIMEOUT_SECONDS)
+                        if timed_out:
+                            raise TimeoutError("RL exits load timed out")
+                        if loaded:
+                            logger.info("✓ RL Optimal Exit Timing loaded (PPO)")
+                            self._rl_exits_loaded = True
+                        else:
+                            logger.info("ℹ RL Exits not trained - using fixed R:R ratios")
+                            self.rl_exit_optimizer = None
+                    except TimeoutError:
+                        logger.warning(
+                            f"⚠️ RL Exits load timed out after {RL_LOAD_TIMEOUT_SECONDS}s - using fixed R:R ratios"
+                        )
+                        self.rl_exit_optimizer = None
+                    except Exception as e:
+                        logger.warning(f"⚠️ RL Exits load failed: {e}")
+                        self.rl_exit_optimizer = None
+                else:
+                    logger.warning("⚠️ RL Exits requested but dependencies not available")
+                    self.rl_exit_optimizer = None
 
         # Load confidence calibration if available
         if self.config.enable_calibration:
@@ -2454,7 +2854,17 @@ class ModularEnsembleInference:
                 size_lots = min(size_lots, max_lots)
 
                 logger.debug(f"RL position size: {size_lots:.2f} lots (${size_dollars:.0f})")
-                return round(max(0.01, size_lots), 2)
+
+                # Enforce minimum meaningful position size (same floor as heuristic)
+                risk_amount = equity * self.config.risk_per_trade_pct
+                min_rl_lots = max(0.10, risk_amount / (1000.0 * self.config.pip_value))
+                if size_lots < min_rl_lots:
+                    logger.warning(
+                        f"RL sizer returned tiny position ({size_lots:.2f} lots, "
+                        f"${size_dollars:.0f}). Overriding to minimum {min_rl_lots:.2f} lots."
+                    )
+                    size_lots = min_rl_lots
+                return round(max(0.10, size_lots), 2)
 
             except Exception as e:
                 logger.warning(f"RL sizing failed, falling back to heuristic: {e}")
@@ -2481,8 +2891,18 @@ class ModularEnsembleInference:
         # Hard cap at liquidity limit
         size_lots = min(size_lots, max_lots)
 
-        # Minimum position size
-        size_lots = max(0.01, size_lots)
+        # Minimum position size - enforce meaningful trade size
+        # On a $100k account with 5% risk, minimum should be ~0.5 lots
+        # 0.01 lots = 1000 units = ~$1 profit per 10 pips = useless
+        min_risk_lots = risk_amount / (1000.0 * self.config.pip_value)  # At most 1000 pips SL
+        min_lots = max(0.10, min_risk_lots)  # At least 0.10 lots (10,000 units)
+        size_lots = max(min_lots, size_lots)
+
+        logger.debug(
+            f"Position sizing: equity=${equity:,.0f} risk={risk_amount:.0f} "
+            f"dd_pips={expected_drawdown_pips:.1f} → {size_lots:.2f} lots "
+            f"({int(size_lots * 100000):,} units) [max={max_lots:.1f}]"
+        )
 
         return round(size_lots, 2)
 
@@ -2516,7 +2936,20 @@ class ModularEnsembleInference:
         Returns:
             TradeSignal with trade decision and all model outputs
         """
+        # Reload models if instrument changed or not loaded
         if not self._loaded:
+            if instrument:
+                self.instrument = instrument
+            self.load_models()
+        elif instrument and instrument != self._loaded_instrument:
+            logger.info(f"📊 Instrument changed ({self._loaded_instrument} → {instrument}), reloading pair-specific models")
+            self._loaded = False
+            self.instrument = instrument
+            # Preserve explicit user choice for RL sizer (only auto-detect if originally None)
+            # Don't reset to None when user explicitly passed False
+            if self.use_rl_sizer is not False:
+                self.use_rl_sizer = None
+            self.rl_sizer = None
             self.load_models()
 
         # Store instrument for position sizing
@@ -2580,6 +3013,10 @@ class ModularEnsembleInference:
 
         # === ATR VOLATILITY FILTER (NEW) ===
         # Skip low-volatility conditions where spreads eat into profits
+        # Ensure normalized features exist early (needed by TCN volatility model + some gates)
+        if 'returns_1' not in df.columns:
+            df = compute_normalized_features(df)
+
         if self.config.min_atr_pips > 0 and 'atr' in df.columns:
             atr = df['atr'].iloc[-1]
             # Determine pip value based on instrument (JPY pairs have different pip)
@@ -2714,10 +3151,6 @@ class ModularEnsembleInference:
                             rf_streak_prob=0.0,
                             metadata={'intel_data': intel_data},
                         )
-
-        # FIRST: Compute normalized features for instrument-agnostic inference
-        if 'returns_1' not in df.columns:
-            df = compute_normalized_features(df)
 
         # Initialize with defaults
         regime = None
@@ -2975,6 +3408,29 @@ class ModularEnsembleInference:
             except Exception as e:
                 logger.warning(f"RL gate threshold adjustment failed, using config defaults: {e}")
 
+        # macOS subprocess path: RL gates loaded but optimizer lives in a worker
+        if self._rl_gates_loaded and self.rl_gate_optimizer is None and self._rl_gates_proc is not None:
+            try:
+                rl_features = {}
+                if 'atr_pct_14' in df.columns:
+                    rl_features['volatility'] = df['atr_pct_14'].iloc[-1]
+                if 'adx_14' in df.columns:
+                    rl_features['adx'] = df['adx_14'].iloc[-1]
+                if 'returns_2' in df.columns:
+                    rl_features['momentum'] = df['returns_2'].iloc[-1]
+
+                adjusted = self._get_rl_gate_thresholds_from_worker(
+                    features=rl_features,
+                    win_rate=self._recent_win_rate,
+                    drawdown=self._current_drawdown,
+                )
+                if adjusted:
+                    rl_min_confidence = adjusted.get('min_confidence', rl_min_confidence)
+                    rl_min_momentum = adjusted.get('min_momentum', rl_min_momentum)
+                    rl_max_drawdown = adjusted.get('max_drawdown_pct', rl_max_drawdown)
+            except Exception as e:
+                logger.warning(f"RL gate thresholds (subprocess) failed, using config defaults: {e}")
+
         # Initialize gate status tracking if not done during load
         if not hasattr(self, '_gate_status'):
             self._gate_status = {'xgboost': True, 'random_forest': True, 'ridge': True}
@@ -3108,8 +3564,14 @@ class ModularEnsembleInference:
                 tcn_probability = regime_confidence
 
         # === TRANSFORMER CONFIDENCE GATE (direction confidence) ===
-        # Require reasonable confidence in direction prediction (at least 55% one way)
-        direction_confidence_gate_passed = abs(tcn_probability - 0.5) >= 0.05  # Minimum 55% confidence
+        # Require reasonable confidence in direction prediction.
+        # Prefer config-driven threshold so this can be tuned without code changes.
+        # Example: min_tcn_probability=0.55 means require >=55% (or <=45%).
+        min_dir_prob = float(getattr(self.config, 'min_tcn_probability', 0.55))
+        min_dir_prob = max(0.5, min(0.99, min_dir_prob))
+        direction_confidence_gate_passed = (
+            tcn_probability >= min_dir_prob or tcn_probability <= (1.0 - min_dir_prob)
+        )
 
         # === SENTIMENT GATE (NEW) ===
         sentiment_gate_passed = True
@@ -3294,7 +3756,9 @@ class ModularEnsembleInference:
             if not volatility_gate_passed:
                 reasons.append(f"low_volatility_regime({volatility_regime_name or 'N/A'})")
             if not direction_confidence_gate_passed:
-                reasons.append(f"weak_direction_conf({tcn_probability:.2f})")
+                min_dir_prob = float(getattr(self.config, 'min_tcn_probability', 0.55))
+                min_dir_prob = max(0.5, min(0.99, min_dir_prob))
+                reasons.append(f"weak_direction_conf({tcn_probability:.2f}<{min_dir_prob:.2f})")
             if self.use_regime:
                 if not regime_gate_passed:
                     reasons.append("regime=CHOP (skip)")
@@ -3377,6 +3841,26 @@ class ModularEnsembleInference:
                 logger.debug(f"RL Exit Suggestion: {rl_exit_suggestion} (confidence={rl_exit_confidence:.2f})")
             except Exception as e:
                 logger.warning(f"RL exit decision failed: {e}")
+        elif self._rl_exits_loaded and self.rl_exit_optimizer is None and self._rl_exits_proc is not None and all_gates_passed:
+            try:
+                unrealized_pnl_pips = 0.0
+                bars_in_trade = 0
+                current_momentum = xgb_momentum
+                current_atr = df['atr'].iloc[-1] if 'atr' in df.columns else 0.001
+
+                decision = self._get_rl_exit_decision_from_worker(
+                    unrealized_pnl_pips=unrealized_pnl_pips,
+                    bars_in_trade=bars_in_trade,
+                    momentum=current_momentum,
+                    atr=current_atr,
+                )
+                if decision is not None:
+                    action, confidence = decision
+                    action_map = {0: 'hold', 1: 'exit_profit', 2: 'exit_loss'}
+                    rl_exit_suggestion = action_map.get(action, 'hold')
+                    rl_exit_confidence = confidence
+            except Exception as e:
+                logger.warning(f"RL exit decision (subprocess) failed: {e}")
 
         return TradeSignal(
             trade=all_gates_passed,
@@ -3513,6 +3997,48 @@ class ModularEnsembleInference:
 
             except Exception as e:
                 logger.warning(f"RL exit check failed: {e}")
+                result['reason'] = f"RL unavailable: {e}"
+        elif self._rl_exits_loaded and self.rl_exit_optimizer is None and self._rl_exits_proc is not None:
+            try:
+                current_momentum = 0.0
+                if 'momentum_5' in df.columns:
+                    current_momentum = df['momentum_5'].iloc[-1]
+                elif 'xgb_momentum' in df.columns:
+                    current_momentum = df['xgb_momentum'].iloc[-1]
+
+                current_atr = df['atr'].iloc[-1] if 'atr' in df.columns else 0.001
+
+                decision = self._get_rl_exit_decision_from_worker(
+                    unrealized_pnl_pips=unrealized_pnl_pips,
+                    bars_in_trade=bars_in_trade,
+                    momentum=current_momentum,
+                    atr=current_atr,
+                )
+                if decision is None:
+                    result['reason'] = "RL subprocess unavailable - using heuristics"
+                    return result
+
+                action, confidence = decision
+                result['rl_available'] = True
+                result['confidence'] = confidence
+
+                action_map = {0: 'hold', 1: 'exit_profit', 2: 'exit_loss'}
+                result['action'] = action_map.get(action, 'hold')
+
+                if action == 1:  # EXIT_PROFIT
+                    result['should_exit'] = True
+                    result['reason'] = (
+                        f"RL suggests take profit at {unrealized_pnl_pips:.1f} pips (conf={confidence:.2f})"
+                    )
+                elif action == 2:  # EXIT_LOSS
+                    result['should_exit'] = True
+                    result['reason'] = (
+                        f"RL suggests cut loss at {unrealized_pnl_pips:.1f} pips (conf={confidence:.2f})"
+                    )
+                else:  # HOLD
+                    result['reason'] = f"RL suggests hold (PnL={unrealized_pnl_pips:.1f}, bars={bars_in_trade})"
+            except Exception as e:
+                logger.warning(f"RL exit check (subprocess) failed: {e}")
                 result['reason'] = f"RL unavailable: {e}"
         else:
             # === HEURISTIC EXIT (Fallback when RL not loaded) ===

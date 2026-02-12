@@ -63,8 +63,8 @@ class TradeEntry:
     volatility_regime_confidence: Optional[float] = None  # Softmax confidence
 
     # Execution
-    slippage_pips: float
-    fill_price: float
+    slippage_pips: float = 0.0
+    fill_price: float = 0.0
 
     # Outcome (filled later when trade closes)
     status: str = "open"  # 'open', 'win', 'loss', 'breakeven'

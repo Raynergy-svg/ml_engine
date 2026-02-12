@@ -4011,8 +4011,17 @@ class TCNTrainer(BaseTrainer):
         if not self.is_trained:
             raise RuntimeError(MODEL_NOT_TRAINED_ERROR)
 
-        # Scale
-        x_scaled = self.scaler.transform(X.reshape(-1, X.shape[-1]))
+        x_flat = X.reshape(-1, X.shape[-1])
+
+        # Scale (optional). Some older/converted checkpoints may not include a scaler.
+        if self.scaler is None:
+            x_scaled = x_flat
+        else:
+            try:
+                x_scaled = self.scaler.transform(x_flat)
+            except Exception as e:
+                logger.warning(f"TCN scaler transform failed ({type(e).__name__}: {e}) - using unscaled features")
+                x_scaled = x_flat
 
         # Create sequence from last seq_len rows
         if len(x_scaled) >= self.seq_len:
@@ -4129,6 +4138,11 @@ class TCNTrainer(BaseTrainer):
         self.feature_names = meta.get("feature_names")
         self.n_features = meta.get("n_features")
         self.n_classes = meta.get("n_classes", 4)
+
+        if self.scaler is None:
+            logger.warning(
+                "TCN Volatility Regime scaler missing in metadata - inference will run without scaling"
+            )
 
         # Try loading strategies in order
         model_loaded = self._load_model_native(path, keras)
@@ -5861,11 +5875,18 @@ class TransformerDirectionTrainer(BaseTrainer):
                 decay=self.config.ema_decay,
                 update_every=self.config.ema_update_every,
             )
-            self.ema.set_ema_weights(
-                ema_data["ema_weights"],
-                weight_names=ema_data.get("ema_weight_names"),
-            )
-            logger.info("📊 EMA weights loaded from checkpoint")
+            if n_ckpt == n_model:
+                self.ema.set_ema_weights(
+                    ema_data["ema_weights"],
+                    weight_names=ema_data.get("ema_weight_names"),
+                )
+                logger.info(f"📊 EMA weights loaded from checkpoint ({n_model} tensors)")
+            else:
+                logger.info(
+                    f"📊 EMA checkpoint ({n_ckpt} tensors) vs model ({n_model}) — "
+                    f"starting fresh EMA from current weights"
+                )
+                self.ema._initialize_ema()
 
     def _prepare_sequences_and_filter(
         self,
@@ -6616,12 +6637,50 @@ class TransformerDirectionTrainer(BaseTrainer):
             x_train_scaled, x_val_scaled = self._apply_feature_selection(
                 x_train_scaled, x_val_scaled, y_train, top_k_features, feature_selection_method
             )
-            if self.scaler is not None:
-                from sklearn.preprocessing import StandardScaler
-                self.scaler = StandardScaler()
-                x_train_scaled = self.scaler.fit_transform(x_train_scaled)
-                x_val_scaled = self.scaler.transform(x_val_scaled)
-                logger.info(f"✓ Re-fitted scaler on {x_train_scaled.shape[-1]} selected features")
+            # IMPORTANT:
+            # x_train_scaled/x_val_scaled are already scaled using the *pre-selection* scaler.
+            # Re-fitting a new StandardScaler on these already-standardized values makes the
+            # saved scaler effectively identity (mean≈0, scale≈1), which breaks inference
+            # (raw features won't be scaled).
+            #
+            # Instead, derive a post-selection scaler by subsetting the original scaler's
+            # parameters to the selected feature indices.
+            if self.scaler is not None and self.selected_indices is not None:
+                try:
+                    from sklearn.preprocessing import StandardScaler
+
+                    if isinstance(self.scaler, StandardScaler) and hasattr(self.scaler, 'mean_') and hasattr(self.scaler, 'scale_'):
+                        full_scaler = self.scaler
+                        new_scaler = StandardScaler(with_mean=full_scaler.with_mean, with_std=full_scaler.with_std)
+
+                        # Subset stats to the selected raw-feature indices
+                        idx = np.array(self.selected_indices, dtype=int)
+                        if getattr(full_scaler, 'with_mean', True):
+                            new_scaler.mean_ = full_scaler.mean_[idx]
+                        else:
+                            new_scaler.mean_ = np.zeros(len(idx), dtype=np.float64)
+
+                        if getattr(full_scaler, 'with_std', True):
+                            new_scaler.scale_ = full_scaler.scale_[idx]
+                            if hasattr(full_scaler, 'var_'):
+                                new_scaler.var_ = full_scaler.var_[idx]
+                            else:
+                                new_scaler.var_ = (new_scaler.scale_ ** 2)
+                        else:
+                            new_scaler.scale_ = np.ones(len(idx), dtype=np.float64)
+                            new_scaler.var_ = np.ones(len(idx), dtype=np.float64)
+
+                        new_scaler.n_features_in_ = len(idx)
+                        # Keep a reasonable n_samples_seen_ so sklearn considers it fitted
+                        if hasattr(full_scaler, 'n_samples_seen_'):
+                            new_scaler.n_samples_seen_ = full_scaler.n_samples_seen_
+                        else:
+                            new_scaler.n_samples_seen_ = x_train_scaled.shape[0]
+
+                        self.scaler = new_scaler
+                        logger.info(f"✓ Derived scaler for {len(idx)} selected features (from pre-selection scaler)")
+                except Exception as e:
+                    logger.warning(f"Could not derive post-selection scaler: {e}")
             logger.info(f"🔍 Feature Selection Complete: train={x_train_scaled.shape}, val={x_val_scaled.shape}")
 
         return x_train_scaled, x_val_scaled, _warm_start_features_compatible
@@ -6853,11 +6912,24 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         # Save EMA weights if available
         if self._use_ema and self.ema is not None and self.ema._initialized:
+            ema_weights_list = self.ema.get_ema_weights()
+            n_ema = len(ema_weights_list)
+            model_weight_names = [w.name for w in self.model.trainable_weights]
+            n_model = len(model_weight_names)
+
+            # Sync EMA to model weights if count diverged (layers unfrozen mid-training)
+            if n_ema != n_model:
+                logger.info(
+                    f"📊 EMA sync: {n_ema} EMA weights → {n_model} model weights before save"
+                )
+                self.ema._initialize_ema()  # Re-snapshot from current model
+                ema_weights_list = self.ema.get_ema_weights()
+
             ema_data = {
-                "ema_weights": self.ema.get_ema_weights(),
+                "ema_weights": ema_weights_list,
                 "ema_weight_names": [
                     w.name for w in self.model.trainable_weights
-                ],  # For graceful loading
+                ],  # Always matches ema_weights count after sync
                 "decay": self.ema.decay,
                 "update_every": self.ema.update_every,
                 "step_counter": self.ema.step_counter,
@@ -6865,7 +6937,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             ema_path = path.with_suffix(EMA_PKL_SUFFIX)
             with open(ema_path, "wb") as f:
                 pickle.dump(ema_data, f)
-            logger.info(f"📊 EMA weights saved to {ema_path}")
+            logger.info(f"📊 EMA weights saved to {ema_path} ({len(ema_weights_list)} tensors)")
 
         # Save EWC state if available
         if (
@@ -7149,21 +7221,33 @@ class TransformerDirectionTrainer(BaseTrainer):
             )
 
         # Load EMA weights
+        # EMA is used for inference smoothing and warm-start training.
+        # On mismatch, silently re-initialize from current model weights.
         ema_path = path.with_suffix(EMA_PKL_SUFFIX)
         if ema_path.exists() and self._use_ema:
             with open(ema_path, "rb") as f:
                 ema_data = pickle.load(f)
+            n_ckpt = len(ema_data.get("ema_weights", []))
+            n_model = len(self.model.trainable_weights)
             self.ema = EMACallback(
                 self.model,
                 decay=ema_data.get("decay", self.config.ema_decay),
                 update_every=ema_data.get("update_every", self.config.ema_update_every),
             )
-            # Pass weight names for graceful mismatch handling
-            self.ema.set_ema_weights(
-                ema_data["ema_weights"], weight_names=ema_data.get("ema_weight_names")
-            )
+            if n_ckpt == n_model:
+                # Perfect match — load directly
+                self.ema.set_ema_weights(
+                    ema_data["ema_weights"], weight_names=ema_data.get("ema_weight_names")
+                )
+                logger.info(f"📊 EMA weights loaded ({n_model} tensors, decay={self.ema.decay})")
+            else:
+                # Mismatch — initialize from current model (silent, not a warning)
+                logger.info(
+                    f"📊 EMA checkpoint has {n_ckpt} tensors vs model {n_model} — "
+                    f"re-initialized from current weights (will sync on next training)"
+                )
+                self.ema._initialize_ema()
             self.ema.step_counter = ema_data.get("step_counter", 0)
-            logger.info(f"📊 EMA weights loaded (decay={self.ema.decay})")
 
         # Load EWC state
         ewc_path = path.with_suffix(EWC_PKL_SUFFIX)
