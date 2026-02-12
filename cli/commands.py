@@ -473,7 +473,9 @@ def buddy(
     trades_today = 0
     max_trades_per_day = 30
 
-    if equity is None:
+    # Always fetch live NAV (even if equity was passed as default $10k from argparser)
+    _equity_is_default = (equity is not None and abs(equity - 10_000.0) < 1.0)
+    if equity is None or _equity_is_default:
         try:
             from src.utils.oanda_practice import OandaPracticeClient
 
@@ -648,7 +650,10 @@ def buddy(
         inference_config = None
         if cfg and 'inference' in cfg:
             inf_cfg = cfg['inference']
+            # Use live account equity if available, otherwise config default
+            sizing_equity = equity or 103000.0
             inference_config = InferenceConfig(
+                min_tcn_probability=inf_cfg.get('min_tcn_probability', 0.55),
                 min_confidence=inf_cfg.get('min_confidence', 50.0),
                 min_momentum=inf_cfg.get('min_momentum', 0.20),
                 require_fresh_or_accel=inf_cfg.get('require_fresh_or_accel', True),
@@ -663,8 +668,11 @@ def buddy(
                 bypass_risk_gate_in_permissive=inf_cfg.get('bypass_risk_gate_in_permissive', False),
                 enable_calibration=inf_cfg.get('enable_calibration', True),
                 calibration_method=inf_cfg.get('calibration_method', 'platt'),
+                account_equity=sizing_equity,
+                risk_per_trade_pct=inf_cfg.get('risk_per_trade_pct', 0.05),
             )
             console.print(f"[dim]⚙️  Loaded inference config from {config_path}[/dim]")
+            console.print(f"[dim]💰 Position sizing: equity=${sizing_equity:,.0f}, risk={inference_config.risk_per_trade_pct:.0%}[/dim]")
 
         ensemble = ModularEnsembleInference(
             instrument=normalized_instrument,
@@ -731,7 +739,7 @@ def buddy(
         df = df.ffill().bfill().fillna(0.0)
 
         # Run modular ensemble inference
-        result = ensemble.predict_verbose(df, instrument=instrument)
+        result = ensemble.predict_verbose(df, equity=equity, instrument=instrument)
         _lap("modular_inference")
 
         # =====================================================================

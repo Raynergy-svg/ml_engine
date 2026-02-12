@@ -1170,6 +1170,7 @@ def align_features_to_model(
     Returns:
         numpy array of shape (n_rows, n_stored_features)
     """
+    stored_feature_names = [str(x) for x in (stored_feature_names or [])]
     n_rows = len(df)
     n_features = len(stored_feature_names)
     result = np.full((n_rows, n_features), fill_value, dtype=np.float32)
@@ -1177,6 +1178,84 @@ def align_features_to_model(
     found_count = 0
     missing_features = []
     mapped_features = []
+
+    def _is_placeholder_feature_name(name: str) -> bool:
+        # Common when older models were saved without real feature names
+        # and a generic enumerated list was used.
+        if name.startswith('feature_') and name[len('feature_'):].isdigit():
+            return True
+        # Some saved artifacts include one-hot instrument columns in feature_names;
+        # these are not present in the live inference dataframe.
+        if name.startswith('instrument_'):
+            return True
+        return False
+
+    # If the stored names are placeholders, try to align by a stable, normalized feature pool.
+    # Some artifacts may contain a few non-placeholder entries; treat it as placeholder-based
+    # if the majority are enumerated feature_* names.
+    placeholder_count = sum(1 for n in stored_feature_names if _is_placeholder_feature_name(n))
+    if stored_feature_names and (placeholder_count / max(1, n_features)) >= 0.6:
+        try:
+            pools = get_normalized_feature_names()
+            # Prioritize gate-relevant pools first.
+            pool_order = ['risk', 'momentum', 'confidence', 'direction', 'volatility']
+            stable_pool: list[str] = []
+            seen: set[str] = set()
+            for key in pool_order:
+                for fname in pools.get(key, []):
+                    if fname not in seen:
+                        stable_pool.append(fname)
+                        seen.add(fname)
+
+            # If still short, append remaining numeric columns as last resort (stable by sort).
+            if len(stable_pool) < n_features:
+                extra_cols = [
+                    c for c in sorted(df.columns)
+                    if c not in seen and c not in {'open', 'high', 'low', 'close', 'volume', 'time', 'timestamp'}
+                ]
+                stable_pool.extend(extra_cols)
+
+            # Use the first N features from the pool as the effective "stored" names.
+            effective_feature_names = stable_pool[:n_features]
+            for i, fname in enumerate(effective_feature_names):
+                if fname in RF_EXCLUDED_FEATURES:
+                    continue
+
+                equiv_name = get_legacy_feature_equivalent(fname, df) or (fname if fname in df.columns else None)
+                if equiv_name is None:
+                    missing_features.append(fname)
+                    continue
+
+                try:
+                    result[:, i] = df[equiv_name].values.astype(np.float32)
+                    found_count += 1
+                    if equiv_name != fname:
+                        mapped_features.append(f"{fname}->{equiv_name}")
+                except (KeyError, ValueError) as e:
+                    logger.debug(f"Could not extract feature {fname}: {e}")
+                    missing_features.append(fname)
+
+            # Log and return early
+            excluded_count = sum(1 for n in effective_feature_names if n in RF_EXCLUDED_FEATURES)
+            denom = max(1, len(effective_feature_names) - excluded_count)
+            found_pct = found_count / denom * 100
+            if found_pct < 50:
+                logger.warning(
+                    f"⚠️ RF Feature alignment (placeholder fallback): {found_count}/{denom} features found ({found_pct:.1f}%). "
+                    f"Model may need retraining. Missing: {missing_features[:10]}..."
+                )
+            elif missing_features:
+                logger.debug(
+                    f"RF Feature alignment (placeholder fallback): {found_count}/{denom} found. "
+                    f"Missing {len(missing_features)}: {missing_features[:5]}..."
+                )
+
+            if mapped_features:
+                logger.debug(f"Mapped {len(mapped_features)} legacy features: {mapped_features[:5]}...")
+
+            return result
+        except Exception as e:
+            logger.warning(f"RF placeholder feature alignment fallback failed: {e}")
 
     for i, fname in enumerate(stored_feature_names):
         # Skip excluded features (fill with 0)
@@ -1199,16 +1278,18 @@ def align_features_to_model(
             missing_features.append(fname)
 
     # Log alignment results
-    missing_pct = len(missing_features) / n_features * 100 if n_features > 0 else 0
+    excluded_count = sum(1 for n in stored_feature_names if n in RF_EXCLUDED_FEATURES)
+    denom = max(1, n_features - excluded_count)
+    found_pct = found_count / denom * 100
 
-    if missing_pct > 50:
+    if found_pct < 50:
         logger.warning(
-            f"⚠️ RF Feature alignment: {found_count}/{n_features} features found ({100-missing_pct:.1f}%). "
+            f"⚠️ RF Feature alignment: {found_count}/{denom} features found ({found_pct:.1f}%). "
             f"Model may need retraining. Missing: {missing_features[:10]}..."
         )
     elif missing_features:
         logger.debug(
-            f"RF Feature alignment: {found_count}/{n_features} found. "
+            f"RF Feature alignment: {found_count}/{denom} found. "
             f"Missing {len(missing_features)}: {missing_features[:5]}..."
         )
 
