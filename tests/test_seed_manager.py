@@ -241,6 +241,7 @@ def test_reproducibility_numpy():
 
 def test_reproducibility_sklearn():
     """Test reproducibility with scikit-learn."""
+    pytest.importorskip("sklearn")
     from sklearn.ensemble import RandomForestClassifier
     
     # Generate simple dataset
