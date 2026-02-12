@@ -9,6 +9,8 @@ This package contains:
 - utils: Utility functions and constants
 - tcn_trainer: TCN trainer for current volatility regime classification
 - tcn_volatility_trainer: TCN trainer for forward-looking volatility prediction
+- transformer_trainer: Transformer trainer for direction prediction
+- transformer_regime_trainer: Transformer trainer for regime classification
 """
 
 from src.training.trainers.base import BaseTrainer
@@ -16,6 +18,11 @@ from src.training.trainers.config import TrainerConfig, OverfitPreventionConfig
 from src.training.trainers.display import TrainingDisplay
 from src.training.trainers.tcn_trainer import TCNTrainer
 from src.training.trainers.tcn_volatility_trainer import TCNVolatilityRegimeTrainer
+from src.training.trainers.transformer_trainer import TransformerDirectionTrainer
+from src.training.trainers.transformer_regime_trainer import TransformerRegimeTrainer
+from src.training.trainers.xgboost_trainer import XGBoostTrainer
+from src.training.trainers.random_forest_trainer import RandomForestTrainer
+from src.training.trainers.ridge_trainer import RidgeTrainer
 from src.training.trainers.callbacks import (
     EMACallback,
     EWCPenalty,
@@ -81,6 +88,11 @@ __all__ = [
     # Trainers
     "TCNTrainer",
     "TCNVolatilityRegimeTrainer",
+    "TransformerDirectionTrainer",
+    "TransformerRegimeTrainer",
+    "XGBoostTrainer",
+    "RandomForestTrainer",
+    "RidgeTrainer",
     # Callbacks
     "EMACallback",
     "EWCPenalty",
