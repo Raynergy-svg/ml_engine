@@ -3,7 +3,7 @@ Train all modular models in the ensemble.
 
 This module provides the main training orchestration function that trains all
 models in the ensemble (Transformer/TCN, XGBoost, RandomForest, Ridge, and
-optionally HistGradientBoosting).
+optionally HistGradientBoosting), plus auto-fits a confidence calibrator.
 
 Functions:
     - train_all_modular(): Train all ensemble models independently
@@ -34,6 +34,82 @@ from src.training.trainers.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _fit_post_training_calibrator(
+    trainers: Dict[str, BaseTrainer],
+    data: Dict[str, Dict[str, np.ndarray]],
+    save_dir: Path,
+) -> None:
+    """Fit a Platt-scaling confidence calibrator using Transformer validation predictions.
+
+    Uses the just-trained Transformer model to produce raw probabilities on the
+    validation set, then fits a ConfidenceCalibrator (Platt scaling) mapping
+    those probabilities to actual direction outcomes.
+
+    The calibrator is saved as ``confidence_calibrator.pkl`` inside *save_dir*
+    so that inference picks it up automatically via ``_load_calibration()``.
+    """
+    from src.risk.confidence_calibration import (
+        CalibrationConfig,
+        ConfidenceCalibrator,
+    )
+
+    # --- locate transformer trainer and validation data -----------------
+    transformer = trainers.get("transformer") or trainers.get("direction")
+    if transformer is None or not hasattr(transformer, "model") or transformer.model is None:
+        logger.warning("No trained Transformer model available – skipping calibration")
+        return
+
+    dir_data = data.get("direction", data.get("tcn"))
+    if dir_data is None:
+        logger.warning("No direction validation data available – skipping calibration")
+        return
+
+    X_val = dir_data.get("X_val")
+    y_val = dir_data.get("y_val")
+    if X_val is None or y_val is None or len(X_val) == 0:
+        logger.warning("Validation data missing or empty – skipping calibration")
+        return
+
+    # --- produce raw probabilities on the validation set ----------------
+    raw_probs = transformer.model.predict(X_val, verbose=0).flatten()
+    actual_outcomes = y_val.flatten().astype(bool)  # True = up, False = down
+
+    if len(raw_probs) < 10:
+        logger.warning(f"Only {len(raw_probs)} validation samples – need ≥10 for calibration")
+        return
+
+    # --- fit calibrator ------------------------------------------------
+    config = CalibrationConfig(
+        method="platt",
+        min_confidence_threshold=0.5,
+        max_confidence_threshold=0.95,
+        apply_directional_adjustment=True,
+        neutral_threshold=0.05,
+        directional_penalty=0.1,
+        apply_win_probability_adjustment=False,  # No journal data at train time
+        apply_trading_context_adjustment=False,
+    )
+    calibrator = ConfidenceCalibrator(config)
+    calibrator.fit(raw_probs, actual_outcomes)
+
+    if not calibrator.is_fitted:
+        logger.warning("Calibrator fitting failed – skipping save")
+        return
+
+    # --- save -----------------------------------------------------------
+    calib_path = save_dir / "confidence_calibrator.pkl"
+    calibrator.save(calib_path)
+    logger.info(f"✓ Confidence calibrator saved to {calib_path}")
+
+    # Show quick calibration effect
+    sample_probs = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
+    mappings = []
+    for p in sample_probs:
+        result = calibrator.calibrate_confidence(p)
+        mappings.append(f"{p:.2f}→{result.calibrated_confidence:.3f}")
+    logger.info(f"  Calibration map: {', '.join(mappings)}")
 
 
 def train_all_modular(
@@ -330,8 +406,18 @@ def train_all_modular(
         else:
             logger.warning("No direction data found for HistGB training")
 
+    # 6. Confidence Calibration (automatic post-training)
     logger.info("\n" + "=" * 50)
-    logger.info("All 4 models trained independently!")
+    logger.info("Fitting Confidence Calibrator (Platt Scaling)")
+    logger.info("=" * 50)
+
+    try:
+        _fit_post_training_calibrator(trainers, data, save_dir)
+    except Exception as e:
+        logger.warning(f"Confidence calibration failed (non-fatal): {e}")
+
+    logger.info("\n" + "=" * 50)
+    logger.info("All models trained independently!")
     logger.info("=" * 50)
 
     return trainers

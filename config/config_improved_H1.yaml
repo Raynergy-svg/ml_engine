@@ -143,8 +143,8 @@ transformer_weight: 1.0             # Transformer-only for direction prediction
 volatility_regime:
   lookback_bars: 100                # Rolling window for ATR percentile calculation
   thresholds: [0.25, 0.60, 0.85]    # Percentile boundaries: LOW/NORMAL/HIGH/EXTREME
-  min_regime_for_trade: 2           # Minimum regime to allow trade (2=HIGH, 3=EXTREME)
-  tcn_required: true                # Block all trades if TCN model unavailable
+  min_regime_for_trade: 0           # Minimum regime to allow trade (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
+  tcn_required: false               # Allow graceful degradation if TCN model unavailable
 
 # ----- OPTIMIZER CONFIGURATION -----
 optimizer:

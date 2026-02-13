@@ -215,6 +215,10 @@ class Scanner:
     def _init_modular_ensemble(self) -> bool:
         """Initialize modular ensemble for direction prediction.
 
+        Fallback chain:
+        1. Try ModularEnsembleInference (primary)
+        2. If fails, try MultiPairInference (fallback from multi_pair_inference.py)
+
         Returns:
             True if ensemble loaded successfully
         """
@@ -222,6 +226,9 @@ class Scanner:
             return self._ensemble_loaded
 
         self._ensemble_loaded = False
+        self._ensemble_type = None  # Track which ensemble type loaded
+
+        # === PRIMARY: Try ModularEnsembleInference ===
         try:
             from src.core.modular_inference import ModularEnsembleInference
 
@@ -245,14 +252,61 @@ class Scanner:
                     or self._modular_ensemble.histgb is not None
                 )
             )
-            return self._ensemble_loaded
+            
+            if self._ensemble_loaded:
+                self._ensemble_type = "ModularEnsembleInference"
+                logger.info("✓ ModularEnsembleInference loaded successfully")
+                return True
+            else:
+                logger.warning("⚠️ ModularEnsembleInference loaded but no direction model available")
 
-        except ImportError:
-            logger.debug("ModularEnsembleInference not available")
-            return False
+        except ImportError as e:
+            logger.debug(f"ModularEnsembleInference not available: {e}")
         except Exception as e:
-            logger.warning(f"Failed to initialize ensemble: {e}")
-            return False
+            logger.warning(f"Failed to initialize ModularEnsembleInference: {e}")
+
+        # === FALLBACK: Try MultiPairInference ===
+        logger.info("Attempting MultiPairInference fallback...")
+        try:
+            from multi_pair_inference import MultiPairInference
+
+            self._modular_ensemble = MultiPairInference(
+                model_dir=str(self.config.model_dir),
+            )
+            
+            # MultiPairInference may have different loading mechanism
+            if hasattr(self._modular_ensemble, 'load_models'):
+                self._modular_ensemble.load_models()
+            
+            # Check if loaded successfully
+            # MultiPairInference stores models differently
+            has_models = (
+                hasattr(self._modular_ensemble, 'models') and self._modular_ensemble.models
+            ) or (
+                hasattr(self._modular_ensemble, '_loaded') and self._modular_ensemble._loaded
+            )
+            
+            if has_models or hasattr(self._modular_ensemble, 'predict'):
+                self._ensemble_loaded = True
+                self._ensemble_type = "MultiPairInference"
+                logger.info("✓ MultiPairInference loaded as fallback")
+                return True
+            else:
+                logger.warning("⚠️ MultiPairInference loaded but may not be functional")
+                # Still mark as loaded if predict method exists - it has technical fallback
+                if hasattr(self._modular_ensemble, 'predict'):
+                    self._ensemble_loaded = True
+                    self._ensemble_type = "MultiPairInference"
+                    return True
+
+        except ImportError as e:
+            logger.debug(f"MultiPairInference not available: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to initialize MultiPairInference fallback: {e}")
+
+        # No ensemble available - will fall back to gate evaluator
+        logger.warning("No ensemble inference available - using gate evaluator or technical indicators")
+        return False
 
     def _init_analysis_tools(self) -> None:
         """Initialize analysis and filter components."""

@@ -21,8 +21,8 @@ class TestInferenceConfig:
         
         # TCN volatility regime filter (replaces old TCN probability gate)
         assert config.use_tcn_volatility_filter is True
-        assert config.min_volatility_regime == 2
-        assert config.tcn_required is True
+        assert config.min_volatility_regime == 0  # Allow all regimes by default
+        assert config.tcn_required is False  # Graceful degradation when TCN unavailable
         
         # Gate 2: Confidence
         assert config.min_confidence == 50.0
@@ -152,18 +152,21 @@ class TestGateThresholds:
         
         # TCN now filters by volatility regime, not direction probability
         assert config.use_tcn_volatility_filter is True
-        assert config.min_volatility_regime == 2  # 2=HIGH, 3=EXTREME
-        assert config.tcn_required is True  # Block trades if TCN unavailable
+        assert config.min_volatility_regime == 0  # Allow all regimes by default
+        assert config.tcn_required is False  # Graceful degradation
         
-        # Regime below threshold - should fail
-        assert 0 < config.min_volatility_regime  # LOW regime blocked
-        assert 1 < config.min_volatility_regime  # NORMAL regime blocked
-        
-        # At threshold - should pass
+        # With min_volatility_regime=0, all regimes pass
+        assert 0 >= config.min_volatility_regime  # LOW regime passes
+        assert 1 >= config.min_volatility_regime  # NORMAL regime passes
         assert 2 >= config.min_volatility_regime  # HIGH regime passes
-        
-        # Above threshold - should pass
         assert 3 >= config.min_volatility_regime  # EXTREME regime passes
+        
+        # Raising threshold filters lower regimes
+        config_strict = InferenceConfig(min_volatility_regime=2)
+        assert 0 < config_strict.min_volatility_regime  # LOW blocked
+        assert 1 < config_strict.min_volatility_regime  # NORMAL blocked
+        assert 2 >= config_strict.min_volatility_regime  # HIGH passes
+        assert 3 >= config_strict.min_volatility_regime  # EXTREME passes
     
     def test_confidence_gate(self):
         """Test Gate 2: Ridge confidence threshold."""

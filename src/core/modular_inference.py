@@ -70,12 +70,16 @@ except ImportError:
 
 # Import meta-labeling module
 try:
-    from meta_labeling import MetaLabeler, MetaLabelingConfig
+    from src.training.meta_labeling import MetaLabeler, MetaLabelingConfig
     META_LABELING_AVAILABLE = True
 except ImportError:
-    META_LABELING_AVAILABLE = False
-    MetaLabeler = None
-    MetaLabelingConfig = None
+    try:
+        from meta_labeling import MetaLabeler, MetaLabelingConfig
+        META_LABELING_AVAILABLE = True
+    except ImportError:
+        META_LABELING_AVAILABLE = False
+        MetaLabeler = None
+        MetaLabelingConfig = None
 
 # Import market intelligence module
 try:
@@ -142,7 +146,7 @@ RL_EXIT_MODEL_PATH = Path("trained_data/models/ppo_optimal_exit.zip")
 
 # Timeout for RL loading to prevent hangs
 RL_LOAD_TIMEOUT_SECONDS = 10
-RL_SUBPROCESS_LOAD_TIMEOUT_SECONDS = 60
+RL_SUBPROCESS_LOAD_TIMEOUT_SECONDS = 20
 
 
 def _env_flag_true(name: str) -> bool:
@@ -400,12 +404,15 @@ class InferenceConfig:
     - Momentum: Percentile-normalized (median=0.3, P90=0.7)
     - Risk: ATR-based expected drawdown (typically 0.5-3%)
     """
-    # === TCN VOLATILITY REGIME FILTER (NEW) ===
+    # === TCN VOLATILITY REGIME FILTER ===
     # TCN predicts volatility regime (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
-    # Used as entry timing filter - only trade when volatility is HIGH or EXTREME
+    # Used as informational entry timing filter - volatility is logged but does not
+    # short-circuit the remaining gate computations.  When the regime is below
+    # min_volatility_regime the trade is still blocked at the aggregation step,
+    # but all gate values are computed and reported for full diagnostics.
     use_tcn_volatility_filter: bool = True  # Use TCN as volatility gate (not direction ensemble)
-    min_volatility_regime: int = 2  # Minimum regime: 2=HIGH, 3=EXTREME
-    tcn_required: bool = True  # Block ALL trades if TCN unavailable (safety)
+    min_volatility_regime: int = 0  # Minimum regime: 0=LOW (permissive default)
+    tcn_required: bool = False  # Allow graceful degradation if TCN unavailable
 
     # Confidence gate - ADX-based, 50+ is strong trend
     min_confidence: float = 50.0  # 0-100 scale (tightened from 45)
@@ -722,7 +729,8 @@ class ModularEnsembleInference:
         self._rl_req_counter += 1
         return self._rl_req_counter
 
-    def _start_rl_gates_worker(self) -> bool:
+    def _start_rl_gates_worker(self) -> Tuple[bool, Optional[str]]:
+        """Start RL gates worker subprocess. Returns (ok, error_msg)."""
         try:
             import multiprocessing as mp
             ctx = mp.get_context('spawn')
@@ -744,13 +752,16 @@ class ModularEnsembleInference:
                         break
                     continue
                 if isinstance(msg, dict) and msg.get('type') == 'status':
-                    return bool(msg.get('ok'))
-            return False
+                    ok = bool(msg.get('ok'))
+                    err = msg.get('error')
+                    return ok, err
+            return False, 'Timed out waiting for worker status'
         except Exception as e:
             logger.warning(f"RL gates worker start failed: {e}")
-            return False
+            return False, str(e)
 
-    def _start_rl_exits_worker(self) -> bool:
+    def _start_rl_exits_worker(self) -> Tuple[bool, Optional[str]]:
+        """Start RL exits worker subprocess. Returns (ok, error_msg)."""
         try:
             import multiprocessing as mp
             ctx = mp.get_context('spawn')
@@ -772,11 +783,13 @@ class ModularEnsembleInference:
                         break
                     continue
                 if isinstance(msg, dict) and msg.get('type') == 'status':
-                    return bool(msg.get('ok'))
-            return False
+                    ok = bool(msg.get('ok'))
+                    err = msg.get('error')
+                    return ok, err
+            return False, 'Timed out waiting for worker status'
         except Exception as e:
             logger.warning(f"RL exits worker start failed: {e}")
-            return False
+            return False, str(e)
 
     def _get_rl_gate_thresholds_from_worker(self, features: Dict[str, Any], win_rate: float, drawdown: float) -> Optional[Dict[str, Any]]:
         if self._rl_gates_proc is None or not self._rl_gates_proc.is_alive():
@@ -1627,21 +1640,73 @@ class ModularEnsembleInference:
             else:
                 self.use_rl_exits = False
 
-        # RL Gate Threshold Optimizer (lazy loaded with timeout)
-        if self.use_rl_gates:
-            import sys
-            if sys.platform == 'darwin':
-                # Avoid TF+PyTorch segfaults by keeping SB3/PyTorch in a child process.
-                if self._start_rl_gates_worker():
+        # RL Gate Threshold Optimizer + RL Optimal Exit Timing
+        # On macOS (Darwin) these are loaded in child processes to avoid
+        # TF+PyTorch segfaults.  We start both workers IN PARALLEL to avoid
+        # a sequential 2×timeout wait that can appear to hang (~40-120 s).
+        import sys as _sys
+        _is_darwin = _sys.platform == 'darwin'
+
+        if (self.use_rl_gates or self.use_rl_exits) and _is_darwin:
+            import threading
+
+            _gates_result: dict = {}
+            _exits_result: dict = {}
+
+            def _boot_gates():
+                logger.info("⏳ Starting RL Gates worker subprocess…")
+                ok, err = self._start_rl_gates_worker()
+                _gates_result['ok'] = ok
+                _gates_result['error'] = err
+
+            def _boot_exits():
+                logger.info("⏳ Starting RL Exits worker subprocess…")
+                ok, err = self._start_rl_exits_worker()
+                _exits_result['ok'] = ok
+                _exits_result['error'] = err
+
+            threads = []
+            if self.use_rl_gates:
+                t = threading.Thread(target=_boot_gates, daemon=True)
+                t.start()
+                threads.append(t)
+            if self.use_rl_exits:
+                t = threading.Thread(target=_boot_exits, daemon=True)
+                t.start()
+                threads.append(t)
+
+            for t in threads:
+                t.join(timeout=RL_SUBPROCESS_LOAD_TIMEOUT_SECONDS + 2)
+
+            # Process gates result
+            if self.use_rl_gates:
+                if _gates_result.get('ok'):
                     logger.info("✓ RL Gate Threshold Optimizer loaded (SAC) [subprocess]")
                     self._rl_gates_loaded = True
                     self.rl_gate_optimizer = None
                     self._log_model_trained_at(RL_GATE_MODEL_PATH, "RL gate thresholds", category="rl_gates")
                 else:
-                    logger.warning("⚠️ RL Gates worker failed to start - using fixed thresholds")
+                    err = _gates_result.get('error', 'unknown')
+                    logger.warning(f"⚠️ RL Gates worker failed to start: {err} — using fixed thresholds")
                     self._rl_gates_loaded = False
                     self.rl_gate_optimizer = None
-            else:
+
+            # Process exits result
+            if self.use_rl_exits:
+                if _exits_result.get('ok'):
+                    logger.info("✓ RL Optimal Exit Timing loaded (PPO) [subprocess]")
+                    self._rl_exits_loaded = True
+                    self.rl_exit_optimizer = None
+                    self._log_model_trained_at(RL_EXIT_MODEL_PATH, "RL optimal exits", category="rl_exits")
+                else:
+                    err = _exits_result.get('error', 'unknown')
+                    logger.warning(f"⚠️ RL Exits worker failed to start: {err} — using fixed R:R ratios")
+                    self._rl_exits_loaded = False
+                    self.rl_exit_optimizer = None
+
+        else:
+            # Non-Darwin (Linux/Windows) or neither gates nor exits enabled
+            if self.use_rl_gates:
                 GateRL, gates_available = _lazy_load_rl_gates()
                 if gates_available and GateRL is not None:
                     try:
@@ -1668,20 +1733,7 @@ class ModularEnsembleInference:
                     logger.warning("⚠️ RL Gates requested but dependencies not available")
                     self.rl_gate_optimizer = None
 
-        # RL Optimal Exit Timing (lazy loaded with timeout)
-        if self.use_rl_exits:
-            import sys
-            if sys.platform == 'darwin':
-                if self._start_rl_exits_worker():
-                    logger.info("✓ RL Optimal Exit Timing loaded (PPO) [subprocess]")
-                    self._rl_exits_loaded = True
-                    self.rl_exit_optimizer = None
-                    self._log_model_trained_at(RL_EXIT_MODEL_PATH, "RL optimal exits", category="rl_exits")
-                else:
-                    logger.warning("⚠️ RL Exits worker failed to start - using fixed R:R ratios")
-                    self._rl_exits_loaded = False
-                    self.rl_exit_optimizer = None
-            else:
+            if self.use_rl_exits:
                 ExitRL, exits_available = _lazy_load_rl_exits()
                 if exits_available and ExitRL is not None:
                     try:
@@ -1721,7 +1773,30 @@ class ModularEnsembleInference:
 
         self._loaded = True
         self._loaded_instrument = self.instrument
+
+        # === MODEL LOAD SUMMARY ===
+        # Log explicit status for each model so loading failures are
+        # immediately visible and distinguishable from gate invocation issues.
+        _status = lambda obj, label: f"✓ {label}" if obj is not None else f"✗ {label} (not loaded)"  # noqa: E731
+        summary_lines = [
+            _status(self.tcn, "Transformer/Direction"),
+            _status(self.tcn_volatility_model, "TCN Volatility Regime"),
+            _status(self.xgb, "XGBoost Momentum"),
+            _status(self.rf, "RandomForest Risk"),
+            _status(self.ridge, "Ridge Confidence"),
+        ]
+        if self.config.enable_meta_labeling:
+            meta = getattr(self, 'meta_labeler', None)
+            summary_lines.append(_status(meta, "Meta-Labeler"))
+        if self.config.enable_calibration:
+            cal_fitted = self.calibrator.is_fitted if getattr(self, 'calibrator', None) else False
+            cal_label = "Calibrator (fitted)" if cal_fitted else "Calibrator (not fitted)"
+            summary_lines.append(f"{'✓' if cal_fitted else '⚠'} {cal_label}")
+
         logger.info(f"Modular ensemble loaded{pair_info}.")
+        logger.info("Model load summary:")
+        for line in summary_lines:
+            logger.info(f"  {line}")
 
     def _log_model_trained_at(self, model_path: Path, label: str, category: str = "model") -> None:
         """Log trained_at metadata for a model if available."""
@@ -2937,6 +3012,88 @@ class ModularEnsembleInference:
 
         return float(confidence)
 
+    def _predict_technical_fallback(self, df: pd.DataFrame) -> Tuple[str, float]:
+        """
+        Fallback prediction using technical indicators when models are unavailable.
+
+        This method is ported from multi_pair_inference.py and provides a robust
+        fallback when the primary Transformer/TCN models fail to load or predict.
+
+        Uses RSI and MACD to generate direction signals:
+        - RSI < 30: LONG (oversold)
+        - RSI > 70: SHORT (overbought)
+        - MACD histogram > 0 and MACD > 0: LONG (bullish momentum)
+        - MACD histogram < 0 and MACD < 0: SHORT (bearish momentum)
+        - Otherwise: HOLD
+
+        Args:
+            df: DataFrame with OHLCV data and computed features
+
+        Returns:
+            Tuple of (direction: str, confidence: float)
+            - direction: "LONG", "SHORT", or "HOLD"
+            - confidence: 0.0 to 1.0
+        """
+        try:
+            # Compute basic features if not present
+            df_feat = df.copy()
+            close = df_feat["close"]
+
+            # Compute RSI if not present
+            if "rsi" not in df_feat.columns:
+                delta = close.diff()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                rs = gain / loss.replace(0, 1e-8)
+                df_feat["rsi"] = 100 - (100 / (1 + rs))
+
+            # Compute MACD if not present
+            if "macd" not in df_feat.columns or "macd_hist" not in df_feat.columns:
+                ema12 = close.ewm(span=12).mean()
+                ema26 = close.ewm(span=26).mean()
+                df_feat["macd"] = ema12 - ema26
+                df_feat["macd_signal"] = df_feat["macd"].ewm(span=9).mean()
+                df_feat["macd_hist"] = df_feat["macd"] - df_feat["macd_signal"]
+
+            # Get latest values
+            rsi = df_feat["rsi"].iloc[-1]
+            macd = df_feat["macd"].iloc[-1]
+            macd_hist = df_feat["macd_hist"].iloc[-1]
+
+            # Handle NaN values
+            if np.isnan(rsi):
+                rsi = 50.0
+            if np.isnan(macd):
+                macd = 0.0
+            if np.isnan(macd_hist):
+                macd_hist = 0.0
+
+            # RSI signals (stronger signal)
+            if rsi < 30:
+                confidence = 0.55 + (30 - rsi) / 100
+                logger.debug(f"Technical fallback: RSI oversold ({rsi:.1f}) -> LONG, conf={confidence:.2f}")
+                return "LONG", min(confidence, 0.75)
+            elif rsi > 70:
+                confidence = 0.55 + (rsi - 70) / 100
+                logger.debug(f"Technical fallback: RSI overbought ({rsi:.1f}) -> SHORT, conf={confidence:.2f}")
+                return "SHORT", min(confidence, 0.75)
+
+            # MACD signals (moderate signal)
+            if macd_hist > 0 and macd > 0:
+                logger.debug("Technical fallback: MACD bullish -> LONG, conf=0.52")
+                return "LONG", 0.52
+            elif macd_hist < 0 and macd < 0:
+                logger.debug("Technical fallback: MACD bearish -> SHORT, conf=0.52")
+                return "SHORT", 0.52
+
+            # No clear signal
+            logger.debug(f"Technical fallback: No clear signal (RSI={rsi:.1f}, MACD={macd:.4f}) -> HOLD")
+            return "HOLD", 0.5
+
+        except Exception as e:
+            logger.warning(f"Technical fallback prediction failed: {e}")
+            return "HOLD", 0.5
+
     def _calculate_position_size(
         self,
         expected_drawdown_pips: float,
@@ -3218,42 +3375,28 @@ class ModularEnsembleInference:
         if any(fname not in df.columns for fname in required_features):
             df = compute_normalized_features(df)
 
-        # === TCN VOLATILITY REGIME FILTER (NEW - MANDATORY) ===
+        # === TCN VOLATILITY REGIME FILTER ===
         # TCN predicts volatility regime: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
-        # Only allow trades when regime >= min_volatility_regime (default: 2=HIGH)
+        # Instead of returning early with zeroed gate values, we set a flag
+        # and continue computing all gates for full diagnostic visibility.
         volatility_regime = None
         volatility_regime_name = None
         volatility_regime_confidence = 0.0
         volatility_gate_passed = False
+        volatility_block_reason = None
 
         VOL_REGIME_NAMES = {0: 'LOW', 1: 'NORMAL', 2: 'HIGH', 3: 'EXTREME'}
 
         if self.config.use_tcn_volatility_filter:
             if self.tcn_volatility_model is None:
-                # TCN required but not available - BLOCK ALL TRADES
+                # TCN not available
                 if self.config.tcn_required:
-                    logger.warning("⛔ Trade blocked: TCN Volatility filter required but not loaded")
-                    return TradeSignal(
-                        trade=False,
-                        direction=None,
-                        size=0.0,
-                        confidence=0.0,
-                        reason="TCN Volatility filter required but not loaded",
-                        regime=None,
-                        regime_confidence=0.0,
-                        volatility_regime=None,
-                        volatility_regime_name=None,
-                        volatility_regime_confidence=0.0,
-                        volatility_gate_passed=False,
-                        tcn_direction=None,
-                        tcn_probability=0.5,
-                        ridge_confidence=0.0,
-                        xgb_momentum=0.0,
-                        xgb_acceleration=False,
-                        rf_drawdown_pips=0.0,
-                        rf_streak_prob=0.0,
-                        metadata={'intel_data': intel_data},
-                    )
+                    logger.warning("⛔ TCN Volatility filter required but not loaded — will block trade")
+                    volatility_block_reason = "TCN Volatility filter required but not loaded"
+                else:
+                    # Graceful degradation: continue without volatility gate
+                    logger.info("ℹ TCN Volatility model not loaded — skipping volatility gate (tcn_required=False)")
+                    volatility_gate_passed = True
             else:
                 # Get TCN volatility regime prediction
                 try:
@@ -3285,54 +3428,21 @@ class ModularEnsembleInference:
                     if not volatility_gate_passed:
                         min_regime_name = VOL_REGIME_NAMES.get(self.config.min_volatility_regime, '?')
                         logger.info(
-                            f"⏸️ Trade blocked: Volatility too low "
-                            f"({volatility_regime_name} < {min_regime_name})"
+                            f"⏸️ Volatility too low ({volatility_regime_name} < {min_regime_name}) "
+                            f"— continuing gate computation for diagnostics"
                         )
-                        return TradeSignal(
-                            trade=False,
-                            direction=None,
-                            size=0.0,
-                            confidence=0.0,
-                            reason=f"Low volatility regime: {volatility_regime_name} (need {min_regime_name}+)",
-                            regime=None,
-                            regime_confidence=0.0,
-                            volatility_regime=volatility_regime,
-                            volatility_regime_name=volatility_regime_name,
-                            volatility_regime_confidence=volatility_regime_confidence,
-                            volatility_gate_passed=False,
-                            tcn_direction=None,
-                            tcn_probability=0.5,
-                            ridge_confidence=0.0,
-                            xgb_momentum=0.0,
-                            xgb_acceleration=False,
-                            rf_drawdown_pips=0.0,
-                            rf_streak_prob=0.0,
-                            metadata={'intel_data': intel_data, 'volatility_regime': volatility_regime_name},
-                        )
+                        volatility_block_reason = f"Low volatility regime: {volatility_regime_name} (need {min_regime_name}+)"
                 except Exception as e:
                     logger.warning(f"TCN volatility prediction failed: {e}")
                     if self.config.tcn_required:
-                        return TradeSignal(
-                            trade=False,
-                            direction=None,
-                            size=0.0,
-                            confidence=0.0,
-                            reason=f"TCN Volatility prediction failed: {e}",
-                            regime=None,
-                            regime_confidence=0.0,
-                            volatility_regime=None,
-                            volatility_regime_name=None,
-                            volatility_regime_confidence=0.0,
-                            volatility_gate_passed=False,
-                            tcn_direction=None,
-                            tcn_probability=0.5,
-                            ridge_confidence=0.0,
-                            xgb_momentum=0.0,
-                            xgb_acceleration=False,
-                            rf_drawdown_pips=0.0,
-                            rf_streak_prob=0.0,
-                            metadata={'intel_data': intel_data},
-                        )
+                        volatility_block_reason = f"TCN Volatility prediction failed: {e}"
+                    else:
+                        # Graceful degradation: continue without volatility gate
+                        logger.info("ℹ Continuing without volatility gate (tcn_required=False)")
+                        volatility_gate_passed = True
+        else:
+            # Volatility filter disabled in config
+            volatility_gate_passed = True
 
         # FIRST: Compute normalized features for instrument-agnostic inference
         # (already ensured above, but keep as defensive fallback)
@@ -3349,8 +3459,14 @@ class ModularEnsembleInference:
         rf_drawdown_pips = 100.0
         rf_drawdown_pct = 1.0
         rf_streak_prob = 1.0
+        mc_uncertainty_blocked = False
+        mc_uncertainty_reason = None
+        mc_uncertainty_std = None  # Track the actual std value for metadata
 
         # === GET REGIME OR DIRECTION ===
+        # Track if we're using technical fallback for logging
+        using_technical_fallback = False
+        
         if self.use_regime and self.regime_model is not None:
             # REGIME MODE
             try:
@@ -3375,26 +3491,15 @@ class ModularEnsembleInference:
                             n_samples=self.config.mc_dropout_samples
                         )
 
-                        # Block on high uncertainty
+                        # Flag high uncertainty (but continue to compute all gates for display)
                         if mc_std > self.config.max_uncertainty_std:
-                            logger.info(f"🎲 Trade blocked: High uncertainty (std={mc_std:.3f} > {self.config.max_uncertainty_std})")
-                            return TradeSignal(
-                                trade=False,
-                                direction=None,
-                                size=0.0,
-                                confidence=0.0,
-                                reason=f"High model uncertainty: std={mc_std:.3f}",
-                                regime=None,
-                                regime_confidence=0.0,
-                                tcn_direction=mc_dir,
-                                tcn_probability=mc_prob,
-                                ridge_confidence=0.0,
-                                xgb_momentum=0.0,
-                                xgb_acceleration=False,
-                                rf_drawdown_pips=0.0,
-                                rf_streak_prob=0.0,
-                                metadata={'mc_uncertainty_std': mc_std, 'intel_data': intel_data},
-                            )
+                            logger.info(f"🎲 High uncertainty detected: std={mc_std:.3f} > {self.config.max_uncertainty_std}")
+                            mc_uncertainty_blocked = True
+                            mc_uncertainty_reason = f"High model uncertainty: std={mc_std:.3f}"
+                            mc_uncertainty_std = float(mc_std)
+                        else:
+                            mc_uncertainty_blocked = False
+                            mc_uncertainty_reason = None
 
                         # Use MC Dropout results
                         tcn_probability = mc_prob
@@ -3450,8 +3555,37 @@ class ModularEnsembleInference:
 
                             except Exception as e:
                                 logger.warning(f"TCN ensemble prediction failed: {e}, using Transformer only")
+                else:
+                    # No direction model available - use technical fallback
+                    logger.warning("⚠️ No direction model loaded - falling back to technical indicators")
+                    tech_direction, tech_confidence = self._predict_technical_fallback(df)
+                    if tech_direction == "LONG":
+                        tcn_direction = 1
+                        tcn_probability = tech_confidence
+                    elif tech_direction == "SHORT":
+                        tcn_direction = 0
+                        tcn_probability = 1.0 - tech_confidence
+                    else:
+                        # HOLD - no clear direction
+                        tcn_direction = None
+                        tcn_probability = 0.5
+                    using_technical_fallback = True
+                    
             except Exception as e:
-                logger.warning(f"TCN prediction failed: {e}")
+                logger.warning(f"⚠️ Direction model prediction failed: {e} - falling back to technical indicators")
+                # Use technical indicator fallback
+                tech_direction, tech_confidence = self._predict_technical_fallback(df)
+                if tech_direction == "LONG":
+                    tcn_direction = 1
+                    tcn_probability = tech_confidence
+                elif tech_direction == "SHORT":
+                    tcn_direction = 0
+                    tcn_probability = 1.0 - tech_confidence
+                else:
+                    # HOLD - no clear direction
+                    tcn_direction = None
+                    tcn_probability = 0.5
+                using_technical_fallback = True
 
         # === HYBRID VOTING (HistGB + Transformer) ===
         histgb_direction = None
@@ -3898,6 +4032,7 @@ class ModularEnsembleInference:
                 logger.warning(f"Meta-labeler prediction failed: {e}")
                 meta_gate_passed = True  # Fail open - don't block trades on error
                 meta_confidence = 0.0
+                meta_reason = f"prediction_error({e})"
         else:
             # No meta-labeler loaded - pass by default
             meta_gate_passed = True
@@ -3908,6 +4043,7 @@ class ModularEnsembleInference:
             all_gates_passed = (
                 regime_gate_passed and
                 direction_str is not None and
+                not mc_uncertainty_blocked and  # MC Dropout uncertainty gate
                 volatility_gate_passed and  # TCN volatility filter (replaces old tcn_probability_gate)
                 direction_confidence_gate_passed and
                 confidence_gate_passed and
@@ -3922,6 +4058,7 @@ class ModularEnsembleInference:
             # DIRECTION MODE (legacy)
             all_gates_passed = (
                 tcn_direction is not None and
+                not mc_uncertainty_blocked and  # MC Dropout uncertainty gate
                 volatility_gate_passed and  # TCN volatility filter (replaces old tcn_probability_gate)
                 direction_confidence_gate_passed and
                 confidence_gate_passed and
@@ -3939,8 +4076,13 @@ class ModularEnsembleInference:
         reason = None
         if not all_gates_passed:
             reasons = []
+            if mc_uncertainty_blocked:
+                reasons.append(mc_uncertainty_reason)
             if not volatility_gate_passed:
-                reasons.append(f"low_volatility_regime({volatility_regime_name or 'N/A'})")
+                if volatility_block_reason:
+                    reasons.append(volatility_block_reason)
+                else:
+                    reasons.append(f"low_volatility_regime({volatility_regime_name or 'N/A'})")
             if not direction_confidence_gate_passed:
                 min_dir_prob = float(getattr(self.config, 'min_tcn_probability', INFERENCE_DEFAULTS['min_tcn_probability']))
                 min_dir_prob = max(0.5, min(0.99, min_dir_prob))
@@ -4079,7 +4221,21 @@ class ModularEnsembleInference:
             rl_exit_suggestion=rl_exit_suggestion,
             rl_exit_confidence=rl_exit_confidence,
             reason=reason,
-            metadata={'intel_data': intel_data, 'volatility_regime': volatility_regime_name},
+            metadata={
+                'intel_data': intel_data,
+                'volatility_regime': volatility_regime_name,
+                'using_technical_fallback': using_technical_fallback,
+                **(
+                    {'mc_uncertainty_std': mc_uncertainty_std}
+                    if mc_uncertainty_std is not None
+                    else {}
+                ),
+                **(
+                    {'meta_reason': meta_reason}
+                    if meta_reason is not None
+                    else {}
+                ),
+            },
         )
 
     def check_open_position_exit(
@@ -4321,6 +4477,12 @@ class ModularEnsembleInference:
 
         gate_checks.append("")  # Spacer
 
+        # MC Dropout uncertainty (if applicable)
+        mc_std = signal.metadata.get('mc_uncertainty_std') if signal.metadata else None
+        if mc_std is not None:
+            mc_status = "✗" if mc_std > self.config.max_uncertainty_std else "✓"
+            gate_checks.append(f"MC Dropout: std={mc_std:.3f} (max={self.config.max_uncertainty_std}) {mc_status}")
+
         # TCN direction
         if signal.tcn_direction is not None:
             dir_str = "LONG" if signal.tcn_direction == 1 else "SHORT"
@@ -4350,8 +4512,12 @@ class ModularEnsembleInference:
 
         # Meta-labeling gate (5th gate - predicts trade SUCCESS)
         if self._meta_labeler_loaded and self.meta_labeler is not None:
-            status = "✓" if signal.meta_gate_passed else "✗"
-            gate_checks.append(f"Meta: confidence={signal.meta_confidence:.2f} (threshold={self.config.min_meta_confidence}) {status}")
+            # Check if meta prediction actually ran (confidence > 0 or gate explicitly failed)
+            if signal.meta_confidence == 0.0 and signal.meta_gate_passed and 'prediction_error' in (signal.metadata.get('meta_reason', '') if signal.metadata else ''):
+                gate_checks.append("Meta: prediction failed (skipped) ⚠️")
+            else:
+                status = "✓" if signal.meta_gate_passed else "✗"
+                gate_checks.append(f"Meta: confidence={signal.meta_confidence:.2f} (threshold={self.config.min_meta_confidence}) {status}")
         elif self.config.enable_meta_labeling:
             gate_checks.append("Meta: not loaded (skipped)")
 
