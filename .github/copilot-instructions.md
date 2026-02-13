@@ -1,6 +1,6 @@
 # ML Engine - Copilot Instructions
 
-> **Version**: 2.1.0 | **Last Updated**: 2025-02-07 | **Status**: Active
+> **Version**: 2.2.0 | **Last Updated**: 2026-02-12 | **Status**: Active
 
 ---
 
@@ -20,6 +20,8 @@
 - [Best Practices](#best-practices)
 - [Error Handling](#error-handling)
 - [Performance Optimization](#performance-optimization)
+- [Walk-Forward Cross-Validation](#walk-forward-cross-validation)
+- [Deployment Validation Gate](#deployment-validation-gate)
 - [Improvement Roadmap](#improvement-roadmap)
 
 ---
@@ -1385,4 +1387,148 @@ trainer, metrics = train_with_walkforward_validation(
     wf_config=None,  # Use standard training
 )
 ```
+
+
+## Deployment Validation Gate
+
+### Overview
+
+The Deployment Validation Gate ensures models meet production quality standards before deployment. It validates all 4 ensemble components against configurable criteria and provides a binary deployment decision (APPROVED/REJECTED).
+
+### Key Features
+
+- **Multi-Model Validation**: Validates Transformer, XGBoost, RandomForest, Ridge
+- **Critical vs Non-Critical**: Distinguishes blocking issues from warnings
+- **Configurable Thresholds**: Customizable for different environments
+- **Detailed Reporting**: Shows which checks passed/failed with recommendations
+- **Training Pipeline Integration**: Automatically runs during training
+
+### Default Validation Criteria
+
+| Component | Metric | Threshold | Critical |
+|-----------|--------|-----------|----------|
+| Transformer | Validation Accuracy | ≥65% | Yes |
+| | Balanced Accuracy | ≥60% | Yes |
+| | CV Std Deviation | ≤5% | No |
+| XGBoost | Acceleration Accuracy | ≥60% | Yes |
+| | Momentum MAE | ≤0.15 | No |
+| RandomForest | Drawdown MAE | ≤100 bps | No |
+| | Streak Prob MAE | ≤0.15 | No |
+| Ridge | R² Score | ≥0.30 | Yes |
+| | Confidence MAE | ≤15.0 | No |
+| Data | Minimum Size | ≥1000 samples | Yes |
+
+### Deployment Decision Logic
+
+```python
+deployment_approved = (critical_failures == 0)
+```
+
+**APPROVED**: No critical failures (non-critical failures allowed with warnings)  
+**REJECTED**: One or more critical failures
+
+### Usage
+
+```python
+from src.training.deployment_gate import DeploymentValidator, ValidationCriteria
+
+# Default criteria
+validator = DeploymentValidator()
+result = validator.validate(
+    dir_metrics=dir_metrics,
+    xgb_metrics=xgb_metrics,
+    rf_metrics=rf_metrics,
+    ridge_metrics=ridge_metrics,
+    training_data_size=5000,
+)
+
+if result.deployment_approved:
+    save_model_artifacts()
+else:
+    log_rejection(result.failure_reasons)
+
+# Custom stricter criteria
+custom_criteria = ValidationCriteria(
+    min_accuracy=0.75,              # Raised from 0.65
+    min_balanced_accuracy=0.70,     # Raised from 0.60
+    max_cv_std=0.03,                # Lowered from 0.05
+)
+validator = DeploymentValidator(criteria=custom_criteria)
+```
+
+### Training Pipeline Integration
+
+Automatically runs during `./bin/Buddy train -i EUR_USD --generate-report`:
+
+```
+Training Complete
+    ↓
+Bootstrap CI (optional)
+    ↓
+Walk-Forward CV (optional)
+    ↓
+MLflow Logging (optional)
+    ↓
+→ DEPLOYMENT VALIDATION
+    ↓
+Training Report Generation
+    ↓
+Final Status (APPROVED/REJECTED)
+```
+
+### Console Output
+
+```
+🚦 Deployment | Deployment Validation Gate
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Checking if model meets production quality standards
+
+╭─────────────── Validation Checks ───────────────╮
+│ Check                      │ Status  │ Value     │
+├────────────────────────────┼─────────┼───────────┤
+│ Direction: Validation Acc  │ ✓ PASS  │ 0.78/0.65 │
+│ Momentum: Acceleration Acc │ ✓ PASS  │ 0.68/0.60 │
+│ Confidence: R² Score       │ ✓ PASS  │ 0.52/0.30 │
+╰────────────────────────────┴─────────┴───────────╯
+
+✓ DEPLOYMENT APPROVED • 13/13 checks passed
+```
+
+### Training Report Section
+
+```markdown
+## Deployment Validation
+
+**Status**: ✓ APPROVED
+**Summary**: 13/13 checks passed
+
+### Validation Checks
+
+| Check | Status | Value | Threshold |
+|-------|--------|-------|-----------|
+| Direction: Validation Accuracy | ✓ PASS | 0.7800 | 0.6500 |
+| Momentum: Acceleration Accuracy | ✓ PASS | 0.6800 | 0.6000 |
+| ... | ... | ... | ... |
+```
+
+### Files
+
+- `src/training/deployment_gate.py`: Core implementation (DeploymentValidator, ValidationCriteria, ValidationResult)
+- `cli/training.py`: Training pipeline integration (`_run_deployment_validation`)
+- `tests/test_deployment_gate.py`: 18 unit tests (100% passing)
+- `scripts/demo_deployment_validation.py`: Demo script (4 scenarios)
+- `docs/DEPLOYMENT_VALIDATION_GUIDE.md`: Complete documentation
+
+### Demo
+
+```bash
+PYTHONPATH=/home/runner/work/ml_engine/ml_engine python scripts/demo_deployment_validation.py
+```
+
+Shows 4 scenarios:
+1. All checks pass → APPROVED
+2. Critical failures → REJECTED
+3. Non-critical failures only → APPROVED (with warnings)
+4. Custom strict criteria → REJECTED
+
 

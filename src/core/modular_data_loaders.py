@@ -30,6 +30,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from src.core.constants import DIRECTION_DEFAULTS
+
 logger = logging.getLogger(__name__)
 
 
@@ -1390,6 +1392,7 @@ def temporal_split(
     train_frac: float = 0.7,
     val_frac: float = 0.2,
     test_frac: float = 0.1,
+    gap: int = 0,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Create chronological train/val/test indices (no shuffle, no overlap).
@@ -1399,6 +1402,8 @@ def temporal_split(
         train_frac: Fraction for training (default 0.7)
         val_frac: Fraction for validation (default 0.2)
         test_frac: Fraction for test (default 0.1)
+        gap: Number of samples to skip between train/val and val/test to prevent
+             data leakage from temporal autocorrelation (default 0 for backward compatibility)
 
     Returns:
         Tuple of (train_idx, val_idx, test_idx) numpy arrays
@@ -1408,9 +1413,10 @@ def temporal_split(
     train_end = int(n_samples * train_frac)
     val_end = int(n_samples * (train_frac + val_frac))
 
+    # Apply gap between splits to prevent temporal leakage
     train_idx = np.arange(0, train_end)
-    val_idx = np.arange(train_end, val_end)
-    test_idx = np.arange(val_end, n_samples)
+    val_idx = np.arange(train_end + gap, val_end)
+    test_idx = np.arange(val_end + gap, n_samples)
 
     return train_idx, val_idx, test_idx
 
@@ -1678,9 +1684,10 @@ def load_regime_data(
 def load_direction_data(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
-    lookahead: int = 6,
-    threshold: float = 0.001,  # 0.1% minimum move (reduced from 0.5% to include more samples)
+    lookahead: int = DIRECTION_DEFAULTS['lookahead'],
+    threshold: float = DIRECTION_DEFAULTS['threshold'],
     locked_feature_names: Optional[List[str]] = None,
+    gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
 ) -> Dict[str, np.ndarray]:
     """
     Load data for direction prediction model (TCN or Transformer).
@@ -1699,12 +1706,14 @@ def load_direction_data(
         threshold: Minimum price change (as fraction) to assign clear label
         locked_feature_names: If provided, use these exact features (for warm-start consistency).
             Features not found in df are zero-filled. Skips dynamic feature selection.
+        gap: Number of samples to skip between train/val and val/test to prevent
+            temporal autocorrelation leakage (default 0)
 
     Returns:
         Dict with X_train, y_train, w_train (weights), X_val, y_val, w_val,
         X_test, y_test, w_test, feature_names, label_stats
     """
-    logger.info(f"Loading direction data (threshold={threshold:.3%}, lookahead={lookahead})...")
+    logger.info(f"Loading direction data (threshold={threshold:.3%}, lookahead={lookahead}, gap={gap})...")
 
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
@@ -1763,15 +1772,25 @@ def load_direction_data(
     if len(features) > max_features and not features_already_locked:
         logger.info(f"Selecting top {max_features} uncorrelated features from {len(features)}...")
 
-        # Build numeric feature matrix
+        # Build numeric feature matrix from FULL data first
+        # We'll use only training portion for selection to prevent data leakage
         feature_matrix = df[features].values.astype(np.float64)
+        
+        # Preliminary temporal split to identify training indices
+        # This ensures feature selection uses only training data
+        n_total = len(df)
+        train_end_prelim = int(n_total * split[0])
+        train_mask = np.arange(n_total) < train_end_prelim
+        
+        # Use ONLY training data for feature scoring and correlation analysis
+        feature_matrix_train = feature_matrix[train_mask]
 
-        # Score features by VARIANCE (normalized) - no target leakage
+        # Score features by VARIANCE (normalized) - using TRAINING data only
         # High variance = potentially informative, avoids near-constant features
         feature_scores = {}
         for idx, f in enumerate(features):
             try:
-                f_values = feature_matrix[:, idx]
+                f_values = feature_matrix_train[:, idx]
                 valid_mask = np.isfinite(f_values)
                 if valid_mask.sum() > 100:
                     vals = f_values[valid_mask]
@@ -1809,13 +1828,13 @@ def load_direction_data(
         remaining = [f for f in feature_scores if f not in selected]
         sorted_remaining = sorted(remaining, key=lambda x: feature_scores[x], reverse=True)
 
-        # Rebuild feature matrix with selected + sorted remaining
+        # Rebuild feature matrix with selected + sorted remaining (TRAINING DATA ONLY)
         all_candidates = selected + sorted_remaining
         candidate_indices = [features.index(f) for f in all_candidates if f in features]
-        candidate_matrix = feature_matrix[:, candidate_indices]
+        candidate_matrix = feature_matrix_train[:, candidate_indices]
         candidate_features = [all_candidates[i] for i in range(len(all_candidates)) if all_candidates[i] in features]
 
-        # Remove highly correlated features
+        # Remove highly correlated features (using TRAINING data correlation)
         final_selected = []
         for i, f in enumerate(candidate_features):
             if len(final_selected) >= max_features:
@@ -1829,7 +1848,7 @@ def load_direction_data(
                 sel_idx = candidate_features.index(sel_f)
                 sel_values = candidate_matrix[:, sel_idx]
 
-                # Calculate correlation
+                # Calculate correlation (on TRAINING data only)
                 valid = np.isfinite(f_values) & np.isfinite(sel_values)
                 if valid.sum() > 100:
                     corr = np.abs(np.corrcoef(f_values[valid], sel_values[valid])[0, 1])
@@ -1841,7 +1860,7 @@ def load_direction_data(
                 final_selected.append(f)
 
         features = final_selected
-        logger.info(f"Selected {len(features)} uncorrelated features (variance-based, no target leakage)")
+        logger.info(f"Selected {len(features)} uncorrelated features (variance-based on TRAINING data only - no leakage)")
 
     logger.info(f"Direction features: {features[:10]}{'...' if len(features) > 10 else ''} ({len(features)} total)")
 
@@ -1900,7 +1919,7 @@ def load_direction_data(
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
 
     # Temporal split (BEFORE scaling to avoid data leakage)
-    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split, gap=gap)
 
     # =========================================================================
     # FEATURE SCALING: Fit on train, apply to all (prevents data leakage)
@@ -2850,6 +2869,7 @@ def load_xgboost_data(
     momentum_window: int = 10,
     instrument: Optional[str] = None,
     include_instrument_features: bool = False,
+    gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
 ) -> Dict[str, np.ndarray]:
     """
     Load data for XGBoost model: Momentum analysis from normalized returns.
@@ -2865,11 +2885,13 @@ def load_xgboost_data(
         momentum_window: Window for momentum calculation
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
+        gap: Number of samples to skip between train/val and val/test to prevent
+            temporal autocorrelation leakage (default 0)
 
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
     """
-    logger.info("Loading XGBoost data (momentum analysis)...")
+    logger.info(f"Loading XGBoost data (momentum analysis, momentum_window={momentum_window}, gap={gap})...")
 
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
@@ -2940,7 +2962,7 @@ def load_xgboost_data(
 
     # Temporal split FIRST - before computing normalization factors
     # This prevents data leakage from val/test into training normalization
-    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split, gap=gap)
 
     # STABLE NORMALIZATION: Compute percentiles from TRAINING DATA ONLY
     # This prevents data leakage - val/test distributions not seen during training
@@ -3016,6 +3038,7 @@ def load_rf_data(
     drawdown_horizon: int = 10,
     instrument: Optional[str] = None,
     include_instrument_features: bool = False,
+    gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
 ) -> Dict[str, np.ndarray]:
     """
     Load data for Random Forest model: Risk assessment.
@@ -3031,11 +3054,13 @@ def load_rf_data(
         drawdown_horizon: Bars ahead to measure drawdown
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
+        gap: Number of samples to skip between train/val and val/test to prevent
+            temporal autocorrelation leakage (default 0)
 
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
     """
-    logger.info("Loading Random Forest data (risk assessment)...")
+    logger.info(f"Loading Random Forest data (risk assessment, drawdown_horizon={drawdown_horizon}, gap={gap})...")
 
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
@@ -3083,7 +3108,6 @@ def load_rf_data(
     high = df['high'].values.astype(np.float64)
     low = df['low'].values.astype(np.float64)
     n = len(close)
-    drawdown_horizon = 24  # Look ahead 24 bars (1 day for H1)
 
     # Compute actual forward max drawdown for each bar
     # For LONG: max drawdown = (entry - min_low_ahead) / entry
@@ -3104,12 +3128,8 @@ def load_rf_data(
         # Take the worst case
         expected_drawdown_pct[i] = max(long_drawdown, short_drawdown)
 
-    # Fill last `drawdown_horizon` bars with rolling mean
-    if n > drawdown_horizon + 100:
-        fill_val = np.mean(expected_drawdown_pct[n-drawdown_horizon-100:n-drawdown_horizon])
-    else:
-        fill_val = np.mean(expected_drawdown_pct[:max(1, n-drawdown_horizon)])
-    expected_drawdown_pct[n-drawdown_horizon:] = fill_val
+    # NOTE: Last `drawdown_horizon` bars have no valid forward-looking data
+    # These will be DROPPED below to prevent data leakage (not forward-filled)
 
     # Clip to realistic range
     expected_drawdown_pct = np.clip(expected_drawdown_pct, 0.0001, 0.10).astype(np.float32)
@@ -3148,24 +3168,28 @@ def load_rf_data(
     mean_streak = np.mean(streak_prob[20:]) if n > 20 else 0.5
     streak_prob[:20] = mean_streak
 
-    logger.info(f"RF targets: drawdown_pct range [{np.min(expected_drawdown_pct):.4f}, {np.max(expected_drawdown_pct):.4f}], "
-                f"streak range [{np.min(streak_prob):.4f}, {np.max(streak_prob):.4f}]")
+    logger.info(f"RF targets: drawdown_pct range [{np.min(expected_drawdown_pct[:n-drawdown_horizon]):.4f}, {np.max(expected_drawdown_pct[:n-drawdown_horizon]):.4f}], "
+                f"streak range [{np.min(streak_prob[20:]):.4f}, {np.max(streak_prob[20:]):.4f}]")
 
     # Combine targets: [expected_drawdown_pct, streak_prob]
     y = np.column_stack([expected_drawdown_pct, streak_prob]).astype(np.float32)
 
-    # No need to drop rows - we're not using future data anymore
-    # Just drop first 20 rows for volatility calculation warmup
+    # Drop rows with invalid targets to prevent data leakage:
+    # - First 20 rows: volatility calculation warmup (no valid streak_prob)
+    # - Last drawdown_horizon rows: no valid forward-looking drawdown data
     valid_start = 20
-    X = X[valid_start:]
-    y = y[valid_start:]
+    valid_end = n - drawdown_horizon
+    X = X[valid_start:valid_end]
+    y = y[valid_start:valid_end]
+
+    logger.info(f"RF data: dropped first {valid_start} rows (warmup) and last {drawdown_horizon} rows (no future data)")
 
     # Handle NaN/Inf
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     y = np.nan_to_num(y, nan=0.0, posinf=1.0, neginf=0.0)
 
     # Temporal split
-    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split, gap=gap)
 
     # Optionally append instrument one-hot encoding for joint multi-pair training
     instrument_feature_names = []
@@ -3204,6 +3228,7 @@ def load_ridge_data(
     confidence_window: int = 10,
     instrument: Optional[str] = None,
     include_instrument_features: bool = False,
+    gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
 ) -> Dict[str, np.ndarray]:
     """
     Load data for Ridge model: Confidence scoring from NORMALIZED variance and volume.
@@ -3219,11 +3244,13 @@ def load_ridge_data(
         confidence_window: Window for stability calculation
         instrument: Optional pair name for instrument encoding (e.g., 'EUR_USD')
         include_instrument_features: If True, append instrument one-hot encoding
+        gap: Number of samples to skip between train/val and val/test to prevent
+            temporal autocorrelation leakage (default 0)
 
     Returns:
         Dict with X_train, y_train, X_val, y_val, X_test, y_test, feature_names
     """
-    logger.info("Loading Ridge data (confidence scoring)...")
+    logger.info(f"Loading Ridge data (confidence scoring, confidence_window={confidence_window}, gap={gap})...")
 
     # Compute normalized features if not already present
     if 'returns_1' not in df.columns:
@@ -3296,7 +3323,7 @@ def load_ridge_data(
 
     # Temporal split FIRST - before computing normalization factors
     # This prevents data leakage from val/test into training normalization
-    train_idx, val_idx, test_idx = temporal_split(len(X), *split)
+    train_idx, val_idx, test_idx = temporal_split(len(X), *split, gap=gap)
 
     # Compute ADX percentile thresholds from TRAINING DATA ONLY for better scaling
     # This prevents data leakage - val/test distributions not seen during training
@@ -3663,8 +3690,8 @@ def validate_no_leakage(
 def load_all_modular_data(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
-    direction_threshold: float = 0.005,
-    direction_lookahead: int = 6,
+    direction_threshold: float = DIRECTION_DEFAULTS['threshold'],
+    direction_lookahead: int = DIRECTION_DEFAULTS['lookahead'],
     use_regime: bool = False,
     regime_lookback: int = 20,
     regime_lookahead: int = 12,

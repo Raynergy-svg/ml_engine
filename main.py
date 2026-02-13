@@ -150,10 +150,17 @@ def _dispatch_train_joint(args: Any) -> None:
 
     instruments_str = getattr(args, "instruments", "EUR_USD,GBP_USD,USD_JPY")
     instruments = [p.strip().upper().replace("/", "_") for p in instruments_str.split(",")]
+
+    # Expand "all" to the full list of default pairs
+    if len(instruments) == 1 and instruments[0] == "ALL":
+        from src.scanner.config import DEFAULT_PAIRS
+        instruments = DEFAULT_PAIRS.copy()
+        logger.info(f"Expanded 'all' to {len(instruments)} pairs: {', '.join(instruments)}")
+
     train_joint_multi_pair_ensemble(
         instruments=instruments,
         granularity=str(getattr(args, "granularity", "H1")),
-        candles=int(getattr(args, "candles", 15000)),
+        candles=int(getattr(args, "candles", 25000)),
         fine_tune=bool(getattr(args, "fine_tune", True)),
         fine_tune_threshold=float(getattr(args, "fine_tune_threshold", 0.05)),
         console=console,
@@ -349,7 +356,7 @@ def _handle_retrain_all(args: Any) -> None:
     retrain_all(
         config_path=args.config,
         granularity=str(getattr(args, "granularity", "H1")),
-        candles=int(getattr(args, "candles", 15000)),
+        candles=int(getattr(args, "candles", 25000)),
         verbose=bool(getattr(args, "verbose", False)),
     )
 

@@ -1,0 +1,15 @@
+Subject: Joint Retraining FAILED - 2026-02-13
+
+ML Engine Joint Retraining Failed
+
+Time: 2026-02-13T02:57:35.426229+00:00
+Duration: 1.4 seconds
+Pairs: EUR_USD, GBP_USD, USD_JPY, USD_CHF, AUD_USD, USD_CAD, NZD_USD, EUR_GBP, EUR_JPY, GBP_JPY, AUD_JPY, EUR_AUD, GBP_AUD, EUR_CHF, GBP_CHF
+
+Error Details:
+Joint training failed: Import failed
+
+Log file: /Users/davidcertan/Desktop/ml_engine/logs/retrain_20260212_215735.log
+
+---
+This is an automated alert. No action required if you're already investigating.

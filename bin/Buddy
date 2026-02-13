@@ -174,7 +174,7 @@ cmd_train_joint() {
 
 cmd_retrain_all() {
     local granularity="H1"
-    local candles="15000"
+    local candles="25000"
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
