@@ -1252,7 +1252,6 @@ class TransformerDirectionTrainer(BaseTrainer):
                 if apply_mask:
                     batch_size = tf.shape(x)[0]
                     seq_len = tf.shape(x)[1]
-                    n_features = tf.shape(x)[2]
                     
                     # Random mask length and start position for each batch item
                     mask_len = tf.random.uniform([batch_size], 1, time_mask_max_len + 1, dtype=tf.int32)
