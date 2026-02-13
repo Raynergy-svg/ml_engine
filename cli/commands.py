@@ -21,6 +21,7 @@ from cli.io_utils import (
 from cli.tf_config import _configure_tf_metal
 
 from src.utils import load_config
+from src.core.constants import DIRECTION_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -2699,8 +2700,8 @@ def _buddy_test_modular_ensemble(
     model_meta = json.loads(model_meta_path.read_text()) if model_meta_path.exists() else {}
     model_cfg = model_meta.get("config", {})
 
-    threshold_pct = model_cfg.get("direction_threshold", 0.0015)  # Default matches training
-    lookahead = model_cfg.get("direction_lookahead", 24)
+    threshold_pct = model_cfg.get("direction_threshold", DIRECTION_DEFAULTS['threshold'])
+    lookahead = model_cfg.get("direction_lookahead", DIRECTION_DEFAULTS['lookahead'])
 
     console.print(f"[dim]Using MODEL training settings: threshold={threshold_pct*100:.2f}%, lookahead={lookahead}[/dim]")
 

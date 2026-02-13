@@ -45,6 +45,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from .constants import INFERENCE_DEFAULTS
+
 # Import normalized feature computation from data loaders
 from .modular_data_loaders import (
     compute_normalized_features,
@@ -416,8 +418,8 @@ class InferenceConfig:
     min_confidence: float = 50.0  # 0-100 scale (tightened from 45)
 
     # Direction-confidence gate (Transformer/primary direction model)
-    # 0.55 means require >=55% (or <=45%) to consider the direction actionable.
-    min_tcn_probability: float = 0.55
+    # 0.60 means require >=60% (or <=40%) to consider the direction actionable.
+    min_tcn_probability: float = INFERENCE_DEFAULTS['min_tcn_probability']
 
     # Momentum gate - median momentum is 0.3, so 0.20 catches bottom 40%
     min_momentum: float = 0.20  # 0-1 scale (tightened from 0.15)
@@ -3884,8 +3886,8 @@ class ModularEnsembleInference:
         # === TRANSFORMER CONFIDENCE GATE (direction confidence) ===
         # Require reasonable confidence in direction prediction.
         # Prefer config-driven threshold so this can be tuned without code changes.
-        # Example: min_tcn_probability=0.55 means require >=55% (or <=45%).
-        min_dir_prob = float(getattr(self.config, 'min_tcn_probability', 0.55))
+        # Example: min_tcn_probability=0.60 means require >=60% (or <=40%).
+        min_dir_prob = float(getattr(self.config, 'min_tcn_probability', INFERENCE_DEFAULTS['min_tcn_probability']))
         min_dir_prob = max(0.5, min(0.99, min_dir_prob))
         direction_confidence_gate_passed = (
             tcn_probability >= min_dir_prob or tcn_probability <= (1.0 - min_dir_prob)
@@ -4082,7 +4084,7 @@ class ModularEnsembleInference:
                 else:
                     reasons.append(f"low_volatility_regime({volatility_regime_name or 'N/A'})")
             if not direction_confidence_gate_passed:
-                min_dir_prob = float(getattr(self.config, 'min_tcn_probability', 0.55))
+                min_dir_prob = float(getattr(self.config, 'min_tcn_probability', INFERENCE_DEFAULTS['min_tcn_probability']))
                 min_dir_prob = max(0.5, min(0.99, min_dir_prob))
                 reasons.append(f"weak_direction_conf({tcn_probability:.2f}<{min_dir_prob:.2f})")
             if self.use_regime:

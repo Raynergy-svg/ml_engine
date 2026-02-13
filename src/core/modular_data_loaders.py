@@ -30,6 +30,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from src.core.constants import DIRECTION_DEFAULTS
+
 logger = logging.getLogger(__name__)
 
 
@@ -1682,8 +1684,8 @@ def load_regime_data(
 def load_direction_data(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
-    lookahead: int = 6,
-    threshold: float = 0.001,  # 0.1% minimum move (reduced from 0.5% to include more samples)
+    lookahead: int = DIRECTION_DEFAULTS['lookahead'],
+    threshold: float = DIRECTION_DEFAULTS['threshold'],
     locked_feature_names: Optional[List[str]] = None,
     gap: int = 0,  # Gap between train/val and val/test splits (default 0 for backward compatibility)
 ) -> Dict[str, np.ndarray]:
@@ -3688,8 +3690,8 @@ def validate_no_leakage(
 def load_all_modular_data(
     df: pd.DataFrame,
     split: Tuple[float, float, float] = (0.7, 0.2, 0.1),
-    direction_threshold: float = 0.005,
-    direction_lookahead: int = 6,
+    direction_threshold: float = DIRECTION_DEFAULTS['threshold'],
+    direction_lookahead: int = DIRECTION_DEFAULTS['lookahead'],
     use_regime: bool = False,
     regime_lookback: int = 20,
     regime_lookahead: int = 12,
