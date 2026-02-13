@@ -7,9 +7,7 @@ fold-wise training and metric aggregation for robust model validation.
 
 import pytest
 import numpy as np
-from pathlib import Path
 from typing import Dict, Any
-from unittest.mock import MagicMock, patch
 
 from src.training.walkforward_orchestrator import WalkForwardOrchestrator
 from src.training.trainers.base import BaseTrainer
@@ -81,15 +79,21 @@ class TestWalkForwardOrchestrator:
     
     @pytest.fixture
     def wf_config(self):
-        """Create walk-forward configuration."""
+        """Create walk-forward configuration.
+        
+        Note: Using smaller proportions to ensure 3 folds fit within the data.
+        For rolling mode with n_splits=3:
+        - Total needed: train_size + 2*(val_size + test_size + gap/n) <= 1.0
+        - Using train_size=0.30, val_size=0.10, test_size=0.10, gap=5
+        """
         return {
             'enabled': True,
             'mode': 'rolling',
             'n_splits': 3,
-            'train_size': 0.60,
-            'val_size': 0.15,
+            'train_size': 0.30,
+            'val_size': 0.10,
             'test_size': 0.10,
-            'gap': 10,
+            'gap': 5,
             'min_train_size': 50,
             'retrain_per_fold': True,
             'aggregate_method': 'best',
@@ -97,9 +101,17 @@ class TestWalkForwardOrchestrator:
     
     @pytest.fixture
     def sample_data(self):
-        """Create sample training data."""
+        """Create sample training data.
+        
+        With the updated config (train=0.30, val=0.10, test=0.10, gap=5):
+        - For n=500: train=150, val=50, test=50, fold_size=105
+        - Fold 0: train[0:150], val[155:205], test[205:255]
+        - Fold 1: train[105:255], val[260:310], test[310:360]
+        - Fold 2: train[210:360], val[365:415], test[415:465]
+        - All within 500 samples.
+        """
         np.random.seed(42)
-        n_samples = 500
+        n_samples = 500  # Sufficient for 3 folds with updated config
         n_features = 10
         
         X_train = np.random.randn(n_samples // 2, n_features).astype(np.float32)
@@ -426,26 +438,33 @@ walkforward:
         assert wf_config['gap'] == 24
     
     def test_orchestrator_with_real_config(self):
-        """Test orchestrator with realistic configuration."""
+        """Test orchestrator with realistic configuration.
+        
+        Note: Using smaller proportions to ensure 5 folds fit within the data.
+        With train_size=0.20, val_size=0.05, test_size=0.05, gap=10, n_splits=5:
+        - For n=2000: train=400, val=100, test=100, fold_size=210
+        - Fold 4: train_end = 4*210 + 400 = 1240, test_end = 1240 + 10 + 100 + 100 = 1450
+        - All within 2000 samples.
+        """
         wf_config = {
             'enabled': True,
             'mode': 'rolling',
             'n_splits': 5,
-            'train_size': 0.60,
-            'val_size': 0.10,
-            'test_size': 0.10,
-            'gap': 24,
-            'min_train_size': 2000,
+            'train_size': 0.20,
+            'val_size': 0.05,
+            'test_size': 0.05,
+            'gap': 10,
+            'min_train_size': 100,
             'use_purged_kfold': True,
-            'purge_gap': 24,
-            'embargo_gap': 12,
+            'purge_gap': 10,
+            'embargo_gap': 5,
             'retrain_per_fold': True,
             'aggregate_method': 'best',
         }
         
-        # Create larger dataset
+        # Create dataset sized for 5 folds
         np.random.seed(42)
-        n_samples = 5000
+        n_samples = 2000
         n_features = 20
         
         X_train = np.random.randn(n_samples // 2, n_features).astype(np.float32)
