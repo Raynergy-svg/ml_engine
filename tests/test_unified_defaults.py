@@ -18,7 +18,8 @@ def test_direction_defaults_exist():
     
     assert 'threshold' in DIRECTION_DEFAULTS
     assert 'lookahead' in DIRECTION_DEFAULTS
-    assert DIRECTION_DEFAULTS['threshold'] == 0.003
+    # Phase4: Stricter direction threshold (75 bps)
+    assert DIRECTION_DEFAULTS['threshold'] == 0.0075
     assert DIRECTION_DEFAULTS['lookahead'] == 24
 
 

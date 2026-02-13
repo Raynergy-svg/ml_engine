@@ -71,7 +71,7 @@ sequence_length: 60
 # Look 24 bars ahead (24 hours = 1 day) for cleaner signals on H1
 # Higher threshold (0.3%) = more balanced labels, less class imbalance
 direction_lookahead: 24
-direction_threshold: 0.003  # Min 0.3% move for clear signal (FIX: Increased from 0.0015 to 0.003 for better class balance)
+direction_threshold: 0.0075  # Min 0.75% move for clear signal (Phase 4: Increased from 0.003 to 0.0075 for stricter labeling with smaller dataset)
 
 # ----- FEATURE SELECTION -----
 # RF importance-based selection reduces noisy features and improves generalization
@@ -130,6 +130,14 @@ transformer:
   spatial_dropout: 0.10 # NEW: Wired through config (was hardcoded 0.15)
   projection_dropout: 0.10 # NEW: Wired through config (was hardcoded 0.15)
   head_dropout: 0.10   # NEW: Wired through config (was hardcoded 0.15)
+  
+  # === TIME-SERIES AUGMENTATION (Phase 4) ===
+  use_augmentation: true                  # Enable data augmentation for smaller dataset
+  augmentation_noise_std: 0.01            # Gaussian noise std dev
+  augmentation_scale_range: [0.98, 1.02]  # Random scaling range (98% to 102%)
+  augmentation_time_mask_prob: 0.1        # Probability of time masking
+  augmentation_time_mask_max_len: 5       # Max length of time mask (5 timesteps)
+  
   use_transformer: true  # Use Transformer instead of TCN for direction
 
 # ----- TCN VOLATILITY REGIME FILTER -----
@@ -462,7 +470,7 @@ buddy:
   
   train_defaults:
     # DATA SETTINGS - Increased for better model training
-    default_candles: 15000     # 15k H1 candles = ~625 days (~2 years) - more data for Transformer
+    default_candles: 25000     # 25k H1 candles = ~1041 days (~3 years) - extended for better training with stricter threshold
     tier2_calibration_stride: 3  # Every 3 H1 candles (3 hours) - appropriate for H1
     tier2_horizon_candles: 48    # 48 H1 candles = 2 days
     seq_len: 60

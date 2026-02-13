@@ -9,8 +9,8 @@ to prevent configuration drift across the codebase.
 # DIRECTION LABELING DEFAULTS (H1 TIMEFRAME)
 # =============================================================================
 # These values match config/config_improved_H1.yaml:
-#   direction_threshold: 0.003  # Min 0.3% move for clear signal
-#   direction_lookahead: 24     # 24 hours lookahead
+#   direction_threshold: 0.0075  # Min 0.75% move for clear signal (75 bps - Phase4)
+#   direction_lookahead: 24      # 24 hours lookahead
 #
 # Used by:
 # - cli/training.py (training orchestration)
@@ -18,8 +18,8 @@ to prevent configuration drift across the codebase.
 # - cli/commands.py (backtest evaluation)
 
 DIRECTION_DEFAULTS = {
-    'threshold': 0.003,  # 0.3% minimum price move for clear signal
-    'lookahead': 24,     # 24 H1 bars = 24 hours lookahead
+    'threshold': 0.0075,  # 0.75% minimum price move for clear signal (75 bps - Phase4)
+    'lookahead': 24,      # 24 H1 bars = 24 hours lookahead
 }
 
 
