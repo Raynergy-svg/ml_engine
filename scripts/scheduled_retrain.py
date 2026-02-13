@@ -240,6 +240,12 @@ def main():
     # Parse pairs
     pairs = [p.strip().upper().replace("/", "_") for p in args.pairs.split(",")]
     
+    # Expand "all" to the full list of default pairs
+    if len(pairs) == 1 and pairs[0] == "ALL":
+        from src.scanner.config import DEFAULT_PAIRS
+        pairs = DEFAULT_PAIRS.copy()
+        logger.info(f"Expanded 'all' to {len(pairs)} pairs: {', '.join(pairs)}")
+    
     # Log start
     start_time = datetime.now(timezone.utc)
     logger.info("=" * 60)

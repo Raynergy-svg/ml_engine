@@ -21,6 +21,7 @@ from cli.io_utils import (
 from cli.tf_config import _configure_tf_metal
 
 from src.utils import load_config
+from src.core.constants import DIRECTION_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -652,6 +653,13 @@ def buddy(
             inf_cfg = cfg['inference']
             # Use live account equity if available, otherwise config default
             sizing_equity = equity or 103000.0
+
+            # Read volatility regime settings from top-level config
+            vol_cfg = cfg.get('volatility_regime', {})
+            use_tcn_filter = cfg.get('use_tcn_volatility_filter', True)
+            min_vol_regime = vol_cfg.get('min_regime_for_trade', 0)
+            tcn_required = vol_cfg.get('tcn_required', False)
+
             inference_config = InferenceConfig(
                 min_tcn_probability=inf_cfg.get('min_tcn_probability', 0.55),
                 min_confidence=inf_cfg.get('min_confidence', 50.0),
@@ -670,6 +678,10 @@ def buddy(
                 calibration_method=inf_cfg.get('calibration_method', 'platt'),
                 account_equity=sizing_equity,
                 risk_per_trade_pct=inf_cfg.get('risk_per_trade_pct', 0.05),
+                # Volatility regime gate settings (from top-level config)
+                use_tcn_volatility_filter=use_tcn_filter,
+                min_volatility_regime=min_vol_regime,
+                tcn_required=tcn_required,
             )
             console.print(f"[dim]⚙️  Loaded inference config from {config_path}[/dim]")
             console.print(f"[dim]💰 Position sizing: equity=${sizing_equity:,.0f}, risk={inference_config.risk_per_trade_pct:.0%}[/dim]")
@@ -2688,8 +2700,8 @@ def _buddy_test_modular_ensemble(
     model_meta = json.loads(model_meta_path.read_text()) if model_meta_path.exists() else {}
     model_cfg = model_meta.get("config", {})
 
-    threshold_pct = model_cfg.get("direction_threshold", 0.0015)  # Default matches training
-    lookahead = model_cfg.get("direction_lookahead", 24)
+    threshold_pct = model_cfg.get("direction_threshold", DIRECTION_DEFAULTS['threshold'])
+    lookahead = model_cfg.get("direction_lookahead", DIRECTION_DEFAULTS['lookahead'])
 
     console.print(f"[dim]Using MODEL training settings: threshold={threshold_pct*100:.2f}%, lookahead={lookahead}[/dim]")
 
