@@ -521,6 +521,32 @@ class MetaLabeler:
 
         meta_X = np.concatenate(meta_feature_list, axis=1).astype(np.float32)
 
+        # Handle feature shape mismatch between training and inference.
+        # The meta-labeler may have been trained on a different feature set
+        # (e.g., legacy pipeline with 80 features vs modular with 49).
+        expected_n = getattr(self.meta_model, 'n_features_in_', None)
+        if expected_n is not None and meta_X.shape[1] != expected_n:
+            import logging as _logging
+            _ml_logger = _logging.getLogger(__name__)
+            actual_n = meta_X.shape[1]
+            if actual_n < expected_n:
+                # Pad with zeros to match expected feature count
+                _ml_logger.warning(
+                    f"Meta-labeler feature mismatch: got {actual_n}, expected {expected_n}. "
+                    f"Padding with {expected_n - actual_n} zero features. "
+                    f"Retrain meta-labeler with 'buddy train' to fix permanently."
+                )
+                padding = np.zeros((meta_X.shape[0], expected_n - actual_n), dtype=np.float32)
+                meta_X = np.concatenate([meta_X, padding], axis=1)
+            else:
+                # Truncate to expected feature count
+                _ml_logger.warning(
+                    f"Meta-labeler feature mismatch: got {actual_n}, expected {expected_n}. "
+                    f"Truncating to first {expected_n} features. "
+                    f"Retrain meta-labeler with 'buddy train' to fix permanently."
+                )
+                meta_X = meta_X[:, :expected_n]
+
         # Get probability predictions
         if hasattr(self.meta_model, "predict_proba"):
             if hasattr(self, "_scaler"):

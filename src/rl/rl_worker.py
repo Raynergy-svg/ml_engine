@@ -16,10 +16,14 @@ def rl_gates_worker_main(request_queue: Any, response_queue: Any) -> None:
         from src.rl.gate_threshold_env import GateThresholdRL
 
         optimizer = GateThresholdRL()
-        loaded = optimizer.load()
-        response_queue.put({'type': 'status', 'ok': bool(loaded)})
+        # force_direct=True: we're already in a child process, so skip the
+        # nested subprocess fallback (SB3 imports TF via tensorboard, making
+        # the 'tensorflow in sys.modules' check always True).
+        loaded = optimizer.load(force_direct=True)
         if not loaded:
+            response_queue.put({'type': 'status', 'ok': False, 'error': 'GateThresholdRL.load() returned False'})
             return
+        response_queue.put({'type': 'status', 'ok': True})
 
         while True:
             msg = request_queue.get()
@@ -55,10 +59,12 @@ def rl_exits_worker_main(request_queue: Any, response_queue: Any) -> None:
         from src.rl.optimal_exit_env import OptimalExitRL
 
         optimizer = OptimalExitRL()
-        loaded = optimizer.load()
-        response_queue.put({'type': 'status', 'ok': bool(loaded)})
+        # force_direct=True: same reason as gates worker above.
+        loaded = optimizer.load(force_direct=True)
         if not loaded:
+            response_queue.put({'type': 'status', 'ok': False, 'error': 'OptimalExitRL.load() returned False'})
             return
+        response_queue.put({'type': 'status', 'ok': True})
 
         while True:
             msg = request_queue.get()

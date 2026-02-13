@@ -19,8 +19,13 @@ if TYPE_CHECKING:
 COMMANDS = [
     "train",
     "train-buddy",
+    "train-joint",
+    "train-tcn-volatility",
     "retrain-gates",
+    "retrain-all",
     "train-rl-sizer",
+    "train-rl-gates",
+    "train-rl-exits",
     "buddy",
     "Buddy",
     "promote-model",
@@ -33,6 +38,7 @@ COMMANDS = [
     "trade-analysis",
     "suggest-improvements",
     "monitor",
+    "find-candles",
 ]
 
 CLI_EPILOG = """
@@ -781,6 +787,12 @@ def _add_monitoring_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _add_multi_pair_arguments(parser: argparse.ArgumentParser) -> None:
     """Add multi-pair training arguments."""
+    parser.add_argument(
+        "--instruments",
+        type=str,
+        default="EUR_USD,GBP_USD,USD_JPY",
+        help="For train-joint: comma-separated instruments to train on (e.g., EUR_USD,GBP_USD or 'all' for all default pairs)",
+    )
     parser.add_argument(
         "--multi-pair",
         action="store_true",
