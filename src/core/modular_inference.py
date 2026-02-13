@@ -4511,9 +4511,8 @@ class ModularEnsembleInference:
         # Meta-labeling gate (5th gate - predicts trade SUCCESS)
         if self._meta_labeler_loaded and self.meta_labeler is not None:
             # Check if meta prediction actually ran (confidence > 0 or gate explicitly failed)
-            meta_reason = signal.reason or ''
             if signal.meta_confidence == 0.0 and signal.meta_gate_passed and 'prediction_error' in (signal.metadata.get('meta_reason', '') if signal.metadata else ''):
-                gate_checks.append(f"Meta: prediction failed (skipped) ⚠️")
+                gate_checks.append("Meta: prediction failed (skipped) ⚠️")
             else:
                 status = "✓" if signal.meta_gate_passed else "✗"
                 gate_checks.append(f"Meta: confidence={signal.meta_confidence:.2f} (threshold={self.config.min_meta_confidence}) {status}")
