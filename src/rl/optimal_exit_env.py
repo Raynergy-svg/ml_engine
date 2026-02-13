@@ -667,11 +667,16 @@ class OptimalExitRL:
             self.model.save(str(EXIT_RL_MODEL_PATH))
             logger.info(f"💾 Exit RL model saved to {EXIT_RL_MODEL_PATH}")
 
-    def load(self) -> bool:
+    def load(self, force_direct: bool = False) -> bool:
         """Load model.
 
         When TensorFlow is already loaded, uses subprocess to avoid
         TF/PyTorch deadlock on macOS (Intel and Metal).
+
+        Args:
+            force_direct: If True, skip the subprocess fallback and load
+                directly with PPO.load(). Use when already in a child process
+                (e.g. rl_worker) where the TF import is just an SB3 side-effect.
         """
         _ensure_sb3_imported()
         if not SB3_AVAILABLE:
@@ -681,7 +686,7 @@ class OptimalExitRL:
         try:
             if EXIT_RL_MODEL_PATH.exists():
                 import sys
-                if 'tensorflow' in sys.modules:
+                if not force_direct and 'tensorflow' in sys.modules:
                     self._load_via_subprocess(EXIT_RL_MODEL_PATH)
                 else:
                     self.model = PPO.load(str(EXIT_RL_MODEL_PATH), device="cpu")
