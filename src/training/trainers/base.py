@@ -12,7 +12,7 @@ implement the abstract methods defined in BaseTrainer.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 import numpy as np
 
@@ -35,8 +35,27 @@ class BaseTrainer(ABC):
         y_train: np.ndarray,
         x_val: np.ndarray,
         y_val: np.ndarray,
+        feature_names: Optional[List[str]] = None,
+        instrument: str = '',
+        fold_id: Optional[int] = None,
+        **kwargs: Any,
     ) -> Dict[str, float]:
-        """Train the model and return metrics."""
+        """
+        Train the model and return metrics.
+        
+        Args:
+            X_train: Training features
+            y_train: Training labels
+            x_val: Validation features
+            y_val: Validation labels
+            feature_names: Optional list of feature names for the model
+            instrument: Instrument/pair name (e.g., 'EUR_USD') for context
+            fold_id: Optional fold ID for walk-forward cross-validation
+            **kwargs: Additional trainer-specific keyword arguments
+            
+        Returns:
+            Dictionary of training metrics
+        """
 
     @abstractmethod
     def predict(self, X: np.ndarray) -> Dict[str, Any]:
