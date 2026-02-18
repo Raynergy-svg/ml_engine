@@ -291,6 +291,7 @@ class EMACallback:
     def set_ema_weights(
         self, weights: List[np.ndarray], weight_names: List[str] = None,
         *, severe_ratio_threshold: float = 3.0,
+        allow_partial_load: bool = True,
     ):
         """Load EMA weights from checkpoint with graceful mismatch handling.
 
@@ -310,6 +311,15 @@ class EMACallback:
             severe_ratio_threshold: When ``max(n_model, n_ckpt) / min(n_model,
                 n_ckpt)`` exceeds this value the checkpoint is considered too
                 different and EMA is re-initialized entirely (default 3.0).
+            allow_partial_load: If True, attempt to load compatible weights when
+                there's a mismatch. If False, always re-initialize on mismatch.
+
+        Note:
+            When a mismatch occurs, training will continue normally. The EMA
+            weights will be partially loaded from the checkpoint (where compatible)
+            and re-initialized from current model weights (where not compatible).
+            This ensures training doesn't crash while still preserving any
+            compatible EMA state from the checkpoint.
         """
         model_weights = self.model.trainable_weights
         model_weight_arrays = [w.numpy() for w in model_weights]
@@ -329,53 +339,90 @@ class EMACallback:
             return
 
         # ------------------------------------------------------------------
-        # Severe mismatch → full re-initialization
+        # Mismatch detected - log clear diagnostic information
         # ------------------------------------------------------------------
         count_ratio = (
             max(n_model, n_ckpt) / max(min(n_model, n_ckpt), 1)
         )
+        
+        # Log mismatch info - expected during architecture changes
+        logger.info(
+            f"📊 EMA: Architecture changed ({n_ckpt}→{n_model} tensors). "
+            f"Adapting weights..."
+        )
+        
+        # ------------------------------------------------------------------
+        # Severe mismatch → full re-initialization
+        # ------------------------------------------------------------------
         if count_ratio > severe_ratio_threshold:
             logger.info(
-                f"📊 EMA architecture changed ({n_ckpt}→{n_model} tensors). "
-                f"Re-initializing EMA from current model weights."
+                f"📊 EMA: Major architecture change detected. "
+                f"Re-initializing from current model weights."
             )
             self._initialize_ema()
             return
 
         # ------------------------------------------------------------------
-        # Moderate mismatch → partial load
+        # Check if partial loading is disabled
         # ------------------------------------------------------------------
-        logger.warning(f"⚠️ EMA weight mismatch: {error_msg}")
-        logger.info("📊 Attempting graceful partial EMA weight loading...")
+        if not allow_partial_load:
+            logger.info(
+                "📊 EMA: Re-initializing from current model (partial load disabled)."
+            )
+            self._initialize_ema()
+            return
+
+        # ------------------------------------------------------------------
+        # Moderate mismatch → partial load with graceful fallback
+        # ------------------------------------------------------------------
+        logger.info(
+            f"📊 EMA: Attempting graceful partial load "
+            f"({n_ckpt} checkpoint tensors → {n_model} model tensors)..."
+        )
 
         # Seed from current model weights first (safe baseline)
         self.ema_weights = [w.numpy().copy() for w in model_weights]
 
+        # Attempt to load compatible weights
         if weight_names and len(weight_names) == n_ckpt:
             loaded_count, skipped_count = self._load_ema_weights_by_name(
                 model_weights, weights, weight_names
             )
+            match_method = "name-based"
         else:
             loaded_count, skipped_count = self._load_ema_weights_by_position(
                 model_weights, weights
             )
+            match_method = "position-based"
 
         self._initialized = True
 
-        total = loaded_count + skipped_count
-        if loaded_count == 0 and total > 0:
-            # Nothing useful was transferred — treat as full reinit
-            logger.warning(
-                "📊 EMA: no compatible weights found in checkpoint — "
-                "fully re-initialized from current model"
+        # Report outcome with clear guidance
+        total = n_model  # Total is the model's weight count, not loaded+skipped
+        load_percentage = (loaded_count / total * 100) if total > 0 else 0
+        
+        if loaded_count == 0:
+            # Nothing useful was transferred — treat as full reinit (expected for new architectures)
+            logger.info(
+                f"📊 EMA: Fresh start (architecture incompatible with checkpoint). "
+                f"Training continues normally."
             )
-        elif skipped_count > 0:
-            logger.warning(
-                f"📊 EMA partial load: {loaded_count}/{total} weights loaded, "
-                f"{skipped_count} re-initialized from current model"
+        elif skipped_count > 0 or loaded_count < total:
+            # Partial load - some weights loaded, some re-initialized (expected)
+            logger.info(
+                f"📊 EMA: Loaded {loaded_count}/{total} weights ({load_percentage:.0f}%), "
+                f"rest re-initialized. Training continues."
+            )
+            logger.debug(
+                f"📊 EMA partial load details: "
+                f"checkpoint={n_ckpt} tensors, model={n_model} tensors, "
+                f"loaded={loaded_count}, reinit={total - loaded_count}"
             )
         else:
-            logger.info(f"📊 EMA weights loaded ({loaded_count} tensors)")
+            # All weights loaded (shouldn't happen if we reached here, but handle it)
+            logger.info(
+                f"📊 EMA weights loaded successfully ({loaded_count} tensors via {match_method})"
+            )
 
 
 # =============================================================================

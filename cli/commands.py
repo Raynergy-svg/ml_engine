@@ -43,6 +43,308 @@ _MAJOR_PAIRS = [
     "AUD_USD", "USD_CAD", "NZD_USD",
 ]
 
+INFERENCE_PROFILE_BALANCED = "balanced"
+INFERENCE_PROFILE_OVERRIDES: dict[str, dict[str, float | int]] = {
+    INFERENCE_PROFILE_BALANCED: {},
+    # Fewer trades, stricter gate quality.
+    "conservative": {
+        "min_confidence": 58.0,
+        "min_momentum": 0.28,
+        "max_drawdown_pct": 0.020,
+        "min_atr_pips": 6.0,
+        "min_volatility_regime": 2,
+        "min_tcn_probability": 0.58,
+        "use_rsi_extreme_gate": True,
+        "use_trend_contra_gate": True,
+    },
+    # Higher trade frequency while preserving risk controls.
+    "aggressive": {
+        "min_confidence": 45.0,
+        "min_momentum": 0.12,
+        "max_drawdown_pct": 0.035,
+        "min_atr_pips": 3.0,
+        "min_volatility_regime": 0,
+        "min_tcn_probability": 0.51,
+        "use_rsi_extreme_gate": False,
+        "use_trend_contra_gate": False,
+    },
+}
+
+
+_POST_TRADE_LLM_SYSTEM = """You are a disciplined FX trade manager.
+Give post-execution guidance for an already-open trade.
+Keep it practical and concise.
+Return JSON only with keys:
+quality, summary, if_good, if_bad, take_profit, exit
+`quality` must be one of: good, neutral, bad.
+Each value should be under 20 words.
+"""
+
+
+def _extract_first_json_object(text: str) -> dict[str, Any] | None:
+    """Extract the first JSON object from model text."""
+    if not text:
+        return None
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                snippet = text[start : idx + 1]
+                try:
+                    parsed = json.loads(snippet)
+                except Exception:
+                    return None
+                return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _compute_rl_exit_scenarios(
+    *,
+    ensemble: Any,
+    df: Any,
+    direction: str,
+    entry_price: float,
+    stop_loss_pips: float | None,
+    take_profit_pips: float | None,
+) -> dict[str, dict[str, Any]]:
+    """Run RL exit checks for now/if_good/if_bad scenarios."""
+    scenarios: dict[str, dict[str, Any]] = {}
+    if ensemble is None or df is None:
+        return scenarios
+
+    sl_pips = float(stop_loss_pips) if stop_loss_pips and stop_loss_pips > 0 else 15.0
+    tp_pips = float(take_profit_pips) if take_profit_pips and take_profit_pips > 0 else 30.0
+    scenario_inputs = {
+        "now": (0.0, 1),
+        "if_good": (max(tp_pips * 0.65, 10.0), 8),
+        "if_bad": (-max(sl_pips * 0.65, 8.0), 8),
+    }
+
+    for label, (pnl_pips, bars_held) in scenario_inputs.items():
+        try:
+            raw = ensemble.check_open_position_exit(
+                df=df,
+                unrealized_pnl_pips=float(pnl_pips),
+                bars_in_trade=int(bars_held),
+                direction=direction,
+                entry_price=float(entry_price),
+                stop_loss_pips=sl_pips,
+                take_profit_pips=tp_pips,
+            )
+            if isinstance(raw, dict):
+                scenarios[label] = {
+                    "action": str(raw.get("action", "hold")),
+                    "confidence": float(raw.get("confidence", 0.0)),
+                    "reason": str(raw.get("reason", "")).strip(),
+                }
+        except Exception as exc:
+            scenarios[label] = {
+                "action": "hold",
+                "confidence": 0.0,
+                "reason": f"RL check unavailable: {exc}",
+            }
+
+    return scenarios
+
+
+def _build_post_trade_feedback(
+    *,
+    instrument: str,
+    direction: str,
+    entry_price: float,
+    fill_price: float,
+    stop_loss_price: float | None,
+    take_profit_price: float | None,
+    stop_loss_pips: float | None,
+    take_profit_pips: float | None,
+    confidence: float,
+    tcn_probability: float,
+    llm_enabled: bool,
+    rl_scenarios: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, str]:
+    """Build post-fill trade guidance, using LLM when available."""
+    sl_pips = float(stop_loss_pips) if stop_loss_pips and stop_loss_pips > 0 else 15.0
+    tp_pips = float(take_profit_pips) if take_profit_pips and take_profit_pips > 0 else 30.0
+    rl_scenarios = rl_scenarios or {}
+
+    rl_now = rl_scenarios.get("now", {})
+    rl_good = rl_scenarios.get("if_good", {})
+    rl_bad = rl_scenarios.get("if_bad", {})
+    now_reason = str(rl_now.get("reason", "")).strip() or "Hold and reassess on next candle close."
+    good_reason = str(rl_good.get("reason", "")).strip() or "If momentum fades in profit zone, lock gains and reduce risk."
+    bad_reason = str(rl_bad.get("reason", "")).strip() or f"Exit quickly if drawdown approaches {-sl_pips:.1f} pips."
+
+    feedback = {
+        "quality": "neutral",
+        "summary": now_reason,
+        "if_good": good_reason,
+        "if_bad": bad_reason,
+        "take_profit": (
+            f"Take profit partials near +{tp_pips * 0.6:.1f} pips, then trail toward +{tp_pips:.1f} pips TP."
+        ),
+        "exit": f"Hard exit at -{sl_pips:.1f} pips or if trend structure breaks.",
+        "source": "rl",
+    }
+
+    if not llm_enabled:
+        return feedback
+
+    try:
+        from buddy_intelligent_mode import llm_call
+
+        prompt = (
+            f"Executed trade details:\n"
+            f"- Instrument: {instrument}\n"
+            f"- Direction: {direction.upper()}\n"
+            f"- Entry expected: {entry_price:.5f}\n"
+            f"- Fill: {fill_price:.5f}\n"
+            f"- Stop Loss: {stop_loss_price if stop_loss_price is not None else 'N/A'}\n"
+            f"- Take Profit: {take_profit_price if take_profit_price is not None else 'N/A'}\n"
+            f"- Stop Loss pips: {sl_pips:.1f}\n"
+            f"- Take Profit pips: {tp_pips:.1f}\n"
+            f"- Model confidence: {confidence:.1f}\n"
+            f"- TCN probability: {tcn_probability:.2f}\n"
+            f"- RL scenarios: {json.dumps(rl_scenarios, ensure_ascii=True)}\n"
+            f"- Baseline guidance: {json.dumps(feedback, ensure_ascii=True)}\n\n"
+            "Return JSON only with keys: quality, summary, if_good, if_bad, take_profit, exit."
+        )
+
+        llm_response = llm_call(
+            prompt=prompt,
+            system_prompt=_POST_TRADE_LLM_SYSTEM,
+            temperature=0.1,
+        )
+        parsed = _extract_first_json_object(llm_response or "")
+        if isinstance(parsed, dict):
+            for key in ("quality", "summary", "if_good", "if_bad", "take_profit", "exit"):
+                val = parsed.get(key)
+                if isinstance(val, str) and val.strip():
+                    feedback[key] = val.strip()
+            quality = str(feedback.get("quality", "neutral")).lower()
+            feedback["quality"] = quality if quality in {"good", "neutral", "bad"} else "neutral"
+            feedback["source"] = "llm+rl"
+    except Exception:
+        pass
+
+    return feedback
+
+
+def _print_post_trade_feedback(*, instrument: str, feedback: dict[str, str], indent: str = "") -> None:
+    """Render post-fill trade management feedback."""
+    source = str(feedback.get("source", "rl"))
+    quality = str(feedback.get("quality", "neutral")).upper()
+    console.print(f"{indent}[cyan]🤖 Post-trade feedback ({source}) for {instrument}[/cyan]")
+    console.print(f"{indent}  Quality: {quality}")
+    console.print(f"{indent}  Now: {feedback.get('summary', 'N/A')}")
+    console.print(f"{indent}  If good: {feedback.get('if_good', 'N/A')}")
+    console.print(f"{indent}  If bad: {feedback.get('if_bad', 'N/A')}")
+    console.print(f"{indent}  Take profit: {feedback.get('take_profit', 'N/A')}")
+    console.print(f"{indent}  Exit: {feedback.get('exit', 'N/A')}")
+
+
+def _build_inference_config_from_yaml(
+    *,
+    cfg: dict[str, Any],
+    instrument: str,
+    config_path: str,
+    equity_override: float | None,
+    profile: str = INFERENCE_PROFILE_BALANCED,
+) -> tuple[Any, bool]:
+    """Build InferenceConfig from YAML only (no numeric fallback literals).
+
+    Returns:
+        (InferenceConfig instance, has_pair_override)
+    """
+    from src.core.modular_inference import InferenceConfig
+
+    if not isinstance(cfg, dict):
+        raise ValueError(f"Invalid config loaded from {config_path}: expected mapping at root")
+
+    inf_section = cfg.get("inference")
+    if not isinstance(inf_section, dict):
+        raise ValueError(
+            f"Missing required 'inference' section in {config_path}. "
+            "Define thresholds there to avoid implicit hardcoded defaults."
+        )
+
+    by_pair = inf_section.get("by_pair", {})
+    if by_pair is not None and not isinstance(by_pair, dict):
+        raise ValueError(f"Invalid 'inference.by_pair' in {config_path}: expected mapping")
+
+    normalized_instrument = _normalize_instrument(instrument)
+    pair_override = {}
+    if isinstance(by_pair, dict):
+        raw_pair_cfg = by_pair.get(normalized_instrument) or by_pair.get(instrument)
+        if raw_pair_cfg is not None:
+            if not isinstance(raw_pair_cfg, dict):
+                raise ValueError(
+                    f"Invalid 'inference.by_pair.{normalized_instrument}' in {config_path}: expected mapping"
+                )
+            pair_override = raw_pair_cfg
+
+    # Merge: base inference + pair-specific override
+    merged_cfg = {k: v for k, v in inf_section.items() if k != "by_pair"}
+    merged_cfg.update(pair_override)
+
+    # Pull volatility-gate wiring from config sections when provided.
+    if "use_tcn_volatility_filter" in cfg and "use_tcn_volatility_filter" not in merged_cfg:
+        merged_cfg["use_tcn_volatility_filter"] = cfg["use_tcn_volatility_filter"]
+    vol_cfg = cfg.get("volatility_regime")
+    if isinstance(vol_cfg, dict):
+        if "min_regime_for_trade" in vol_cfg and "min_volatility_regime" not in merged_cfg:
+            merged_cfg["min_volatility_regime"] = vol_cfg["min_regime_for_trade"]
+        if "tcn_required" in vol_cfg and "tcn_required" not in merged_cfg:
+            merged_cfg["tcn_required"] = vol_cfg["tcn_required"]
+
+    # Enforce that key trade gates are explicitly configured in YAML.
+    required_keys = [
+        "min_tcn_probability",
+        "min_confidence",
+        "min_momentum",
+        "max_drawdown_pct",
+        "max_streak_prob",
+        "risk_per_trade_pct",
+        "pip_value",
+        "min_stop_loss_pips",
+        "min_position_lots",
+        "position_sizing_mode",
+        "rl_min_risk_utilization",
+    ]
+    missing = [k for k in required_keys if k not in merged_cfg]
+    if missing:
+        raise ValueError(
+            f"Missing required inference keys in {config_path}: {missing}. "
+            "Add them under 'inference:' to keep gating fully config-driven."
+        )
+
+    # Runtime equity (live/account override) wins when explicitly provided.
+    if equity_override is not None:
+        merged_cfg["account_equity"] = float(equity_override)
+
+    # Apply CLI inference profile overrides last so they intentionally win.
+    resolved_profile = str(profile).strip().lower() if profile is not None else INFERENCE_PROFILE_BALANCED
+    if resolved_profile not in INFERENCE_PROFILE_OVERRIDES:
+        valid = ", ".join(sorted(INFERENCE_PROFILE_OVERRIDES.keys()))
+        raise ValueError(f"Unknown inference profile '{resolved_profile}'. Valid profiles: {valid}")
+    merged_cfg.update(INFERENCE_PROFILE_OVERRIDES[resolved_profile])
+    logger.info("Inference profile active: %s", resolved_profile)
+
+    # Filter unknown keys to keep config resilient across versions.
+    valid_fields = set(InferenceConfig.__dataclass_fields__.keys())
+    unknown = sorted(k for k in merged_cfg.keys() if k not in valid_fields)
+    if unknown:
+        logger.warning("Ignoring unknown inference config keys: %s", unknown)
+
+    kwargs = {k: merged_cfg[k] for k in merged_cfg.keys() if k in valid_fields}
+    return InferenceConfig(**kwargs), bool(pair_override)
+
 
 def _buddy_execute_all_pairs(
     config_path: str,
@@ -60,6 +362,7 @@ def _buddy_execute_all_pairs(
     max_trades_per_day: int = 30,
     llm_initialized: bool = False,
     llm_enhance: bool = True,
+    profile: str = INFERENCE_PROFILE_BALANCED,
 ) -> None:
     """Execute trades on ALL major pairs that pass gates.
 
@@ -73,6 +376,7 @@ def _buddy_execute_all_pairs(
     console.print("[bold cyan]  BUDDY ALL-PAIRS EXECUTION MODE[/bold cyan]")
     console.print("[bold cyan]════════════════════════════════════════════════════════════[/bold cyan]")
     console.print(f"[dim]Scanning {len(_MAJOR_PAIRS)} major pairs for trade opportunities...[/dim]\n")
+    console.print("[dim]Pre-trade LLM veto: disabled (fast execution mode)[/dim]\n")
 
     # Suppress verbose logging
     import os
@@ -95,6 +399,22 @@ def _buddy_execute_all_pairs(
     failed_pairs = []
     executed_trades = []
     trades_executed_now = 0
+    open_position_units: dict[str, int] = {}
+
+    # Preload current net positions for FIFO-safe execution checks.
+    try:
+        pos_payload = client.get_open_positions()
+        for pos in (pos_payload or {}).get("positions", []) or []:
+            if not isinstance(pos, dict):
+                continue
+            inst = str(pos.get("instrument", "")).strip()
+            if not inst:
+                continue
+            long_units = int(float((pos.get("long") or {}).get("units", 0) or 0))
+            short_units = int(float((pos.get("short") or {}).get("units", 0) or 0))
+            open_position_units[inst] = long_units + short_units
+    except Exception:
+        open_position_units = {}
 
     for pair in _MAJOR_PAIRS:
         # Check trade limit
@@ -110,8 +430,16 @@ def _buddy_execute_all_pairs(
             )
 
             enable_llm_integration = llm_enhance and llm_initialized
+            inference_config, _ = _build_inference_config_from_yaml(
+                cfg=cfg,
+                instrument=pair,
+                config_path=config_path,
+                equity_override=equity,
+                profile=profile,
+            )
             ensemble = ModularEnsembleInference(
                 instrument=pair,
+                config=inference_config,
                 use_rl_sizer=use_rl_sizer,
                 enable_llm_integration=enable_llm_integration,
             )
@@ -132,74 +460,19 @@ def _buddy_execute_all_pairs(
 
             # Check if gates pass
             if signal.trade:
-                # LLM validation if available
-                llm_approved = True
-                llm_size_mult = 1.0
-                llm_note = ""
-
-                if llm_initialized:
-                    try:
-                        from buddy_intelligent_mode import validate_trade_with_llm, BuddyRawOutput
-
-                        # Build context for LLM
-                        buddy_raw = BuddyRawOutput(
-                            confidence=signal.confidence,
-                            prediction=1 if signal.direction == 'long' else 0,
-                            probability=signal.tcn_probability,
-                            direction=signal.direction,
-                            gate_results={
-                                'tcn_prob': signal.tcn_probability,
-                                'ridge_conf': signal.ridge_confidence,
-                                'xgb_momentum': signal.xgb_momentum,
-                                'rf_drawdown': signal.rf_drawdown_pips,
-                            }
-                        )
-
-                        price_data = {
-                            'last_close': float(df['close'].iloc[-1]),
-                            'atr': float(df['atr'].iloc[-1]) if 'atr' in df.columns else None,
-                            'rsi': float(df['rsi'].iloc[-1]) if 'rsi' in df.columns else None,
-                            'adx': float(df['adx'].iloc[-1]) if 'adx' in df.columns else None,
-                            'trend': 'up' if df['close'].iloc[-1] > df['close'].iloc[-20] else 'down',
-                        }
-
-                        llm_validation = validate_trade_with_llm(
-                            ticker=pair,
-                            direction=signal.direction,
-                            buddy_raw=buddy_raw,
-                            price_data=price_data,
-                        )
-
-                        llm_approved = llm_validation.approve
-                        llm_size_mult = llm_validation.size_multiplier
-                        if not llm_approved:
-                            llm_note = f" [LLM: {llm_validation.reason}]"
-                        elif llm_size_mult != 1.0:
-                            llm_note = f" [LLM: {llm_size_mult:.1f}x]"
-
-                    except Exception:
-                        # LLM failed, continue with trade
-                        pass
-
-                if llm_approved:
-                    adjusted_size = signal.size * llm_size_mult
-                    passed_pairs.append({
-                        'pair': pair,
-                        'direction': signal.direction,
-                        'size': adjusted_size,
-                        'original_size': signal.size,
-                        'confidence': signal.confidence,
-                        'result': result,
-                        'signal': signal,
-                        'llm_size_mult': llm_size_mult,
-                    })
-                    status = f"[green]✓ PASS[/green] → {signal.direction.upper()} {adjusted_size:.1f} lots{llm_note}"
-                else:
-                    failed_pairs.append({
-                        'pair': pair,
-                        'reason': f"LLM rejected: {llm_validation.reason}",
-                    })
-                    status = f"[yellow]✗ LLM REJECT[/yellow]{llm_note}"
+                adjusted_size = signal.size
+                passed_pairs.append({
+                    'pair': pair,
+                    'direction': signal.direction,
+                    'size': adjusted_size,
+                    'original_size': signal.size,
+                    'confidence': signal.confidence,
+                    'result': result,
+                    'signal': signal,
+                    'ensemble': ensemble,
+                    'df': df,
+                })
+                status = f"[green]✓ PASS[/green] → {signal.direction.upper()} {adjusted_size:.1f} lots"
             else:
                 failed_pairs.append({
                     'pair': pair,
@@ -259,6 +532,8 @@ def _buddy_execute_all_pairs(
             pair = p['pair']
             signal = p['signal']
             result = p['result']
+            pair_ensemble = p.get('ensemble')
+            pair_df = p.get('df')
 
             # Get current price for SL/TP
             resp = client.get_candles(pair, granularity="M1", count=1, price="MBA")
@@ -273,6 +548,8 @@ def _buddy_execute_all_pairs(
             sl_distance = 1.5 * atr
             tp_distance = 3.0 * atr
             ts_distance = max(atr * 0.9, pip_size * 10)  # Min 10 pips trailing stop
+            sl_pips = sl_distance / pip_size
+            tp_pips = tp_distance / pip_size
 
             if signal.direction == 'long':
                 sl_price = round(current_price - sl_distance, price_precision)
@@ -290,6 +567,18 @@ def _buddy_execute_all_pairs(
             if force_units:
                 units = force_units if signal.direction == 'long' else -force_units
 
+            # FIFO-safe preflight: don't submit an opposite-direction order
+            # against an existing net position for this instrument.
+            existing_units = int(open_position_units.get(pair, 0))
+            if existing_units != 0 and (existing_units * units) < 0:
+                existing_side = "LONG" if existing_units > 0 else "SHORT"
+                new_side = "LONG" if units > 0 else "SHORT"
+                console.print(
+                    f"  [yellow]⏭[/yellow] {pair}: Skipped ({new_side}) due to existing "
+                    f"{existing_side} position ({abs(existing_units):,} units) [FIFO safeguard]"
+                )
+                continue
+
             # Execute
             order_result = client.create_market_order(
                 instrument=pair,
@@ -297,6 +586,8 @@ def _buddy_execute_all_pairs(
                 take_profit_price=tp_price,
                 stop_loss_price=sl_price,
                 trailing_stop_distance=ts_distance,
+                # Avoid implicit netting behavior that can trigger FIFO safeguards.
+                position_fill="OPEN_ONLY",
             )
 
             # Debug: show full order result if order fails
@@ -304,7 +595,14 @@ def _buddy_execute_all_pairs(
             if trade_id:
                 executed_trades.append({'pair': pair, 'direction': signal.direction, 'trade_id': trade_id})
                 trades_executed_now += 1
+                open_position_units[pair] = int(open_position_units.get(pair, 0)) + int(units)
                 console.print(f"  [green]✓[/green] {pair}: {signal.direction.upper()} {abs(units):,} units (Trade #{trade_id})")
+
+                fill_price_str = order_result.get('orderFillTransaction', {}).get('price')
+                try:
+                    fill_price = float(fill_price_str) if fill_price_str is not None else float(current_price)
+                except Exception:
+                    fill_price = float(current_price)
 
                 # Log to journal
                 try:
@@ -325,6 +623,34 @@ def _buddy_execute_all_pairs(
                     )
                 except Exception:
                     pass
+
+                rl_scenarios = _compute_rl_exit_scenarios(
+                    ensemble=pair_ensemble,
+                    df=pair_df,
+                    direction=signal.direction,
+                    entry_price=float(fill_price),
+                    stop_loss_pips=float(sl_pips),
+                    take_profit_pips=float(tp_pips),
+                )
+                post_feedback = _build_post_trade_feedback(
+                    instrument=pair,
+                    direction=signal.direction,
+                    entry_price=float(current_price),
+                    fill_price=float(fill_price),
+                    stop_loss_price=float(sl_price),
+                    take_profit_price=float(tp_price),
+                    stop_loss_pips=float(sl_pips),
+                    take_profit_pips=float(tp_pips),
+                    confidence=float(signal.confidence),
+                    tcn_probability=float(signal.tcn_probability),
+                    llm_enabled=bool(llm_initialized),
+                    rl_scenarios=rl_scenarios,
+                )
+                _print_post_trade_feedback(
+                    instrument=pair,
+                    feedback=post_feedback,
+                    indent="    ",
+                )
             else:
                 # Check for order cancellation (e.g., market halted on weekends)
                 cancel_tx = order_result.get('orderCancelTransaction', {})
@@ -381,6 +707,7 @@ def buddy(
     explain: bool = False,
     llm_provider: str = "auto",
     llm_enhance: bool = True,
+    profile: str = INFERENCE_PROFILE_BALANCED,
 ) -> None:
     """Buddy: run one TF-only inference on fresh OANDA candles; optionally place a trade.
 
@@ -562,6 +889,7 @@ def buddy(
             max_trades_per_day=max_trades_per_day,
             llm_initialized=llm_initialized,
             llm_enhance=llm_enhance,
+            profile=profile,
         )
         return
 
@@ -630,7 +958,7 @@ def buddy(
         for name in ['modular_trainers', 'modular_inference', 'tensorflow', 'absl']:
             logging.getLogger(name).setLevel(logging.ERROR)
 
-        from src.core.modular_inference import ModularEnsembleInference, InferenceConfig
+        from src.core.modular_inference import ModularEnsembleInference
 
         # Normalize instrument
         normalized_instrument = _normalize_instrument(instrument)
@@ -647,44 +975,29 @@ def buddy(
         else:
             console.print(f"[yellow]📊 Loading generic fallback models (no {normalized_instrument}-specific models found)[/yellow]")
 
-        # Load inference configuration from config file
-        inference_config = None
-        if cfg and 'inference' in cfg:
-            inf_cfg = cfg['inference']
-            # Use live account equity if available, otherwise config default
-            sizing_equity = equity or 103000.0
-
-            # Read volatility regime settings from top-level config
-            vol_cfg = cfg.get('volatility_regime', {})
-            use_tcn_filter = cfg.get('use_tcn_volatility_filter', True)
-            min_vol_regime = vol_cfg.get('min_regime_for_trade', 0)
-            tcn_required = vol_cfg.get('tcn_required', False)
-
-            inference_config = InferenceConfig(
-                min_tcn_probability=inf_cfg.get('min_tcn_probability', 0.55),
-                min_confidence=inf_cfg.get('min_confidence', 50.0),
-                min_momentum=inf_cfg.get('min_momentum', 0.20),
-                require_fresh_or_accel=inf_cfg.get('require_fresh_or_accel', True),
-                max_drawdown_pct=inf_cfg.get('max_drawdown_pct', 0.025),
-                max_streak_prob=inf_cfg.get('max_streak_prob', 0.95),
-                enable_meta_labeling=inf_cfg.get('enable_meta_labeling', True),
-                min_meta_confidence=inf_cfg.get('min_meta_confidence', 0.55),
-                sentiment_block_enabled=inf_cfg.get('sentiment_block_enabled', True),
-                sentiment_block_threshold=inf_cfg.get('sentiment_block_threshold', 0.60),
-                sentiment_min_headlines=inf_cfg.get('sentiment_min_headlines', 3),
-                permissive_mode=inf_cfg.get('permissive_mode', False),
-                bypass_risk_gate_in_permissive=inf_cfg.get('bypass_risk_gate_in_permissive', False),
-                enable_calibration=inf_cfg.get('enable_calibration', True),
-                calibration_method=inf_cfg.get('calibration_method', 'platt'),
-                account_equity=sizing_equity,
-                risk_per_trade_pct=inf_cfg.get('risk_per_trade_pct', 0.05),
-                # Volatility regime gate settings (from top-level config)
-                use_tcn_volatility_filter=use_tcn_filter,
-                min_volatility_regime=min_vol_regime,
-                tcn_required=tcn_required,
-            )
-            console.print(f"[dim]⚙️  Loaded inference config from {config_path}[/dim]")
-            console.print(f"[dim]💰 Position sizing: equity=${sizing_equity:,.0f}, risk={inference_config.risk_per_trade_pct:.0%}[/dim]")
+        # Load inference configuration from config file (strict, config-driven).
+        # If equity is still the CLI default and no live NAV was fetched, preserve YAML account_equity.
+        equity_override = None if (_equity_is_default and live_nav is None) else equity
+        inference_config, has_pair_override = _build_inference_config_from_yaml(
+            cfg=cfg,
+            instrument=normalized_instrument,
+            config_path=config_path,
+            equity_override=equity_override,
+            profile=profile,
+        )
+        console.print(f"[dim]⚙️  Loaded inference config from {config_path}[/dim]")
+        console.print(f"[dim]📌 Inference profile: {profile}[/dim]")
+        console.print(
+            f"[dim]🧭 Heuristic vetoes: "
+            f"RSI={'on' if inference_config.use_rsi_extreme_gate else 'off'}, "
+            f"TrendContra={'on' if inference_config.use_trend_contra_gate else 'off'}[/dim]"
+        )
+        if has_pair_override:
+            console.print(f"[dim]🎯 Applied pair-specific inference overrides for {normalized_instrument}[/dim]")
+        console.print(
+            f"[dim]💰 Position sizing: equity=${inference_config.account_equity:,.0f}, "
+            f"risk={inference_config.risk_per_trade_pct:.0%}[/dim]"
+        )
 
         ensemble = ModularEnsembleInference(
             instrument=normalized_instrument,
@@ -900,6 +1213,30 @@ def buddy(
                             console.print("  [green]✓ Trade logged to journal[/green]")
                         except Exception as je:
                             console.print(f"  [yellow]⚠ Journal error: {je}[/yellow]")
+
+                    rl_scenarios = _compute_rl_exit_scenarios(
+                        ensemble=ensemble,
+                        df=df,
+                        direction=signal.direction,
+                        entry_price=float(fill_price_actual),
+                        stop_loss_pips=float(sl_pips),
+                        take_profit_pips=float(tp_pips),
+                    )
+                    post_feedback = _build_post_trade_feedback(
+                        instrument=instrument,
+                        direction=signal.direction,
+                        entry_price=float(current_price),
+                        fill_price=float(fill_price_actual),
+                        stop_loss_price=float(sl_price),
+                        take_profit_price=float(tp_price),
+                        stop_loss_pips=float(sl_pips),
+                        take_profit_pips=float(tp_pips),
+                        confidence=float(signal.confidence),
+                        tcn_probability=float(signal.tcn_probability),
+                        llm_enabled=bool(llm_initialized),
+                        rl_scenarios=rl_scenarios,
+                    )
+                    _print_post_trade_feedback(instrument=instrument, feedback=post_feedback)
                 except Exception as e:
                     console.print(f"[red]✗ Order failed: {e}[/red]")
             else:
@@ -907,7 +1244,42 @@ def buddy(
                 console.print("[yellow]⚠ ATR not available - placing order without TP/SL[/yellow]")
                 try:
                     order_result = trader.create_market_order(instrument=instrument, units=units)
-                    console.print(f"[green]✓ Order placed: {order_result.get('orderFillTransaction', {}).get('price', 'filled')}[/green]")
+                    fill_tx = order_result.get('orderFillTransaction', {})
+                    fill_price_str = fill_tx.get('price')
+                    trade_id = fill_tx.get('tradeOpened', {}).get('tradeID')
+                    if fill_price_str is not None:
+                        console.print(f"[green]✓ Order placed @ {fill_price_str} (Trade #{trade_id or 'N/A'})[/green]")
+                    else:
+                        console.print(f"[green]✓ Order placed (Trade #{trade_id or 'N/A'})[/green]")
+
+                    try:
+                        fill_price_actual = float(fill_price_str) if fill_price_str is not None else float(current_price)
+                    except Exception:
+                        fill_price_actual = float(current_price)
+
+                    rl_scenarios = _compute_rl_exit_scenarios(
+                        ensemble=ensemble,
+                        df=df,
+                        direction=signal.direction,
+                        entry_price=float(fill_price_actual),
+                        stop_loss_pips=None,
+                        take_profit_pips=None,
+                    )
+                    post_feedback = _build_post_trade_feedback(
+                        instrument=instrument,
+                        direction=signal.direction,
+                        entry_price=float(current_price),
+                        fill_price=float(fill_price_actual),
+                        stop_loss_price=None,
+                        take_profit_price=None,
+                        stop_loss_pips=None,
+                        take_profit_pips=None,
+                        confidence=float(signal.confidence),
+                        tcn_probability=float(signal.tcn_probability),
+                        llm_enabled=bool(llm_initialized),
+                        rl_scenarios=rl_scenarios,
+                    )
+                    _print_post_trade_feedback(instrument=instrument, feedback=post_feedback)
                 except Exception as e:
                     console.print(f"[red]✗ Order failed: {e}[/red]")
 
@@ -2362,6 +2734,7 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
             all_features=getattr(args, "all_features", False),
             verbose=args.verbose,
             max_trades=int(getattr(args, "max_trades", 1)),
+            profile=str(getattr(args, "profile", INFERENCE_PROFILE_BALANCED)),
         )
         return
 
@@ -2385,6 +2758,7 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
         explain=explain,
         llm_provider=llm_provider,
         llm_enhance=getattr(args, "llm_enhance", False),
+        profile=str(getattr(args, "profile", INFERENCE_PROFILE_BALANCED)),
     )
 
 
@@ -2626,7 +3000,11 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
         foundation_pairs=getattr(args, "foundation_pairs", None),
         # RL position sizer training (after ensemble)
         train_rl_sizer=not bool(getattr(args, "skip_rl", False)),
-        rl_timesteps=int(getattr(args, "timesteps", 500_000)),
+        rl_timesteps=(
+            int(getattr(args, "timesteps"))
+            if getattr(args, "timesteps", None) is not None
+            else None
+        ),
     )
 
 

@@ -27,6 +27,12 @@ class TrainerConfig:
     seq_len: int = (
         60  # Sequence length for sliding window (from config train_defaults.seq_len)
     )
+    
+    # [2026-02-14] Enhanced regularization - Early stopping min_delta
+    early_stopping_min_delta: float = 0.001  # Minimum change to qualify as improvement
+    
+    # [2026-02-14] Enhanced regularization - Label smoothing
+    label_smoothing: float = 0.1  # Label smoothing factor for classification tasks
 
     # TCN specific - AGGRESSIVE ANTI-OVERFITTING (val was 38%, worse than random)
     tcn_hidden_size: int = 16  # Reduced from 32 - smaller capacity
@@ -49,6 +55,11 @@ class TrainerConfig:
     transformer_input_noise: float = 0.02  # Gaussian noise on input
     transformer_spatial_dropout: float = 0.10  # SpatialDropout1D on input sequence
     transformer_projection_dropout: float = 0.10  # Dropout after input projection
+    
+    # === LLRD (Layer-wise Learning Rate Decay) SETTINGS ===
+    # Applies higher LR to later layers, lower LR to earlier layers for transfer learning
+    llrd_enabled: bool = True  # Enable/disable LLRD for transformer training
+    llrd_decay_rate: float = 0.9  # Learning rate decay per layer (0.9 = 10% decay per layer)
     
     # === TIME-SERIES AUGMENTATION SETTINGS (NEW - Phase 4) ===
     use_augmentation: bool = True  # Enable time-series augmentation during training
@@ -150,8 +161,11 @@ class TrainerConfig:
     replay_buffer_dir: str = "trained_data/replay"  # Replay buffer storage
 
     # Warm-start settings (CRITICAL for preventing catastrophic forgetting)
+    # NOTE: warm_start_encoder_layers_to_freeze default increased to 2 for better
+    # protection against catastrophic forgetting in transfer learning scenarios.
+    # This ensures the first 2 encoder layers retain pretrained knowledge.
     warm_start_lr_factor: float = (
-        0.1  # FIXED: 0.1 = 10x LR reduction (was 0.01 = 100x, too aggressive!)
+        0.03  # FIXED: 0.03 = 33x LR reduction (was 0.1 = 10x, caused 60.3%→58-59% degradation)
     )
     warm_start_freeze_encoder: bool = (
         True  # Freeze ALL transformer encoder layers (not just transformer_0)
@@ -161,6 +175,12 @@ class TrainerConfig:
     )
     warm_start_gradual_unfreeze: bool = (
         True  # FIXED: Now enabled - gradually unfreeze layers from top to bottom
+    )
+    warm_start_encoder_layers_to_freeze: int = (
+        2  # CRITICAL: Default changed from 0->1->2 to mitigate Catastrophic Forgetting
+    )
+    warm_start_gradual_unfreeze_strategy: bool = (
+        True  # Use gradual layer-by-layer unfreezing strategy
     )
 
     # Drift detection for auto-retraining
@@ -196,6 +216,58 @@ class TrainerConfig:
     use_feature_selection: bool = True  # Enable RF importance-based feature selection
     feature_selection_method: str = "random_forest"  # 'random_forest' or 'f_test'
     top_k_features: int = 50  # Number of top features to select
+
+    # === HYBRID SFT-RL TRAINING SETTINGS (NEW - 2026) ===
+    # Stochastic switch between Supervised and RL loss to mitigate memorization
+    use_hybrid_sft_rl: bool = False  # Enable Hybrid SFT-RL training
+    rl_prob: float = 0.5  # Probability of using RL loss per batch (0.0-1.0)
+    entropy_coef: float = 0.01  # Entropy bonus coefficient for exploration
+    initial_baseline: float = 0.5  # Initial reward baseline for variance reduction
+    baseline_momentum: float = 0.9  # EMA momentum for baseline updates (0.0-1.0)
+    
+    # RL Curriculum Learning (schedule rl_prob over training)
+    rl_curriculum_enabled: bool = False  # Enable curriculum scheduling of rl_prob
+    rl_curriculum_type: str = "linear"  # 'linear', 'cosine', or 'step'
+    rl_curriculum_warmup_epochs: int = 10  # Epochs to reach target rl_prob
+    rl_curriculum_initial_prob: float = 0.0  # Starting rl_prob for curriculum
+    rl_curriculum_final_prob: float = 0.5  # Target rl_prob after warmup
+    
+    # RL Early Stopping (based on policy health)
+    rl_early_stopping: bool = True  # Enable RL-based early stopping
+    rl_min_entropy: float = 0.005  # Minimum entropy threshold (collapse detection)
+    rl_patience: int = 10  # Epochs of low entropy before stopping
+
+    # Number of output classes for classification tasks
+    num_classes: int = 2  # Binary classification default
+
+    def __post_init__(self):
+        """Validate configuration parameters."""
+        # RL probability must be in [0, 1]
+        if not 0.0 <= self.rl_prob <= 1.0:
+            raise ValueError(f"rl_prob must be in [0, 1], got {self.rl_prob}")
+
+        # Baseline momentum must be in [0, 1]
+        if not 0.0 <= self.baseline_momentum <= 1.0:
+            raise ValueError(f"baseline_momentum must be in [0, 1], got {self.baseline_momentum}")
+
+        # Initial baseline must be in [0, 1]
+        if not 0.0 <= self.initial_baseline <= 1.0:
+            raise ValueError(f"initial_baseline must be in [0, 1], got {self.initial_baseline}")
+
+        # Entropy coefficient must be non-negative
+        if self.entropy_coef < 0:
+            raise ValueError(f"entropy_coef must be >= 0, got {self.entropy_coef}")
+
+        # Curriculum probabilities validation
+        if self.rl_curriculum_enabled:
+            if not 0.0 <= self.rl_curriculum_initial_prob <= 1.0:
+                raise ValueError("rl_curriculum_initial_prob must be in [0, 1]")
+            if not 0.0 <= self.rl_curriculum_final_prob <= 1.0:
+                raise ValueError("rl_curriculum_final_prob must be in [0, 1]")
+
+        # Number of classes must be positive
+        if self.num_classes < 1:
+            raise ValueError(f"num_classes must be >= 1, got {self.num_classes}")
 
 
 @dataclass

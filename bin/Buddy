@@ -28,6 +28,12 @@ else
     CONFIG_FILE="${ROOT_DIR}/config/config_improved_H1.yaml"
 fi
 
+# Ensure plotting/font caches are writable in restricted environments (CI/sandbox).
+CACHE_ROOT="${BUDDY_CACHE_DIR:-${ROOT_DIR}/.buddy_cache}"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-${CACHE_ROOT}/matplotlib}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${CACHE_ROOT}/xdg}"
+mkdir -p "${MPLCONFIGDIR}" "${XDG_CACHE_HOME}/fontconfig" >/dev/null 2>&1 || true
+
 get_conda() {
     for p in "${HOME}/miniforge3/bin/conda" "${HOME}/miniconda3/bin/conda"; do
         [[ -x "$p" ]] && { echo "$p"; return; }
@@ -62,6 +68,7 @@ cmd_predict() {
             --no-intelligent) args+=(--no-intelligent); shift ;;
             --llm-provider) args+=(--llm-provider "$2"); shift 2 ;;
             --llm-enhance) args+=(--llm-enhance); shift ;;
+            --profile) args+=(--profile "$2"); shift 2 ;;
             --dry-run) args+=(--dry-run); shift ;;
             *) args+=("$1"); shift ;;  # Pass through unknown args
         esac
@@ -102,8 +109,17 @@ cmd_scan() {
             -g|--granularity) granularity="$2"; shift 2 ;;
             --top) args+=(--top "$2"); shift 2 ;;
             -v|--verbose) args+=(--verbose); shift ;;
+            --watch) args+=(--watch); shift ;;
+            --interval) args+=(--interval "$2"); shift 2 ;;
+            --auto-execute) args+=(--auto-execute); shift ;;
+            --no-train) args+=(--no-train); shift ;;
+            --skip-execute) args+=(--skip-execute); shift ;;
             -d|--diversified) args+=(--diversified); shift ;;
-            *) shift ;;
+            --force) args+=(--force); shift ;;
+            --profile) args+=(--profile "$2"); shift 2 ;;
+            --use-rl-sizer) args+=(--use-rl-sizer); shift ;;
+            --no-use-rl-sizer) args+=(--no-use-rl-sizer); shift ;;
+            *) args+=("$1"); shift ;;  # Pass through unknown args instead of dropping them
         esac
     done
     run_py "${ROOT_DIR}/main.py" scan --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
@@ -149,6 +165,20 @@ cmd_test() {
         esac
     done
     run_py "${ROOT_DIR}/main.py" test --config "${CONFIG_FILE}" --granularity "${granularity}" "${args[@]+"${args[@]}"}"
+}
+
+cmd_monitor() {
+    local args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --alerts) args+=(--monitor-alerts); shift ;;
+            --drift) args+=(--monitor-drift); shift ;;
+            --report) args+=(--monitor-report); shift ;;
+            --limit) args+=(--monitor-limit "$2"); shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    run_py "${ROOT_DIR}/main.py" monitor --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
 }
 
 cmd_status() { run_py "${ROOT_DIR}/main.py" model-status --config "${CONFIG_FILE}"; }
@@ -203,6 +233,7 @@ main() {
         status|s) cmd_status ;;
         promote) cmd_promote ;;
         loop|l) cmd_loop ;;
+        monitor|m) cmd_monitor "$@" ;;
         help|-h|--help) cat << 'EOF'
 Buddy v2.2.0 - FX Trading Assistant
 
@@ -215,6 +246,7 @@ COMMANDS:
   analyze                 Analyze recent trades
   test                    Run test prediction
   journal [-u] [-d N]     View/update trade journal
+  monitor                 Show monitoring dashboard and alerts
   status                  Show model status
   loop                    Run continuous prediction loop
 
@@ -225,7 +257,14 @@ OPTIONS:
   -x, --execute           Execute trades (live)
   -v, --verbose           Verbose output
   -g, --granularity G     Timeframe (default: H1)
+  --profile P             Inference/scan profile: conservative|balanced|aggressive
   --dry-run               Preview without execution
+
+MONITOR OPTIONS:
+  --alerts                Show detailed alerts
+  --drift                 Show model drift history
+  --report                Generate full monitoring report
+  --limit N               Limit drift history entries (default: 20)
 
 EXAMPLES:
   ./bin/Buddy EUR_USD              # Predict EUR/USD
@@ -234,6 +273,9 @@ EXAMPLES:
   ./bin/Buddy train-joint          # Train all 15 scanner pairs
   ./bin/Buddy tj --instruments EUR_USD,GBP_USD  # Train specific pairs
   ./bin/Buddy scan --top 5         # Scan and show top 5 opportunities
+  ./bin/Buddy scan --profile aggressive --force
+  ./bin/Buddy monitor              # Show monitoring dashboard
+  ./bin/Buddy monitor --alerts     # Show detailed alerts
 EOF
 ;;
         *) cmd_predict "${cmd}" "$@" ;;

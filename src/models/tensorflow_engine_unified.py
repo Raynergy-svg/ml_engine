@@ -6,11 +6,24 @@ prediction interface, allowing Buddy to use TensorFlow TFT models instead of PyT
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+
+try:
+    from src.training.trainers.exceptions import WeightMismatchError
+except Exception:
+    class WeightMismatchError(Exception):
+        """Fallback exception if training package import is unavailable."""
+
+        def __init__(self, message: str, mismatches: Optional[Dict[str, List[Any]]] = None):
+            super().__init__(message)
+            self.mismatches = mismatches or {}
+
+logger = logging.getLogger(__name__)
 
 # Lazy TensorFlow import to avoid startup overhead
 _tf = None
@@ -165,28 +178,178 @@ def _calculate_pattern_score(var_name, saved_name):
     return score
 
 
-def _match_weights_by_name(model_vars, saved_weights):
-    """Match model variables to saved weights by normalized name."""
+def _match_weights_by_name(
+    model_vars: List[Any],
+    saved_weights: Dict[str, Any],
+    strict: bool = False,
+    mismatch_tolerance: float = 0.5,
+) -> Tuple[int, set, Dict[str, Any]]:
+    """Match model variables to saved weights by normalized name.
+    
+    Args:
+        model_vars: List of model variables to match.
+        saved_weights: Dictionary of saved weight name to numpy array.
+        strict: If True, raise WeightMismatchError on critical mismatches.
+        mismatch_tolerance: Fraction of weights that must match (0.0-1.0).
+        
+    Returns:
+        Tuple of (matched_count, used_saved_names, diagnostics_dict).
+        diagnostics_dict contains:
+            - 'shape_mismatches': List of (var_name, expected_shape, actual_shape)
+            - 'unmatched_vars': List of variable names that couldn't be matched
+            - 'match_ratio': Fraction of model vars that were matched
+            
+    Raises:
+        WeightMismatchError: If strict=True and match_ratio < mismatch_tolerance.
+    """
     matched = 0
     used_saved = set()
-
+    shape_mismatches = []
+    unmatched_vars = []
+    
     for var in model_vars:
         var_norm = _normalize_weight_name(var.name)
-
+        var_shape = tuple(var.shape)
+        match_found = False
+        
         for saved_name, saved_weight in saved_weights.items():
             if saved_name in used_saved:
                 continue
             saved_norm = _normalize_weight_name(saved_name)
-
-            if saved_norm == var_norm and saved_weight.shape == tuple(var.shape):
-                # Cast to match dtype for Metal compatibility
-                weight_to_assign = saved_weight.astype(var.dtype.as_numpy_dtype) if hasattr(saved_weight, 'astype') else saved_weight
-                var.assign(weight_to_assign)
-                used_saved.add(saved_name)
-                matched += 1
+            saved_shape = tuple(saved_weight.shape)
+            
+            if saved_norm == var_norm:
+                # Check shape compatibility
+                if saved_shape == var_shape:
+                    # Cast to match dtype for Metal compatibility
+                    try:
+                        weight_to_assign = saved_weight.astype(var.dtype.as_numpy_dtype)
+                        var.assign(weight_to_assign)
+                        used_saved.add(saved_name)
+                        matched += 1
+                        match_found = True
+                    except (TypeError, ValueError) as e:
+                        logger.warning(
+                            f"⚠️ Failed to assign weight '{var.name}': {e}"
+                        )
+                        unmatched_vars.append(var.name)
+                else:
+                    # Shape mismatch - log detailed info
+                    shape_mismatches.append((
+                        var.name,
+                        var_shape,
+                        saved_shape
+                    ))
+                    logger.warning(
+                        f"⚠️ Shape mismatch for '{var.name}': "
+                        f"expected {var_shape}, got {saved_shape}"
+                    )
                 break
+        
+        if not match_found and var.name not in [m[0] for m in shape_mismatches]:
+            unmatched_vars.append(var.name)
+    
+    # Calculate diagnostics
+    total_vars = len(model_vars)
+    match_ratio = matched / total_vars if total_vars > 0 else 0.0
+    
+    diagnostics = {
+        'shape_mismatches': shape_mismatches,
+        'unmatched_vars': unmatched_vars,
+        'missing_weights': unmatched_vars,  # Alias for shared exception formatting
+        'name_mismatches': [],
+        'used_saved_names': list(used_saved),
+        'match_ratio': match_ratio,
+        'matched_count': matched,
+        'total_vars': total_vars,
+    }
+    
+    # Log summary
+    if shape_mismatches or unmatched_vars:
+        logger.warning(
+            f"⚠️ Weight matching summary: {matched}/{total_vars} matched "
+            f"({match_ratio:.1%}), {len(shape_mismatches)} shape mismatches, "
+            f"{len(unmatched_vars)} unmatched"
+        )
+    
+    # Raise exception if strict mode and poor match ratio
+    if strict and match_ratio < mismatch_tolerance:
+        raise WeightMismatchError(
+            f"Weight match ratio {match_ratio:.1%} below tolerance {mismatch_tolerance:.1%}",
+            mismatches=diagnostics
+        )
+    
+    return matched, used_saved, diagnostics
 
-    return matched, used_saved
+
+def validate_weight_shapes(
+    model_vars: List[Any],
+    saved_weights: Dict[str, Any],
+    raise_on_mismatch: bool = False,
+) -> Dict[str, Any]:
+    """Validate weight shapes without assigning.
+    
+    Pre-validation utility to check compatibility before loading weights.
+    
+    Args:
+        model_vars: List of model variables.
+        saved_weights: Dictionary of saved weight name to numpy array.
+        raise_on_mismatch: If True, raise WeightMismatchError on any mismatch.
+        
+    Returns:
+        Dictionary with validation results:
+            - 'compatible': bool - whether all weights are compatible
+            - 'shape_mismatches': List of mismatch details
+            - 'missing_in_checkpoint': Vars not in checkpoint
+            - 'extra_in_checkpoint': Weights not in model
+    """
+    shape_mismatches = []
+    missing_in_checkpoint = []
+    matched_vars = set()
+    
+    for var in model_vars:
+        var_norm = _normalize_weight_name(var.name)
+        var_shape = tuple(var.shape)
+        found = False
+        
+        for saved_name, saved_weight in saved_weights.items():
+            saved_norm = _normalize_weight_name(saved_name)
+            if saved_norm == var_norm:
+                found = True
+                saved_shape = tuple(saved_weight.shape)
+                if saved_shape != var_shape:
+                    shape_mismatches.append({
+                        'var_name': var.name,
+                        'expected': var_shape,
+                        'actual': saved_shape,
+                    })
+                matched_vars.add(saved_name)
+                break
+        
+        if not found:
+            missing_in_checkpoint.append(var.name)
+    
+    extra_in_checkpoint = [
+        name for name in saved_weights.keys()
+        if name not in matched_vars
+    ]
+    
+    compatible = len(shape_mismatches) == 0
+    
+    result = {
+        'compatible': compatible,
+        'shape_mismatches': shape_mismatches,
+        'missing_in_checkpoint': missing_in_checkpoint,
+        'extra_in_checkpoint': extra_in_checkpoint,
+    }
+    
+    if raise_on_mismatch and not compatible:
+        raise WeightMismatchError(
+            f"Weight shape validation failed: {len(shape_mismatches)} mismatches",
+            mismatches=result
+        )
+    
+    return result
 
 
 def _match_weights_by_shape_and_pattern(model_vars, saved_weights, used_saved):
@@ -271,16 +434,49 @@ def _load_from_npz(tf, npz_path):
     # Get model variables
     model_vars = model.trainable_variables + model.non_trainable_variables
 
-    # First try: exact name matching
-    matched, used_saved = _match_weights_by_name(model_vars, saved_weights)
+    # First try: exact name matching (with diagnostics)
+    precheck = validate_weight_shapes(model_vars, saved_weights, raise_on_mismatch=False)
+    if not precheck.get("compatible", True):
+        print(
+            "  ⚠ Pre-validation found mismatches: "
+            f"{len(precheck.get('shape_mismatches', []))} shape mismatches, "
+            f"{len(precheck.get('missing_in_checkpoint', []))} missing vars"
+        )
+
+    try:
+        matched, used_saved, diagnostics = _match_weights_by_name(
+            model_vars,
+            saved_weights,
+            strict=True,
+            mismatch_tolerance=0.5,
+        )
+    except WeightMismatchError as strict_err:
+        diagnostics = getattr(strict_err, "mismatches", {}) or {}
+        matched = int(diagnostics.get("matched_count", 0))
+        used_saved = set(diagnostics.get("used_saved_names", []))
+        print("  ⚠ Strict name-match threshold not met, trying shape/pattern fallback...")
 
     # Second try: shape + pattern matching for remaining
     matched += _match_weights_by_shape_and_pattern(model_vars, saved_weights, used_saved)
+    total_vars = len(model_vars)
+    final_match_ratio = matched / total_vars if total_vars > 0 else 0.0
+    diagnostics["final_match_ratio"] = final_match_ratio
+
+    # Strict enforcement after both matching passes.
+    if final_match_ratio < 0.5:
+        raise WeightMismatchError(
+            f"Final weight match ratio {final_match_ratio:.1%} below tolerance 50.0%",
+            mismatches=diagnostics,
+        )
 
     print(f"  Matched {matched}/{len(model_vars)} weight tensors from NPZ")
 
     if matched < len(model_vars) * 0.5:
         print("  ⚠ Warning: Less than 50% weights matched. Model may not work correctly.")
+        if diagnostics.get('shape_mismatches'):
+            print(f"    Shape mismatches: {len(diagnostics['shape_mismatches'])}")
+        if diagnostics.get('unmatched_vars'):
+            print(f"    Unmatched vars: {len(diagnostics['unmatched_vars'])}")
 
     return model
 

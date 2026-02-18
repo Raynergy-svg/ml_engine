@@ -142,7 +142,7 @@ def test_rl_sizer_feature_extraction():
     inference.config = type('Config', (), {'account_equity': 100000})()
     
     # Load RL sizer
-    from rl_position_sizing import RLPositionSizer
+    from src.training.rl.position_sizer import RLPositionSizer
     inference.rl_sizer = RLPositionSizer()
     inference.rl_sizer.load()
     
@@ -178,7 +178,7 @@ def test_position_size_calculation():
     inference.rl_sizer = None
     
     # Load RL sizer
-    from rl_position_sizing import RLPositionSizer
+    from src.training.rl.position_sizer import RLPositionSizer
     inference.rl_sizer = RLPositionSizer()
     inference.rl_sizer.load()
     

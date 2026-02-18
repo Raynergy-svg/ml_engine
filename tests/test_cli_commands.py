@@ -228,3 +228,50 @@ class TestBuddyWizardCheck:
         """_maybe_launch_buddy_repl should exist and be callable."""
         from cli.commands import _maybe_launch_buddy_repl
         assert callable(_maybe_launch_buddy_repl)
+
+
+# ---------------------------------------------------------------------------
+# Test: post-trade feedback helpers
+# ---------------------------------------------------------------------------
+
+class TestPostTradeFeedbackHelpers:
+    """Verify post-trade helper behavior."""
+
+    def test_extract_first_json_object(self):
+        """Should parse first JSON object from mixed text."""
+        from cli.commands import _extract_first_json_object
+
+        parsed = _extract_first_json_object(
+            "prefix text {\"quality\":\"good\",\"summary\":\"ok\"} trailing text"
+        )
+        assert isinstance(parsed, dict)
+        assert parsed["quality"] == "good"
+        assert parsed["summary"] == "ok"
+
+    def test_build_post_trade_feedback_rl_fallback(self):
+        """When LLM is disabled, RL/fallback guidance should be returned."""
+        from cli.commands import _build_post_trade_feedback
+
+        feedback = _build_post_trade_feedback(
+            instrument="EUR_USD",
+            direction="long",
+            entry_price=1.1000,
+            fill_price=1.1001,
+            stop_loss_price=1.0985,
+            take_profit_price=1.1030,
+            stop_loss_pips=15.0,
+            take_profit_pips=30.0,
+            confidence=62.0,
+            tcn_probability=0.57,
+            llm_enabled=False,
+            rl_scenarios={
+                "now": {"action": "hold", "confidence": 0.8, "reason": "RL suggests hold"},
+                "if_good": {"action": "exit_profit", "confidence": 0.7, "reason": "Take profit zone"},
+                "if_bad": {"action": "exit_loss", "confidence": 0.9, "reason": "Cut loss"},
+            },
+        )
+
+        assert feedback["source"] == "rl"
+        assert feedback["quality"] in {"good", "neutral", "bad"}
+        assert "hold" in feedback["summary"].lower() or feedback["summary"]
+        assert "profit" in feedback["take_profit"].lower()

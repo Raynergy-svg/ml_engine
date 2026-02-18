@@ -7,6 +7,7 @@ Each function handles one logical stage of the training workflow.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import time
 from typing import Any, Callable, Protocol
@@ -14,6 +15,13 @@ from typing import Any, Callable, Protocol
 import numpy as np
 import pandas as pd
 from rich.panel import Panel
+
+from src.training.pair_logger import get_pair_logger
+
+logger = logging.getLogger(__name__)
+
+# Ensure log directory exists at module load
+Path("trained_data/logs").mkdir(parents=True, exist_ok=True)
 
 
 class _ConsoleLike(Protocol):
@@ -920,7 +928,7 @@ def _train_rl_position_sizer(
     from pathlib import Path
 
     try:
-        from rl_position_sizing import train_rl_position_sizer
+        from src.training.rl.position_sizer import train_rl_position_sizer
     except ImportError as e:
         return {'status': 'skipped', 'reason': f'RL dependencies not available: {e}'}
 
@@ -1117,6 +1125,12 @@ def _train_meta_labeler(
         meta_x_val = np.column_stack([val_conf, val_preds.flatten()])
 
         labeler = MetaLabeler(MetaLabelingConfig())
+        
+        # [2026-02-14] Feature alignment fix: Propagate selected feature indices from direction trainer
+        if hasattr(trainer, 'selected_indices') and trainer.selected_indices is not None:
+            labeler.set_primary_feature_indices(trainer.selected_indices)
+            logger.info(f"Propagated {len(trainer.selected_indices)} selected feature indices to meta-labeler")
+        
         meta_metrics = labeler.train(meta_x_train, meta_y_train, meta_x_val, meta_y_val)
 
         meta_save_path = Path(model_dir) / "joint" / "meta_labeler.pkl"
@@ -1493,6 +1507,9 @@ def train_with_walkforward_validation(
         WalkForwardValidator,
     )
 
+    # Initialize pair logger for structured logging
+    pair_logger = get_pair_logger(instrument)
+
     # Load walk-forward configuration
     if wf_config is None or not wf_config.get('enabled', True):
         # Walk-forward disabled, use standard training
@@ -1579,6 +1596,20 @@ def train_with_walkforward_validation(
             fold_trainers.append(fold_trainer)
             fold_metrics.append(fold_metrics_dict)
 
+            # Log fold completion with pair logger
+            train_acc = fold_metrics_dict.get('train_accuracy', 0.0)
+            val_acc = fold_metrics_dict.get('val_accuracy', 0.0)
+            cv_std = fold_metrics_dict.get('cv_std', None)
+            bootstrap_ci_lower = fold_metrics_dict.get('bootstrap_ci_lower', None)
+            
+            pair_logger.log_fold_complete(
+                fold=fold_idx + 1,
+                train_acc=train_acc,
+                val_acc=val_acc,
+                bootstrap_ci_lower=bootstrap_ci_lower,
+                cv_std=cv_std,
+            )
+
             if console:
                 val_acc = fold_metrics_dict.get('val_accuracy', 0.0)
                 console.print(f"  [green]✓ Fold {fold_idx + 1} complete: val_accuracy={val_acc:.1%}[/green]")
@@ -1607,6 +1638,18 @@ def train_with_walkforward_validation(
             console.print(f"\n[bold green]Selected best fold: {best_idx + 1}[/bold green] "
                           f"(val_accuracy={best_metrics.get('val_accuracy', 0.0):.1%})")
 
+        # Log training completion
+        final_train_acc = best_metrics.get('train_accuracy', 0.0)
+        final_val_acc = best_metrics.get('val_accuracy', 0.0)
+        pair_logger.log_training_complete(
+            final_train_acc=final_train_acc,
+            final_val_acc=final_val_acc,
+            deployment_approved=final_val_acc >= 0.55,
+            critical_failures=0,
+            best_fold=best_idx + 1,
+            aggregate_method="best",
+        )
+
         return best_trainer, best_metrics
 
     elif wf_cfg.aggregate_method == "average":
@@ -1620,12 +1663,38 @@ def train_with_walkforward_validation(
         if console:
             console.print(f"\n[bold green]Averaged metrics across {len(fold_metrics)} folds[/bold green]")
 
+        # Log training completion
+        final_train_acc = averaged_metrics.get('train_accuracy', 0.0)
+        final_val_acc = averaged_metrics.get('val_accuracy', 0.0)
+        pair_logger.log_training_complete(
+            final_train_acc=final_train_acc,
+            final_val_acc=final_val_acc,
+            deployment_approved=final_val_acc >= 0.55,
+            critical_failures=0,
+            n_folds=len(fold_metrics),
+            aggregate_method="average",
+        )
+
         return fold_trainers[-1], averaged_metrics
 
     else:  # "ensemble" or unknown
         # Return last trainer (default behavior)
         if console:
             console.print(f"\n[yellow]Using last fold trainer (aggregate_method={wf_cfg.aggregate_method})[/yellow]")
+        
+        # Log training completion
+        last_metrics = fold_metrics[-1] if fold_metrics else {}
+        final_train_acc = last_metrics.get('train_accuracy', 0.0)
+        final_val_acc = last_metrics.get('val_accuracy', 0.0)
+        pair_logger.log_training_complete(
+            final_train_acc=final_train_acc,
+            final_val_acc=final_val_acc,
+            deployment_approved=final_val_acc >= 0.55,
+            critical_failures=0,
+            n_folds=len(fold_metrics),
+            aggregate_method=wf_cfg.aggregate_method,
+        )
+        
         return fold_trainers[-1], fold_metrics[-1]
 
 

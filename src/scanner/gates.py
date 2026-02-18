@@ -96,14 +96,21 @@ class GateEvaluator:
     REGIME_NORMAL = 1
     REGIME_HIGH = 2
     REGIME_EXTREME = 3
-    MIN_VOLATILITY_REGIME: int = 2  # Require HIGH or EXTREME
+    DEFAULT_MIN_VOLATILITY_REGIME: int = 2  # Require HIGH or EXTREME
 
-    def __init__(self, model_dir: Path, use_joint_only: bool = True):
+    def __init__(
+        self,
+        model_dir: Path,
+        use_joint_only: bool = True,
+        min_volatility_regime: int = DEFAULT_MIN_VOLATILITY_REGIME,
+    ):
         """Initialize gate evaluator.
 
         Args:
             model_dir: Base path to model directory (e.g., trained_data/models)
             use_joint_only: If True, load ONLY from joint/ subdirectory (default for scanner)
+            min_volatility_regime: Minimum volatility regime allowed for trades
+                (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
         """
         self.base_model_dir = Path(model_dir)
         self.use_joint_only = use_joint_only
@@ -113,6 +120,8 @@ class GateEvaluator:
             self.model_dir = self.base_model_dir / JOINT_MODEL_DIR
         else:
             self.model_dir = self.base_model_dir
+        # Clamp into valid 0-3 range to keep gate behavior deterministic.
+        self.min_volatility_regime = max(0, min(3, int(min_volatility_regime)))
 
         # Model instances
         self._catboost_momentum = None
@@ -281,7 +290,7 @@ class GateEvaluator:
             Tuple of (regime, confidence, trade_allowed):
                 - regime: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
                 - confidence: Model confidence in prediction
-                - trade_allowed: True if regime >= MIN_VOLATILITY_REGIME
+                - trade_allowed: True if regime >= configured minimum volatility regime
         """
         if self._tcn_volatility is None:
             logger.warning("TCN Volatility model not loaded - blocking all trades")
@@ -348,12 +357,13 @@ class GateEvaluator:
                 confidence = 0.5
 
             # Determine if trade is allowed
-            trade_allowed = regime >= self.MIN_VOLATILITY_REGIME
+            trade_allowed = regime >= self.min_volatility_regime
 
             regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
             logger.debug(
                 f"TCN Volatility Regime: {regime_names[regime]} ({regime}), "
-                f"confidence={confidence:.2f}, trade_allowed={trade_allowed}"
+                f"confidence={confidence:.2f}, trade_allowed={trade_allowed}, "
+                f"min_regime={self.min_volatility_regime}"
             )
 
             return regime, confidence, trade_allowed

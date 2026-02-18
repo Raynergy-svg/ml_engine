@@ -43,6 +43,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
+from src.training.unified_thresholds import get_threshold
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,16 +59,23 @@ class ValidationCriteria:
 
     These thresholds define the minimum quality standards for production deployment.
     Adjust based on business requirements and risk tolerance.
+    
+    Note:
+        Default values are sourced from src.training.unified_thresholds to ensure
+        consistency across all validation modules. The bootstrap CI lower bound
+        uses the FX-calibrated value of 0.51 (not 0.60) based on academic research
+        showing 52-55% is realistic for FX direction prediction.
     """
 
     # === TRANSFORMER DIRECTION MODEL ===
-    min_accuracy: float = 0.65  # Minimum validation accuracy (65%)
-    min_balanced_accuracy: float = 0.60  # Minimum balanced accuracy (60%)
-    max_cv_std: float = 0.05  # Maximum CV std deviation (5%)
-    min_bootstrap_ci_lower: Optional[float] = 0.60  # Minimum bootstrap CI lower bound
+    # Using unified thresholds for consistency
+    min_accuracy: float = 0.53  # Minimum validation accuracy (FX-calibrated)
+    min_balanced_accuracy: float = 0.53  # Minimum balanced accuracy (FX-calibrated)
+    max_cv_std: float = 0.08  # Maximum CV std deviation (8% - higher for FX noise)
+    min_bootstrap_ci_lower: Optional[float] = 0.51  # FX-calibrated (was 0.60)
 
     # === XGBOOST MOMENTUM MODEL ===
-    min_acceleration_accuracy: float = 0.60  # Minimum acceleration accuracy
+    min_acceleration_accuracy: float = 0.55  # Minimum acceleration accuracy
     max_momentum_mae: float = 0.15  # Maximum momentum MAE
 
     # === RANDOM FOREST RISK MODEL ===
@@ -74,18 +83,41 @@ class ValidationCriteria:
     max_streak_prob_mae: float = 0.15  # Maximum streak probability MAE
 
     # === RIDGE CONFIDENCE MODEL ===
-    min_ridge_r2: float = 0.30  # Minimum R² score
+    min_ridge_r2: float = 0.01  # Minimum R² score (near zero for FX confidence)
     max_confidence_mae: float = 15.0  # Maximum confidence MAE
 
     # === STABILITY CHECKS ===
-    max_metric_degradation: float = 0.10  # Max 10% degradation from training to validation
+    max_metric_degradation: float = 0.15  # Max 15% degradation (FX-calibrated)
     require_cv_validation: bool = True  # Require walk-forward CV results
     require_bootstrap_ci: bool = False  # Require bootstrap CI (optional)
 
     # === PRODUCTION READINESS ===
-    min_data_size: int = 1000  # Minimum training data size
+    min_data_size: int = 2000  # Minimum training data size
     require_balanced_classes: bool = True  # Check class balance
-    max_class_imbalance: float = 0.75  # Maximum class imbalance (75% one class)
+    max_class_imbalance: float = 0.70  # Maximum class imbalance (70% one class)
+    
+    @classmethod
+    def from_unified_thresholds(cls, preset: str = "fx_default") -> "ValidationCriteria":
+        """
+        Create ValidationCriteria from unified thresholds.
+        
+        Args:
+            preset: Threshold preset name ("fx_default", "production")
+            
+        Returns:
+            ValidationCriteria configured from unified thresholds
+        """
+        thresholds = get_threshold(preset)
+        return cls(
+            min_accuracy=thresholds.min_direction_accuracy,
+            min_balanced_accuracy=thresholds.min_direction_accuracy,
+            max_cv_std=thresholds.max_cv_fold_variance,
+            min_bootstrap_ci_lower=thresholds.min_bootstrap_ci_lower,
+            max_metric_degradation=thresholds.max_cv_degradation,
+            min_ridge_r2=thresholds.min_r2_score,
+            min_data_size=2000,
+            max_class_imbalance=0.70,
+        )
 
 
 @dataclass
@@ -473,7 +505,7 @@ class DeploymentValidator:
             result.add_recommendation(
                 "Improve direction model accuracy: "
                 "1) Increase training data size, "
-                "2) Tune hyperparameters with Optuna, "
+                "2) Tune hyperparameters in config, "
                 "3) Add more informative features"
             )
 

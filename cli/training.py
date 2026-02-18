@@ -13,9 +13,12 @@ from dataclasses import fields, replace
 import numpy as np
 import pandas as pd
 from rich.table import Table
-from rich.panel import Panel
 
 from cli.config import BuddyTrainingOptions, OandaFetchOptions
+from src.utils.premium_output import PremiumConsole
+
+# Module-level PremiumConsole instance for borderless output
+_premium = PremiumConsole()
 from cli.io_utils import DEFAULT_CURRICULUM_KS
 from cli.calibration import (
     _tier2_nll, _tier2_spearman,
@@ -38,6 +41,19 @@ _GRADIENT_BOOSTING = "Gradient Boosting"
 _RANDOM_FOREST = "Random Forest"
 _TRANSFORMER_KERAS_FILE = "transformer_direction.keras"
 _META_JSON_FILE = "modular_ensemble.meta.json"
+
+
+def _resolve_rl_position_sizing_config(cfg: Any) -> Any | None:
+    """Resolve rl_integration.position_sizing config from root config dict."""
+    if not isinstance(cfg, dict):
+        return None
+    try:
+        from src.training.rl.config import RLIntegrationConfig
+
+        return RLIntegrationConfig.from_dict(cfg).position_sizing
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Failed to resolve RL position sizing config: %s", exc)
+        return None
 
 
 def train_buddy(
@@ -65,12 +81,13 @@ def train_buddy(
 
 def _train_rl_position_sizer_if_ready(
     console,
-    rl_timesteps: int = 500_000,
+    rl_timesteps: int | None = None,
     min_samples: int = 500,
     *,
     features: np.ndarray | None = None,
     ensemble_predictions: np.ndarray | None = None,
     prices: np.ndarray | None = None,
+    rl_position_cfg: Any | None = None,
 ) -> bool:
     """
     Train RL position sizer using ensemble training data.
@@ -81,19 +98,25 @@ def _train_rl_position_sizer_if_ready(
 
     Args:
         console: Rich console for output
-        rl_timesteps: Number of RL training timesteps
+        rl_timesteps: Optional override for RL training timesteps
         min_samples: Minimum samples required for training
         features: Market features array (n_samples, n_features) from ensemble training
         ensemble_predictions: Ensemble predictions (n_samples, 2) - [direction_prob, confidence]
         prices: Close prices array (n_samples,)
+        rl_position_cfg: Optional RLIntegrationConfig.position_sizing object
 
     Returns:
         True if training was run, False otherwise
     """
     try:
-        from rl_position_sizing import RLPositionSizer, RLConfig, SB3_AVAILABLE, GYM_AVAILABLE
+        from src.training.rl.position_sizer import (
+            RLConfig,
+            RLPositionSizer,
+            _ensure_gym_imported,
+            _ensure_sb3_imported,
+        )
 
-        if not SB3_AVAILABLE or not GYM_AVAILABLE:
+        if not _ensure_sb3_imported() or not _ensure_gym_imported():
             console.print("[dim]RL position sizing unavailable (missing stable-baselines3 or gymnasium)[/dim]")
             console.print("[dim]Install with: pip install stable-baselines3 gymnasium[/dim]")
             return False
@@ -115,27 +138,46 @@ def _train_rl_position_sizer_if_ready(
             console.print(f"[dim]Features: {n_samples} • Predictions: {len(ensemble_predictions)} • Prices: {len(prices)}[/dim]")
             return False
 
-        console.print("\n[bold cyan]🤖 RL Position Sizer Training[/bold cyan]")
-        console.print(f"[dim]Using {n_samples:,} samples from ensemble training data[/dim]")
-        console.print(f"[dim]Timesteps: {rl_timesteps:,}[/dim]")
+        base_config = RLConfig()
+        if rl_position_cfg is not None:
+            try:
+                base_config = RLConfig.from_position_sizing_config(rl_position_cfg)
+            except Exception as exc:  # noqa: BLE001
+                console.print(f"[yellow]RL config mapping failed, using defaults: {exc}[/yellow]")
 
-        # Configure RL with appropriate sequence length for data size
-        # Ensure we have enough data for the environment (need at least sequence_length + 100 steps)
+        effective_timesteps = (
+            int(rl_timesteps) if rl_timesteps is not None else int(base_config.total_timesteps)
+        )
+
+        # Configure RL with appropriate sequence length for data size.
+        # Ensure we have enough data for the environment (need at least sequence_length + 100 steps).
         max_seq_len = max(10, n_samples - 200)  # Leave room for training episodes
-        seq_len = min(60, max_seq_len)  # Default is 60, but reduce if data is small
-
-        config = RLConfig(
-            total_timesteps=rl_timesteps,
+        seq_len = min(int(base_config.sequence_length), max_seq_len)
+        config = replace(
+            base_config,
+            total_timesteps=effective_timesteps,
             sequence_length=seq_len,
         )
-        console.print(f"[dim]Sequence length: {seq_len}, Features: {features.shape[1]}[/dim]")
+
+        console.print("\n[bold cyan]🤖 RL Position Sizer Training[/bold cyan]")
+        console.print(f"[dim]Using {n_samples:,} samples from ensemble training data[/dim]")
+        console.print(
+            "[dim]Timesteps: "
+            f"{config.total_timesteps:,} • n_steps={config.n_steps} • "
+            f"batch={config.batch_size} • epochs={config.n_epochs}[/dim]"
+        )
+        console.print(
+            f"[dim]Sequence length: {seq_len}, Features: {features.shape[1]}, "
+            f"lr={config.learning_rate:.1e}[/dim]"
+        )
         console.print("[dim]Using cpu device (forced for macOS TF+PyTorch compatibility)[/dim]")
         import sys
         sys.stdout.flush()
 
         sizer = RLPositionSizer(config)
 
-        console.print("[dim]Initializing PPO agent and trading environment...[/dim]")
+        console.print("")  # Blank line before progress
+        sys.stdout.flush()
 
         # Train the RL agent with actual ensemble data
         stats = sizer.train(
@@ -169,6 +211,16 @@ def _load_config_suppressed(config_path: str):
     cfg = load_config(config_path)
     _utils_logger.setLevel(_utils_prev)
     return cfg
+
+
+def _is_rl_auto_train_enabled(cfg: dict, options: BuddyTrainingOptions) -> bool:
+    """Resolve RL auto-train flag with backward compatibility."""
+    training_auto = cfg.get("training", {}).get("auto_train_rl", True)
+    rl_auto = cfg.get("rl_integration", {}).get(
+        "auto_train_after_ensemble",
+        training_auto,
+    )
+    return bool(options.train_rl_sizer and rl_auto)
 
 
 def _extract_options_to_dict(options: "BuddyTrainingOptions") -> dict:
@@ -783,6 +835,7 @@ def _train_ensemble_models(
     lr,
     patience,
     fit_verbose,
+    rl_position_cfg=None,
 ):
     """Train the full modular ensemble (Transformer/TCN + XGBoost + RF + Ridge). Returns when complete."""
     from src.core.modular_data_loaders import load_all_modular_data
@@ -814,12 +867,21 @@ def _train_ensemble_models(
     console.print(Panel(enterprise_table, title="[bold]Enterprise Features[/bold]", border_style="green"))
     console.print()
 
-    # Get model configuration from config
+    # Determine instrument early so we can load pair-specific config
+    training_instrument, training_granularity = _determine_training_instrument(oanda_fetch, csv_path)
+
+    # Get model configuration from config (intel_optimized.yaml is the default)
     transformer_cfg = cfg.get("transformer", {})
+
     use_transformer = transformer_cfg.get("use_transformer", True)
     use_regime = transformer_cfg.get("use_regime", False)
+
+    # Get direction params from base config (intel_optimized.yaml)
     direction_threshold = cfg.get("direction_threshold", DIRECTION_DEFAULTS['threshold'])
     direction_lookahead = cfg.get("direction_lookahead", DIRECTION_DEFAULTS['lookahead'])
+    console.print(f"[cyan]  Using config direction_threshold: {direction_threshold:.4f}[/cyan]")
+    console.print(f"[cyan]  Using config direction_lookahead: {direction_lookahead}[/cyan]")
+
     regime_lookback = transformer_cfg.get("regime_lookback", 20)
     regime_lookahead = transformer_cfg.get("regime_lookahead", 12)
 
@@ -850,8 +912,7 @@ def _train_ensemble_models(
 
     _print_ensemble_dataset_summary(console, all_data)
 
-    # Determine instrument and granularity
-    training_instrument, training_granularity = _determine_training_instrument(oanda_fetch, csv_path)
+    # Log instrument and granularity (already determined earlier for pair config loading)
     console.print(f"[cyan]📊 Training instrument: {training_instrument}, Granularity: {training_granularity}[/cyan]")
 
     # Detect warm-start
@@ -1071,6 +1132,7 @@ def _train_ensemble_models(
             direction_threshold=direction_threshold,
             direction_lookahead=direction_lookahead,
             dir_model_path=dir_model_path,
+            rl_position_cfg=rl_position_cfg,
         )
 
 
@@ -1278,6 +1340,15 @@ def _build_trainer_config(
     swa_cfg = cfg.get("swa", {})
     cosine_cfg = cfg.get("cosine_restarts", {})
     warmstart_cfg = cfg.get("warmstart_recovery", {})
+    feature_cfg = cfg.get("feature_selection", {})
+    
+    # Extract Hybrid SFT-RL settings from training section
+    training_cfg = cfg.get("training", {})
+    use_hybrid_sft_rl = bool(training_cfg.get("use_hybrid_sft_rl", False))
+    rl_prob = float(training_cfg.get("rl_prob", 0.5))
+    entropy_coef = float(training_cfg.get("entropy_coef", 0.01))
+    initial_baseline = float(training_cfg.get("initial_baseline", 0.5))
+    baseline_momentum = float(training_cfg.get("baseline_momentum", 0.9))
 
     return TrainerConfig(
         epochs=int(epochs),
@@ -1327,6 +1398,16 @@ def _build_trainer_config(
         warmstart_reset_threshold=float(warmstart_cfg.get("reset_threshold", 0.15)),
         weight_perturbation_scale=float(warmstart_cfg.get("weight_perturbation_scale", 0.02)),
         reset_optimizer_on_overfit=bool(warmstart_cfg.get("reset_optimizer_on_overfit", True)),
+        # Hybrid SFT-RL settings
+        use_hybrid_sft_rl=use_hybrid_sft_rl,
+        rl_prob=rl_prob,
+        entropy_coef=entropy_coef,
+        initial_baseline=initial_baseline,
+        baseline_momentum=baseline_momentum,
+        # Feature selection settings
+        use_feature_selection=bool(feature_cfg.get("enabled", True)),
+        feature_selection_method=str(feature_cfg.get("method", "random_forest")),
+        top_k_features=int(feature_cfg.get("top_k_features", 100)),
     )
 
 
@@ -1680,6 +1761,58 @@ def _train_meta_labeler_cli(
         console.print("[yellow]⚠ Missing training data — skipping meta-labeler[/yellow]")
         return
 
+    def _align_direction_features_for_scaler(X_raw):
+        """Align raw direction features to the transformer's scaler/model expectations."""
+        x_2d = np.asarray(X_raw, dtype=np.float32).reshape(-1, X_raw.shape[-1])
+
+        scaler_local = getattr(dir_trainer, "scaler", None)
+        selected = getattr(dir_trainer, "selected_indices", None)
+        expected_n = None
+
+        if scaler_local is not None and hasattr(scaler_local, "n_features_in_"):
+            expected_n = int(getattr(scaler_local, "n_features_in_", 0) or 0)
+        elif hasattr(dir_trainer, "model") and dir_trainer.model is not None:
+            expected_n = int(dir_trainer.model.input_shape[-1])
+
+        if expected_n <= 0:
+            return x_2d
+
+        current_n = int(x_2d.shape[-1])
+        if current_n == expected_n:
+            return x_2d
+
+        indices = None
+        if selected is not None:
+            try:
+                indices = np.asarray(selected, dtype=np.int64).reshape(-1)
+            except Exception:
+                indices = None
+
+        if current_n > expected_n:
+            if (
+                indices is not None
+                and len(indices) == expected_n
+                and indices.size > 0
+                and int(np.max(indices)) < current_n
+            ):
+                return x_2d[:, indices]
+
+            _logger.warning(
+                "Feature alignment fallback: truncating direction features %d -> %d for scaler/model compatibility",
+                current_n,
+                expected_n,
+            )
+            return x_2d[:, :expected_n]
+
+        # current_n < expected_n
+        pad = expected_n - current_n
+        _logger.warning(
+            "Feature alignment fallback: padding direction features %d -> %d with zeros for scaler/model compatibility",
+            current_n,
+            expected_n,
+        )
+        return np.pad(x_2d, ((0, 0), (0, pad)), mode="constant", constant_values=0.0)
+
     try:
         # Get Transformer predictions on train/val data using the trainer pipeline
         seq_len = getattr(dir_trainer, 'seq_len', 60)
@@ -1687,7 +1820,7 @@ def _train_meta_labeler_cli(
 
         def _get_predictions_and_features(X_raw, y_raw):
             """Scale, sequence, and predict — returning aligned features + predictions + labels."""
-            x_2d = np.asarray(X_raw, dtype=np.float32).reshape(-1, X_raw.shape[-1])
+            x_2d = _align_direction_features_for_scaler(X_raw)
             if scaler is not None:
                 x_scaled = scaler.transform(x_2d)
             else:
@@ -1755,6 +1888,9 @@ def _train_meta_labeler_cli(
         )
 
         labeler = MetaLabeler(meta_cfg)
+        # Persist primary model feature-selection indices for inference-time alignment.
+        if hasattr(dir_trainer, "selected_indices") and dir_trainer.selected_indices is not None:
+            labeler.set_primary_feature_indices(np.asarray(dir_trainer.selected_indices, dtype=np.int64))
         metrics = labeler.fit(
             train_feats,
             train_preds,
@@ -1843,12 +1979,64 @@ def _fit_post_training_calibrator_cli(
         return
 
     try:
+        def _align_direction_features_for_scaler(X_raw):
+            """Align raw direction features to the transformer's scaler/model expectations."""
+            x_2d = np.asarray(X_raw, dtype=np.float32).reshape(-1, X_raw.shape[-1])
+
+            scaler_local = getattr(dir_trainer, "scaler", None)
+            selected = getattr(dir_trainer, "selected_indices", None)
+            expected_n = None
+
+            if scaler_local is not None and hasattr(scaler_local, "n_features_in_"):
+                expected_n = int(getattr(scaler_local, "n_features_in_", 0) or 0)
+            elif hasattr(dir_trainer, "model") and dir_trainer.model is not None:
+                expected_n = int(dir_trainer.model.input_shape[-1])
+
+            if expected_n <= 0:
+                return x_2d
+
+            current_n = int(x_2d.shape[-1])
+            if current_n == expected_n:
+                return x_2d
+
+            indices = None
+            if selected is not None:
+                try:
+                    indices = np.asarray(selected, dtype=np.int64).reshape(-1)
+                except Exception:
+                    indices = None
+
+            if current_n > expected_n:
+                if (
+                    indices is not None
+                    and len(indices) == expected_n
+                    and indices.size > 0
+                    and int(np.max(indices)) < current_n
+                ):
+                    return x_2d[:, indices]
+
+                _logger.warning(
+                    "Feature alignment fallback: truncating direction features %d -> %d for scaler/model compatibility",
+                    current_n,
+                    expected_n,
+                )
+                return x_2d[:, :expected_n]
+
+            # current_n < expected_n
+            pad = expected_n - current_n
+            _logger.warning(
+                "Feature alignment fallback: padding direction features %d -> %d with zeros for scaler/model compatibility",
+                current_n,
+                expected_n,
+            )
+            return np.pad(x_2d, ((0, 0), (0, pad)), mode="constant", constant_values=0.0)
+
         # Use the trainer's own scaling + sequencing pipeline to get raw probabilities.
         # Calling model.predict() directly on unscaled 2D data causes Keras 3 shape errors
         # ("as_list() is not defined on an unknown TensorShape").
         raw_probs = []
         seq_len = getattr(dir_trainer, 'seq_len', 60)
-        x_val_2d = np.asarray(X_val, dtype=np.float32).reshape(-1, X_val.shape[-1])
+        x_val_2d = _align_direction_features_for_scaler(X_val)
 
         # Scale using the trainer's fitted scaler
         scaler = getattr(dir_trainer, 'scaler', None)
@@ -1887,24 +2075,37 @@ def _fit_post_training_calibrator_cli(
 
         raw_probs = np.array(raw_probs, dtype=np.float32)
         # Align labels — sequences start at index (seq_len - 1)
-        actual_outcomes = y_val.flatten()[seq_len - 1:seq_len - 1 + len(raw_probs)].astype(bool)
+        actual_dirs = y_val.flatten()[seq_len - 1:seq_len - 1 + len(raw_probs)].astype(int)
 
         if len(raw_probs) < 10:
             console.print(f"[yellow]⚠ Only {len(raw_probs)} validation samples — need ≥10 for calibration[/yellow]")
+            return
+
+        # Fit calibrator on predicted-direction confidence, not raw long-probability.
+        # This keeps calibration symmetric for long/short and matches inference usage.
+        pred_dirs = (raw_probs >= 0.5).astype(int)
+        direction_confidence = np.maximum(raw_probs, 1.0 - raw_probs).astype(np.float32)
+        correctness = (pred_dirs == actual_dirs).astype(bool)
+
+        # Platt scaling requires both classes present.
+        unique_outcomes = np.unique(correctness.astype(int))
+        if len(unique_outcomes) < 2:
+            console.print(
+                "[yellow]⚠ Validation correctness has a single class "
+                f"({unique_outcomes.tolist()}) — skipping calibrator fitting[/yellow]"
+            )
             return
 
         config = CalibrationConfig(
             method="platt",
             min_confidence_threshold=0.5,
             max_confidence_threshold=0.95,
-            apply_directional_adjustment=True,
-            neutral_threshold=0.05,
-            directional_penalty=0.1,
+            apply_directional_adjustment=False,
             apply_win_probability_adjustment=False,
             apply_trading_context_adjustment=False,
         )
         calibrator = ConfidenceCalibrator(config)
-        calibrator.fit(raw_probs, actual_outcomes)
+        calibrator.fit(direction_confidence, correctness)
 
         if not calibrator.is_fitted:
             console.print("[yellow]⚠ Calibrator fitting failed — skipping save[/yellow]")
@@ -1922,6 +2123,15 @@ def _fit_post_training_calibrator_cli(
             calibrator.save(generic_calib_path)
             console.print(f"[dim]  Also saved to {generic_calib_path}[/dim]")
 
+        # Lightweight quality signal for visibility.
+        eval_metrics = calibrator.evaluate_calibration(direction_confidence, correctness)
+        console.print(
+            "[dim]  Calibration Brier: "
+            f"{eval_metrics['original_brier_score']:.4f} → "
+            f"{eval_metrics['calibrated_brier_score']:.4f} "
+            f"({eval_metrics['relative_improvement']*100:.1f}%)[/dim]"
+        )
+
         # Show quick calibration preview
         sample_probs = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80]
         mappings = []
@@ -1933,8 +2143,6 @@ def _fit_post_training_calibrator_cli(
     except Exception as e:
         _logger.warning(f"Confidence calibration failed (non-fatal): {e}")
         console.print(f"[yellow]⚠ Confidence calibration failed (non-fatal): {e}[/yellow]")
-    console.print(f"[cyan]💾 HistGB saved to: {pair_paths['histgb']}[/cyan]")
-    console.print("[yellow]🔥 Hybrid voting ENABLED: Transformer + HistGB will vote together[/yellow]")
 
 
 def _build_ensemble_metadata(
@@ -2154,6 +2362,29 @@ def _window_2d_to_3d(X_2d, y_1d, window_size):  # noqa: N803  # NOSONAR - ML con
     return X_3d, y_windowed
 
 
+def _window_1d_targets(y_1d, window_size):
+    """Align 1D targets/weights to sequence windows (label at last timestep)."""
+    y_1d = np.asarray(y_1d).flatten()
+    if len(y_1d) <= window_size:
+        return None
+    return y_1d[window_size - 1:]
+
+
+def _build_clear_label_mask(labels_1d, weights_1d=None):
+    """Mask clear binary labels; optionally require positive sample weights."""
+    labels_1d = np.asarray(labels_1d).flatten()
+    is_binary = np.isclose(labels_1d, 0.0) | np.isclose(labels_1d, 1.0)
+
+    if weights_1d is None:
+        return is_binary
+
+    weights_1d = np.asarray(weights_1d).flatten()
+    if len(weights_1d) != len(labels_1d):
+        return is_binary
+
+    return (weights_1d > 0) & is_binary
+
+
 def _run_enterprise_validation(
     *,
     options,
@@ -2181,6 +2412,7 @@ def _run_enterprise_validation(
     direction_threshold,
     direction_lookahead,
     dir_model_path,
+    rl_position_cfg=None,
 ):
     """Run enterprise validation suite: bootstrap CI, walk-forward CV, MLflow, report generation."""
 
@@ -2302,8 +2534,7 @@ def _run_enterprise_validation(
         ))
 
         # RL Position Sizer Training
-        auto_train_rl_config = cfg.get("training", {}).get("auto_train_rl", True)
-        train_rl_sizer_enabled = options.train_rl_sizer and auto_train_rl_config
+        train_rl_sizer_enabled = _is_rl_auto_train_enabled(cfg, options)
         rl_timesteps = options.rl_timesteps
 
         if train_rl_sizer_enabled:
@@ -2316,6 +2547,7 @@ def _run_enterprise_validation(
                 feature_df=feature_df,
                 seq_len=seq_len,
                 rl_timesteps=rl_timesteps,
+                rl_position_cfg=rl_position_cfg,
             )
 
     except ImportError as e:
@@ -2334,6 +2566,9 @@ def _run_bootstrap_validation(*, dir_trainer, dir_data, dir_metrics, stat_valida
     try:
         X_val = np.asarray(dir_data['X_val'])
         y_val_raw = dir_data['y_val'].flatten()
+        w_val_raw = np.asarray(
+            dir_data.get('w_val', np.ones_like(y_val_raw, dtype=np.float32))
+        ).flatten()
 
         # Apply feature selection if trainer used it (raw data has more features than model expects)
         if hasattr(dir_trainer, 'selected_indices') and dir_trainer.selected_indices is not None:
@@ -2347,14 +2582,20 @@ def _run_bootstrap_validation(*, dir_trainer, dir_data, dir_metrics, stat_valida
 
         if len(X_val.shape) == 2:
             X_val, y_val_raw = _window_2d_to_3d(X_val, y_val_raw, seq_len)
+            w_val_raw = _window_1d_targets(w_val_raw, seq_len)
             if X_val is None:
                 raise ValueError(f"Not enough val samples for seq_len={seq_len}")
+            if w_val_raw is None:
+                raise ValueError(f"Not enough val weights for seq_len={seq_len}")
 
         val_preds = dir_trainer.model.predict(X_val, verbose=0)
         if len(val_preds.shape) > 1:
             val_preds = val_preds[:, 0] if val_preds.shape[1] == 1 else val_preds
-        val_preds_binary = (val_preds > 0.5).astype(int).flatten()
-        val_labels = y_val_raw.flatten()
+        clear_mask = _build_clear_label_mask(y_val_raw, w_val_raw)
+        if not np.any(clear_mask):
+            raise ValueError("No clear validation labels available for bootstrap CI")
+        val_preds_binary = (val_preds > 0.5).astype(np.int32).flatten()[clear_mask]
+        val_labels = y_val_raw.flatten()[clear_mask].astype(np.int32)
 
         bootstrap_results = stat_validator.bootstrap_confidence_interval(
             lambda y, p: np.mean(y == p),
@@ -2397,6 +2638,13 @@ def _run_walkforward_cv(*, dir_trainer, dir_data, dir_metrics, validation_result
 
     X_full = np.vstack([dir_data['X_train'], dir_data['X_val']])
     y_full = np.concatenate([dir_data['y_train'].flatten(), dir_data['y_val'].flatten()])
+    if 'w_train' in dir_data and 'w_val' in dir_data:
+        w_full = np.concatenate([dir_data['w_train'].flatten(), dir_data['w_val'].flatten()])
+        if len(w_full) != len(y_full):
+            logger.warning("w_full length mismatch with y_full; falling back to label-only filtering")
+            w_full = None
+    else:
+        w_full = None
 
     # Apply feature selection and scaling to match what the model was trained on
     if hasattr(dir_trainer, 'selected_indices') and dir_trainer.selected_indices is not None:
@@ -2411,17 +2659,27 @@ def _run_walkforward_cv(*, dir_trainer, dir_data, dir_metrics, validation_result
         for fold_idx, (_train_idx, val_idx) in enumerate(wf_validator.split(X_full)):
             X_cv_val = X_full[val_idx]
             y_cv_val = y_full[val_idx]
+            w_cv_val = w_full[val_idx] if w_full is not None else None
 
             try:
                 if len(X_cv_val.shape) == 2:
                     X_cv_val, y_cv_val = _window_2d_to_3d(X_cv_val, y_cv_val, seq_len)
+                    w_cv_val = _window_1d_targets(w_cv_val, seq_len) if w_cv_val is not None else None
                     if X_cv_val is None:
                         logger.debug(f"CV fold {fold_idx+1} skipped: not enough samples for seq_len={seq_len}")
                         continue
 
                 y_pred = dir_trainer.model.predict(X_cv_val, verbose=0)
-                y_pred_binary = (y_pred > 0.5).astype(float).flatten()
-                fold_acc = np.mean(y_pred_binary == y_cv_val)
+                if len(y_pred.shape) > 1:
+                    y_pred = y_pred[:, 0] if y_pred.shape[1] == 1 else y_pred
+                y_pred_binary = (y_pred > 0.5).astype(np.int32).flatten()
+
+                clear_mask = _build_clear_label_mask(y_cv_val, w_cv_val)
+                if not np.any(clear_mask):
+                    logger.debug(f"CV fold {fold_idx+1} skipped: no clear labels after filtering")
+                    continue
+                y_cv_val_binary = y_cv_val.flatten()[clear_mask].astype(np.int32)
+                fold_acc = np.mean(y_pred_binary[clear_mask] == y_cv_val_binary)
                 cv_scores.append(fold_acc)
             except Exception as e:
                 logger.debug(f"CV fold {fold_idx+1} evaluation failed: {e}")
@@ -2740,6 +2998,7 @@ def _train_rl_after_ensemble(
     feature_df,
     seq_len,
     rl_timesteps,
+    rl_position_cfg=None,
 ):
     """Train RL position sizer after ensemble training."""
     try:
@@ -2815,6 +3074,7 @@ def _train_rl_after_ensemble(
             features=rl_features_2d,
             ensemble_predictions=rl_predictions,
             prices=rl_prices,
+            rl_position_cfg=rl_position_cfg,
         )
     except Exception as e:
         console.print(f"[yellow]RL data preparation failed: {e}[/yellow]")
@@ -2829,6 +3089,7 @@ def _train_buddy_impl(
 ) -> None:  # noqa: C901, PLR0915  # NOSONAR
     """Train Buddy (TensorFlow-only) from USDJPY historical data."""
     cfg = _load_config_suppressed(config_path)
+    rl_position_cfg = _resolve_rl_position_sizing_config(cfg)
     opts = _extract_options_to_dict(options)
 
     oanda_fetch = opts["oanda_fetch"]
@@ -3468,6 +3729,7 @@ def _train_buddy_impl(
                 lr=lr,
                 patience=patience,
                 fit_verbose=fit_verbose,
+                rl_position_cfg=rl_position_cfg,
             )
             return
 
@@ -3617,8 +3879,7 @@ def _train_buddy_impl(
             console.print("[green]XGBoost training complete![/green]")
 
             # RL Position Sizer Training after XGBoost
-            auto_train_rl_config = cfg.get("training", {}).get("auto_train_rl", True)
-            train_rl_sizer_enabled = options.train_rl_sizer and auto_train_rl_config
+            train_rl_sizer_enabled = _is_rl_auto_train_enabled(cfg, options)
 
             if train_rl_sizer_enabled:
                 try:
@@ -3654,6 +3915,7 @@ def _train_buddy_impl(
                         features=rl_features,
                         ensemble_predictions=rl_predictions,
                         prices=rl_prices,
+                        rl_position_cfg=rl_position_cfg,
                     )
 
                 except Exception as e:
@@ -5130,8 +5392,7 @@ def _train_buddy_impl(
     # RL Position Sizer Training (automatic after ensemble training)
     # ==========================================================================
     # Check config flag first (can be disabled via config), then CLI option
-    auto_train_rl_config = cfg.get("training", {}).get("auto_train_rl", True)
-    train_rl_sizer_enabled = options.train_rl_sizer and auto_train_rl_config
+    train_rl_sizer_enabled = _is_rl_auto_train_enabled(cfg, options)
 
     if train_rl_sizer_enabled:
         try:
@@ -5215,6 +5476,7 @@ def _train_buddy_impl(
                 features=rl_features,
                 ensemble_predictions=rl_predictions,
                 prices=rl_prices,
+                rl_position_cfg=rl_position_cfg,
             )
 
         except Exception as e:

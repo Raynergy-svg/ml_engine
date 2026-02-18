@@ -24,6 +24,7 @@ class BuddyScanner:
             cfg.config_path = Path(config_path) if isinstance(config_path, str) else config_path
         if account_equity is not None:
             cfg.account_equity = account_equity
+        cfg.use_rl_sizer = use_rl_sizer
         cfg.non_interactive = True  # CLI never prompts
         self._scanner = Scanner(config=cfg)
         self._display = ScannerDisplay()
@@ -38,10 +39,46 @@ class BuddyScanner:
         prompt_train: bool = True,
         diversified: bool = False,
         force: bool = False,
+        profile: str = "balanced",
         **kwargs: Any,
     ) -> List[PairAnalysis]:
         """Run scan and return a list of PairAnalysis objects."""
-        result: ScanResult = self._scanner.scan(pairs=pairs)
+        # Apply per-call overrides expected by CLI flags.
+        prev_granularity = self._scanner.config.granularity
+        prev_session_filter = self._scanner.config.enable_session_filter
+        profile_fields = (
+            "profile",
+            "min_confidence",
+            "min_momentum",
+            "max_drawdown_pct",
+            "min_atr_pips",
+            "min_volatility_regime",
+            "use_tcn_volatility_filter",
+        )
+        prev_profile_values = {
+            name: getattr(self._scanner.config, name)
+            for name in profile_fields
+        }
+        prev_gate_min_regime = None
+        if self._scanner._gate_evaluator is not None:
+            prev_gate_min_regime = self._scanner._gate_evaluator.min_volatility_regime
+        self._scanner.config.granularity = granularity
+        self._scanner.config.apply_profile(profile)
+        if self._scanner._gate_evaluator is not None:
+            self._scanner._gate_evaluator.min_volatility_regime = self._scanner.config.min_volatility_regime
+        if force:
+            self._scanner.config.enable_session_filter = False
+
+        try:
+            result: ScanResult = self._scanner.scan(pairs=pairs)
+        finally:
+            # Restore mutable config to keep wrapper re-entrant for repeated calls.
+            self._scanner.config.granularity = prev_granularity
+            self._scanner.config.enable_session_filter = prev_session_filter
+            for name, value in prev_profile_values.items():
+                setattr(self._scanner.config, name, value)
+            if self._scanner._gate_evaluator is not None and prev_gate_min_regime is not None:
+                self._scanner._gate_evaluator.min_volatility_regime = prev_gate_min_regime
 
         # Sort by overall score and take top_n
         analyses = sorted(result.analyses, key=lambda a: a.overall_score, reverse=True)

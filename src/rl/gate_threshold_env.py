@@ -39,8 +39,13 @@ def _ensure_gym_imported():
             gym = _gym
             spaces = _spaces
             GYM_AVAILABLE = True
-        except ImportError:
+        except ImportError as e:
             GYM_AVAILABLE = False
+            import logging
+            logging.getLogger(__name__).warning(
+                f"gymnasium not available: {e}. "
+                "Install with: pip install gymnasium"
+            )
     return GYM_AVAILABLE
 
 
@@ -54,8 +59,13 @@ def _ensure_sb3_imported():
             SAC = _SAC
             EvalCallback = _EvalCallback
             SB3_AVAILABLE = True
-        except ImportError:
+        except ImportError as e:
             SB3_AVAILABLE = False
+            import logging
+            logging.getLogger(__name__).warning(
+                f"stable-baselines3 not available: {e}. "
+                "Install with: pip install stable-baselines3"
+            )
     return SB3_AVAILABLE
 
 

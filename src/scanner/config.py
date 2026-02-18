@@ -46,6 +46,29 @@ PIP_VALUES = {
     "GBP_AUD": 0.0001, "EUR_CHF": 0.0001, "GBP_CHF": 0.0001,
 }
 
+SCAN_PROFILE_BALANCED = "balanced"
+SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
+    # Uses configuration defaults (YAML + dataclass); no extra overrides.
+    SCAN_PROFILE_BALANCED: {},
+    # Fewer trades, higher signal quality requirements.
+    "conservative": {
+        "min_confidence": 58.0,
+        "min_momentum": 0.28,
+        "max_drawdown_pct": 0.020,
+        "min_atr_pips": 6.0,
+        "min_volatility_regime": 2,
+    },
+    # More trade frequency with looser gates (still risk-bounded).
+    "aggressive": {
+        "min_confidence": 45.0,
+        "min_momentum": 0.12,
+        "max_drawdown_pct": 0.035,
+        "min_atr_pips": 3.0,
+        "min_volatility_regime": 0,
+    },
+}
+VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
+
 
 def load_yaml_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
     """Load YAML configuration file.
@@ -112,6 +135,7 @@ class ScannerConfig:
     # Data fetching
     lookback_candles: int = 200
     granularity: str = "H1"
+    profile: str = SCAN_PROFILE_BALANCED
 
     # Interactive mode
     non_interactive: bool = field(default_factory=lambda: not sys.stdin.isatty())
@@ -130,19 +154,19 @@ class ScannerConfig:
     # FX markets are open 24/5 (Sun 22:00 UTC – Fri 22:00 UTC).
     # Enabled by default to restrict scanning to London+NY hours only.
     enable_session_filter: bool = True
-    session_filter_enabled: bool = True  # Alias for compatibility
-    session_start_utc: int = 8   # London open
-    session_end_utc: int = 21    # NY close (17:00 ET ≈ 21:00 UTC in summer)
+    session_start_utc: int = 8   # London open (08:00 UTC)
+    session_end_utc: int = 21    # NY close (21:00 UTC = 17:00 ET winter, 16:00 ET summer)
 
     # Volatility filter
     min_atr_pips: float = 5.0  # Minimum ATR in pips to trade
     min_candles: int = 100  # Minimum candles required
 
     # TCN Volatility Regime gate (GLOBAL - applies to all pairs)
-    # Only allow trades in HIGH (2) or EXTREME (3) volatility regimes
+    # Config-driven minimum regime: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
     # Valid values: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
-    min_volatility_regime: int = 2
-    require_tcn_volatility: bool = True  # Block ALL trades if TCN model unavailable
+    min_volatility_regime: int = 0
+    use_tcn_volatility_filter: bool = True
+    require_tcn_volatility: bool = False  # If True, block trades when TCN model unavailable
 
     # Joint-only model loading (scanner uses joint-trained models exclusively)
     use_joint_models_only: bool = True  # Load from trained_data/models/joint/ only
@@ -195,6 +219,13 @@ class ScannerConfig:
 
     def __post_init__(self):
         """Convert string paths to Path objects."""
+        self.profile = str(self.profile).strip().lower()
+        if self.profile not in SCAN_PROFILES:
+            logger.warning(
+                f"Unknown scan profile '{self.profile}', defaulting to '{SCAN_PROFILE_BALANCED}'"
+            )
+            self.profile = SCAN_PROFILE_BALANCED
+
         if isinstance(self.config_path, str):
             self.config_path = Path(self.config_path)
         if isinstance(self.model_dir, str):
@@ -247,16 +278,85 @@ class ScannerConfig:
         """Get pip value for a pair."""
         return PIP_VALUES.get(pair, 0.0001)
 
+    def apply_profile(self, profile: Optional[str] = None) -> None:
+        """Apply scanner threshold overrides for a named profile.
+
+        Args:
+            profile: Profile name (conservative|balanced|aggressive).
+                If None, reapplies current ``self.profile``.
+
+        Raises:
+            ValueError: If profile name is unknown.
+        """
+        resolved = str(profile or self.profile).strip().lower()
+        if resolved not in SCAN_PROFILES:
+            valid = ", ".join(VALID_SCAN_PROFILES)
+            raise ValueError(f"Unknown scan profile '{resolved}'. Valid profiles: {valid}")
+
+        self.profile = resolved
+        overrides = SCAN_PROFILES[resolved]
+        for field_name, value in overrides.items():
+            setattr(self, field_name, value)
+        # Keep regime in valid classifier range.
+        self.min_volatility_regime = max(0, min(3, int(self.min_volatility_regime)))
+
     def is_within_session(self) -> bool:
-        """Check if current time is within trading session."""
+        """Check if current time is within Forex trading session.
+        
+        Forex market hours (UTC):
+        - Opens: Sunday 22:00 UTC (5 PM ET Sunday)
+        - Closes: Friday 22:00 UTC (5 PM ET Friday)
+        - Peak liquidity hours: 08:00-21:00 UTC (London + NY sessions)
+        
+        The session filter restricts trading to peak liquidity hours when
+        major pairs like EUR/USD and NZD/USD have tight spreads and
+        good volatility.
+        
+        Returns:
+            True if within peak trading hours AND market is open (not weekend)
+        """
         if not self.enable_session_filter:
+            logger.debug("Session filter disabled, allowing trade")
             return True
 
         from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
         hour = now.hour
-
-        return self.session_start_utc <= hour < self.session_end_utc
+        weekday = now.weekday()  # 0=Monday, 6=Sunday
+        
+        # === WEEKEND MARKET CLOSURE CHECK ===
+        # Forex markets close Friday 22:00 UTC and reopen Sunday 22:00 UTC
+        # Saturday (weekday=5) = closed all day
+        if weekday == 5:  # Saturday
+            logger.debug("Weekend closure: Saturday, blocking trade")
+            return False
+            
+        # Sunday (weekday=6) = opens at 22:00 UTC
+        if weekday == 6 and hour < 22:
+            logger.debug("Weekend closure: Sunday before 22:00 UTC, blocking trade")
+            return False
+            
+        # Friday (weekday=4) = closes at 22:00 UTC
+        if weekday == 4 and hour >= 22:
+            logger.debug("Weekend closure: Friday after 22:00 UTC, blocking trade")
+            return False
+        
+        # === PEAK LIQUIDITY HOURS CHECK ===
+        # Check if within London+NY overlap (08:00-21:00 UTC by default)
+        within_hours = self.session_start_utc <= hour < self.session_end_utc
+        
+        if within_hours:
+            logger.debug(
+                f"Within trading session: {hour}:00 UTC "
+                f"(peak hours: {self.session_start_utc}:00-{self.session_end_utc}:00 UTC)"
+            )
+        else:
+            logger.debug(
+                f"Outside peak hours: {hour}:00 UTC "
+                f"(peak hours: {self.session_start_utc}:00-{self.session_end_utc}:00 UTC)"
+            )
+        
+        return within_hours
 
     @classmethod
     def from_cli_args(
@@ -266,6 +366,7 @@ class ScannerConfig:
         top_n: int = 5,
         show_all: bool = False,
         granularity: str = "H1",
+        profile: str = SCAN_PROFILE_BALANCED,
         watch: bool = False,
         non_interactive: bool = False,
         force: bool = False,  # Disable session filter
@@ -278,6 +379,7 @@ class ScannerConfig:
             top_n: Number of top pairs to show
             show_all: Show all pairs including failed
             granularity: Timeframe
+            profile: Scan profile (conservative|balanced|aggressive)
             watch: Enable watch mode
             non_interactive: Skip interactive prompts
             force: Force scan even outside session hours
@@ -299,13 +401,13 @@ class ScannerConfig:
         config.top_n = top_n
         config.show_all = show_all
         config.granularity = granularity
+        config.apply_profile(profile)
 
         if non_interactive:
             config.non_interactive = True
 
-        # Disable session filter if --force or non-interactive
-        if force or non_interactive:
+        # Disable session filter if --force (allow trading outside peak hours)
+        if force:
             config.enable_session_filter = False
-            config.session_filter_enabled = False
 
         return config

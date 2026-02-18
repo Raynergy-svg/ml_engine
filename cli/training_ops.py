@@ -14,7 +14,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -33,21 +33,156 @@ from rich.table import Table
 
 from cli.io_utils import DEFAULT_CONFIG_PATH
 from cli.tf_config import _configure_tf_metal
+from src.training.rl.config import RLIntegrationConfig
 
 console = Console()
+_logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# FX VALIDATION CRITERIA INTEGRATION
+# =============================================================================
+
+
+def get_fx_validation_criteria(
+    pair: str = "default",
+    regime: str = "normal",
+    level: str = "staging",
+):
+    """
+    Get FX-specific validation criteria for a currency pair.
+    
+    Args:
+        pair: Currency pair identifier (e.g., "EUR_USD")
+        regime: Market regime ("normal", "high_volatility", "low_volatility", "crisis")
+        level: Validation level ("development", "staging", "production", "conservative")
+    
+    Returns:
+        FXValidationCriteria instance
+    """
+    from src.training.fx_validation_criteria import (
+        ValidationLevel,
+        get_validation_criteria as _get_criteria,
+    )
+    
+    level_map = {
+        "development": ValidationLevel.DEVELOPMENT,
+        "staging": ValidationLevel.STAGING,
+        "production": ValidationLevel.PRODUCTION,
+        "conservative": ValidationLevel.CONSERVATIVE,
+    }
+    
+    validation_level = level_map.get(level.lower(), ValidationLevel.STAGING)
+    return _get_criteria(pair, regime, validation_level)
+
+
+def validate_model_with_fx_criteria(
+    metrics: Dict[str, Any],
+    pair: str = "default",
+    regime: str = "normal",
+    level: str = "staging",
+) -> Tuple[bool, List[str]]:
+    """
+    Validate model performance against FX-specific criteria.
+    
+    Args:
+        metrics: Dictionary of model performance metrics
+        pair: Currency pair identifier
+        regime: Market regime
+        level: Validation level
+    
+    Returns:
+        Tuple of (passed: bool, failure_reasons: List[str])
+    """
+    from src.training.fx_validation_criteria import validate_model_performance
+    
+    criteria = get_fx_validation_criteria(pair, regime, level)
+    return validate_model_performance(metrics, criteria)
+
+
+def format_validation_report(
+    metrics: Dict[str, Any],
+    pair: str = "default",
+    regime: str = "normal",
+    level: str = "staging",
+) -> str:
+    """
+    Format a validation report with FX-specific criteria.
+    
+    Args:
+        metrics: Dictionary of model performance metrics
+        pair: Currency pair identifier
+        regime: Market regime
+        level: Validation level
+    
+    Returns:
+        Formatted report string
+    """
+    criteria = get_fx_validation_criteria(pair, regime, level)
+    passed, failures = validate_model_with_fx_criteria(metrics, pair, regime, level)
+    
+    lines = []
+    lines.append("=" * 60)
+    lines.append("FX VALIDATION REPORT")
+    lines.append("=" * 60)
+    lines.append(f"Pair: {pair}")
+    lines.append(f"Regime: {regime}")
+    lines.append(f"Level: {level}")
+    lines.append(f"Decision: {'✓ APPROVED' if passed else '✗ REJECTED'}")
+    lines.append("")
+    
+    # Show criteria vs actual
+    lines.append("Criteria vs Actual:")
+    lines.append("-" * 60)
+    
+    if "val_accuracy" in metrics:
+        lines.append(f"  Direction Accuracy: {metrics['val_accuracy']:.4f} (min: {criteria.direction_accuracy_min:.4f})")
+    if "val_balanced_accuracy" in metrics or "val_accuracy" in metrics:
+        ba = metrics.get("val_balanced_accuracy", metrics.get("val_accuracy", 0))
+        lines.append(f"  Balanced Accuracy:  {ba:.4f} (min: {criteria.balanced_accuracy_min:.4f})")
+    if "cv_std" in metrics:
+        lines.append(f"  CV Std:             {metrics['cv_std']:.4f} (max: {criteria.cv_std_max:.4f})")
+    if "cv_degradation" in metrics:
+        lines.append(f"  CV Degradation:     {metrics['cv_degradation']:.4f} (max: {criteria.max_cv_degradation:.4f})")
+    if "r2_score" in metrics:
+        lines.append(f"  R² Score:           {metrics['r2_score']:.4f} (min: {criteria.min_r2_score:.4f})")
+    
+    # Show failures
+    if failures:
+        lines.append("")
+        lines.append("Failure Reasons:")
+        lines.append("-" * 60)
+        for f in failures:
+            lines.append(f"  ✗ {f}")
+    
+    lines.append("=" * 60)
+    
+    return "\n".join(lines)
+
 
 MODEL_DIR_PATH = "trained_data/models"
 MODULAR_ENSEMBLE_META_FILENAME = "modular_ensemble.meta.json"
 
 
+def _resolve_rl_integration_config(config_path: str) -> RLIntegrationConfig:
+    """Load RL integration config with safe fallback to defaults."""
+    try:
+        return RLIntegrationConfig.from_yaml(config_path)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Failed to load rl_integration config from %s: %s", config_path, exc)
+        return RLIntegrationConfig()
+
+
 def train_rl_sizer(
     config_path: str = DEFAULT_CONFIG_PATH,
     *,
-    timesteps: int = 500_000,
+    timesteps: int | None = None,
     episodes: int | None = None,
     pairs: str | None = None,
     granularity: str = "H1",
     candles: int = 5000,
+    use_extended_obs: bool | None = None,
+    use_learned_reward: bool | None = None,
     verbose: bool = False,
     **kwargs: Any,
 ) -> None:
@@ -56,6 +191,14 @@ def train_rl_sizer(
 
     Uses a two-phase subprocess approach to avoid TensorFlow/PyTorch GPU conflicts.
     """
+    rl_cfg = _resolve_rl_integration_config(config_path)
+    pos_cfg = rl_cfg.position_sizing
+    timesteps = int(pos_cfg.timesteps if timesteps is None else timesteps)
+    use_extended_obs = bool(False if use_extended_obs is None else use_extended_obs)
+    use_learned_reward = bool(
+        rl_cfg.reward_model.enabled if use_learned_reward is None else use_learned_reward
+    )
+
     # Suppress noisy logging during data generation
     logging.getLogger('modular_data_loaders').setLevel(logging.WARNING)
     logging.getLogger('modular_trainers').setLevel(logging.WARNING)
@@ -68,7 +211,7 @@ def train_rl_sizer(
     console.print()
     console.print(Panel.fit(
         "[bold cyan]RL Position Sizer Training[/bold cyan]\n"
-        f"[dim]PPO • {timesteps:,} timesteps • {granularity}[/dim]",
+        f"[dim]PPO • {timesteps:,} timesteps • {granularity} • lr={pos_cfg.learning_rate:.1e}[/dim]",
         border_style="cyan"
     ))
 
@@ -206,8 +349,6 @@ def train_rl_sizer(
             except Exception:
                 progress.advance(main_task, advance=est_samples_per_pair)
 
-            
-
     if not all_features:
         steps[2] = ["✗", "Generate predictions", "No data"]
         print_checklist()
@@ -232,7 +373,7 @@ def train_rl_sizer(
     console.print("[bold]Training PPO Agent (subprocess)[/bold]")
     console.print()
 
-    script_path = Path(__file__).resolve().parent.parent / "train_rl_standalone.py"
+    script_path = Path(__file__).resolve().parent.parent / "scripts" / "train_rl_standalone.py"
 
     # Use the Python from the active conda env (CONDA_PREFIX) if available,
     # falling back to sys.executable. This prevents mismatches when the user
@@ -244,7 +385,40 @@ def train_rl_sizer(
     else:
         python_exe = sys.executable
 
-    cmd = [python_exe, str(script_path), "--data", str(data_file), "--timesteps", str(timesteps)]
+    cmd = [
+        python_exe,
+        str(script_path),
+        "--data",
+        str(data_file),
+        "--timesteps",
+        str(timesteps),
+        "--learning-rate",
+        str(pos_cfg.learning_rate),
+        "--n-steps",
+        str(pos_cfg.n_steps),
+        "--batch-size",
+        str(pos_cfg.batch_size),
+        "--n-epochs",
+        str(pos_cfg.n_epochs),
+        "--gamma",
+        str(pos_cfg.gamma),
+        "--gae-lambda",
+        str(pos_cfg.gae_lambda),
+        "--sequence-length",
+        str(pos_cfg.sequence_length),
+        "--max-position-pct",
+        str(pos_cfg.max_position_pct),
+        "--min-position-pct",
+        str(pos_cfg.min_position_pct),
+        "--max-drawdown-pct",
+        str(pos_cfg.max_drawdown_pct),
+        "--daily-loss-limit-pct",
+        str(pos_cfg.daily_loss_limit_pct),
+    ]
+    if use_extended_obs:
+        cmd.append("--use-extended-obs")
+    if use_learned_reward:
+        cmd.append("--use-learned-reward")
     if verbose:
         cmd.append("--verbose")
 
@@ -288,6 +462,9 @@ def train_rl_sizer(
         meta["pairs_used"] = pair_list
         meta["granularity"] = granularity
         meta["candles_per_pair"] = candles
+        meta["use_extended_obs"] = use_extended_obs
+        meta["use_learned_reward"] = use_learned_reward
+        meta["learning_rate"] = float(pos_cfg.learning_rate)
         with open(meta_path, 'w') as f:
             json.dump(meta, f, indent=2, default=str)
 
@@ -589,7 +766,7 @@ def retrain_gates(
 def train_rl_gates(
     config_path: str = DEFAULT_CONFIG_PATH,
     *,
-    timesteps: int = 100_000,
+    timesteps: int | None = None,
     pairs: str | None = None,
     granularity: str = "H1",
     candles: int = 5000,
@@ -602,6 +779,9 @@ def train_rl_gates(
     Uses a two-phase approach to avoid TensorFlow/PyTorch GPU conflicts.
     """
     import tempfile
+    rl_cfg = _resolve_rl_integration_config(config_path)
+    gate_cfg = rl_cfg.gate_optimization
+    timesteps = int(gate_cfg.timesteps if timesteps is None else timesteps)
 
     console.print()
     console.print(Panel.fit(
@@ -707,7 +887,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import numpy as np
-from src.rl.gate_threshold_env import GateThresholdRL
+from src.rl.gate_threshold_env import GateThresholdRL, GateRLConfig
 
 data = np.load("{data_file}", allow_pickle=True)
 prices = data["prices"]
@@ -715,7 +895,13 @@ features = data["features"]
 preds = data["preds"]
 
 print(f"Training on {{len(prices):,}} samples...")
-rl = GateThresholdRL()
+cfg = GateRLConfig(
+    total_timesteps={timesteps},
+    learning_rate={float(gate_cfg.learning_rate)},
+    buffer_size={int(gate_cfg.buffer_size)},
+    batch_size={int(gate_cfg.batch_size)},
+)
+rl = GateThresholdRL(config=cfg)
 stats = rl.train(prices=prices, features=features, ensemble_preds=preds, timesteps={timesteps}, verbose=1)
 rl.save()
 print("Model saved to: trained_data/models/sac_gate_thresholds.zip")
@@ -747,7 +933,7 @@ print("Model saved to: trained_data/models/sac_gate_thresholds.zip")
 def train_rl_exits(
     config_path: str = DEFAULT_CONFIG_PATH,
     *,
-    timesteps: int = 100_000,
+    timesteps: int | None = None,
     pairs: str | None = None,
     granularity: str = "H1",
     candles: int = 5000,
@@ -760,6 +946,9 @@ def train_rl_exits(
     current PnL, time held, momentum, and volatility.
     """
     import tempfile
+    rl_cfg = _resolve_rl_integration_config(config_path)
+    exit_cfg = rl_cfg.exit_timing
+    timesteps = int(exit_cfg.timesteps if timesteps is None else timesteps)
 
     console.print()
     console.print(Panel.fit(
@@ -858,10 +1047,14 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-from src.rl.optimal_exit_env import OptimalExitRL
+from src.rl.optimal_exit_env import OptimalExitRL, ExitRLConfig
 
 print("Training PPO on synthetic scenarios...")
-rl = OptimalExitRL()
+cfg = ExitRLConfig(
+    total_timesteps={timesteps},
+    learning_rate={float(exit_cfg.learning_rate)},
+)
+rl = OptimalExitRL(config=cfg)
 stats = rl.train(timesteps={timesteps}, verbose=1)
 rl.save()
 print("Model saved to: trained_data/models/ppo_optimal_exit.zip")

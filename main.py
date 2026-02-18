@@ -115,6 +115,8 @@ def _dispatch_scan(args: Any) -> None:
                 pairs=pair_list,
                 granularity=str(getattr(args, "granularity", "H1")),
                 top_n=int(getattr(args, "top", 5)),
+                profile=str(getattr(args, "profile", "balanced")),
+                force=bool(getattr(args, "force", False)),
             )
             scanner = Scanner(config=config)
             interval_minutes = int(getattr(args, "interval", 5))
@@ -139,6 +141,7 @@ def _dispatch_scan(args: Any) -> None:
                 use_rl_sizer=bool(getattr(args, "use_rl_sizer", True)),
                 diversified=bool(getattr(args, "diversified", False)),
                 force=bool(getattr(args, "force", False)),
+                profile=str(getattr(args, "profile", "balanced")),
             )
     finally:
         root_logger.setLevel(prev_level)
@@ -362,9 +365,10 @@ def _handle_retrain_all(args: Any) -> None:
 
 
 def _handle_train_rl_sizer(args: Any) -> None:
+    timesteps = getattr(args, "timesteps", None)
     train_rl_sizer(
         config_path=args.config,
-        timesteps=int(getattr(args, "timesteps", 500_000)),
+        timesteps=(int(timesteps) if timesteps is not None else None),
         episodes=getattr(args, "rl_episodes", None),
         pairs=getattr(args, "pairs", None),
         granularity=str(getattr(args, "granularity", "H1")),
@@ -374,9 +378,10 @@ def _handle_train_rl_sizer(args: Any) -> None:
 
 
 def _handle_train_rl_gates(args: Any) -> None:
+    timesteps = getattr(args, "timesteps", None)
     train_rl_gates(
         config_path=args.config,
-        timesteps=int(getattr(args, "timesteps", 100_000)),
+        timesteps=(int(timesteps) if timesteps is not None else None),
         pairs=getattr(args, "pairs", None),
         granularity=str(getattr(args, "granularity", "H1")),
         candles=int(getattr(args, "candles", 5000)),
@@ -385,9 +390,10 @@ def _handle_train_rl_gates(args: Any) -> None:
 
 
 def _handle_train_rl_exits(args: Any) -> None:
+    timesteps = getattr(args, "timesteps", None)
     train_rl_exits(
         config_path=args.config,
-        timesteps=int(getattr(args, "timesteps", 100_000)),
+        timesteps=(int(timesteps) if timesteps is not None else None),
         pairs=getattr(args, "pairs", None),
         granularity=str(getattr(args, "granularity", "H1")),
         candles=int(getattr(args, "candles", 5000)),

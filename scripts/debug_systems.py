@@ -53,7 +53,7 @@ def main():
     # 3. RL POSITION SIZER
     print_header("3. RL POSITION SIZER")
     try:
-        from rl_position_sizing import RLPositionSizer, SB3_AVAILABLE, GYM_AVAILABLE
+        from src.training.rl.position_sizer import RLPositionSizer, SB3_AVAILABLE, GYM_AVAILABLE
         print_status("stable-baselines3", SB3_AVAILABLE, "available" if SB3_AVAILABLE else "NOT INSTALLED")
         print_status("gymnasium", GYM_AVAILABLE, "available" if GYM_AVAILABLE else "NOT INSTALLED")
         

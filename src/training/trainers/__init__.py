@@ -7,6 +7,7 @@ This package contains:
 - display: Training display utilities (TrainingDisplay)
 - callbacks: Training callbacks for advanced features
 - utils: Utility functions and constants
+- exceptions: Custom exception classes (WeightMismatchError, CheckpointValidationError)
 - tcn_trainer: TCN trainer for current volatility regime classification
 - tcn_volatility_trainer: TCN trainer for forward-looking volatility prediction
 - transformer_trainer: Transformer trainer for direction prediction
@@ -21,6 +22,10 @@ This package contains:
 from src.training.trainers.base import BaseTrainer
 from src.training.trainers.config import TrainerConfig, OverfitPreventionConfig
 from src.training.trainers.display import TrainingDisplay
+from src.training.trainers.exceptions import (
+    WeightMismatchError,
+    CheckpointValidationError,
+)
 from src.training.trainers.tcn_trainer import TCNTrainer
 from src.training.trainers.tcn_volatility_trainer import TCNVolatilityRegimeTrainer
 from src.training.trainers.transformer_trainer import TransformerDirectionTrainer
@@ -102,6 +107,9 @@ __all__ = [
     "OverfitPreventionConfig",
     # Display
     "TrainingDisplay",
+    # Exceptions
+    "WeightMismatchError",
+    "CheckpointValidationError",
     # Trainers
     "TCNTrainer",
     "TCNVolatilityRegimeTrainer",

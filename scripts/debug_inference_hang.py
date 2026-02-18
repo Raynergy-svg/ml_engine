@@ -141,7 +141,7 @@ if __name__ == "__main__":
     print("\n  7b. Loading RL Position Sizer...")
     with timed("Load RL Position Sizer"):
         try:
-            from rl_position_sizing import RLPositionSizer
+            from src.training.rl.position_sizer import RLPositionSizer
             rl_sizer = RLPositionSizer()
             result = rl_sizer.load()
             print(f"    RL loaded: {result}")

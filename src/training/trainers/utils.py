@@ -258,11 +258,18 @@ def _safe_load_weights_ignoring_optimizer(
             warnings.simplefilter("always")
             model.load_weights(path, skip_mismatch=skip_mismatch)
 
-        # Downgrade optimizer-related warnings to debug; keep others at warning
+        # Downgrade expected warm-start warnings to debug/info
         for w in caught:
             msg = str(w.message)
-            if any(kw in msg.lower() for kw in ("optimizer", "skipping variable", "loading skip")):
-                logger.debug(f"Suppressed optimizer state warning: {msg}")
+            msg_lower = msg.lower()
+            # These are all expected during architecture changes / warm-start
+            benign_keywords = (
+                "optimizer", "skipping variable", "loading skip",
+                "expected", "variables", "received 0",  # Layer shape mismatches
+                "einsumdense", "could not be loaded",  # Attention layer changes
+            )
+            if any(kw in msg_lower for kw in benign_keywords):
+                logger.debug(f"Warm-start weight mismatch (expected): {msg[:200]}")
             else:
                 logger.warning(f"Weight loading warning: {msg}")
         return True

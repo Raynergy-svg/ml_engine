@@ -32,6 +32,137 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# [2026-02-14] Enhanced regularization - Time-series data augmentation
+# =============================================================================
+
+def augment_time_series(
+    X: np.ndarray,
+    y: np.ndarray,
+    augment_prob: float = 0.5,
+    jittering_config: Optional[Dict[str, Any]] = None,
+    scaling_config: Optional[Dict[str, Any]] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Apply time-series appropriate augmentation for enhanced regularization.
+    
+    [2026-02-14] Enhanced regularization - Time-series appropriate augmentation
+    
+    This function applies augmentation techniques suitable for time-series data:
+    - Jittering: Add small Gaussian noise to features
+    - Scaling: Apply random scaling factor to sequences
+    
+    Args:
+        X: Feature array (n_samples, n_features) - 2D features
+        y: Label array (n_samples,) - direction labels
+        augment_prob: Probability of applying augmentation per sample (default: 0.5)
+        jittering_config: Config dict with keys:
+            - enabled: bool (default: True)
+            - noise_std_min: float (default: 0.01)
+            - noise_std_max: float (default: 0.05)
+            - apply_prob: float (default: 0.5)
+        scaling_config: Config dict with keys:
+            - enabled: bool (default: True)
+            - scale_min: float (default: 0.95)
+            - scale_max: float (default: 1.05)
+            - apply_prob: float (default: 0.5)
+    
+    Returns:
+        Tuple of (augmented_X, y) - labels unchanged, features may be augmented
+        
+    Note:
+        This function creates a copy of X to avoid modifying the original data.
+        Augmentation is applied element-wise with the given probability.
+    """
+    # Default configurations
+    jitter_defaults = {
+        "enabled": True,
+        "noise_std_min": 0.01,
+        "noise_std_max": 0.05,
+        "apply_prob": 0.5,
+    }
+    scaling_defaults = {
+        "enabled": True,
+        "scale_min": 0.95,
+        "scale_max": 1.05,
+        "apply_prob": 0.5,
+    }
+    
+    jitter_cfg = {**jitter_defaults, **(jittering_config or {})}
+    scaling_cfg = {**scaling_defaults, **(scaling_config or {})}
+    
+    # Skip augmentation with probability (1 - augment_prob)
+    if np.random.random() > augment_prob:
+        return X.copy(), y
+    
+    # Create a copy to avoid modifying original
+    X_aug = X.copy().astype(np.float32)
+    
+    # Apply jittering: Add Gaussian noise
+    if jitter_cfg["enabled"] and np.random.random() < jitter_cfg["apply_prob"]:
+        noise_std = np.random.uniform(
+            jitter_cfg["noise_std_min"],
+            jitter_cfg["noise_std_max"],
+        )
+        noise = np.random.normal(0, noise_std, X_aug.shape).astype(np.float32)
+        X_aug = X_aug + noise
+    
+    # Apply scaling: Random scale factor
+    elif scaling_cfg["enabled"] and np.random.random() < scaling_cfg["apply_prob"]:
+        scale = np.random.uniform(scaling_cfg["scale_min"], scaling_cfg["scale_max"])
+        X_aug = X_aug * scale
+    
+    return X_aug, y
+
+
+def augment_time_series_batch(
+    X: np.ndarray,
+    y: np.ndarray,
+    config: Optional[Dict[str, Any]] = None,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Apply time-series augmentation to a batch of samples.
+    
+    [2026-02-14] Enhanced regularization - Batch augmentation wrapper
+    
+    This is a convenience wrapper that reads configuration from a dict
+    and applies augmentation to the entire batch.
+    
+    Args:
+        X: Feature array (n_samples, n_features)
+        y: Label array (n_samples,)
+        config: Configuration dict with structure:
+            - enabled: bool (master switch)
+            - augment_prob: float (0-1)
+            - time_series.enabled: bool
+            - time_series.jittering: dict
+            - time_series.scaling: dict
+    
+    Returns:
+        Tuple of (augmented_X, y)
+    """
+    if config is None:
+        config = {}
+    
+    # Check master switch
+    if not config.get("enabled", False):
+        return X.copy(), y
+    
+    # Get time_series config
+    ts_config = config.get("time_series", {})
+    if not ts_config.get("enabled", False):
+        return X.copy(), y
+    
+    augment_prob = ts_config.get("augment_prob", 0.5)
+    jittering_config = ts_config.get("jittering", {})
+    scaling_config = ts_config.get("scaling", {})
+    
+    return augment_time_series(
+        X, y,
+        augment_prob=augment_prob,
+        jittering_config=jittering_config,
+        scaling_config=scaling_config,
+    )
+
+
+# =============================================================================
 # PROTOCOLS FOR DEPENDENCY INJECTION
 # =============================================================================
 

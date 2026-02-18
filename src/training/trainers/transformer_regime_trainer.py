@@ -377,10 +377,45 @@ class TransformerRegimeTrainer(BaseTrainer):
 
     def load(self, path: str) -> None:
         """Load Transformer regime model and scaler."""
+        import tensorflow as tf
         from tensorflow import keras
 
         path = Path(path)
-        self.model = keras.models.load_model(str(path))
+        model = None
+        load_errors = []
+
+        try:
+            from src.utils.keras_model_loader import load_keras_model
+
+            model, meta = load_keras_model(str(path), compile=False)
+            if not meta.get("success"):
+                model = None
+        except Exception as e:
+            load_errors.append(f"cross_version: {e}")
+
+        if model is None:
+            try:
+                model = keras.models.load_model(str(path), compile=False)
+            except Exception as e:
+                load_errors.append(f"keras_compile_false: {e}")
+
+        if model is None:
+            try:
+                model = tf.keras.models.load_model(str(path), compile=False)
+            except Exception as e:
+                load_errors.append(f"tf_keras_compile_false: {e}")
+
+        if model is None:
+            try:
+                model = keras.models.load_model(str(path), compile=False, safe_mode=False)
+            except Exception as e:
+                load_errors.append(f"safe_mode_false: {e}")
+
+        if model is None:
+            raise RuntimeError(
+                f"Failed to load Transformer regime model from {path}. Errors: {'; '.join(load_errors)}"
+            )
+        self.model = model
 
         meta_path = path.with_suffix(META_PKL_SUFFIX)
         with open(meta_path, "rb") as f:

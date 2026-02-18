@@ -29,7 +29,7 @@ print('✓ CosineDecayRestarts working!')
 
 # 2. Test RL position sizer import
 print('\nTesting RL Position Sizer...')
-from rl_position_sizing import RLPositionSizer, RLConfig  # noqa: F401, E402
+from src.training.rl.position_sizer import RLPositionSizer, RLConfig  # noqa: F401, E402
 print('✓ RLPositionSizer imports working!')
 
 # 3. Test multi-pair data loading import

@@ -181,4 +181,4 @@ class BuddyTrainingOptions:
     foundation_pairs: str | None = None  # Comma-separated pairs (default: majors)
     # RL position sizing training - train RL agent after ensemble
     train_rl_sizer: bool = True  # Enable RL position sizer training after ensemble
-    rl_timesteps: int = 500_000  # RL training timesteps (500k ~ 10-15 min on M1)
+    rl_timesteps: int | None = None  # None => use rl_integration.position_sizing.timesteps

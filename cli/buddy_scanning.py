@@ -39,6 +39,7 @@ def buddy_scan(
     prompt_train: bool = False,
     diversified: bool = False,
     force: bool = False,
+    profile: str = "balanced",
     no_execute: bool = False,
     **kwargs: Any,
 ) -> list:
@@ -99,6 +100,7 @@ def buddy_scan(
                 prompt_train=prompt_train,
                 diversified=diversified,
                 force=force,
+                profile=profile,
             )
 
         # Return results as (PairAnalysis, gates_passed) tuples

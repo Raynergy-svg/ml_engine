@@ -4,7 +4,7 @@ Reinforcement Learning modules for ML Engine Trading Bot.
 This package provides RL-based enhancements to the trading system:
 - Gate threshold optimization (SAC)
 - Optimal exit timing (PPO)
-- Position sizing (PPO) - see rl_position_sizing.py in root
+- Position sizing (PPO) - see src.training.rl.position_sizer
 
 All RL models use CPU-only execution to avoid Metal/TensorFlow conflicts.
 

@@ -17,13 +17,10 @@ MIGRATION PATH:
 - For new LLM integrations, use llm_providers.py instead
 - The query_quant_critic() and improve_trading_rationale() functions are unique
   to this module and should be migrated to llm_providers.py if still needed
-- autotune_configurations() uses Optuna and could be moved to a dedicated
-  hyperparameter tuning module
 
 UNIQUE FUNCTIONS TO PRESERVE:
 - query_quant_critic(): Provides trading rationale critique (active, has tests)
 - improve_trading_rationale(): Convenience wrapper for quant critic
-- autotune_configurations(): Optuna-based hyperparameter tuning
 - query_for_auto_configuration(): GPT-based config suggestions
 
 DO NOT DELETE: Still has active usages in main.py
@@ -35,7 +32,6 @@ import json
 import time
 import logging
 import openai
-import optuna
 import yaml
 
 from dotenv import load_dotenv
@@ -247,24 +243,6 @@ def report_config_changes(current_config, config_updates, config_path: str = "co
     with open(str(config_path), "w") as f:
         yaml.dump(updated_config, f)
     return updated_config
-
-
-def autotune_configurations(config: dict) -> dict:
-    """Use optuna to autotune ML engine configurations."""
-
-    def objective(trial: optuna.trial.Trial) -> float:
-        lr = trial.suggest_loguniform("learning_rate", 1e-5, 1e-2)
-        score = (lr - 0.001) ** 2
-        return score
-
-    study = optuna.create_study(direction="minimize")
-    study.optimize(objective, n_trials=10)
-    tuned_params = study.best_params
-    if "model" not in config:
-        config["model"] = {}
-    config["model"].update(tuned_params)
-    logger.info(f"Autotuned configuration: {tuned_params}")
-    return config
 
 
 def query_quant_critic(

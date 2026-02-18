@@ -507,6 +507,7 @@ class OandaPracticeClient:
         price_bound: Optional[float] = None,
         client_order_id: Optional[str] = None,
         client_tag: str = "ml_engine_paper",
+        position_fill: str = "DEFAULT",
     ) -> Any:
         # Client order ID helps with idempotency/deduping in client logs.
         # (OANDA supports clientExtensions broadly; client order ids are supported in v20 models.)
@@ -518,10 +519,12 @@ class OandaPracticeClient:
             "instrument": instrument,
             "units": str(int(units)),
             "timeInForce": "IOC",
-            "positionFill": "DEFAULT",
+            "positionFill": str(position_fill).upper() if position_fill else "DEFAULT",
             "clientOrderID": client_order_id,
             "clientExtensions": {"tag": client_tag},
         }
+        if order["positionFill"] not in {"DEFAULT", "OPEN_ONLY", "REDUCE_FIRST", "REDUCE_ONLY"}:
+            order["positionFill"] = "DEFAULT"
 
         # Optional price bound (single bound supported by v20) to limit worst-case execution.
         if price_bound is not None:
@@ -564,4 +567,60 @@ class OandaPracticeClient:
             pass
 
         return result
+
+    def get_trades(
+        self,
+        *,
+        state: str = "ALL",
+        count: int = 500,
+        instrument: Optional[str] = None,
+    ) -> Any:
+        """Get trades for the account.
+
+        Args:
+            state: Trade state filter: OPEN, CLOSED, CLOSE_WHEN_TRADEABLE, ALL
+            count: Maximum number of trades to return (max 500)
+            instrument: Optional instrument filter (e.g., EUR_USD)
+
+        Returns:
+            Dict with 'trades' list containing trade details
+        """
+        params: Dict[str, Any] = {"state": state, "count": min(count, 500)}
+        if instrument:
+            params["instrument"] = instrument
+        return self._request(
+            "GET",
+            f"/accounts/{self._config.account_id}/trades",
+            params=params,
+        )
+
+    def get_transactions(
+        self,
+        *,
+        from_time: Optional[str] = None,
+        to_time: Optional[str] = None,
+        type_filter: Optional[str] = None,
+    ) -> Any:
+        """Get transactions for the account.
+
+        Args:
+            from_time: Start time (RFC3339 format)
+            to_time: End time (RFC3339 format)
+            type_filter: Transaction type filter (e.g., ORDER_FILL)
+
+        Returns:
+            Dict with transaction pages
+        """
+        params: Dict[str, Any] = {}
+        if from_time:
+            params["from"] = from_time
+        if to_time:
+            params["to"] = to_time
+        if type_filter:
+            params["type"] = type_filter
+        return self._request(
+            "GET",
+            f"/accounts/{self._config.account_id}/transactions",
+            params=params,
+        )
 # — Raynergy-svg —

@@ -111,7 +111,7 @@ class MonitoringSystem:
         self.baseline_metrics = self._load_baseline_metrics()
 
         # Model drift tracking
-        self.drift_history: List[ModelDriftMetrics] = []
+        self.drift_history: List[ModelDriftMetrics] = self._load_drift_history()
 
         logger.info(f"Monitoring system initialized. Log dir: {self.log_dir}")
 
@@ -143,6 +143,37 @@ class MonitoringSystem:
         except Exception as e:
             logger.warning(f"Failed to load baseline metrics: {e}")
             return None
+
+    def _load_drift_history(self) -> List[ModelDriftMetrics]:
+        """Load drift history from saved JSONL file."""
+        drift_log = self.log_dir / 'model_drift.jsonl'
+        if not drift_log.exists():
+            return []
+
+        history: List[ModelDriftMetrics] = []
+        try:
+            with drift_log.open() as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        history.append(ModelDriftMetrics(
+                            timestamp=data.get('timestamp', ''),
+                            prediction_mean=float(data.get('prediction_mean', 0)),
+                            prediction_std=float(data.get('prediction_std', 0)),
+                            confidence_mean=float(data.get('confidence_mean', 0)),
+                            feature_drift_score=float(data.get('feature_drift_score', 0)),
+                            performance_degradation=float(data.get('performance_degradation', 0)),
+                            alert_triggered=bool(data.get('alert_triggered', False)),
+                        ))
+                    except (json.JSONDecodeError, KeyError, ValueError):
+                        continue
+        except Exception as e:
+            logger.warning(f"Failed to load drift history: {e}")
+
+        return history
 
     def save_baseline_metrics(self, metrics: PerformanceMetrics) -> None:
         """Save baseline performance metrics."""

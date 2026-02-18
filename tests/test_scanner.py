@@ -63,6 +63,32 @@ class TestScannerConfig:
         cfg = ScannerConfig.from_cli_args(force=True)
         assert cfg.enable_session_filter is False
 
+    def test_profile_aggressive_lowers_gate_thresholds(self):
+        from src.scanner.config import ScannerConfig
+        cfg = ScannerConfig()
+        cfg.apply_profile("aggressive")
+        assert cfg.profile == "aggressive"
+        assert cfg.min_confidence == 45.0
+        assert cfg.min_momentum == 0.12
+        assert cfg.min_atr_pips == 3.0
+        assert cfg.min_volatility_regime == 0
+
+    def test_profile_conservative_tightens_gate_thresholds(self):
+        from src.scanner.config import ScannerConfig
+        cfg = ScannerConfig()
+        cfg.apply_profile("conservative")
+        assert cfg.profile == "conservative"
+        assert cfg.min_confidence == 58.0
+        assert cfg.min_momentum == 0.28
+        assert cfg.min_atr_pips == 6.0
+        assert cfg.min_volatility_regime == 2
+
+    def test_unknown_profile_raises(self):
+        from src.scanner.config import ScannerConfig
+        cfg = ScannerConfig()
+        with pytest.raises(ValueError):
+            cfg.apply_profile("ultra")
+
 
 # ---------------------------------------------------------------------------
 # Results tests

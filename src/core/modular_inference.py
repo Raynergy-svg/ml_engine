@@ -54,6 +54,9 @@ from .modular_data_loaders import (
     align_features_to_model,
 )
 
+# [2026-02-14] Feature alignment fix: Import feature index loader for inference
+from src.training.feature_alignment import load_feature_indices as load_saved_feature_indices
+
 # Import confidence calibration module
 try:
     from confidence_calibration import (
@@ -284,7 +287,7 @@ def _call_with_timeout(fn, timeout_s: float):
 
 def _lazy_load_rl_sizer_unsafe():
     """Internal: Load RLPositionSizer (may hang on GPU conflicts)."""
-    from rl_position_sizing import RLPositionSizer as _RLPositionSizer
+    from src.training.rl.position_sizer import RLPositionSizer as _RLPositionSizer
     return _RLPositionSizer, True
 
 
@@ -463,10 +466,22 @@ class InferenceConfig:
     # Volatility filter - skip low-volatility conditions
     min_atr_pips: float = 8.0  # Minimum ATR in pips to allow trading
 
+    # Heuristic directional veto gates (additional to core model gates).
+    # Keep enabled by default for safety; aggressive profile can disable.
+    use_rsi_extreme_gate: bool = True
+    use_trend_contra_gate: bool = True
+    rsi_extreme_low_threshold: float = 10.0
+    rsi_extreme_high_threshold: float = 90.0
+    adx_trend_contra_threshold: float = 35.0
+
     # Position sizing - RISK-BASED (5% aggressive mode)
     risk_per_trade_pct: float = 0.05  # 5% risk per trade (~$5k on $100k)
     account_equity: float = 103000.0  # User's account balance
     pip_value: float = 10.0  # ~$10 per pip per standard lot
+    min_stop_loss_pips: float = 10.0  # Clamp stop distance to avoid pathological oversizing
+    min_position_lots: float = 0.01  # Broker floor for meaningful FX size (1k units)
+    position_sizing_mode: str = "rl_hybrid"  # "rl_hybrid", "rl_only", "risk_only"
+    rl_min_risk_utilization: float = 0.08  # Minimum fraction of configured risk budget to deploy with RL sizing
 
     # LIQUIDITY LIMITS - Maximum lots by pair (increased for aggressive trading)
     max_lots_by_pair: dict = None  # Set in __post_init__
@@ -1340,6 +1355,70 @@ class ModularEnsembleInference:
         logger.debug(f"Using generic model: {generic_path}")
         return generic_path
 
+    def _get_pair_metadata_model_path(
+        self,
+        model_key: str,
+        expected_suffix: str = ".pkl",
+    ) -> Optional[Path]:
+        """
+        Resolve preferred model path from pair-specific modular metadata.
+
+        This prevents inference from accidentally picking joint/generic artifacts
+        when pair training just produced explicit model files.
+        """
+        if not self.instrument or self.instrument == "GENERIC":
+            return None
+
+        pair_meta = self.model_dir / self.instrument / "modular_ensemble.meta.json"
+        if not pair_meta.exists():
+            return None
+
+        try:
+            with open(pair_meta) as f:
+                meta = json.load(f)
+            models = meta.get("models", {})
+            entry = models.get(model_key, {})
+            path_str = entry.get("path") if isinstance(entry, dict) else None
+            if not isinstance(path_str, str) or not path_str.strip():
+                return None
+
+            raw_path = Path(path_str)
+            candidates: list[Path] = []
+            if raw_path.is_absolute():
+                candidates.append(raw_path)
+            else:
+                # Most metadata stores workspace-relative paths.
+                candidates.append(raw_path)
+                # Defensive fallback: same basename in pair model dir.
+                candidates.append(self.model_dir / self.instrument / raw_path.name)
+
+            resolved = next((p for p in candidates if p.exists()), None)
+            if resolved is None:
+                return None
+
+            # Ensure pair-specific metadata cannot point to another instrument artifact.
+            if self.instrument not in resolved.parts:
+                logger.warning(
+                    "Ignoring pair metadata path for %s: %s (instrument mismatch: %s)",
+                    model_key,
+                    resolved,
+                    self.instrument,
+                )
+                return None
+
+            if expected_suffix and resolved.suffix.lower() != expected_suffix.lower():
+                logger.warning(
+                    "Pair metadata path for %s has unexpected suffix: %s (expected %s)",
+                    model_key,
+                    resolved,
+                    expected_suffix,
+                )
+
+            return resolved
+        except Exception as e:
+            logger.warning("Failed reading pair metadata for model path resolution: %s", e)
+            return None
+
     def load_models(self, instrument: Optional[str] = None) -> None:
         """
         Load all 4 models from disk.
@@ -1383,9 +1462,15 @@ class ModularEnsembleInference:
         pair_info = f" for {self.instrument}" if self.instrument and self.instrument != "GENERIC" else ""
         logger.info(f"Loading modular ensemble models{pair_info}...")
 
+        # Prefer explicit pair-specific paths recorded at training time.
+        meta_direction_path = self._get_pair_metadata_model_path("direction", ".keras")
+        meta_xgb_path = self._get_pair_metadata_model_path("xgboost", ".pkl")
+        meta_rf_path = self._get_pair_metadata_model_path("rf", ".pkl")
+        meta_ridge_path = self._get_pair_metadata_model_path("ridge", ".pkl")
+
         # Use pair-specific paths with fallback to generic
         regime_path = self._get_model_path("transformer_regime", ".keras")
-        transformer_path = self._get_model_path("transformer_direction", ".keras")
+        transformer_path = meta_direction_path or self._get_model_path("transformer_direction", ".keras")
         tcn_path = self._get_model_path("tcn_volatility_regime", ".keras")  # NEW: volatility regime model
         tcn_legacy_path = self._get_model_path("tcn_direction", ".keras")  # Legacy: direction model
         histgb_path = self._get_model_path("histgb_direction", ".pkl")
@@ -1493,12 +1578,26 @@ class ModularEnsembleInference:
         # XGBoost or LightGBM Momentum (check LightGBM first for joint models)
         lgbm_momentum_path = self._get_model_path("lgbm_momentum", ".pkl")
         xgb_path = self._get_model_path("xgb_momentum", ".pkl")
+        pair_xgb_path = (
+            self.model_dir / self.instrument / "xgb_momentum.pkl"
+            if self.instrument and self.instrument != "GENERIC"
+            else None
+        )
 
-        # Choose the freshest available momentum artifact.
-        momentum_candidates = [p for p in [lgbm_momentum_path, xgb_path] if p.exists()]
+        # Priority: metadata-pinned pair artifact > explicit pair xgb > freshest fallback.
+        if meta_xgb_path is not None and meta_xgb_path.exists():
+            momentum_candidates = [meta_xgb_path]
+        elif pair_xgb_path is not None and pair_xgb_path.exists():
+            momentum_candidates = [pair_xgb_path]
+        else:
+            momentum_candidates = [p for p in [lgbm_momentum_path, xgb_path] if p.exists()]
         momentum_path = None
         if momentum_candidates:
-            momentum_path = max(momentum_candidates, key=lambda p: p.stat().st_mtime)
+            momentum_path = (
+                momentum_candidates[0]
+                if len(momentum_candidates) == 1
+                else max(momentum_candidates, key=lambda p: p.stat().st_mtime)
+            )
 
         if momentum_path is not None:
             # Try LightGBM loader first (some runs save LightGBM momentum under xgb_momentum.pkl).
@@ -1527,8 +1626,31 @@ class ModularEnsembleInference:
         # Random Forest or LightGBM Risk (check LightGBM first for joint models)
         lgbm_risk_path = self._get_model_path("lgbm_risk", ".pkl")
         rf_path = self._get_model_path("rf_risk", ".pkl")
+        pair_rf_path = (
+            self.model_dir / self.instrument / "rf_risk.pkl"
+            if self.instrument and self.instrument != "GENERIC"
+            else None
+        )
 
-        if lgbm_risk_path.exists():
+        # Prefer pair RF risk artifact when available (matches training outputs + metadata).
+        preferred_rf_path = None
+        if meta_rf_path is not None and meta_rf_path.exists():
+            preferred_rf_path = meta_rf_path
+        elif pair_rf_path is not None and pair_rf_path.exists():
+            preferred_rf_path = pair_rf_path
+
+        risk_loaded = False
+        if preferred_rf_path is not None:
+            try:
+                self.rf = RandomForestTrainer()
+                self.rf.load(str(preferred_rf_path))
+                logger.info(f"✓ Random Forest loaded from {preferred_rf_path}")
+                self._log_model_trained_at(preferred_rf_path, "Random Forest risk", category="gates")
+                risk_loaded = True
+            except Exception as e:
+                logger.warning(f"Failed to load preferred RF risk from {preferred_rf_path}: {e}")
+
+        if not risk_loaded and lgbm_risk_path.exists():
             # Use LightGBM risk (from joint training)
             try:
                 from src.training.modular_trainers import LightGBMRiskTrainer
@@ -1544,16 +1666,16 @@ class ModularEnsembleInference:
                     self.rf.load(str(rf_path))
                     logger.info(f"✓ Random Forest loaded from {rf_path} (fallback)")
                     self._log_model_trained_at(rf_path, "Random Forest risk", category="gates")
-        elif rf_path.exists():
+        elif not risk_loaded and rf_path.exists():
             self.rf = RandomForestTrainer()
             self.rf.load(str(rf_path))
             logger.info(f"✓ Random Forest loaded from {rf_path}")
             self._log_model_trained_at(rf_path, "Random Forest risk", category="gates")
-        else:
+        elif not risk_loaded:
             logger.warning("Risk model not found (tried lgbm_risk.pkl and rf_risk.pkl)")
 
         # Ridge (use pair-specific path)
-        ridge_path = self._get_model_path("ridge_confidence", ".pkl")
+        ridge_path = meta_ridge_path or self._get_model_path("ridge_confidence", ".pkl")
         if ridge_path.exists():
             self.ridge = RidgeTrainer()
             self.ridge.load(str(ridge_path))
@@ -2177,7 +2299,18 @@ class ModularEnsembleInference:
         for path in meta_labeler_paths:
             if path.exists():
                 try:
-                    self.meta_labeler = MetaLabeler.load(path)
+                    loaded_labeler = MetaLabeler.load(path)
+
+                    # Guardrail: skip stale meta-labelers trained on materially different
+                    # feature dimensions, as they can over-filter valid trades.
+                    if not self._is_meta_labeler_compatible(loaded_labeler):
+                        logger.warning(
+                            "Skipping incompatible meta-labeler at %s (feature-dimension mismatch)",
+                            path,
+                        )
+                        continue
+
+                    self.meta_labeler = loaded_labeler
                     self._meta_labeler_loaded = True
                     threshold = self.config.min_meta_confidence
                     primary_acc = getattr(self.meta_labeler, '_primary_accuracy', 0.5)
@@ -2193,13 +2326,49 @@ class ModularEnsembleInference:
             logger.info("ℹ Meta-labeling enabled but no trained model found")
             logger.info("  To train: models save meta_labeler.pkl during buddy training")
 
+    def _is_meta_labeler_compatible(self, labeler: Any) -> bool:
+        """Return True when meta-labeler feature shape is plausible for current pipeline."""
+        try:
+            meta_model = getattr(labeler, "meta_model", None)
+            expected = getattr(meta_model, "n_features_in_", None)
+            if expected is None:
+                return True
+
+            # Estimate expected meta-feature dimension from current direction pipeline.
+            direction_features = get_normalized_feature_names().get("direction", [])
+            if not isinstance(direction_features, list) or len(direction_features) == 0:
+                return True
+
+            n_primary = len(direction_features)
+            meta_cfg = getattr(labeler, "config", None)
+            use_reduced = bool(getattr(meta_cfg, "use_reduced_features", True))
+            include_primary_proba = bool(getattr(meta_cfg, "include_primary_proba", True))
+
+            estimated = n_primary if use_reduced else (n_primary * 3)
+            if include_primary_proba:
+                estimated += 2
+
+            tolerance = max(8, int(0.20 * estimated))
+            compatible = abs(int(expected) - int(estimated)) <= tolerance
+            if not compatible:
+                logger.warning(
+                    "Meta-labeler feature mismatch: model expects %d, current pipeline estimates %d "
+                    "(tolerance=%d).",
+                    int(expected),
+                    int(estimated),
+                    int(tolerance),
+                )
+            return compatible
+        except Exception:
+            return True
+
     def _apply_calibration(self, raw_probability: float, direction: Optional[int] = None) -> tuple[float, bool]:
         """
         Apply confidence calibration to raw model probability.
 
         Args:
             raw_probability: Raw probability from TCN/Transformer (0-1)
-            direction: Predicted direction (0=short, 1=long) for directional adjustment
+            direction: Predicted direction (0=short, 1=long)
 
         Returns:
             Tuple of (calibrated_probability, was_calibrated)
@@ -2215,13 +2384,31 @@ class ModularEnsembleInference:
             return raw_probability, False
 
         try:
-            result = self.calibrator.calibrate_confidence(raw_probability)
-            calibrated = result.calibrated_confidence
+            # Calibrate confidence of the predicted class, then map back to
+            # directional probability. This preserves short-side (<0.5) outputs.
+            pred_dir = direction
+            if pred_dir is None:
+                pred_dir = 1 if raw_probability >= 0.5 else 0
+
+            raw_conf = raw_probability if pred_dir == 1 else (1.0 - raw_probability)
+            result = self.calibrator.calibrate_confidence(raw_conf)
+            calibrated_conf = float(result.calibrated_confidence)
+            calibrated = calibrated_conf if pred_dir == 1 else (1.0 - calibrated_conf)
+
+            # Safety clamp after mapping back
+            calibrated = max(0.0, min(1.0, calibrated))
 
             # Log calibration adjustment if significant
             adjustment = calibrated - raw_probability
             if abs(adjustment) > 0.02:
-                logger.debug(f"📐 Calibration: {raw_probability:.3f} → {calibrated:.3f} (Δ={adjustment:+.3f})")
+                logger.debug(
+                    "📐 Calibration: raw_prob=%.3f raw_conf=%.3f → cal_conf=%.3f cal_prob=%.3f (Δ=%+.3f)",
+                    raw_probability,
+                    raw_conf,
+                    calibrated_conf,
+                    calibrated,
+                    adjustment,
+                )
 
             return calibrated, True
         except Exception as e:
@@ -3099,6 +3286,7 @@ class ModularEnsembleInference:
         expected_drawdown_pips: float,
         equity: Optional[float] = None,
         instrument: Optional[str] = None,
+        current_price: Optional[float] = None,
         features: Optional[np.ndarray] = None,
         tcn_probability: float = 0.5,
         ridge_confidence: float = 50.0,
@@ -3130,9 +3318,29 @@ class ModularEnsembleInference:
         equity = equity or self.config.account_equity
 
         # =====================================================================
+        # Base risk-sized lots (shared by risk-only and RL-hybrid modes)
+        # =====================================================================
+        risk_amount = equity * self.config.risk_per_trade_pct
+        min_stop_loss_pips = max(float(getattr(self.config, "min_stop_loss_pips", 10.0)), 1.0)
+        expected_drawdown_pips = max(float(expected_drawdown_pips), min_stop_loss_pips)
+        risk_lots = risk_amount / (expected_drawdown_pips * self.config.pip_value)
+
+        # Apply liquidity limit for instrument
+        max_lots = self.config.max_lots_by_pair.get(
+            instrument,
+            self.config.max_lots_by_pair.get('DEFAULT', 0.5)
+        ) if instrument else 1.0
+        risk_lots = min(risk_lots, max_lots)
+
+        sizing_mode = str(getattr(self.config, "position_sizing_mode", "rl_hybrid")).lower()
+        if sizing_mode not in {"rl_hybrid", "rl_only", "risk_only"}:
+            logger.warning("Unknown position_sizing_mode='%s' - falling back to rl_hybrid", sizing_mode)
+            sizing_mode = "rl_hybrid"
+
+        # =====================================================================
         # RL POSITION SIZING (if available)
         # =====================================================================
-        if self.rl_sizer is not None and features is not None:
+        if sizing_mode != "risk_only" and self.rl_sizer is not None and features is not None:
             try:
                 # Construct ensemble prediction for RL observation
                 ensemble_pred = np.array([tcn_probability, ridge_confidence / 100.0])
@@ -3144,37 +3352,66 @@ class ModularEnsembleInference:
                     account_equity=equity,
                 )
 
-                # Convert to lots (assume ~$100k per lot)
-                size_lots = size_dollars / 100000
+                # Convert notional USD exposure to lots using current instrument price.
+                # 1 lot = 100,000 base units.
+                per_lot_notional_usd = 100000.0
+                if instrument and isinstance(instrument, str):
+                    parts = instrument.split("_")
+                    if len(parts) == 2:
+                        base_ccy, quote_ccy = parts[0], parts[1]
+                        if quote_ccy == "USD" and current_price and current_price > 0:
+                            per_lot_notional_usd = float(current_price) * 100000.0
+                        elif base_ccy == "USD":
+                            per_lot_notional_usd = 100000.0
 
-                # Apply liquidity limit
-                max_lots = self.config.max_lots_by_pair.get(
-                    instrument,
-                    self.config.max_lots_by_pair.get('DEFAULT', 0.5)
-                ) if instrument else 1.0
+                rl_lots = max(0.0, float(size_dollars)) / max(per_lot_notional_usd, 1.0)
+                rl_lots = min(rl_lots, max_lots)
+
+                # Hybrid mode: RL proposes aggressiveness, but keep risk-budget utilization meaningful.
+                # This prevents tiny RL notional outputs from creating effectively zero-risk orders.
+                min_util = float(getattr(self.config, "rl_min_risk_utilization", 0.08))
+                min_util = min(max(min_util, 0.0), 1.0)
+                min_risk_lots = risk_lots * min_util
+
+                if sizing_mode == "rl_only":
+                    size_lots = rl_lots
+                    floor_lots = float(getattr(self.config, "min_position_lots", 0.01))
+                else:
+                    size_lots = max(rl_lots, min_risk_lots)
+                    floor_lots = max(float(getattr(self.config, "min_position_lots", 0.01)), min_risk_lots)
+
+                floor_lots = min(floor_lots, max_lots)
+                size_lots = min(size_lots, max_lots)
+                size_lots = max(floor_lots, size_lots)
                 size_lots = min(size_lots, max_lots)
 
                 self._last_size_details = {
                     "mode": "rl",
+                    "position_sizing_mode": sizing_mode,
                     "equity": equity,
                     "size_dollars": size_dollars,
                     "position_pct": size_dollars / equity if equity else 0.0,
+                    "per_lot_notional_usd": per_lot_notional_usd,
+                    "rl_lots": rl_lots,
+                    "risk_lots": risk_lots,
+                    "min_risk_lots": min_risk_lots,
                     "size_lots": size_lots,
                     "max_lots": max_lots,
+                    "min_position_lots": float(getattr(self.config, "min_position_lots", 0.01)),
+                    "rl_min_risk_utilization": min_util,
+                    "expected_drawdown_pips": expected_drawdown_pips,
                 }
 
-                logger.debug(f"RL position size: {size_lots:.2f} lots (${size_dollars:.0f})")
-
-                # Enforce minimum meaningful position size (same floor as heuristic)
-                risk_amount = equity * self.config.risk_per_trade_pct
-                min_rl_lots = max(0.10, risk_amount / (1000.0 * self.config.pip_value))
-                if size_lots < min_rl_lots:
-                    logger.warning(
-                        f"RL sizer returned tiny position ({size_lots:.2f} lots, "
-                        f"${size_dollars:.0f}). Overriding to minimum {min_rl_lots:.2f} lots."
-                    )
-                    size_lots = min_rl_lots
-                return round(max(0.10, size_lots), 2)
+                logger.debug(
+                    "RL position size (%s): rl=%.2f lots, risk_ref=%.2f lots, final=%.2f lots ($%.0f notional)",
+                    sizing_mode,
+                    rl_lots,
+                    risk_lots,
+                    size_lots,
+                    size_dollars,
+                )
+                min_position_lots = min(float(getattr(self.config, "min_position_lots", 0.01)), max_lots)
+                return round(max(min_position_lots, size_lots), 2)
 
             except Exception as e:
                 logger.warning(f"RL sizing failed, falling back to heuristic: {e}")
@@ -3182,31 +3419,8 @@ class ModularEnsembleInference:
         # =====================================================================
         # HEURISTIC RISK-BASED SIZING (fallback)
         # =====================================================================
-        risk_amount = equity * self.config.risk_per_trade_pct
-
-        # Minimum stop loss to prevent oversizing
-        if expected_drawdown_pips <= 5.0:
-            expected_drawdown_pips = 10.0  # Minimum 10 pip stop
-
-        # Risk-based position size: lots = risk_$ / (pips * pip_value)
-        # pip_value ~= $10 per pip per standard lot for most pairs
-        size_lots = risk_amount / (expected_drawdown_pips * self.config.pip_value)
-
-        # Apply liquidity limit for instrument
-        max_lots = self.config.max_lots_by_pair.get(
-            instrument,
-            self.config.max_lots_by_pair.get('DEFAULT', 0.5)
-        ) if instrument else 1.0
-
-        # Hard cap at liquidity limit
-        size_lots = min(size_lots, max_lots)
-
-        # Minimum position size - enforce meaningful trade size
-        # On a $100k account with 5% risk, minimum should be ~0.5 lots
-        # 0.01 lots = 1000 units = ~$1 profit per 10 pips = useless
-        min_risk_lots = risk_amount / (1000.0 * self.config.pip_value)  # At most 1000 pips SL
-        min_lots = max(0.10, min_risk_lots)  # At least 0.10 lots (10,000 units)
-        size_lots = max(min_lots, size_lots)
+        min_position_lots = min(float(getattr(self.config, "min_position_lots", 0.01)), max_lots)
+        size_lots = min(max_lots, max(min_position_lots, risk_lots))
 
         logger.debug(
             f"Position sizing: equity=${equity:,.0f} risk={risk_amount:.0f} "
@@ -3223,7 +3437,8 @@ class ModularEnsembleInference:
             "pip_value": self.config.pip_value,
             "size_lots": size_lots,
             "max_lots": max_lots,
-            "min_lots": min_lots,
+            "min_lots": min_position_lots,
+            "position_sizing_mode": sizing_mode,
         }
 
         return round(size_lots, 2)
@@ -3756,6 +3971,12 @@ class ModularEnsembleInference:
             self._gate_status = {'xgboost': True, 'random_forest': True, 'ridge': True}
             self._gate_issues = {}
 
+        # Track gate internals for diagnostics/transparency in CLI output.
+        momentum_fresh = False
+        momentum_override_by_tcn = False
+        tcn_strong = False
+        tcn_very_strong = False
+
         if self.config.permissive_mode:
             # GRACEFUL DEGRADATION: Use gates that are still usable
 
@@ -3770,7 +3991,10 @@ class ModularEnsembleInference:
             # Momentum gate: use XGBoost if available, else pass
             if self._gate_status.get('xgboost', False) and self.xgb is not None:
                 momentum_fresh = xgb_momentum >= rl_min_momentum
-                momentum_gate_passed = momentum_fresh or xgb_acceleration
+                if self.config.require_fresh_or_accel:
+                    momentum_gate_passed = momentum_fresh or xgb_acceleration
+                else:
+                    momentum_gate_passed = True
                 logger.debug(f"XGBoost gate ACTIVE: momentum={xgb_momentum:.3f}, threshold={rl_min_momentum:.3f}, passed={momentum_gate_passed}")
             else:
                 momentum_gate_passed = True
@@ -3812,9 +4036,13 @@ class ModularEnsembleInference:
             # MOMENTUM GATE: Pass if any of these are true:
             # 1. XGBoost momentum is fresh (above threshold)
             # 2. XGBoost detects acceleration
-            # 3. TCN is strong (override weak momentum readings)
+            # 3. Optional legacy behavior: TCN strong can override stale momentum
             momentum_fresh = xgb_momentum >= rl_min_momentum
-            momentum_gate_passed = momentum_fresh or xgb_acceleration or tcn_strong
+            if self.config.require_fresh_or_accel:
+                momentum_gate_passed = momentum_fresh or xgb_acceleration
+            else:
+                momentum_gate_passed = momentum_fresh or xgb_acceleration or tcn_strong
+                momentum_override_by_tcn = (not (momentum_fresh or xgb_acceleration)) and tcn_strong
 
             # RISK GATE: Slightly more lenient when TCN is confident (but not too much)
             # Tightened multipliers to prevent excessive risk in high-drawdown scenarios
@@ -3916,9 +4144,9 @@ class ModularEnsembleInference:
             gate_check_direction = 'long' if tcn_direction == 1 else 'short'
 
         # === DYNAMIC THRESHOLDS (LLM-powered, edge cases only) ===
-        rsi_low_threshold = 10.0
-        rsi_high_threshold = 90.0
-        adx_trend_threshold = 35.0
+        rsi_low_threshold = float(getattr(self.config, "rsi_extreme_low_threshold", 10.0))
+        rsi_high_threshold = float(getattr(self.config, "rsi_extreme_high_threshold", 90.0))
+        adx_trend_threshold = float(getattr(self.config, "adx_trend_contra_threshold", 35.0))
 
         if self.enable_llm:
             try:
@@ -3952,32 +4180,35 @@ class ModularEnsembleInference:
                 logger.debug(f"LLM threshold adjustment skipped: {e}")
 
         # === RSI EXTREME GATE ===
-        # Block trades that fight extreme RSI conditions
+        # Optional heuristic veto (profile-configurable).
+        rsi_gate_enabled = bool(getattr(self.config, "use_rsi_extreme_gate", True))
         rsi_gate_passed = True
         rsi_reason = None
         rsi_val = df['rsi'].iloc[-1] if 'rsi' in df.columns else 50.0
 
-        # Extreme oversold: block LONG (don't catch falling knife)
-        # Extreme overbought: block SHORT (don't short a rocket)
-        # Also block at absolute extremes (RSI=100 or RSI=0) regardless of direction
-        if rsi_val <= 2.0 or rsi_val >= 98.0:
-            # Absolute extreme — data quality issue or extreme conditions, block all
-            rsi_gate_passed = False
-            rsi_reason = f"rsi_extreme({f'{rsi_val:.1f}'})"
-        elif rsi_val < rsi_low_threshold and gate_check_direction == 'long':
-            rsi_gate_passed = False
-            rsi_reason = f"rsi_extreme_low({rsi_val:.1f})"
-        elif rsi_val > rsi_high_threshold and gate_check_direction == 'short':
-            rsi_gate_passed = False
-            rsi_reason = f"rsi_extreme_high({rsi_val:.1f})"
+        if rsi_gate_enabled:
+            # Extreme oversold: block LONG (don't catch falling knife)
+            # Extreme overbought: block SHORT (don't short a rocket)
+            # Also block at absolute extremes (RSI=100 or RSI=0) regardless of direction
+            if rsi_val <= 2.0 or rsi_val >= 98.0:
+                # Absolute extreme — data quality issue or extreme conditions, block all
+                rsi_gate_passed = False
+                rsi_reason = f"rsi_extreme({f'{rsi_val:.1f}'})"
+            elif rsi_val < rsi_low_threshold and gate_check_direction == 'long':
+                rsi_gate_passed = False
+                rsi_reason = f"rsi_extreme_low({rsi_val:.1f})"
+            elif rsi_val > rsi_high_threshold and gate_check_direction == 'short':
+                rsi_gate_passed = False
+                rsi_reason = f"rsi_extreme_high({rsi_val:.1f})"
 
         # === TREND CONTRADICTION GATE ===
-        # Block trades against strong established trends
+        # Optional heuristic veto (profile-configurable).
+        trend_gate_enabled = bool(getattr(self.config, "use_trend_contra_gate", True))
         trend_gate_passed = True
         trend_reason = None
         adx_val = df['adx'].iloc[-1] if 'adx' in df.columns else 0.0
 
-        if adx_val > adx_trend_threshold:  # Strong trend (threshold may be dynamic)
+        if trend_gate_enabled and adx_val > adx_trend_threshold:  # Strong trend (threshold may be dynamic)
             # Determine trend direction from price action
             price_trend = 'up' if df['close'].iloc[-1] > df['close'].iloc[-20] else 'down'
 
@@ -4000,6 +4231,46 @@ class ModularEnsembleInference:
             try:
                 # Extract features for meta-labeler (uses same features as TCN + primary probability)
                 meta_features = self._extract_tcn_features(df)
+
+                # [2026-02-14] Feature alignment fix: Load and apply feature indices for meta-labeler.
+                # Try pair-specific indices first, then generic.
+                try:
+                    pair_name = getattr(self, 'instrument', None) or getattr(self, '_current_instrument', None)
+                    feature_indices = None
+
+                    candidate_dirs: List[Path] = []
+                    if pair_name:
+                        candidate_dirs.append(self.model_dir / pair_name)
+                    candidate_dirs.append(self.model_dir)
+
+                    for model_dir in candidate_dirs:
+                        loaded = load_saved_feature_indices(str(model_dir))
+                        if loaded is not None:
+                            feature_indices = loaded
+                            break
+
+                    if feature_indices is not None:
+                        # Persist indices into meta-labeler to keep its internal
+                        # feature-construction path consistent with training.
+                        if getattr(self.meta_labeler, "primary_selected_indices", None) is None:
+                            self.meta_labeler.set_primary_feature_indices(np.asarray(feature_indices))
+
+                        # Also proactively align features here to avoid dimension drift
+                        # when primary_selected_indices is absent in older artifacts.
+                        idx = np.asarray(feature_indices, dtype=np.int64).reshape(-1)
+                        if idx.size > 0:
+                            max_idx = int(np.max(idx))
+                            cur_n = int(meta_features.shape[-1])
+                            if max_idx < cur_n and cur_n >= idx.size:
+                                meta_features = meta_features[..., idx]
+                                logger.debug(
+                                    "Feature alignment applied for meta-labeler: %d -> %d features",
+                                    cur_n,
+                                    meta_features.shape[-1],
+                                )
+                except Exception as align_err:
+                    # Log but continue - meta gate is fail-open on prediction errors.
+                    logger.debug(f"Feature alignment skipped for meta-labeler: {align_err}")
 
                 # Ensure we have the primary model's probability
                 primary_prob = np.array([[tcn_probability]], dtype=np.float32)
@@ -4098,7 +4369,9 @@ class ModularEnsembleInference:
             if not confidence_gate_passed:
                 reasons.append(f"low_confidence({ridge_confidence:.0f}<{self.config.min_confidence})")
             if not momentum_gate_passed:
-                reasons.append(f"dead_momentum({xgb_momentum:.2f})")
+                reasons.append(
+                    f"dead_momentum({xgb_momentum:.2f}<{rl_min_momentum:.2f},accel={str(xgb_acceleration).lower()})"
+                )
             if not risk_gate_passed:
                 if rf_drawdown_pct > self.config.max_drawdown_pct:
                     reasons.append(f"high_drawdown({rf_drawdown_pct:.2%})")
@@ -4130,6 +4403,7 @@ class ModularEnsembleInference:
                 rf_drawdown_pips,
                 equity,
                 instrument=getattr(self, '_current_instrument', None),
+                current_price=float(df['close'].iloc[-1]) if 'close' in df.columns else None,
                 features=rl_features,
                 tcn_probability=tcn_probability,
                 ridge_confidence=ridge_confidence,
@@ -4225,6 +4499,22 @@ class ModularEnsembleInference:
                 'intel_data': intel_data,
                 'volatility_regime': volatility_regime_name,
                 'using_technical_fallback': using_technical_fallback,
+                'gate_thresholds': {
+                    'min_tcn_probability': min_dir_prob,
+                    'min_confidence': rl_min_confidence,
+                    'min_momentum': rl_min_momentum,
+                    'max_drawdown_pct': rl_max_drawdown,
+                    'max_streak_prob': self.config.max_streak_prob,
+                    'require_fresh_or_accel': self.config.require_fresh_or_accel,
+                    'use_rsi_extreme_gate': rsi_gate_enabled,
+                    'use_trend_contra_gate': trend_gate_enabled,
+                    'rl_thresholds_applied': self._rl_gates_loaded,
+                },
+                'momentum_gate_details': {
+                    'fresh': momentum_fresh,
+                    'acceleration': bool(xgb_acceleration),
+                    'tcn_override': momentum_override_by_tcn,
+                },
                 **(
                     {'mc_uncertainty_std': mc_uncertainty_std}
                     if mc_uncertainty_std is not None
@@ -4483,6 +4773,19 @@ class ModularEnsembleInference:
             mc_status = "✗" if mc_std > self.config.max_uncertainty_std else "✓"
             gate_checks.append(f"MC Dropout: std={mc_std:.3f} (max={self.config.max_uncertainty_std}) {mc_status}")
 
+        gate_thresholds = signal.metadata.get('gate_thresholds', {}) if signal.metadata else {}
+        momentum_details = signal.metadata.get('momentum_gate_details', {}) if signal.metadata else {}
+        if gate_thresholds:
+            rl_note = "RL" if gate_thresholds.get('rl_thresholds_applied') else "CFG"
+            gate_checks.append(
+                "Thresholds: "
+                f"dir={float(gate_thresholds.get('min_tcn_probability', 0.0)):.2f}, "
+                f"conf={float(gate_thresholds.get('min_confidence', 0.0)):.1f}, "
+                f"mom={float(gate_thresholds.get('min_momentum', 0.0)):.2f}, "
+                f"dd={float(gate_thresholds.get('max_drawdown_pct', 0.0)):.2%} "
+                f"[{rl_note}]"
+            )
+
         # TCN direction
         if signal.tcn_direction is not None:
             dir_str = "LONG" if signal.tcn_direction == 1 else "SHORT"
@@ -4498,12 +4801,19 @@ class ModularEnsembleInference:
 
         # Ridge confidence
         status = "✓" if signal.confidence_gate_passed else "✗"
-        gate_checks.append(f"Ridge: {signal.ridge_confidence:.0f}/100 {status}")
+        min_conf = float(gate_thresholds.get('min_confidence', self.config.min_confidence)) if gate_thresholds else self.config.min_confidence
+        gate_checks.append(f"Ridge: {signal.ridge_confidence:.0f}/100 (min={min_conf:.1f}) {status}")
 
         # XGBoost momentum
         status = "✓" if signal.momentum_gate_passed else "✗"
+        min_mom = float(gate_thresholds.get('min_momentum', self.config.min_momentum)) if gate_thresholds else self.config.min_momentum
+        fresh = bool(momentum_details.get('fresh', signal.xgb_momentum >= min_mom))
+        override_note = ", override=tcn_strong" if bool(momentum_details.get('tcn_override', False)) else ""
+        rule_str = "fresh_or_accel" if bool(gate_thresholds.get('require_fresh_or_accel', self.config.require_fresh_or_accel)) else "allow_tcn_override"
         accel_str = "accel=true" if signal.xgb_acceleration else "accel=false"
-        gate_checks.append(f"XGBoost: momentum={signal.xgb_momentum:.2f}, {accel_str} {status}")
+        gate_checks.append(
+            f"XGBoost: momentum={signal.xgb_momentum:.2f} (min={min_mom:.2f}, fresh={str(fresh).lower()}, {accel_str}, rule={rule_str}{override_note}) {status}"
+        )
 
         # RF risk (display as percentage - the actual gate unit)
         status = "✓" if signal.risk_gate_passed else "✗"
@@ -4529,8 +4839,13 @@ class ModularEnsembleInference:
                 size_usd = details.get("size_dollars", 0.0)
                 size_lots = details.get("size_lots", 0.0)
                 max_lots = details.get("max_lots", 0.0)
+                sizing_mode = details.get("position_sizing_mode", "rl_hybrid")
+                rl_lots = details.get("rl_lots", size_lots)
+                min_risk_lots = details.get("min_risk_lots", 0.0)
                 gate_checks.append(
-                    f"Sizing: RL {pct:.1f}% equity (${size_usd:,.0f}) -> {size_lots:.2f} lots (cap {max_lots:.2f})"
+                    f"Sizing: RL[{sizing_mode}] {pct:.1f}% equity (${size_usd:,.0f}) -> "
+                    f"rl={rl_lots:.2f} / floor={min_risk_lots:.2f} / final={size_lots:.2f} lots "
+                    f"(cap {max_lots:.2f})"
                 )
             else:
                 risk_pct = details.get("risk_pct", 0.0) * 100

@@ -11,7 +11,7 @@ import pytest
 
 
 def test_rl_training_smoke():
-    from rl_position_sizing import GYM_AVAILABLE, SB3_AVAILABLE, RLConfig, RLPositionSizer
+    from src.training.rl.position_sizer import GYM_AVAILABLE, SB3_AVAILABLE, RLConfig, RLPositionSizer
 
     if not SB3_AVAILABLE or not GYM_AVAILABLE:
         pytest.skip("Optional RL dependencies not installed (SB3/gym).")

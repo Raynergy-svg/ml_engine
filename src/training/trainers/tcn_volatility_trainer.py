@@ -651,6 +651,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
 
     def load(self, path: str) -> None:
         """Load TCN Forward Volatility model."""
+        import tensorflow as tf
         from tensorflow import keras
 
         path = Path(path)
@@ -668,7 +669,61 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
         if TCNVolatilityDualHead is not None:
             custom_objects['TCNVolatilityDualHead'] = TCNVolatilityDualHead
 
-        self.model = keras.models.load_model(str(path), custom_objects=custom_objects)
+        # Cross-version loading strategies (Keras 2.x/3.x compatibility)
+        model = None
+        load_errors = []
+
+        try:
+            from src.utils.keras_model_loader import load_keras_model
+
+            model, load_metadata = load_keras_model(
+                str(path),
+                custom_objects=custom_objects,
+                compile=False,
+            )
+            if not load_metadata.get("success"):
+                model = None
+        except Exception as e:
+            load_errors.append(f"cross_version: {e}")
+            model = None
+
+        if model is None:
+            try:
+                model = keras.models.load_model(
+                    str(path),
+                    custom_objects=custom_objects,
+                    compile=False,
+                )
+            except Exception as e:
+                load_errors.append(f"keras_compile_false: {e}")
+
+        if model is None:
+            try:
+                model = tf.keras.models.load_model(
+                    str(path),
+                    custom_objects=custom_objects,
+                    compile=False,
+                )
+            except Exception as e:
+                load_errors.append(f"tf_keras_compile_false: {e}")
+
+        if model is None:
+            try:
+                model = keras.models.load_model(
+                    str(path),
+                    custom_objects=custom_objects,
+                    compile=False,
+                    safe_mode=False,
+                )
+            except Exception as e:
+                load_errors.append(f"safe_mode_false: {e}")
+
+        if model is None:
+            raise RuntimeError(
+                f"Failed to load TCN volatility model from {path}. Errors: {'; '.join(load_errors)}"
+            )
+
+        self.model = model
 
         meta_path = path.with_suffix('.meta.pkl')
         with open(meta_path, 'rb') as f:

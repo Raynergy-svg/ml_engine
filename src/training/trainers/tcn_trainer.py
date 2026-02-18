@@ -306,11 +306,119 @@ class TCNTrainer(BaseTrainer):
 
         return weights_loaded, prev_val_acc
 
+    def _freeze_encoder_layers(
+        self,
+        num_layers: int = 0,
+    ) -> Tuple[int, List[str]]:
+        """Freeze the first N TCN convolutional layers.
+
+        This method is critical for transfer learning scenarios where we want
+        to preserve pretrained features in early TCN layers while allowing
+        later layers to adapt to new data.
+
+        Args:
+            num_layers: Number of TCN conv layers to freeze (0 = none).
+                Uses config.warm_start_encoder_layers_to_freeze if not specified.
+
+        Returns:
+            Tuple of (frozen_count, trainable_layer_names).
+
+        Note:
+            - Freezing is non-persistent: layers can be unfrozen later
+            - Uses layer.trainable = False (TensorFlow standard)
+            - Matches layers by name pattern 'tcn_conv_N'
+
+        Example:
+            >>> frozen, trainable = trainer._freeze_encoder_layers(2)
+            >>> print(f"Frozen: {frozen}, Trainable: {trainable}")
+            Frozen: 2, Trainable: ['tcn_conv_2', 'tcn_conv_3', 'output_head']
+        """
+        # Guard clause: handle None or negative
+        if num_layers is None or num_layers <= 0:
+            logger.info("🔓 TCN: No encoder layers to freeze (num_layers=%s)", num_layers)
+            return 0, []
+
+        # Guard clause: model not initialized
+        if not hasattr(self, 'model') or self.model is None:
+            logger.warning("⚠️ TCN: Cannot freeze layers - model not initialized")
+            return 0, []
+
+        frozen_count = 0
+        trainable_layers = []
+        tcn_layers_found = []
+
+        # First pass: identify all TCN conv layers
+        for layer in self.model.layers:
+            if layer.name.startswith("tcn_conv_"):
+                tcn_layers_found.append(layer.name)
+
+        # Log if fewer layers than requested
+        if len(tcn_layers_found) < num_layers:
+            logger.warning(
+                "⚠️ TCN: Requested to freeze %d layers but only %d found: %s",
+                num_layers, len(tcn_layers_found), tcn_layers_found
+            )
+
+        # Second pass: freeze layers
+        for layer in self.model.layers:
+            layer_name = layer.name
+
+            if layer_name.startswith("tcn_conv_"):
+                # Extract layer index from name (tcn_conv_0 -> 0)
+                try:
+                    layer_idx = int(layer_name.split("_")[-1])
+                except (ValueError, IndexError):
+                    logger.warning("⚠️ TCN: Could not parse layer index from '%s'", layer_name)
+                    continue
+
+                if layer_idx < num_layers:
+                    # Freeze this layer
+                    layer.trainable = False
+                    frozen_count += 1
+                    logger.info("🔒 Frozen TCN layer: %s (index %d)", layer_name, layer_idx)
+                else:
+                    # Keep trainable
+                    layer.trainable = True
+                    trainable_layers.append(layer_name)
+            elif layer.trainable:
+                # Track other trainable layers (output heads, etc.)
+                # Skip common non-TCN layers
+                if not any(x in layer_name.lower() for x in ['input', 'dropout', 'batch_normalization']):
+                    trainable_layers.append(layer_name)
+
+        logger.info(
+            "🔒 TCN Freezing Summary: %d layers frozen, %d trainable layers remaining",
+            frozen_count, len(trainable_layers)
+        )
+
+        return frozen_count, trainable_layers
+
+    def _unfreeze_next_layer(self) -> int:
+        """Unfreeze the next frozen TCN layer (for gradual unfreezing).
+
+        Returns:
+            Number of layers unfrozen (0 or 1).
+        """
+        if not hasattr(self, 'model') or self.model is None:
+            return 0
+
+        # Find the lowest-index frozen layer
+        for layer in sorted(
+            [layer for layer in self.model.layers if layer.name.startswith("tcn_conv_")],
+            key=lambda layer: int(layer.name.split("_")[-1])
+        ):
+            if not layer.trainable:
+                layer.trainable = True
+                logger.info("🔓 Gradual unfreeze: %s now trainable", layer.name)
+                return 1
+
+        return 0
+
     def _create_tcn_callbacks(
         self, keras_module: Any
     ) -> List[Any]:
         """Create callbacks for TCN training."""
-        return [
+        callbacks = [
             RichEpochCallback(
                 model_name="TCN Volatility Regime",
                 total_epochs=self.config.epochs,
@@ -347,6 +455,58 @@ class TCNTrainer(BaseTrainer):
                 ),
             ),
         ]
+
+        self._add_tcn_gradual_unfreeze_callback(callbacks, keras_module)
+        return callbacks
+
+    def _add_tcn_gradual_unfreeze_callback(
+        self, callbacks: List[Any], keras_module: Any
+    ) -> None:
+        """Wire gradual unfreezing into TCN warm-start training."""
+        if not self._is_warm_start:
+            return
+        if not getattr(self.config, "warm_start_freeze_encoder", True):
+            return
+        if not getattr(self.config, "warm_start_gradual_unfreeze", True):
+            return
+
+        unfreeze_after_epochs = getattr(self.config, "warm_start_unfreeze_epochs", 10)
+        if unfreeze_after_epochs <= 0:
+            logger.info("🔓 TCN gradual unfreeze disabled (warm_start_unfreeze_epochs=0)")
+            return
+
+        interval_epochs = 5
+        trainer_self = self
+
+        class TCNGradualUnfreezeCallback(keras_module.callbacks.Callback):
+            def __init__(self):
+                super().__init__()
+                self._all_layers_unfrozen_logged = False
+
+            def on_epoch_begin(self, epoch, logs=None):
+                if epoch < unfreeze_after_epochs:
+                    return
+                if (epoch - unfreeze_after_epochs) % interval_epochs != 0:
+                    return
+
+                unfrozen_count = trainer_self._unfreeze_next_layer()
+                if unfrozen_count > 0:
+                    logger.info(
+                        "🔓 TCN gradual unfreeze at epoch %d: +%d layer (interval=%d epochs)",
+                        epoch,
+                        unfrozen_count,
+                        interval_epochs,
+                    )
+                elif not self._all_layers_unfrozen_logged:
+                    logger.info("✅ TCN gradual unfreeze complete: no frozen encoder layers remain")
+                    self._all_layers_unfrozen_logged = True
+
+        callbacks.append(TCNGradualUnfreezeCallback())
+        logger.info(
+            "🔓 TCN gradual unfreeze enabled: start_epoch=%d, interval=%d epochs",
+            unfreeze_after_epochs,
+            interval_epochs,
+        )
 
     def _load_model_native(self, path: Path, keras_module: Any) -> bool:
         """Try loading model in native .keras format."""
@@ -477,6 +637,21 @@ class TCNTrainer(BaseTrainer):
                         f"🔥 Warm-start LR reduction: {self.config.learning_rate} → "
                         f"{effective_lr} (factor={warm_start_lr_factor})"
                     )
+
+                    # Freeze encoder layers if configured for warm-start
+                    if getattr(self.config, 'warm_start_freeze_encoder', True):
+                        freeze_count = getattr(
+                            self.config,
+                            'warm_start_encoder_layers_to_freeze',
+                            2  # Default from config
+                        )
+                        frozen, trainable = self._freeze_encoder_layers(freeze_count)
+                        if frozen > 0:
+                            logger.info(
+                                "🔒 Warm-start: Frozen %d TCN encoder layers, "
+                                "%d layers remain trainable",
+                                frozen, len(trainable)
+                            )
                 else:
                     logger.warning(f"⚠️ Could not load warm-start weights from {warm_start_path}")
             except Exception as e:

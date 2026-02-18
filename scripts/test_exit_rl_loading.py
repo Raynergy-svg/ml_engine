@@ -114,12 +114,17 @@ def main():
     # Step 7: Test Position Sizer RL
     print("\n7. Testing Position Sizer RL...")
     try:
-        from rl_position_sizing import RLPositionSizer
+        from src.training.rl.position_sizer import RLPositionSizer
         sizer = RLPositionSizer()
         loaded = sizer.load()
         print(f"   ✅ Position Sizer loaded: {loaded}")
         if loaded:
-            features = np.random.randn(20)  # 20 features expected
+            expected_n = (
+                int(getattr(sizer.scaler, "n_features_in_", 0))
+                if getattr(sizer, "scaler", None) is not None
+                else max(1, int(getattr(getattr(sizer.model, "observation_space", None), "shape", [7])[0]) - 6)
+            )
+            features = np.random.randn(expected_n)
             ensemble_pred = np.array([0.65, 0.55])
             size = sizer.get_position_size(features, ensemble_pred, account_equity=100000)
             print(f"   ✅ Position size for $100k account: ${size:.2f}")

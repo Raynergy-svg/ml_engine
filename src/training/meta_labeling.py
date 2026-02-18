@@ -30,6 +30,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+# [2026-02-14] Feature alignment fix: Import feature alignment utilities
+from src.training.feature_alignment import save_feature_indices
+
 logger = logging.getLogger(__name__)
 
 # Try to import xgboost for meta-model
@@ -57,8 +60,9 @@ class MetaLabelingConfig:
     colsample_bytree: float = 0.7  # Column subsampling
     min_child_weight: int = 5  # Min samples per leaf
     early_stopping_rounds: int = 30  # Early stopping patience
-    max_overfitting_gap: float = 0.15  # Max train-val gap before fallback
-    auto_tune: bool = False  # Enable hyperparameter grid search
+    max_overfitting_gap: float = 0.10  # Reduced from 0.15 for stricter threshold
+    auto_tune: bool = True  # Enable auto-tuning fallback
+    dropout: float = 0.35  # Add explicit dropout control
 
     # Label generation
     min_confidence_threshold: float = 0.55  # Trades where meta-confidence >= this
@@ -90,12 +94,35 @@ class MetaLabeler:
     signal will result in a profitable trade.
     """
 
-    def __init__(self, config: Optional[MetaLabelingConfig] = None):
+    def __init__(
+        self,
+        config: Optional[MetaLabelingConfig] = None,
+        pair_name: Optional[str] = None,
+        model_dir: Optional[str] = None,
+    ):
         self.config = config or MetaLabelingConfig()
         self.meta_model = None
         self.is_fitted = False
         self.feature_names: List[str] = []
         self._primary_accuracy: float = 0.5
+        # [2026-02-14] Feature alignment fix: Store primary model's feature selection
+        self.primary_selected_indices: Optional[np.ndarray] = None
+        # [2026-02-14] Feature alignment fix: Store pair name and model dir for persistence
+        self.pair_name = pair_name
+        self.model_dir = model_dir
+
+    def set_primary_feature_indices(self, indices: np.ndarray) -> None:
+        """Store primary model's feature selection indices for alignment.
+        
+        [2026-02-14] Feature alignment fix: This must be called during training
+        after the primary model performs feature selection, so that during inference
+        the meta-labeler can apply the same feature selection before prediction.
+        
+        Args:
+            indices: Array of feature indices selected by the primary model
+        """
+        self.primary_selected_indices = np.asarray(indices)
+        logger.info(f"Meta-labeler: Stored {len(indices)} primary feature indices for alignment")
 
     def generate_meta_labels(
         self,
@@ -120,6 +147,15 @@ class MetaLabeler:
             - meta_labels: Binary labels (1=primary was correct)
             - meta_weights: Sample weights
         """
+        # [2026-02-14] Feature alignment fix: VALIDATION POINT 1 - Check input dimensions
+        assert features.ndim in [2, 3], f"Features must be 2D or 3D array, got {features.ndim}D"
+        assert len(features) == len(primary_predictions), (
+            f"Feature/prediction count mismatch: {len(features)} vs {len(primary_predictions)}"
+        )
+        assert len(features) == len(actual_outcomes), (
+            f"Feature/outcome count mismatch: {len(features)} vs {len(actual_outcomes)}"
+        )
+        
         # Primary model's binary predictions
         primary_binary = (primary_predictions >= 0.5).astype(np.float32)
 
@@ -502,6 +538,29 @@ class MetaLabeler:
         """
         if not self.is_fitted:
             raise RuntimeError("Meta-model not fitted. Call fit() first.")
+        
+        # [2026-02-14] Feature alignment fix: Apply stored primary feature selection
+        if self.primary_selected_indices is not None:
+            original_shape = features.shape
+            indices = np.asarray(self.primary_selected_indices, dtype=np.int64).reshape(-1)
+            if indices.size > 0:
+                max_idx = int(np.max(indices))
+                current_n = int(original_shape[-1])
+                if max_idx < current_n:
+                    if features.ndim == 2:
+                        features = features[:, indices]
+                    elif features.ndim == 3:
+                        features = features[..., indices]
+                    logger.debug(
+                        f"Applied primary feature selection: {original_shape[-1]} -> {features.shape[-1]} features"
+                    )
+                else:
+                    logger.warning(
+                        "Stored primary feature indices are out of bounds for inference features "
+                        "(max_idx=%d, available=%d). Skipping index-based alignment.",
+                        max_idx,
+                        current_n,
+                    )
 
         # Build meta-features (same as training, but no outcomes needed)
         meta_feature_list = []
@@ -520,32 +579,25 @@ class MetaLabeler:
             meta_feature_list.append(np.abs(primary_predictions - 0.5).reshape(-1, 1))
 
         meta_X = np.concatenate(meta_feature_list, axis=1).astype(np.float32)
+        
+        # [2026-02-14] Feature alignment fix: keep visibility on mismatch but do not
+        # hard-fail before alignment fallback is attempted.
+        if self.is_fitted and hasattr(self.meta_model, 'n_features_in_'):
+            expected = self.meta_model.n_features_in_
+            actual = meta_X.shape[-1]
+            if actual != expected:
+                logger.warning(
+                    "Feature mismatch before alignment: meta-model expects %d features, got %d. "
+                    "Primary indices stored: %s",
+                    expected,
+                    actual,
+                    self.primary_selected_indices is not None,
+                )
 
         # Handle feature shape mismatch between training and inference.
         # The meta-labeler may have been trained on a different feature set
         # (e.g., legacy pipeline with 80 features vs modular with 49).
-        expected_n = getattr(self.meta_model, 'n_features_in_', None)
-        if expected_n is not None and meta_X.shape[1] != expected_n:
-            import logging as _logging
-            _ml_logger = _logging.getLogger(__name__)
-            actual_n = meta_X.shape[1]
-            if actual_n < expected_n:
-                # Pad with zeros to match expected feature count
-                _ml_logger.warning(
-                    f"Meta-labeler feature mismatch: got {actual_n}, expected {expected_n}. "
-                    f"Padding with {expected_n - actual_n} zero features. "
-                    f"Retrain meta-labeler with 'buddy train' to fix permanently."
-                )
-                padding = np.zeros((meta_X.shape[0], expected_n - actual_n), dtype=np.float32)
-                meta_X = np.concatenate([meta_X, padding], axis=1)
-            else:
-                # Truncate to expected feature count
-                _ml_logger.warning(
-                    f"Meta-labeler feature mismatch: got {actual_n}, expected {expected_n}. "
-                    f"Truncating to first {expected_n} features. "
-                    f"Retrain meta-labeler with 'buddy train' to fix permanently."
-                )
-                meta_X = meta_X[:, :expected_n]
+        meta_X = self._align_features(meta_X)
 
         # Get probability predictions
         if hasattr(self.meta_model, "predict_proba"):
@@ -556,6 +608,153 @@ class MetaLabeler:
             proba = self.meta_model.predict(meta_X)
 
         return proba.astype(np.float32)
+
+    def _align_features(self, meta_X: np.ndarray) -> np.ndarray:
+        """
+        Align features to match model expectations.
+
+        Handles feature dimension mismatches between training and inference
+        by padding with zeros or truncating as needed.
+
+        Args:
+            meta_X: Meta-feature array
+
+        Returns:
+            Aligned feature array
+        """
+        expected_n = getattr(self.meta_model, 'n_features_in_', None)
+        if expected_n is None:
+            return meta_X
+        
+        actual_n = meta_X.shape[1]
+        
+        if actual_n == expected_n:
+            return meta_X
+        
+        if actual_n < expected_n:
+            # Pad with zeros to match expected feature count
+            logger.warning(
+                f"Meta-labeler feature mismatch: got {actual_n}, expected {expected_n}. "
+                f"Padding with {expected_n - actual_n} zero features. "
+                f"Retrain meta-labeler with 'buddy train' to fix permanently."
+            )
+            padding = np.zeros((meta_X.shape[0], expected_n - actual_n), dtype=np.float32)
+            meta_X = np.concatenate([meta_X, padding], axis=1)
+        else:
+            # Truncate to expected feature count
+            logger.warning(
+                f"Meta-labeler feature mismatch: got {actual_n}, expected {expected_n}. "
+                f"Truncating to first {expected_n} features. "
+                f"Retrain meta-labeler with 'buddy train' to fix permanently."
+            )
+            meta_X = meta_X[:, :expected_n]
+        
+        return meta_X
+
+    def _validate_features(self, X: np.ndarray, context: str = "training") -> np.ndarray:
+        """Validate and align features for meta-labeler.
+
+        Provides stricter validation than _align_features by raising errors
+        when feature alignment cannot be performed reliably.
+
+        Args:
+            X: Input features
+            context: Context string for error messages
+
+        Returns:
+            Validated/aligned features
+
+        Raises:
+            ValueError: If features cannot be aligned and no fallback is available
+        """
+        expected = getattr(self.meta_model, 'n_features_in_', None)
+        actual = X.shape[1]
+
+        if expected is None:
+            # First training - set expected
+            self.n_features_in_ = actual
+            logger.info(f"Meta-labeler: Setting expected features to {actual}")
+            return X
+
+        if actual == expected:
+            return X
+
+        # Try to align using saved indices
+        if hasattr(self, 'feature_indices_') and self.feature_indices_ is not None:
+            if len(self.feature_indices_) <= actual:
+                aligned = X[:, self.feature_indices_]
+                logger.info(f"Aligned features: {actual} → {aligned.shape[1]}")
+                return aligned
+
+        # Fall back to _align_features padding/truncation
+        logger.warning(
+            f"Feature mismatch during {context}: got {actual} features, "
+            f"expected {expected}. Using fallback alignment."
+        )
+        return self._align_features(X)
+
+    def retrain_with_current_features(
+        self,
+        features: np.ndarray,
+        primary_predictions: np.ndarray,
+        actual_outcomes: np.ndarray,
+        *,
+        features_val: Optional[np.ndarray] = None,
+        predictions_val: Optional[np.ndarray] = None,
+        outcomes_val: Optional[np.ndarray] = None,
+        verbose: bool = True,
+    ) -> Dict[str, float]:
+        """Retrain meta-labeler with current feature pipeline.
+
+        Use this when feature mismatch errors occur during inference.
+        This resets the expected feature count and retrains the meta-model
+        on the current feature set.
+
+        Args:
+            features: Current training features (n, features)
+            primary_predictions: Primary model's predictions on training data
+            actual_outcomes: True outcomes for training data
+            features_val: Optional validation features
+            predictions_val: Primary model predictions on validation
+            outcomes_val: True outcomes for validation
+            verbose: Print training progress
+
+        Returns:
+            Training metrics dict
+        """
+        logger.info("Retraining meta-labeler with current features...")
+
+        # Generate meta-features from current data
+        meta_features, meta_labels, meta_weights = self.generate_meta_labels(
+            features, primary_predictions, actual_outcomes
+        )
+
+        # Reset feature expectation
+        self.n_features_in_ = meta_features.shape[1]
+        if verbose:
+            logger.info(f"Meta-labeler retraining on {meta_features.shape[1]} features")
+
+        # Validate dimensions
+        if meta_features.shape[0] != len(meta_labels):
+            raise ValueError(
+                f"Meta-features and labels mismatch: "
+                f"{meta_features.shape[0]} samples vs {len(meta_labels)} labels"
+            )
+
+        # Reset model to force retraining
+        self.is_fitted = False
+        self.meta_model = None
+
+        # Train with new features
+        return self.fit(
+            features,
+            primary_predictions,
+            actual_outcomes,
+            features_val=features_val,
+            predictions_val=predictions_val,
+            outcomes_val=outcomes_val,
+            verbose=verbose,
+        )
 
     def should_trade(
         self,
@@ -612,7 +811,9 @@ class MetaLabeler:
         return sizes * base_size
 
     def save(self, path: Union[str, Path]) -> None:
-        """Save meta-labeler to disk."""
+        """Save meta-labeler to disk with feature indices."""
+        import joblib
+        
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -622,6 +823,12 @@ class MetaLabeler:
             "is_fitted": self.is_fitted,
             "feature_names": self.feature_names,
             "primary_accuracy": self._primary_accuracy,
+            "n_features_in_": getattr(self.meta_model, 'n_features_in_', None),
+            # [2026-02-14] Feature alignment fix: Store primary model's feature selection
+            "primary_selected_indices": self.primary_selected_indices,
+            # [2026-02-14] Feature alignment fix: Store pair name and model dir
+            "pair_name": self.pair_name,
+            "model_dir": self.model_dir,
         }
 
         if hasattr(self, "_scaler"):
@@ -629,6 +836,28 @@ class MetaLabeler:
 
         with open(path, "wb") as f:
             pickle.dump(save_dict, f)
+
+        # Also save feature indices separately for easier access
+        if hasattr(self.meta_model, 'n_features_in_'):
+            indices_path = path.parent / "meta_feature_indices.pkl"
+            joblib.dump({
+                'n_features_in_': self.meta_model.n_features_in_,
+                'feature_names': self.feature_names,
+                # [2026-02-14] Feature alignment fix: Include primary indices
+                'primary_selected_indices': self.primary_selected_indices,
+            }, indices_path)
+            logger.info(f"Saved meta-feature indices to {indices_path}")
+
+        # [2026-02-14] Feature alignment fix: Save primary feature indices using feature_alignment module
+        # This ensures the indices are saved in a standardized location for inference
+        if self.primary_selected_indices is not None:
+            model_dir = self.model_dir or str(path.parent)
+            save_feature_indices(
+                selected_indices=self.primary_selected_indices,
+                model_dir=model_dir,
+                filename="meta_primary_feature_indices.pkl",
+            )
+            logger.info(f"Saved primary feature indices to {model_dir}/meta_primary_feature_indices.pkl")
 
         logger.info(f"Saved meta-labeler to {path}")
 
@@ -647,6 +876,15 @@ class MetaLabeler:
 
         if "scaler" in save_dict:
             labeler._scaler = save_dict["scaler"]
+        
+        # [2026-02-14] Feature alignment fix: Restore primary feature selection indices
+        labeler.primary_selected_indices = save_dict.get("primary_selected_indices")
+        if labeler.primary_selected_indices is not None:
+            logger.info(f"Loaded {len(labeler.primary_selected_indices)} primary feature indices from saved model")
+        
+        # [2026-02-14] Feature alignment fix: Restore pair name and model dir
+        labeler.pair_name = save_dict.get("pair_name")
+        labeler.model_dir = save_dict.get("model_dir")
 
         return labeler
 
@@ -662,6 +900,8 @@ def train_meta_labeler(
     primary_probs_val: np.ndarray = None,
     config: Optional[MetaLabelingConfig] = None,
     verbose: bool = True,
+    pair_name: Optional[str] = None,
+    model_dir: Optional[str] = None,
 ) -> Tuple[MetaLabeler, Dict[str, float]]:
     """
     Train a meta-labeler for an existing primary model.
@@ -679,6 +919,8 @@ def train_meta_labeler(
         primary_probs_val: Pre-computed primary model probabilities for validation set
         config: Meta-labeling configuration
         verbose: Print progress
+        pair_name: [2026-02-14] Feature alignment fix: Pair name for feature index persistence
+        model_dir: [2026-02-14] Feature alignment fix: Model directory for feature index persistence
 
     Returns:
         Tuple of (trained MetaLabeler, metrics dict)
@@ -712,7 +954,7 @@ def train_meta_labeler(
         )
 
     # Create and train meta-labeler
-    labeler = MetaLabeler(config)
+    labeler = MetaLabeler(config, pair_name=pair_name, model_dir=model_dir)
 
     metrics = labeler.fit(
         X_train,

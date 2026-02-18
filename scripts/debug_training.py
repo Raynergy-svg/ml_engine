@@ -77,7 +77,7 @@ def main():
     # 7. Check RL module
     print("\n🧪 5. MODULE IMPORTS")
     try:
-        from rl_position_sizing import RLPositionSizer  # noqa: F401
+        from src.training.rl.position_sizer import RLPositionSizer  # noqa: F401
         print("   ✓ RLPositionSizer imported")
     except ImportError as e:
         print(f"   ✗ RLPositionSizer import failed: {e}")
@@ -114,7 +114,7 @@ def main():
     # 9. Test RL Environment
     print("\n🎮 7. RL ENVIRONMENT TEST")
     try:
-        from rl_position_sizing import RLPositionSizer as _RLPositionSizer
+        from src.training.rl.position_sizer import RLPositionSizer as _RLPositionSizer
         sizer = _RLPositionSizer()
         print("   ✓ RLPositionSizer initialized")
         print(f"   Model path: {sizer.model_path}")

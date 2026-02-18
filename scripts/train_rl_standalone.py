@@ -64,7 +64,20 @@ def create_progress_callback(total_timesteps: int, progress: Progress, task_id):
 def main():
     parser = argparse.ArgumentParser(description="Train RL Position Sizer (standalone)")
     parser.add_argument("--data", required=True, help="Path to training data .npz file")
-    parser.add_argument("--timesteps", type=int, default=100000, help="Total training timesteps")
+    parser.add_argument("--timesteps", type=int, default=50000, help="Total training timesteps")
+    parser.add_argument("--learning-rate", type=float, default=3e-4, help="PPO learning rate")
+    parser.add_argument("--n-steps", type=int, default=256, help="PPO rollout steps per update")
+    parser.add_argument("--batch-size", type=int, default=32, help="PPO minibatch size")
+    parser.add_argument("--n-epochs", type=int, default=5, help="PPO epochs per update")
+    parser.add_argument("--gamma", type=float, default=0.99, help="Discount factor")
+    parser.add_argument("--gae-lambda", type=float, default=0.95, help="GAE lambda")
+    parser.add_argument("--sequence-length", type=int, default=60, help="TradingEnv sequence length")
+    parser.add_argument("--max-position-pct", type=float, default=0.10, help="Maximum position percentage")
+    parser.add_argument("--min-position-pct", type=float, default=0.01, help="Minimum position percentage")
+    parser.add_argument("--max-drawdown-pct", type=float, default=0.10, help="Maximum drawdown percentage")
+    parser.add_argument("--daily-loss-limit-pct", type=float, default=0.03, help="Daily loss limit percentage")
+    parser.add_argument("--use-extended-obs", action="store_true", help="Enable extended observation features (reserved)")
+    parser.add_argument("--use-learned-reward", action="store_true", help="Enable learned reward shaping (reserved)")
     parser.add_argument("--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
     
@@ -112,7 +125,7 @@ def main():
         steps[0] = ["✓", "Load training data", f"{len(features):,} samples"]
         
         # Step 2: Import RL (trigger lazy imports before checking flags)
-        from rl_position_sizing import (
+        from src.training.rl.position_sizer import (
             RLPositionSizer, RLConfig,
             _ensure_gym_imported, _ensure_sb3_imported,
         )
@@ -133,11 +146,24 @@ def main():
         # Step 3: Configure
         config = RLConfig(
             total_timesteps=args.timesteps,
-            max_drawdown_pct=0.10,
-            max_position_pct=0.05,
+            learning_rate=args.learning_rate,
+            n_steps=args.n_steps,
+            batch_size=args.batch_size,
+            n_epochs=args.n_epochs,
+            gamma=args.gamma,
+            gae_lambda=args.gae_lambda,
+            sequence_length=args.sequence_length,
+            max_drawdown_pct=args.max_drawdown_pct,
+            max_position_pct=args.max_position_pct,
+            min_position_pct=args.min_position_pct,
+            daily_loss_limit_pct=args.daily_loss_limit_pct,
         )
         sizer = RLPositionSizer(config)
-        steps[2] = ["✓", "Configure PPO agent", f"{args.timesteps:,} steps"]
+        steps[2] = [
+            "✓",
+            "Configure PPO agent",
+            f"{args.timesteps:,} steps • n_steps={args.n_steps}",
+        ]
         
         # Print checklist before training
         console.print()
@@ -179,8 +205,19 @@ def main():
             "stats": stats,
             "config": {
                 "total_timesteps": config.total_timesteps,
+                "learning_rate": config.learning_rate,
+                "n_steps": config.n_steps,
+                "batch_size": config.batch_size,
+                "n_epochs": config.n_epochs,
+                "gamma": config.gamma,
+                "gae_lambda": config.gae_lambda,
+                "sequence_length": config.sequence_length,
                 "max_drawdown_pct": config.max_drawdown_pct,
                 "max_position_pct": config.max_position_pct,
+                "min_position_pct": config.min_position_pct,
+                "daily_loss_limit_pct": config.daily_loss_limit_pct,
+                "use_extended_obs": args.use_extended_obs,
+                "use_learned_reward": args.use_learned_reward,
             },
         }
         meta_path = model_dir / "rl_position_sizer.meta.json"

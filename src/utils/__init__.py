@@ -13,6 +13,7 @@ from src.utils.instrument_validation import (
     get_pip_value,
     is_jpy_pair,
 )
+from src.utils.premium_output import PremiumConsole, PremiumConfig, StatusGlyphs
 
 __all__ = [
     # Core utils
@@ -31,4 +32,8 @@ __all__ = [
     "get_pair_model_paths",
     "get_pip_value",
     "is_jpy_pair",
+    # Premium output
+    "PremiumConsole",
+    "PremiumConfig",
+    "StatusGlyphs",
 ]

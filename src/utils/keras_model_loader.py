@@ -26,6 +26,49 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _compact_error(exc: Exception, max_len: int = 320) -> str:
+    """Return a compact single-line error message for logging."""
+    msg = str(exc).replace("\n", " ").strip()
+    if len(msg) > max_len:
+        return msg[: max_len - 3] + "..."
+    return msg
+
+
+_EXPECTED_COMPAT_ERROR_FRAGMENTS = (
+    "could not deserialize class 'functional' because its parent module "
+    "keras.src.engine.functional cannot be imported",
+    "keras.src.engine.functional",
+)
+
+
+def _is_expected_compat_load_error(err: Union[str, Exception]) -> bool:
+    """True for known cross-version Keras deserialization mismatches."""
+    msg = str(err).lower()
+    return any(fragment in msg for fragment in _EXPECTED_COMPAT_ERROR_FRAGMENTS)
+
+
+def _model_prefers_tf_keras(model_metadata: Dict[str, Any]) -> bool:
+    """Infer whether model was likely saved with Keras 2.x/tf.keras serialization."""
+    saved_version = str(model_metadata.get('keras_version') or "").strip()
+    if saved_version.startswith("2."):
+        return True
+
+    cfg = model_metadata.get('config')
+    cfg_blob = json.dumps(cfg, ensure_ascii=True).lower() if cfg is not None else ""
+    return "keras.src.engine." in cfg_blob or "tensorflow.python.keras" in cfg_blob
+
+
+def _model_prefers_keras_native(model_metadata: Dict[str, Any]) -> bool:
+    """Infer whether model was likely saved with native Keras 3 serialization."""
+    saved_version = str(model_metadata.get('keras_version') or "").strip()
+    if saved_version.startswith("3."):
+        return True
+
+    cfg = model_metadata.get('config')
+    cfg_blob = json.dumps(cfg, ensure_ascii=True).lower() if cfg is not None else ""
+    return "keras.src.models." in cfg_blob
+
+
 # =============================================================================
 # UTILITY FUNCTIONS
 # =============================================================================
@@ -410,8 +453,9 @@ def load_with_keras_native(
         # If it's an optimizer issue, retry with compile=False
         if compile and ('optimizer' in error_str or 'warmup' in error_str.lower() or
                         'schedule' in error_str.lower() or 'deserialize' in error_str):
-            logger.warning(f"Optimizer/schedule issue detected, retrying with compile=False: {e}")
-            metadata['warnings'].append(f"Optimizer issue: {e}")
+            err = _compact_error(e)
+            logger.warning(f"Optimizer/schedule issue detected, retrying with compile=False: {err}")
+            metadata['warnings'].append(f"Optimizer issue: {err}")
 
             try:
                 model = keras.models.load_model(
@@ -431,14 +475,22 @@ def load_with_keras_native(
                 return model, metadata
 
             except Exception as retry_e:
-                error_msg = f"Failed to load model even with compile=False: {retry_e}"
+                error_msg = f"Failed to load model even with compile=False: {_compact_error(retry_e)}"
                 metadata['warnings'].append(error_msg)
                 logger.error(error_msg)
                 raise Exception(error_msg) from retry_e
 
-        error_msg = f"Failed to load model with native keras: {str(e)}"
+        compact = _compact_error(e)
+        error_msg = f"Failed to load model with native keras: {compact}"
         metadata['warnings'].append(error_msg)
-        logger.error(error_msg)
+        if _is_expected_compat_load_error(compact):
+            logger.debug(
+                "Native keras compatibility miss for %s (will fallback): %s",
+                model_path,
+                compact,
+            )
+        else:
+            logger.error(error_msg)
         raise Exception(error_msg) from e
 
 
@@ -525,8 +577,9 @@ def load_with_tf_keras(
 
         # Handle optimizer variable mismatch - retry without optimizer
         if compile and ('optimizer' in error_str or 'variable' in error_str or 'mismatch' in error_str):
-            logger.warning(f"Optimizer state mismatch detected, retrying with compile=False: {e}")
-            metadata['warnings'].append(f"Optimizer state mismatch: {e}")
+            err = _compact_error(e)
+            logger.warning(f"Optimizer state mismatch detected, retrying with compile=False: {err}")
+            metadata['warnings'].append(f"Optimizer state mismatch: {err}")
 
             try:
                 model = keras.models.load_model(
@@ -546,12 +599,12 @@ def load_with_tf_keras(
                 return model, metadata
 
             except Exception as retry_e:
-                error_msg = f"Failed to load model even without optimizer: {retry_e}"
+                error_msg = f"Failed to load model even without optimizer: {_compact_error(retry_e)}"
                 metadata['warnings'].append(error_msg)
                 logger.error(error_msg)
                 raise Exception(error_msg) from retry_e
 
-        error_msg = f"Failed to load model with {keras_source}: {str(e)}"
+        error_msg = f"Failed to load model with {keras_source}: {_compact_error(e)}"
         metadata['warnings'].append(error_msg)
         logger.error(error_msg)
         raise Exception(error_msg) from e
@@ -1829,15 +1882,36 @@ def load_keras_model(
     if preferred_approach:
         approaches_to_try.append(preferred_approach)
     else:
-        # Default order: keras_native -> tf_keras -> custom_deserialization -> rebuild
-        # Try keras_native FIRST for Keras 3.x models (most of our models)
-        keras_ver = keras_version_info.get('keras_version', '')
-        if keras_ver.startswith('3.'):
-            approaches_to_try.append('keras_native')
-        if keras_version_info['tf_keras_available'] or keras_version_info['tensorflow_available']:
-            approaches_to_try.append('tf_keras')
+        # Prefer the approach inferred from model metadata first, then fallback.
+        tf_available = bool(keras_version_info['tf_keras_available'] or keras_version_info['tensorflow_available'])
+        native_available = bool(keras_version_info.get('keras_version'))
+
+        prefers_tf = _model_prefers_tf_keras(model_metadata)
+        prefers_native = _model_prefers_keras_native(model_metadata)
+
+        if prefers_tf:
+            if tf_available:
+                approaches_to_try.append('tf_keras')
+            if native_available:
+                approaches_to_try.append('keras_native')
+        elif prefers_native:
+            if native_available:
+                approaches_to_try.append('keras_native')
+            if tf_available:
+                approaches_to_try.append('tf_keras')
+        else:
+            # Fallback heuristic from runtime environment when metadata is unclear.
+            keras_ver = str(keras_version_info.get('keras_version') or '')
+            if native_available and keras_ver.startswith('3.'):
+                approaches_to_try.append('keras_native')
+            if tf_available:
+                approaches_to_try.append('tf_keras')
+
         approaches_to_try.append('custom_deserialization')
         approaches_to_try.append('rebuild')
+
+        # Preserve order while removing accidental duplicates.
+        approaches_to_try = list(dict.fromkeys(approaches_to_try))
 
     # Try each approach
     model = None
@@ -1883,12 +1957,16 @@ def load_keras_model(
 
         except Exception as e:
             last_error = e
-            logger.warning(f"Approach '{approach}' failed: {str(e)}")
-            result_metadata['warnings'].append(f"Approach '{approach}' failed: {str(e)}")
+            err = _compact_error(e)
+            if _is_expected_compat_load_error(err):
+                logger.debug(f"Approach '{approach}' incompatibility (expected fallback): {err}")
+            else:
+                logger.warning(f"Approach '{approach}' failed: {err}")
+            result_metadata['warnings'].append(f"Approach '{approach}' failed: {err}")
 
     # Check if any approach succeeded
     if model is None:
-        error_msg = f"All loading approaches failed. Last error: {str(last_error)}"
+        error_msg = f"All loading approaches failed. Last error: {_compact_error(last_error)}"
         logger.error(error_msg)
         raise Exception(error_msg)
 

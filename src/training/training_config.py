@@ -237,7 +237,7 @@ class BuddyTrainingOptions:
         multi_pair: Enable multi-pair foundation training.
         foundation_pairs: Comma-separated pairs for multi-pair training.
         train_rl_sizer: Train RL position sizer after ensemble.
-        rl_timesteps: RL training timesteps.
+        rl_timesteps: Optional RL training timesteps override.
     """
     oanda_fetch: OandaFetchOptions | None = None
     advanced: BuddyTrainingAdvancedOptions | None = None
@@ -281,7 +281,7 @@ class BuddyTrainingOptions:
     foundation_pairs: str | None = None  # Comma-separated pairs (default: majors)
     # RL position sizing training - train RL agent after ensemble
     train_rl_sizer: bool = True  # Enable RL position sizer training after ensemble
-    rl_timesteps: int = 500_000  # RL training timesteps (500k ~ 10-15 min on M1)
+    rl_timesteps: int | None = None  # None => use rl_integration.position_sizing.timesteps
 
     def __post_init__(self) -> None:
         """Validate training options."""
@@ -359,7 +359,7 @@ class BuddyTrainingOptions:
             multi_pair=data.get("multi_pair", False),
             foundation_pairs=data.get("foundation_pairs"),
             train_rl_sizer=data.get("train_rl_sizer", True),
-            rl_timesteps=data.get("rl_timesteps", 500_000),
+            rl_timesteps=data.get("rl_timesteps"),
         )
 
     def to_dict(self) -> dict[str, Any]:

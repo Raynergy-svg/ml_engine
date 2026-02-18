@@ -39,6 +39,8 @@ from src.training.trainers.callbacks import (
     DriftDetector,
     TrainingLineage,
 )
+from src.training.trainers.hybrid_sft_rl_loss import HybridSFTLossWrapper
+from src.training.trainers.rl_callbacks import RLMetricsCallback, RLBaselineScheduler
 from src.training.trainers.utils import (
     ARCH_JSON_SUFFIX,
     EMA_PKL_SUFFIX,
@@ -60,6 +62,38 @@ from src.training.trainers.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _LLRDAdam(tf.keras.optimizers.Adam):
+    """Adam optimizer with per-variable learning-rate multipliers.
+
+    TensorFlow/Keras does not support native parameter groups (like PyTorch),
+    so LLRD is applied by scaling gradients per variable before optimizer update.
+    """
+
+    def __init__(self, lr_multipliers: Optional[Dict[str, float]] = None, **kwargs):
+        super().__init__(**kwargs)
+        self._lr_multipliers = lr_multipliers or {}
+
+    def apply_gradients(self, grads_and_vars, *args, **kwargs):
+        scaled_grads_and_vars = []
+        for grad, var in grads_and_vars:
+            if grad is not None:
+                multiplier = float(self._lr_multipliers.get(var.name, 1.0))
+                if multiplier != 1.0:
+                    grad = grad * tf.cast(multiplier, grad.dtype)
+            scaled_grads_and_vars.append((grad, var))
+        return super().apply_gradients(scaled_grads_and_vars, *args, **kwargs)
+
+    def get_config(self):
+        config = super().get_config()
+        config["lr_multipliers"] = dict(self._lr_multipliers)
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        lr_multipliers = config.pop("lr_multipliers", None)
+        return cls(lr_multipliers=lr_multipliers, **config)
 
 
 class TransformerDirectionTrainer(BaseTrainer):
@@ -685,8 +719,15 @@ class TransformerDirectionTrainer(BaseTrainer):
         """Create appropriate loss function based on config.
 
         Returns the base loss function (before EWC wrapping).
-        Tries loss types in priority order: MADL > Hybrid CB > Anti-Collapse > CB Focal > Focal > BCE.
+        Tries loss types in priority order: Hybrid SFT-RL > MADL > Hybrid CB > Anti-Collapse > CB Focal > Focal > BCE.
         """
+        # === HYBRID SFT-RL LOSS (NEW - 2026) ===
+        # Check if Hybrid SFT-RL training is enabled
+        if self.config and getattr(self.config, "use_hybrid_sft_rl", False):
+            hybrid_loss = self._try_hybrid_sft_rl_loss()
+            if hybrid_loss is not None:
+                return hybrid_loss
+        
         # Priority list of loss function attempts
         loss_attempts = [
             (getattr(self.config, "use_madl_loss", False) if self.config else False,
@@ -707,6 +748,40 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         # Fallback to standard Focal Loss or BCE
         return self._get_fallback_loss(label_smoothing)
+    
+    def _try_hybrid_sft_rl_loss(self) -> Optional[Any]:
+        """Try to create Hybrid SFT-RL Loss.
+        
+        Implements stochastic switch between Cross-Entropy (Supervised) and 
+        REINFORCE Policy Gradient (RL) loss to mitigate memorization.
+        
+        Returns:
+            HybridSFTLossWrapper instance or None if creation fails.
+        """
+        try:
+            # Create wrapper with config - wrapper creates its own internal HybridSFTLoss
+            wrapper = HybridSFTLossWrapper(self.config)
+            
+            # Store the INTERNAL hybrid_loss instance that will actually be used
+            # This ensures callbacks read from the correct instance
+            self._hybrid_sft_rl_loss = wrapper.hybrid_loss
+            
+            # Get parameters for logging
+            rl_prob = getattr(self.config, "rl_prob", 0.5)
+            entropy_coef = getattr(self.config, "entropy_coef", 0.01)
+            initial_baseline = getattr(self.config, "initial_baseline", 0.5)
+            baseline_momentum = getattr(self.config, "baseline_momentum", 0.9)
+            
+            logger.info(
+                f"🎮 Using Hybrid SFT-RL Loss "
+                f"(rl_prob={rl_prob:.2f}, entropy_coef={entropy_coef:.4f}, "
+                f"baseline={initial_baseline:.2f}, momentum={baseline_momentum:.2f})"
+            )
+            
+            return wrapper
+        except Exception as e:
+            logger.warning(f"⚠️ HybridSFTLoss creation failed: {e}")
+            return None
 
     def _try_madl_loss(self, label_smoothing: float) -> Optional[Any]:
         """Try to create MADL Loss."""
@@ -930,26 +1005,58 @@ class TransformerDirectionTrainer(BaseTrainer):
             logger.debug(f"Meta weights load failed: {e}")
             return False
 
-    def _freeze_encoder_layers(self) -> Tuple[int, list]:
-        """Freeze encoder layers for warm-start training.
+    def _freeze_encoder_layers(self, freeze_count: Optional[int] = None) -> Tuple[int, list]:
+        """Freeze encoder layers for warm-start fine-tuning.
+        
+        Supports selective freezing of only the first N encoder layers,
+        allowing later layers to adapt to new data while preserving
+        lower-level feature extraction from pre-training.
 
-        Returns (frozen_count, trainable_head_layers).
+        Args:
+            freeze_count: Number of encoder layers to freeze. If None, uses config
+                         warm_start_encoder_layers_to_freeze (default: 2).
+
+        Returns:
+            Tuple of (frozen_count, trainable_head_layers).
         """
         from tensorflow import keras
 
+        # Get freeze count from config if not specified
+        if freeze_count is None:
+            freeze_count = getattr(self.config, 'warm_start_encoder_layers_to_freeze', 0)
+        
         frozen_count = 0
         trainable_head_layers = []
 
-        encoder_patterns = [
-            "transformer_", "input_projection", "positional", "multi_head",
-            "attention", "ffn", "layer_norm", "spatial_dropout",
-            "gaussian_noise", "global_average",
-        ]
-
+        # Identify transformer encoder layers by name pattern
+        encoder_layers = []
         for layer in self.model.layers:
             layer_name = layer.name.lower()
-            is_encoder_layer = any(pattern in layer_name for pattern in encoder_patterns)
-
+            # Match transformer encoder layers (transformer_0, transformer_1, etc.)
+            if layer_name.startswith("transformer_") and not layer_name.endswith("_mha"):
+                encoder_layers.append(layer)
+            elif layer_name == "input_projection":
+                encoder_layers.insert(0, layer)  # Input projection is first
+        
+        # Sort encoder layers by their index to maintain order
+        encoder_layers_sorted = sorted(
+            encoder_layers,
+            key=lambda layer: self.model.layers.index(layer) if layer in self.model.layers else 999
+        )
+        
+        # Freeze only the first N encoder layers
+        for i, layer in enumerate(self.model.layers):
+            layer_name = layer.name.lower()
+            
+            # Check if this is a transformer encoder layer
+            is_encoder = any(
+                pattern in layer_name for pattern in [
+                    "transformer_", "input_projection", "positional", "multi_head",
+                    "attention", "ffn", "layer_norm", "spatial_dropout",
+                    "gaussian_noise", "global_average",
+                ]
+            )
+            
             # Check if this is the classification head
             try:
                 output_units = (
@@ -964,13 +1071,23 @@ class TransformerDirectionTrainer(BaseTrainer):
                 (isinstance(layer, keras.layers.Dense) and output_units <= 16
                  and "projection" not in layer_name)
             )
-
-            if is_encoder_layer and not is_classification_head:
-                layer.trainable = False
-                frozen_count += 1
+            
+            if is_encoder and not is_classification_head:
+                # Determine if this layer should be frozen
+                layer_idx = encoder_layers_sorted.index(layer) if layer in encoder_layers_sorted else len(encoder_layers_sorted)
+                should_freeze = layer_idx < freeze_count
+                
+                if should_freeze:
+                    layer.trainable = False
+                    frozen_count += 1
+                    logger.debug(f"Frozen encoder layer {layer_idx}: {layer.name}")
+                else:
+                    layer.trainable = True
+                    logger.debug(f"Trainable encoder layer {layer_idx}: {layer.name}")
             elif layer.trainable:
                 trainable_head_layers.append(layer.name)
 
+        logger.info(f"Frozen {frozen_count}/{len(encoder_layers_sorted)} encoder layers (config: freeze_count={freeze_count})")
         return frozen_count, trainable_head_layers
 
     def _log_frozen_layers(self, frozen_count: int, trainable_head_layers: list) -> None:
@@ -989,7 +1106,25 @@ class TransformerDirectionTrainer(BaseTrainer):
                 suffix = "..." if len(trainable_head_layers) > 5 else ""
                 logger.info(f"   Trainable layers: {trainable_head_layers[:5]}{suffix}")
         else:
-            logger.warning("⚠️ WARM-START: No layers frozen! This may cause catastrophic forgetting.")
+            logger.info("🔥 WARM-START: All encoder layers trainable (selective unfreeze)")
+
+    def _get_warm_start_lr(self) -> float:
+        """Get effective learning rate for warm-start fine-tuning.
+        
+        Uses warm_start_lr_factor from config (default 0.3 = 3x reduction).
+        Less aggressive than the previous 0.1 (10x reduction) which caused
+        the model to degrade from 60.3% to 58-59%.
+        
+        Returns:
+            Effective learning rate for warm-start training.
+        """
+        factor = getattr(self.config, 'warm_start_lr_factor', 0.3)
+        effective_lr = self.config.learning_rate * factor
+        logger.info(
+            f"🔥 Warm-start LR: {effective_lr:.2e} (base: {self.config.learning_rate:.2e}, "
+            f"factor: {factor})"
+        )
+        return effective_lr
 
     def _handle_warm_start(self, warm_start_path: str) -> float:
         """Handle warm-start loading: weights, layer freezing, lineage, EWC, EMA.
@@ -1019,11 +1154,7 @@ class TransformerDirectionTrainer(BaseTrainer):
                 self._load_warm_start_ema(warm_start_path)
 
                 # Compute effective learning rate
-                effective_lr = self.config.learning_rate * self.config.warm_start_lr_factor
-                logger.info(
-                    f"🔥 Warm-start LR reduction: {self.config.learning_rate} → "
-                    f"{effective_lr} (factor={self.config.warm_start_lr_factor})"
-                )
+                effective_lr = self._get_warm_start_lr()
                 return effective_lr
             else:
                 logger.warning("Could not load warm-start weights. Starting fresh.")
@@ -1121,6 +1252,90 @@ class TransformerDirectionTrainer(BaseTrainer):
             )
             logger.info("📊 EMA weights loaded from checkpoint")
 
+    def _save_scalers(self, model_dir: Path) -> None:
+        """Save both pre-selection and post-selection scalers.
+        
+        Preserves feature alignment info for inference by saving:
+        1. Pre-selection scaler: For aligning raw features before selection
+        2. Post-selection scaler: For scaling selected features for model input
+        
+        Args:
+            model_dir: Directory to save scalers to
+        """
+        import joblib
+        
+        model_dir = Path(model_dir)
+        
+        # Save pre-selection scaler (for inference feature alignment)
+        if hasattr(self, 'pre_selection_scaler_') and self.pre_selection_scaler_ is not None:
+            pre_selection_path = model_dir / "pre_selection_scaler.pkl"
+            joblib.dump({
+                'scaler': self.pre_selection_scaler_,
+                'n_features_in_': self.pre_selection_scaler_.n_features_in_,
+                'feature_names_in_': getattr(self.pre_selection_scaler_, 'feature_names_in_', None)
+            }, pre_selection_path)
+            logger.info(
+                f"💾 Saved pre-selection scaler ({self.pre_selection_scaler_.n_features_in_} features) "
+                f"to {pre_selection_path}"
+            )
+        
+        # Save post-selection scaler (for model input)
+        if self.scaler is not None:
+            post_selection_path = model_dir / "direction_scaler.pkl"
+            joblib.dump({
+                'scaler': self.scaler,
+                'n_features_in_': self.scaler.n_features_in_,
+                'selected_indices': getattr(self, 'selected_indices_', None),
+                'feature_names': self.feature_names,
+            }, post_selection_path)
+            logger.info(
+                f"💾 Saved post-selection scaler ({self.scaler.n_features_in_} features) "
+                f"to {post_selection_path}"
+            )
+
+    def _load_scalers(self, model_dir: Path) -> None:
+        """Load scalers preserving feature alignment info.
+        
+        Restores both pre-selection and post-selection scaler states
+        for proper inference feature alignment.
+        
+        Args:
+            model_dir: Directory to load scalers from
+        """
+        import joblib
+        
+        model_dir = Path(model_dir)
+        
+        # Load pre-selection scaler
+        pre_selection_path = model_dir / "pre_selection_scaler.pkl"
+        if pre_selection_path.exists():
+            try:
+                data = joblib.load(pre_selection_path)
+                self.pre_selection_scaler_ = data['scaler']
+                logger.info(
+                    f"📂 Loaded pre-selection scaler ({data['n_features_in_']} features) "
+                    f"from {pre_selection_path}"
+                )
+            except Exception as e:
+                logger.warning(f"Could not load pre-selection scaler: {e}")
+        
+        # Load post-selection scaler
+        post_selection_path = model_dir / "direction_scaler.pkl"
+        if post_selection_path.exists():
+            try:
+                data = joblib.load(post_selection_path)
+                self.scaler = data['scaler']
+                self.selected_indices_ = data.get('selected_indices')
+                if data.get('feature_names'):
+                    self.feature_names = data.get('feature_names')
+                selected_count = len(self.selected_indices_) if self.selected_indices_ else 'unknown'
+                logger.info(
+                    f"📂 Loaded post-selection scaler with {selected_count} selected indices "
+                    f"from {post_selection_path}"
+                )
+            except Exception as e:
+                logger.warning(f"Could not load post-selection scaler: {e}")
+
     def _prepare_sequences_and_filter(
         self,
         x_train_scaled: np.ndarray,
@@ -1180,10 +1395,87 @@ class TransformerDirectionTrainer(BaseTrainer):
             )
         return auto_variance_weight
 
+    def _apply_llrd_to_layers(
+        self,
+        base_lr: float,
+        decay_rate: float = 0.9,
+    ) -> list:
+        """Apply Layer-wise Learning Rate Decay (LLRD) to model layers.
+        
+        LLRD assigns progressively lower learning rates to earlier layers,
+        helping preserve pretrained features while allowing later layers
+        to adapt faster during transfer learning.
+        
+        Args:
+            base_lr: Base learning rate for the topmost layer.
+            decay_rate: Multiplicative decay rate per layer (default 0.9).
+            
+        Returns:
+            List of (variable, learning_rate) tuples for optimizer construction.
+            
+        Note:
+            Layer ordering (from lowest to highest LR):
+            - Embedding layers: lowest LR
+            - Early encoder layers: low LR  
+            - Later encoder layers: medium LR
+            - Decoder/head layers: highest LR (base_lr)
+        """
+        import re
+        
+        if not hasattr(self, 'model') or self.model is None:
+            logger.warning("Cannot apply LLRD: model not initialized")
+            return []
+        
+        # Collect all trainable variables with their layer indices
+        layer_lr_pairs = []
+        
+        # Identify layer types and assign decay factors
+        for layer in self.model.layers:
+            if not layer.trainable:
+                continue
+                
+            layer_name_lower = layer.name.lower()
+            
+            # Determine layer depth for LR scaling
+            if 'embedding' in layer_name_lower:
+                # Embeddings get the lowest LR
+                lr_multiplier = decay_rate ** 4  # e.g., 0.9^4 = 0.656
+            elif 'encoder' in layer_name_lower:
+                # Extract encoder layer number if present
+                match = re.search(r'encoder[_-]?(\d+)', layer_name_lower)
+                if match:
+                    layer_num = int(match.group(1))
+                    # Earlier encoder layers get lower LR
+                    # Assuming max 6 encoder layers, invert the numbering
+                    lr_multiplier = decay_rate ** (3 - min(layer_num, 3) / 2)
+                else:
+                    lr_multiplier = decay_rate ** 2  # Default encoder multiplier
+            elif 'decoder' in layer_name_lower:
+                # Decoder layers get medium-high LR
+                lr_multiplier = decay_rate ** 1
+            elif any(x in layer_name_lower for x in ['output', 'head', 'dense', 'classification']):
+                # Output/head layers get the highest LR (base_lr)
+                lr_multiplier = 1.0
+            else:
+                # Default: medium LR
+                lr_multiplier = decay_rate ** 2
+            
+            layer_lr = base_lr * lr_multiplier
+            
+            for var in layer.trainable_variables:
+                layer_lr_pairs.append((var, layer_lr))
+        
+        logger.info(
+            f"📊 LLRD applied: {len(layer_lr_pairs)} variables, "
+            f"decay_rate={decay_rate}, base_lr={base_lr}"
+        )
+        
+        return layer_lr_pairs
+
     def _setup_optimizer_with_warmup(
         self, effective_lr: float, x_train_filtered: np.ndarray
     ) -> Any:
-        """Setup optimizer with warmup learning rate schedule."""
+        """Setup optimizer with warmup learning rate schedule and optional LLRD."""
         from tensorflow import keras
 
         warmup_epochs = getattr(self.config, "warmup_epochs", 5) if self.config else 5
@@ -1191,8 +1483,13 @@ class TransformerDirectionTrainer(BaseTrainer):
         total_steps = self.config.epochs * steps_per_epoch
         warmup_steps = warmup_epochs * steps_per_epoch
 
+        # Check if LLRD is enabled
+        llrd_enabled = getattr(self.config, "llrd_enabled", True) if self.config else True
+        llrd_decay_rate = getattr(self.config, "llrd_decay_rate", 0.9) if self.config else 0.9
+
         try:
             from src.training.m1_metal_optimizer import WarmupCosineDecaySchedule
+            
             lr_schedule = WarmupCosineDecaySchedule(
                 initial_learning_rate=effective_lr * 0.1,
                 warmup_steps=warmup_steps,
@@ -1200,13 +1497,52 @@ class TransformerDirectionTrainer(BaseTrainer):
                 min_learning_rate=1e-6,
                 warmup_target=effective_lr,
             )
-            optimizer = keras.optimizers.Adam(learning_rate=lr_schedule)
+            
+            if llrd_enabled and hasattr(self, 'model') and self.model is not None:
+                # Apply LLRD: derive per-variable LR multipliers relative to base schedule.
+                layer_lr_pairs = self._apply_llrd_to_layers(
+                    base_lr=effective_lr,
+                    decay_rate=llrd_decay_rate,
+                )
+                
+                if layer_lr_pairs:
+                    # Convert absolute per-variable LRs into multipliers on top of base schedule.
+                    # This preserves warmup/cosine dynamics while applying layer-wise scaling.
+                    safe_base_lr = effective_lr if effective_lr > 0 else 1e-8
+                    lr_multipliers = {}
+                    for var, var_lr in layer_lr_pairs:
+                        lr_multipliers[var.name] = max(var_lr / safe_base_lr, 1e-3)
+
+                    optimizer = _LLRDAdam(
+                        learning_rate=lr_schedule,
+                        lr_multipliers=lr_multipliers,
+                    )
+                    self._llrd_multipliers = lr_multipliers
+
+                    min_mult = min(lr_multipliers.values()) if lr_multipliers else 1.0
+                    max_mult = max(lr_multipliers.values()) if lr_multipliers else 1.0
+                    logger.info(
+                        f"✅ LLRD optimizer configured with {len(lr_multipliers)} variables "
+                        f"(multiplier range: {min_mult:.3f} - {max_mult:.3f})"
+                    )
+                else:
+                    # Fallback to standard optimizer
+                    optimizer = keras.optimizers.Adam(learning_rate=lr_schedule)
+                    self._llrd_multipliers = {}
+            else:
+                # Standard optimizer without LLRD
+                optimizer = keras.optimizers.Adam(learning_rate=lr_schedule)
+                self._llrd_multipliers = {}
+                if not llrd_enabled:
+                    logger.info("📊 LLRD disabled by config")
+                
             logger.info(
                 f"🔥 Warmup LR: {warmup_epochs} epochs ({warmup_steps} steps), target LR={effective_lr:.6f}"
             )
         except ImportError:
             logger.warning("⚠️ WarmupCosineDecaySchedule not available, using constant LR")
             optimizer = keras.optimizers.Adam(learning_rate=effective_lr)
+            self._llrd_multipliers = {}
 
         return optimizer
 
@@ -1359,6 +1695,7 @@ class TransformerDirectionTrainer(BaseTrainer):
         """Create all training callbacks."""
         from tensorflow import keras
 
+        # [2026-02-14] Enhanced regularization - configurable early stopping
         early_stop_patience = (
             self.config.patience // 2 if self._is_warm_start else self.config.patience
         )
@@ -1366,6 +1703,8 @@ class TransformerDirectionTrainer(BaseTrainer):
             max(5, self.config.patience // 4) if self._is_warm_start
             else max(4, self.config.patience // 4)
         )
+        # [2026-02-14] Read min_delta from config (default 0.001 for enhanced regularization)
+        early_stop_min_delta = getattr(self.config, "early_stopping_min_delta", 0.001) if self.config else 0.001
 
         if self._is_warm_start:
             logger.info("📊 Warm-start callback adjustments:")
@@ -1377,6 +1716,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             keras.callbacks.EarlyStopping(
                 monitor="val_accuracy",
                 patience=early_stop_patience,
+                min_delta=early_stop_min_delta,  # [2026-02-14] Added min_delta for enhanced regularization
                 mode="max",
                 restore_best_weights=True,
                 verbose=0,
@@ -1403,6 +1743,9 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         # Add collapse detection callbacks
         callbacks.extend(self._create_collapse_callbacks(x_val_filtered, y_val_filtered))
+
+        # Add RL-specific callbacks if Hybrid SFT-RL is enabled
+        self._add_rl_callbacks(callbacks)
 
         # Add gradual unfreeze callback for warm-start
         self._add_unfreeze_callback(callbacks)
@@ -1585,18 +1928,143 @@ class TransformerDirectionTrainer(BaseTrainer):
         return ProactiveCollapsePreventionCallback()
 
     def _add_unfreeze_callback(self, callbacks: list) -> None:
-        """Add gradual unfreeze callback for warm-start training."""
-        if self._is_warm_start and self.config.warm_start_unfreeze_epochs > 0:
+        """Add gradual unfreeze callback for warm-start training.
+        
+        Supports two strategies:
+        1. Full unfreeze: After N epochs, unfreeze all encoder layers
+        2. Gradual unfreeze: Progressively unfreeze layers from top to bottom
+        """
+        if not self._is_warm_start:
+            return
+            
+        unfreeze_epochs = getattr(self.config, 'warm_start_unfreeze_epochs', 5)
+        gradual_strategy = getattr(self.config, 'warm_start_gradual_unfreeze_strategy', True)
+        
+        if unfreeze_epochs <= 0:
+            logger.info("🔓 Gradual unfreeze disabled (unfreeze_epochs=0)")
+            return
+        
+        if gradual_strategy:
+            # Use custom gradual unfreeze callback with layer-by-layer unfreezing
+            unfreeze_callback = self._create_gradual_unfreeze_callback(unfreeze_epochs)
+            callbacks.append(unfreeze_callback)
+            logger.info(
+                f"🔓 Gradual unfreeze strategy enabled: will start unfreezing at epoch "
+                f"{unfreeze_epochs}"
+            )
+        else:
+            # Use standard GradualUnfreezeCallback (unfreeze all at once)
             unfreeze_callback = GradualUnfreezeCallback(
-                unfreeze_after_epochs=self.config.warm_start_unfreeze_epochs,
+                unfreeze_after_epochs=unfreeze_epochs,
                 gradual=self.config.warm_start_gradual_unfreeze,
                 learning_rate_boost=1.5,
             )
             callbacks.append(unfreeze_callback)
             logger.info(
-                f"🔓 Gradual unfreeze enabled: will unfreeze after epoch "
-                f"{self.config.warm_start_unfreeze_epochs}"
+                f"🔓 Full unfreeze enabled: will unfreeze all at epoch "
+                f"{unfreeze_epochs}"
             )
+
+    def _add_rl_callbacks(self, callbacks: list) -> None:
+        """Add RL-specific callbacks for Hybrid SFT-RL training.
+        
+        Adds:
+        1. RLMetricsCallback: Tracks and logs RL metrics (reward, entropy, baseline)
+        2. RLBaselineScheduler: Schedules rl_prob over training (curriculum learning)
+        
+        Only active when use_hybrid_sft_rl is enabled.
+        """
+        if not (self.config and getattr(self.config, "use_hybrid_sft_rl", False)):
+            return
+        
+        # Get the hybrid loss instance if available
+        hybrid_loss = getattr(self, "_hybrid_sft_rl_loss", None)
+        if hybrid_loss is None:
+            logger.warning("⚠️ Hybrid SFT-RL enabled but loss instance not found")
+            return
+        
+        # Add RL metrics callback
+        rl_metrics_callback = RLMetricsCallback(
+            loss_fn=hybrid_loss,
+            log_every_n_epochs=getattr(self.config, "rl_log_frequency", 10),
+            log_dir=getattr(self.config, "tensorboard_log_dir", None),
+        )
+        callbacks.append(rl_metrics_callback)
+        logger.info("📊 RLMetricsCallback added for hybrid SFT-RL training")
+        
+        # Add curriculum scheduler if enabled
+        if getattr(self.config, "rl_curriculum_enabled", False):
+            curriculum_type = getattr(self.config, "rl_curriculum_type", "linear")
+            warmup_epochs = getattr(self.config, "rl_curriculum_warmup_epochs", 10)
+            initial_prob = getattr(self.config, "rl_curriculum_initial_prob", 0.0)
+            final_prob = getattr(self.config, "rl_curriculum_final_prob", 0.5)
+            
+            rl_scheduler = RLBaselineScheduler(
+                loss_fn=hybrid_loss,
+                schedule_type=curriculum_type,
+                warmup_epochs=warmup_epochs,
+                initial_rl_prob=initial_prob,
+                final_rl_prob=final_prob,
+            )
+            callbacks.append(rl_scheduler)
+            logger.info(
+                f"📈 RLBaselineScheduler added: {curriculum_type} curriculum "
+                f"({initial_prob:.2f} → {final_prob:.2f} over {warmup_epochs} epochs)"
+            )
+
+    def _create_gradual_unfreeze_callback(self, unfreeze_epoch: int):
+        """Create callback for gradual layer unfreezing during warm-start.
+        
+        Implements progressive unfreezing from classification head back through
+        encoder layers, allowing the model to adapt gradually without catastrophic
+        forgetting.
+        
+        Args:
+            unfreeze_epoch: Epoch at which to start unfreezing encoder layers
+            
+        Returns:
+            Keras callback for gradual unfreezing
+        """
+        from tensorflow import keras
+        
+        trainer_self = self
+        
+        class GradualUnfreezeCallback(keras.callbacks.Callback):
+            def __init__(self, unfreeze_after_epoch: int):
+                super().__init__()
+                self.unfreeze_epoch = unfreeze_after_epoch
+                self.unfrozen_count = 0
+                self.total_encoder_layers = 0
+                
+            def on_train_begin(self, logs=None):
+                # Count encoder layers
+                self.total_encoder_layers = sum(
+                    1 for layer in self.model.layers
+                    if any(p in layer.name.lower() for p in [
+                        "transformer_", "input_projection", "attention", "ffn"
+                    ]) and "direction" not in layer.name.lower()
+                )
+                logger.info(f"📊 Gradual unfreeze: {self.total_encoder_layers} encoder layers")
+            
+            def on_epoch_begin(self, epoch, logs=None):
+                if epoch < self.unfreeze_epoch:
+                    return
+                    
+                # Unfreeze one more layer each epoch after unfreeze_epoch
+                layers_to_unfreeze = epoch - self.unfreeze_epoch + 1
+                
+                if layers_to_unfreeze > self.unfrozen_count:
+                    trainer_self._freeze_encoder_layers(
+                        freeze_count=max(0, trainer_self.config.warm_start_encoder_layers_to_freeze - layers_to_unfreeze)
+                    )
+                    self.unfrozen_count = layers_to_unfreeze
+                    trainable_count = sum(1 for layer in self.model.layers if layer.trainable)
+                    logger.info(
+                        f"🔓 Epoch {epoch}: Unfrozen {layers_to_unfreeze} encoder layer(s), "
+                        f"{trainable_count} trainable layers total"
+                    )
+        
+        return GradualUnfreezeCallback(unfreeze_epoch)
 
     def _add_ema_ewc_callbacks(self, callbacks: list) -> None:
         """Add EMA and EWC monitoring callbacks."""
@@ -1822,6 +2290,8 @@ class TransformerDirectionTrainer(BaseTrainer):
         instrument: str = "UNKNOWN",
         data_range: str = "",
         skip_scaling: bool = False,
+        fold_id: Optional[int] = None,
+        **kwargs,
     ) -> Dict[str, float]:
         """Train Transformer for direction prediction with continual learning."""
         logger.info("Training Transformer (Direction)...")
@@ -1971,6 +2441,12 @@ class TransformerDirectionTrainer(BaseTrainer):
                 x_val_scaled = self.scaler.transform(x_val_scaled)
                 logger.info(f"✓ Re-fitted scaler on {x_train_scaled.shape[-1]} selected features")
             logger.info(f"🔍 Feature Selection Complete: train={x_train_scaled.shape}, val={x_val_scaled.shape}")
+        
+        # [2026-02-14] Feature alignment fix: Propagate selected indices to meta-labeler if available
+        if hasattr(self, 'meta_labeler') and self.meta_labeler is not None:
+            if hasattr(self, 'selected_indices') and self.selected_indices is not None:
+                self.meta_labeler.set_primary_feature_indices(self.selected_indices)
+                logger.info(f"Propagated {len(self.selected_indices)} selected feature indices to meta-labeler")
 
         return x_train_scaled, x_val_scaled, _warm_start_features_compatible
 
@@ -2112,8 +2588,12 @@ class TransformerDirectionTrainer(BaseTrainer):
         - .meta.pkl: Scaler, config, metrics, lineage
         - .ema.pkl: EMA shadow weights
         - .ewc.pkl: EWC Fisher information + reference weights
+        - feature_indices.pkl: Feature selection indices for inference alignment
+        - scaler.pkl: Scaler with feature indices for consistent preprocessing
         - replay buffer to trained_data/replay/<instrument>/
         """
+        from src.training.feature_alignment import save_feature_indices, save_scaler_with_indices
+        
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -2136,6 +2616,27 @@ class TransformerDirectionTrainer(BaseTrainer):
             f"lr_reductions={getattr(self.lineage, 'lr_reductions_count', 0)}, "
             f"final_lr={getattr(self.lineage, 'final_learning_rate', 0.0):.2e}"
         )
+
+        # === Save feature indices for inference alignment ===
+        if self.selected_indices is not None:
+            save_feature_indices(
+                self.selected_indices,
+                str(path.parent),
+                filename="feature_indices.pkl"
+            )
+            logger.info(f"✓ Saved feature indices ({len(self.selected_indices)} features) for inference alignment")
+        
+        # === Save scaler with feature indices ===
+        if self.scaler is not None:
+            save_scaler_with_indices(
+                self.scaler,
+                str(path.parent),
+                selected_indices=self.selected_indices,
+                prefix="direction_"
+            )
+        
+        # === Save both pre-selection and post-selection scalers (Fix 2.3) ===
+        self._save_scalers(path.parent)
 
         # Save Keras model in native format
         self.model.save(str(path))
@@ -2468,9 +2969,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         with open(meta_path, "rb") as f:
             meta = pickle.load(f)
 
-        self.scaler = meta["scaler"]
-        self.seq_len = meta["seq_len"]
-        self.metrics = meta["metrics"]
+        self.scaler = meta.get("scaler")
+        self.seq_len = int(meta.get("seq_len", self.seq_len))
+        self.metrics = meta.get("metrics", {}) or {}
         self.feature_names = meta.get("feature_names")
         self.n_features = meta.get("n_features")
         self.selected_indices = meta.get(
@@ -2481,56 +2982,80 @@ class TransformerDirectionTrainer(BaseTrainer):
         self._use_ewc = meta.get("ewc_enabled", True)
         self._use_replay = meta.get("replay_enabled", True)
 
+        # === Load both pre-selection and post-selection scalers (Fix 2.3) ===
+        try:
+            self._load_scalers(path.parent)
+        except Exception as e:
+            logger.warning(f"Could not load saved scalers: {e}")
+
         # Load output calibration (for bias correction)
         self.output_calibration = meta.get("output_calibration", None)
-        if self.output_calibration and self.output_calibration.get("enabled"):
+        if isinstance(self.output_calibration, dict) and self.output_calibration.get("enabled"):
+            bias = float(self.output_calibration.get("bias", 0.0) or 0.0)
+            threshold = float(self.output_calibration.get("threshold", 0.5) or 0.5)
             logger.info(
-                f"📐 Output calibration loaded: bias={self.output_calibration['bias']:.4f}"
+                f"📐 Output calibration loaded: threshold={threshold:.4f}, bias={bias:.4f}"
             )
 
         # Load lineage
         if meta.get("lineage"):
-            self.lineage = TrainingLineage.from_dict(meta["lineage"])
-            logger.info(
-                f"📊 Lineage loaded: checkpoint={self.lineage.checkpoint_id}, "
-                f"cumulative_epochs={self.lineage.cumulative_epochs}"
-            )
+            try:
+                self.lineage = TrainingLineage.from_dict(meta["lineage"])
+                logger.info(
+                    f"📊 Lineage loaded: checkpoint={self.lineage.checkpoint_id}, "
+                    f"cumulative_epochs={self.lineage.cumulative_epochs}"
+                )
+            except Exception as e:
+                logger.warning(f"Could not load lineage metadata: {e}")
+                self.lineage = None
 
         # Load EMA weights
         ema_path = path.with_suffix(EMA_PKL_SUFFIX)
         if ema_path.exists() and self._use_ema:
-            with open(ema_path, "rb") as f:
-                ema_data = pickle.load(f)
-            self.ema = EMACallback(
-                self.model,
-                decay=ema_data.get("decay", self.config.ema_decay),
-                update_every=ema_data.get("update_every", self.config.ema_update_every),
-            )
-            # Pass weight names for graceful mismatch handling
-            self.ema.set_ema_weights(
-                ema_data["ema_weights"], weight_names=ema_data.get("ema_weight_names")
-            )
-            self.ema.step_counter = ema_data.get("step_counter", 0)
-            logger.info(f"📊 EMA weights loaded (decay={self.ema.decay})")
+            try:
+                with open(ema_path, "rb") as f:
+                    ema_data = pickle.load(f)
+                self.ema = EMACallback(
+                    self.model,
+                    decay=ema_data.get("decay", self.config.ema_decay),
+                    update_every=ema_data.get("update_every", self.config.ema_update_every),
+                )
+                # Pass weight names for graceful mismatch handling
+                self.ema.set_ema_weights(
+                    ema_data["ema_weights"], weight_names=ema_data.get("ema_weight_names")
+                )
+                self.ema.step_counter = ema_data.get("step_counter", 0)
+                logger.info(f"📊 EMA weights loaded (decay={self.ema.decay})")
+            except Exception as e:
+                logger.warning(f"Could not load EMA weights: {e}")
+                self.ema = None
 
         # Load EWC state
         ewc_path = path.with_suffix(EWC_PKL_SUFFIX)
         if ewc_path.exists() and self._use_ewc:
-            self.ewc = EWCPenalty(
-                self.model,
-                ewc_lambda=self.config.ewc_lambda,
-                gamma=self.config.ewc_gamma,
-            )
-            self.ewc.load(str(ewc_path))
+            try:
+                self.ewc = EWCPenalty(
+                    self.model,
+                    ewc_lambda=self.config.ewc_lambda,
+                    gamma=self.config.ewc_gamma,
+                )
+                self.ewc.load(str(ewc_path))
+            except Exception as e:
+                logger.warning(f"Could not load EWC state: {e}")
+                self.ewc = None
 
         # Load replay buffer
         if self._use_replay:
-            self.replay_buffer = ReplayBuffer(
-                capacity_ratio=self.config.replay_buffer_ratio,
-                mix_ratio=self.config.replay_mix_ratio,
-                buffer_dir=self.config.replay_buffer_dir,
-            )
-            self.replay_buffer.load(instrument)
+            try:
+                self.replay_buffer = ReplayBuffer(
+                    capacity_ratio=self.config.replay_buffer_ratio,
+                    mix_ratio=self.config.replay_mix_ratio,
+                    buffer_dir=self.config.replay_buffer_dir,
+                )
+                self.replay_buffer.load(instrument)
+            except Exception as e:
+                logger.warning(f"Could not load replay buffer: {e}")
+                self.replay_buffer = None
 
         self.is_trained = True
 

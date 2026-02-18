@@ -23,17 +23,16 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from dataclasses import dataclass, field
 
+from .premium_output import PremiumConsole, StatusGlyphs
 
 try:
-    from rich.console import Console, Group
+    from rich.console import Console
     from rich.live import Live  # noqa: F401
     from rich.layout import Layout  # noqa: F401
     from rich.table import Table
-    from rich.panel import Panel
     from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn, SpinnerColumn, MofNCompleteColumn  # noqa: F401
     from rich.text import Text
     from rich.style import Style  # noqa: F401
-    from rich.columns import Columns
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
@@ -165,7 +164,8 @@ class TrainingDisplay:
 
     def __init__(self, config: TrainingConfig):
         self.config = config
-        self.console = Console() if RICH_AVAILABLE else None
+        self._rich_console = Console() if RICH_AVAILABLE else None
+        self.console = PremiumConsole(self._rich_console)
         self.start_time = None
         self.epoch_history: List[EpochMetrics] = []
         self.best_val_loss = float('inf')
@@ -182,48 +182,38 @@ class TrainingDisplay:
 
         self.start_time = datetime.now()
 
-        # Build header table
-        header_table = Table(show_header=False, box=None, padding=(0, 2))
-        header_table.add_column("Key", style="cyan")
-        header_table.add_column("Value", style="white")
+        # Print main header with PremiumConsole
+        self.console.blank()
+        self.console.section_header(
+            f"{StatusGlyphs.STEP} Training Session Started",
+            subtitle=f"Started at {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}",
+            color="cyan"
+        )
 
-        # Model info
-        header_table.add_row("Model", f"{self.config.model_name}")
-        header_table.add_row("Task", f"{self.config.task}")
+        # Print data section
+        self.console.blank()
+        self._rich_console.print("  [bold]DATA[/bold]", style="cyan")
+        self.console.key_value("Model", self.config.model_name)
+        self.console.key_value("Task", self.config.task)
         if self.config.instrument:
-            header_table.add_row("Instrument", f"{self.config.instrument} ({self.config.granularity})")
+            self.console.key_value("Instrument", f"{self.config.instrument} ({self.config.granularity})")
+        self.console.key_value("Training", f"{self.config.n_train_samples:,} samples")
+        self.console.key_value("Validation", f"{self.config.n_val_samples:,} samples")
+        self.console.key_value("Features", f"{self.config.n_features} × {self.config.seq_len} timesteps")
 
-        # Data info
-        header_table.add_row("Training", f"{self.config.n_train_samples:,} samples")
-        header_table.add_row("Validation", f"{self.config.n_val_samples:,} samples")
-        header_table.add_row("Features", f"{self.config.n_features} × {self.config.seq_len} timesteps")
-
-        # Training config
-        config_table = Table(show_header=False, box=None, padding=(0, 2))
-        config_table.add_column("Key", style="cyan")
-        config_table.add_column("Value", style="white")
-
-        config_table.add_row("Epochs", f"{self.config.total_epochs}")
-        config_table.add_row("Batch Size", f"{self.config.batch_size}")
-        config_table.add_row("Learning Rate", f"{self.config.learning_rate:.1e}")
-        config_table.add_row("Loss", "MADL" if self.config.use_madl else "BCE")
+        # Print config section
+        self.console.blank()
+        self._rich_console.print("  [bold]CONFIG[/bold]", style="cyan")
+        self.console.key_value("Epochs", str(self.config.total_epochs))
+        self.console.key_value("Batch Size", str(self.config.batch_size))
+        self.console.key_value("Learning Rate", f"{self.config.learning_rate:.1e}")
+        self.console.key_value("Loss", "MADL" if self.config.use_madl else "BCE")
         if self.config.warm_start:
-            config_table.add_row("Mode", "[green]Warm Start[/green]")
+            self.console.key_value("Mode", "Warm Start")
 
-        # Combine tables side by side
-        columns = Columns([
-            Panel(header_table, title="[bold]Data[/bold]", border_style="blue"),
-            Panel(config_table, title="[bold]Config[/bold]", border_style="blue"),
-        ], equal=True)
-
-        self.console.print()
-        self.console.print(Panel(
-            columns,
-            title="[bold white]🚀 Training Session Started[/bold white]",
-            subtitle=f"[dim]{self.start_time.strftime('%Y-%m-%d %H:%M:%S')}[/dim]",
-            border_style="bright_blue",
-        ))
-        self.console.print()
+        self.console.blank()
+        self.console.divider(100)
+        self.console.blank()
 
         # Print column headers for epoch display
         self._print_epoch_header()
@@ -249,23 +239,23 @@ class TrainingDisplay:
 
         header = Text()
         header.append(f"{'Epoch':>8}", style="bold cyan")
-        header.append("  │  ", style="dim")
+        header.append("  ")  # Spacing instead of │
         header.append(f"{'Loss':>9}", style="bold")
         header.append("  ")
         header.append(f"{'Acc':>7}", style="bold")
-        header.append("  │  ", style="dim")
+        header.append("  ")  # Spacing instead of │
         header.append(f"{'Val Loss':>9}", style="bold")
         header.append("  ")
         header.append(f"{'Val Acc':>7}", style="bold")
-        header.append("  │  ", style="dim")
+        header.append("  ")  # Spacing instead of │
         header.append(f"{'LR':>9}", style="bold")
         header.append("  ")
         header.append(f"{'Time':>7}", style="bold")
-        header.append("  │  ", style="dim")
+        header.append("  ")  # Spacing instead of │
         header.append("Status", style="bold")
 
-        self.console.print(header)
-        self.console.print("─" * 100, style="dim")
+        self._rich_console.print(header)
+        self.console.divider(100)
 
     def update_epoch(self, metrics: EpochMetrics):
         """Update display with epoch metrics."""
@@ -317,14 +307,14 @@ class TrainingDisplay:
         m.epoch / self.config.total_epochs * 100
         row.append(f"{m.epoch:>4}/{self.config.total_epochs:<3}", style="cyan")
 
-        row.append("  │  ", style="dim")
+        row.append("  ")  # Spacing instead of │
 
         # Training metrics
         row.append(f"{m.loss:>9.4f}", style=self._get_loss_style(m.loss))
         row.append("  ")
         row.append(f"{m.accuracy*100:>6.1f}%", style=self._get_acc_style(m.accuracy))
 
-        row.append("  │  ", style="dim")
+        row.append("  ")  # Spacing instead of │
 
         # Validation metrics with improvement indicators
         val_loss_str = f"{m.val_loss:>9.4f}"
@@ -338,7 +328,7 @@ class TrainingDisplay:
             val_acc_str += " ↑"
         row.append(val_acc_str, style=self._get_acc_style(m.val_accuracy))
 
-        row.append("  │  ", style="dim")
+        row.append("  ")  # Spacing instead of │
 
         # Learning rate
         row.append(f"{m.lr:>9.2e}", style="dim")
@@ -351,17 +341,17 @@ class TrainingDisplay:
             time_str = f"{m.duration_sec/60:>5.1f}m"
         row.append(time_str, style="dim")
 
-        row.append("  │  ", style="dim")
+        row.append("  ")  # Spacing instead of │
 
         # Status
         if m.acc_improved:
-            row.append("★ Best", style="bold green")
+            row.append(f"{StatusGlyphs.BEST} Best", style="bold green")
         elif m.loss_improved:
-            row.append("↓ Loss", style="green")
+            row.append(f"{StatusGlyphs.ARROW_DOWN} Loss", style="green")
         else:
-            row.append("  ─", style="dim")
+            row.append(f"  {StatusGlyphs.NEUTRAL}", style="dim")
 
-        self.console.print(row)
+        self._rich_console.print(row)
 
     def _print_epoch_plain(self, m: EpochMetrics):
         """Print epoch row in plain text."""
@@ -375,13 +365,11 @@ class TrainingDisplay:
             print(f"\n⏹  Early stopping: {reason} did not improve for {patience} epochs")
             return
 
-        self.console.print()
-        self.console.print(Panel(
-            f"Training stopped: [cyan]{reason}[/cyan] did not improve for [yellow]{patience}[/yellow] epochs\n"
-            f"Best epoch: [green]{self.best_epoch}[/green] with val_accuracy = [green]{self.best_val_acc:.4f}[/green]",
-            title="[bold yellow]⏹  Early Stopping[/bold yellow]",
-            border_style="yellow",
-        ))
+        self.console.blank()
+        self.console.section_header("Early Stopping", color="yellow")
+        self.console.key_value("Reason", f"{reason} did not improve for {patience} epochs")
+        self.console.key_value("Best Epoch", str(self.best_epoch))
+        self.console.key_value("Best Val Accuracy", f"{self.best_val_acc:.4f}")
 
     def print_lr_reduction(self, new_lr: float, old_lr: float):
         """Print learning rate reduction notification."""
@@ -399,63 +387,50 @@ class TrainingDisplay:
             self._print_summary_plain(final_metrics, duration)
             return
 
-        self.console.print()
-        self.console.print("─" * 100, style="dim")
+        self.console.blank()
+        self.console.divider(100)
 
-        # Build summary table
-        summary = Table(show_header=False, box=None, padding=(0, 2))
-        summary.add_column("Metric", style="cyan")
-        summary.add_column("Value", justify="right")
-
-        # Performance metrics
+        # Determine overall status
         val_acc = final_metrics.get('val_accuracy', 0)
+        if val_acc >= 0.55:
+            status_color = "green"
+            status_text = f"{StatusGlyphs.SUCCESS} Training Successful"
+        elif val_acc >= 0.50:
+            status_color = "yellow"
+            status_text = f"{StatusGlyphs.PENDING} Training Marginal"
+        else:
+            status_color = "red"
+            status_text = f"{StatusGlyphs.ERROR} Training Below Baseline"
+
+        self.console.section_header(status_text, color=status_color)
+
+        # Performance section
+        self.console.blank()
+        self._rich_console.print("  [bold]PERFORMANCE[/bold]", style="green")
         bal_acc = final_metrics.get('val_balanced_accuracy', 0)
         up_acc = final_metrics.get('val_up_accuracy', 0)
         down_acc = final_metrics.get('val_down_accuracy', 0)
 
-        summary.add_row("Validation Accuracy", f"[{self._get_acc_style(val_acc)}]{val_acc:.4f}[/]")
-        summary.add_row("Balanced Accuracy", f"[{self._get_acc_style(bal_acc)}]{bal_acc:.4f}[/]")
-        summary.add_row("  ↳ Up (Long)", f"{up_acc:.4f}")
-        summary.add_row("  ↳ Down (Short)", f"{down_acc:.4f}")
+        self.console.key_value("Validation Accuracy", f"{val_acc:.4f}")
+        self.console.key_value("Balanced Accuracy", f"{bal_acc:.4f}")
+        self.console.key_value("  Up (Long)", f"{up_acc:.4f}")
+        self.console.key_value("  Down (Short)", f"{down_acc:.4f}")
 
-        # Training stats
-        stats = Table(show_header=False, box=None, padding=(0, 2))
-        stats.add_column("Stat", style="cyan")
-        stats.add_column("Value", justify="right")
-
+        # Statistics section
+        self.console.blank()
+        self._rich_console.print("  [bold]STATISTICS[/bold]", style="cyan")
         epochs_trained = final_metrics.get('epochs_trained', len(self.epoch_history))
-        stats.add_row("Epochs Trained", f"{epochs_trained}/{self.config.total_epochs}")
-        stats.add_row("Best Epoch", f"{self.best_epoch}")
-        stats.add_row("Training Time", self._format_duration(duration))
-        stats.add_row("Final LR", f"{self.current_lr:.2e}")
+        self.console.key_value("Epochs Trained", f"{epochs_trained}/{self.config.total_epochs}")
+        self.console.key_value("Best Epoch", str(self.best_epoch))
+        self.console.key_value("Training Time", self._format_duration(duration))
+        self.console.key_value("Final LR", f"{self.current_lr:.2e}")
 
         if 'avg_weight_norm' in final_metrics:
-            stats.add_row("Avg Weight Norm", f"{final_metrics['avg_weight_norm']:.4f}")
+            self.console.key_value("Avg Weight Norm", f"{final_metrics['avg_weight_norm']:.4f}")
 
-        # Combine tables
-        columns = Columns([
-            Panel(summary, title="[bold]Performance[/bold]", border_style="green"),
-            Panel(stats, title="[bold]Statistics[/bold]", border_style="blue"),
-        ], equal=True)
-
-        # Determine overall status
-        if val_acc >= 0.55:
-            status = "[bold green]✓ Training Successful[/bold green]"
-            border = "green"
-        elif val_acc >= 0.50:
-            status = "[bold yellow]○ Training Marginal[/bold yellow]"
-            border = "yellow"
-        else:
-            status = "[bold red]✗ Training Below Baseline[/bold red]"
-            border = "red"
-
-        self.console.print(Panel(
-            Group(columns, Text()),
-            title=f"{status}",
-            subtitle=f"[dim]Completed at {datetime.now().strftime('%H:%M:%S')}[/dim]",
-            border_style=border,
-        ))
-        self.console.print()
+        self.console.blank()
+        self._rich_console.print(f"  [dim]Completed at {datetime.now().strftime('%H:%M:%S')}[/dim]")
+        self.console.blank()
 
     def _print_summary_plain(self, final_metrics: Dict[str, Any], duration: timedelta):
         """Print summary in plain text."""
@@ -666,25 +641,21 @@ def print_data_summary(
             print(f"  Regime distribution: {regime_dist}")
         return
 
-    console = Console()
+    console = PremiumConsole(Console())
 
-    table = Table(show_header=False, box=None)
-    table.add_column("", style="cyan")
-    table.add_column("", justify="right")
-
-    table.add_row("Training", f"{n_train:,} samples")
-    table.add_row("Validation", f"{n_val:,} samples")
-    table.add_row("Features", f"{n_features}")
+    console.blank()
+    console.section_header("Data Loaded", color="cyan")
+    console.key_value("Training", f"{n_train:,} samples")
+    console.key_value("Validation", f"{n_val:,} samples")
+    console.key_value("Features", str(n_features))
 
     if class_balance:
         for label, pct in class_balance.items():
-            table.add_row(f"  {label}", f"{pct:.1%}")
+            console.key_value(f"  {label}", f"{pct:.1%}")
 
     if regime_dist:
         for regime, pct in regime_dist.items():
-            table.add_row(f"  {regime}", f"{pct:.1%}")
-
-    console.print(Panel(table, title="[bold]Data Loaded[/bold]", border_style="blue"))
+            console.key_value(f"  {regime}", f"{pct:.1%}")
 
 
 # =============================================================================
@@ -721,27 +692,13 @@ def print_quick_model_header(
         print(f"  Output: {output_desc}")
         return
 
-    console = Console()
+    console = PremiumConsole(Console())
 
-    # Create info table
-    info_table = Table(show_header=False, box=None, padding=(0, 1))
-    info_table.add_column("", style="dim")
-    info_table.add_column("")
-    info_table.add_row("Features", features_desc)
-    info_table.add_row("Output", output_desc)
-
-    title = f"Step {step}: {model_name}"
-    subtitle = purpose
-
-    panel = Panel(
-        info_table,
-        title=f"[bold {color}]📊 {title}[/bold {color}]",
-        subtitle=f"[dim]{subtitle}[/dim]",
-        border_style=color,
-        padding=(0, 2),
-    )
-    console.print()
-    console.print(panel)
+    console.blank()
+    console.step_progress(int(step.split('/')[0]), int(step.split('/')[1]), model_name, color=color)
+    console.key_value("Purpose", purpose, indent=True)
+    console.key_value("Features", features_desc, indent=True)
+    console.key_value("Output", output_desc, indent=True)
 
 
 def print_quick_model_result(
@@ -759,7 +716,7 @@ def print_quick_model_result(
                 print(f"   {k}: {v:.4f}")
         return
 
-    console = Console()
+    console = PremiumConsole(Console())
 
     # Build metrics display
     metrics_parts = []
@@ -778,15 +735,16 @@ def print_quick_model_result(
         else:
             metrics_parts.append(f"{key}={value}")
 
-    metrics_str = " │ ".join(metrics_parts)
+    metrics_str = "  ".join(metrics_parts)  # Use spacing instead of │
 
     if duration_sec > 0:
         time_str = f" [dim]({duration_sec:.1f}s)[/dim]"
     else:
         time_str = ""
 
-    status = "[bold green]✓[/bold green]" if success else "[bold red]✗[/bold red]"
-    console.print(f"  {status} [bold]{model_name}[/bold]: {metrics_str}{time_str}")
+    status = f"{StatusGlyphs.SUCCESS}" if success else f"{StatusGlyphs.ERROR}"
+    status_style = "bold green" if success else "bold red"
+    console._console.print(f"  [{status_style}]{status}[/{status_style}] [bold]{model_name}[/bold]: {metrics_str}{time_str}")
 
 
 def _get_accuracy_color(acc: float) -> str:
@@ -824,14 +782,19 @@ def print_ensemble_summary(
             print(f"  • {path}")
         return
 
-    console = Console()
+    console = PremiumConsole(Console())
 
-    # Performance table
-    perf_table = Table(show_header=True, header_style="bold cyan", box=None)
-    perf_table.add_column("Model", style="bold")
-    perf_table.add_column("Role", style="dim")
-    perf_table.add_column("Primary Metric", justify="right")
-    perf_table.add_column("Status", justify="center")
+    console.blank()
+    console.section_header(
+        f"{StatusGlyphs.SUCCESS} Modular Ensemble Training Complete",
+        subtitle=f"Completed at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        color="green"
+    )
+
+    # Model Performance section
+    console.blank()
+    console._console.print("  [bold]MODEL PERFORMANCE[/bold]", style="green")
+    console.divider(60)
 
     for model_name, info in model_results.items():
         role = info.get('role', '')
@@ -841,97 +804,59 @@ def print_ensemble_summary(
         # Format metric
         if 'accuracy' in metric_name.lower():
             color = _get_accuracy_color(metric_value)
-            metric_str = f"[{color}]{metric_value:.1%}[/{color}]"
+            metric_str = f"{metric_value:.1%}"
         elif 'mae' in metric_name.lower():
-            metric_str = f"[cyan]{metric_value:.4f}[/cyan]"
+            color = "cyan"
+            metric_str = f"{metric_value:.4f}"
         elif 'r2' in metric_name.lower():
             color = "green" if metric_value > 0 else "yellow" if metric_value > -0.5 else "red"
-            metric_str = f"[{color}]{metric_value:.3f}[/{color}]"
+            metric_str = f"{metric_value:.3f}"
         else:
+            color = "white"
             metric_str = f"{metric_value:.4f}" if isinstance(metric_value, float) else str(metric_value)
 
         # Status indicator
         status = info.get('status', 'ok')
         if status == 'excellent':
-            status_str = "[bold green]★★★[/bold green]"
+            status_str = f"[bold green]{StatusGlyphs.STAR}{StatusGlyphs.STAR}{StatusGlyphs.STAR}[/bold green]"
         elif status == 'good':
-            status_str = "[green]★★[/green]"
+            status_str = f"[green]{StatusGlyphs.STAR}{StatusGlyphs.STAR}[/green]"
         elif status == 'ok':
-            status_str = "[yellow]★[/yellow]"
+            status_str = f"[yellow]{StatusGlyphs.STAR}[/yellow]"
         else:
-            status_str = "[dim]─[/dim]"
+            status_str = f"[dim]{StatusGlyphs.NEUTRAL}[/dim]"
 
-        perf_table.add_row(model_name, role, f"{metric_name}: {metric_str}", status_str)
+        console._console.print(f"  [bold]{model_name}[/bold] [dim]({role})[/dim]")
+        console._console.print(f"    {metric_name}: [{color}]{metric_str}[/{color}]  {status_str}")
 
-    # Config table
-    config_table = Table(show_header=False, box=None)
-    config_table.add_column("", style="dim")
-    config_table.add_column("", style="cyan")
+    # Configuration section
+    console.blank()
+    console._console.print("  [bold]CONFIGURATION[/bold]", style="cyan")
+    console.divider(60)
 
     for key, value in config.items():
         if isinstance(value, float):
-            config_table.add_row(key, f"{value:.4f}" if abs(value) < 1 else f"{value:.1f}")
+            value_str = f"{value:.4f}" if abs(value) < 1 else f"{value:.1f}"
         elif isinstance(value, bool):
-            config_table.add_row(key, "Yes" if value else "No")
+            value_str = "Yes" if value else "No"
         else:
-            config_table.add_row(key, str(value))
+            value_str = str(value)
+        console.key_value(key, value_str, indent=True)
 
-    # Saved models list
-    paths_text = Text()
+    # Saved models section
+    console.blank()
+    console._console.print("  [bold]SAVED MODELS[/bold]", style="dim")
+    console.divider(60)
+
     for path in saved_paths:
-        # Shorten path for display
         short_path = path.split('/')[-1] if '/' in path else path
-        paths_text.append("  • ", style="dim")
-        paths_text.append(f"{short_path}\n", style="cyan")
+        console._console.print(f"  {StatusGlyphs.BULLET} [cyan]{short_path}[/cyan]")
 
-    # Combine into panels
-    left_panel = Panel(
-        perf_table,
-        title="[bold]📊 Model Performance[/bold]",
-        border_style="green",
-        padding=(0, 1),
-    )
-
-    right_panel = Panel(
-        config_table,
-        title="[bold]⚙️  Configuration[/bold]",
-        border_style="blue",
-        padding=(0, 1),
-    )
-
-    # Inference logic panel
+    # Inference logic section
     if inference_logic:
-        logic_panel = Panel(
-            Text(inference_logic, style="yellow"),
-            title="[bold]🎯 Inference Logic[/bold]",
-            border_style="yellow",
-            padding=(0, 1),
-        )
+        console.blank()
+        console._console.print("  [bold]INFERENCE LOGIC[/bold]", style="yellow")
+        console.divider(60)
+        console._console.print(f"  [yellow]{inference_logic}[/yellow]")
 
-    # Main summary panel
-    content_group = Group(
-        Columns([left_panel, right_panel], equal=True, expand=True),
-        Text(),  # spacer
-        Panel(paths_text, title="[bold]💾 Saved Models[/bold]", border_style="dim", padding=(0, 1)),
-    )
-
-    if inference_logic:
-        content_group = Group(
-            Columns([left_panel, right_panel], equal=True, expand=True),
-            Text(),
-            Panel(paths_text, title="[bold]💾 Saved Models[/bold]", border_style="dim", padding=(0, 1)),
-            Text(),
-            logic_panel,
-        )
-
-    main_panel = Panel(
-        content_group,
-        title="[bold green]✅ MODULAR ENSEMBLE TRAINING COMPLETE[/bold green]",
-        subtitle=f"[dim]{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/dim]",
-        border_style="bold green",
-        padding=(1, 2),
-    )
-
-    console.print()
-    console.print(main_panel)
-    console.print()
+    console.blank()

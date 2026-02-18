@@ -43,6 +43,13 @@ class TestInferenceConfig:
         assert config.sentiment_block_enabled is True
         assert config.sentiment_block_threshold == 0.60
         assert config.sentiment_min_headlines == 3
+
+        # Optional heuristic veto gates
+        assert config.use_rsi_extreme_gate is True
+        assert config.use_trend_contra_gate is True
+        assert config.rsi_extreme_low_threshold == 10.0
+        assert config.rsi_extreme_high_threshold == 90.0
+        assert config.adx_trend_contra_threshold == 35.0
     
     def test_yaml_config_loading(self):
         """Test loading inference config from YAML file."""
@@ -141,6 +148,15 @@ class TestInferenceConfig:
         # Test with different calibration method
         isotonic_config = InferenceConfig(calibration_method='isotonic')
         assert isotonic_config.calibration_method == 'isotonic'
+
+    def test_heuristic_vetoes_can_be_disabled(self):
+        """Aggressive mode compatibility: heuristic vetoes should be toggleable."""
+        config = InferenceConfig(
+            use_rsi_extreme_gate=False,
+            use_trend_contra_gate=False,
+        )
+        assert config.use_rsi_extreme_gate is False
+        assert config.use_trend_contra_gate is False
 
 
 class TestGateThresholds:

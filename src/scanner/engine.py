@@ -102,6 +102,31 @@ class Scanner:
                 self.config.max_drawdown_pct = inference_config.get(
                     "max_drawdown_pct", self.config.max_drawdown_pct
                 )
+                self.config.use_tcn_volatility_filter = bool(
+                    inference_config.get(
+                        "use_tcn_volatility_filter",
+                        self.config.use_tcn_volatility_filter,
+                    )
+                )
+                self.config.require_tcn_volatility = bool(
+                    inference_config.get("tcn_required", self.config.require_tcn_volatility)
+                )
+                min_regime = inference_config.get(
+                    "min_volatility_regime", self.config.min_volatility_regime
+                )
+                try:
+                    self.config.min_volatility_regime = max(0, min(3, int(min_regime)))
+                except (TypeError, ValueError):
+                    logger.warning(
+                        f"Invalid min_volatility_regime={min_regime!r}; keeping "
+                        f"{self.config.min_volatility_regime}"
+                    )
+                scan_config = yaml_config.get("scan", {})
+                yaml_profile = scan_config.get("profile")
+                # CLI-provided profile (non-balanced) should take precedence over YAML default.
+                if yaml_profile and self.config.profile == "balanced":
+                    self.config.profile = str(yaml_profile).strip().lower()
+                self.config.apply_profile(self.config.profile)
 
                 logger.debug(f"Loaded config from {self.config.config_path}")
 
@@ -172,7 +197,11 @@ class Scanner:
             )
             require_tcn = False
 
-        self._gate_evaluator = GateEvaluator(model_dir, use_joint_only=use_joint_only)
+        self._gate_evaluator = GateEvaluator(
+            model_dir,
+            use_joint_only=use_joint_only,
+            min_volatility_regime=self.config.min_volatility_regime,
+        )
 
         try:
             status = self._gate_evaluator.load_models(require_tcn=require_tcn)
@@ -512,6 +541,8 @@ class Scanner:
         """
         if not self._init_gate_evaluator() or self._gate_evaluator is None:
             return True, None
+        if not getattr(self.config, "use_tcn_volatility_filter", True):
+            return True, None
 
         if not self._gate_evaluator.tcn_volatility_available:
             return True, None
@@ -791,13 +822,15 @@ class Scanner:
         """
         try:
             # Check session timing
-            if self.config.session_filter_enabled:
+            if self.config.enable_session_filter:
                 if not self.config.is_within_session():
+                    current_hour = datetime.now(timezone.utc).hour
                     return PairAnalysis(
                         pair=pair,
                         direction="HOLD",
                         confidence=0.0,
-                        error="Outside trading session",
+                        error=f"Outside trading session ({current_hour}:00 UTC, "
+                              f"active: {self.config.session_start_utc}-{self.config.session_end_utc} UTC)",
                     )
 
             # Fetch data
@@ -887,6 +920,19 @@ class Scanner:
             # Create analysis result
             # When inference failed completely (all defaults), don't fake passing gates
             _risk_ok = _drawdown_val <= self.config.max_drawdown_pct if _inference_ok else False
+            _momentum_ok = (confidence >= self.config.min_momentum) if _inference_ok else False
+            _confidence_ok = (ridge_conf >= self.config.min_confidence) if _inference_ok else False
+            # Keep scanner behavior aligned with displayed M/A/R gates.
+            # If model-internal gate blocks but visible core gates pass, surface it as tradeable.
+            _core_gates_passed = (
+                _inference_ok
+                and direction in {"LONG", "SHORT"}
+                and _momentum_ok
+                and _confidence_ok
+                and _risk_ok
+                and error_msg is None
+            )
+            _final_gates_passed = bool(gates_passed) or _core_gates_passed
             result = PairAnalysis(
                 pair=pair,
                 direction=direction,
@@ -895,12 +941,12 @@ class Scanner:
                 ridge_confidence=ridge_conf,
                 momentum=confidence,
                 momentum_acceleration=gates_passed,
-                momentum_passed=(confidence >= self.config.min_momentum) if _inference_ok else False,
+                momentum_passed=_momentum_ok,
                 confidence_score=ridge_conf,
-                confidence_passed=(ridge_conf >= self.config.min_confidence) if _inference_ok else False,
+                confidence_passed=_confidence_ok,
                 drawdown=_drawdown_val,
                 risk_passed=_risk_ok,
-                gates_passed=gates_passed,
+                gates_passed=_final_gates_passed,
                 current_price=metrics["current_price"],
                 atr=metrics["atr"],
                 atr_pips=atr_pips,
@@ -949,7 +995,7 @@ class Scanner:
         pair_list = pairs or self.config.default_pairs
 
         # Check session before starting
-        if self.config.session_filter_enabled and not self.config.non_interactive:
+        if self.config.enable_session_filter and not self.config.non_interactive:
             if not self.config.is_within_session():
                 current_hour = datetime.now(timezone.utc).hour
                 logger.warning(

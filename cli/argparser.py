@@ -381,6 +381,18 @@ def _add_scan_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="For scan: auto-filter correlated pairs (only show best from each correlation cluster)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="For scan: bypass session-hour filter and scan/trade outside peak liquidity hours",
+    )
+    parser.add_argument(
+        "--profile",
+        type=str,
+        choices=["conservative", "balanced", "aggressive"],
+        default="balanced",
+        help="For buddy/scan: gate profile tuning (conservative|balanced|aggressive)",
+    )
 
 
 def _add_journal_arguments(parser: argparse.ArgumentParser) -> None:
@@ -425,8 +437,8 @@ def _add_rl_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--timesteps",
         type=int,
-        default=500_000,
-        help="For train-rl-sizer: total training timesteps (default: 500000)",
+        default=None,
+        help="For train-rl-* and train-buddy RL: timesteps override (default: use config)",
     )
     parser.add_argument(
         "--rl-episodes",

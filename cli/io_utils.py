@@ -29,7 +29,7 @@ from src.training.checkpoint_manager import (
 
 
 # Constants
-DEFAULT_CONFIG_PATH = "./config/config_improved_H1.yaml"
+DEFAULT_CONFIG_PATH = "./config/config_intel_optimized.yaml"
 DEFAULT_MESSAGE_FORMAT = "Epoch {epoch} completed"
 TIMESTAMP_FORMAT = "%H:%M:%S"
 TABLE_HEADER_STYLE = "bold magenta"
