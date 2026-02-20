@@ -282,6 +282,14 @@ class BuddyTrainingOptions:
     # RL position sizing training - train RL agent after ensemble
     train_rl_sizer: bool = True  # Enable RL position sizer training after ensemble
     rl_timesteps: int | None = None  # None => use rl_integration.position_sizing.timesteps
+    # Weights & Biases (W&B) experiment tracking
+    wandb_enabled: bool = False  # Enable W&B tracking (requires `pip install wandb`)
+    wandb_project: str = "ml_engine_fx"  # W&B project name
+    wandb_name: str | None = None  # Run name (None = auto-generate from instrument/granularity)
+    wandb_tags: str | None = None  # Comma-separated tags for the run
+    wandb_offline: bool = False  # Run in offline mode (sync later with `wandb sync`)
+    wandb_gradients: bool = True  # Log gradient histograms (for diagnosing vanishing/exploding gradients)
+    wandb_system: bool = True  # Log system metrics (GPU/CPU/memory)
 
     def __post_init__(self) -> None:
         """Validate training options."""
@@ -360,6 +368,14 @@ class BuddyTrainingOptions:
             foundation_pairs=data.get("foundation_pairs"),
             train_rl_sizer=data.get("train_rl_sizer", True),
             rl_timesteps=data.get("rl_timesteps"),
+            # W&B options
+            wandb_enabled=data.get("wandb_enabled", False),
+            wandb_project=data.get("wandb_project", "ml_engine_fx"),
+            wandb_name=data.get("wandb_name"),
+            wandb_tags=data.get("wandb_tags"),
+            wandb_offline=data.get("wandb_offline", False),
+            wandb_gradients=data.get("wandb_gradients", True),
+            wandb_system=data.get("wandb_system", True),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -405,6 +421,14 @@ class BuddyTrainingOptions:
             "foundation_pairs": self.foundation_pairs,
             "train_rl_sizer": self.train_rl_sizer,
             "rl_timesteps": self.rl_timesteps,
+            # W&B options
+            "wandb_enabled": self.wandb_enabled,
+            "wandb_project": self.wandb_project,
+            "wandb_name": self.wandb_name,
+            "wandb_tags": self.wandb_tags,
+            "wandb_offline": self.wandb_offline,
+            "wandb_gradients": self.wandb_gradients,
+            "wandb_system": self.wandb_system,
         }
 
         if self.oanda_fetch:

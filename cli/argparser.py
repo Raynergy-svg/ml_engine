@@ -795,6 +795,69 @@ def _add_monitoring_arguments(parser: argparse.ArgumentParser) -> None:
         default=20,
         help="For monitor command: limit for drift history display (default: 20)",
     )
+    # Training visualization options
+    parser.add_argument(
+        "--training",
+        action="store_true",
+        help="For monitor command: show training visualization mode",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="For monitor command: show model architecture (TCN, TRANSFORMER)",
+    )
+    parser.add_argument(
+        "--replay",
+        type=str,
+        default=None,
+        help="For monitor command: replay saved training history file",
+    )
+
+
+def _add_wandb_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add Weights & Biases experiment tracking arguments."""
+    parser.add_argument(
+        "--wandb",
+        action="store_true",
+        dest="wandb_enabled",
+        help="Enable Weights & Biases experiment tracking for training runs.",
+    )
+    parser.add_argument(
+        "--wandb-project",
+        type=str,
+        default="ml_engine_fx",
+        help="W&B project name (default: ml_engine_fx).",
+    )
+    parser.add_argument(
+        "--wandb-name",
+        type=str,
+        default=None,
+        help="W&B run name (default: auto-generated from instrument/granularity/model).",
+    )
+    parser.add_argument(
+        "--wandb-tags",
+        type=str,
+        default=None,
+        help="Comma-separated W&B tags (e.g., 'tcn,production,hotfix').",
+    )
+    parser.add_argument(
+        "--wandb-offline",
+        action="store_true",
+        help="Run W&B in offline mode (sync later with `wandb sync`).",
+    )
+    parser.add_argument(
+        "--wandb-no-gradients",
+        action="store_false",
+        dest="wandb_gradients",
+        help="Disable gradient/activation histogram logging (faster, less memory).",
+    )
+    parser.add_argument(
+        "--wandb-no-system",
+        action="store_false",
+        dest="wandb_system",
+        help="Disable system metrics logging (GPU/CPU/memory).",
+    )
 
 
 def _add_multi_pair_arguments(parser: argparse.ArgumentParser) -> None:
@@ -852,6 +915,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     _add_continual_learning_arguments(parser)
     _add_enterprise_arguments(parser)
     _add_monitoring_arguments(parser)
+    _add_wandb_arguments(parser)
     _add_multi_pair_arguments(parser)
 
     return parser

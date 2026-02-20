@@ -8,14 +8,43 @@ argparse, dispatches the chosen sub-command, and exits.
 """
 from __future__ import annotations
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# CRITICAL: macOS OpenMP/MKL/LLVM Conflict Resolution
+# ═══════════════════════════════════════════════════════════════════════════════
+# MUST be set BEFORE any imports (especially numpy, tensorflow, scipy).
+# These prevent Segmentation Fault 11 on macOS when using Intel-optimized
+# libraries with multiprocessing enabled.
+#
+# Issue: Multiple OpenMP runtimes (conda's libomp vs system LLVM vs MKL)
+# conflict when spawning threads, causing SIGSEGV.
+#
+# References:
+# - https://github.com/numpy/numpy/issues/22918
+# - https://stackoverflow.com/questions/53014306/error-15-initializing-libiomp5-dylib
+# ═══════════════════════════════════════════════════════════════════════════════
+import os
+import platform
+
+# Set these BEFORE any other imports
+if platform.system() == "Darwin":  # macOS
+    # Allow multiple OpenMP libraries (prevents "libiomp5.dylib already initialized")
+    os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+    # Use GNU OpenMP threading layer (compatible with conda's libomp)
+    os.environ.setdefault("MKL_THREADING_LAYER", "GNU")
+    # Disable MKL affinity (prevents conflicts with macOS scheduler)
+    os.environ.setdefault("KMP_AFFINITY", "disabled")
+    # Limit thread spawning aggression
+    os.environ.setdefault("OMP_NUM_THREADS", "4")
+    os.environ.setdefault("MKL_NUM_THREADS", "4")
+    # Prevent VECLIB (Apple's Accelerate) from conflicting with MKL
+    os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "4")
+
 # ── Suppress noisy third-party warnings (must precede library imports) ─────
 import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated", category=UserWarning)
 
 # ── TensorFlow noise suppression (must precede any TF import) ──────────────
-import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["KMP_AFFINITY"] = "noverbose"
 
 import logging
 import sys
@@ -463,6 +492,9 @@ def _handle_monitor(args: Any) -> None:
         show_drift=bool(getattr(args, "monitor_drift", False)),
         generate_report=bool(getattr(args, "monitor_report", False)),
         drift_limit=int(getattr(args, "monitor_limit", 20)),
+        training_mode=bool(getattr(args, "training", False)),
+        show_model=getattr(args, "model", None),
+        replay_file=getattr(args, "replay", None),
     )
 
 

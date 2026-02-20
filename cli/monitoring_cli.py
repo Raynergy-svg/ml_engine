@@ -446,8 +446,40 @@ def run_monitoring_dashboard(
     show_drift: bool = False,
     generate_report: bool = False,
     drift_limit: int = 20,
+    training_mode: bool = False,
+    show_model: Optional[str] = None,
+    replay_file: Optional[str] = None,
 ) -> None:
     """Run the monitoring dashboard with robust error handling."""
+    # Training visualization mode
+    if training_mode:
+        console.print(Panel(
+            "[bold cyan]Training Monitor Mode[/bold cyan]\n\n"
+            "This mode shows live training visualization.\n"
+            "Start training with: [yellow]buddy train -i EUR_USD[/yellow]\n\n"
+            "The monitor will automatically display:\n"
+            "  - Model architecture\n"
+            "  - Loss curves (sparklines)\n"
+            "  - Metrics with trend indicators\n"
+            "  - Prediction flow visualization",
+            title="Training Monitor",
+            border_style="cyan",
+        ))
+        return
+
+    # Show model architecture
+    if show_model:
+        from cli.training_monitor import render_model_architecture
+        render_model_architecture(show_model, config_path)
+        return
+
+    # Replay training history
+    if replay_file:
+        from cli.training_monitor import replay_training_log
+        replay_training_log(replay_file)
+        return
+
+    # Standard OANDA monitoring dashboard
     with _silence_logging():
         try:
             monitor = _build_monitor(config_path)

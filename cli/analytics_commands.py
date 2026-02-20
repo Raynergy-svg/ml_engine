@@ -830,6 +830,9 @@ def buddy_monitor(
     show_drift: bool = False,
     generate_report: bool = False,
     drift_limit: int = 20,
+    training_mode: bool = False,
+    show_model: str | None = None,
+    replay_file: str | None = None,
     **kwargs: Any,
 ) -> None:
     """Display the monitoring dashboard using the Rich-based CLI renderer."""
@@ -841,4 +844,7 @@ def buddy_monitor(
         show_drift=show_drift,
         generate_report=generate_report,
         drift_limit=drift_limit,
+        training_mode=training_mode,
+        show_model=show_model,
+        replay_file=replay_file,
     )

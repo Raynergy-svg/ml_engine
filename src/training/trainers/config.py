@@ -9,7 +9,7 @@ This module contains:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Any, List, Optional
 
 
 @dataclass
@@ -239,6 +239,26 @@ class TrainerConfig:
 
     # Number of output classes for classification tasks
     num_classes: int = 2  # Binary classification default
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # WANDB TRACKING (Weights & Biases experiment tracking)
+    # ═══════════════════════════════════════════════════════════════════════════
+    # Optional WandbKerasTracker instance for real-time metric logging.
+    # When provided, the trainer will:
+    # 1. Initialize the W&B run (if not already active)
+    # 2. Add W&B callbacks to model.fit() for:
+    #    - Loss/accuracy logging with EMA smoothing
+    #    - Gradient histogram logging
+    #    - System metrics (GPU/CPU/memory)
+    #    - Model graph visualization
+    # 3. Log final metrics after training completes
+    #
+    # Usage:
+    #   from src.training.wandb_keras_callback import WandbKerasTracker, WandbKerasConfig
+    #   tracker = WandbKerasTracker(project_name="ml_engine_fx", ...)
+    #   config = TrainerConfig(..., wandb_tracker=tracker)
+    #
+    wandb_tracker: Optional[Any] = None  # WandbKerasTracker instance (optional)
 
     def __post_init__(self):
         """Validate configuration parameters."""

@@ -3005,6 +3005,14 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
             if getattr(args, "timesteps", None) is not None
             else None
         ),
+        # Weights & Biases experiment tracking
+        wandb_enabled=bool(getattr(args, "wandb_enabled", False)),
+        wandb_project=str(getattr(args, "wandb_project", "ml_engine_fx")),
+        wandb_name=getattr(args, "wandb_name", None),
+        wandb_tags=getattr(args, "wandb_tags", None),
+        wandb_offline=bool(getattr(args, "wandb_offline", False)),
+        wandb_gradients=bool(getattr(args, "wandb_gradients", True)),
+        wandb_system=bool(getattr(args, "wandb_system", True)),
     )
 
 

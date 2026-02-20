@@ -12,10 +12,20 @@ from dataclasses import fields, replace
 
 import numpy as np
 import pandas as pd
+from rich.panel import Panel
 from rich.table import Table
 
 from cli.config import BuddyTrainingOptions, OandaFetchOptions
 from src.utils.premium_output import PremiumConsole
+
+# W&B Integration (optional dependency)
+try:
+    from src.training.wandb_keras_callback import WandbKerasTracker, WandbKerasConfig
+    WANDB_AVAILABLE = True
+except ImportError:
+    WandbKerasTracker = None  # type: ignore[misc,assignment]
+    WandbKerasConfig = None  # type: ignore[misc,assignment]
+    WANDB_AVAILABLE = False
 
 # Module-level PremiumConsole instance for borderless output
 _premium = PremiumConsole()
@@ -817,6 +827,152 @@ def _format_ridge_sparsity(ridge_metrics: dict) -> str:
     return "N/A"
 
 
+def _initialize_wandb_tracker(
+    *,
+    options: "BuddyTrainingOptions",
+    training_instrument: str,
+    training_granularity: str,
+    console,
+) -> Any:
+    """Initialize W&B tracker if enabled and available.
+
+    Applies "Convention over Configuration" defaults when --wandb is enabled:
+    - Project: ml_engine_fx
+    - Name: {instrument}_{granularity}_ensemble_v{version}
+    - Tags: ["production", "ensemble"]
+    - Gradients: True
+    - System: True
+
+    User-provided values via CLI flags override these defaults.
+
+    Args:
+        options: Training options containing W&B configuration
+        training_instrument: Instrument being trained (e.g., 'EUR_USD')
+        training_granularity: Time granularity (e.g., 'H1')
+        console: Rich console for output
+
+    Returns:
+        WandbKerasTracker instance if enabled, None otherwise
+    """
+    if not getattr(options, "wandb_enabled", False):
+        return None
+
+    if not WANDB_AVAILABLE:
+        console.print("[yellow]⚠️  W&B enabled but wandb not installed[/yellow]")
+        console.print("[dim]Install with: pip install wandb[/dim]")
+        return None
+
+    try:
+        # ═══════════════════════════════════════════════════════════════════
+        # CONVENTION OVER CONFIGURATION DEFAULTS
+        # ═══════════════════════════════════════════════════════════════════
+        # When --wandb is enabled, apply sensible defaults that can be
+        # overridden by explicit CLI flags.
+
+        # Default project name (user can override via --wandb-project)
+        default_project = "ml_engine_fx"
+
+        # Default tags for production ensemble training
+        default_tags = ["production", "ensemble"]
+
+        # Default: enable gradient and system logging
+        default_log_gradients = True
+        default_log_system = True
+
+        # ═══════════════════════════════════════════════════════════════════
+        # RESOLVE USER OVERRIDES (CLI flags take precedence)
+        # ═══════════════════════════════════════════════════════════════════
+
+        # Project: use user-provided or default
+        wandb_project = getattr(options, "wandb_project", None)
+        if wandb_project is None or wandb_project == default_project:
+            # Use default (user didn't explicitly override)
+            effective_project = default_project
+        else:
+            effective_project = wandb_project
+
+        # Name: auto-generate if not provided by user
+        # Format: {instrument}_{granularity}_ensemble_v{N}
+        wandb_name = getattr(options, "wandb_name", None)
+        if wandb_name is None:
+            # Auto-generate name with version suffix
+            # Version increments based on existing runs (simplified: v1 for now)
+            wandb_name = f"{training_instrument}_{training_granularity}_ensemble_v1"
+
+        # Tags: apply default tags if user didn't provide any
+        wandb_tags = getattr(options, "wandb_tags", None)
+        if wandb_tags is None or wandb_tags.strip() == "":
+            # Use convention defaults
+            tags_list = default_tags
+        else:
+            # Parse user-provided tags (comma-separated)
+            tags_list = [t.strip() for t in wandb_tags.split(",") if t.strip()]
+
+        # Gradients: default True, user can disable via --no-wandb-gradients
+        wandb_gradients = getattr(options, "wandb_gradients", None)
+        if wandb_gradients is None:
+            effective_log_gradients = default_log_gradients
+        else:
+            effective_log_gradients = bool(wandb_gradients)
+
+        # System metrics: default True, user can disable via --no-wandb-system
+        wandb_system = getattr(options, "wandb_system", None)
+        if wandb_system is None:
+            effective_log_system = default_log_system
+        else:
+            effective_log_system = bool(wandb_system)
+
+        # Offline mode: default False, user can enable via --wandb-offline
+        wandb_offline = bool(getattr(options, "wandb_offline", False))
+
+        # ═══════════════════════════════════════════════════════════════════
+        # BUILD CONFIG AND TRACKER
+        # ═══════════════════════════════════════════════════════════════════
+
+        config = WandbKerasConfig(
+            project_name=effective_project,
+            experiment_name=wandb_name,
+            tags=tags_list,
+            offline_mode=wandb_offline,
+            enable_gradient_logging=effective_log_gradients,
+            enable_system_metrics=effective_log_system,
+            instrument=training_instrument,
+            granularity=training_granularity,
+        )
+
+        tracker = WandbKerasTracker(
+            project_name=config.project_name,
+            experiment_name=config.experiment_name,
+            instrument=config.instrument,
+            granularity=config.granularity,
+            tags=config.tags,
+            offline_mode=config.offline_mode,
+            enable_gradient_logging=config.enable_gradient_logging,
+            enable_system_metrics=config.enable_system_metrics,
+        )
+
+        # Display configuration panel showing applied defaults
+        tags_display = ", ".join(tags_list) if tags_list else "none"
+        console.print(Panel(
+            f"[bold]Weights & Biases Experiment Tracking[/bold]\n\n"
+            f"[dim]Project:[/dim] {config.project_name}\n"
+            f"[dim]Experiment:[/dim] {config.experiment_name}\n"
+            f"[dim]Tags:[/dim] {tags_display}\n"
+            f"[dim]Mode:[/dim] {'offline' if config.offline_mode else 'online'}\n"
+            f"[dim]Gradients:[/dim] {'✓' if config.enable_gradient_logging else '✗'}\n"
+            f"[dim]System Metrics:[/dim] {'✓' if config.enable_system_metrics else '✗'}\n\n"
+            f"[dim italic]Convention defaults applied (override via CLI flags)[/dim italic]",
+            title="📊 W&B Integration",
+            border_style="magenta",
+        ))
+
+        return tracker
+
+    except Exception as e:
+        console.print(f"[yellow]⚠️  W&B initialization failed: {e}[/yellow]")
+        return None
+
+
 def _train_ensemble_models(
     *,
     cfg,
@@ -869,6 +1025,27 @@ def _train_ensemble_models(
 
     # Determine instrument early so we can load pair-specific config
     training_instrument, training_granularity = _determine_training_instrument(oanda_fetch, csv_path)
+
+    # Initialize W&B tracker if enabled
+    wandb_tracker = _initialize_wandb_tracker(
+        options=options,
+        training_instrument=training_instrument,
+        training_granularity=training_granularity,
+        console=console,
+    )
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # INITIALIZE W&B RUN BEFORE TRAINING
+    # ═══════════════════════════════════════════════════════════════════════════
+    # The tracker must be initialized (wandb.init() called) BEFORE we build
+    # the trainer config, so that callbacks can be created with an active run.
+    if wandb_tracker is not None:
+        try:
+            wandb_tracker.init()
+            console.print("[dim]📊 W&B run initialized[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️  W&B init failed: {e}[/yellow]")
+            wandb_tracker = None
 
     # Get model configuration from config (intel_optimized.yaml is the default)
     transformer_cfg = cfg.get("transformer", {})
@@ -967,6 +1144,7 @@ def _train_ensemble_models(
         replay_capacity_ratio=replay_capacity_ratio,
         replay_mix_ratio=replay_mix_ratio,
         drift_threshold=drift_threshold,
+        wandb_tracker=wandb_tracker,
     )
 
     all_metrics = {}
@@ -988,6 +1166,7 @@ def _train_ensemble_models(
         regime_lookahead=regime_lookahead,
         console=console,
         cfg=cfg,
+        wandb_tracker=wandb_tracker,
     )
     all_metrics['direction'] = dir_metrics
 
@@ -1001,6 +1180,7 @@ def _train_ensemble_models(
         console=console,
     )
     all_metrics['xgboost'] = xgb_metrics
+    _log_xgb_metrics_to_wandb(xgb_metrics, wandb_tracker, console)
 
     # Train Random Forest
     rf_data, rf_metrics = _train_rf_model(
@@ -1012,6 +1192,7 @@ def _train_ensemble_models(
         console=console,
     )
     all_metrics['rf'] = rf_metrics
+    _log_rf_metrics_to_wandb(rf_metrics, wandb_tracker, console)
 
     # Train Ridge
     ridge_data, ridge_metrics, ridge_trainer = _train_ridge_model(
@@ -1023,6 +1204,7 @@ def _train_ensemble_models(
         console=console,
     )
     all_metrics['ridge'] = ridge_metrics
+    _log_ridge_metrics_to_wandb(ridge_metrics, wandb_tracker, console)
 
     # Optional HistGB
     train_histgb = cfg.get("buddy", {}).get("train_defaults", {}).get("train_histgb", False)
@@ -1134,6 +1316,14 @@ def _train_ensemble_models(
             dir_model_path=dir_model_path,
             rl_position_cfg=rl_position_cfg,
         )
+
+    # Finalize W&B run if active
+    if wandb_tracker is not None:
+        try:
+            wandb_tracker.finish()
+            console.print("[dim]📊 W&B run finalized[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️  W&B finalization warning: {e}[/yellow]")
 
 
 def _print_ensemble_architecture_table(console, use_regime, use_transformer, direction_threshold):
@@ -1332,6 +1522,7 @@ def _build_trainer_config(
     replay_capacity_ratio,
     replay_mix_ratio,
     drift_threshold,
+    wandb_tracker=None,
 ):
     """Build TrainerConfig from config and overrides."""
     from src.training.modular_trainers import TrainerConfig
@@ -1408,6 +1599,8 @@ def _build_trainer_config(
         use_feature_selection=bool(feature_cfg.get("enabled", True)),
         feature_selection_method=str(feature_cfg.get("method", "random_forest")),
         top_k_features=int(feature_cfg.get("top_k_features", 100)),
+        # W&B tracking (optional)
+        wandb_tracker=wandb_tracker,
     )
 
 
@@ -1428,6 +1621,7 @@ def _train_direction_or_regime_model(
     regime_lookahead,
     console,
     cfg=None,
+    wandb_tracker=None,
 ):
     """Train either the regime or direction model. Returns (dir_data, dir_metrics, dir_model_path, dir_trainer)."""
     from src.training.modular_trainers import (
@@ -1552,6 +1746,21 @@ def _train_direction_or_regime_model(
     else:
         console.print(f"[green]✓ Directional predictor complete: Validation accuracy={dir_metrics['val_accuracy']:.1%}[/green]")
 
+    # Log direction model metrics to W&B if tracker is active
+    if wandb_tracker is not None:
+        try:
+            wandb_tracker.log_metrics({
+                "direction/val_accuracy": dir_metrics.get('val_accuracy', 0),
+                "direction/val_balanced_accuracy": dir_metrics.get('val_balanced_accuracy', 0),
+                "direction/val_loss": dir_metrics.get('val_loss', 0),
+                "direction/train_loss": dir_metrics.get('train_loss', 0),
+                "direction/up_accuracy": dir_metrics.get('val_up_accuracy', 0),
+                "direction/down_accuracy": dir_metrics.get('val_down_accuracy', 0),
+            })
+            console.print("[dim]📊 Logged direction metrics to W&B[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]⚠️  W&B metric logging warning: {e}[/yellow]")
+
     return dir_data, dir_metrics, dir_model_path, dir_trainer
 
 
@@ -1617,6 +1826,45 @@ def _train_xgboost_model(*, all_data, trainer_config, pair_paths, model_dir, tra
     console.print(f"Model saved: {pair_paths['xgboost']}")
 
     return xgb_data, xgb_metrics
+
+
+def _log_xgb_metrics_to_wandb(xgb_metrics, wandb_tracker, console):
+    """Log XGBoost metrics to W&B if tracker is active."""
+    if wandb_tracker is None:
+        return
+    try:
+        wandb_tracker.log_metrics({
+            "xgboost/momentum_mae": xgb_metrics.get('momentum_mae', 0),
+            "xgboost/acceleration_accuracy": xgb_metrics.get('acceleration_accuracy', 0),
+        })
+    except Exception as e:
+        console.print(f"[yellow]⚠️  W&B XGBoost logging warning: {e}[/yellow]")
+
+
+def _log_rf_metrics_to_wandb(rf_metrics, wandb_tracker, console):
+    """Log Random Forest metrics to W&B if tracker is active."""
+    if wandb_tracker is None:
+        return
+    try:
+        wandb_tracker.log_metrics({
+            "rf/drawdown_mae_bps": rf_metrics.get('drawdown_mae_bps', rf_metrics.get('drawdown_mae_pips', 0) * 10000),
+            "rf/streak_prob_mae": rf_metrics.get('streak_prob_mae', 0),
+        })
+    except Exception as e:
+        console.print(f"[yellow]⚠️  W&B RF logging warning: {e}[/yellow]")
+
+
+def _log_ridge_metrics_to_wandb(ridge_metrics, wandb_tracker, console):
+    """Log Ridge confidence metrics to W&B if tracker is active."""
+    if wandb_tracker is None:
+        return
+    try:
+        wandb_tracker.log_metrics({
+            "ridge/confidence_mae": ridge_metrics.get('confidence_mae', 0),
+            "ridge/r2_score": ridge_metrics.get('r2_score', 0),
+        })
+    except Exception as e:
+        console.print(f"[yellow]⚠️  W&B Ridge logging warning: {e}[/yellow]")
 
 
 def _train_rf_model(*, all_data, trainer_config, pair_paths, model_dir, training_instrument, console):

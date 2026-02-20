@@ -175,6 +175,9 @@ cmd_monitor() {
             --drift) args+=(--monitor-drift); shift ;;
             --report) args+=(--monitor-report); shift ;;
             --limit) args+=(--monitor-limit "$2"); shift 2 ;;
+            --training) args+=(--training); shift ;;
+            --model) args+=(--model "$2"); shift 2 ;;
+            --replay) args+=(--replay "$2"); shift 2 ;;
             *) shift ;;
         esac
     done
@@ -265,6 +268,9 @@ MONITOR OPTIONS:
   --drift                 Show model drift history
   --report                Generate full monitoring report
   --limit N               Limit drift history entries (default: 20)
+  --training              Show training visualization mode
+  --model TYPE            Show model architecture (TCN, TRANSFORMER)
+  --replay FILE           Replay saved training history
 
 EXAMPLES:
   ./bin/Buddy EUR_USD              # Predict EUR/USD

@@ -41,6 +41,18 @@ from src.training.trainers.callbacks import (
 )
 from src.training.trainers.hybrid_sft_rl_loss import HybridSFTLossWrapper
 from src.training.trainers.rl_callbacks import RLMetricsCallback, RLBaselineScheduler
+
+# Import custom LR schedules early so they're available for pickle/Keras deserialization
+# when loading warm-start checkpoints that contain serialized optimizers
+try:
+    from src.training.m1_metal_optimizer import (
+        WarmupCosineDecaySchedule,
+        CosineDecayRestarts,
+    )
+except ImportError:
+    WarmupCosineDecaySchedule = None  # type: ignore
+    CosineDecayRestarts = None  # type: ignore
+
 from src.training.trainers.utils import (
     ARCH_JSON_SUFFIX,
     EMA_PKL_SUFFIX,
@@ -64,6 +76,22 @@ from src.training.trainers.utils import (
 logger = logging.getLogger(__name__)
 
 
+# Use keras.saving directly for compatibility across TF versions
+try:
+    from keras.saving import register_keras_serializable
+except ImportError:
+    # Fallback for older TF versions
+    try:
+        from tensorflow.keras.saving import register_keras_serializable
+    except ImportError:
+        # Last resort: create a no-op decorator
+        def register_keras_serializable(package=None):
+            def decorator(cls):
+                return cls
+            return decorator
+
+
+@register_keras_serializable(package="ml_engine")
 class _LLRDAdam(tf.keras.optimizers.Adam):
     """Adam optimizer with per-variable learning-rate multipliers.
 
@@ -92,7 +120,19 @@ class _LLRDAdam(tf.keras.optimizers.Adam):
 
     @classmethod
     def from_config(cls, config):
+        from keras.src.saving import serialization_lib
+
         lr_multipliers = config.pop("lr_multipliers", None)
+
+        # Deserialize learning_rate if it's a serialized dict (e.g., LR schedule)
+        lr = config.get("learning_rate")
+        if isinstance(lr, dict):
+            try:
+                config["learning_rate"] = serialization_lib.deserialize_keras_object(lr)
+            except Exception:
+                # Fallback: if deserialization fails, use a reasonable default
+                config["learning_rate"] = lr.get("config", {}).get("initial_learning_rate", 1e-4)
+
         return cls(lr_multipliers=lr_multipliers, **config)
 
 
@@ -912,6 +952,32 @@ class TransformerDirectionTrainer(BaseTrainer):
             return True
         return False
 
+    @staticmethod
+    def _build_custom_objects() -> dict:
+        """Build custom_objects dict for Keras model loading.
+
+        Includes custom LR schedules and other serialized objects needed for
+        deserializing warm-start checkpoints.
+        """
+        custom_objects = {}
+
+        # Add custom LR schedules if available
+        if WarmupCosineDecaySchedule is not None:
+            custom_objects["WarmupCosineDecaySchedule"] = WarmupCosineDecaySchedule
+            custom_objects["ml_engine>WarmupCosineDecaySchedule"] = WarmupCosineDecaySchedule
+            custom_objects["src.training.m1_metal_optimizer>WarmupCosineDecaySchedule"] = WarmupCosineDecaySchedule
+
+        if CosineDecayRestarts is not None:
+            custom_objects["CosineDecayRestarts"] = CosineDecayRestarts
+            custom_objects["ml_engine>CosineDecayRestarts"] = CosineDecayRestarts
+            custom_objects["src.training.m1_metal_optimizer>CosineDecayRestarts"] = CosineDecayRestarts
+
+        # Add custom optimizer
+        custom_objects["_LLRDAdam"] = _LLRDAdam
+        custom_objects["ml_engine>_LLRDAdam"] = _LLRDAdam
+
+        return custom_objects
+
     def _try_load_full_model_weights(self, warm_start_path: str) -> bool:
         """Strategy 2: Try loading full model and extracting weights.
 
@@ -922,7 +988,10 @@ class TransformerDirectionTrainer(BaseTrainer):
         from tensorflow import keras
 
         try:
-            existing_model = keras.models.load_model(warm_start_path, compile=False)
+            custom_objects = self._build_custom_objects()
+            existing_model = keras.models.load_model(
+                warm_start_path, compile=False, custom_objects=custom_objects
+            )
         except Exception as e:
             logger.debug(f"Full model load failed: {e}")
             return False
@@ -1752,6 +1821,25 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         # Add EMA and EWC callbacks
         self._add_ema_ewc_callbacks(callbacks)
+
+        # ═══════════════════════════════════════════════════════════════════════════
+        # W&B CALLBACKS (Weights & Biases Experiment Tracking)
+        # ═══════════════════════════════════════════════════════════════════════════
+        # If a WandbKerasTracker is provided via TrainerConfig, add its callbacks
+        # to enable real-time logging of:
+        # - Loss/accuracy curves with EMA smoothing
+        # - Gradient histograms (for vanishing/exploding gradient diagnosis)
+        # - System metrics (GPU/CPU/memory utilization)
+        # - Model graph visualization
+        wandb_tracker = getattr(self.config, 'wandb_tracker', None)
+        if wandb_tracker is not None:
+            try:
+                wandb_callbacks = wandb_tracker.get_callbacks(self.model)
+                if wandb_callbacks:
+                    callbacks.extend(wandb_callbacks)
+                    logger.info(f"📊 W&B callbacks added to training ({len(wandb_callbacks)} callbacks)")
+            except Exception as e:
+                logger.warning(f"⚠️  Failed to add W&B callbacks: {e}")
 
         return callbacks
 
@@ -2756,6 +2844,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         model = None
         load_errors = []
 
+        # Build custom_objects once for all strategies
+        custom_objects = self._build_custom_objects()
+
         # Strategy 0: Use cross-version loader (handles Keras 2.15.0 -> 3.x migration)
         try:
             from src.utils.keras_model_loader import load_keras_model
@@ -2763,8 +2854,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             model, load_metadata = load_keras_model(
                 str(path),
                 compile=False,
-                # Let the loader auto-detect the best approach based on Keras version
-                # For Keras 3.x, this will try keras_native first
+                custom_objects=custom_objects,
             )
             if load_metadata.get("success"):
                 logger.info(
@@ -2781,7 +2871,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Strategy 1: Standard load (works if same Keras version)
         if model is None:
             try:
-                model = keras.models.load_model(str(path), compile=False)
+                model = keras.models.load_model(
+                    str(path), compile=False, custom_objects=custom_objects
+                )
                 logger.info("✓ Model loaded with standard loader")
             except Exception as e:
                 load_errors.append(f"Standard: {e}")
@@ -2789,7 +2881,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Strategy 2: Use tf.keras.models.load_model (TF-native)
         if model is None:
             try:
-                model = tf.keras.models.load_model(str(path), compile=False)
+                model = tf.keras.models.load_model(
+                    str(path), compile=False, custom_objects=custom_objects
+                )
                 logger.info("✓ Model loaded with tf.keras loader")
             except Exception as e:
                 load_errors.append(f"TF-native: {e}")
@@ -2798,7 +2892,8 @@ class TransformerDirectionTrainer(BaseTrainer):
         if model is None:
             try:
                 model = keras.models.load_model(
-                    str(path), compile=False, safe_mode=False
+                    str(path), compile=False, safe_mode=False,
+                    custom_objects=custom_objects
                 )
                 logger.info("✓ Model loaded with safe_mode=False")
             except Exception as e:
@@ -2811,7 +2906,9 @@ class TransformerDirectionTrainer(BaseTrainer):
             try:
                 with open(arch_path) as f:
                     arch_json = f.read()
-                model = keras.models.model_from_json(arch_json)
+                model = keras.models.model_from_json(
+                    arch_json, custom_objects=custom_objects
+                )
                 model.load_weights(str(weights_path))
                 logger.info(
                     "✓ Model loaded from arch.json + weights.h5 (cross-version)"

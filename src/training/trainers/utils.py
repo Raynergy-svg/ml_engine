@@ -170,6 +170,59 @@ def create_sequences(
     return np.array(x_seq), np.array(y_seq)
 
 
+def validate_sequence_alignment(
+    X: np.ndarray,
+    y: np.ndarray,
+    seq_len: int,
+    context: str = "sequence creation",
+) -> None:
+    """
+    Validate that feature and label arrays are properly aligned for sequencing.
+
+    Prevents IndexError from off-by-one errors in look-ahead logic or label alignment.
+
+    Args:
+        X: Feature matrix of shape (n_samples, n_features)
+        y: Label array of shape (n_samples,) or (n_samples, n_targets)
+        seq_len: Sequence length for temporal models
+        context: Description for error messages
+
+    Raises:
+        ValueError: If arrays are misaligned and would cause IndexError
+    """
+    if X is None or len(X) == 0:
+        raise ValueError(f"Empty feature array in {context}")
+
+    if y is None or len(y) == 0:
+        raise ValueError(f"Empty label array in {context}")
+
+    n_X = len(X)
+    n_y = len(y)
+
+    # After sequencing, we access y[i + seq_len - 1] for i in range(n_X - seq_len)
+    # The maximum index accessed is: (n_X - seq_len - 1) + seq_len - 1 = n_X - 2
+    # So we need: n_y >= n_X - 1
+    max_y_idx_needed = n_X - 2
+
+    if n_y <= max_y_idx_needed:
+        raise ValueError(
+            f"Label array too short for sequencing in {context}: "
+            f"X has {n_X} samples, y has {n_y} samples, "
+            f"but sequencing needs y[{max_y_idx_needed}] (max index). "
+            f"Possible causes:\n"
+            f"  1. Look-ahead rows not properly dropped from features\n"
+            f"  2. Train/val split applied inconsistently to X vs y\n"
+            f"  3. Feature extraction used raw df indices instead of data loader indices"
+        )
+
+    # Warn if lengths differ significantly (may indicate misalignment)
+    if abs(n_X - n_y) > 1:
+        logger.warning(
+            f"Feature/label length mismatch in {context}: X={n_X}, y={n_y}. "
+            f"This may indicate data alignment issues."
+        )
+
+
 def create_sequences_with_weights(
     X: np.ndarray, y: np.ndarray, w: Optional[np.ndarray], seq_len: int
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -186,7 +239,13 @@ def create_sequences_with_weights(
         x_seq: 3D array of shape (n_sequences, seq_len, n_features)
         y_seq: 1D array of labels
         w_seq: 1D array of weights
+
+    Raises:
+        ValueError: If arrays are misaligned (via validate_sequence_alignment)
     """
+    # Validate alignment before sequencing to prevent IndexError
+    validate_sequence_alignment(X, y, seq_len, "create_sequences_with_weights")
+
     x_seq, y_seq, w_seq = [], [], []
     for i in range(len(X) - seq_len):
         x_seq.append(X[i : i + seq_len])

@@ -470,29 +470,30 @@ class JointMultiPairTrainer:
 
                         if len(available_base) == len(base_features):
                             # All base features exist - extract directly
-                            n = len(df)
-                            train_end = int(n * 0.7)
-                            val_end = int(n * 0.9)
-                            x_val_base = df[available_base].iloc[train_end:val_end].values.astype(np.float32)
-
-                            # Clean NaN/Inf
-                            x_val_base = np.nan_to_num(x_val_base, nan=0.0, posinf=0.0, neginf=0.0)
-
-                            # Now construct instrument one-hot columns if needed
-                            if instrument_cols:
-                                n_samples = x_val_base.shape[0]
+                            # CRITICAL: Use dir_result's split indices, NOT raw df indices!
+                            # dir_result already has lookahead rows dropped and proper temporal split applied
+                            n_dir_result = len(dir_result["X_val"])
+                            
+                            # Get the validation portion from dir_result (already properly aligned)
+                            # dir_result["X_val"] has the correct samples, we just need to match feature count
+                            x_val_2d = dir_result["X_val"]
+                            
+                            # If feature count matches, use as-is
+                            if x_val_2d.shape[-1] == expected_n_features:
+                                logger.debug(f"{instrument}: Using dir_result X_val directly ({n_dir_result} samples, {x_val_2d.shape[-1]} features)")
+                            elif x_val_2d.shape[-1] + len(instrument_cols) == expected_n_features:
+                                # Need to add instrument one-hot encoding
+                                n_samples = x_val_2d.shape[0]
                                 instrument_onehot = np.zeros((n_samples, len(instrument_cols)), dtype=np.float32)
-                                # Set the correct instrument column to 1
                                 current_col = f"instrument_{instrument}"
                                 if current_col in instrument_cols:
                                     col_idx = instrument_cols.index(current_col)
                                     instrument_onehot[:, col_idx] = 1.0
-                                # Concatenate base features with instrument one-hot
-                                x_val_2d = np.hstack([x_val_base, instrument_onehot])
-                                logger.debug(f"{instrument}: Extracted {len(base_features)} base + {len(instrument_cols)} instrument features")
+                                x_val_2d = np.hstack([x_val_2d, instrument_onehot])
+                                logger.debug(f"{instrument}: Added {len(instrument_cols)} instrument one-hot features")
                             else:
-                                x_val_2d = x_val_base
-                                logger.debug(f"{instrument}: Extracted {len(available_base)} features directly from df")
+                                # Feature mismatch - will be handled by alignment logic below
+                                logger.debug(f"{instrument}: Feature count mismatch (data={x_val_2d.shape[-1]}, expected={expected_n_features})")
                         else:
                             # Some base features missing - fall through to existing logic
                             missing = set(base_features) - set(available_base)

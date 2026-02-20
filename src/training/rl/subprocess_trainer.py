@@ -195,11 +195,17 @@ def train_in_subprocess(data_path: str, output_path: str, config_dict: dict) -> 
 
     print(f"  [subprocess] ✓ Model saved to {model_path}", flush=True)
 
+    # Calculate win_rate from trade_history
+    winning_trades = sum(1 for t in env.trade_history if t.get("pnl", 0) > 0)
+    total_trades = len(env.trade_history)
+    win_rate = winning_trades / max(total_trades, 1)
+
     # Return stats
     stats = {
         "total_timesteps": total_timesteps,
         "final_equity": env.equity,
-        "total_trades": len(env.trade_history),
+        "total_trades": total_trades,
+        "win_rate": win_rate,
         "model_path": str(model_path),
         "scaler_path": str(scaler_path),
     }

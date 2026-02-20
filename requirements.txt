@@ -61,6 +61,7 @@ python-dotenv==1.2.1
 # ============================================================
 mlflow==3.8.1
 structlog==25.5.0
+wandb>=0.18.0  # W&B Observatory - experiment tracking and visualization
 
 # ============================================================
 # API and Web
@@ -127,7 +128,6 @@ onnxruntime>=1.16.0  # Fast RL inference via ONNX
 # oandapyV20  # OANDA trading API - install via: pip install oandapyV20
 # openai      # OpenAI API - install via: pip install openai
 # ta-lib      # Technical analysis - requires system lib first
-# wandb       # Weights & Biases tracking - install via: pip install wandb
 
 # ============================================================
 # Hyperparameter Optimization

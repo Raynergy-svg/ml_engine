@@ -265,9 +265,13 @@ class HybridSFTLoss(tf.keras.losses.Loss):
         Returns:
             Tuple of (loss, reward_mean, entropy, actions)
         """
+        # Get batch_size from y_pred BEFORE any squeezing to avoid scalar issues
+        # y_pred shape is (batch_size, 1) - this is reliable
+        batch_size = tf.shape(y_pred)[0]
+        
         # Ensure y_true is integer type for indexing
-        y_true_int = tf.cast(tf.squeeze(y_true), tf.int32)
-        batch_size = tf.shape(y_true_int)[0]
+        # Use reshape instead of squeeze to maintain known rank in graph mode
+        y_true_int = tf.cast(tf.reshape(y_true, [batch_size]), tf.int32)
         
         # Handle edge case of empty batch using tf.cond for graph compatibility
         def empty_batch():

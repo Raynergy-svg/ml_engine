@@ -622,31 +622,36 @@ class ExperimentTracker:
                 pass  # Ignore param logging errors
 
     def log_metric(self, name: str, value: float, step: Optional[int] = None):
-        """Log a single metric to MLflow AND WandB."""
+        """
+        Log a single metric to MLflow AND WandB.
+        
+        NOTE: The `step` parameter is only used for MLflow. WandB logging
+        does not use explicit step to avoid conflicts with WandbMetricsLogger
+        which manages its own step counter.
+        """
         if MLFLOW_AVAILABLE and mlflow.active_run():
             mlflow.log_metric(name, value, step=step)
 
-        # Log to WandB
+        # Log to WandB without explicit step to avoid conflicts
         if WANDB_AVAILABLE and self._wandb_run:
-            log_data = {name: value}
-            if step is not None:
-                wandb.log(log_data, step=step)
-            else:
-                wandb.log(log_data)
+            wandb.log({name: value})
 
         logger.debug(f"Metric: {name}={value}" + (f" (step={step})" if step else ""))
 
     def log_metrics(self, metrics: Dict[str, float], step: Optional[int] = None):
-        """Log multiple metrics to MLflow AND WandB."""
+        """
+        Log multiple metrics to MLflow AND WandB.
+        
+        NOTE: The `step` parameter is only used for MLflow. WandB logging
+        does not use explicit step to avoid conflicts with WandbMetricsLogger
+        which manages its own step counter.
+        """
         if MLFLOW_AVAILABLE and mlflow.active_run():
             mlflow.log_metrics(metrics, step=step)
 
-        # Log to WandB
+        # Log to WandB without explicit step to avoid conflicts
         if WANDB_AVAILABLE and self._wandb_run:
-            if step is not None:
-                wandb.log(metrics, step=step)
-            else:
-                wandb.log(metrics)
+            wandb.log(metrics)
 
         logger.debug(f"Metrics (step={step}): {metrics}")
 

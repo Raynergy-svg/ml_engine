@@ -7,6 +7,18 @@
 #   - recurrent_dropout: 0.15 (safe on Intel, improves regularization)
 #   - mixed_precision: false (no GPU for FP16 acceleration)
 #   - workers: 4 (parallel data loading on CPU)
+#
+# CRITICAL FOR macOS SIGSEGV PREVENTION:
+# If you experience "Segmentation fault: 11", set these environment variables
+# before running training:
+#   export KMP_DUPLICATE_LIB_OK=TRUE
+#   export MKL_THREADING_LAYER=GNU
+#   export KMP_AFFINITY=disabled
+#   export OMP_NUM_THREADS=4
+#   export MKL_NUM_THREADS=4
+#
+# Or run with: python main.py train-buddy --config config_intel_optimized.yaml ...
+# (main.py now sets these automatically on macOS)
 # =============================================================================
 
 # ----- PATH CONFIGURATION -----
