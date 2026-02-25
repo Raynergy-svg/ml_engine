@@ -41,8 +41,27 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import tensorflow as tf
+import keras
 
 logger = logging.getLogger(__name__)
+
+
+# Manual registration to ensure exact name match for deserialization
+# This is needed because Keras3 uses "Custom>" prefix by default
+def _register_custom_objects():
+    """Register custom loss classes with exact names for Keras deserialization."""
+    from keras.saving import get_custom_objects
+    
+    # Get the classes after they're defined (called at end of module)
+    global HybridSFTLoss, HybridSFTLossWrapper
+    
+    if 'HybridSFTLossWrapper' not in get_custom_objects():
+        get_custom_objects()['HybridSFTLossWrapper'] = HybridSFTLossWrapper
+        logger.debug("Registered HybridSFTLossWrapper with Keras custom objects")
+    
+    if 'HybridSFTLoss' not in get_custom_objects():
+        get_custom_objects()['HybridSFTLoss'] = HybridSFTLoss
+        logger.debug("Registered HybridSFTLoss with Keras custom objects")
 
 
 @dataclass
@@ -142,6 +161,7 @@ class RLMetricsTracker:
         return False, "Policy healthy"
 
 
+@keras.saving.register_keras_serializable()
 class HybridSFTLoss(tf.keras.losses.Loss):
     """
     Hybrid Supervised-Reinforcement Learning Loss.
@@ -482,6 +502,7 @@ class HybridSFTLoss(tf.keras.losses.Loss):
         logger.info("🎮 HybridSFTLoss metrics reset")
 
 
+@keras.saving.register_keras_serializable()
 class HybridSFTLossWrapper(tf.keras.losses.Loss):
     """
     Wrapper for HybridSFTLoss that provides compatibility with existing training code.
@@ -599,3 +620,7 @@ __all__ = [
     "RLMetricsTracker",
     "create_hybrid_sft_rl_loss",
 ]
+
+# Register custom objects with Keras for deserialization
+# This MUST be called after class definitions
+_register_custom_objects()

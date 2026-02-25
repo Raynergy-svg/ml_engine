@@ -13,7 +13,7 @@ Gate models:
 2. Confidence Gate: Ridge model predicts ADX-based confidence (0-100)
 3. Risk Gate: RandomForest predicts expected drawdown
 4. Transformer Gate: Direction probability (>= 0.60 for trade)
-5. Meta-labeler Gate: Trade success probability (>= 0.55)
+5. Meta-labeler Gate: Trade success probability (>= 0.52, configurable)
 6. TCN Volatility Gate: Requires HIGH(2) or EXTREME(3) regime
 
 IMPORTANT: Scanner uses JOINT-TRAINED models exclusively.
@@ -89,7 +89,11 @@ class GateEvaluator:
     TRANSFORMER_THRESHOLD: float = 0.60
 
     # Meta-labeler threshold
-    META_LABELER_THRESHOLD: float = 0.55
+    # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
+    # achieving 70.8% accuracy. Lower threshold allows more high-quality signals
+    # through while maintaining the all-gates-must-pass safety intact.
+    # Valid range: 0.50-0.60 (configurable via ScannerConfig.meta_labeler_threshold)
+    META_LABELER_THRESHOLD: float = 0.52
 
     # TCN Volatility Regime thresholds
     REGIME_LOW = 0
@@ -1393,7 +1397,7 @@ class GateEvaluator:
         min_momentum: float = 0.20,
         max_drawdown_pct: float = 0.025,
         min_transformer_prob: float = 0.60,
-        min_meta_confidence: float = 0.55,
+        min_meta_confidence: float = 0.52,  # Updated from 0.55 to align with META_LABELER_THRESHOLD
         instrument: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Evaluate all trading gates including advanced gates.

@@ -75,6 +75,15 @@ class TrainerConfig:
     )
     final_dense_dropout: float = 0.10  # Dropout before output layer (reduced from 0.15)
 
+    # === CLASS-WEIGHTED LOSS SETTINGS (for long/short balance) ===
+    # Dynamically computed from training data or manually overridden
+    use_class_weights: bool = True  # Enable class weights in loss computation
+    class_weight_auto_compute: bool = True  # Auto-compute from training data distribution
+    class_weight_long: Optional[float] = None  # Manual override for LONG (y=1) class weight
+    class_weight_short: Optional[float] = None  # Manual override for SHORT (y=0) class weight
+    class_weight_smoothing: float = 0.1  # Smoothing factor for weight calculation (0=none)
+    class_weight_max_ratio: float = 3.0  # Maximum weight ratio to prevent extreme values
+    
     # === CLASS-BALANCED LOSS SETTINGS (NEW - for extreme class imbalance) ===
     use_class_balanced_loss: bool = (
         True  # Use CB Loss instead of Focal Loss for extreme imbalance

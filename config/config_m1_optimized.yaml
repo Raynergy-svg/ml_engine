@@ -131,7 +131,7 @@ training:
   epochs: 200
   
   # AUTO-TUNED: Best from hyperparameter search (52.34% accuracy)
-  early_stopping_patience: 15
+  early_stopping_patience: 30
   
   # NEW: Don't stop before this epoch (let model warm up)
   min_epochs: 30

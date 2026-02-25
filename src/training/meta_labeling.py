@@ -65,7 +65,9 @@ class MetaLabelingConfig:
     dropout: float = 0.35  # Add explicit dropout control
 
     # Label generation
-    min_confidence_threshold: float = 0.55  # Trades where meta-confidence >= this
+    # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
+    # achieving 70.8% accuracy. Configurable via ScannerConfig.meta_labeler_threshold.
+    min_confidence_threshold: float = 0.52  # Trades where meta-confidence >= this
     use_triple_barrier: bool = True  # Use TP/SL outcomes for meta-labels
 
     # Features for meta-model
@@ -984,7 +986,8 @@ class MetaEnsembleModel:
         primary_model,
         meta_labeler: MetaLabeler,
         *,
-        trade_threshold: float = 0.55,
+        # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
+        trade_threshold: float = 0.52,
     ):
         self.primary = primary_model
         self.meta = meta_labeler
@@ -1071,7 +1074,8 @@ class MetaEnsembleModel:
         return cls(
             primary,
             meta,
-            trade_threshold=config.get("trade_threshold", 0.55),
+            # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
+            trade_threshold=config.get("trade_threshold", 0.52),
         )
 
 

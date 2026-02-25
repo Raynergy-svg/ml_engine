@@ -28,6 +28,16 @@ import numpy as np
 from src.training.trainers.base import BaseTrainer
 from src.training.trainers.config import TrainerConfig
 
+# Import custom LR schedules early so they're registered with Keras before
+# any pickle deserialization that might contain Keras models with these schedules
+try:
+    from src.training.m1_metal_optimizer import (
+        WarmupCosineDecaySchedule,  # noqa: F401
+        CosineDecayRestarts,  # noqa: F401
+    )
+except ImportError:
+    pass  # Not required for ridge training, only for loading models that use them
+
 logger = logging.getLogger(__name__)
 
 # Constants

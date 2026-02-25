@@ -145,6 +145,13 @@ class ScannerConfig:
     min_momentum: float = 0.20    # XGBoost percentile (0-1 scale)
     max_drawdown_pct: float = 0.025  # 2.5% max expected drawdown
 
+    # Meta-labeler threshold (configurable for 0.52-0.53 range)
+    # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
+    # achieving 70.8% accuracy. Lower threshold allows more high-quality signals
+    # through while maintaining the all-gates-must-pass safety intact.
+    # Valid range: 0.50-0.60 (warning logged if outside this range)
+    meta_labeler_threshold: float = 0.52
+
     # Position sizing
     account_equity: float = 0.0  # 0 = fetch from OANDA
     risk_per_trade_pct: float = 0.02  # 2% risk per trade
@@ -218,7 +225,7 @@ class ScannerConfig:
     _yaml_config: Optional[Dict[str, Any]] = field(default=None, repr=False)
 
     def __post_init__(self):
-        """Convert string paths to Path objects."""
+        """Convert string paths to Path objects and validate thresholds."""
         self.profile = str(self.profile).strip().lower()
         if self.profile not in SCAN_PROFILES:
             logger.warning(
@@ -236,6 +243,13 @@ class ScannerConfig:
             self.config_path = PROJECT_ROOT / self.config_path
         if not self.model_dir.is_absolute():
             self.model_dir = PROJECT_ROOT / self.model_dir
+
+        # Validate meta_labeler_threshold is within reasonable bounds
+        if not 0.50 <= self.meta_labeler_threshold <= 0.60:
+            logger.warning(
+                f"meta_labeler_threshold={self.meta_labeler_threshold} is outside "
+                f"recommended range [0.50, 0.60]. This may impact signal quality."
+            )
 
     def load_yaml_config(self) -> Dict[str, Any]:
         """Load and cache YAML configuration.

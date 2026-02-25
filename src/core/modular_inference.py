@@ -120,6 +120,14 @@ except ImportError:
     CUSTOM_LR_SCHEDULES_AVAILABLE = False
     # Models may still load if compile=False, but recompilation will be needed
 
+# Import custom loss classes to ensure proper deserialization
+# This MUST be imported before loading any models that use HybridSFTLossWrapper
+try:
+    from src.training.trainers.hybrid_sft_rl_loss import HybridSFTLoss, HybridSFTLossWrapper  # noqa: F401
+    CUSTOM_LOSS_CLASSES_AVAILABLE = True
+except ImportError:
+    CUSTOM_LOSS_CLASSES_AVAILABLE = False
+
 # Import Pandera for optional DataFrame schema validation
 # Provides clear error messages when features are missing/mistyped
 try:
@@ -457,7 +465,9 @@ class InferenceConfig:
 
     # Meta-labeling gate - predicts whether primary model's signal will succeed
     enable_meta_labeling: bool = True  # Use meta-labeler to filter trades
-    min_meta_confidence: float = 0.55  # Minimum meta-confidence to allow trade
+    # Updated from 0.55 to 0.52 (2024-02) to align with retrained meta-labeler
+    # achieving 70.8% accuracy. Configurable via ScannerConfig.meta_labeler_threshold.
+    min_meta_confidence: float = 0.52
 
     # Monte Carlo Dropout for uncertainty estimation
     mc_dropout_samples: int = 20  # Number of forward passes for MC Dropout (0 to disable)
@@ -1734,8 +1744,38 @@ class ModularEnsembleInference:
                 self.rl_sizer = None
 
         # Auto-detect RL gates and exits if not explicitly set
+        # Check pair-specific paths first, then generic
+        rl_gate_model_path = None
+        rl_exit_model_path = None
+        
+        # Check for pair-specific RL gates model
+        if self.instrument and self.instrument != "GENERIC":
+            pair_rl_gates = self.model_dir / self.instrument / "sac_gate_thresholds.zip"
+            if pair_rl_gates.exists():
+                rl_gate_model_path = pair_rl_gates
+                logger.info(f"🔍 Pair-specific RL Gate model found: {rl_gate_model_path}")
+        
+        # Fall back to generic RL gates model
+        if rl_gate_model_path is None and RL_GATE_MODEL_PATH.exists():
+            rl_gate_model_path = RL_GATE_MODEL_PATH
+        
+        # Check for pair-specific RL exits model
+        if self.instrument and self.instrument != "GENERIC":
+            pair_rl_exits = self.model_dir / self.instrument / "ppo_optimal_exit.zip"
+            if pair_rl_exits.exists():
+                rl_exit_model_path = pair_rl_exits
+                logger.info(f"🔍 Pair-specific RL Exit model found: {rl_exit_model_path}")
+        
+        # Fall back to generic RL exits model
+        if rl_exit_model_path is None and RL_EXIT_MODEL_PATH.exists():
+            rl_exit_model_path = RL_EXIT_MODEL_PATH
+        
+        # Store resolved paths for later use in worker startup
+        self._rl_gate_model_path = rl_gate_model_path
+        self._rl_exit_model_path = rl_exit_model_path
+        
         if self.use_rl_gates is None:
-            if RL_GATE_MODEL_PATH.exists():
+            if rl_gate_model_path is not None:
                 if _allow_rl_gates_exits_autoload():
                     logger.info("🔍 RL Gate model detected - auto-enabling RL gates")
                     self.use_rl_gates = True
@@ -1749,7 +1789,7 @@ class ModularEnsembleInference:
                 self.use_rl_gates = False
 
         if self.use_rl_exits is None:
-            if RL_EXIT_MODEL_PATH.exists():
+            if rl_exit_model_path is not None:
                 if _allow_rl_gates_exits_autoload():
                     logger.info("🔍 RL Exit model detected - auto-enabling RL exits")
                     self.use_rl_exits = True
@@ -1806,7 +1846,7 @@ class ModularEnsembleInference:
                     logger.info("✓ RL Gate Threshold Optimizer loaded (SAC) [subprocess]")
                     self._rl_gates_loaded = True
                     self.rl_gate_optimizer = None
-                    self._log_model_trained_at(RL_GATE_MODEL_PATH, "RL gate thresholds", category="rl_gates")
+                    self._log_model_trained_at(self._rl_gate_model_path or RL_GATE_MODEL_PATH, "RL gate thresholds", category="rl_gates")
                 else:
                     err = _gates_result.get('error', 'unknown')
                     logger.warning(f"⚠️ RL Gates worker failed to start: {err} — using fixed thresholds")
@@ -1819,7 +1859,7 @@ class ModularEnsembleInference:
                     logger.info("✓ RL Optimal Exit Timing loaded (PPO) [subprocess]")
                     self._rl_exits_loaded = True
                     self.rl_exit_optimizer = None
-                    self._log_model_trained_at(RL_EXIT_MODEL_PATH, "RL optimal exits", category="rl_exits")
+                    self._log_model_trained_at(self._rl_exit_model_path or RL_EXIT_MODEL_PATH, "RL optimal exits", category="rl_exits")
                 else:
                     err = _exits_result.get('error', 'unknown')
                     logger.warning(f"⚠️ RL Exits worker failed to start: {err} — using fixed R:R ratios")
@@ -1839,7 +1879,7 @@ class ModularEnsembleInference:
                         if loaded:
                             logger.info("✓ RL Gate Threshold Optimizer loaded (SAC)")
                             self._rl_gates_loaded = True
-                            self._log_model_trained_at(RL_GATE_MODEL_PATH, "RL gate thresholds", category="rl_gates")
+                            self._log_model_trained_at(self._rl_gate_model_path or RL_GATE_MODEL_PATH, "RL gate thresholds", category="rl_gates")
                         else:
                             logger.info("ℹ RL Gates not trained - using fixed thresholds")
                             self.rl_gate_optimizer = None
@@ -1866,7 +1906,7 @@ class ModularEnsembleInference:
                         if loaded:
                             logger.info("✓ RL Optimal Exit Timing loaded (PPO)")
                             self._rl_exits_loaded = True
-                            self._log_model_trained_at(RL_EXIT_MODEL_PATH, "RL optimal exits", category="rl_exits")
+                            self._log_model_trained_at(self._rl_exit_model_path or RL_EXIT_MODEL_PATH, "RL optimal exits", category="rl_exits")
                         else:
                             logger.info("ℹ RL Exits not trained - using fixed R:R ratios")
                             self.rl_exit_optimizer = None
@@ -4367,7 +4407,7 @@ class ModularEnsembleInference:
                 if tcn_direction is None:
                     reasons.append("no_direction")
             if not confidence_gate_passed:
-                reasons.append(f"low_confidence({ridge_confidence:.0f}<{self.config.min_confidence})")
+                reasons.append(f"low_confidence({ridge_confidence:.0f}<{rl_min_confidence:.1f})")
             if not momentum_gate_passed:
                 reasons.append(
                     f"dead_momentum({xgb_momentum:.2f}<{rl_min_momentum:.2f},accel={str(xgb_acceleration).lower()})"

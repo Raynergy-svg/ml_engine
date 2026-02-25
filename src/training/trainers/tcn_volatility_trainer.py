@@ -49,6 +49,17 @@ from src.training.trainers.callbacks import (
     AutoAdjustCallback,
 )
 from src.training.trainers.display import TrainingDisplay
+
+# Import custom LR schedules early so they're registered with Keras before
+# any pickle deserialization that might contain Keras models with these schedules
+try:
+    from src.training.m1_metal_optimizer import (
+        WarmupCosineDecaySchedule,  # noqa: F401
+        CosineDecayRestarts,  # noqa: F401
+    )
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 

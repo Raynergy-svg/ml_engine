@@ -3013,6 +3013,13 @@ def _dispatch_train_buddy(args: Any, command_map: dict[str, Any]) -> None:
         wandb_offline=bool(getattr(args, "wandb_offline", False)),
         wandb_gradients=bool(getattr(args, "wandb_gradients", True)),
         wandb_system=bool(getattr(args, "wandb_system", True)),
+        # Correlation-based transfer learning
+        correlation_transfer=bool(getattr(args, "correlation_transfer", False)),
+        master_pairs=getattr(args, "master_pairs", None),
+        target_pairs=getattr(args, "target_pairs", None),
+        correlation_threshold=float(getattr(args, "correlation_threshold", 0.70)),
+        skip_master_training=bool(getattr(args, "skip_master_training", False)),
+        transfer_epochs=int(getattr(args, "transfer_epochs", 50)),
     )
 
 
@@ -3655,3 +3662,540 @@ def buddy_test(
     else:
         console.print("[red]❌ Model underperforming - retrain recommended[/red]")
     console.print("=" * 60 + "\n")
+
+
+# =============================================================================
+# TRANSFER LEARNING COMMAND
+# =============================================================================
+
+
+def _scan_trained_models() -> list[dict[str, Any]]:
+    """Scan trained_data/models/ for existing trained models.
+
+    Returns:
+        List of dicts with pair, model_path, accuracy, trained_at, age_days.
+    """
+    from pathlib import Path
+    import json
+    from datetime import datetime, timezone
+
+    models_dir = Path("trained_data/models")
+    if not models_dir.exists():
+        return []
+
+    models = []
+
+    # Check for pair-specific models
+    for pair_dir in models_dir.iterdir():
+        if not pair_dir.is_dir():
+            continue
+
+        pair_name = pair_dir.name
+
+        # Check for modular ensemble meta
+        meta_path = pair_dir / "modular_ensemble.meta.json"
+        if not meta_path.exists():
+            # Check for buddy meta
+            meta_path = pair_dir / "buddy_tf.meta.json"
+
+        if not meta_path.exists():
+            continue
+
+        try:
+            meta = json.loads(meta_path.read_text())
+
+            # Get accuracy from meta
+            accuracy = None
+            if "metrics" in meta:
+                metrics = meta["metrics"]
+                if isinstance(metrics, dict):
+                    accuracy = metrics.get("val_accuracy") or metrics.get("direction_accuracy")
+            if accuracy is None:
+                accuracy = meta.get("val_accuracy") or meta.get("direction_accuracy")
+
+            # Get trained timestamp
+            trained_at = meta.get("trained_at") or meta.get("saved_at")
+            age_days = None
+            if trained_at:
+                try:
+                    trained_dt = datetime.fromisoformat(trained_at.replace("Z", "+00:00"))
+                    age_days = (datetime.now(timezone.utc) - trained_dt).days
+                except Exception:
+                    pass
+
+            models.append({
+                "pair": pair_name,
+                "path": str(pair_dir),
+                "accuracy": accuracy,
+                "trained_at": trained_at,
+                "age_days": age_days,
+            })
+        except Exception:
+            continue
+
+    # Sort by accuracy (highest first), then by age (newest first)
+    models.sort(key=lambda x: (-(x.get("accuracy") or 0), x.get("age_days") or 999))
+
+    return models
+
+
+def _get_correlated_pairs(
+    pair: str,
+    threshold: float = 0.70,
+    all_pairs: list[str] | None = None,
+) -> list[tuple[str, float]]:
+    """Get pairs correlated with the given pair.
+
+    Args:
+        pair: Source pair to find correlations for.
+        threshold: Minimum correlation threshold.
+        all_pairs: List of all pairs to check (default: major pairs).
+
+    Returns:
+        List of (pair, correlation) tuples sorted by correlation.
+    """
+    if all_pairs is None:
+        all_pairs = [
+            "EUR_USD", "GBP_USD", "USD_JPY", "USD_CHF",
+            "AUD_USD", "USD_CAD", "NZD_USD", "EUR_JPY", "GBP_JPY", "AUD_JPY",
+        ]
+
+    # Remove source pair from targets
+    target_pairs = [p for p in all_pairs if p != pair]
+
+    try:
+        from src.scanner.analysis.correlation import CorrelationAnalyzer
+        from src.utils.oanda_practice import OandaPracticeClient
+        import pandas as pd
+
+        client = OandaPracticeClient.from_env()
+
+        # Fetch returns for all pairs
+        returns_data = {}
+        for p in [pair] + target_pairs:
+            try:
+                resp = client.get_candles(p, granularity="H1", count=100, price="M")
+                closes = [float(c["mid"]["c"]) for c in resp.get("candles", [])]
+                if len(closes) > 1:
+                    returns_data[p] = pd.Series(closes).pct_change().dropna()
+            except Exception:
+                continue
+
+        if len(returns_data) < 2:
+            return []
+
+        # Compute correlations
+        analyzer = CorrelationAnalyzer(threshold=threshold)
+        results = analyzer.analyze(returns_data)
+
+        if pair not in results:
+            return []
+
+        # Extract correlated pairs
+        correlated = []
+        for target, result in results.items():
+            if target == pair:
+                continue
+            corr = result.correlation_with_leader or 0.0
+            if abs(corr) >= threshold:
+                correlated.append((target, corr))
+
+        # Sort by absolute correlation (highest first)
+        correlated.sort(key=lambda x: abs(x[1]), reverse=True)
+
+        return correlated
+
+    except Exception as e:
+        logger.warning(f"Could not compute correlations: {e}")
+        return []
+
+
+def _prompt_for_master_selection(models: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Prompt user to select a master model from available models.
+
+    Args:
+        models: List of available models from _scan_trained_models().
+
+    Returns:
+        Selected model dict or None if cancelled.
+    """
+    if not models:
+        console.print("[yellow]No trained models found in trained_data/models/[/yellow]")
+        console.print("[dim]Train a model first with: buddy train --instrument EUR_USD[/dim]")
+        return None
+
+    console.print("\n[bold cyan]Found trained models:[/bold cyan]")
+    console.print("-" * 60)
+
+    for i, model in enumerate(models, 1):
+        pair = model["pair"]
+        accuracy = model.get("accuracy")
+        age_days = model.get("age_days")
+
+        acc_str = f"{accuracy:.1%}" if accuracy else "N/A"
+        age_str = f"{age_days}d ago" if age_days is not None else "unknown"
+
+        console.print(f"  {i}. {pair:12} | accuracy={acc_str:>6} | trained={age_str}")
+
+    console.print("-" * 60)
+
+    try:
+        selection = input("\nSelect master model [1-{}] (or 'q' to quit): ".format(len(models)))
+        if selection.lower() == 'q':
+            return None
+
+        idx = int(selection) - 1
+        if 0 <= idx < len(models):
+            return models[idx]
+        else:
+            console.print("[red]Invalid selection[/red]")
+            return None
+    except (ValueError, KeyboardInterrupt):
+        console.print("\n[yellow]Cancelled[/yellow]")
+        return None
+
+
+def _prompt_for_target_selection(
+    correlated: list[tuple[str, float]],
+    threshold: float = 0.70,
+) -> list[str]:
+    """Prompt user to select target pairs from correlated pairs.
+
+    Args:
+        correlated: List of (pair, correlation) tuples.
+        threshold: Correlation threshold for display.
+
+    Returns:
+        List of selected target pairs.
+    """
+    if not correlated:
+        console.print(f"[yellow]No pairs found above correlation threshold {threshold}[/yellow]")
+        return []
+
+    console.print(f"\n[bold cyan]Correlated pairs (threshold >= {threshold}):[/bold cyan]")
+    console.print("-" * 50)
+
+    for i, (pair, corr) in enumerate(correlated, 1):
+        corr_color = "green" if abs(corr) >= 0.8 else "yellow" if abs(corr) >= 0.7 else "dim"
+        console.print(f"  {i}. {pair:12} | correlation=[{corr_color}]{corr:.3f}[/{corr_color}]")
+
+    console.print("-" * 50)
+
+    try:
+        selection = input(f"\nSelect targets [1-{len(correlated)}, comma-separated] (or 'all'): ")
+        selection = selection.strip().lower()
+
+        if selection == 'all':
+            return [p for p, _ in correlated]
+
+        indices = [int(s.strip()) - 1 for s in selection.split(",")]
+        selected = [correlated[i][0] for i in indices if 0 <= i < len(correlated)]
+        return selected
+
+    except (ValueError, KeyboardInterrupt):
+        console.print("\n[yellow]Using all correlated pairs[/yellow]")
+        return [p for p, _ in correlated]
+
+
+def handle_transfer_command(args: Any) -> None:
+    """Handle the transfer subcommand with progressive disclosure.
+
+    Implements three usage modes:
+    1. Interactive Mode (no flags): Scan models, prompt for selection
+    2. Auto Mode (--auto): Auto-detect best master and correlated targets
+    3. Standard Mode (--from/--to): Explicit master and targets
+    4. Expert Mode (--advanced): Full control over transfer parameters
+
+    Args:
+        args: Parsed arguments from create_transfer_parser().
+    """
+    console.print("\n[bold cyan]════════════════════════════════════════════════════════════[/bold cyan]")
+    console.print("[bold cyan]  CORRELATION TRANSFER LEARNING[/bold cyan]")
+    console.print("[bold cyan]════════════════════════════════════════════════════════════[/bold cyan]\n")
+
+    # Get parameters from args
+    from_pair = getattr(args, "from_pair", None)
+    to_pairs_str = getattr(args, "to_pairs", None)
+    auto_mode = getattr(args, "auto_mode", False)
+    fresh = getattr(args, "fresh", False)
+    verbose = getattr(args, "verbose", False)
+
+    # Advanced parameters
+    threshold = float(getattr(args, "threshold", 0.70))
+    epochs = int(getattr(args, "epochs", 50))
+    lr_factor = float(getattr(args, "lr_factor", 0.03))
+    frozen_layers = int(getattr(args, "frozen_layers", 2))
+    ewc_lambda = float(getattr(args, "ewc_lambda", 100.0))
+    patience = int(getattr(args, "patience", 15))
+    granularity = getattr(args, "granularity", "H1")
+    candles = int(getattr(args, "candles", 5000))
+
+    # Legacy flag support
+    if from_pair is None:
+        from_pair = getattr(args, "master_pairs", None)
+        if from_pair:
+            from_pair = from_pair.split(",")[0]  # Take first if multiple
+
+    if to_pairs_str is None:
+        to_pairs_str = getattr(args, "target_pairs", None)
+
+    # Parse target pairs
+    to_pairs = []
+    if to_pairs_str:
+        to_pairs = [p.strip() for p in to_pairs_str.split(",")]
+
+    # =========================================================================
+    # MODE 1: AUTO MODE - Auto-detect everything
+    # =========================================================================
+    if auto_mode:
+        console.print("[cyan]🤖 Auto Mode: Selecting best master and targets...[/cyan]\n")
+
+        # Scan for trained models
+        models = _scan_trained_models()
+
+        if not models:
+            console.print("[red]No trained models found. Train a model first:[/red]")
+            console.print("[dim]  buddy train --instrument EUR_JPY[/dim]")
+            return
+
+        # Select best model (highest accuracy)
+        best_model = models[0]
+        from_pair = best_model["pair"]
+        console.print(f"[green]✓ Selected master: {from_pair}[/green]")
+        if best_model.get("accuracy"):
+            console.print(f"[dim]  Accuracy: {best_model['accuracy']:.1%}[/dim]")
+
+        # Find correlated pairs
+        correlated = _get_correlated_pairs(from_pair, threshold=threshold)
+        if correlated:
+            to_pairs = [p for p, _ in correlated[:5]]  # Top 5 correlated
+            console.print(f"[green]✓ Auto-selected targets: {', '.join(to_pairs)}[/green]")
+        else:
+            console.print("[yellow]⚠ No correlated pairs found above threshold[/yellow]")
+            console.print("[dim]  Specify targets manually with --to[/dim]")
+            return
+
+    # =========================================================================
+    # MODE 2: INTERACTIVE MODE - No flags provided
+    # =========================================================================
+    elif from_pair is None and not to_pairs:
+        console.print("[cyan]📋 Interactive Mode: Select from existing models...[/cyan]\n")
+
+        # Scan for trained models
+        models = _scan_trained_models()
+
+        # Prompt for master selection
+        selected = _prompt_for_master_selection(models)
+        if selected is None:
+            return
+
+        from_pair = selected["pair"]
+        console.print(f"\n[green]✓ Selected master: {from_pair}[/green]")
+
+        # Find correlated pairs
+        correlated = _get_correlated_pairs(from_pair, threshold=threshold)
+
+        if correlated:
+            to_pairs = _prompt_for_target_selection(correlated, threshold)
+            if not to_pairs:
+                console.print("[yellow]No targets selected[/yellow]")
+                return
+            console.print(f"\n[green]✓ Selected targets: {', '.join(to_pairs)}[/green]")
+        else:
+            console.print(f"[yellow]No correlated pairs found for {from_pair}[/yellow]")
+            console.print("[dim]  Specify targets manually with --to[/dim]")
+            return
+
+    # =========================================================================
+    # MODE 3: STANDARD/EXPERT MODE - Explicit flags
+    # =========================================================================
+    elif from_pair:
+        console.print(f"[cyan]📊 Standard Mode: Using specified master {from_pair}[/cyan]\n")
+
+        # If no targets specified, find correlated pairs
+        if not to_pairs:
+            console.print(f"[dim]Finding correlated pairs for {from_pair}...[/dim]")
+            correlated = _get_correlated_pairs(from_pair, threshold=threshold)
+
+            if correlated:
+                to_pairs = [p for p, _ in correlated]
+                console.print(f"[green]✓ Found correlated targets: {', '.join(to_pairs)}[/green]")
+            else:
+                console.print(f"[red]No correlated pairs found for {from_pair}[/red]")
+                console.print("[dim]  Specify targets manually with --to GBP_JPY,AUD_JPY[/dim]")
+                return
+
+    else:
+        # --to specified without --from
+        console.print("[red]Error: --to requires --from to specify the source pair[/red]")
+        console.print("[dim]  Example: buddy transfer --from EUR_JPY --to GBP_JPY,AUD_JPY[/dim]")
+        return
+
+    # =========================================================================
+    # DISPLAY CONFIGURATION SUMMARY
+    # =========================================================================
+    console.print("\n[bold]Transfer Configuration:[/bold]")
+    console.print(f"  Master pair:    {from_pair}")
+    console.print(f"  Target pairs:   {', '.join(to_pairs)}")
+    console.print(f"  Fresh training: {'Yes' if fresh else 'No (use existing)'}")
+
+    if getattr(args, "advanced", False) or verbose:
+        console.print(f"\n[bold]Advanced Settings:[/bold]")
+        console.print(f"  Correlation threshold: {threshold}")
+        console.print(f"  Transfer epochs:       {epochs}")
+        console.print(f"  LR factor:             {lr_factor}")
+        console.print(f"  Frozen layers:         {frozen_layers}")
+        console.print(f"  EWC lambda:            {ewc_lambda}")
+        console.print(f"  Patience:              {patience}")
+
+    # =========================================================================
+    # CONFIRM AND EXECUTE
+    # =========================================================================
+    console.print("")
+    try:
+        confirm = input("Proceed with transfer? [Y/n]: ").strip().lower()
+        if confirm not in ("", "y", "yes"):
+            console.print("[yellow]Cancelled[/yellow]")
+            return
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Cancelled[/yellow]")
+        return
+
+    # =========================================================================
+    # EXECUTE TRANSFER LEARNING
+    # =========================================================================
+    console.print("\n[bold cyan]Starting transfer learning...[/bold cyan]\n")
+
+    try:
+        from src.training.orchestrators.correlation_transfer import (
+            CorrelationTransferOrchestrator,
+            CorrelationTransferConfig,
+        )
+        from src.training.trainers.config import TrainerConfig
+        from src.utils.oanda_practice import OandaPracticeClient
+        from src.data.feature_engineering import FeatureEngineering
+        import pandas as pd
+
+        # Create transfer config with user parameters
+        transfer_config = CorrelationTransferConfig(
+            correlation_threshold=threshold,
+            transfer_epochs=epochs,
+            transfer_lr_factor=lr_factor,
+            transfer_encoder_layers_to_freeze=frozen_layers,
+            ewc_lambda=ewc_lambda,
+            transfer_patience=patience,
+            use_ewc=True,
+            gradual_unfreeze=True,
+            unfreeze_after_epochs=10,
+        )
+
+        trainer_config = TrainerConfig(
+            epochs=epochs,
+            patience=patience,
+        )
+
+        orchestrator = CorrelationTransferOrchestrator(
+            config=transfer_config,
+            trainer_config=trainer_config,
+        )
+
+        # Fetch data for all pairs
+        console.print("[dim]Fetching market data...[/dim]")
+        client = OandaPracticeClient.from_env()
+        fe = FeatureEngineering()
+
+        dfs = {}
+        returns_data = {}
+
+        all_pairs = [from_pair] + to_pairs
+        for pair in all_pairs:
+            try:
+                resp = client.get_candles(pair, granularity=granularity, count=candles, price="MBA")
+                candles_data = resp.get("candles", [])
+
+                if not candles_data:
+                    console.print(f"[yellow]⚠ No data for {pair}, skipping[/yellow]")
+                    continue
+
+                # Build DataFrame
+                rows = []
+                for c in candles_data:
+                    rows.append({
+                        "time": c["time"],
+                        "open": float(c["mid"]["o"]),
+                        "high": float(c["mid"]["h"]),
+                        "low": float(c["mid"]["l"]),
+                        "close": float(c["mid"]["c"]),
+                        "volume": int(c.get("volume", 0)),
+                    })
+
+                df = pd.DataFrame(rows)
+                df["time"] = pd.to_datetime(df["time"])
+                df = df.set_index("time").sort_index()
+
+                # Feature engineering
+                df = fe.create_features(df, include_all=True)
+                df = df.replace([np.inf, -np.inf], np.nan).ffill().bfill().fillna(0.0)
+
+                dfs[pair] = df
+
+                # Returns for correlation
+                returns_data[pair] = df["close"].pct_change().dropna()
+
+                console.print(f"[green]✓[/green] {pair}: {len(df)} candles")
+
+            except Exception as e:
+                console.print(f"[red]✗[/red] {pair}: {e}")
+                continue
+
+        if from_pair not in dfs:
+            console.print(f"\n[red]Error: Could not fetch data for master pair {from_pair}[/red]")
+            return
+
+        # Run transfer pipeline
+        console.print("\n[bold]Running transfer learning pipeline...[/bold]\n")
+
+        results = orchestrator.run_full_pipeline(
+            returns_data=returns_data,
+            dfs=dfs,
+            master_pairs=[from_pair],
+            target_pairs=to_pairs,
+            skip_master_training=not fresh,
+        )
+
+        # Display results
+        console.print("\n" + "=" * 60)
+        console.print("[bold]TRANSFER LEARNING RESULTS[/bold]")
+        console.print("=" * 60)
+
+        transfer_results = results.get("transfer_results", [])
+        if transfer_results:
+            for result in transfer_results:
+                target = result.get("target_pair", "unknown")
+                source = result.get("source_pair", "unknown")
+                correlation = result.get("correlation", 0)
+                accuracy = result.get("post_transfer_accuracy", 0)
+
+                console.print(f"\n  {source} → {target}")
+                console.print(f"    Correlation: {correlation:.3f}")
+                if accuracy:
+                    console.print(f"    Accuracy:    {accuracy:.1%}")
+                else:
+                    console.print(f"    Accuracy:    N/A")
+        else:
+            console.print("\n[yellow]No transfer results[/yellow]")
+
+        console.print("\n" + "=" * 60)
+        console.print("[green]✓ Transfer learning complete[/green]")
+        console.print(f"[dim]Models saved to: trained_data/models/transfer/[/dim]")
+
+    except ImportError as e:
+        console.print(f"[red]Error: Required module not available: {e}[/red]")
+        console.print("[dim]Ensure all dependencies are installed[/dim]")
+        raise
+    except Exception as e:
+        console.print(f"[red]Transfer learning failed: {e}[/red]")
+        if verbose:
+            import traceback
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        raise

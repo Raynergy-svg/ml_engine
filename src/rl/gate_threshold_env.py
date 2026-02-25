@@ -148,6 +148,15 @@ class GateRLConfig:
     drawdown_penalty: float = 0.8
     win_rate_bonus: float = 0.25
     overtrade_penalty: float = 0.05  # Penalty per trade above threshold
+    
+    # Transaction costs (CRITICAL for preventing excessive trading)
+    spread_cost_pct: float = 0.0002  # 0.02% spread (2 pips for FX)
+    commission_pct: float = 0.0001   # 0.01% commission
+    slippage_pct: float = 0.0001     # 0.01% slippage
+    
+    # Asymmetric reward scaling
+    profit_multiplier: float = 1.5   # Bonus for profitable trades
+    loss_multiplier: float = 2.0     # Extra penalty for losing trades
 
     # Training
     total_timesteps: int = 100_000
@@ -379,9 +388,9 @@ class GateThresholdEnv(_get_gym_env_base()):
         gates_passed: bool,
         gate_info: Dict,
     ) -> Dict:
-        """Simulate trade outcome based on gate decision."""
+        """Simulate trade outcome based on gate decision with transaction costs."""
         if not gates_passed:
-            return {'pnl': 0.0, 'traded': False}
+            return {'pnl': 0.0, 'traded': False, 'transaction_costs': 0.0}
 
         # Get prices
         entry_price = self.prices[self.current_step]
@@ -397,20 +406,33 @@ class GateThresholdEnv(_get_gym_env_base()):
         # Calculate P/L (2% position size)
         position_value = self.equity * 0.02
         price_change = (exit_price - entry_price) / entry_price
-        pnl = position_value * price_change * direction
+        raw_pnl = position_value * price_change * direction
+        
+        # CRITICAL: Apply transaction costs
+        # This prevents the agent from trading every step
+        spread_cost = position_value * self.config.spread_cost_pct
+        commission_cost = position_value * self.config.commission_pct
+        slippage_cost = position_value * self.config.slippage_pct
+        transaction_costs = spread_cost + commission_cost + slippage_cost
+        
+        # Net P/L after costs
+        pnl = raw_pnl - transaction_costs
 
         return {
             'pnl': pnl,
+            'raw_pnl': raw_pnl,
             'traded': True,
             'direction': direction,
             'entry': entry_price,
             'exit': exit_price,
+            'transaction_costs': transaction_costs,
         }
 
     def _calculate_reward(self, trade_result: Dict) -> float:
-        """Calculate shaped reward with soft tanh clipping and better no-trade handling."""
+        """Calculate shaped reward with transaction costs and asymmetric scaling."""
         pnl = trade_result.get('pnl', 0)
         traded = trade_result.get('traded', False)
+        transaction_costs = trade_result.get('transaction_costs', 0)
 
         # === No-trade reward (important for learning when NOT to trade) ===
         if not traded:
@@ -432,10 +454,24 @@ class GateThresholdEnv(_get_gym_env_base()):
                     return -0.02 * min(abs(future_return) * 100, 1.0)
             return 0.0
 
-        # === Traded: base reward from P/L ===
-        # Use soft tanh clipping instead of hard clip
+        # === Traded: base reward from P/L with asymmetric scaling ===
+        # CRITICAL FIX: Apply asymmetric scaling - losses hurt MORE than gains feel good
         pnl_normalized = pnl / self.initial_equity * 100
-        reward = 5.0 * np.tanh(pnl_normalized / 5.0)  # Soft clip to ~[-5, 5]
+        
+        if pnl > 0:
+            # Profitable trade: apply bonus multiplier
+            base_reward = pnl_normalized * self.config.profit_multiplier
+        else:
+            # Losing trade: apply penalty multiplier (losses hurt MORE)
+            base_reward = pnl_normalized * self.config.loss_multiplier
+        
+        # Use soft tanh clipping
+        reward = 5.0 * np.tanh(base_reward / 5.0)  # Soft clip to ~[-5, 5]
+        
+        # === Transaction cost penalty (additional to P/L deduction) ===
+        # This further discourages excessive trading
+        cost_penalty = transaction_costs / self.initial_equity * 100
+        reward -= cost_penalty * 1.5  # Extra penalty for trading costs
 
         # === Sortino ratio component (penalize downside more than upside) ===
         if len(self.trade_history) > 5:

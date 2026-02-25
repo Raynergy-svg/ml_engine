@@ -92,6 +92,86 @@ except ImportError:
 
 
 @register_keras_serializable(package="ml_engine")
+class ClassWeightedLoss(tf.keras.losses.Loss):
+    """
+    Wrapper loss that applies class weights to any base loss function.
+    
+    Designed for binary classification with class imbalance (e.g., long vs short).
+    The class weights are applied per-sample based on the true label.
+    
+    Args:
+        base_loss: The underlying loss function (e.g., BinaryCrossentropy, FocalLoss)
+        class_weights: Dict mapping class indices to weights {0: weight_short, 1: weight_long}
+        name: Name for the loss instance
+        
+    Example:
+        >>> base_loss = tf.keras.losses.BinaryCrossentropy()
+        >>> class_weights = {0: 1.3, 1: 0.85}  # Short is underrepresented
+        >>> loss = ClassWeightedLoss(base_loss, class_weights)
+    """
+    
+    def __init__(
+        self,
+        base_loss: tf.keras.losses.Loss,
+        class_weights: Dict[int, float],
+        name: str = "class_weighted_loss",
+        **kwargs
+    ):
+        super().__init__(name=name, **kwargs)
+        self.base_loss = base_loss
+        self.class_weights = class_weights
+        # Store as tensor for efficient computation
+        self._weight_tensor = tf.constant(
+            [class_weights.get(0, 1.0), class_weights.get(1, 1.0)],
+            dtype=tf.float32
+        )
+    
+    def call(self, y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
+        """
+        Compute class-weighted loss.
+        
+        Args:
+            y_true: Ground truth labels (0 or 1)
+            y_pred: Predicted probabilities
+            
+        Returns:
+            Weighted loss value
+        """
+        # Compute base loss per sample (reduction=none for per-sample)
+        base_loss_no_reduce = tf.keras.losses.get(
+            tf.keras.losses.serialize(self.base_loss)
+        )
+        base_loss_no_reduce.reduction = tf.keras.losses.Reduction.NONE
+        
+        # Get per-sample losses
+        sample_losses = base_loss_no_reduce(y_true, y_pred)
+        
+        # Get weights for each sample based on true label
+        y_true_int = tf.cast(y_true, tf.int32)
+        sample_weights = tf.gather(self._weight_tensor, y_true_int)
+        
+        # Apply weights
+        weighted_losses = sample_losses * tf.squeeze(sample_weights)
+        
+        return tf.reduce_mean(weighted_losses)
+    
+    def get_config(self) -> Dict[str, Any]:
+        """Return config for serialization."""
+        config = super().get_config()
+        config.update({
+            "base_loss": tf.keras.losses.serialize(self.base_loss),
+            "class_weights": self.class_weights,
+        })
+        return config
+    
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> "ClassWeightedLoss":
+        """Create from serialized config."""
+        config["base_loss"] = tf.keras.losses.deserialize(config["base_loss"])
+        return cls(**config)
+
+
+@register_keras_serializable(package="ml_engine")
 class _LLRDAdam(tf.keras.optimizers.Adam):
     """Adam optimizer with per-variable learning-rate multipliers.
 
@@ -706,6 +786,103 @@ class TransformerDirectionTrainer(BaseTrainer):
             logger.warning("⚠️ Single class in training data - using uniform weights")
 
         return sample_weights
+    
+    def _compute_class_weights(
+        self, y_train_filtered: np.ndarray
+    ) -> Tuple[Dict[int, float], float, float]:
+        """
+        Compute class weights for long/short balance in loss function.
+        
+        Uses inverse frequency weighting with optional smoothing and max ratio capping.
+        Supports manual override from config.
+        
+        Args:
+            y_train_filtered: Training labels (0=short, 1=long)
+            
+        Returns:
+            Tuple of (class_weight_dict, weight_long, weight_short)
+            - class_weight_dict: Dict mapping class to weight for Keras class_weight param
+            - weight_long: Weight for LONG (y=1) class
+            - weight_short: Weight for SHORT (y=0) class
+        """
+        n_samples = len(y_train_filtered)
+        n_long = int((y_train_filtered == 1).sum())
+        n_short = n_samples - n_long
+        
+        # Check for manual override
+        manual_long = getattr(self.config, "class_weight_long", None)
+        manual_short = getattr(self.config, "class_weight_short", None)
+        
+        if manual_long is not None and manual_short is not None:
+            # Use manual weights
+            weight_long = manual_long
+            weight_short = manual_short
+            logger.info(f"📊 Using MANUAL class weights: LONG={weight_long:.3f}, SHORT={weight_short:.3f}")
+        else:
+            # Auto-compute from training data
+            if n_long == 0 or n_short == 0:
+                # Single class - no weighting
+                weight_long = 1.0
+                weight_short = 1.0
+                logger.warning("⚠️ Single class in training data - using uniform class weights")
+            else:
+                # Inverse frequency weighting
+                # weight = n_samples / (n_classes * n_samples_for_class)
+                raw_weight_long = n_samples / (2 * n_long)
+                raw_weight_short = n_samples / (2 * n_short)
+                
+                # Apply smoothing (config.class_weight_smoothing)
+                smoothing = getattr(self.config, "class_weight_smoothing", 0.1)
+                if smoothing > 0:
+                    # Blend towards 1.0 (no weighting)
+                    raw_weight_long = (1 - smoothing) * raw_weight_long + smoothing * 1.0
+                    raw_weight_short = (1 - smoothing) * raw_weight_short + smoothing * 1.0
+                
+                # Apply max ratio cap (config.class_weight_max_ratio)
+                max_ratio = getattr(self.config, "class_weight_max_ratio", 3.0)
+                weight_ratio = raw_weight_long / raw_weight_short if raw_weight_short > 0 else 1.0
+                
+                if weight_ratio > max_ratio:
+                    # Cap the ratio
+                    if raw_weight_long > raw_weight_short:
+                        weight_long = max_ratio
+                        weight_short = 1.0
+                    else:
+                        weight_long = 1.0
+                        weight_short = max_ratio
+                elif weight_ratio < 1.0 / max_ratio:
+                    if raw_weight_short > raw_weight_long:
+                        weight_short = max_ratio
+                        weight_long = 1.0
+                    else:
+                        weight_short = 1.0
+                        weight_long = max_ratio
+                else:
+                    # Normalize so min weight is 1.0
+                    min_weight = min(raw_weight_long, raw_weight_short)
+                    weight_long = raw_weight_long / min_weight
+                    weight_short = raw_weight_short / min_weight
+                
+                # Log distribution info
+                long_pct = 100 * n_long / n_samples
+                short_pct = 100 * n_short / n_samples
+                logger.info(
+                    f"📊 Class distribution: LONG={n_long} ({long_pct:.1f}%), "
+                    f"SHORT={n_short} ({short_pct:.1f}%)"
+                )
+                logger.info(
+                    f"📊 Auto-computed class weights: LONG={weight_long:.3f}, SHORT={weight_short:.3f} "
+                    f"(ratio={weight_long/weight_short:.2f}x)"
+                )
+        
+        # Store for later use
+        self._class_weight_long = weight_long
+        self._class_weight_short = weight_short
+        
+        # Return as dict for Keras class_weight parameter
+        class_weight_dict = {0: weight_short, 1: weight_long}
+        
+        return class_weight_dict, weight_long, weight_short
 
     def _handle_replay_buffer(
         self,
@@ -754,12 +931,18 @@ class TransformerDirectionTrainer(BaseTrainer):
         return x_train_filtered, y_train_filtered, sample_weights
 
     def _create_loss_function(
-        self, auto_variance_weight: float, label_smoothing: float
+        self, auto_variance_weight: float, label_smoothing: float, 
+        class_weights: Optional[Dict[int, float]] = None
     ) -> Any:
         """Create appropriate loss function based on config.
 
         Returns the base loss function (before EWC wrapping).
         Tries loss types in priority order: Hybrid SFT-RL > MADL > Hybrid CB > Anti-Collapse > CB Focal > Focal > BCE.
+        
+        Args:
+            auto_variance_weight: Weight for variance regularization
+            label_smoothing: Label smoothing factor
+            class_weights: Optional dict mapping class indices to weights for class balancing
         """
         # === HYBRID SFT-RL LOSS (NEW - 2026) ===
         # Check if Hybrid SFT-RL training is enabled
@@ -784,10 +967,41 @@ class TransformerDirectionTrainer(BaseTrainer):
             if should_try:
                 loss = try_func()
                 if loss is not None:
+                    # Apply class weights if enabled
+                    if class_weights and getattr(self.config, "use_class_weights", True):
+                        loss = self._wrap_loss_with_class_weights(loss, class_weights)
                     return loss
 
         # Fallback to standard Focal Loss or BCE
-        return self._get_fallback_loss(label_smoothing)
+        base_loss = self._get_fallback_loss(label_smoothing)
+        if class_weights and getattr(self.config, "use_class_weights", True):
+            base_loss = self._wrap_loss_with_class_weights(base_loss, class_weights)
+        return base_loss
+    
+    def _wrap_loss_with_class_weights(
+        self, base_loss: Any, class_weights: Dict[int, float]
+    ) -> Any:
+        """
+        Wrap a base loss function with class weights.
+        
+        Args:
+            base_loss: The underlying loss function
+            class_weights: Dict mapping class indices to weights
+            
+        Returns:
+            ClassWeightedLoss wrapper or base_loss if wrapping fails
+        """
+        try:
+            weighted_loss = ClassWeightedLoss(base_loss, class_weights)
+            weight_long = class_weights.get(1, 1.0)
+            weight_short = class_weights.get(0, 1.0)
+            logger.info(
+                f"⚖️ Class-weighted loss applied: LONG={weight_long:.3f}, SHORT={weight_short:.3f}"
+            )
+            return weighted_loss
+        except Exception as e:
+            logger.warning(f"⚠️ Could not wrap loss with class weights: {e}")
+            return base_loss
     
     def _try_hybrid_sft_rl_loss(self) -> Optional[Any]:
         """Try to create Hybrid SFT-RL Loss.
@@ -2269,12 +2483,16 @@ class TransformerDirectionTrainer(BaseTrainer):
 
         self._log_calibrated_distribution(val_pred_cal, raw_median, up_acc_cal, down_acc_cal, balanced_acc)
 
+        # Calculate directional accuracy gap
+        direction_gap = abs(up_acc_cal - down_acc_cal)
+        
         metrics = {
             "train_accuracy": float(history.history["accuracy"][-1]),
             "val_accuracy": float(val_acc),
             "val_balanced_accuracy": float(balanced_acc),
             "val_up_accuracy": float(up_acc_cal),
             "val_down_accuracy": float(down_acc_cal),
+            "val_direction_gap": float(direction_gap),
             "epochs_trained": len(history.history["loss"]),
             "n_train_samples": len(x_train_filtered),
             "n_val_samples": len(x_val_filtered),
@@ -2306,13 +2524,24 @@ class TransformerDirectionTrainer(BaseTrainer):
         self, val_pred_cal: np.ndarray, threshold: float,
         up_acc: float, down_acc: float, balanced_acc: float
     ) -> None:
-        """Log calibrated prediction distribution."""
+        """Log calibrated prediction distribution with long/short gap analysis."""
         long_preds = (val_pred_cal == 1).sum()
         short_preds = (val_pred_cal == 0).sum()
         long_pct = 100 * long_preds / len(val_pred_cal)
         short_pct = 100 * short_preds / len(val_pred_cal)
         logger.info(f"📐 Calibrated (thresh={threshold:.4f}): LONG={long_preds} ({long_pct:.1f}%), SHORT={short_preds} ({short_pct:.1f}%)")
         logger.info(f"📐 Calibrated balanced accuracy: {balanced_acc:.4f} (up={up_acc:.4f}, down={down_acc:.4f})")
+        
+        # Log long/short accuracy gap for monitoring class imbalance impact
+        direction_gap = abs(up_acc - down_acc)
+        if direction_gap > 0.10:
+            gap_direction = "LONG" if up_acc > down_acc else "SHORT"
+            logger.warning(
+                f"⚠️ Directional accuracy gap: {direction_gap:.1%} "
+                f"({gap_direction} favored). Consider adjusting class weights."
+            )
+        else:
+            logger.info(f"✓ Directional accuracy gap: {direction_gap:.1%} (balanced)")
 
     def _add_weight_norm_metrics(self, metrics: Dict[str, float], tf: Any) -> None:
         """Add weight norm metrics for regularization monitoring."""
@@ -2427,7 +2656,16 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Setup optimizer and compile
         optimizer = self._setup_optimizer_with_warmup(effective_lr, x_train_filtered)
         label_smoothing = getattr(self.config, "label_smoothing", 0.05) if self.config else 0.05
-        base_loss = self._create_loss_function(auto_variance_weight, label_smoothing)
+        
+        # Compute class weights for long/short balance if enabled
+        class_weights = None
+        if getattr(self.config, "use_class_weights", True):
+            class_weights, weight_long, weight_short = self._compute_class_weights(y_train_filtered)
+            # Store for logging and metrics
+            self.metrics["class_weight_long"] = weight_long
+            self.metrics["class_weight_short"] = weight_short
+        
+        base_loss = self._create_loss_function(auto_variance_weight, label_smoothing, class_weights)
         self._compile_model_with_loss(optimizer, base_loss, instrument)
 
         # Evaluate warm-start baseline

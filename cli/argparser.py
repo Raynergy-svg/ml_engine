@@ -39,6 +39,7 @@ COMMANDS = [
     "suggest-improvements",
     "monitor",
     "find-candles",
+    "transfer",
 ]
 
 CLI_EPILOG = """
@@ -886,6 +887,41 @@ def _add_multi_pair_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_correlation_transfer_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add correlation-based transfer learning arguments."""
+    # Simple transfer command arguments
+    parser.add_argument(
+        "--from-pair",
+        type=str,
+        default=None,
+        help="For train-transfer: source pair to transfer FROM (e.g., EUR_JPY).",
+    )
+    parser.add_argument(
+        "--to-pairs",
+        type=str,
+        default=None,
+        help="For train-transfer: target pairs to transfer TO (e.g., GBP_JPY,AUD_JPY). Use --auto for auto-detect.",
+    )
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        dest="auto_detect_pairs",
+        help="For train-transfer: auto-detect correlated pairs to transfer to.",
+    )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="For train-transfer: train source model fresh instead of using existing.",
+    )
+    # Legacy flags (still supported but hidden from main help)
+    parser.add_argument("--correlation-transfer", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--master-pairs", type=str, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--target-pairs", type=str, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--correlation-threshold", type=float, default=0.70, help=argparse.SUPPRESS)
+    parser.add_argument("--skip-master-training", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--transfer-epochs", type=int, default=50, help=argparse.SUPPRESS)
+
+
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the main argument parser.
 
@@ -917,6 +953,163 @@ def create_argument_parser() -> argparse.ArgumentParser:
     _add_monitoring_arguments(parser)
     _add_wandb_arguments(parser)
     _add_multi_pair_arguments(parser)
+    _add_correlation_transfer_arguments(parser)
+
+    return parser
+
+
+# =============================================================================
+# TRANSFER SUBCOMMAND PARSER (Progressive Disclosure)
+# =============================================================================
+
+TRANSFER_EPILOG = """
+EXAMPLES:
+  buddy transfer                         # Interactive mode - select from existing models
+  buddy transfer --auto                  # Auto-select best master and correlated targets
+  buddy transfer --from EUR_JPY          # Transfer from EUR_JPY to all correlated pairs
+  buddy transfer --from EUR_JPY --to GBP_JPY,AUD_JPY  # Explicit transfer
+
+ADVANCED USAGE:
+  buddy transfer --from EUR_JPY --advanced --threshold 0.80 --epochs 30
+  buddy transfer --auto --advanced --frozen-layers 3 --ewc-lambda 200
+"""
+
+
+def create_transfer_parser() -> argparse.ArgumentParser:
+    """Create the transfer subcommand parser with progressive disclosure.
+
+    Implements tiered CLI complexity:
+    - Basic flags always visible (--from, --to, --auto, --fresh)
+    - Advanced flags only visible with --advanced flag
+
+    Returns:
+        Configured ArgumentParser for transfer command.
+    """
+    parser = argparse.ArgumentParser(
+        prog="buddy transfer",
+        description="Transfer learning from a master model to correlated pairs.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=TRANSFER_EPILOG,
+    )
+
+    # =========================================================================
+    # BASIC FLAGS (Always Visible)
+    # =========================================================================
+    basic_group = parser.add_argument_group("basic options")
+
+    basic_group.add_argument(
+        "--from",
+        dest="from_pair",
+        type=str,
+        default=None,
+        help="Source pair to transfer from (e.g., EUR_JPY). Default: auto-detect best master.",
+    )
+    basic_group.add_argument(
+        "--to",
+        dest="to_pairs",
+        type=str,
+        default=None,
+        help="Target pairs, comma-separated (e.g., GBP_JPY,AUD_JPY). Default: auto-detect correlated.",
+    )
+    basic_group.add_argument(
+        "--auto",
+        action="store_true",
+        dest="auto_mode",
+        help="Zero-config mode: auto-select best master and correlated targets.",
+    )
+    basic_group.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Train source model fresh instead of using existing.",
+    )
+    basic_group.add_argument(
+        "--config",
+        "-c",
+        default=DEFAULT_CONFIG_PATH,
+        help="Path to configuration file.",
+    )
+    basic_group.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show detailed logs.",
+    )
+
+    # =========================================================================
+    # ADVANCED FLAG (Gate for expert options)
+    # =========================================================================
+    parser.add_argument(
+        "--advanced",
+        action="store_true",
+        help="Show advanced options for expert tuning.",
+    )
+
+    # =========================================================================
+    # ADVANCED FLAGS (Expert tuning - conceptually gated by --advanced)
+    # =========================================================================
+    advanced_group = parser.add_argument_group(
+        "advanced options (requires --advanced for full benefit)"
+    )
+
+    advanced_group.add_argument(
+        "--threshold",
+        type=float,
+        default=0.70,
+        help="Correlation threshold for target selection (default: 0.70).",
+    )
+    advanced_group.add_argument(
+        "--epochs",
+        type=int,
+        default=50,
+        help="Transfer training epochs (default: 50).",
+    )
+    advanced_group.add_argument(
+        "--lr-factor",
+        type=float,
+        default=0.03,
+        help="Learning rate reduction factor for transfer (default: 0.03 = 33x reduction).",
+    )
+    advanced_group.add_argument(
+        "--frozen-layers",
+        type=int,
+        default=2,
+        help="Number of encoder layers to freeze during transfer (default: 2).",
+    )
+    advanced_group.add_argument(
+        "--ewc-lambda",
+        type=float,
+        default=100.0,
+        help="EWC penalty strength for knowledge preservation (default: 100.0).",
+    )
+    advanced_group.add_argument(
+        "--patience",
+        type=int,
+        default=15,
+        help="Early stopping patience for transfer training (default: 15).",
+    )
+    advanced_group.add_argument(
+        "--granularity",
+        "-g",
+        default="H1",
+        help="OANDA candle granularity for data fetch (default: H1).",
+    )
+    advanced_group.add_argument(
+        "--candles",
+        "-n",
+        type=int,
+        default=5000,
+        help="Number of candles to fetch for training (default: 5000).",
+    )
+
+    # =========================================================================
+    # LEGACY FLAGS (Hidden, for backward compatibility)
+    # =========================================================================
+    parser.add_argument("--correlation-transfer", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--master-pairs", type=str, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--target-pairs", type=str, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--skip-master-training", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--transfer-epochs", type=int, default=50, help=argparse.SUPPRESS)
+    parser.add_argument("--correlation-threshold", type=float, default=0.70, help=argparse.SUPPRESS)
 
     return parser
 
@@ -934,6 +1127,8 @@ def parse_args() -> "Namespace":
 __all__ = [
     "COMMANDS",
     "CLI_EPILOG",
+    "TRANSFER_EPILOG",
     "create_argument_parser",
+    "create_transfer_parser",
     "parse_args",
 ]

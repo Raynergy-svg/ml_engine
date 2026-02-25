@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 from rich.panel import Panel
 from rich.table import Table
+from rich import markup
 
 from cli.config import BuddyTrainingOptions, OandaFetchOptions
 from src.utils.premium_output import PremiumConsole
@@ -203,10 +204,10 @@ def _train_rl_position_sizer_if_ready(
         return True
 
     except ImportError as e:
-        console.print(f"[dim]RL training unavailable: {e}[/dim]")
+        console.print(f"[dim]RL training unavailable: {markup.escape(str(e))}[/dim]")
         return False
     except Exception as e:
-        console.print(f"[yellow]RL training failed: {e}[/yellow]")
+        console.print(f"[yellow]RL training failed: {markup.escape(str(e))}[/yellow]")
         import traceback
         console.print(f"[dim]{traceback.format_exc()}[/dim]")
         return False
@@ -264,6 +265,149 @@ def _extract_options_to_dict(options: "BuddyTrainingOptions") -> dict:
         "timing": options.timing,
         "fit_verbose": options.fit_verbose,
     }
+
+
+def _apply_correlation_group_params(
+    *,
+    training_instrument: str,
+    opts: dict,
+    options: "BuddyTrainingOptions",
+    console,
+) -> dict:
+    """Apply optimized parameters from correlation group config.
+    
+    Loads the best sweep parameters for the given instrument from the
+    correlation group configuration and merges them into the training options.
+    Only overrides values that weren't explicitly set by the user via CLI.
+    
+    Args:
+        training_instrument: The FX pair being trained (e.g., 'AUD_USD')
+        opts: Dictionary of extracted training options (will be modified in-place)
+        options: Original BuddyTrainingOptions for checking user-provided values
+        console: Rich console for output
+        
+    Returns:
+        Modified opts dictionary with optimized parameters applied
+    """
+    if training_instrument == "GENERIC":
+        return opts
+    
+    try:
+        from src.training.correlation_group_config import (
+            get_best_params_for_pair,
+            get_master_pair,
+            is_master_pair,
+        )
+    except ImportError:
+        console.print("[dim]Correlation group config not available, using defaults[/dim]")
+        return opts
+    
+    try:
+        pair_params = get_best_params_for_pair(training_instrument)
+        master_pair = get_master_pair(training_instrument)
+        is_master = is_master_pair(training_instrument)
+        
+        if not pair_params:
+            console.print(f"[dim]No optimized params found for {training_instrument}, using defaults[/dim]")
+            return opts
+        
+        # Display which master pair's params are being used
+        if is_master:
+            console.print(Panel(
+                f"[bold green]✓ Using optimized sweep parameters[/bold green]\n\n"
+                f"[dim]Pair:[/dim] {training_instrument} (master)\n"
+                f"[dim]Source:[/dim] wandb sweep results",
+                title="📊 Sweep Config",
+                border_style="green",
+            ))
+        else:
+            console.print(Panel(
+                f"[bold cyan]✓ Using correlated pair parameters[/bold cyan]\n\n"
+                f"[dim]Pair:[/dim] {training_instrument}\n"
+                f"[dim]Master:[/dim] {master_pair}\n"
+                f"[dim]Note:[/dim] Using {master_pair} sweep params (correlation transfer)",
+                title="📊 Sweep Config",
+                border_style="cyan",
+            ))
+        
+        # Track which params were applied
+        applied_params = []
+        
+        # Apply TCN/Transformer architecture params (only if not explicitly set by user)
+        # Check if user provided explicit values via CLI by checking if they differ from defaults
+        default_seq_len = 60  # Default from BuddyTrainingOptions
+        default_batch_size = 64
+        default_lr = 0.001
+        default_patience = 10
+        default_epochs = 100
+        
+        # Seq len
+        if pair_params.get("seq_len") and opts.get("seq_len") == default_seq_len:
+            opts["seq_len"] = pair_params["seq_len"]
+            applied_params.append(f"seq_len={pair_params['seq_len']}")
+        
+        # Batch size
+        if pair_params.get("batch_size") and opts.get("batch_size") == default_batch_size:
+            opts["batch_size"] = pair_params["batch_size"]
+            applied_params.append(f"batch_size={pair_params['batch_size']}")
+        
+        # Learning rate
+        if pair_params.get("lr") and opts.get("lr") == default_lr:
+            opts["lr"] = pair_params["lr"]
+            applied_params.append(f"lr={pair_params['lr']:.6f}")
+        
+        # Patience
+        if pair_params.get("patience") and opts.get("patience") == default_patience:
+            opts["patience"] = pair_params["patience"]
+            applied_params.append(f"patience={pair_params['patience']}")
+        
+        # Epochs
+        if pair_params.get("epochs") and opts.get("epochs") == default_epochs:
+            opts["epochs"] = pair_params["epochs"]
+            applied_params.append(f"epochs={pair_params['epochs']}")
+        
+        # Advanced options - top_features
+        if pair_params.get("top_features") is not None:
+            advanced = opts.get("advanced")
+            if advanced and getattr(advanced, "top_features", None) is None:
+                # Create a new advanced with the optimized top_features
+                # We need to modify the advanced dataclass
+                try:
+                    from cli.config import AdvancedTrainingOptions
+                    old_advanced = advanced
+                    new_advanced = replace(old_advanced, top_features=pair_params["top_features"])
+                    opts["advanced"] = new_advanced
+                    applied_params.append(f"top_features={pair_params['top_features']}")
+                except Exception:
+                    pass
+        
+        # Advanced options - train_smoothing
+        if pair_params.get("train_smoothing") is not None:
+            advanced = opts.get("advanced")
+            if advanced and getattr(advanced, "train_smoothing", True) == True:  # Default is True
+                try:
+                    old_advanced = opts["advanced"]
+                    new_advanced = replace(old_advanced, train_smoothing=pair_params["train_smoothing"])
+                    opts["advanced"] = new_advanced
+                    applied_params.append(f"train_smoothing={pair_params['train_smoothing']}")
+                except Exception:
+                    pass
+        
+        # Mixed precision
+        if pair_params.get("mixed_precision") is not None:
+            if opts.get("mixed_precision") is None:  # Default is None
+                opts["mixed_precision"] = pair_params["mixed_precision"]
+                applied_params.append(f"mixed_precision={pair_params['mixed_precision']}")
+        
+        # Log applied params
+        if applied_params:
+            console.print(f"[dim]Applied sweep params: {', '.join(applied_params)}[/dim]")
+        
+        return opts
+        
+    except Exception as e:
+        console.print(f"[yellow]⚠️ Failed to load correlation group params: {markup.escape(str(e))}[/yellow]")
+        return opts
 
 
 def _resolve_oos_env_settings():
@@ -534,7 +678,7 @@ def _apply_feature_engineering(df, cfg, all_features, train_smoothing, median_wi
                 median_window=median_window,
             )
         except Exception as e:
-            console.print(f"[yellow]Noise reduction deferred:[/yellow] {e}")
+            console.print(f"[yellow]Noise reduction deferred:[/yellow] {markup.escape(str(e))}")
 
     return df
 
@@ -552,7 +696,7 @@ def _resolve_init_feature_columns(init_from, console):
                 console.print(f"Using feature_columns from init_from metadata: {meta_p}")
                 return [str(c) for c in cols]
     except Exception as e:
-        console.print(f"[yellow]Warm-start metadata unavailable:[/yellow] {e}")
+        console.print(f"[yellow]Warm-start metadata unavailable:[/yellow] {markup.escape(str(e))}")
     return None
 
 
@@ -632,7 +776,7 @@ def _compute_feature_ranking(
                 f"[cyan]✓ Feature Selection:[/cyan] kept {len(keep)} / {int(len(ranked_cols))} ranked features"
             )
     except Exception as e:
-        console.print(f"[yellow]Feature ranking unavailable:[/yellow] {e}")
+        console.print(f"[yellow]Feature ranking unavailable:[/yellow] {markup.escape(str(e))}")
         ranked_cols = None
 
     return numeric_df, ranked_cols
@@ -713,7 +857,7 @@ def _compute_tier2_confidence_labels(
             f"horizon={int(tier2_horizon_candles)} stride={int(label_stride)} | {int(n_sim)} samples in {time.perf_counter() - t_tier2_label:.2f}s"
         )
     except Exception as e:
-        console.print(f"[yellow]Tier-2 confidence labeling failed[/yellow]: {e}")
+        console.print(f"[yellow]Tier-2 confidence labeling failed[/yellow]: {markup.escape(str(e))}")
         conf_y_all = np.zeros((int(n),), dtype=np.float32)
         conf_w_all = np.zeros((int(n),), dtype=np.float32)
 
@@ -969,7 +1113,7 @@ def _initialize_wandb_tracker(
         return tracker
 
     except Exception as e:
-        console.print(f"[yellow]⚠️  W&B initialization failed: {e}[/yellow]")
+        console.print(f"[yellow]⚠️  W&B initialization failed: {markup.escape(str(e))}[/yellow]")
         return None
 
 
@@ -1044,7 +1188,7 @@ def _train_ensemble_models(
             wandb_tracker.init()
             console.print("[dim]📊 W&B run initialized[/dim]")
         except Exception as e:
-            console.print(f"[yellow]⚠️  W&B init failed: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  W&B init failed: {markup.escape(str(e))}[/yellow]")
             wandb_tracker = None
 
     # Get model configuration from config (intel_optimized.yaml is the default)
@@ -1323,7 +1467,7 @@ def _train_ensemble_models(
             wandb_tracker.finish()
             console.print("[dim]📊 W&B run finalized[/dim]")
         except Exception as e:
-            console.print(f"[yellow]⚠️  W&B finalization warning: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  W&B finalization warning: {markup.escape(str(e))}[/yellow]")
 
 
 def _print_ensemble_architecture_table(console, use_regime, use_transformer, direction_threshold):
@@ -1421,7 +1565,19 @@ def _prepare_ensemble_feature_df(df, ohlc_df, train_feats, val_feats, feature_co
 
 
 def _print_ensemble_dataset_summary(console, all_data):
-    """Print Rich table summarizing datasets for each ensemble model."""
+    """Print Rich table summarizing datasets for each ensemble model.
+
+    Gracefully handles cases where data loading failed for individual models
+    by displaying a warning and skipping the problematic model rather than crashing.
+
+    Parameters
+    ----------
+    console : rich.console.Console
+        Rich console instance for output.
+    all_data : dict[str, dict | None]
+        Dictionary mapping model names to their data dictionaries.
+        Values may be None if data loading failed for that model.
+    """
     dataset_table = Table(title=None, show_header=True, header_style=_STYLE_HEADER, box=None)
     dataset_table.add_column("Model", style="white")
     dataset_table.add_column("Train", justify="right", style="green")
@@ -1429,26 +1585,53 @@ def _print_ensemble_dataset_summary(console, all_data):
     dataset_table.add_column("Features", justify="right", style="blue")
     dataset_table.add_column("Notes", style="dim")
 
+    failed_models = []
+
     for name, data in all_data.items():
-        n_features = len(data['feature_names'])
+        # Handle None data gracefully - log warning and skip
+        if data is None:
+            failed_models.append(name)
+            console.print(f"[yellow]⚠️ {name}: Data load failed (skipped)[/yellow]")
+            continue
+
+        # Use .get() for defensive access to feature_names
+        feature_names = data.get('feature_names', [])
+        n_features = len(feature_names) if feature_names is not None else 0
+
         notes = ""
         if name == 'direction' and 'label_stats' in data:
             stats = data['label_stats']
-            notes = f"{stats['clear_rate']:.0%} clear, {stats['up_rate']:.0%} up, thr={stats['threshold']:.2%}"
+            notes = f"{stats.get('clear_rate', 0):.0%} clear, {stats.get('up_rate', 0):.0%} up, thr={stats.get('threshold', 0):.2%}"
         elif name == 'regime' and 'label_stats' in data:
             stats = data['label_stats']
-            notes = f"trend={stats['trend_rate']:.0%}, chop={stats['chop_rate']:.0%}"
+            notes = f"trend={stats.get('trend_rate', 0):.0%}, chop={stats.get('chop_rate', 0):.0%}"
 
         model_name = name.upper() if name in ['xgboost', 'rf', 'ridge'] else name.capitalize()
+
+        # Defensive access to X_train and X_val
+        x_train = data.get('X_train', [])
+        x_val = data.get('X_val', [])
+        train_len = len(x_train) if x_train is not None else 0
+        val_len = len(x_val) if x_val is not None else 0
+
         dataset_table.add_row(
             model_name,
-            f"{len(data['X_train']):,}",
-            f"{len(data['X_val']):,}",
+            f"{train_len:,}",
+            f"{val_len:,}",
             str(n_features),
             notes
         )
 
-    console.print(Panel(dataset_table, title="📊 Ensemble Dataset Summary", border_style="blue"))
+    # Print summary with warning if any models failed
+    if failed_models:
+        console.print(Panel(
+            dataset_table,
+            title=f"📊 Ensemble Dataset Summary ([yellow]{len(failed_models)} failed[/yellow])",
+            border_style="yellow"
+        ))
+        logger.warning("Data load failed for models: %s", ", ".join(failed_models))
+    else:
+        console.print(Panel(dataset_table, title="📊 Ensemble Dataset Summary", border_style="blue"))
 
 
 def _determine_training_instrument(oanda_fetch, csv_path):
@@ -1759,7 +1942,7 @@ def _train_direction_or_regime_model(
             })
             console.print("[dim]📊 Logged direction metrics to W&B[/dim]")
         except Exception as e:
-            console.print(f"[yellow]⚠️  W&B metric logging warning: {e}[/yellow]")
+            console.print(f"[yellow]⚠️  W&B metric logging warning: {markup.escape(str(e))}[/yellow]")
 
     return dir_data, dir_metrics, dir_model_path, dir_trainer
 
@@ -1838,7 +2021,7 @@ def _log_xgb_metrics_to_wandb(xgb_metrics, wandb_tracker, console):
             "xgboost/acceleration_accuracy": xgb_metrics.get('acceleration_accuracy', 0),
         })
     except Exception as e:
-        console.print(f"[yellow]⚠️  W&B XGBoost logging warning: {e}[/yellow]")
+        console.print(f"[yellow]⚠️  W&B XGBoost logging warning: {markup.escape(str(e))}[/yellow]")
 
 
 def _log_rf_metrics_to_wandb(rf_metrics, wandb_tracker, console):
@@ -1851,7 +2034,7 @@ def _log_rf_metrics_to_wandb(rf_metrics, wandb_tracker, console):
             "rf/streak_prob_mae": rf_metrics.get('streak_prob_mae', 0),
         })
     except Exception as e:
-        console.print(f"[yellow]⚠️  W&B RF logging warning: {e}[/yellow]")
+        console.print(f"[yellow]⚠️  W&B RF logging warning: {markup.escape(str(e))}[/yellow]")
 
 
 def _log_ridge_metrics_to_wandb(ridge_metrics, wandb_tracker, console):
@@ -1864,7 +2047,7 @@ def _log_ridge_metrics_to_wandb(ridge_metrics, wandb_tracker, console):
             "ridge/r2_score": ridge_metrics.get('r2_score', 0),
         })
     except Exception as e:
-        console.print(f"[yellow]⚠️  W&B Ridge logging warning: {e}[/yellow]")
+        console.print(f"[yellow]⚠️  W&B Ridge logging warning: {markup.escape(str(e))}[/yellow]")
 
 
 def _train_rf_model(*, all_data, trainer_config, pair_paths, model_dir, training_instrument, console):
@@ -2183,7 +2366,7 @@ def _train_meta_labeler_cli(
 
     except Exception as e:
         _logger.warning(f"Meta-labeler training failed (non-fatal): {e}")
-        console.print(f"[yellow]⚠ Meta-labeler training failed (non-fatal): {e}[/yellow]")
+        console.print(f"[yellow]⚠ Meta-labeler training failed (non-fatal): {markup.escape(str(e))}[/yellow]")
 
 
 def _fit_post_training_calibrator_cli(
@@ -2390,7 +2573,7 @@ def _fit_post_training_calibrator_cli(
 
     except Exception as e:
         _logger.warning(f"Confidence calibration failed (non-fatal): {e}")
-        console.print(f"[yellow]⚠ Confidence calibration failed (non-fatal): {e}[/yellow]")
+        console.print(f"[yellow]⚠ Confidence calibration failed (non-fatal): {markup.escape(str(e))}[/yellow]")
 
 
 def _build_ensemble_metadata(
@@ -2799,10 +2982,10 @@ def _run_enterprise_validation(
             )
 
     except ImportError as e:
-        console.print(f"[yellow]Enterprise features unavailable: {e}[/yellow]")
+        console.print(f"[yellow]Enterprise features unavailable: {markup.escape(str(e))}[/yellow]")
         console.print("[dim]Install with: pip install mlflow structlog[/dim]")
     except Exception as e:
-        console.print(f"[yellow]Enterprise validation error: {e}[/yellow]")
+        console.print(f"[yellow]Enterprise validation error: {markup.escape(str(e))}[/yellow]")
         import traceback
         traceback.print_exc()
 
@@ -3285,7 +3468,7 @@ def _train_rl_after_ensemble(
                     raw_preds = dir_trainer.model.predict(X_scaled, verbose=0).flatten()
                     rl_direction_probs[:len(raw_preds)] = raw_preds[:n_rl]
         except Exception as e:
-            console.print(f"[dim]  Using default direction probs: {e}[/dim]")
+            console.print(f"[dim]  Using default direction probs: {markup.escape(str(e))}[/dim]")
 
         try:
             if hasattr(ridge_trainer, 'model') and ridge_trainer.model is not None:
@@ -3304,7 +3487,7 @@ def _train_rl_after_ensemble(
                 rl_confidences[:min_c] = raw_conf[:min_c]
                 console.print(f"[dim]  Confidence scores: {min_c:,} batch predictions[/dim]")
         except Exception as e:
-            console.print(f"[dim]  Using default confidences: {e}[/dim]")
+            console.print(f"[dim]  Using default confidences: {markup.escape(str(e))}[/dim]")
 
         rl_predictions = np.column_stack([
             rl_direction_probs,
@@ -3325,8 +3508,150 @@ def _train_rl_after_ensemble(
             rl_position_cfg=rl_position_cfg,
         )
     except Exception as e:
-        console.print(f"[yellow]RL data preparation failed: {e}[/yellow]")
+        console.print(f"[yellow]RL data preparation failed: {markup.escape(str(e))}[/yellow]")
         console.print("[dim]Skipping RL position sizer training[/dim]")
+
+
+def _run_correlation_transfer_training(
+    *,
+    options: "BuddyTrainingOptions",
+    cfg: dict,
+    console,
+) -> None:
+    """
+    Run correlation-based transfer learning pipeline.
+
+    This mode trains master models on high-liquidity pairs and transfers
+    knowledge to correlated pairs using warm-start with EWC.
+
+    Args:
+        options: Training options with correlation_transfer settings
+        cfg: Configuration dictionary
+        console: Rich console for output
+    """
+    from rich.panel import Panel
+
+    from src.training.orchestrators.correlation_transfer import (
+        CorrelationTransferOrchestrator,
+        CorrelationTransferConfig,
+    )
+    from src.training.trainers.config import TrainerConfig
+
+    # Parse master and target pairs
+    master_pairs = None
+    if options.master_pairs:
+        master_pairs = [p.strip().upper() for p in options.master_pairs.split(",")]
+
+    target_pairs = None
+    if options.target_pairs:
+        target_pairs = [p.strip().upper() for p in options.target_pairs.split(",")]
+
+    # Determine all pairs needed
+    all_pairs = set(master_pairs or []) | set(target_pairs or [])
+    if not all_pairs:
+        # Default to common correlated pairs
+        all_pairs = {"EUR_USD", "EUR_JPY", "GBP_JPY", "AUD_JPY", "GBP_USD", "USD_JPY"}
+
+    console.print(Panel(
+        "[bold]Correlation-Based Transfer Learning[/bold]\n\n"
+        f"[dim]Master Pairs:[/dim] {', '.join(master_pairs) if master_pairs else 'Auto-select'}\n"
+        f"[dim]Target Pairs:[/dim] {', '.join(target_pairs) if target_pairs else 'All correlated'}\n"
+        f"[dim]Correlation Threshold:[/dim] {options.correlation_threshold}\n"
+        f"[dim]Skip Master Training:[/dim] {options.skip_master_training}\n"
+        f"[dim]Transfer Epochs:[/dim] {options.transfer_epochs}",
+        title="Transfer Learning Mode",
+        border_style="cyan",
+    ))
+
+    # Get OANDA settings
+    oanda_fetch = options.oanda_fetch
+    granularity = getattr(oanda_fetch, "granularity", "H1") if oanda_fetch else "H1"
+    candles = getattr(oanda_fetch, "candles", 5000) if oanda_fetch else 5000
+
+    # Load data for all pairs
+    console.print("\n[bold]Loading data for all pairs...[/bold]")
+
+    from src.training.buddy_training_helpers import _fetch_oanda_candles
+
+    dfs = {}
+    returns_data = {}
+
+    for pair in sorted(all_pairs):
+        console.print(f"  [dim]Fetching {pair}...[/dim]", end="")
+        try:
+            df = _fetch_oanda_candles(
+                instrument=pair,
+                granularity=granularity,
+                candles=candles,
+            )
+            if df is not None and len(df) > 100:
+                dfs[pair] = df
+                # Compute returns for correlation analysis
+                if "close" in df.columns:
+                    returns_data[pair] = df["close"].pct_change().dropna()
+                console.print(f" [green]{len(df):,} candles[/green]")
+            else:
+                console.print(" [yellow]insufficient data[/yellow]")
+        except Exception as e:
+            console.print(f" [red]failed: {markup.escape(str(e))}[/red]")
+
+    if len(dfs) < 2:
+        console.print("[red]Need at least 2 pairs with data for transfer learning[/red]")
+        return
+
+    # Create transfer config
+    transfer_config = CorrelationTransferConfig(
+        correlation_threshold=options.correlation_threshold,
+        transfer_epochs=options.transfer_epochs,
+        user_master_pairs=master_pairs,
+    )
+
+    # Create trainer config from options
+    trainer_config = TrainerConfig(
+        epochs=options.epochs,
+        batch_size=options.batch_size,
+        learning_rate=options.lr,
+        patience=options.patience,
+        use_ewc=options.enable_ewc,
+    )
+
+    # Create and run orchestrator
+    console.print("\n[bold]Initializing transfer learning orchestrator...[/bold]")
+    orchestrator = CorrelationTransferOrchestrator(
+        config=transfer_config,
+        trainer_config=trainer_config,
+    )
+
+    results = orchestrator.run_full_pipeline(
+        returns_data=returns_data,
+        dfs=dfs,
+        master_pairs=master_pairs,
+        target_pairs=target_pairs,
+        skip_master_training=options.skip_master_training,
+    )
+
+    # Display results summary
+    console.print("\n" + "=" * 60)
+    console.print("[bold green]TRANSFER LEARNING COMPLETE[/bold green]")
+    console.print("=" * 60)
+
+    if results.get("correlation_groups"):
+        console.print("\n[bold]Correlation Groups:[/bold]")
+        for group in results["correlation_groups"]:
+            console.print(f"  Group {group['group_id']}: master=[cyan]{group['master']}[/cyan]")
+            console.print(f"    Pairs: {', '.join(group['pairs'])}")
+
+    if results.get("transfer_results"):
+        console.print("\n[bold]Transfer Results:[/bold]")
+        for tr in results["transfer_results"]:
+            acc_color = "green" if tr["accuracy"] >= 0.60 else "yellow"
+            console.print(
+                f"  {tr['source']} → {tr['target']}: "
+                f"correlation={tr['correlation']:.3f}, "
+                f"accuracy=[{acc_color}]{tr['accuracy']:.1%}[/{acc_color}]"
+            )
+
+    console.print("\n[dim]Models saved to: trained_data/models/transfer/[/dim]")
 
 
 def _train_buddy_impl(
@@ -3340,7 +3665,19 @@ def _train_buddy_impl(
     rl_position_cfg = _resolve_rl_position_sizing_config(cfg)
     opts = _extract_options_to_dict(options)
 
+    # Determine training instrument early to apply correlation group params
     oanda_fetch = opts["oanda_fetch"]
+    training_instrument, training_granularity = _determine_training_instrument(oanda_fetch, csv_path)
+    
+    # Apply optimized sweep parameters from correlation group config
+    # This merges best params from wandb sweeps for the instrument
+    if training_instrument != "GENERIC":
+        opts = _apply_correlation_group_params(
+            training_instrument=training_instrument,
+            opts=opts,
+            options=options,
+            console=console,
+        )
     advanced = opts["advanced"]
     seq_len = opts["seq_len"]
     epochs = opts["epochs"]
@@ -3382,6 +3719,16 @@ def _train_buddy_impl(
         # Reproducibility disabled in config but seed provided via CLI
         set_global_seed(seed)
         console.print(f"[yellow]⚠️  Reproducibility disabled in config, but using CLI seed: {seed}[/yellow]")
+
+    # === CORRELATION-BASED TRANSFER LEARNING ===
+    # Check if correlation transfer mode is enabled - this runs a separate pipeline
+    if opts.get("correlation_transfer", False):
+        _run_correlation_transfer_training(
+            options=options,
+            cfg=cfg,
+            console=console,
+        )
+        return
 
     try:
         from src.utils.tracing_setup import setup_tracing as _setup_tracing
@@ -3862,7 +4209,7 @@ def _train_buddy_impl(
                     ks_schedule=ks_final,
                 )
             except Exception as e:
-                console.print(f"[yellow]Feature curriculum init failed[/yellow]: {e}")
+                console.print(f"[yellow]Feature curriculum init failed[/yellow]: {markup.escape(str(e))}")
                 feature_mask_var = None
                 curriculum_cb = None
 
@@ -4120,7 +4467,7 @@ def _train_buddy_impl(
                         json.dump(meta, f, indent=2)
 
                 except Exception as e:
-                    console.print(f"[yellow]Meta-labeling failed[/yellow]: {e}")
+                    console.print(f"[yellow]Meta-labeling failed[/yellow]: {markup.escape(str(e))}")
                     import traceback
                     traceback.print_exc()
 
@@ -4167,7 +4514,7 @@ def _train_buddy_impl(
                     )
 
                 except Exception as e:
-                    console.print(f"[yellow]⚠ RL position sizer training failed: {e}[/yellow]")
+                    console.print(f"[yellow]⚠ RL position sizer training failed: {markup.escape(str(e))}[/yellow]")
                     console.print("[dim]XGBoost training completed successfully - RL training is optional.[/dim]")
                     import traceback
                     console.print(f"[dim]{traceback.format_exc()}[/dim]")
@@ -4569,7 +4916,7 @@ def _train_buddy_impl(
         except Exception as e:
             baseline_load_failed = True
             try:
-                console.print(f"[yellow]Skipping baseline gating[/yellow]: {e}")
+                console.print(f"[yellow]Skipping baseline gating[/yellow]: {markup.escape(str(e))}")
             except Exception:
                 pass
 

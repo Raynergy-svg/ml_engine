@@ -36,6 +36,16 @@ from src.training.trainers.utils import (
     _create_lgbm_regressor,
 )
 
+# Import custom LR schedules early so they're registered with Keras before
+# any pickle deserialization that might contain Keras models with these schedules
+try:
+    from src.training.m1_metal_optimizer import (
+        WarmupCosineDecaySchedule,  # noqa: F401
+        CosineDecayRestarts,  # noqa: F401
+    )
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
 

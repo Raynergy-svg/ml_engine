@@ -500,6 +500,14 @@ class JointMultiPairTrainer:
                             logger.warning(f"{instrument}: Missing {len(missing)} base features: {list(missing)[:5]}...")
                             x_val_2d = dir_result["X_val"]
                     else:
+                        # FALLBACK: Using raw dir_result without feature alignment
+                        # This may indicate a model/data mismatch that should be investigated
+                        logger.warning(
+                            f"{instrument}: Falling back to raw dir_result features without alignment. "
+                            f"Model expects {expected_n_features if expected_n_features else 'unknown'} features, "
+                            f"data has {dir_result['X_val'].shape[-1]} features. "
+                            f"This may cause prediction errors if feature order differs."
+                        )
                         x_val_2d = dir_result["X_val"]
 
                     # Determine if we should add instrument features (fallback for older models)
@@ -846,6 +854,71 @@ class JointMultiPairTrainer:
         if conf_path.exists():
             self.confidence_trainer = RidgeTrainer(self.config)
             self.confidence_trainer.load(str(conf_path))
+            loaded = True
+
+        self.is_trained = loaded
+        return loaded
+
+    def warm_start_from_master(
+        self,
+        master_model_path: str,
+        target_instrument: str,
+    ) -> bool:
+        """
+        Initialize trainers from a master model for transfer learning.
+
+        Loads the master model and prepares it for fine-tuning on a target
+        instrument. The direction trainer is marked for warm-start which
+        enables reduced learning rate and layer freezing during training.
+
+        Args:
+            master_model_path: Path to master model directory
+            target_instrument: Target instrument for fine-tuning
+
+        Returns:
+            True if master model was loaded successfully
+        """
+        master_path = Path(master_model_path)
+
+        if not master_path.exists():
+            logger.warning(f"Master model path not found: {master_path}")
+            return False
+
+        loaded = False
+
+        # Load direction trainer with warm-start flag
+        direction_path = master_path / TRANSFORMER_DIRECTION_FILENAME
+        if direction_path.exists():
+            self.direction_trainer = TransformerDirectionTrainer(self.config)
+            self.direction_trainer.load(str(direction_path))
+            # Mark as warm-start for transfer learning
+            self.direction_trainer._is_warm_start = True
+            logger.info(
+                f"Loaded master direction model from {direction_path} "
+                f"for transfer to {target_instrument}"
+            )
+            loaded = True
+
+        # Load LightGBM models (they support init_model for warm-start)
+        mom_path = master_path / LGBM_MOMENTUM_FILENAME
+        if mom_path.exists():
+            self.momentum_trainer = LightGBMMomentumTrainer(self.config)
+            self.momentum_trainer.load(str(mom_path))
+            logger.info(f"Loaded master momentum model from {mom_path}")
+            loaded = True
+
+        risk_path = master_path / LGBM_RISK_FILENAME
+        if risk_path.exists():
+            self.risk_trainer = LightGBMRiskTrainer(self.config)
+            self.risk_trainer.load(str(risk_path))
+            logger.info(f"Loaded master risk model from {risk_path}")
+            loaded = True
+
+        conf_path = master_path / RIDGE_CONFIDENCE_FILENAME
+        if conf_path.exists():
+            self.confidence_trainer = RidgeTrainer(self.config)
+            self.confidence_trainer.load(str(conf_path))
+            logger.info(f"Loaded master confidence model from {conf_path}")
             loaded = True
 
         self.is_trained = loaded

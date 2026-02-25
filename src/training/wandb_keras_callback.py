@@ -61,11 +61,23 @@ try:
             WandbMetricsLogger = None
             WandbModelCheckpoint = None
     WANDB_AVAILABLE = True
+    
+    # Check wandb version for reinit parameter compatibility
+    # reinit="finish_previous" was added in wandb 0.23.0
+    # Older versions only support boolean values
+    try:
+        from packaging.version import parse as parse_version
+        _wandb_version = parse_version(getattr(wandb, '__version__', '0.0.0'))
+        WANDB_SUPPORTS_REINIT_STRING = _wandb_version >= parse_version('0.23.0')
+    except ImportError:
+        # packaging not available, assume newer version
+        WANDB_SUPPORTS_REINIT_STRING = True
 except ImportError:
     WANDB_AVAILABLE = False
     wandb = None
     WandbMetricsLogger = None
     WandbModelCheckpoint = None
+    WANDB_SUPPORTS_REINIT_STRING = False
 
 try:
     import tensorflow as tf
@@ -779,13 +791,17 @@ class WandbKerasTracker:
             }
             
             # Initialize run
+            # Use version-appropriate reinit value:
+            # - wandb >= 0.23.0: "finish_previous" (properly cleans up previous run)
+            # - wandb < 0.23.0: True (boolean fallback)
+            reinit_value = "finish_previous" if WANDB_SUPPORTS_REINIT_STRING else True
             self.run = wandb.init(
                 project=self.config.project_name,
                 name=self.config.experiment_name,
                 tags=self.config.tags + [self.config.instrument, self.config.granularity],
                 notes=self.config.notes,
                 config=run_config,
-                reinit="finish_previous",  # Updated from boolean to string (wandb 0.23+)
+                reinit=reinit_value,
             )
             
             # Define metrics with proper step handling to avoid conflicts

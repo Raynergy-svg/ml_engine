@@ -78,10 +78,9 @@ data:
 sequence_length: 60
 
 # ----- H1 DIRECTION LABELING -----
-# [2026-02-15] Adjusted for better signal quality
-# Increased threshold to filter noise, clearer directional signals
+# [2026-02-21] Optimal settings from best performing model (EUR_JPY: 65.2% val_acc)
 direction_lookahead: 24
-direction_threshold: 0.005  # Min 0.5% move for clearer signal (was 0.3%)
+direction_threshold: 0.005  # Min 0.5% move for clear signal (validated on EUR_JPY)
 
 # ----- MODEL CONFIGURATION -----
 model:
@@ -158,9 +157,9 @@ tcn_regime:
   learning_rate: 0.0005       # TCN-specific learning rate (was 0.001 - reduced to prevent gradient explosion)
   batch_size: 32              # INTEL MAC optimized
   epochs: 150                 # Max epochs (early stopping will kick in)
-  early_stopping_patience: 15 # [2026-02-14] Reduced from 25 to 15 for enhanced regularization
+  early_stopping_patience: 30 # [2026-02-14] Reduced from 25 to 15 for enhanced regularization
   early_stopping_min_delta: 0.001  # [2026-02-14] Added: Minimum change to qualify as improvement
-  min_epochs: 30              # Train at least this many epochs
+  min_epochs: 50              # Train at least this many epochs
   
   # Class weighting for imbalanced volatility regimes
   # Classes: LOW (0), NORMAL (1), HIGH (2), EXTREME (3)

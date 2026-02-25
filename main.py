@@ -70,6 +70,7 @@ from cli.commands import (
     buddy,
     buddy_validate,
     buddy_test,
+    handle_transfer_command,
 )
 from cli.buddy_scanning import buddy_scan
 from cli.analytics_commands import (
@@ -520,6 +521,11 @@ def _handle_find_candles(args: Any) -> None:
     )
 
 
+def _handle_transfer(args: Any) -> None:
+    """Handle the transfer subcommand."""
+    handle_transfer_command(args)
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table  (command string → handler)
 # ---------------------------------------------------------------------------
@@ -545,6 +551,7 @@ _DISPATCH_TABLE: dict[str, Any] = {
     "promote-model": _handle_promote_model,
     "model-status": _handle_model_status,
     "find-candles": _handle_find_candles,
+    "transfer": _handle_transfer,
 }
 
 

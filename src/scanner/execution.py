@@ -95,6 +95,9 @@ class ExecutionResult:
         sl_price: Stop loss price
         tp_price: Take profit price
         error: Error message if failed
+        regime_scale: Regime-based scaling factor applied
+        regime_name: Volatility regime name
+        aggressive_scaling_reason: Reason for aggressive scaling if applied
     """
     success: bool
     trade_id: Optional[str] = None
@@ -108,6 +111,10 @@ class ExecutionResult:
     risk_pct: float = 0.0
     confidence_level: str = "medium"
     error: Optional[str] = None
+    # Regime-based scaling fields
+    regime_scale: float = 1.0
+    regime_name: str = "UNKNOWN"
+    aggressive_scaling_reason: str = ""
 
 
 class ExecutionManager:
@@ -165,36 +172,32 @@ class ExecutionManager:
             return False
 
     def _init_position_sizer(self) -> None:
-        """Initialize position sizer."""
+        """Initialize position sizer with regime-aware scaling."""
         if self._position_sizer is not None:
             return
 
         try:
             from src.risk.position_sizing import (
-                DynamicPositionSizer, PositionSizingConfig
+                DynamicPositionSizer, PositionSizingConfig,
+                create_regime_aware_position_sizer
             )
 
             if self.config.aggressive_mode:
-                # Aggressive Kelly-based sizing for compounding
-                config = PositionSizingConfig(
-                    risk_per_trade_pct=self.config.risk_per_trade_pct,
-                    min_confidence_threshold=0.53,
-                    max_position_multiplier=10.0,
-                    low_confidence_band=(0.53, 0.60),
-                    medium_confidence_band=(0.60, 0.75),
-                    high_confidence_band=(0.75, 1.0),
-                    low_confidence_multiplier=1.5,
-                    medium_confidence_multiplier=3.0,
-                    high_confidence_multiplier=5.0,
-                    max_position_pct=0.80,
-                    min_position_size=500000,
+                # Use regime-aware position sizer with aggressive scaling
+                # This is the "highest-ROI toggle in the entire system"
+                self._position_sizer = create_regime_aware_position_sizer(
+                    aggressive_scale_high_vol=1.5,  # 1.5x in HIGH vol
+                    aggressive_scale_extreme_vol=1.75,  # 1.75x in EXTREME vol
+                    aggressive_min_meta_confidence=0.52,  # Meta confidence threshold
+                    regime_scaling_enabled=True,
                 )
+                logger.info("✓ Regime-aware position sizer initialized (aggressive mode)")
             else:
                 config = PositionSizingConfig(
                     risk_per_trade_pct=self.config.risk_per_trade_pct,
                     min_confidence_threshold=0.5,
                 )
-            self._position_sizer = DynamicPositionSizer(config)
+                self._position_sizer = DynamicPositionSizer(config)
         except ImportError:
             logger.debug("DynamicPositionSizer not available")
 
@@ -390,6 +393,91 @@ class ExecutionManager:
             logger.warning(f"Position sizing failed: {e}")
 
         return 0.0, self.config.risk_per_trade_pct, "medium"
+    
+    def calculate_regime_aware_position_size(
+        self,
+        pair: str,
+        confidence: float,
+        atr: float,
+        volatility_regime: int,
+        meta_confidence: float,
+        account_equity: Optional[float] = None,
+    ) -> Tuple[float, float, float, float, str, float, str]:
+        """Calculate position sizing with regime-based aggressive scaling.
+        
+        This is the key method for enabling aggressive volatility-regime sizing.
+        When regime == HIGH/EXTREME and meta_confidence > threshold, positions
+        are scaled UP to capitalize on high-quality signals.
+        
+        Args:
+            pair: Instrument name
+            confidence: Model confidence (0-1)
+            atr: ATR value for SL calculation
+            volatility_regime: Volatility regime (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
+            meta_confidence: Meta-labeler confidence (0-1)
+            account_equity: Account equity (fetches from OANDA if None)
+            
+        Returns:
+            Tuple of (lots, risk_pct, sl_pips, tp_pips, confidence_level, regime_scale, regime_name)
+        """
+        if not self.config.position_sizing_enabled:
+            return 0.0, 0.0, 0.0, 0.0, "disabled", 1.0, "UNKNOWN"
+        
+        self._init_position_sizer()
+        self._init_risk_manager()
+        
+        # Get pip value for pair
+        pip_value = PIP_VALUES.get(pair, 0.0001)
+        
+        # Get account equity
+        equity = account_equity or self.fetch_live_nav() or self.config.account_equity or 10000.0
+        
+        # Fixed SL (tight scalping)
+        sl_pips = self.config.max_sl_pips
+        
+        # Calculate base TP with high probability bonus
+        tp_pips = self._calculate_base_tp_pips(atr, pip_value, confidence)
+        
+        # Apply risk manager adjustments
+        sl_pips, tp_pips, confidence_level = self._apply_risk_manager(
+            pair, confidence, sl_pips, tp_pips
+        )
+        
+        # Calculate position size with regime-based scaling
+        if hasattr(self._position_sizer, 'calculate_regime_scaled_position_size'):
+            try:
+                pos_result = self._position_sizer.calculate_regime_scaled_position_size(
+                    account_equity=equity,
+                    stop_loss_pips=sl_pips,
+                    instrument=pair,
+                    volatility_regime=volatility_regime,
+                    meta_confidence=meta_confidence,
+                    raw_confidence=confidence,
+                )
+                if pos_result.is_valid:
+                    lots = pos_result.units / 100_000
+                    risk_pct = pos_result.risk_amount / equity if equity > 0 else 0
+                    return (
+                        lots,
+                        risk_pct,
+                        sl_pips,
+                        tp_pips,
+                        pos_result.confidence_level,
+                        pos_result.regime_scale_applied,
+                        pos_result.regime_name,
+                    )
+            except Exception as e:
+                logger.warning(f"Regime-aware position sizing failed: {e}")
+        
+        # Fallback to standard calculation
+        lots, risk_pct, confidence_level = self._calculate_lots_from_sizer(
+            equity, sl_pips, pair, confidence
+        )
+        
+        regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
+        regime_name = regime_names[volatility_regime] if 0 <= volatility_regime <= 3 else "UNKNOWN"
+        
+        return lots, risk_pct, sl_pips, tp_pips, confidence_level, 1.0, regime_name
 
     def calculate_position_size(
         self,
@@ -447,6 +535,8 @@ class ExecutionManager:
         sl_pips: Optional[float] = None,
         tp_pips: Optional[float] = None,
         lots: Optional[float] = None,
+        volatility_regime: Optional[int] = None,
+        meta_confidence: Optional[float] = None,
     ) -> ExecutionResult:
         """Execute a single trade on OANDA.
 
@@ -459,6 +549,8 @@ class ExecutionManager:
             sl_pips: Override stop loss pips
             tp_pips: Override take profit pips
             lots: Override position size in lots
+            volatility_regime: Volatility regime for aggressive scaling (0-3)
+            meta_confidence: Meta-labeler confidence for aggressive scaling
 
         Returns:
             ExecutionResult with trade details
@@ -472,11 +564,34 @@ class ExecutionManager:
         if not self._init_oanda_client():
             return ExecutionResult(success=False, error="OANDA client not available")
 
+        # Initialize regime scaling info
+        regime_scale = 1.0
+        regime_name = "UNKNOWN"
+        aggressive_reason = ""
+
         # Calculate position sizing if not provided
         if lots is None or sl_pips is None or tp_pips is None:
-            calc_lots, risk_pct, calc_sl, calc_tp, conf_level = self.calculate_position_size(
-                pair, confidence, atr
-            )
+            # Use regime-aware sizing if regime info provided
+            if volatility_regime is not None and meta_confidence is not None:
+                (
+                    calc_lots,
+                    risk_pct,
+                    calc_sl,
+                    calc_tp,
+                    conf_level,
+                    regime_scale,
+                    regime_name,
+                ) = self.calculate_regime_aware_position_size(
+                    pair=pair,
+                    confidence=confidence,
+                    atr=atr,
+                    volatility_regime=volatility_regime,
+                    meta_confidence=meta_confidence,
+                )
+            else:
+                calc_lots, risk_pct, calc_sl, calc_tp, conf_level = self.calculate_position_size(
+                    pair, confidence, atr
+                )
             lots = lots or calc_lots
             sl_pips = sl_pips or calc_sl
             tp_pips = tp_pips or calc_tp
@@ -523,6 +638,13 @@ class ExecutionManager:
                     tp=tp_price,
                     trade_id=trade_id,
                 )
+                
+                # Log aggressive scaling if applied
+                if regime_scale > 1.0:
+                    logger.info(
+                        f"🚀 Trade executed with AGGRESSIVE SCALING: {regime_name} vol, "
+                        f"{regime_scale:.2f}x scale, {lots:.2f} lots"
+                    )
 
                 return ExecutionResult(
                     success=True,
@@ -536,6 +658,9 @@ class ExecutionManager:
                     tp_pips=tp_pips,
                     risk_pct=risk_pct,
                     confidence_level=conf_level,
+                    regime_scale=regime_scale,
+                    regime_name=regime_name,
+                    aggressive_scaling_reason=aggressive_reason,
                 )
             else:
                 return ExecutionResult(

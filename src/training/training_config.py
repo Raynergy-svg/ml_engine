@@ -290,6 +290,13 @@ class BuddyTrainingOptions:
     wandb_offline: bool = False  # Run in offline mode (sync later with `wandb sync`)
     wandb_gradients: bool = True  # Log gradient histograms (for diagnosing vanishing/exploding gradients)
     wandb_system: bool = True  # Log system metrics (GPU/CPU/memory)
+    # Correlation-based transfer learning
+    correlation_transfer: bool = False  # Enable correlation-based transfer learning
+    master_pairs: str | None = None  # Comma-separated master pairs (e.g., "EUR_JPY,EUR_USD")
+    target_pairs: str | None = None  # Comma-separated target pairs (e.g., "GBP_JPY,AUD_JPY")
+    correlation_threshold: float = 0.70  # Min correlation to consider pairs related
+    skip_master_training: bool = False  # Skip master training, use existing models
+    transfer_epochs: int = 50  # Epochs for fine-tuning target pairs
 
     def __post_init__(self) -> None:
         """Validate training options."""
@@ -376,6 +383,13 @@ class BuddyTrainingOptions:
             wandb_offline=data.get("wandb_offline", False),
             wandb_gradients=data.get("wandb_gradients", True),
             wandb_system=data.get("wandb_system", True),
+            # Correlation transfer options
+            correlation_transfer=data.get("correlation_transfer", False),
+            master_pairs=data.get("master_pairs"),
+            target_pairs=data.get("target_pairs"),
+            correlation_threshold=data.get("correlation_threshold", 0.70),
+            skip_master_training=data.get("skip_master_training", False),
+            transfer_epochs=data.get("transfer_epochs", 50),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -429,6 +443,13 @@ class BuddyTrainingOptions:
             "wandb_offline": self.wandb_offline,
             "wandb_gradients": self.wandb_gradients,
             "wandb_system": self.wandb_system,
+            # Correlation transfer options
+            "correlation_transfer": self.correlation_transfer,
+            "master_pairs": self.master_pairs,
+            "target_pairs": self.target_pairs,
+            "correlation_threshold": self.correlation_threshold,
+            "skip_master_training": self.skip_master_training,
+            "transfer_epochs": self.transfer_epochs,
         }
 
         if self.oanda_fetch:

@@ -77,8 +77,20 @@ except ImportError:
 try:
     import wandb
     WANDB_AVAILABLE = True
+    
+    # Check wandb version for reinit parameter compatibility
+    # reinit="finish_previous" was added in wandb 0.23.0
+    # Older versions only support boolean values
+    try:
+        from packaging.version import parse as parse_version
+        _wandb_version = parse_version(getattr(wandb, '__version__', '0.0.0'))
+        WANDB_SUPPORTS_REINIT_STRING = _wandb_version >= parse_version('0.23.0')
+    except ImportError:
+        # packaging not available, assume newer version
+        WANDB_SUPPORTS_REINIT_STRING = True
 except ImportError:
     WANDB_AVAILABLE = False
+    WANDB_SUPPORTS_REINIT_STRING = False
     warnings.warn(
         "Weights & Biases not installed. Install with: pip install wandb"
     )
@@ -638,13 +650,17 @@ class WandbTrainer:
                 )
         
         # Initialize run
+        # Use version-appropriate reinit value:
+        # - wandb >= 0.23.0: "finish_previous" (properly cleans up previous run)
+        # - wandb < 0.23.0: True (boolean fallback)
+        reinit_value = "finish_previous" if WANDB_SUPPORTS_REINIT_STRING else True
         self._wandb_run = wandb.init(
             project=self.config.project_name,
             name=self.config.experiment_name,
             tags=self.config.tags,
             notes=self.config.notes,
             config=asdict(self.config),
-            reinit="finish_previous",  # Finish any previous run before starting new one
+            reinit=reinit_value,
             save_code=True,  # Save the training script for reproducibility
         )
         
@@ -1035,12 +1051,14 @@ def wandb_experiment(
         yield None
         return
     
+    # Use version-appropriate reinit value
+    reinit_value = "finish_previous" if WANDB_SUPPORTS_REINIT_STRING else True
     run = wandb.init(
         project=project_name,
         name=experiment_name,
         config=config or {},
         tags=tags or [],
-        reinit="finish_previous",
+        reinit=reinit_value,
     )
     
     try:

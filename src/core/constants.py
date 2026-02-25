@@ -18,7 +18,7 @@ to prevent configuration drift across the codebase.
 # - cli/commands.py (backtest evaluation)
 
 DIRECTION_DEFAULTS = {
-    'threshold': 0.0075,  # 0.75% minimum price move for clear signal (75 bps - Phase4)
+    'threshold': 0.005,  # 0.5% minimum price move for clear signal (validated on EUR_JPY: 65.2% val_acc)
     'lookahead': 24,      # 24 H1 bars = 24 hours lookahead
 }
 
