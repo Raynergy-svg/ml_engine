@@ -178,6 +178,13 @@ class GateEvaluator:
         Raises:
             FileNotFoundError: If joint model directory doesn't exist or TCN required but missing
         """
+        import warnings
+        warnings.filterwarnings(
+            "ignore",
+            category=UserWarning,
+            message=".*Skipping variable loading for optimizer.*",
+        )
+
         # Validate joint model directory exists
         if self.use_joint_only and not self.model_dir.exists():
             raise FileNotFoundError(

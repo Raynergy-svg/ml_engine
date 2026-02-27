@@ -70,6 +70,22 @@ INFERENCE_PROFILE_OVERRIDES: dict[str, dict[str, float | int]] = {
     },
 }
 
+INFERENCE_OPPORTUNITY_OVERRIDES: dict[str, Any] = {
+    # Signal discovery mode: don't fail-closed on schema/model-contract drift.
+    "enforce_model_contracts": False,
+    "require_direction_model": False,
+    "require_volatility_model": False,
+    "require_regime_model": False,
+    "require_xgb_model": False,
+    "require_rf_model": False,
+    "require_ridge_model": False,
+    # Scanner parity: contextual overlays should not hard-veto discovery.
+    "sentiment_block_enabled": False,
+    "enable_meta_labeling": False,
+    "overlay_meta_enabled": False,
+    "final_score_threshold": 0.45,
+}
+
 
 _POST_TRADE_LLM_SYSTEM = """You are a disciplined FX trade manager.
 Give post-execution guidance for an already-open trade.
@@ -103,6 +119,87 @@ def _extract_first_json_object(text: str) -> dict[str, Any] | None:
                     return None
                 return parsed if isinstance(parsed, dict) else None
     return None
+
+
+def _pair_has_models(pair: str, model_root: Path = Path("trained_data/models")) -> bool:
+    """Return True when pair-specific model artifacts exist."""
+    normalized_pair = _normalize_instrument(pair)
+    pair_dir = model_root / normalized_pair
+    if not pair_dir.exists():
+        return False
+    return any(pair_dir.glob("*.keras")) or any(pair_dir.glob("*.pkl"))
+
+
+def _resolve_master_pair_for_buddy(
+    *,
+    target_pair: str,
+    explicit_master_pair: str | None,
+    interactive: bool,
+) -> str:
+    """Resolve model source pair for buddy inference."""
+    target = _normalize_instrument(target_pair)
+
+    if explicit_master_pair:
+        return _normalize_instrument(explicit_master_pair)
+
+    try:
+        from src.training.correlation_group_config import get_correlation_group
+    except Exception:
+        return target
+
+    group = get_correlation_group(target)
+    if group is None:
+        return target
+
+    recommended = _normalize_instrument(group.master_pair)
+    options: list[str] = []
+    for pair in [target, recommended, *group.pairs]:
+        normalized = _normalize_instrument(pair)
+        if normalized not in options:
+            options.append(normalized)
+
+    target_has_models = _pair_has_models(target)
+    recommended_has_models = _pair_has_models(recommended)
+    default_choice = target
+    if (not target_has_models) and recommended_has_models:
+        default_choice = recommended
+
+    if not interactive or not sys.stdin.isatty() or len(options) <= 1:
+        return default_choice
+
+    console.print("")
+    console.print("[bold cyan]Master Pair Selection[/bold cyan]")
+    console.print(
+        f"[dim]Target: {target} | Group: {group.name} | Recommended master: {recommended}[/dim]"
+    )
+    console.print(
+        "[dim]Choose which pair's trained models to use for direction/gate inference.[/dim]"
+    )
+    for idx, pair in enumerate(options, start=1):
+        available = _pair_has_models(pair)
+        marker = "✓" if available else "·"
+        suffix = " (target)" if pair == target else (" (recommended)" if pair == recommended else "")
+        console.print(f"  {idx}. {pair} [{marker} models]{suffix}")
+
+    default_idx = options.index(default_choice) + 1
+    while True:
+        selection = input(f"Select master pair [1-{len(options)}] (default {default_idx}): ").strip()
+        if not selection:
+            chosen = options[default_idx - 1]
+            break
+        if selection.isdigit():
+            num = int(selection)
+            if 1 <= num <= len(options):
+                chosen = options[num - 1]
+                break
+        console.print("[yellow]Invalid selection. Enter a number from the list.[/yellow]")
+
+    if not _pair_has_models(chosen):
+        console.print(
+            f"[yellow]⚠ No pair-specific models found for {chosen}; generic/joint fallback may be used.[/yellow]"
+        )
+
+    return chosen
 
 
 def _compute_rl_exit_scenarios(
@@ -256,6 +353,7 @@ def _build_inference_config_from_yaml(
     config_path: str,
     equity_override: float | None,
     profile: str = INFERENCE_PROFILE_BALANCED,
+    opportunity_mode: bool = False,
 ) -> tuple[Any, bool]:
     """Build InferenceConfig from YAML only (no numeric fallback literals).
 
@@ -335,6 +433,10 @@ def _build_inference_config_from_yaml(
         raise ValueError(f"Unknown inference profile '{resolved_profile}'. Valid profiles: {valid}")
     merged_cfg.update(INFERENCE_PROFILE_OVERRIDES[resolved_profile])
     logger.info("Inference profile active: %s", resolved_profile)
+
+    if opportunity_mode:
+        merged_cfg.update(INFERENCE_OPPORTUNITY_OVERRIDES)
+        logger.info("Inference contract mode active: opportunity")
 
     # Filter unknown keys to keep config resilient across versions.
     valid_fields = set(InferenceConfig.__dataclass_fields__.keys())
@@ -436,6 +538,7 @@ def _buddy_execute_all_pairs(
                 config_path=config_path,
                 equity_override=equity,
                 profile=profile,
+                opportunity_mode=not execute,
             )
             ensemble = ModularEnsembleInference(
                 instrument=pair,
@@ -708,6 +811,8 @@ def buddy(
     llm_provider: str = "auto",
     llm_enhance: bool = True,
     profile: str = INFERENCE_PROFILE_BALANCED,
+    master_pair: str | None = None,
+    interactive_master: bool = True,
 ) -> None:
     """Buddy: run one TF-only inference on fresh OANDA candles; optionally place a trade.
 
@@ -731,6 +836,8 @@ def buddy(
         explain: Generate detailed trade reasoning.
         llm_provider: LLM provider (ollama|claude|openai|auto).
         llm_enhance: Enable deep LLM integration.
+        master_pair: Optional pair to use as model source for inference.
+        interactive_master: Prompt for master-pair model source selection.
     """
     _configure_predict_output(verbose)
 
@@ -870,6 +977,13 @@ def buddy(
     cfg = load_config(config_path)
     _lap("load_config")
 
+    # Treat non-explicit execution as signal-discovery mode.
+    # Argparser defaults execute=True, so we inspect argv to distinguish
+    # an explicit live-trade request (`-x/--execute`) from plain inference.
+    argv_flags = set(sys.argv[1:])
+    execute_explicit = any(flag in argv_flags for flag in {"-x", "--execute", "--no-execute", "--dry-run"})
+    signal_discovery_mode = (not execute) or (not execute_explicit)
+
     # =========================================================================
     # HANDLE "ALL" PAIRS MODE
     # =========================================================================
@@ -962,18 +1076,32 @@ def buddy(
 
         # Normalize instrument
         normalized_instrument = _normalize_instrument(instrument)
-
-        # Check if pair-specific models exist (check both .keras and .pkl)
-        pair_model_dir = Path("trained_data/models") / normalized_instrument
-        has_pair_models = pair_model_dir.exists() and (
-            any(pair_model_dir.glob("*.keras")) or any(pair_model_dir.glob("*.pkl"))
+        selected_master_pair = _resolve_master_pair_for_buddy(
+            target_pair=normalized_instrument,
+            explicit_master_pair=master_pair,
+            interactive=interactive_master,
         )
 
+        # Check if pair-specific models exist (check both .keras and .pkl)
+        has_target_models = _pair_has_models(normalized_instrument)
+        has_master_models = _pair_has_models(selected_master_pair)
+
         # Display model source
-        if has_pair_models:
+        if selected_master_pair == normalized_instrument and has_target_models:
             console.print(f"[green]📊 Loading {normalized_instrument}-specific models[/green]")
+        elif selected_master_pair == normalized_instrument and not has_target_models:
+            console.print(
+                f"[yellow]📊 Loading generic fallback models (no {normalized_instrument}-specific models found)[/yellow]"
+            )
+        elif has_master_models:
+            console.print(
+                f"[green]📊 Loading master pair models: {selected_master_pair} (target: {normalized_instrument})[/green]"
+            )
         else:
-            console.print(f"[yellow]📊 Loading generic fallback models (no {normalized_instrument}-specific models found)[/yellow]")
+            console.print(
+                f"[yellow]📊 Master pair selected: {selected_master_pair}, but no pair-specific artifacts found; "
+                "using generic/joint fallback[/yellow]"
+            )
 
         # Load inference configuration from config file (strict, config-driven).
         # If equity is still the CLI default and no live NAV was fetched, preserve YAML account_equity.
@@ -984,9 +1112,12 @@ def buddy(
             config_path=config_path,
             equity_override=equity_override,
             profile=profile,
+            opportunity_mode=signal_discovery_mode,
         )
         console.print(f"[dim]⚙️  Loaded inference config from {config_path}[/dim]")
         console.print(f"[dim]📌 Inference profile: {profile}[/dim]")
+        if signal_discovery_mode:
+            console.print("[dim]🔎 Contract mode: opportunity (soft model contracts)[/dim]")
         console.print(
             f"[dim]🧭 Heuristic vetoes: "
             f"RSI={'on' if inference_config.use_rsi_extreme_gate else 'off'}, "
@@ -1000,12 +1131,12 @@ def buddy(
         )
 
         ensemble = ModularEnsembleInference(
-            instrument=normalized_instrument,
+            instrument=selected_master_pair,
             config=inference_config,
             use_rl_sizer=use_rl_sizer,
             enable_llm_integration=enable_llm_integration,
         )
-        ensemble.load_models(instrument=normalized_instrument)
+        ensemble.load_models(instrument=selected_master_pair)
 
         # Show model timestamps to validate correct model loading
         if hasattr(ensemble, "get_model_load_report"):
@@ -1064,7 +1195,12 @@ def buddy(
         df = df.ffill().bfill().fillna(0.0)
 
         # Run modular ensemble inference
-        result = ensemble.predict_verbose(df, equity=equity, instrument=instrument)
+        result = ensemble.predict_verbose(
+            df,
+            equity=equity,
+            instrument=instrument,
+            model_instrument=selected_master_pair,
+        )
         _lap("modular_inference")
 
         # =====================================================================
@@ -2759,6 +2895,8 @@ def _dispatch_buddy(args: Any, command_map: dict[str, Any]) -> None:
         llm_provider=llm_provider,
         llm_enhance=getattr(args, "llm_enhance", False),
         profile=str(getattr(args, "profile", INFERENCE_PROFILE_BALANCED)),
+        master_pair=getattr(args, "master_pair", None),
+        interactive_master=bool(getattr(args, "interactive_master", True)),
     )
 
 

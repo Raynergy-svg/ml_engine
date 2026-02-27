@@ -149,7 +149,6 @@ class ContinuousScanner:
                             console.print(f"\n[green]Auto-executing {len(tradeable)} trade(s)...[/green]")
                         self.scanner.execute_trades(
                             analyses=tradeable,
-                            granularity=granularity,
                         )
 
                 # Idle maintenance

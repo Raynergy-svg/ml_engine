@@ -8,7 +8,9 @@ Handles data fetching, feature engineering, and incremental caching.
 from __future__ import annotations
 
 import logging
+import math
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,6 +72,9 @@ class Scanner:
         self._last_prices: Dict[str, float] = {}
         self._cached_results: Dict[str, PairAnalysis] = {}
         self._pair_returns: Dict[str, pd.Series] = {}
+        self._feature_snapshots: Dict[str, pd.DataFrame] = {}
+        self._raw_snapshots: Dict[str, pd.DataFrame] = {}
+        self._ensemble_lock = threading.Lock()
 
         # Load config
         self._load_yaml_config()
@@ -126,6 +131,81 @@ class Scanner:
                 # CLI-provided profile (non-balanced) should take precedence over YAML default.
                 if yaml_profile and self.config.profile == "balanced":
                     self.config.profile = str(yaml_profile).strip().lower()
+                self.config.enable_sub_inference_agents = bool(
+                    scan_config.get(
+                        "enable_sub_inference_agents",
+                        self.config.enable_sub_inference_agents,
+                    )
+                )
+                self.config.sub_inference_tradeable_only = bool(
+                    scan_config.get(
+                        "sub_inference_tradeable_only",
+                        self.config.sub_inference_tradeable_only,
+                    )
+                )
+                self.config.sub_inference_min_confidence = float(
+                    scan_config.get(
+                        "sub_inference_min_confidence",
+                        self.config.sub_inference_min_confidence,
+                    )
+                )
+                self.config.sub_inference_vote_threshold = float(
+                    scan_config.get(
+                        "sub_inference_vote_threshold",
+                        self.config.sub_inference_vote_threshold,
+                    )
+                )
+                self.config.sub_inference_window_checks = max(
+                    1,
+                    int(
+                        scan_config.get(
+                            "sub_inference_window_checks",
+                            self.config.sub_inference_window_checks,
+                        )
+                    ),
+                )
+                self.config.sub_inference_workers = max(
+                    1,
+                    int(
+                        scan_config.get(
+                            "sub_inference_workers",
+                            self.config.sub_inference_workers,
+                        )
+                    ),
+                )
+                self.config.sub_inference_max_candidates = max(
+                    1,
+                    int(
+                        scan_config.get(
+                            "sub_inference_max_candidates",
+                            self.config.sub_inference_max_candidates,
+                        )
+                    ),
+                )
+                self.config.enable_agent_trade_promotion = bool(
+                    scan_config.get(
+                        "enable_agent_trade_promotion",
+                        self.config.enable_agent_trade_promotion,
+                    )
+                )
+                self.config.agent_promotion_min_confidence = float(
+                    scan_config.get(
+                        "agent_promotion_min_confidence",
+                        self.config.agent_promotion_min_confidence,
+                    )
+                )
+                self.config.agent_promotion_requires_risk = bool(
+                    scan_config.get(
+                        "agent_promotion_requires_risk",
+                        self.config.agent_promotion_requires_risk,
+                    )
+                )
+                self.config.use_master_pair_models = bool(
+                    scan_config.get(
+                        "use_master_pair_models",
+                        self.config.use_master_pair_models,
+                    )
+                )
                 self.config.apply_profile(self.config.profile)
 
                 logger.debug(f"Loaded config from {self.config.config_path}")
@@ -259,13 +339,41 @@ class Scanner:
 
         # === PRIMARY: Try ModularEnsembleInference ===
         try:
-            from src.core.modular_inference import ModularEnsembleInference
+            from src.core.modular_inference import InferenceConfig, ModularEnsembleInference
+
+            # Scanner is an opportunity finder, not an execution gatekeeper.
+            # Use a softer inference profile so model-contract mismatches don't
+            # zero out all candidate signals.
+            scan_inference_cfg = InferenceConfig(
+                min_tcn_probability=float(self.config.min_tcn_probability),
+                min_confidence=float(self.config.min_confidence),
+                min_momentum=float(self.config.min_momentum),
+                max_drawdown_pct=float(self.config.max_drawdown_pct),
+                use_tcn_volatility_filter=bool(self.config.use_tcn_volatility_filter),
+                min_volatility_regime=int(self.config.min_volatility_regime),
+                tcn_required=bool(self.config.require_tcn_volatility),
+                # Opportunity-mode: allow partial model stacks and feature-schema drift.
+                enforce_model_contracts=False,
+                require_direction_model=False,
+                require_volatility_model=False,
+                require_regime_model=False,
+                require_xgb_model=False,
+                require_rf_model=False,
+                require_ridge_model=False,
+                # Scanner should not block on contextual overlays.
+                sentiment_block_enabled=False,
+                enable_meta_labeling=False,
+                overlay_meta_enabled=False,
+                final_score_threshold=0.45,
+            )
 
             self._modular_ensemble = ModularEnsembleInference(
                 model_dir=str(self.config.model_dir),
+                config=scan_inference_cfg,
                 use_rl_sizer=self.config.use_rl_sizer,
                 use_rl_gates=self.config.use_rl_gates,
                 use_rl_exits=self.config.use_rl_exits,
+                enable_market_intelligence=False,
             )
             # Eagerly load models so we can check what actually loaded.
             # ModularEnsembleInference lazy-loads in predict(), but the
@@ -278,6 +386,7 @@ class Scanner:
                 self._modular_ensemble._loaded
                 and (
                     self._modular_ensemble.tcn is not None
+                    or self._modular_ensemble.regime_model is not None
                     or self._modular_ensemble.histgb is not None
                 )
             )
@@ -555,11 +664,35 @@ class Scanner:
 
         return vol_allowed, regime
 
+    def _resolve_model_source_pair(self, pair: str) -> str:
+        """Resolve which pair's model artifacts should source inference."""
+        normalized_pair = str(pair).upper().replace("/", "_")
+        if not bool(getattr(self.config, "use_master_pair_models", True)):
+            return normalized_pair
+        try:
+            from src.training.correlation_group_config import get_correlation_group
+
+            group = get_correlation_group(normalized_pair)
+            if group is None:
+                return normalized_pair
+            master = str(group.master_pair).upper().replace("/", "_")
+            return master or normalized_pair
+        except Exception:
+            return normalized_pair
+
     def _infer_from_ensemble(
         self,
         df_feat: pd.DataFrame,
         pair: str,
-    ) -> Tuple[Optional[str], Optional[float], Optional[float], Optional[float], Optional[bool]]:
+    ) -> Tuple[
+        Optional[str],
+        Optional[float],
+        Optional[float],
+        Optional[float],
+        Optional[bool],
+        Optional[int],
+        Optional[Dict[str, Any]],
+    ]:
         """Run inference using modular ensemble if available.
 
         Args:
@@ -567,40 +700,76 @@ class Scanner:
             pair: Instrument name
 
         Returns:
-            Tuple of (direction, confidence, tcn_conf, ridge_conf, gates_passed) or all None if not available
+            Tuple of
+            (direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, gate_details)
+            or all None if not available.
         """
         if not self._init_modular_ensemble() or self._modular_ensemble is None:
-            return None, None, None, None, None
+            return None, None, None, None, None, None, None
 
         try:
-            signal = self._modular_ensemble.predict(df_feat)
+            model_source_pair = self._resolve_model_source_pair(pair)
+            # Shared ModularEnsembleInference is mutable (instrument-specific loading),
+            # so serialize calls across scanner worker threads.
+            with self._ensemble_lock:
+                signal = self._modular_ensemble.predict(
+                    df_feat,
+                    instrument=pair,
+                    model_instrument=model_source_pair,
+                )
 
-            if signal.tcn_direction is not None:
-                direction = "LONG" if signal.tcn_direction == 1 else "SHORT"
-                tcn_conf = abs(signal.tcn_probability - 0.5) * 200
-                ridge_conf = signal.ridge_confidence
-                confidence = max(tcn_conf, ridge_conf) / 100
-                gates_passed = signal.trade
-            elif signal.direction is not None:
-                direction = signal.direction.upper()
-                confidence = signal.confidence if signal.confidence > 0 else 0.5
-                ridge_conf = signal.ridge_confidence
-                tcn_conf = confidence * 100
-                gates_passed = signal.trade
-            else:
-                return None, None, None, None, None
+            tcn_conf = float(abs(float(signal.tcn_probability) - 0.5) * 200.0)
+            ridge_conf = float(signal.ridge_confidence or 0.0)
+            raw_conf = float(signal.confidence or 0.0)
+            confidence = raw_conf / 100.0 if raw_conf > 1.0 else raw_conf
+            confidence = min(max(confidence, 0.0), 1.0)
+            direction = signal.direction.upper() if signal.direction is not None else "HOLD"
+            gates_passed = signal.trade
+            signal_meta = signal.metadata if isinstance(signal.metadata, dict) else {}
+            score_meta = signal_meta.get("scores") if isinstance(signal_meta.get("scores"), dict) else {}
 
-            return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed
+            details = {
+                "momentum": float(signal.xgb_momentum),
+                "momentum_acceleration": bool(signal.xgb_acceleration),
+                "momentum_passed": bool(signal.momentum_gate_passed),
+                "confidence_score": float(signal.ridge_confidence),
+                "confidence_passed": bool(signal.confidence_gate_passed),
+                "risk_passed": bool(signal.risk_gate_passed),
+                "volatility_gate_passed": bool(signal.volatility_gate_passed),
+                "drawdown": float(signal.rf_drawdown_pips) / 10000.0 if signal.rf_drawdown_pips else None,
+                "reason": signal.reason,
+                "reason_codes": signal_meta.get("reason_codes", []),
+                "core_score": score_meta.get("core_score"),
+                "final_score": score_meta.get("final_score"),
+                "model_source_pair": model_source_pair,
+            }
+            return (
+                direction,
+                float(confidence),
+                float(tcn_conf),
+                float(ridge_conf),
+                bool(gates_passed),
+                signal.volatility_regime,
+                details,
+            )
 
         except Exception as e:
             logger.warning(f"{pair}: Ensemble inference failed - {e}")
-            return None, None, None, None, None
+            return None, None, None, None, None, None, None
 
     def _infer_from_gates(
         self,
         df_feat: pd.DataFrame,
         pair: str,
-    ) -> Tuple[Optional[str], Optional[float], Optional[float], Optional[float], Optional[bool]]:
+    ) -> Tuple[
+        Optional[str],
+        Optional[float],
+        Optional[float],
+        Optional[float],
+        Optional[bool],
+        Optional[int],
+        Optional[Dict[str, Any]],
+    ]:
         """Run inference using gate evaluator if available.
 
         Args:
@@ -608,10 +777,12 @@ class Scanner:
             pair: Instrument name
 
         Returns:
-            Tuple of (direction, confidence, tcn_conf, ridge_conf, gates_passed) or all None if not available
+            Tuple of
+            (direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, gate_details)
+            or all None if not available.
         """
         if not self._init_gate_evaluator() or self._gate_evaluator is None:
-            return None, None, None, None, None
+            return None, None, None, None, None, None, None
 
         try:
             gate_result = self._gate_evaluator.evaluate_all_gates(
@@ -634,17 +805,28 @@ class Scanner:
                 direction = "LONG" if rsi < 50 else "SHORT"
                 tcn_conf = 0.0
             else:
-                return None, None, None, None, None
+                return None, None, None, None, None, None, None
 
             # Overall confidence: use ridge confidence (0-100) scaled to 0-1,
             # consistent with the ensemble path which does max(tcn_conf, ridge_conf) / 100.
             confidence = max(tcn_conf, ridge_conf) / 100
 
-            return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed
+            details = {
+                "momentum": float(gate_result.get("momentum", 0.0)),
+                "momentum_acceleration": bool(gate_result.get("momentum_acceleration", False)),
+                "momentum_passed": bool(gate_result.get("momentum_passed", False)),
+                "confidence_score": float(gate_result.get("confidence", 0.0)),
+                "confidence_passed": bool(gate_result.get("confidence_passed", False)),
+                "risk_passed": bool(gate_result.get("risk_passed", False)),
+                "volatility_gate_passed": True,
+                "drawdown": float(gate_result.get("drawdown", 0.0)),
+                "model_source_pair": str(pair).upper().replace("/", "_"),
+            }
+            return direction, min(confidence, 0.95), tcn_conf, ridge_conf, gates_passed, None, details
 
         except Exception as e:
             logger.warning(f"{pair}: Gate evaluation failed - {e}")
-            return None, None, None, None, None
+            return None, None, None, None, None, None, None
 
     def _infer_from_technicals(
         self,
@@ -684,11 +866,13 @@ class Scanner:
         df_raw: pd.DataFrame,
         df_feat: pd.DataFrame,
         pair: str,
-    ) -> Tuple[str, float, float, float, bool, Optional[int], bool]:
+    ) -> Tuple[str, float, float, float, bool, Optional[int], bool, Dict[str, Any]]:
         """Run model inference on features.
 
-        IMPORTANT: TCN Volatility Regime is evaluated FIRST as a global filter.
-        If volatility is LOW or NORMAL, gates_passed is False regardless of other signals.
+        Inference architecture priority:
+        1) Modular ensemble (includes full architecture gates + volatility gate)
+        2) Gate evaluator fallback (legacy scanner path)
+        3) Technical indicator fallback (no gates)
 
         Args:
             df_raw: Raw OHLCV data
@@ -696,7 +880,16 @@ class Scanner:
             pair: Instrument name
 
         Returns:
-            Tuple of (direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, inference_succeeded)
+            Tuple of (
+                direction,
+                confidence,
+                tcn_conf,
+                ridge_conf,
+                gates_passed,
+                volatility_regime,
+                inference_succeeded,
+                gate_details,
+            )
         """
         direction = "HOLD"
         confidence = 0.0
@@ -705,31 +898,35 @@ class Scanner:
         gates_passed = False
         volatility_regime = None
         _inference_succeeded = False
+        details: Dict[str, Any] = {}
 
-        # === FIRST: Check TCN Volatility Regime (GLOBAL GATE) ===
-        vol_allowed, volatility_regime = self._check_volatility_regime(df_feat, pair)
-        if not vol_allowed:
-            return direction, confidence, tcn_conf, ridge_conf, False, volatility_regime, True
-
-        # === SECOND: Try ensemble inference ===
+        # === FIRST: Try full modular inference architecture ===
         result = self._infer_from_ensemble(df_feat, pair)
         if result[0] is not None:
-            direction, confidence, tcn_conf, ridge_conf, gates_passed = result
-            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True
+            direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, details = result
+            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, (details or {})
+
+        # === SECOND: Legacy fallback volatility gate ===
+        vol_allowed, volatility_regime = self._check_volatility_regime(df_feat, pair)
+        if not vol_allowed:
+            details["volatility_gate_passed"] = False
+            return direction, confidence, tcn_conf, ridge_conf, False, volatility_regime, True, details
 
         # === THIRD: Try gate evaluator ===
         result = self._infer_from_gates(df_feat, pair)
         if result[0] is not None:
-            direction, confidence, tcn_conf, ridge_conf, gates_passed = result
-            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True
+            direction, confidence, tcn_conf, ridge_conf, gates_passed, _regime, details = result
+            if _regime is not None:
+                volatility_regime = _regime
+            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, (details or {})
 
         # === FOURTH: Technical indicator fallback ===
         result = self._infer_from_technicals(df_feat)
         if result[0] is not None:
             direction, confidence = result
-            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True
+            return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, details
 
-        return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, _inference_succeeded
+        return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, _inference_succeeded, details
 
     def _calculate_metrics(
         self,
@@ -811,6 +1008,157 @@ class Scanner:
 
         return False
 
+    def _is_sub_inference_candidate(self, analysis: PairAnalysis) -> bool:
+        """Check whether a pair should run sub-inference confirmation agents."""
+        if analysis.error is not None:
+            return False
+        if analysis.direction not in {"LONG", "SHORT"}:
+            return False
+        if bool(getattr(self.config, "sub_inference_tradeable_only", True)):
+            return bool(analysis.gates_passed)
+        if analysis.gates_passed:
+            return True
+        if analysis.confidence >= float(self.config.sub_inference_min_confidence):
+            return True
+        if analysis.momentum_passed and analysis.confidence >= float(self.config.sub_inference_min_confidence) * 0.9:
+            return True
+        return False
+
+    def _run_sub_inference_agents_for_pair(self, analysis: PairAnalysis) -> PairAnalysis:
+        """Run rolling-window sub inference agents for one candidate pair."""
+        if not self._is_sub_inference_candidate(analysis):
+            return analysis
+
+        df_raw = self._raw_snapshots.get(analysis.pair)
+        df_feat = self._feature_snapshots.get(analysis.pair)
+        if df_raw is None or df_feat is None or len(df_feat) < max(40, self.config.min_candles // 2):
+            return analysis
+
+        expected_direction = analysis.direction.upper()
+        votes = 0
+        total = 0
+        score_acc = 0.0
+        window_checks = max(1, int(self.config.sub_inference_window_checks))
+        min_conf = float(self.config.sub_inference_min_confidence)
+
+        for lag in range(window_checks):
+            if lag >= len(df_raw) - 5 or lag >= len(df_feat) - 5:
+                break
+
+            raw_window = df_raw if lag == 0 else df_raw.iloc[:-lag]
+            feat_window = df_feat if lag == 0 else df_feat.iloc[:-lag]
+            if len(raw_window) < 40 or len(feat_window) < 40:
+                continue
+
+            sub_direction, sub_conf, _tcn_conf, _ridge_conf, _gates_passed, _regime, ok, _details = (
+                self._run_inference(raw_window, feat_window, analysis.pair)
+            )
+            if not ok or sub_direction not in {"LONG", "SHORT"}:
+                continue
+
+            sub_conf = min(max(float(sub_conf), 0.0), 1.0)
+            total += 1
+
+            if sub_direction == expected_direction:
+                score_acc += sub_conf
+                if sub_conf >= min_conf:
+                    votes += 1
+            else:
+                # Opposite-direction confirmations should weaken consensus.
+                score_acc += sub_conf * 0.20
+
+        if total <= 0:
+            return analysis
+
+        vote_required = max(1, math.ceil(total * float(self.config.sub_inference_vote_threshold)))
+        consensus_ratio = votes / total
+        agent_passed = votes >= vote_required
+        raw_agent_score = min(max(score_acc / total, 0.0), 1.0)
+        agent_score = min(max(raw_agent_score * 0.70 + consensus_ratio * 0.30, 0.0), 1.0)
+
+        analysis.agent_votes = votes
+        analysis.agent_total = total
+        analysis.agent_score = agent_score
+        analysis.agent_passed = agent_passed
+
+        # Redo confidence logic: blend base confidence with consensus quality.
+        base_conf = min(max(float(analysis.confidence), 0.0), 1.0)
+        blended_conf = (
+            base_conf * 0.55 +
+            agent_score * 0.30 +
+            consensus_ratio * 0.15
+        )
+        if agent_passed:
+            boosted = blended_conf + min(0.08, consensus_ratio * 0.06)
+            analysis.confidence = min(max(max(base_conf, boosted), 0.0), 0.99)
+        else:
+            softened = base_conf * 0.92 + blended_conf * 0.08
+            analysis.confidence = min(max(softened, 0.0), 0.99)
+
+        # Agent-consensus promotion: optionally promote to executable setup.
+        promote = (
+            bool(getattr(self.config, "enable_agent_trade_promotion", True))
+            and agent_passed
+            and analysis.direction in {"LONG", "SHORT"}
+            and analysis.confidence >= float(getattr(self.config, "agent_promotion_min_confidence", 0.52))
+        )
+        if promote and bool(getattr(self.config, "agent_promotion_requires_risk", True)):
+            promote = bool(analysis.risk_passed)
+        if promote:
+            analysis.gates_passed = True
+            analysis.agent_promoted = True
+
+        return analysis
+
+    def _run_sub_inference_pass(
+        self,
+        analyses: List[PairAnalysis],
+        on_pair_complete: Optional[Callable[[PairAnalysis], None]] = None,
+    ) -> List[PairAnalysis]:
+        """Run sub-inference agents in parallel for candidate opportunities."""
+        if not self.config.enable_sub_inference_agents:
+            return analyses
+
+        candidates = [a for a in analyses if self._is_sub_inference_candidate(a)]
+        if not candidates:
+            return analyses
+
+        candidates = sorted(
+            candidates,
+            key=lambda a: (a.gates_passed, a.confidence, a.momentum),
+            reverse=True,
+        )
+        if not bool(getattr(self.config, "sub_inference_tradeable_only", True)):
+            max_candidates = max(1, int(self.config.sub_inference_max_candidates))
+            candidates = candidates[:max_candidates]
+
+        workers = max(
+            1,
+            min(
+                int(self.config.sub_inference_workers),
+                len(candidates),
+            ),
+        )
+        updates: Dict[str, PairAnalysis] = {}
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(self._run_sub_inference_agents_for_pair, analysis): analysis.pair
+                for analysis in candidates
+            }
+            for future in as_completed(futures):
+                pair = futures[future]
+                try:
+                    updated = future.result()
+                    updates[pair] = updated
+                    if on_pair_complete:
+                        on_pair_complete(updated)
+                except Exception as e:
+                    logger.warning(f"{pair}: sub-inference agent failed - {e}")
+
+        if not updates:
+            return analyses
+        return [updates.get(a.pair, a) for a in analyses]
+
     def _scan_pair(self, pair: str) -> Optional[PairAnalysis]:
         """Scan a single pair (atomic unit for parallel execution).
 
@@ -854,6 +1202,8 @@ class Scanner:
 
             # Compute features
             df_feat = self._compute_features(df_raw)
+            self._raw_snapshots[pair] = df_raw.tail(self.config.lookback_candles + 50).copy()
+            self._feature_snapshots[pair] = df_feat.tail(self.config.lookback_candles + 50).copy()
 
             # Store returns for correlation analysis
             if "close" in df_feat.columns:
@@ -871,18 +1221,20 @@ class Scanner:
                 atr = 0.0
             atr_pips = atr / pip_value if pip_value > 0 else 0
 
-            if atr_pips < self.config.min_atr_pips:
-                return PairAnalysis(
-                    pair=pair,
-                    direction="HOLD",
-                    confidence=0.0,
-                    error=f"Low volatility (ATR={atr_pips:.1f} pips)",
-                )
-
-            # Run inference (TCN Volatility Regime is checked FIRST inside)
-            direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, _inference_ok = (
+            # Run inference
+            direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, _inference_ok, gate_details = (
                 self._run_inference(df_raw, df_feat, pair)
             )
+
+            # Scanner role: surface opportunities even when hard execution gates fail.
+            # If the architecture returns HOLD, attach a lightweight technical bias.
+            if direction == "HOLD":
+                tech_direction, tech_conf = self._infer_from_technicals(df_feat)
+                if tech_direction is not None and tech_conf is not None:
+                    direction = tech_direction
+                    confidence = max(float(confidence), float(tech_conf) * 0.85)
+                    gate_details = dict(gate_details or {})
+                    gate_details.setdefault("opportunity_bias", "technical_fallback")
 
             # Calculate metrics
             metrics = self._calculate_metrics(df_feat, pair)
@@ -905,8 +1257,6 @@ class Scanner:
             if volatility_regime is not None:
                 regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
                 regime_name = regime_names[volatility_regime] if 0 <= volatility_regime <= 3 else "UNKNOWN"
-                if volatility_regime < getattr(self.config, 'min_volatility_regime', 2):
-                    error_msg = f"Blocked: {regime_name} volatility regime"
 
             # Compute recent drawdown from close prices (lookback ~100 bars)
             _drawdown_val = 0.02  # Sensible default fallback
@@ -917,35 +1267,33 @@ class Scanner:
                 _dd_series = _dd_series.replace([np.inf, -np.inf], np.nan).fillna(0.0)
                 _drawdown_val = max(float(_dd_series.max()), 0.001)  # Floor at 0.1%
 
-            # Create analysis result
-            # When inference failed completely (all defaults), don't fake passing gates
-            _risk_ok = _drawdown_val <= self.config.max_drawdown_pct if _inference_ok else False
-            _momentum_ok = (confidence >= self.config.min_momentum) if _inference_ok else False
-            _confidence_ok = (ridge_conf >= self.config.min_confidence) if _inference_ok else False
-            # Keep scanner behavior aligned with displayed M/A/R gates.
-            # If model-internal gate blocks but visible core gates pass, surface it as tradeable.
-            _core_gates_passed = (
-                _inference_ok
-                and direction in {"LONG", "SHORT"}
-                and _momentum_ok
-                and _confidence_ok
-                and _risk_ok
-                and error_msg is None
-            )
-            _final_gates_passed = bool(gates_passed) or _core_gates_passed
+            # Keep scanner output aligned with the underlying inference architecture.
+            _momentum_val = float(gate_details.get("momentum", confidence)) if gate_details else float(confidence)
+            _momentum_ok = bool(gate_details.get("momentum_passed", False)) if gate_details else False
+            _momentum_accel = bool(gate_details.get("momentum_acceleration", False)) if gate_details else False
+            _confidence_ok = bool(gate_details.get("confidence_passed", False)) if gate_details else False
+            _confidence_score = float(gate_details.get("confidence_score", ridge_conf)) if gate_details else float(ridge_conf)
+            _risk_ok = bool(gate_details.get("risk_passed", False)) if gate_details else False
+            _drawdown_model = gate_details.get("drawdown") if gate_details else None
+            _drawdown_used = float(_drawdown_model) if _drawdown_model is not None else _drawdown_val
+            _vol_gate_ok = bool(gate_details.get("volatility_gate_passed", False)) if gate_details else False
+            _final_gates_passed = bool(gates_passed) and error_msg is None
             result = PairAnalysis(
                 pair=pair,
                 direction=direction,
                 confidence=confidence,
                 tcn_confidence=tcn_conf,
                 ridge_confidence=ridge_conf,
-                momentum=confidence,
-                momentum_acceleration=gates_passed,
+                momentum=_momentum_val,
+                xgb_momentum=_momentum_val,
+                momentum_acceleration=_momentum_accel,
                 momentum_passed=_momentum_ok,
-                confidence_score=ridge_conf,
+                confidence_score=_confidence_score,
                 confidence_passed=_confidence_ok,
-                drawdown=_drawdown_val,
+                drawdown=_drawdown_used,
+                rf_drawdown=_drawdown_used,
                 risk_passed=_risk_ok,
+                volatility_gate_passed=_vol_gate_ok,
                 gates_passed=_final_gates_passed,
                 current_price=metrics["current_price"],
                 atr=metrics["atr"],
@@ -958,6 +1306,8 @@ class Scanner:
                 risk_pct=risk_pct,
                 scan_time=datetime.now(timezone.utc),
                 volatility_regime=regime_name,  # TCN volatility regime as string
+                master_pair=str(gate_details.get("model_source_pair", pair)).upper().replace("/", "_")
+                if gate_details else str(pair).upper().replace("/", "_"),
                 error=error_msg,
             )
 
@@ -1037,6 +1387,11 @@ class Scanner:
                         confidence=0.0,
                         error=str(e),
                     ))
+
+        analyses = self._run_sub_inference_pass(
+            analyses,
+            on_pair_complete=on_pair_complete,
+        )
 
         # Build scan result
         model_type = "technical"
@@ -1281,12 +1636,12 @@ class Scanner:
                 "atr": a.atr,
                 "sl_pips": a.sl_pips,
                 "tp_pips": a.tp_pips,
-                "recommended_lots": a.recommended_lots,
+                "recommended_lots": (a.recommended_lots if float(a.recommended_lots) > 0 else None),
             }
             for a in tradeable
         ]
 
-        return self._executor.execute_trades(trades, granularity=self.config.granularity)
+        return self._executor.execute_trades(trades)
 
     def scan_and_execute(
         self,

@@ -41,6 +41,8 @@ def buddy_scan(
     force: bool = False,
     profile: str = "balanced",
     no_execute: bool = False,
+    auto_execute: bool = False,
+    clean_output: bool = False,
     **kwargs: Any,
 ) -> list:
     """
@@ -63,7 +65,8 @@ def buddy_scan(
 
     Falls back to technical indicators if model unavailable.
 
-    NOTE: Scanner only displays results. Use 'buddy -I <PAIR> --execute' to trade.
+    NOTE: By default scanner displays results only. Use '--auto-execute' to
+    place trades for passing/agent-promoted setups.
 
     Args:
         diversified: If True, auto-filter to show only best pair per correlation cluster
@@ -97,11 +100,49 @@ def buddy_scan(
                 granularity=granularity,
                 top_n=top_n,
                 verbose=True,  # Always verbose for CLI
+                clean_output=clean_output,
                 prompt_train=prompt_train,
                 diversified=diversified,
                 force=force,
                 profile=profile,
             )
+
+        if auto_execute and not no_execute:
+            try:
+                # Enable execution path for this scan call.
+                scanner._scanner.config.enable_execution = True
+                tradeable_candidates = [
+                    r for r in results
+                    if r.direction in {"LONG", "SHORT"} and r.gates_passed and r.error is None
+                ]
+                confirmed_candidates = [
+                    r for r in tradeable_candidates
+                    if r.agent_total > 0 and r.agent_passed
+                ]
+                execution_candidates = confirmed_candidates or tradeable_candidates
+
+                if execution_candidates:
+                    execution_results = scanner._scanner.execute_trades(
+                        execution_candidates,
+                        max_trades=min(len(execution_candidates), 3),
+                    )
+                    filled = [e for e in execution_results if e.success]
+                    failed = [e for e in execution_results if not e.success]
+                    console.print(
+                        f"[cyan]Auto-execute:[/cyan] {len(filled)} filled, {len(failed)} failed "
+                        f"(candidates={len(execution_candidates)})"
+                    )
+                    for f in filled:
+                        console.print(
+                            f"[green]  ✓ Trade {f.trade_id or 'N/A'} @ {f.fill_price:.5f} "
+                            f"({f.lots:.2f} lots)[/green]"
+                        )
+                    for f in failed[:3]:
+                        console.print(f"[yellow]  ✗ {f.error or 'execution failed'}[/yellow]")
+                else:
+                    console.print("[dim]Auto-execute: no executable agent-confirmed setups[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Auto-execute failed: {e}[/yellow]")
 
         # Return results as (PairAnalysis, gates_passed) tuples
         return [(r, r.gates_passed) for r in results]

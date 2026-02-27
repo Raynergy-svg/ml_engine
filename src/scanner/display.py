@@ -85,6 +85,14 @@ class ScannerDisplay:
             return Text("\u2713", style="green")
         return Text("\u2717", style="red")
 
+    def _format_agent_compact(self, analysis: PairAnalysis) -> Text:
+        """Format sub-inference agent consensus."""
+        if analysis.agent_total <= 0:
+            return Text("-", style="dim")
+        mark = "\u2713" if analysis.agent_passed else "\u2717"
+        color = "green" if analysis.agent_passed else "yellow"
+        return Text(f"{mark}{analysis.agent_votes}/{analysis.agent_total}", style=color)
+
     def _format_error(self, error: str) -> Text:
         """Format error message."""
         return Text(f"⚠ {error[:30]}", style="dim red")
@@ -112,14 +120,15 @@ class ScannerDisplay:
         table.add_column("M", justify="center", no_wrap=True)  # Momentum
         table.add_column("A", justify="center", no_wrap=True)  # ADX
         table.add_column("R", justify="center", no_wrap=True)  # Risk
+        table.add_column("Ag", justify="center", no_wrap=True)  # Agent consensus
         table.add_column("G", justify="center", no_wrap=True)  # Gates
         table.add_column("Price", justify="right", no_wrap=True)
         table.add_column("Note")
 
-        # Sort analyses: tradeable first, then by confidence
+        # Sort analyses: tradeable first, then by opportunity score.
         sorted_analyses = sorted(
             self._current_analyses,
-            key=lambda x: (x.is_tradeable, x.confidence),
+            key=lambda x: (x.is_tradeable, x.overall_score, x.confidence),
             reverse=True,
         )
 
@@ -128,6 +137,7 @@ class ScannerDisplay:
             if analysis.error and analysis.current_price < 0.0001:
                 table.add_row(
                     analysis.pair.replace("_", "/"),
+                    Text("-", style="dim"),
                     Text("-", style="dim"),
                     Text("-", style="dim"),
                     Text("-", style="dim"),
@@ -154,12 +164,33 @@ class ScannerDisplay:
                 note = analysis.error
             elif analysis.gates_passed:
                 note = f"SL:{analysis.sl_pips:.0f} TP:{analysis.tp_pips:.0f}"
+                if analysis.agent_total > 0:
+                    agent_state = "confirmed" if analysis.agent_passed else "weak"
+                    note += f" | agent {agent_state} ({analysis.agent_votes}/{analysis.agent_total})"
+                else:
+                    note += " | agent n/a"
+                if getattr(analysis, "agent_promoted", False):
+                    source = (analysis.master_pair or analysis.pair).replace("_", "/")
+                    note += f" | exec via {source}"
+            elif analysis.agent_total > 0 and analysis.agent_passed:
+                note = f"agent confirmed ({analysis.agent_votes}/{analysis.agent_total})"
+            elif analysis.agent_total > 0 and not analysis.agent_passed:
+                note = f"agent weak ({analysis.agent_votes}/{analysis.agent_total})"
             elif not analysis.momentum_passed:
                 note = "low momentum"
             elif not analysis.confidence_passed:
                 note = "low ADX"
             elif not analysis.risk_passed:
                 note = "high risk"
+            elif (
+                not analysis.gates_passed
+                and analysis.momentum_passed
+                and analysis.confidence_passed
+                and analysis.risk_passed
+            ):
+                note = "score/regime filter"
+            elif analysis.direction in {"LONG", "SHORT"} and analysis.confidence >= 0.50:
+                note = "watchlist setup"
 
             table.add_row(
                 pair_text,
@@ -168,6 +199,7 @@ class ScannerDisplay:
                 self._format_gate_compact(analysis.momentum_passed),
                 self._format_gate_compact(analysis.confidence_passed),
                 self._format_gate_compact(analysis.risk_passed),
+                self._format_agent_compact(analysis),
                 Text(gates_text, style=gates_style),
                 f"{analysis.current_price:.4f}" if analysis.current_price else "-",
                 note,
@@ -282,6 +314,8 @@ class ScannerDisplay:
 
         # Summary
         tradeable = result.tradeable_pairs
+        agent_ready = [a for a in result.analyses if a.agent_total > 0]
+        agent_confirmed = [a for a in agent_ready if a.agent_passed]
         if tradeable:
             self.console.print()
             self.console.print(
@@ -290,7 +324,23 @@ class ScannerDisplay:
             )
         else:
             self.console.print()
-            self.console.print("[dim]No tradeable opportunities found[/dim]")
+            self.console.print("[dim]No trade-ready setups. Showing best watchlist opportunities.[/dim]")
+            watchlist = sorted(
+                [a for a in result.analyses if a.error is None and a.direction in {"LONG", "SHORT"}],
+                key=lambda a: (a.overall_score, a.confidence),
+                reverse=True,
+            )[:3]
+            if watchlist:
+                self.console.print(
+                    "[dim]Watchlist: "
+                    + ", ".join(f"{a.pair.replace('_', '/')}" for a in watchlist)
+                    + "[/dim]"
+                )
+        if agent_ready:
+            self.console.print(
+                f"[dim]Agents: {len(agent_confirmed)}/{len(agent_ready)} confirmed "
+                f"({len(agent_ready)} pairs evaluated)[/dim]"
+            )
 
         # Show warnings for common issues
         error_pairs = [a for a in result.analyses if a.error]

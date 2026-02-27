@@ -13,6 +13,26 @@
 
 ---
 
+## Master Pair Inference Selection
+
+### Summary Table with Best Parameters by Group
+
+| Group | Pairs | Best Pair from Sweeps | Combined Score | Dir Acc | Key Params |
+|-------|-------|-----------------------|----------------|---------|------------|
+| Yen Carry / Risk-On | EUR/JPY, GBP/JPY, AUD/JPY, NZD/JPY, USD/JPY | GBP/JPY | 0.5656 | 66.55% | seq_len=120, filters=256, kernel=3, lr=0.00051 |
+| Sterling Cluster | GBP/USD, GBP/JPY, GBP/AUD, EUR/GBP | EUR/GBP | 0.5724 | 66.58% | seq_len=90, filters=256, kernel=5, lr=0.00042 |
+| Aussie/Kiwi Commodity | AUD/USD, NZD/USD, AUD/JPY, NZD/JPY | AUD/USD | 0.5683 | 65.69% | seq_len=90, filters=64, kernel=5, lr=0.00063 |
+| USD Safe-Haven | USD/JPY, USD/CHF, USD/CAD | USD/CAD | 0.5725 | 66.37% | seq_len=120, filters=128, kernel=5, lr=0.00055 |
+| Crosses | GBP/AUD, EUR/AUD, AUD/NZD | AUD/NZD | 0.5804 | 66.36% | seq_len=90, filters=256, kernel=7, lr=0.00038 |
+
+### Plan Notes for Inference Selection
+
+1. Use the group's best sweep pair as the default master model when a pair-specific model is missing or degraded.
+2. Keep pair-specific gates (XGBoost/RF/Ridge) active when available; only transfer direction hyperparameters from the selected master pair.
+3. Re-evaluate master selection after each new sweep cycle and update this table from the latest run artifacts.
+
+---
+
 ## Best Parameters by Group (From Sweep Results)
 
 ### 1. Yen Carry / Risk-On Group

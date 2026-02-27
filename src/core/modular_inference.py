@@ -40,7 +40,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -484,6 +484,40 @@ class InferenceConfig:
     rsi_extreme_high_threshold: float = 90.0
     adx_trend_contra_threshold: float = 35.0
 
+    # Robust inference architecture (core hard gates + soft overlays)
+    enforce_model_contracts: bool = True
+    required_direction_features: int = 80
+    required_volatility_features: int = 16
+    required_regime_features: int = 21
+    required_xgb_features: int = 19
+    required_rf_features: int = 18
+    required_ridge_features: int = 14
+    # Regime model is optional by default because many trained bundles currently
+    # include direction+gate models without a saved transformer_regime artifact.
+    require_regime_model: bool = False
+    require_volatility_model: bool = True
+    require_direction_model: bool = True
+    require_xgb_model: bool = True
+    require_rf_model: bool = True
+    require_ridge_model: bool = True
+
+    # Stage B soft overlays (no hard veto)
+    overlay_meta_enabled: bool = True
+    overlay_sentiment_enabled: bool = True
+    overlay_rsi_enabled: bool = True
+    overlay_trend_enabled: bool = True
+
+    # Composite scoring (all values are normalized to 0..1)
+    core_score_w_direction: float = 0.35
+    core_score_w_confidence: float = 0.30
+    core_score_w_momentum: float = 0.20
+    core_score_w_risk: float = 0.15
+    final_score_threshold: float = 0.55
+
+    # RL guardrails for threshold adaptation
+    rl_confidence_delta_max: float = 5.0
+    rl_momentum_delta_max: float = 0.05
+
     # Position sizing - RISK-BASED (5% aggressive mode)
     risk_per_trade_pct: float = 0.05  # 5% risk per trade (~$5k on $100k)
     account_equity: float = 103000.0  # User's account balance
@@ -641,9 +675,13 @@ class ModularEnsembleInference:
         self._recent_trades: List[Dict] = []
         self._recent_win_rate: float = 0.5
         self._current_drawdown: float = 0.0
+        self._peak_equity: float = config.account_equity if config else 103000.0
 
         # Last sizing details (for transparency in output)
         self._last_size_details: Dict[str, Any] = {}
+        # Gate observability (pass/fail rates per instrument)
+        self._gate_stats: Dict[str, Dict[str, Dict[str, int]]] = {}
+        self._gate_rate_prev: Dict[str, Dict[str, float]] = {}
 
         # Market Intelligence with drift detection
         self.market_intel = None
@@ -1459,6 +1497,12 @@ class ModularEnsembleInference:
         warnings.filterwarnings('ignore', category=UserWarning, module='xgboost')
         warnings.filterwarnings('ignore', message='.*serialized model.*')
         warnings.filterwarnings('ignore', message='.*older version of XGBoost.*')
+        # Suppress benign Keras optimizer-state mismatch warnings during inference loads.
+        warnings.filterwarnings(
+            'ignore',
+            category=UserWarning,
+            message='.*Skipping variable loading for optimizer.*',
+        )
 
         # Suppress sklearn version warnings (common when loading across versions)
         try:
@@ -1491,28 +1535,30 @@ class ModularEnsembleInference:
         self.use_tcn_transformer_ensemble = False  # Legacy ensemble mode disabled
         self.tcn_model = None  # Legacy TCN model for direction
 
+        # Load regime model (market-state gate)
         if regime_path.exists():
-            # REGIME MODE
             try:
                 self.regime_model = TransformerRegimeTrainer()
                 self.regime_model.load(str(regime_path))
-                self.use_regime = True
                 logger.info(f"✓ Transformer REGIME model loaded from {regime_path}")
                 self._log_model_trained_at(regime_path, "Transformer regime", category="direction")
             except Exception as e:
                 self.regime_model = None
-                self.use_regime = False
                 logger.warning(f"⚠️ Transformer REGIME model failed to load: {e}")
                 logger.warning("⚠️ Model may have been saved with different Keras version")
                 if not self.config.permissive_mode:
                     logger.info("ℹ Auto-enabling permissive_mode due to model load failure")
                     self.config.permissive_mode = True
-        elif transformer_path.exists():
-            # DIRECTION MODE (Transformer)
+        else:
+            self.regime_model = None
+
+        # Load direction model (primary directional signal)
+        direction_loaded = False
+        if transformer_path.exists():
             try:
                 self.tcn = TransformerDirectionTrainer()
                 self.tcn.load(str(transformer_path))
-                self.use_regime = False
+                direction_loaded = True
                 logger.info(f"✓ Transformer direction model loaded from {transformer_path}")
                 self._log_model_trained_at(transformer_path, "Transformer direction", category="direction")
 
@@ -1531,21 +1577,24 @@ class ModularEnsembleInference:
                     )
             except Exception as e:
                 self.tcn = None
-                self.use_regime = False
                 logger.warning(f"⚠️ Transformer direction model failed to load: {e}")
                 logger.warning("⚠️ Model may have been saved with different Keras version")
                 if not self.config.permissive_mode:
                     logger.info("ℹ Auto-enabling permissive_mode due to model load failure")
                     self.config.permissive_mode = True
-        elif tcn_legacy_path.exists():
-            # DIRECTION MODE (TCN legacy - old direction model)
+
+        if not direction_loaded and tcn_legacy_path.exists():
             self.tcn = TCNTrainer()
             self.tcn.load(str(tcn_legacy_path))
-            self.use_regime = False
+            direction_loaded = True
             logger.info(f"✓ TCN direction model loaded from {tcn_legacy_path} (legacy)")
             self._log_model_trained_at(tcn_legacy_path, "TCN direction", category="direction")
-        else:
+
+        if not direction_loaded and self.regime_model is None:
             logger.warning(f"No direction/regime model found for {self.instrument or 'generic'}")
+
+        # Keep existing flag for backward compatibility in downstream code.
+        self.use_regime = self.regime_model is not None
 
         # === TCN VOLATILITY REGIME FILTER (NEW) ===
         # TCN now predicts volatility regime (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
@@ -2391,6 +2440,17 @@ class ModularEnsembleInference:
             tolerance = max(8, int(0.20 * estimated))
             compatible = abs(int(expected) - int(estimated)) <= tolerance
             if not compatible:
+                # MetaLabeler has its own runtime alignment/padding guardrails in
+                # predict_meta_confidence(), so avoid hard-rejecting models here.
+                # Keeping load fail-open prevents false "meta not loaded" states.
+                if hasattr(labeler, "predict_meta_confidence"):
+                    logger.info(
+                        "Meta-labeler dimension mismatch (%d vs est=%d), "
+                        "loading anyway and deferring to runtime alignment.",
+                        int(expected),
+                        int(estimated),
+                    )
+                    return True
                 logger.warning(
                     "Meta-labeler feature mismatch: model expects %d, current pipeline estimates %d "
                     "(tolerance=%d).",
@@ -3239,6 +3299,107 @@ class ModularEnsembleInference:
 
         return float(confidence)
 
+    def _clamp_rl_thresholds(
+        self,
+        base_min_confidence: float,
+        base_min_momentum: float,
+        base_max_drawdown: float,
+        adjusted: Optional[Dict[str, Any]],
+    ) -> Tuple[float, float, float]:
+        """Clamp RL threshold adjustments to bounded guardrails."""
+        if not adjusted:
+            return base_min_confidence, base_min_momentum, base_max_drawdown
+
+        conf_delta = max(0.0, float(getattr(self.config, "rl_confidence_delta_max", 5.0)))
+        mom_delta = max(0.0, float(getattr(self.config, "rl_momentum_delta_max", 0.05)))
+
+        raw_conf = float(adjusted.get("min_confidence", base_min_confidence))
+        raw_mom = float(adjusted.get("min_momentum", base_min_momentum))
+        raw_dd = float(adjusted.get("max_drawdown_pct", base_max_drawdown))
+
+        min_conf = min(base_min_confidence + conf_delta, max(base_min_confidence - conf_delta, raw_conf))
+        min_mom = min(base_min_momentum + mom_delta, max(base_min_momentum - mom_delta, raw_mom))
+        # Hard risk guardrail: RL can tighten, never loosen beyond configured RF limit.
+        max_dd = min(base_max_drawdown, max(1e-6, raw_dd))
+        return float(min_conf), float(min_mom), float(max_dd)
+
+    def _validate_model_contracts(
+        self,
+        df: pd.DataFrame,
+    ) -> Tuple[bool, List[str], Dict[str, Any]]:
+        """Validate required model presence and feature schema dimensions."""
+        errors: List[str] = []
+        details: Dict[str, Any] = {}
+
+        req = self.config
+        model_loaded = {
+            "direction": self.tcn is not None,
+            "volatility": self.tcn_volatility_model is not None,
+            "regime": self.regime_model is not None,
+            "xgb": self.xgb is not None,
+            "rf": self.rf is not None,
+            "ridge": self.ridge is not None,
+        }
+        details["models_loaded"] = model_loaded
+
+        checks: List[Tuple[str, bool, int, Callable[[], np.ndarray]]] = [
+            ("direction", bool(req.require_direction_model), int(req.required_direction_features), lambda: self._extract_tcn_features(df)),
+            ("volatility", bool(req.require_volatility_model), int(req.required_volatility_features), lambda: self._extract_tcn_volatility_features(df)),
+            ("regime", bool(req.require_regime_model), int(req.required_regime_features), lambda: self._extract_regime_features(df)),
+            ("xgb", bool(req.require_xgb_model), int(req.required_xgb_features), lambda: self._extract_xgb_features(df)),
+            ("rf", bool(req.require_rf_model), int(req.required_rf_features), lambda: self._extract_rf_features(df)),
+            ("ridge", bool(req.require_ridge_model), int(req.required_ridge_features), lambda: self._extract_ridge_features(df)),
+        ]
+
+        for key, required, expected_dim, extractor in checks:
+            if required and not model_loaded.get(key, False):
+                errors.append(f"model_missing:{key}")
+                continue
+            if (not required) and (not model_loaded.get(key, False)):
+                continue
+            try:
+                arr = extractor()
+                got_dim = int(arr.shape[-1]) if hasattr(arr, "shape") and len(arr.shape) > 0 else -1
+                details[f"{key}_features_dim"] = got_dim
+                details[f"{key}_features_expected"] = int(expected_dim)
+                if got_dim != int(expected_dim):
+                    errors.append(f"schema_invalid:{key}({got_dim}!={int(expected_dim)})")
+            except Exception as e:
+                errors.append(f"schema_error:{key}({type(e).__name__})")
+
+        return len(errors) == 0, errors, details
+
+    def _record_gate_observability(
+        self,
+        instrument: str,
+        gate_results: Dict[str, bool],
+    ) -> None:
+        """Track per-instrument gate pass rates and alert on sudden drops."""
+        pair = (instrument or "UNKNOWN").upper()
+        pair_stats = self._gate_stats.setdefault(pair, {})
+        prev_rates = self._gate_rate_prev.setdefault(pair, {})
+
+        for gate_name, passed in gate_results.items():
+            gate_stat = pair_stats.setdefault(gate_name, {"pass": 0, "fail": 0})
+            gate_stat["pass" if passed else "fail"] += 1
+
+            total = gate_stat["pass"] + gate_stat["fail"]
+            if total < 20:
+                continue
+
+            rate = gate_stat["pass"] / max(1, total)
+            prev = prev_rates.get(gate_name, rate)
+            if prev >= 0.50 and (prev - rate) >= 0.25:
+                logger.warning(
+                    "⚠️ Gate pass-rate drop detected for %s [%s]: %.1f%% → %.1f%% (n=%d)",
+                    pair,
+                    gate_name,
+                    prev * 100.0,
+                    rate * 100.0,
+                    total,
+                )
+            prev_rates[gate_name] = rate
+
     def _predict_technical_fallback(self, df: pd.DataFrame) -> Tuple[str, float]:
         """
         Fallback prediction using technical indicators when models are unavailable.
@@ -3489,6 +3650,7 @@ class ModularEnsembleInference:
         equity: Optional[float] = None,
         instrument: Optional[str] = None,
         headlines: Optional[List[str]] = None,  # NEW: Optional news headlines for sentiment
+        model_instrument: Optional[str] = None,
     ) -> TradeSignal:
         """
         Run inference through all models and apply gates.
@@ -3509,39 +3671,48 @@ class ModularEnsembleInference:
             equity: Account equity for position sizing
             instrument: Trading pair (e.g., 'EUR_USD') for liquidity limits
             headlines: Optional list of news headlines for sentiment analysis
+            model_instrument: Optional pair to source models from (e.g., master pair).
+                             If None, uses instrument.
 
         Returns:
             TradeSignal with trade decision and all model outputs
         """
-        # Reload models if instrument changed or not loaded
+        # Allow trading one pair while sourcing models from another (master pair).
+        model_source_instrument = model_instrument or instrument
+        instrument_for_runtime = instrument or model_source_instrument
+
+        # Reload models if model source instrument changed or not loaded
         if not self._loaded:
-            if instrument:
-                self.instrument = instrument
-            self.load_models()
-        elif instrument and instrument != self._loaded_instrument:
-            logger.info(f"📊 Instrument changed ({self._loaded_instrument} → {instrument}), reloading pair-specific models")
+            if model_source_instrument:
+                self.instrument = model_source_instrument
+            self.load_models(instrument=model_source_instrument)
+        elif model_source_instrument and model_source_instrument != self._loaded_instrument:
+            logger.info(
+                f"📊 Model source changed ({self._loaded_instrument} → {model_source_instrument}), "
+                "reloading pair-specific models"
+            )
             self._loaded = False
-            self.instrument = instrument
+            self.instrument = model_source_instrument
             # Preserve explicit user choice for RL sizer (only auto-detect if originally None)
             # Don't reset to None when user explicitly passed False
             if self.use_rl_sizer is not False:
                 self.use_rl_sizer = None
             self.rl_sizer = None
-            self.load_models()
+            self.load_models(instrument=model_source_instrument)
 
         # Store instrument for position sizing
-        self._current_instrument = instrument
+        self._current_instrument = instrument_for_runtime
 
-        # === MARKET INTELLIGENCE PRE-TRADE CHECK (NEW) ===
+        # === MARKET INTELLIGENCE CONTEXT (soft, non-blocking) ===
         intel_data = {}
-        if self.market_intel and instrument:
+        if self.market_intel and instrument_for_runtime:
             try:
                 if headlines is None and fetch_forex_news is not None:
-                    headlines = fetch_forex_news(instrument)
+                    headlines = fetch_forex_news(instrument_for_runtime)
                     intel_data['headlines_count'] = len(headlines)
 
                 can_trade, block_reason, intel_data = self.market_intel.pre_trade_check(
-                    instrument,
+                    instrument_for_runtime,
                     headlines=headlines,
                 )
 
@@ -3549,25 +3720,10 @@ class ModularEnsembleInference:
                     intel_data['headlines_count'] = len(headlines)
 
                 if not can_trade:
-                    # Blocked by economic event or sentiment
-                    logger.info(f"🚫 Trade blocked by market intelligence: {block_reason}")
-                    return TradeSignal(
-                        trade=False,
-                        direction=None,
-                        size=0.0,
-                        confidence=0.0,
-                        reason=f"Market Intelligence: {block_reason}",
-                        regime=None,
-                        regime_confidence=0.0,
-                        tcn_direction=None,
-                        tcn_probability=0.5,
-                        ridge_confidence=0.0,
-                        xgb_momentum=0.0,
-                        xgb_acceleration=False,
-                        rf_drawdown_pips=0.0,
-                        rf_streak_prob=0.0,
-                        metadata={'intel_data': intel_data},
-                    )
+                    # Robust architecture: keep market intelligence as context only.
+                    intel_data["pre_trade_blocked"] = True
+                    intel_data["pre_trade_block_reason"] = block_reason
+                    logger.info("ℹ Market intelligence soft flag: %s", block_reason)
 
                 # Log intelligence insights
                 if 'sentiment' in intel_data:
@@ -3588,8 +3744,7 @@ class ModularEnsembleInference:
                 logger.warning(f"Market intelligence check failed: {e}")
                 intel_data = {'error': str(e)}
 
-        # === ATR VOLATILITY FILTER (NEW) ===
-        # Skip low-volatility conditions where spreads eat into profits
+        # === ATR VOLATILITY CONTEXT (soft, non-blocking) ===
         # Ensure normalized features exist early (needed by TCN volatility model + some gates)
         if 'returns_1' not in df.columns:
             df = compute_normalized_features(df)
@@ -3600,27 +3755,14 @@ class ModularEnsembleInference:
             pip_value = 0.01 if instrument and 'JPY' in instrument else 0.0001
             atr_pips = atr / pip_value
 
+            intel_data['atr_pips'] = atr_pips
+            intel_data['atr_below_min'] = bool(atr_pips < self.config.min_atr_pips)
             if atr_pips < self.config.min_atr_pips:
-                logger.info(f"🔕 Trade blocked: Low volatility (ATR={atr_pips:.1f} pips < {self.config.min_atr_pips} min)")
-                return TradeSignal(
-                    trade=False,
-                    direction=None,
-                    size=0.0,
-                    confidence=0.0,
-                    reason=f"Low volatility: ATR={atr_pips:.1f} pips (min {self.config.min_atr_pips})",
-                    regime=None,
-                    regime_confidence=0.0,
-                    tcn_direction=None,
-                    tcn_probability=0.5,
-                    ridge_confidence=0.0,
-                    xgb_momentum=0.0,
-                    xgb_acceleration=False,
-                    rf_drawdown_pips=0.0,
-                    rf_streak_prob=0.0,
-                    metadata={'atr_pips': atr_pips, 'intel_data': intel_data},
+                logger.info(
+                    "ℹ ATR below configured floor: %.1f pips < %.1f (context only)",
+                    atr_pips,
+                    self.config.min_atr_pips,
                 )
-            else:
-                intel_data['atr_pips'] = atr_pips
 
         # Ensure normalized features exist for volatility + gate models
         required_groups = ['direction', 'momentum', 'risk', 'confidence', 'volatility']
@@ -3629,6 +3771,66 @@ class ModularEnsembleInference:
             required_features.update(get_normalized_feature_names().get(group, []))
         if any(fname not in df.columns for fname in required_features):
             df = compute_normalized_features(df)
+
+        # Initialize with defaults
+        regime = None
+        regime_confidence = 0.0
+        tcn_direction = None
+        tcn_probability = 0.5
+        ridge_confidence = 0.0
+        xgb_momentum = 0.0
+        xgb_acceleration = False
+        rf_drawdown_pips = 100.0
+        rf_drawdown_pct = 1.0
+        rf_streak_prob = 1.0
+        mc_uncertainty_blocked = False
+        mc_uncertainty_reason = None
+        mc_uncertainty_std = None  # Track the actual std value for metadata
+
+        # === MODEL CONTRACT LAYER (before predictions, fail-closed) ===
+        model_contract_errors: List[str] = []
+        model_contract_details: Dict[str, Any] = {}
+        model_contract_passed = True
+        if self.config.enforce_model_contracts:
+            model_contract_passed, model_contract_errors, model_contract_details = self._validate_model_contracts(df)
+            if not model_contract_passed:
+                reason_codes = ["model_contract_fail"] + model_contract_errors
+                reason = ",".join(reason_codes)
+                return TradeSignal(
+                    trade=False,
+                    direction=None,
+                    size=0.0,
+                    confidence=0.0,
+                    reason=reason,
+                    regime=None,
+                    regime_confidence=0.0,
+                    volatility_regime=None,
+                    volatility_regime_name=None,
+                    volatility_regime_confidence=0.0,
+                    volatility_gate_passed=False,
+                    tcn_direction=tcn_direction,
+                    tcn_probability=tcn_probability,
+                    ridge_confidence=0.0,
+                    xgb_momentum=0.0,
+                    xgb_acceleration=False,
+                    rf_drawdown_pips=0.0,
+                    rf_streak_prob=0.0,
+                    confidence_gate_passed=False,
+                    momentum_gate_passed=False,
+                    risk_gate_passed=False,
+                    regime_gate_passed=False,
+                    meta_gate_passed=True,
+                    meta_confidence=0.0,
+                    metadata={
+                        "intel_data": intel_data,
+                        "reason_codes": reason_codes,
+                        "model_contract": {
+                            "passed": False,
+                            "errors": model_contract_errors,
+                            "details": model_contract_details,
+                        },
+                    },
+                )
 
         # === TCN VOLATILITY REGIME FILTER ===
         # TCN predicts volatility regime: 0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME
@@ -3699,31 +3901,12 @@ class ModularEnsembleInference:
             # Volatility filter disabled in config
             volatility_gate_passed = True
 
-        # FIRST: Compute normalized features for instrument-agnostic inference
-        # (already ensured above, but keep as defensive fallback)
-        if 'returns_1' not in df.columns:
-            df = compute_normalized_features(df)
-        # Initialize with defaults
-        regime = None
-        regime_confidence = 0.0
-        tcn_direction = None
-        tcn_probability = 0.5
-        ridge_confidence = 0.0
-        xgb_momentum = 0.0
-        xgb_acceleration = False
-        rf_drawdown_pips = 100.0
-        rf_drawdown_pct = 1.0
-        rf_streak_prob = 1.0
-        mc_uncertainty_blocked = False
-        mc_uncertainty_reason = None
-        mc_uncertainty_std = None  # Track the actual std value for metadata
-
         # === GET REGIME OR DIRECTION ===
         # Track if we're using technical fallback for logging
         using_technical_fallback = False
         
-        if self.use_regime and self.regime_model is not None:
-            # REGIME MODE
+        # Predict regime (market-state gate) independently from direction prediction.
+        if self.regime_model is not None:
             try:
                 regime_features = self._extract_regime_features(df)
                 regime_pred = self.regime_model.predict(regime_features)
@@ -3732,103 +3915,88 @@ class ModularEnsembleInference:
                 logger.debug(f"Regime: {regime} (confidence={regime_confidence:.2f})")
             except Exception as e:
                 logger.warning(f"Regime prediction failed: {e}")
-                regime = 'chop'  # Default to skip on error
-        else:
-            # DIRECTION MODE (legacy)
-            try:
-                if self.tcn is not None:
-                    tcn_features = self._extract_tcn_features(df)
+                regime = None
+                regime_confidence = 0.0
 
-                    # === MONTE CARLO DROPOUT (if enabled) ===
-                    if self.config.mc_dropout_samples > 0:
-                        mc_prob, mc_std, mc_dir = self._predict_with_uncertainty(
-                            tcn_features,
-                            n_samples=self.config.mc_dropout_samples
-                        )
+        # Direction prediction is always computed from the direction model.
+        try:
+            if self.tcn is not None:
+                tcn_features = self._extract_tcn_features(df)
 
-                        # Flag high uncertainty (but continue to compute all gates for display)
-                        if mc_std > self.config.max_uncertainty_std:
-                            logger.info(f"🎲 High uncertainty detected: std={mc_std:.3f} > {self.config.max_uncertainty_std}")
-                            mc_uncertainty_blocked = True
-                            mc_uncertainty_reason = f"High model uncertainty: std={mc_std:.3f}"
-                            mc_uncertainty_std = float(mc_std)
-                        else:
-                            mc_uncertainty_blocked = False
-                            mc_uncertainty_reason = None
+                # === MONTE CARLO DROPOUT (if enabled) ===
+                if self.config.mc_dropout_samples > 0:
+                    mc_prob, mc_std, mc_dir = self._predict_with_uncertainty(
+                        tcn_features,
+                        n_samples=self.config.mc_dropout_samples
+                    )
 
-                        # Use MC Dropout results
-                        tcn_probability = mc_prob
-                        tcn_direction = mc_dir
+                    # Flag high uncertainty (soft context penalty in robust mode)
+                    if mc_std > self.config.max_uncertainty_std:
+                        logger.info(f"🎲 High uncertainty detected: std={mc_std:.3f} > {self.config.max_uncertainty_std}")
+                        mc_uncertainty_blocked = True
+                        mc_uncertainty_reason = f"High model uncertainty: std={mc_std:.3f}"
+                        mc_uncertainty_std = float(mc_std)
                     else:
-                        # Standard single prediction
-                        tcn_pred = self.tcn.predict(tcn_features)
-                        tcn_direction = tcn_pred['direction']
-                        tcn_probability = tcn_pred['probability']
+                        mc_uncertainty_blocked = False
+                        mc_uncertainty_reason = None
 
-                        # === TCN + TRANSFORMER ENSEMBLE (if available) ===
-                        if self.use_tcn_transformer_ensemble and self.tcn_model is not None:
-                            try:
-                                tcn_only_pred = self.tcn_model.predict(tcn_features)
-                                tcn_only_direction = tcn_only_pred['direction']
-                                tcn_only_probability = tcn_only_pred['probability']
+                    # Use MC Dropout results
+                    tcn_probability = mc_prob
+                    tcn_direction = mc_dir
+                else:
+                    # Standard single prediction
+                    tcn_pred = self.tcn.predict(tcn_features)
+                    tcn_direction = tcn_pred['direction']
+                    tcn_probability = tcn_pred['probability']
 
-                                # Get ensemble weights from config (default: 60% Transformer, 40% TCN)
-                                transformer_weight = getattr(self.config, 'transformer_weight', 0.6)
-                                tcn_weight = getattr(self.config, 'tcn_weight', 0.4)
+                    # === TCN + TRANSFORMER ENSEMBLE (if available) ===
+                    if self.use_tcn_transformer_ensemble and self.tcn_model is not None:
+                        try:
+                            tcn_only_pred = self.tcn_model.predict(tcn_features)
+                            tcn_only_direction = tcn_only_pred['direction']
+                            tcn_only_probability = tcn_only_pred['probability']
 
-                                # Weighted average of probabilities
-                                ensemble_probability = (
-                                    tcn_probability * transformer_weight +
-                                    tcn_only_probability * tcn_weight
+                            # Get ensemble weights from config (default: 60% Transformer, 40% TCN)
+                            transformer_weight = getattr(self.config, 'transformer_weight', 0.6)
+                            tcn_weight = getattr(self.config, 'tcn_weight', 0.4)
+
+                            # Weighted average of probabilities
+                            ensemble_probability = (
+                                tcn_probability * transformer_weight +
+                                tcn_only_probability * tcn_weight
+                            )
+
+                            # Direction from ensemble probability
+                            ensemble_direction = 1 if ensemble_probability > 0.5 else 0
+
+                            # Check agreement
+                            models_agree_ensemble = (tcn_direction == tcn_only_direction)
+
+                            if models_agree_ensemble:
+                                logger.debug(
+                                    f"🎯 TCN+Transformer AGREE: direction={ensemble_direction}, "
+                                    f"prob={ensemble_probability:.3f} "
+                                    f"(TF={tcn_probability:.3f}, TCN={tcn_only_probability:.3f})"
+                                )
+                            else:
+                                # Models disagree - reduce confidence
+                                ensemble_probability = ensemble_probability * 0.85
+                                logger.debug(
+                                    f"⚠️ TCN+Transformer DISAGREE: using weighted avg, "
+                                    f"prob={ensemble_probability:.3f} "
+                                    f"(TF={tcn_direction}/{tcn_probability:.3f}, "
+                                    f"TCN={tcn_only_direction}/{tcn_only_probability:.3f})"
                                 )
 
-                                # Direction from ensemble probability
-                                ensemble_direction = 1 if ensemble_probability > 0.5 else 0
+                            # Update to ensemble values
+                            tcn_probability = ensemble_probability
+                            tcn_direction = ensemble_direction
 
-                                # Check agreement
-                                models_agree_ensemble = (tcn_direction == tcn_only_direction)
-
-                                if models_agree_ensemble:
-                                    logger.debug(
-                                        f"🎯 TCN+Transformer AGREE: direction={ensemble_direction}, "
-                                        f"prob={ensemble_probability:.3f} "
-                                        f"(TF={tcn_probability:.3f}, TCN={tcn_only_probability:.3f})"
-                                    )
-                                else:
-                                    # Models disagree - reduce confidence
-                                    ensemble_probability = ensemble_probability * 0.85
-                                    logger.debug(
-                                        f"⚠️ TCN+Transformer DISAGREE: using weighted avg, "
-                                        f"prob={ensemble_probability:.3f} "
-                                        f"(TF={tcn_direction}/{tcn_probability:.3f}, "
-                                        f"TCN={tcn_only_direction}/{tcn_only_probability:.3f})"
-                                    )
-
-                                # Update to ensemble values
-                                tcn_probability = ensemble_probability
-                                tcn_direction = ensemble_direction
-
-                            except Exception as e:
-                                logger.warning(f"TCN ensemble prediction failed: {e}, using Transformer only")
-                else:
-                    # No direction model available - use technical fallback
-                    logger.warning("⚠️ No direction model loaded - falling back to technical indicators")
-                    tech_direction, tech_confidence = self._predict_technical_fallback(df)
-                    if tech_direction == "LONG":
-                        tcn_direction = 1
-                        tcn_probability = tech_confidence
-                    elif tech_direction == "SHORT":
-                        tcn_direction = 0
-                        tcn_probability = 1.0 - tech_confidence
-                    else:
-                        # HOLD - no clear direction
-                        tcn_direction = None
-                        tcn_probability = 0.5
-                    using_technical_fallback = True
-                    
-            except Exception as e:
-                logger.warning(f"⚠️ Direction model prediction failed: {e} - falling back to technical indicators")
-                # Use technical indicator fallback
+                        except Exception as e:
+                            logger.warning(f"TCN ensemble prediction failed: {e}, using Transformer only")
+            else:
+                # No direction model available - use technical fallback
+                logger.warning("⚠️ No direction model loaded - falling back to technical indicators")
                 tech_direction, tech_confidence = self._predict_technical_fallback(df)
                 if tech_direction == "LONG":
                     tcn_direction = 1
@@ -3841,6 +4009,22 @@ class ModularEnsembleInference:
                     tcn_direction = None
                     tcn_probability = 0.5
                 using_technical_fallback = True
+
+        except Exception as e:
+            logger.warning(f"⚠️ Direction model prediction failed: {e} - falling back to technical indicators")
+            # Use technical indicator fallback
+            tech_direction, tech_confidence = self._predict_technical_fallback(df)
+            if tech_direction == "LONG":
+                tcn_direction = 1
+                tcn_probability = tech_confidence
+            elif tech_direction == "SHORT":
+                tcn_direction = 0
+                tcn_probability = 1.0 - tech_confidence
+            else:
+                # HOLD - no clear direction
+                tcn_direction = None
+                tcn_probability = 0.5
+            using_technical_fallback = True
 
         # === HYBRID VOTING (HistGB + Transformer) ===
         histgb_direction = None
@@ -3909,58 +4093,60 @@ class ModularEnsembleInference:
             'adjustment': tcn_probability - raw_tcn_probability if calibration_applied else 0.0,
         }
 
-        # === GET SUPPORTING MODEL PREDICTIONS ===
+        # === GET SUPPORTING MODEL PREDICTIONS (core architecture) ===
+        # Confidence: Ridge is primary and required for Stage A.
+        ridge_error = None
         try:
-            # OPTION A: Use direct formula instead of Ridge model (faster, more reliable)
-            # This computes confidence from indicators directly rather than learning it
-            ridge_confidence = self._compute_confidence_direct(df)
-            logger.debug(f"Direct confidence formula: {ridge_confidence:.1f}")
+            if self.ridge is None:
+                ridge_error = "ridge_not_loaded"
+            else:
+                ridge_features = self._extract_ridge_features(df)
+                ridge_pred = self.ridge.predict(ridge_features)
+                ridge_confidence = float(ridge_pred['confidence'])
         except Exception as e:
-            logger.warning(f"Direct confidence calculation failed: {e}, falling back to Ridge")
-            try:
-                if self.ridge is not None:
-                    ridge_features = self._extract_ridge_features(df)
-                    ridge_pred = self.ridge.predict(ridge_features)
-                    ridge_confidence = ridge_pred['confidence']
-            except Exception as e2:
-                logger.warning(f"Ridge prediction also failed: {e2}")
-                ridge_confidence = 50.0  # Neutral default
+            ridge_error = str(e)
+            logger.warning(f"Ridge prediction failed: {e}")
 
+        xgb_error = None
         try:
-            if self.xgb is not None:
+            if self.xgb is None:
+                xgb_error = "xgb_not_loaded"
+            else:
                 xgb_features = self._extract_xgb_features(df)
                 xgb_pred = self.xgb.predict(xgb_features)
-                xgb_momentum = xgb_pred['momentum']
-                xgb_acceleration = xgb_pred['acceleration']
+                xgb_momentum = float(xgb_pred['momentum'])
+                xgb_acceleration = bool(xgb_pred['acceleration'])
         except Exception as e:
+            xgb_error = str(e)
             logger.warning(f"XGBoost prediction failed: {e}")
 
+        rf_error = None
         try:
-            if self.rf is not None:
+            if self.rf is None:
+                rf_error = "rf_not_loaded"
+            else:
                 rf_features = self._extract_rf_features(df)
                 rf_pred = self.rf.predict(rf_features)
-                rf_drawdown_pct = rf_pred.get('expected_drawdown_pct', rf_pred.get('expected_drawdown_pips', 0) / 10000)
-                rf_drawdown_pips = rf_pred.get('expected_drawdown_pips', rf_drawdown_pct * 10000)
-                rf_streak_prob = rf_pred['streak_prob']
+                rf_drawdown_pct = float(
+                    rf_pred.get('expected_drawdown_pct', rf_pred.get('expected_drawdown_pips', 0) / 10000)
+                )
+                rf_drawdown_pips = float(rf_pred.get('expected_drawdown_pips', rf_drawdown_pct * 10000))
+                rf_streak_prob = float(rf_pred['streak_prob'])
         except Exception as e:
+            rf_error = str(e)
             logger.warning(f"Random Forest prediction failed: {e}")
 
-        # === APPLY GATES ===
-        # SMART GATING: Transformer probability is the primary signal
-        # Gate models provide confirmation, but TCN confidence can override
-        #
-        # GRACEFUL DEGRADATION: When permissive_mode is enabled, we check
-        # _gate_status to determine which gates to use vs bypass
-
-        # === RL-OPTIMIZED GATE THRESHOLDS ===
-        # If RL gate optimizer is loaded, use learned thresholds instead of fixed config
-        rl_min_confidence = self.config.min_confidence
-        rl_min_momentum = self.config.min_momentum
-        rl_max_drawdown = self.config.max_drawdown_pct
+        # === RL-OPTIMIZED GATE THRESHOLDS (bounded by guardrails) ===
+        base_min_confidence = float(self.config.min_confidence)
+        base_min_momentum = float(self.config.min_momentum)
+        base_max_drawdown = float(self.config.max_drawdown_pct)
+        rl_min_confidence = base_min_confidence
+        rl_min_momentum = base_min_momentum
+        rl_max_drawdown = base_max_drawdown
+        rl_adjusted: Optional[Dict[str, Any]] = None
 
         if self._rl_gates_loaded and self.rl_gate_optimizer is not None:
             try:
-                # Extract features for regime detection
                 rl_features = {}
                 if 'atr_pct_14' in df.columns:
                     rl_features['volatility'] = df['atr_pct_14'].iloc[-1]
@@ -3969,21 +4155,14 @@ class ModularEnsembleInference:
                 if 'returns_2' in df.columns:
                     rl_features['momentum'] = df['returns_2'].iloc[-1]
 
-                # Get RL-optimized thresholds based on current market regime
-                adjusted = self.rl_gate_optimizer.get_adjusted_thresholds(
+                rl_adjusted = self.rl_gate_optimizer.get_adjusted_thresholds(
                     features=rl_features,
                     win_rate=self._recent_win_rate,
                     drawdown=self._current_drawdown
                 )
-                rl_min_confidence = adjusted['min_confidence']
-                rl_min_momentum = adjusted['min_momentum']
-                rl_max_drawdown = adjusted['max_drawdown_pct']
-
-                logger.debug(f"RL Gate Thresholds: conf={rl_min_confidence:.1f}, mom={rl_min_momentum:.3f}, dd={rl_max_drawdown:.4f}")
             except Exception as e:
                 logger.warning(f"RL gate threshold adjustment failed, using config defaults: {e}")
 
-        # macOS subprocess path: RL gates loaded but optimizer lives in a worker
         if self._rl_gates_loaded and self.rl_gate_optimizer is None and self._rl_gates_proc is not None:
             try:
                 rl_features = {}
@@ -3994,172 +4173,53 @@ class ModularEnsembleInference:
                 if 'returns_2' in df.columns:
                     rl_features['momentum'] = df['returns_2'].iloc[-1]
 
-                adjusted = self._get_rl_gate_thresholds_from_worker(
+                worker_adjusted = self._get_rl_gate_thresholds_from_worker(
                     features=rl_features,
                     win_rate=self._recent_win_rate,
                     drawdown=self._current_drawdown,
                 )
-                if adjusted:
-                    rl_min_confidence = adjusted.get('min_confidence', rl_min_confidence)
-                    rl_min_momentum = adjusted.get('min_momentum', rl_min_momentum)
-                    rl_max_drawdown = adjusted.get('max_drawdown_pct', rl_max_drawdown)
+                if worker_adjusted:
+                    rl_adjusted = worker_adjusted
             except Exception as e:
                 logger.warning(f"RL gate thresholds (subprocess) failed, using config defaults: {e}")
 
-        # Initialize gate status tracking if not done during load
-        if not hasattr(self, '_gate_status'):
-            self._gate_status = {'xgboost': True, 'random_forest': True, 'ridge': True}
-            self._gate_issues = {}
+        rl_min_confidence, rl_min_momentum, rl_max_drawdown = self._clamp_rl_thresholds(
+            base_min_confidence,
+            base_min_momentum,
+            base_max_drawdown,
+            rl_adjusted,
+        )
 
+        # === STAGE A: CORE HARD GATES ===
         # Track gate internals for diagnostics/transparency in CLI output.
-        momentum_fresh = False
+        momentum_fresh = xgb_momentum >= rl_min_momentum
         momentum_override_by_tcn = False
-        tcn_strong = False
-        tcn_very_strong = False
 
-        if self.config.permissive_mode:
-            # GRACEFUL DEGRADATION: Use gates that are still usable
-
-            # Confidence gate: use Ridge if available, else pass
-            if self._gate_status.get('ridge', False) and self.ridge is not None:
-                confidence_gate_passed = ridge_confidence >= rl_min_confidence
-                logger.debug(f"Ridge gate ACTIVE: confidence={ridge_confidence:.1f}, threshold={rl_min_confidence:.1f}, passed={confidence_gate_passed}")
-            else:
-                confidence_gate_passed = True
-                logger.warning(f"⚠️  Ridge gate BYPASSED (permissive mode): {self._gate_issues.get('ridge', 'not loaded')}")
-
-            # Momentum gate: use XGBoost if available, else pass
-            if self._gate_status.get('xgboost', False) and self.xgb is not None:
-                momentum_fresh = xgb_momentum >= rl_min_momentum
-                if self.config.require_fresh_or_accel:
-                    momentum_gate_passed = momentum_fresh or xgb_acceleration
-                else:
-                    momentum_gate_passed = True
-                logger.debug(f"XGBoost gate ACTIVE: momentum={xgb_momentum:.3f}, threshold={rl_min_momentum:.3f}, passed={momentum_gate_passed}")
-            else:
-                momentum_gate_passed = True
-                logger.warning(f"⚠️  XGBoost gate BYPASSED (permissive mode): {self._gate_issues.get('xgboost', 'not loaded')}")
-
-            # Risk gate: use RF if available AND not explicitly bypassed
-            if self.config.bypass_risk_gate_in_permissive:
-                risk_gate_passed = True
-                logger.warning("⚠️  Risk gate BYPASSED (permissive mode): bypass_risk_gate_in_permissive=True")
-            elif self._gate_status.get('random_forest', False) and self.rf is not None:
-                risk_gate_passed = (
-                    rf_drawdown_pct <= rl_max_drawdown and
-                    rf_streak_prob <= self.config.max_streak_prob
-                )
-                logger.debug(f"RF gate ACTIVE: drawdown={rf_drawdown_pct:.4f}, threshold={rl_max_drawdown:.4f}, passed={risk_gate_passed}")
-            else:
-                # RF unusable - use conservative fallback based on ATR
-                # If ATR > 2%, be cautious
-                if 'atr_pct_14' in df.columns:
-                    atr_pct = df['atr_pct_14'].iloc[-1]
-                    risk_gate_passed = atr_pct <= 0.02  # Max 2% ATR
-                    logger.warning(f"⚠️  RF gate BYPASSED (permissive mode), using ATR fallback: atr={atr_pct:.4f}, passed={risk_gate_passed}")
-                else:
-                    risk_gate_passed = True  # No ATR available, trust Transformer
-                    logger.warning(f"⚠️  RF gate BYPASSED (permissive mode): {self._gate_issues.get('random_forest', 'not loaded')}, no ATR fallback")
-        else:
-            # TCN confidence = how far from 0.5 (uncertain)
-            # 0.5 -> 0%, 0.6 -> 20%, 0.7 -> 40%, 0.8 -> 60%, 0.9 -> 80%, 1.0 -> 100%
-            tcn_confidence = abs(tcn_probability - 0.5) * 200
-
-            # Strong TCN signal (>55% or <45% probability) can override weak gate models
-            tcn_strong = abs(tcn_probability - 0.5) > 0.05  # >55% or <45%
-            tcn_very_strong = abs(tcn_probability - 0.5) > 0.15  # >65% or <35%
-
-            # CONFIDENCE GATE: Use TCN-derived confidence OR Ridge, whichever is higher
-            effective_confidence = max(ridge_confidence, tcn_confidence)
-            confidence_gate_passed = effective_confidence >= rl_min_confidence
-
-            # MOMENTUM GATE: Pass if any of these are true:
-            # 1. XGBoost momentum is fresh (above threshold)
-            # 2. XGBoost detects acceleration
-            # 3. Optional legacy behavior: TCN strong can override stale momentum
-            momentum_fresh = xgb_momentum >= rl_min_momentum
-            if self.config.require_fresh_or_accel:
-                momentum_gate_passed = momentum_fresh or xgb_acceleration
-            else:
-                momentum_gate_passed = momentum_fresh or xgb_acceleration or tcn_strong
-                momentum_override_by_tcn = (not (momentum_fresh or xgb_acceleration)) and tcn_strong
-
-            # RISK GATE: Slightly more lenient when TCN is confident (but not too much)
-            # Tightened multipliers to prevent excessive risk in high-drawdown scenarios
-            if tcn_very_strong:
-                # Very confident TCN - relax risk thresholds modestly
-                risk_gate_passed = (
-                    rf_drawdown_pct <= rl_max_drawdown * 1.3 and
-                    rf_streak_prob <= self.config.max_streak_prob * 1.3
-                )
-            elif tcn_strong:
-                # Strong TCN - relax risk thresholds slightly
-                risk_gate_passed = (
-                    rf_drawdown_pct <= rl_max_drawdown * 1.15 and
-                    rf_streak_prob <= self.config.max_streak_prob * 1.15
-                )
-            else:
-                # Weak TCN - use strict thresholds
-                risk_gate_passed = (
-                    rf_drawdown_pct <= rl_max_drawdown and
-                    rf_streak_prob <= self.config.max_streak_prob
-                )
-
-        # === DETERMINE DIRECTION AND TRADE DECISION ===
-        direction_str = None
-        regime_gate_passed = True
-
-        if self.use_regime:
-            # REGIME-BASED DIRECTION LOGIC
-            if regime == 'chop':
-                # CHOP: Skip trading entirely
-                regime_gate_passed = False
-                direction_str = None
-            elif regime == 'trend':
-                # TREND: Direction from recent momentum sign
-                # Use 2-bar return to determine trend direction
-                if 'returns_2' in df.columns:
-                    recent_return = df['returns_2'].iloc[-1]
-                elif 'returns_1' in df.columns:
-                    recent_return = df['returns_1'].iloc[-1]
-                else:
-                    recent_return = 0
-
-                # Follow the trend
-                if recent_return > 0:
-                    direction_str = 'long'
-                    tcn_direction = 1
-                else:
-                    direction_str = 'short'
-                    tcn_direction = 0
-                tcn_probability = regime_confidence
-            elif regime == 'mean_revert':
-                # MEAN REVERT: Fade 2-bar momentum
-                if 'returns_2' in df.columns:
-                    recent_return = df['returns_2'].iloc[-1]
-                elif 'returns_1' in df.columns:
-                    recent_return = df['returns_1'].iloc[-1]
-                else:
-                    recent_return = 0
-
-                # Fade (opposite of recent move)
-                if recent_return > 0:
-                    direction_str = 'short'  # Fade the up move
-                    tcn_direction = 0
-                else:
-                    direction_str = 'long'  # Fade the down move
-                    tcn_direction = 1
-                tcn_probability = regime_confidence
-
-        # === TRANSFORMER CONFIDENCE GATE (direction confidence) ===
-        # Require reasonable confidence in direction prediction.
-        # Prefer config-driven threshold so this can be tuned without code changes.
-        # Example: min_tcn_probability=0.60 means require >=60% (or <=40%).
+        # Direction confidence gate from primary direction model probability
         min_dir_prob = float(getattr(self.config, 'min_tcn_probability', INFERENCE_DEFAULTS['min_tcn_probability']))
         min_dir_prob = max(0.5, min(0.99, min_dir_prob))
         direction_confidence_gate_passed = (
             tcn_probability >= min_dir_prob or tcn_probability <= (1.0 - min_dir_prob)
         )
+
+        confidence_gate_passed = ridge_confidence >= rl_min_confidence
+        momentum_gate_passed = momentum_fresh or xgb_acceleration
+        risk_gate_passed = (
+            rf_drawdown_pct <= rl_max_drawdown and
+            rf_streak_prob <= self.config.max_streak_prob
+        )
+
+        # === DETERMINE DIRECTION + MARKET-STATE GATE ===
+        direction_str = 'long' if tcn_direction == 1 else 'short' if tcn_direction == 0 else None
+
+        # Regime is a market-state gate in Stage A (not a direction generator).
+        # Allowed states: trend, mean_revert. CHOP/unknown are blocked.
+        regime_gate_passed = True
+        if self.config.require_regime_model or self.regime_model is not None:
+            if regime is None:
+                regime_gate_passed = False
+            else:
+                regime_gate_passed = str(regime).lower() in {"trend", "mean_revert"}
 
         # === SENTIMENT GATE (NEW) ===
         sentiment_gate_passed = True
@@ -4266,6 +4326,7 @@ class ModularEnsembleInference:
         meta_gate_passed = True
         meta_confidence = 0.0
         meta_reason = None
+        meta_prediction_available = False
 
         if self._meta_labeler_loaded and self.meta_labeler is not None:
             try:
@@ -4328,6 +4389,7 @@ class ModularEnsembleInference:
                     primary_prob.flatten()
                 )
                 meta_confidence = float(meta_conf_array[0]) if len(meta_conf_array) > 0 else 0.0
+                meta_prediction_available = True
 
                 # Check gate threshold
                 meta_gate_passed = meta_confidence >= self.config.min_meta_confidence
@@ -4344,88 +4406,115 @@ class ModularEnsembleInference:
                 meta_gate_passed = True  # Fail open - don't block trades on error
                 meta_confidence = 0.0
                 meta_reason = f"prediction_error({e})"
+                meta_prediction_available = False
         else:
             # No meta-labeler loaded - pass by default
             meta_gate_passed = True
             meta_confidence = 0.0
+            meta_prediction_available = False
 
-        if self.use_regime:
-            # All gates for regime mode
-            all_gates_passed = (
-                regime_gate_passed and
-                direction_str is not None and
-                not mc_uncertainty_blocked and  # MC Dropout uncertainty gate
-                volatility_gate_passed and  # TCN volatility filter (replaces old tcn_probability_gate)
-                direction_confidence_gate_passed and
-                confidence_gate_passed and
-                momentum_gate_passed and
-                risk_gate_passed and
-                sentiment_gate_passed and
-                rsi_gate_passed and
-                trend_gate_passed and
-                meta_gate_passed  # 5th gate: meta-labeler
-            )
-        else:
-            # DIRECTION MODE (legacy)
-            all_gates_passed = (
-                tcn_direction is not None and
-                not mc_uncertainty_blocked and  # MC Dropout uncertainty gate
-                volatility_gate_passed and  # TCN volatility filter (replaces old tcn_probability_gate)
-                direction_confidence_gate_passed and
-                confidence_gate_passed and
-                momentum_gate_passed and
-                risk_gate_passed and
-                sentiment_gate_passed and
-                rsi_gate_passed and
-                trend_gate_passed and
-                meta_gate_passed  # 5th gate: meta-labeler
-            )
-            if all_gates_passed and tcn_direction is not None:
-                direction_str = 'long' if tcn_direction == 1 else 'short'
+        # === STAGE B: SOFT OVERLAYS + COMPOSITE SCORE ===
+        overlay_penalties: List[str] = []
+        meta_factor = 1.0
+        context_factor = 1.0
 
-        # === BUILD REJECTION REASON ===
-        reason = None
-        if not all_gates_passed:
-            reasons = []
-            if mc_uncertainty_blocked:
-                reasons.append(mc_uncertainty_reason)
-            if not volatility_gate_passed:
-                if volatility_block_reason:
-                    reasons.append(volatility_block_reason)
-                else:
-                    reasons.append(f"low_volatility_regime({volatility_regime_name or 'N/A'})")
-            if not direction_confidence_gate_passed:
-                min_dir_prob = float(getattr(self.config, 'min_tcn_probability', INFERENCE_DEFAULTS['min_tcn_probability']))
-                min_dir_prob = max(0.5, min(0.99, min_dir_prob))
-                reasons.append(f"weak_direction_conf({tcn_probability:.2f}<{min_dir_prob:.2f})")
-            if self.use_regime:
-                if not regime_gate_passed:
-                    reasons.append("regime=CHOP (skip)")
-                if direction_str is None and regime != 'chop':
-                    reasons.append("no_direction")
-            else:
-                if tcn_direction is None:
-                    reasons.append("no_direction")
-            if not confidence_gate_passed:
-                reasons.append(f"low_confidence({ridge_confidence:.0f}<{rl_min_confidence:.1f})")
-            if not momentum_gate_passed:
-                reasons.append(
-                    f"dead_momentum({xgb_momentum:.2f}<{rl_min_momentum:.2f},accel={str(xgb_acceleration).lower()})"
-                )
-            if not risk_gate_passed:
-                if rf_drawdown_pct > self.config.max_drawdown_pct:
-                    reasons.append(f"high_drawdown({rf_drawdown_pct:.2%})")
-                if rf_streak_prob > self.config.max_streak_prob:
-                    reasons.append(f"streak_risk({rf_streak_prob:.2f})")
-            if not sentiment_gate_passed and sentiment_reason:
-                reasons.append(sentiment_reason)
-            if not rsi_gate_passed and rsi_reason:
-                reasons.append(rsi_reason)
-            if not trend_gate_passed and trend_reason:
-                reasons.append(trend_reason)
-            if not meta_gate_passed and meta_reason:
-                reasons.append(meta_reason)
-            reason = ", ".join(reasons)
+        if (
+            self.config.overlay_meta_enabled
+            and self.config.enable_meta_labeling
+            and meta_prediction_available
+        ):
+            meta_factor = max(0.70, min(1.20, 0.85 + 0.30 * float(meta_confidence)))
+            if not meta_gate_passed:
+                overlay_penalties.append("overlay_meta_penalty")
+
+        if mc_uncertainty_blocked:
+            context_factor *= 0.90
+            overlay_penalties.append("overlay_uncertainty_penalty")
+        if self.config.overlay_sentiment_enabled and not sentiment_gate_passed:
+            context_factor *= 0.92
+            overlay_penalties.append("overlay_sentiment_penalty")
+        if self.config.overlay_rsi_enabled and not rsi_gate_passed:
+            context_factor *= 0.93
+            overlay_penalties.append("overlay_rsi_penalty")
+        if self.config.overlay_trend_enabled and not trend_gate_passed:
+            context_factor *= 0.93
+            overlay_penalties.append("overlay_trend_penalty")
+
+        # Core component scores (all normalized to 0..1)
+        dir_score = max(0.0, min(1.0, abs(float(tcn_probability) - 0.5) * 2.0))
+        conf_score = max(0.0, min(1.0, float(ridge_confidence) / 100.0))
+        mom_den = max(float(rl_min_momentum), 1e-6)
+        mom_score = max(0.0, min(1.0, float(xgb_momentum) / mom_den))
+        if xgb_acceleration:
+            mom_score = max(mom_score, 0.70)
+        dd_score = 1.0 - min(1.0, float(rf_drawdown_pct) / max(float(rl_max_drawdown), 1e-6))
+        streak_score = 1.0 - min(1.0, float(rf_streak_prob) / max(float(self.config.max_streak_prob), 1e-6))
+        risk_score = max(0.0, min(1.0, 0.5 * (dd_score + streak_score)))
+
+        w_dir = float(self.config.core_score_w_direction)
+        w_conf = float(self.config.core_score_w_confidence)
+        w_mom = float(self.config.core_score_w_momentum)
+        w_risk = float(self.config.core_score_w_risk)
+        w_sum = w_dir + w_conf + w_mom + w_risk
+        if w_sum <= 0.0:
+            w_dir, w_conf, w_mom, w_risk, w_sum = 0.35, 0.30, 0.20, 0.15, 1.0
+
+        core_score = (
+            w_dir * dir_score +
+            w_conf * conf_score +
+            w_mom * mom_score +
+            w_risk * risk_score
+        ) / w_sum
+        final_score = max(0.0, min(1.0, core_score * meta_factor * context_factor))
+
+        core_pass = (
+            model_contract_passed and
+            direction_str is not None and
+            volatility_gate_passed and
+            regime_gate_passed and
+            direction_confidence_gate_passed and
+            confidence_gate_passed and
+            momentum_gate_passed and
+            risk_gate_passed
+        )
+        score_gate_passed = final_score >= float(self.config.final_score_threshold)
+        all_gates_passed = core_pass and score_gate_passed
+
+        gate_results = {
+            "direction": bool(direction_confidence_gate_passed and direction_str is not None),
+            "ridge": bool(confidence_gate_passed),
+            "momentum": bool(momentum_gate_passed),
+            "risk": bool(risk_gate_passed),
+            "regime": bool(regime_gate_passed),
+            "volatility": bool(volatility_gate_passed),
+            "core": bool(core_pass),
+            "score": bool(score_gate_passed),
+            "trade": bool(all_gates_passed),
+        }
+        self._record_gate_observability(str(instrument_for_runtime or "UNKNOWN"), gate_results)
+
+        # === BUILD REJECTION REASON CODES ===
+        reason_codes: List[str] = []
+        if direction_str is None:
+            reason_codes.append("direction_fail")
+        if not direction_confidence_gate_passed:
+            reason_codes.append("direction_fail")
+        if not confidence_gate_passed:
+            reason_codes.append("ridge_fail")
+        if not momentum_gate_passed:
+            reason_codes.append("momentum_fail")
+        if not risk_gate_passed:
+            reason_codes.append("risk_fail")
+        if not regime_gate_passed:
+            reason_codes.append("regime_fail")
+        if not volatility_gate_passed:
+            reason_codes.append("volatility_fail")
+        if not score_gate_passed:
+            reason_codes.append("final_score_fail")
+        reason_codes.extend(overlay_penalties)
+        reason_codes = list(dict.fromkeys(reason_codes))
+
+        reason = None if all_gates_passed else ",".join(reason_codes)
 
         # === CALCULATE POSITION SIZE ===
         size = 0.0
@@ -4448,6 +4537,9 @@ class ModularEnsembleInference:
                 tcn_probability=tcn_probability,
                 ridge_confidence=ridge_confidence,
             )
+            # Stage B overlays scale risk allocation softly (no hard veto).
+            overlay_size_factor = max(0.50, min(1.25, meta_factor * context_factor))
+            size = round(size * overlay_size_factor, 2)
 
         # Store features for drift detection when trade result is recorded
         try:
@@ -4504,11 +4596,17 @@ class ModularEnsembleInference:
             except Exception as e:
                 logger.warning(f"RL exit decision (subprocess) failed: {e}")
 
+        pair_stats_snapshot = self._gate_stats.get(str(instrument_for_runtime or "UNKNOWN").upper(), {})
+        gate_pass_rates = {
+            k: (v.get("pass", 0) / max(1, v.get("pass", 0) + v.get("fail", 0)))
+            for k, v in pair_stats_snapshot.items()
+        }
+
         return TradeSignal(
             trade=all_gates_passed,
             direction=direction_str,
             size=size,
-            confidence=ridge_confidence,
+            confidence=final_score * 100.0,
             regime=regime,
             regime_confidence=regime_confidence,
             volatility_regime=volatility_regime,
@@ -4539,6 +4637,40 @@ class ModularEnsembleInference:
                 'intel_data': intel_data,
                 'volatility_regime': volatility_regime_name,
                 'using_technical_fallback': using_technical_fallback,
+                'reason_codes': reason_codes,
+                'model_contract': {
+                    'passed': bool(model_contract_passed),
+                    'errors': model_contract_errors,
+                    'details': model_contract_details,
+                },
+                'stage_a': {
+                    'core_pass': bool(core_pass),
+                    'direction_confidence_passed': bool(direction_confidence_gate_passed),
+                    'confidence_passed': bool(confidence_gate_passed),
+                    'momentum_passed': bool(momentum_gate_passed),
+                    'risk_passed': bool(risk_gate_passed),
+                    'regime_passed': bool(regime_gate_passed),
+                    'volatility_passed': bool(volatility_gate_passed),
+                },
+                'stage_b': {
+                    'score_passed': bool(score_gate_passed),
+                    'overlay_penalties': overlay_penalties,
+                    'meta_factor': float(meta_factor),
+                    'context_factor': float(context_factor),
+                },
+                'scores': {
+                    'core_score': float(core_score),
+                    'final_score': float(final_score),
+                    'direction_score': float(dir_score),
+                    'confidence_score': float(conf_score),
+                    'momentum_score': float(mom_score),
+                    'risk_score': float(risk_score),
+                    'threshold': float(self.config.final_score_threshold),
+                },
+                'gate_observability': {
+                    'current': gate_results,
+                    'pass_rates': gate_pass_rates,
+                },
                 'gate_thresholds': {
                     'min_tcn_probability': min_dir_prob,
                     'min_confidence': rl_min_confidence,
@@ -4549,6 +4681,11 @@ class ModularEnsembleInference:
                     'use_rsi_extreme_gate': rsi_gate_enabled,
                     'use_trend_contra_gate': trend_gate_enabled,
                     'rl_thresholds_applied': self._rl_gates_loaded,
+                },
+                'prediction_errors': {
+                    'ridge': ridge_error,
+                    'xgb': xgb_error,
+                    'rf': rf_error,
                 },
                 'momentum_gate_details': {
                     'fresh': momentum_fresh,
@@ -4743,13 +4880,20 @@ class ModularEnsembleInference:
         equity: Optional[float] = None,
         instrument: Optional[str] = None,
         headlines: Optional[List[str]] = None,
+        model_instrument: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Run inference with verbose output for logging/display.
 
         Returns dict with all details formatted for display.
         """
-        signal = self.predict(df, equity, instrument=instrument, headlines=headlines)
+        signal = self.predict(
+            df,
+            equity,
+            instrument=instrument,
+            headlines=headlines,
+            model_instrument=model_instrument,
+        )
 
         # Format gate checks
         gate_checks = []

@@ -109,6 +109,31 @@ class PairAnalysis:
     model_drift_score: float = 0.0
     memory_accuracy: float = 0.0
 
+    # Sub-inference confirmation (opportunity mode)
+    agent_votes: int = 0
+    agent_total: int = 0
+    agent_score: float = 0.0
+    agent_passed: bool = False
+    agent_promoted: bool = False
+    weighted_vote_score: float = 0.0
+    weighted_vote_threshold: float = 0.0
+    agent_context_key: Optional[str] = None
+    agent_reasons: List[Dict[str, Any]] = field(default_factory=list)
+    agent_reason_codes: List[str] = field(default_factory=list)
+    why_trade: List[str] = field(default_factory=list)
+    why_no_trade: List[str] = field(default_factory=list)
+    uncertainty_score: float = 0.0
+    confidence_variance: float = 0.0
+    model_disagreement: float = 0.0
+    execution_quality_passed: bool = True
+    execution_quality_score: float = 1.0
+    spread_pips: float = 0.0
+    est_slippage_pips: float = 0.0
+    liquidity_score: float = 1.0
+    blocked_by_circuit_breaker: bool = False
+    circuit_breakers_triggered: List[str] = field(default_factory=list)
+    master_pair: Optional[str] = None
+
     # Error handling
     error: Optional[str] = None
     scan_time_ms: float = 0.0
@@ -120,7 +145,13 @@ class PairAnalysis:
     @property
     def is_tradeable(self) -> bool:
         """Check if this pair has a valid trade signal."""
-        return self.gates_passed and self.direction is not None and self.error is None
+        return (
+            self.gates_passed
+            and self.direction is not None
+            and self.error is None
+            and not self.blocked_by_circuit_breaker
+            and bool(self.execution_quality_passed)
+        )
 
     @property
     def overall_score(self) -> float:
@@ -128,13 +159,21 @@ class PairAnalysis:
         if self.error:
             return 0.0
 
-        return (
+        momentum_val = float(self.xgb_momentum) if float(self.xgb_momentum) > 0 else float(self.momentum)
+        drawdown_val = float(self.rf_drawdown) if float(self.rf_drawdown) > 0 else float(self.drawdown)
+
+        base_score = (
             self.confidence * 0.35 +
             (self.ridge_confidence / 100) * 0.25 +
-            self.xgb_momentum * 0.20 +
+            momentum_val * 0.20 +
             self.trend_strength * 0.10 +
-            (1.0 - min(self.rf_drawdown * 20, 1.0)) * 0.10  # Lower drawdown = higher score
+            (1.0 - min(drawdown_val * 20, 1.0)) * 0.10  # Lower drawdown = higher score
         )
+        if self.agent_total > 0:
+            base_score = base_score * 0.88 + min(max(self.agent_score, 0.0), 1.0) * 0.12
+        if self.weighted_vote_score > 0:
+            base_score = base_score * 0.90 + min(max(self.weighted_vote_score, 0.0), 1.0) * 0.10
+        return min(max(base_score, 0.0), 1.0)
 
     @property
     def gate_summary(self) -> str:
@@ -170,6 +209,29 @@ class PairAnalysis:
             "tp_pips": self.tp_pips,
             "risk_amount": self.risk_amount,
             "model_type": self.model_type,
+            "agent_votes": self.agent_votes,
+            "agent_total": self.agent_total,
+            "agent_score": self.agent_score,
+            "agent_passed": self.agent_passed,
+            "agent_promoted": self.agent_promoted,
+            "weighted_vote_score": self.weighted_vote_score,
+            "weighted_vote_threshold": self.weighted_vote_threshold,
+            "agent_context_key": self.agent_context_key,
+            "agent_reasons": self.agent_reasons,
+            "agent_reason_codes": self.agent_reason_codes,
+            "why_trade": self.why_trade,
+            "why_no_trade": self.why_no_trade,
+            "uncertainty_score": self.uncertainty_score,
+            "confidence_variance": self.confidence_variance,
+            "model_disagreement": self.model_disagreement,
+            "execution_quality_passed": self.execution_quality_passed,
+            "execution_quality_score": self.execution_quality_score,
+            "spread_pips": self.spread_pips,
+            "est_slippage_pips": self.est_slippage_pips,
+            "liquidity_score": self.liquidity_score,
+            "blocked_by_circuit_breaker": self.blocked_by_circuit_breaker,
+            "circuit_breakers_triggered": self.circuit_breakers_triggered,
+            "master_pair": self.master_pair,
             "error": self.error,
             "scan_time_ms": self.scan_time_ms,
             "timestamp": self.timestamp.isoformat(),

@@ -131,6 +131,7 @@ class ScannerConfig:
 
     # Parallel execution
     parallel_workers: int = 4
+    sub_inference_workers: int = 3
 
     # Data fetching
     lookback_candles: int = 200
@@ -213,6 +214,18 @@ class ScannerConfig:
     price_change_threshold: float = 0.001  # 0.1% price change triggers re-fetch
     max_workers: int = 4  # Default max workers for incremental scan
 
+    # Sub-inference agents (scanner opportunity confirmation pass)
+    enable_sub_inference_agents: bool = True
+    sub_inference_tradeable_only: bool = True
+    sub_inference_min_confidence: float = 0.48
+    sub_inference_vote_threshold: float = 0.66
+    sub_inference_window_checks: int = 3
+    sub_inference_max_candidates: int = 10
+    enable_agent_trade_promotion: bool = True
+    agent_promotion_min_confidence: float = 0.52
+    agent_promotion_requires_risk: bool = True
+    use_master_pair_models: bool = True
+
     # Default pairs (for easy access)
     default_pairs: List[str] = field(default_factory=lambda: DEFAULT_PAIRS.copy())
     pip_values: Dict[str, float] = field(default_factory=lambda: PIP_VALUES.copy())
@@ -220,6 +233,59 @@ class ScannerConfig:
     # Output
     top_n: int = 5  # Show top N pairs
     show_all: bool = False  # Show all pairs including failed gates
+
+    # =================================================================
+    # MULTI-AGENT FRAMEWORK CONFIGURATION
+    # Specialized agent evaluators with weighted voting and learning
+    # =================================================================
+
+    # --- Agent Toggles (enable/disable each specialized agent) ---
+    enable_trend_agent: bool = True
+    enable_mean_reversion_agent: bool = True
+    enable_volatility_agent: bool = True
+    enable_risk_sentinel_agent: bool = True
+    enable_news_risk_agent: bool = False  # Default off if no news data
+    enable_uncertainty_agent: bool = True
+    enable_execution_quality_agent: bool = True
+
+    # --- Weighted Voting Config ---
+    weighted_vote_threshold: float = 0.55  # Minimum weighted score to pass
+    agent_weight_learning_rate: float = 0.05  # How fast weights adapt
+    agent_weight_decay: float = 0.01  # Decay factor for weight updates
+    min_agent_weight: float = 0.1  # Minimum weight floor
+    max_agent_weight: float = 2.0  # Maximum weight ceiling
+
+    # --- Regime-Aware Thresholds (regime -> minimum vote threshold) ---
+    regime_vote_thresholds: Dict[str, float] = field(
+        default_factory=lambda: {
+            "LOW": 0.50,
+            "NORMAL": 0.55,
+            "HIGH": 0.60,
+            "EXTREME": 0.70,
+        }
+    )
+
+    # --- Uncertainty Blocking ---
+    max_uncertainty_score: float = 0.4  # Block if uncertainty above this
+    max_model_disagreement: float = 0.5  # Block if disagreement above this
+
+    # --- Circuit-Breaker Config ---
+    enable_circuit_breakers: bool = True
+    max_correlated_exposure: int = 2  # Max trades in correlated pairs
+    loss_streak_pause_count: int = 3  # Pause after N consecutive losses
+    loss_streak_pause_minutes: int = 60  # Pause duration in minutes
+    news_blackout_minutes: int = 30  # Block trades around news events
+    session_constraints: List[str] = field(default_factory=list)  # Blocked sessions
+
+    # --- Execution Quality Thresholds ---
+    max_spread_pips: float = 3.0  # Max acceptable spread in pips
+    max_slippage_pips: float = 2.0  # Max acceptable slippage in pips
+    min_liquidity_score: float = 0.3  # Minimum liquidity score (0-1)
+
+    # --- Learning Loop Config (post-trade agent weight updates) ---
+    enable_agent_learning: bool = True
+    weight_boost_on_win: float = 0.1  # Weight increase on winning trade
+    weight_penalty_on_loss: float = 0.15  # Weight decrease on losing trade
 
     # Loaded YAML config (lazy loaded)
     _yaml_config: Optional[Dict[str, Any]] = field(default=None, repr=False)
@@ -250,6 +316,17 @@ class ScannerConfig:
                 f"meta_labeler_threshold={self.meta_labeler_threshold} is outside "
                 f"recommended range [0.50, 0.60]. This may impact signal quality."
             )
+        self.sub_inference_vote_threshold = min(
+            1.0,
+            max(0.34, float(self.sub_inference_vote_threshold)),
+        )
+        self.sub_inference_window_checks = max(1, int(self.sub_inference_window_checks))
+        self.sub_inference_workers = max(1, int(self.sub_inference_workers))
+        self.sub_inference_max_candidates = max(1, int(self.sub_inference_max_candidates))
+        self.agent_promotion_min_confidence = min(
+            0.99,
+            max(0.30, float(self.agent_promotion_min_confidence)),
+        )
 
     def load_yaml_config(self) -> Dict[str, Any]:
         """Load and cache YAML configuration.

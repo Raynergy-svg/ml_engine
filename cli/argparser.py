@@ -311,6 +311,18 @@ def _add_oanda_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Optional path to write fetched OANDA candles CSV (used by --oanda-live)",
     )
+    parser.add_argument(
+        "--master-pair",
+        type=str,
+        default=None,
+        help="For buddy: force model source pair for inference (e.g., GBP_JPY when trading EUR_JPY).",
+    )
+    parser.add_argument(
+        "--interactive-master",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="For buddy: interactively choose model source pair from correlation group (default: enabled).",
+    )
 
 
 def _add_validation_arguments(parser: argparse.ArgumentParser) -> None:
@@ -345,8 +357,8 @@ def _add_scan_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--top",
         type=int,
-        default=5,
-        help="For scan/analyze: number of top results to show",
+        default=0,
+        help="For scan/analyze: number of top results to show (0 = all)",
     )
     parser.add_argument(
         "--no-train",
@@ -374,7 +386,7 @@ def _add_scan_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--auto-execute",
         action="store_true",
-        help="For scan --watch: automatically execute passing trades",
+        help="For scan: automatically execute passing/agent-promoted trades (also works with --watch)",
     )
     parser.add_argument(
         "--diversified",
@@ -393,6 +405,11 @@ def _add_scan_arguments(parser: argparse.ArgumentParser) -> None:
         choices=["conservative", "balanced", "aggressive"],
         default="balanced",
         help="For buddy/scan: gate profile tuning (conservative|balanced|aggressive)",
+    )
+    parser.add_argument(
+        "--clean-output",
+        action="store_true",
+        help="For scan: show compact Codex-style reasoning output instead of the full table",
     )
 
 

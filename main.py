@@ -168,6 +168,8 @@ def _dispatch_scan(args: Any) -> None:
                 verbose=bool(getattr(args, "verbose", False)),
                 prompt_train=not bool(getattr(args, "no_train", False)),
                 no_execute=bool(getattr(args, "skip_execute", False)),
+                auto_execute=bool(getattr(args, "auto_execute", False)),
+                clean_output=bool(getattr(args, "clean_output", False)),
                 use_rl_sizer=bool(getattr(args, "use_rl_sizer", True)),
                 diversified=bool(getattr(args, "diversified", False)),
                 force=bool(getattr(args, "force", False)),
@@ -461,7 +463,7 @@ def _handle_test(args: Any) -> None:
 def _handle_analyze(args: Any) -> None:
     buddy_analyze(
         args.config,
-        top_n=int(getattr(args, "top", 30)),
+        top_n=int(getattr(args, "top", 30) or 30),
         save_plots=bool(getattr(args, "save", False)),
         verbose=bool(getattr(args, "verbose", False)),
     )

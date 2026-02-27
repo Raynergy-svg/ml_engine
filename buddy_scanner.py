@@ -29,6 +29,57 @@ class BuddyScanner:
         self._scanner = Scanner(config=cfg)
         self._display = ScannerDisplay()
 
+    def _render_clean_output(
+        self,
+        analyses: List[PairAnalysis],
+        *,
+        model_type: str,
+        granularity: str,
+    ) -> None:
+        """Render compact Codex-style scanner output with explicit reasoning."""
+        c = self._display.console
+        c.print()
+        c.print(f"[bold]BUDDY SCAN[/bold]  {model_type} | {granularity}")
+        c.print(f"[dim]Pairs shown: {len(analyses)}[/dim]")
+        c.print()
+
+        for idx, a in enumerate(analyses, start=1):
+            pair = a.pair.replace("_", "/")
+            direction = (a.direction or "HOLD").upper()
+            status = "TRADEABLE" if a.gates_passed else ("ERROR" if a.error else "WATCH")
+            conf = int(round(float(a.confidence) * 100))
+            c.print(f"{idx}. {pair}  {direction}  {conf}%  [{status}]")
+
+            if a.error:
+                c.print(f"   why: {a.error}")
+                continue
+
+            m_gate = "✓" if a.momentum_passed else "✗"
+            a_gate = "✓" if a.confidence_passed else "✗"
+            r_gate = "✓" if a.risk_passed else "✗"
+            if a.agent_total > 0:
+                agent_state = "confirmed" if a.agent_passed else "weak"
+                agent_text = f"{agent_state} ({a.agent_votes}/{a.agent_total})"
+            else:
+                agent_text = "n/a"
+
+            master = a.master_pair.replace("_", "/") if a.master_pair else pair
+            c.print(
+                f"   why: gates M{m_gate} A{a_gate} R{r_gate} ({a.gate_summary}), "
+                f"agent {agent_text}, master {master}"
+            )
+
+            if a.gates_passed:
+                promoted = " [agent-promoted]" if getattr(a, "agent_promoted", False) else ""
+                c.print(f"   plan: SL {a.sl_pips:.0f} | TP {a.tp_pips:.0f}{promoted}")
+
+        tradeable = [a.pair.replace("_", "/") for a in analyses if a.gates_passed]
+        c.print()
+        if tradeable:
+            c.print(f"[green]Tradeable:[/green] {', '.join(tradeable)}")
+        else:
+            c.print("[dim]No tradeable setups.[/dim]")
+
     # ------------------------------------------------------------------
     def scan(
         self,
@@ -40,6 +91,7 @@ class BuddyScanner:
         diversified: bool = False,
         force: bool = False,
         profile: str = "balanced",
+        clean_output: bool = False,
         **kwargs: Any,
     ) -> List[PairAnalysis]:
         """Run scan and return a list of PairAnalysis objects."""
@@ -92,7 +144,14 @@ class BuddyScanner:
                 model_type=result.model_type,
                 granularity=granularity,
             )
-            self._display.show_result(display_result)
+            if clean_output:
+                self._render_clean_output(
+                    analyses=analyses,
+                    model_type=result.model_type,
+                    granularity=granularity,
+                )
+            else:
+                self._display.show_result(display_result)
 
         return analyses
 

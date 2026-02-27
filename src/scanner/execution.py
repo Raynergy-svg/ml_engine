@@ -375,8 +375,17 @@ class ExecutionManager:
         Returns:
             Tuple of (lots, risk_pct, confidence_level)
         """
+        def _fallback_lots() -> Tuple[float, float, str]:
+            risk_pct = float(self.config.risk_per_trade_pct)
+            risk_amount = max(0.0, float(equity) * risk_pct)
+            pip_value_usd = 7.5 if str(pair).upper().endswith("JPY") else 10.0
+            denom = max(float(sl_pips), 1.0) * pip_value_usd
+            lots = (risk_amount / denom) if denom > 0 else 0.0
+            lots = round(min(max(lots, 0.01), 50.0), 2)
+            return lots, risk_pct, "fallback"
+
         if self._position_sizer is None:
-            return 0.0, self.config.risk_per_trade_pct, "medium"
+            return _fallback_lots()
 
         try:
             pos_result = self._position_sizer.calculate_position_size(
@@ -388,11 +397,12 @@ class ExecutionManager:
             if pos_result.is_valid:
                 lots = pos_result.units / 100_000
                 risk_pct = pos_result.risk_amount / equity if equity > 0 else 0
-                return lots, risk_pct, pos_result.confidence_level
+                if lots > 0:
+                    return lots, risk_pct, pos_result.confidence_level
         except Exception as e:
             logger.warning(f"Position sizing failed: {e}")
 
-        return 0.0, self.config.risk_per_trade_pct, "medium"
+        return _fallback_lots()
     
     def calculate_regime_aware_position_size(
         self,
@@ -570,7 +580,11 @@ class ExecutionManager:
         aggressive_reason = ""
 
         # Calculate position sizing if not provided
-        if lots is None or sl_pips is None or tp_pips is None:
+        if (
+            lots is None or float(lots) <= 0.0 or
+            sl_pips is None or float(sl_pips) <= 0.0 or
+            tp_pips is None or float(tp_pips) <= 0.0
+        ):
             # Use regime-aware sizing if regime info provided
             if volatility_regime is not None and meta_confidence is not None:
                 (
