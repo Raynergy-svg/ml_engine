@@ -40,6 +40,7 @@ Usage:
 
 from src.scanner.config import ScannerConfig, DEFAULT_PAIRS, PIP_VALUES, load_yaml_config, PROJECT_ROOT, DEFAULT_CONFIG_PATH
 from src.scanner.results import ScanResult, PairAnalysis
+from src.scanner.agents import AgentDecisionContext, AgentVerdict, ScannerAgentTeam
 from src.scanner.gates import GateEvaluator
 from src.scanner.engine import Scanner
 from src.scanner.display import ScannerDisplay
@@ -74,6 +75,9 @@ __all__ = [
     "ScannerConfig",
     "ScanResult",
     "PairAnalysis",
+    "AgentDecisionContext",
+    "AgentVerdict",
+    "ScannerAgentTeam",
     "ScannerDisplay",
     "GateEvaluator",
     # Execution

@@ -12,7 +12,7 @@ from cli.commands import (
     buddy, buddy_loop,
     buddy_validate, buddy_test,
     _normalize_command_args, _maybe_run_buddy_interactive_wizard,
-    _maybe_launch_buddy_repl, _dispatch_buddy, _dispatch_train_buddy,
+    _maybe_launch_buddy_repl, _maybe_launch_buddy_chat, _dispatch_buddy, _dispatch_train_buddy,
 )
 from cli.buddy_scanning import buddy_scan
 from cli.analytics_commands import (
@@ -41,7 +41,7 @@ __all__ = [
     'train_model', 'evaluate_model', 'train_rl_sizer', 'retrain_gates',
     'train_rl_gates', 'train_rl_exits', 'retrain_all', 'suggest_improvements',
     '_normalize_command_args', '_maybe_run_buddy_interactive_wizard',
-    '_maybe_launch_buddy_repl', '_dispatch_buddy', '_dispatch_train_buddy',
+    '_maybe_launch_buddy_repl', '_maybe_launch_buddy_chat', '_dispatch_buddy', '_dispatch_train_buddy',
     # FX Trading
     'fx_paper_trade', 'generate_dashboard',
     # Wizard

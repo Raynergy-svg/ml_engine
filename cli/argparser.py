@@ -27,6 +27,7 @@ COMMANDS = [
     "train-rl-gates",
     "train-rl-exits",
     "buddy",
+    "buddy-chat",
     "Buddy",
     "promote-model",
     "model-status",
@@ -46,12 +47,14 @@ CLI_EPILOG = """
 COMMAND REFERENCE:
   scan        Scan ALL pairs → shows tradeable + needs training
   buddy       Single-pair inference → execute one trade
+  buddy-chat  Grounded Buddy conversational REPL
   train       Train model for specific pair
   monitor     Show monitoring dashboard and alerts
 
 EXAMPLES:
   buddy scan                     # Scan all majors, show recommendations
   buddy -I EUR_USD --execute     # Single EUR_USD trade
+  buddy buddy-chat -I EUR_USD    # Start Buddy chat REPL (dry-run by default)
   buddy train -I AUD_USD         # Train model for AUD_USD
   buddy journal                  # View trade journal
   buddy monitor                  # Show monitoring dashboard
@@ -792,6 +795,11 @@ def _add_enterprise_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _add_monitoring_arguments(parser: argparse.ArgumentParser) -> None:
     """Add monitoring command arguments."""
+    parser.add_argument(
+        "--decisions",
+        action="store_true",
+        help="For model-status: show persisted last trade and last no-trade decisions from Buddy runtime state.",
+    )
     parser.add_argument(
         "--monitor-alerts",
         action="store_true",

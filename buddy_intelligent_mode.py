@@ -23,6 +23,7 @@ References:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -32,6 +33,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+INTELLIGENT_ANALYSIS_CACHE_DIR = Path("trained_data/intelligent_cache")
 
 
 # =============================================================================
@@ -48,6 +51,23 @@ def _default_llm_call(
 
     Falls back gracefully if OpenAI is not configured.
     """
+    try:
+        from llm_providers import llm_call as provider_llm_call, select_buddy_provider_name
+
+        provider_name = select_buddy_provider_name(None)
+        if provider_name:
+            response = provider_llm_call(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                model=model,
+                temperature=temperature,
+                provider=provider_name,
+            )
+            if response:
+                return response
+    except Exception as e:
+        logger.debug("Unified LLM provider call failed, falling back to direct OpenAI: %s", e)
+
     try:
         import openai
 
@@ -733,6 +753,38 @@ def _extract_modality_weights(text: str) -> Dict[str, float]:
     return weights
 
 
+def _extract_adaptation_notes(text: str) -> List[str]:
+    """Extract short adaptation cues from integrated reasoning text."""
+    text_lower = text.lower()
+    cues: List[str] = []
+    for keyword in (
+        "reduce size",
+        "reducing size",
+        "increase size",
+        "increasing size",
+        "avoid trade",
+        "wait for confirmation",
+        "higher caution",
+        "more cautious",
+    ):
+        if keyword in text_lower:
+            cues.append(keyword)
+    return cues
+
+
+def _canonicalize_cache_value(value: Any) -> Any:
+    """Normalize nested values for stable JSON hashing."""
+    if isinstance(value, dict):
+        return {str(k): _canonicalize_cache_value(v) for k, v in sorted(value.items(), key=lambda item: str(item[0]))}
+    if isinstance(value, list):
+        return [_canonicalize_cache_value(v) for v in value]
+    if isinstance(value, tuple):
+        return [_canonicalize_cache_value(v) for v in value]
+    if isinstance(value, float):
+        return round(value, 8)
+    return value
+
+
 # =============================================================================
 # 3.5 DEEP LLM INTEGRATION - Under the Hood Enhancements
 # =============================================================================
@@ -1077,6 +1129,45 @@ Add section:
 Then proceed with full reasoning."""
 
 
+FULL_INTELLIGENT_ANALYSIS_SYSTEM = """You are Buddy Integrated Analyst.
+
+You must combine:
+1. Buddy's raw model output
+2. Multi-modal context (news, sentiment, events) if provided
+3. Memory from past trades
+
+Use all of that in ONE coherent response. Do not produce separate analyses.
+
+Always structure EXACTLY:
+**Multi-Modal Fusion**
+- How news/sentiment/events affect the raw Buddy signal.
+
+**Adaptation from Experience**
+- Relevant lessons from memory.
+- What changes, if any, should be made this time.
+
+**Market Context**
+- Price action, volatility, trend.
+
+**Buddy Signal Breakdown**
+- Raw confidence/probability and what is driving them.
+
+**Key Drivers**
+- Bullish/bearish evidence.
+
+**Risks & Alternatives**
+- Confounders, event risk, contradictory signals.
+
+**Reasoning Summary**
+- Direct causal chain from evidence to conclusion.
+
+**Final Call**
+- Trade: BUY/SELL/HOLD/NO TRADE
+- Translated Confidence: High/Med/Low
+
+Keep the response concise but specific. Ground everything in the provided inputs."""
+
+
 @dataclass
 class TradeLessonMemory:
     """Memory of lessons learned from past trades."""
@@ -1105,6 +1196,140 @@ class TradeLessonMemory:
         return "\n".join(summary_parts)
 
 
+def _normalize_direction_label(direction: Any) -> str:
+    """Normalize direction labels across buddy, journal, and OANDA payloads."""
+    value = str(direction or "").strip().lower()
+    if value in {"buy", "long", "1", "bullish"}:
+        return "long"
+    if value in {"sell", "short", "0", "bearish"}:
+        return "short"
+    return value
+
+
+def _normalize_confidence_score(value: Any) -> float:
+    """Normalize confidence values to a 0-1 range."""
+    try:
+        score = float(value)
+    except Exception:
+        return 0.0
+    if score > 1.5:
+        score /= 100.0
+    return max(0.0, min(1.0, score))
+
+
+def _context_tag_key(value: Any) -> Optional[str]:
+    """Normalize context tags for similarity matching."""
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    return text or None
+
+
+def _extract_context_tags(context: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    """Project rich trade context into a small comparable tag set."""
+    payload = dict(context or {})
+    tags: Dict[str, str] = {}
+
+    volatility = (
+        payload.get("volatility_regime_name")
+        or payload.get("volatility_regime")
+        or payload.get("regime")
+    )
+    session = payload.get("session_label") or payload.get("entry_session")
+    event_pressure = payload.get("calendar_high_impact")
+    if event_pressure is None and payload.get("next_high_impact"):
+        event_pressure = "upcoming_event"
+    if event_pressure is None and payload.get("calendar_reason"):
+        event_pressure = payload.get("calendar_reason")
+
+    sentiment = payload.get("sentiment_label") or payload.get("sentiment")
+
+    for key, value in (
+        ("volatility_regime", volatility),
+        ("session_label", session),
+        ("event_pressure", event_pressure),
+        ("sentiment_label", sentiment),
+        ("exit_reason", payload.get("exit_reason")),
+    ):
+        normalized = _context_tag_key(value)
+        if normalized is not None:
+            tags[key] = normalized
+
+    return tags
+
+
+def _context_match_weight(
+    target_tags: Dict[str, str],
+    candidate_tags: Dict[str, str],
+) -> float:
+    """Score similarity between current setup tags and a past trade."""
+    if not target_tags:
+        return 1.0
+
+    weights = {
+        "volatility_regime": 0.35,
+        "session_label": 0.25,
+        "event_pressure": 0.20,
+        "sentiment_label": 0.10,
+        "exit_reason": 0.10,
+    }
+    total = 0.0
+    matched = 0.0
+    partial = 0.0
+
+    for key, target_value in target_tags.items():
+        weight = weights.get(key, 0.10)
+        total += weight
+        candidate_value = candidate_tags.get(key)
+        if candidate_value == target_value:
+            matched += weight
+        elif candidate_value is None:
+            partial += weight * 0.35
+
+    if total <= 0:
+        return 1.0
+
+    similarity = (matched + partial) / total
+    return max(0.25, min(1.0, 0.25 + (0.75 * similarity)))
+
+
+@dataclass
+class AdaptiveTradePolicy:
+    """Deterministic trade policy learned from recent trade outcomes."""
+    approve: bool = True
+    size_multiplier: float = 1.0
+    reason: str = "No adaptive memory adjustment"
+    risk_flags: List[str] = field(default_factory=list)
+    sample_size: int = 0
+    win_rate: float = 0.5
+    avg_pnl: float = 0.0
+    losing_streak: int = 0
+
+    @classmethod
+    def default(cls) -> "AdaptiveTradePolicy":
+        return cls()
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "approve": bool(self.approve),
+            "size_multiplier": float(self.size_multiplier),
+            "reason": self.reason,
+            "risk_flags": list(self.risk_flags),
+            "sample_size": int(self.sample_size),
+            "win_rate": float(self.win_rate),
+            "avg_pnl": float(self.avg_pnl),
+            "losing_streak": int(self.losing_streak),
+        }
+
+    def summary(self) -> str:
+        return (
+            f"approve={self.approve}, size={self.size_multiplier:.2f}x, "
+            f"samples={self.sample_size}, win_rate={self.win_rate:.0%}, "
+            f"avg_pnl={self.avg_pnl:.2f}, losing_streak={self.losing_streak}, "
+            f"reason={self.reason}"
+        )
+
+
 class OnlineLearningMemory:
     """Manages online learning memory from past trades.
 
@@ -1115,15 +1340,21 @@ class OnlineLearningMemory:
         self,
         memory_path: Optional[Path] = None,
         max_lessons: int = 100,
+        memory_client: Optional[Any] = None,
+        sync_with_shared_memory: bool = True,
     ):
         """Initialize online learning memory.
 
         Args:
             memory_path: Path to persist memory (optional)
             max_lessons: Maximum lessons to retain
+            memory_client: Optional shared memory ledger client
+            sync_with_shared_memory: Whether to read/write shared memory ledger
         """
         self.memory_path = memory_path
         self.max_lessons = max_lessons
+        self._memory_client = memory_client
+        self._sync_with_shared_memory = sync_with_shared_memory
 
         # In-memory storage
         self._outcomes: List[Dict[str, Any]] = []
@@ -1133,6 +1364,74 @@ class OnlineLearningMemory:
         # Load persisted memory if available
         if memory_path and memory_path.exists():
             self._load_memory()
+        self._init_memory_client()
+        self._sync_from_shared_memory()
+
+    def _init_memory_client(self) -> None:
+        """Initialize shared memory ledger if available."""
+        if not self._sync_with_shared_memory or self._memory_client is not None:
+            return
+        try:
+            from memory_client import MLEngineMemory
+            self._memory_client = MLEngineMemory()
+        except Exception as e:
+            logger.debug(f"Shared trade memory unavailable: {e}")
+
+    def _sync_from_shared_memory(self, limit: Optional[int] = None) -> int:
+        """Merge recent shared trade records into local lesson memory."""
+        if not self._sync_with_shared_memory or self._memory_client is None:
+            return 0
+
+        try:
+            trades = self._memory_client.get_recent_trades(limit=limit or self.max_lessons * 2)
+        except Exception as e:
+            logger.debug(f"Failed to read shared trade memory: {e}")
+            return 0
+
+        existing_ids = {
+            str(o.get("trade_id"))
+            for o in self._outcomes
+            if o.get("trade_id")
+        }
+        added = 0
+        for trade in reversed(trades):
+            pnl = trade.get("pnl")
+            if pnl is None and trade.get("pnl_pips") is not None:
+                pnl = trade.get("pnl_pips")
+            if pnl is None:
+                continue
+
+            trade_id = trade.get("trade_id")
+            if trade_id and str(trade_id) in existing_ids:
+                continue
+
+            outcome = {
+                "trade_id": str(trade_id) if trade_id is not None else f"shared:{trade.get('timestamp')}:{trade.get('instrument')}",
+                "instrument": trade.get("instrument", ""),
+                "direction": trade.get("direction", ""),
+                "confidence": float(trade.get("confidence", 0.0) or 0.0),
+                "pnl": float(pnl),
+                "context": dict(trade.get("metadata") or {}),
+                "timestamp": str(trade.get("timestamp") or datetime.now(timezone.utc).isoformat()),
+            }
+            self._outcomes.append(outcome)
+            if trade_id:
+                existing_ids.add(str(trade_id))
+            added += 1
+
+        if added:
+            self._summary_cache = None
+            if len(self._outcomes) > self.max_lessons * 2:
+                self._outcomes = self._outcomes[-self.max_lessons * 2 :]
+            if self.memory_path:
+                self._save_memory()
+        return added
+
+    @property
+    def trades(self) -> List[Dict[str, Any]]:
+        """Expose recent outcomes for compatibility with older helpers."""
+        self._sync_from_shared_memory()
+        return list(self._outcomes)
 
     def record_outcome(
         self,
@@ -1173,6 +1472,20 @@ class OnlineLearningMemory:
         # Persist if configured
         if self.memory_path:
             self._save_memory()
+        if self._sync_with_shared_memory and self._memory_client is not None:
+            try:
+                self._memory_client.log_trade({
+                    "timestamp": outcome["timestamp"],
+                    "trade_id": trade_id,
+                    "instrument": instrument,
+                    "direction": direction,
+                    "confidence": confidence,
+                    "pnl": pnl,
+                    "model": "buddy_intelligent_mode",
+                    "metadata": context or {},
+                })
+            except Exception as e:
+                logger.debug(f"Failed to mirror Buddy memory outcome to shared memory: {e}")
 
     def extract_lessons(
         self,
@@ -1188,6 +1501,7 @@ class OnlineLearningMemory:
         Returns:
             List of lesson strings
         """
+        self._sync_from_shared_memory()
         if not force_refresh and self._lessons:
             return self._lessons
 
@@ -1242,6 +1556,7 @@ Return JSON array of lesson strings only:"""
 
     def get_memory_context(self) -> TradeLessonMemory:
         """Get memory context for injection into prompts."""
+        self._sync_from_shared_memory()
         if not self._outcomes:
             return TradeLessonMemory()
 
@@ -1252,6 +1567,129 @@ Return JSON array of lesson strings only:"""
             lessons=self._lessons or self.extract_lessons(),
             win_rate=len(wins) / len(recent) if recent else 0.5,
             recent_drawdown=self._calculate_recent_drawdown(),
+        )
+
+    def get_adaptation_policy(
+        self,
+        *,
+        instrument: str,
+        direction: Optional[str],
+        confidence: float,
+        context: Optional[Dict[str, Any]] = None,
+        min_samples: int = 3,
+    ) -> AdaptiveTradePolicy:
+        """Turn recent outcomes into a deterministic pre-trade policy."""
+        self._sync_from_shared_memory()
+        if not self._outcomes:
+            return AdaptiveTradePolicy.default()
+
+        instrument_norm = str(instrument or "").upper()
+        direction_norm = _normalize_direction_label(direction)
+        confidence_norm = _normalize_confidence_score(confidence)
+        target_tags = _extract_context_tags(context)
+
+        matching = [
+            o for o in self._outcomes
+            if str(o.get("instrument", "")).upper() == instrument_norm
+        ]
+        if direction_norm:
+            directional = [
+                o for o in matching
+                if _normalize_direction_label(o.get("direction")) == direction_norm
+            ]
+            if directional:
+                matching = directional
+
+        if not matching:
+            return AdaptiveTradePolicy.default()
+
+        recent = matching[-12:]
+        confidence_filtered = [
+            o for o in recent
+            if abs(_normalize_confidence_score(o.get("confidence")) - confidence_norm) <= 0.20
+        ]
+        selected = confidence_filtered if len(confidence_filtered) >= min_samples else recent
+        if len(selected) < min_samples:
+            return AdaptiveTradePolicy(
+                reason=f"Adaptive memory has only {len(selected)} similar trades",
+                sample_size=len(selected),
+            )
+
+        weights = [
+            _context_match_weight(target_tags, _extract_context_tags(outcome.get("context")))
+            for outcome in selected
+        ]
+        pnls = [float(o.get("pnl", 0.0) or 0.0) for o in selected]
+        weighted_total = sum(weights) or float(len(selected) or 1)
+        weighted_wins = sum(weight for pnl, weight in zip(pnls, weights) if pnl > 0)
+        wins = sum(1 for pnl in pnls if pnl > 0)
+        sample_size = len(selected)
+        win_rate = weighted_wins / weighted_total if weighted_total > 0 else 0.5
+        avg_pnl = sum(pnl * weight for pnl, weight in zip(pnls, weights)) / weighted_total if weighted_total > 0 else 0.0
+
+        losing_streak = 0
+        for outcome, weight in reversed(list(zip(selected, weights))):
+            if weight < 0.55:
+                continue
+            if float(outcome.get("pnl", 0.0) or 0.0) < 0:
+                losing_streak += 1
+            else:
+                break
+
+        if losing_streak >= 4 or (sample_size >= 5 and win_rate <= 0.20 and confidence_norm < 0.72):
+            return AdaptiveTradePolicy(
+                approve=False,
+                size_multiplier=0.0,
+                reason=(
+                    f"Adaptive memory veto: {wins}/{sample_size} recent similar trades won"
+                    f" with a {losing_streak}-trade losing streak"
+                ),
+                risk_flags=["memory_veto", "losing_streak"],
+                sample_size=sample_size,
+                win_rate=win_rate,
+                avg_pnl=avg_pnl,
+                losing_streak=losing_streak,
+            )
+
+        if win_rate < 0.40 or avg_pnl < 0:
+            multiplier = 0.65 if win_rate < 0.34 or avg_pnl < 0 else 0.80
+            return AdaptiveTradePolicy(
+                approve=True,
+                size_multiplier=multiplier,
+                reason=(
+                    f"Adaptive memory reducing size after {wins}/{sample_size} wins"
+                    f" (avg pnl {avg_pnl:+.2f})"
+                ),
+                risk_flags=["memory_size_reduction"],
+                sample_size=sample_size,
+                win_rate=win_rate,
+                avg_pnl=avg_pnl,
+                losing_streak=losing_streak,
+            )
+
+        if sample_size >= 5 and win_rate >= 0.70 and avg_pnl > 0 and confidence_norm >= 0.60:
+            return AdaptiveTradePolicy(
+                approve=True,
+                size_multiplier=1.10,
+                reason=(
+                    f"Adaptive memory modestly increasing size after {wins}/{sample_size} wins"
+                    f" (avg pnl {avg_pnl:+.2f})"
+                ),
+                risk_flags=["memory_size_increase"],
+                sample_size=sample_size,
+                win_rate=win_rate,
+                avg_pnl=avg_pnl,
+                losing_streak=losing_streak,
+            )
+
+        return AdaptiveTradePolicy(
+            approve=True,
+            size_multiplier=1.0,
+            reason=f"Adaptive memory neutral after {wins}/{sample_size} wins",
+            sample_size=sample_size,
+            win_rate=win_rate,
+            avg_pnl=avg_pnl,
+            losing_streak=losing_streak,
         )
 
     def _calculate_recent_drawdown(self) -> float:
@@ -1380,6 +1818,42 @@ Timeframe: {timeframe}
         "adaptations_made": adaptations,
         "memory_summary": past_lessons_summary,
     }
+
+
+def apply_adaptive_trade_policy(
+    validation: LLMTradeValidation,
+    policy: AdaptiveTradePolicy,
+) -> LLMTradeValidation:
+    """Combine deterministic memory policy with LLM validation."""
+    if policy is None:
+        return validation
+
+    combined_flags = list(dict.fromkeys(list(validation.risk_flags) + list(policy.risk_flags)))
+    reason_parts = [part for part in (validation.reason, policy.reason) if part]
+    combined_reason = " | ".join(dict.fromkeys(reason_parts)) if reason_parts else ""
+
+    if not policy.approve:
+        return LLMTradeValidation(
+            approve=False,
+            size_multiplier=0.0,
+            reason=combined_reason or policy.reason,
+            risk_flags=combined_flags,
+        )
+
+    if not validation.approve:
+        return LLMTradeValidation(
+            approve=False,
+            size_multiplier=0.0,
+            reason=combined_reason or validation.reason,
+            risk_flags=combined_flags,
+        )
+
+    return LLMTradeValidation(
+        approve=True,
+        size_multiplier=max(0.25, min(1.5, float(validation.size_multiplier) * float(policy.size_multiplier))),
+        reason=combined_reason or validation.reason,
+        risk_flags=combined_flags,
+    )
 
 
 # =============================================================================
@@ -1815,6 +2289,8 @@ class BuddyIntelligentMode:
     def __init__(
         self,
         memory_path: Optional[Path] = None,
+        analysis_cache_dir: Optional[Path] = None,
+        sync_with_shared_memory: bool = True,
         default_model: str = "gpt-4",
         default_temperature: float = 0.2,
     ):
@@ -1822,14 +2298,85 @@ class BuddyIntelligentMode:
 
         Args:
             memory_path: Path for persisting online learning memory
+            analysis_cache_dir: Directory for caching integrated analyses
+            sync_with_shared_memory: Whether to sync with shared trade ledger
             default_model: Default LLM model to use
             default_temperature: Default generation temperature
         """
-        self.memory = OnlineLearningMemory(memory_path=memory_path)
+        self.memory = OnlineLearningMemory(
+            memory_path=memory_path,
+            sync_with_shared_memory=sync_with_shared_memory,
+        )
+        self.analysis_cache_dir = analysis_cache_dir or INTELLIGENT_ANALYSIS_CACHE_DIR
+        self.analysis_cache_dir.mkdir(parents=True, exist_ok=True)
         self.default_model = default_model
         self.default_temperature = default_temperature
 
         logger.info("BuddyIntelligentMode initialized")
+
+    def _analysis_cache_key(
+        self,
+        *,
+        ticker: str,
+        timeframe: str,
+        buddy_raw: BuddyRawOutput,
+        context: Optional[MultiModalContext],
+        price_data: Optional[Dict[str, Any]],
+        memory_summary: str,
+        adaptive_policy: AdaptiveTradePolicy,
+    ) -> str:
+        """Build stable cache key for a complete integrated analysis."""
+        payload = {
+            "schema_version": 1,
+            "ticker": ticker,
+            "timeframe": timeframe,
+            "model": self.default_model,
+            "temperature": self.default_temperature,
+            "buddy_raw": buddy_raw.to_dict(),
+            "context": context.to_dict() if context is not None else {},
+            "price_data": price_data or {},
+            "memory_summary": memory_summary,
+            "adaptive_policy": adaptive_policy.to_dict(),
+        }
+        canonical = json.dumps(
+            _canonicalize_cache_value(payload),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _analysis_cache_path(self, cache_key: str) -> Path:
+        """Resolve cache file path for an analysis key."""
+        return self.analysis_cache_dir / f"{cache_key}.json"
+
+    def _load_cached_analysis(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        """Load cached integrated analysis if present and valid."""
+        cache_path = self._analysis_cache_path(cache_key)
+        if not cache_path.exists():
+            return None
+        try:
+            payload = json.loads(cache_path.read_text())
+        except Exception as e:
+            logger.debug("Failed to read analysis cache %s: %s", cache_path, e)
+            return None
+        if not isinstance(payload, dict):
+            return None
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            return None
+        return result
+
+    def _store_cached_analysis(self, cache_key: str, result: Dict[str, Any]) -> None:
+        """Persist integrated analysis to disk cache."""
+        cache_path = self._analysis_cache_path(cache_key)
+        payload = {
+            "cached_at": datetime.now(timezone.utc).isoformat(),
+            "result": result,
+        }
+        try:
+            cache_path.write_text(json.dumps(payload, indent=2))
+        except Exception as e:
+            logger.debug("Failed to write analysis cache %s: %s", cache_path, e)
 
     def get_reasoning(
         self,
@@ -1888,6 +2435,22 @@ class BuddyIntelligentMode:
             temperature=self.default_temperature,
         )
 
+    def get_adaptation_policy(
+        self,
+        *,
+        ticker: str,
+        direction: Optional[str],
+        confidence: float,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> AdaptiveTradePolicy:
+        """Expose deterministic memory policy for live trade decisions."""
+        return self.memory.get_adaptation_policy(
+            instrument=ticker,
+            direction=direction,
+            confidence=confidence,
+            context=context,
+        )
+
     def get_full_intelligent_analysis(
         self,
         ticker: str,
@@ -1896,47 +2459,95 @@ class BuddyIntelligentMode:
         context: Optional[MultiModalContext] = None,
         price_data: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Get complete intelligent analysis combining all features.
+        """Get complete intelligent analysis in a single LLM round-trip."""
+        memory_context = self.memory.get_memory_context()
+        memory_summary = memory_context.summarize()
+        adaptive_policy = self.get_adaptation_policy(
+            ticker=ticker,
+            direction=buddy_raw.direction,
+            confidence=buddy_raw.confidence,
+            context=price_data,
+        )
+        buddy_dict = buddy_raw.to_dict()
+        context_dict = context.to_dict() if context is not None else {}
+        cache_key = self._analysis_cache_key(
+            ticker=ticker,
+            timeframe=timeframe,
+            buddy_raw=buddy_raw,
+            context=context,
+            price_data=price_data,
+            memory_summary=memory_summary,
+            adaptive_policy=adaptive_policy,
+        )
+        cached = self._load_cached_analysis(cache_key)
+        if cached is not None:
+            cached_result = dict(cached)
+            cached_result["cache_key"] = cache_key
+            cached_result["cached"] = True
+            return cached_result
 
-        This chains:
-        1. Multi-modal fusion (if context provided)
-        2. Adaptive reasoning with memory
-        3. Self-improvement refinement
-        """
-        # Start with base reasoning
-        if context:
-            initial = self.get_multi_modal_reasoning(
-                ticker=ticker,
-                timeframe=timeframe,
-                buddy_raw=buddy_raw,
-                context=context,
-                price_data=price_data,
-            )
-        else:
-            initial = self.get_reasoning(
-                ticker=ticker,
-                timeframe=timeframe,
-                buddy_raw=buddy_raw,
-                price_data=price_data,
-            )
+        prompt = f"""Buddy Raw: {json.dumps(buddy_dict, indent=2)}
+Ticker: {ticker}
+Timeframe: {timeframe}
+Memory Summary:
+{memory_summary}
+Adaptive Trade Policy:
+{json.dumps(adaptive_policy.to_dict(), indent=2)}
+"""
 
-        if initial.get("error"):
-            return initial
+        if context_dict:
+            prompt += f"\nMulti-Modal Context: {json.dumps(context_dict, indent=2)}\n"
 
-        # Apply self-improvement
-        initial_response = initial.get("reasoning") or initial.get("enhanced_reasoning")
+        if price_data:
+            prompt += f"\nPrice/Technical Data: {json.dumps(price_data, indent=2)}\n"
 
-        if initial_response:
-            refined = self_improve_interpretation(
-                query=f"Interpret Buddy's prediction for {ticker} on {timeframe}",
-                max_iterations=2,
-            )
+        prompt += "\nProvide one integrated analysis:"
 
-            if refined.get("response"):
-                initial["refined_reasoning"] = refined["response"]
-                initial["refinement_iterations"] = refined.get("iterations", 0)
+        response = llm_call(
+            prompt=prompt,
+            system_prompt=FULL_INTELLIGENT_ANALYSIS_SYSTEM,
+            model=self.default_model,
+            temperature=self.default_temperature,
+        )
 
-        return initial
+        if response is None:
+            return {
+                "reasoning": None,
+                "enhanced_reasoning": None,
+                "adaptive_reasoning": None,
+                "trade_call": "NO_TRADE",
+                "confidence_level": "Low",
+                "modality_weights": {"buddy": 0.7, "sentiment": 0.15, "events": 0.15},
+                "adaptations_made": [],
+                "memory_summary": memory_summary,
+                "adaptive_policy": adaptive_policy.to_dict(),
+                "cache_key": cache_key,
+                "cached": False,
+                "error": "LLM call failed",
+            }
+
+        trade_call = _extract_trade_call(response)
+        confidence_level = _extract_confidence_level(response)
+        adaptations = _extract_adaptation_notes(response)
+        if adaptive_policy.reason and adaptive_policy.reason not in adaptations:
+            adaptations.append(adaptive_policy.reason)
+
+        result = {
+            "reasoning": response,
+            "enhanced_reasoning": response,
+            "adaptive_reasoning": response,
+            "trade_call": trade_call,
+            "confidence_level": confidence_level,
+            "modality_weights": _extract_modality_weights(response),
+            "adaptations_made": adaptations,
+            "memory_summary": memory_summary,
+            "adaptive_policy": adaptive_policy.to_dict(),
+            "parsed_sections": _parse_reasoning_sections(response),
+            "cache_key": cache_key,
+            "cached": False,
+        }
+        self._store_cached_analysis(cache_key, result)
+        return result
 
     def record_trade_outcome(
         self,
@@ -1979,9 +2590,15 @@ _intelligent_mode: Optional[BuddyIntelligentMode] = None
 
 def get_intelligent_mode(
     memory_path: Optional[Path] = None,
+    analysis_cache_dir: Optional[Path] = None,
+    sync_with_shared_memory: bool = True,
 ) -> BuddyIntelligentMode:
     """Get or create the global BuddyIntelligentMode instance."""
     global _intelligent_mode
     if _intelligent_mode is None:
-        _intelligent_mode = BuddyIntelligentMode(memory_path=memory_path)
+        _intelligent_mode = BuddyIntelligentMode(
+            memory_path=memory_path,
+            analysis_cache_dir=analysis_cache_dir,
+            sync_with_shared_memory=sync_with_shared_memory,
+        )
     return _intelligent_mode

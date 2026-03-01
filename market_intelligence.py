@@ -1053,6 +1053,7 @@ class TradeOutcome:
     prediction: float  # Model's prediction at entry
     confidence: float  # Model's confidence at entry
     actual_outcome: int  # 1=profitable, 0=loss
+    metadata: Optional[Dict[str, Any]] = None
 
     @property
     def was_correct(self) -> bool:
@@ -1075,6 +1076,7 @@ class OnlineLearner:
         buffer_size: int = 500,
         retrain_threshold: int = 50,  # Retrain after N new trades
         storage_dir: str = "trained_data/online_learning",
+        memory_client: Optional[Any] = None,
     ):
         self.buffer_size = buffer_size
         self.retrain_threshold = retrain_threshold
@@ -1083,68 +1085,221 @@ class OnlineLearner:
 
         self.trade_buffer: List[TradeOutcome] = []
         self.trades_since_retrain = 0
-        self._load_buffer()
+        self._memory_client = memory_client
+        self._init_memory_client()
+        self._migrate_legacy_buffer_to_memory()
+        self._load_runtime_state()
+        self._refresh_trade_buffer_from_memory()
 
-    def _load_buffer(self):
-        """Load trade buffer from disk."""
-        buffer_file = self.storage_dir / "trade_buffer.json"
-        if buffer_file.exists():
-            try:
-                with open(buffer_file) as f:
-                    data = json.load(f)
+    def _runtime_namespace(self) -> str:
+        """Namespace for persisted online learner runtime state."""
+        return "online_learning"
 
-                self.trades_since_retrain = data.get('trades_since_retrain', 0)
+    def _init_memory_client(self) -> None:
+        """Initialize shared trade ledger if available."""
+        if self._memory_client is not None:
+            return
+        try:
+            from memory_client import MLEngineMemory
+            self._memory_client = MLEngineMemory()
+        except Exception as e:
+            logger.debug(f"Shared memory ledger unavailable: {e}")
 
-                for item in data.get('trades', [])[-self.buffer_size:]:
-                    self.trade_buffer.append(TradeOutcome(
-                        trade_id=item['trade_id'],
-                        instrument=item['instrument'],
-                        direction=item['direction'],
-                        entry_time=datetime.fromisoformat(item['entry_time']),
-                        exit_time=datetime.fromisoformat(item['exit_time']),
-                        entry_price=item['entry_price'],
-                        exit_price=item['exit_price'],
-                        pnl_pips=item['pnl_pips'],
-                        pnl_percent=item['pnl_percent'],
-                        features=np.array(item['features']),
-                        prediction=item['prediction'],
-                        confidence=item['confidence'],
-                        actual_outcome=item['actual_outcome'],
-                    ))
+    def _load_runtime_state(self) -> None:
+        """Load online learner counters from shared runtime state."""
+        if self._memory_client is None:
+            self.trades_since_retrain = 0
+            return
 
-                logger.debug(f"Loaded {len(self.trade_buffer)} trades from buffer")
-            except Exception as e:
-                logger.warning(f"Failed to load trade buffer: {e}")
+        try:
+            state = self._memory_client.get_runtime_state(self._runtime_namespace())
+            self.trades_since_retrain = int(state.get("trades_since_retrain", 0) or 0)
+        except Exception as e:
+            logger.debug(f"Failed to load online learner runtime state: {e}")
+            self.trades_since_retrain = 0
 
-    def _save_buffer(self):
-        """Save trade buffer to disk."""
-        buffer_file = self.storage_dir / "trade_buffer.json"
+    def _save_runtime_state(self) -> None:
+        """Persist online learner counters into shared runtime state."""
+        if self._memory_client is None:
+            return
 
-        data = {
-            'trades_since_retrain': self.trades_since_retrain,
-            'last_updated': datetime.utcnow().isoformat(),
-            'trades': [
+        try:
+            self._memory_client.update_runtime_state(
+                self._runtime_namespace(),
                 {
-                    'trade_id': t.trade_id,
-                    'instrument': t.instrument,
-                    'direction': t.direction,
-                    'entry_time': t.entry_time.isoformat(),
-                    'exit_time': t.exit_time.isoformat(),
-                    'entry_price': t.entry_price,
-                    'exit_price': t.exit_price,
-                    'pnl_pips': t.pnl_pips,
-                    'pnl_percent': t.pnl_percent,
-                    'features': t.features.tolist(),
-                    'prediction': t.prediction,
-                    'confidence': t.confidence,
-                    'actual_outcome': t.actual_outcome,
-                }
-                for t in self.trade_buffer[-self.buffer_size:]
-            ],
+                    "trades_since_retrain": int(self.trades_since_retrain),
+                    "buffer_size": int(self.buffer_size),
+                    "retrain_threshold": int(self.retrain_threshold),
+                },
+            )
+        except Exception as e:
+            logger.debug(f"Failed to save online learner runtime state: {e}")
+
+    def _serialize_trade(self, trade: TradeOutcome) -> Dict[str, Any]:
+        """Convert a TradeOutcome into the shared ledger schema."""
+        metadata = dict(trade.metadata or {})
+        metadata.update({
+            "actual_outcome": int(trade.actual_outcome),
+            "direction_code": int(trade.direction),
+            "entry_time": trade.entry_time.isoformat(),
+            "exit_time": trade.exit_time.isoformat(),
+            "feature_count": int(len(trade.features)),
+            "features": np.asarray(trade.features, dtype=float).tolist(),
+            "pnl_percent": float(trade.pnl_percent),
+        })
+        return {
+            "timestamp": trade.exit_time.isoformat(),
+            "trade_id": trade.trade_id,
+            "instrument": trade.instrument,
+            "direction": "long" if int(trade.direction) == 1 else "short",
+            "confidence": float(trade.confidence),
+            "prediction": float(trade.prediction),
+            "entry": float(trade.entry_price),
+            "exit": float(trade.exit_price),
+            "pnl": float(trade.pnl_percent),
+            "pnl_pips": float(trade.pnl_pips),
+            "model": "market_intelligence",
+            "metadata": metadata,
         }
 
-        with open(buffer_file, 'w') as f:
-            json.dump(data, f, indent=2)
+    def _trade_from_ledger(self, record: Dict[str, Any]) -> Optional[TradeOutcome]:
+        """Reconstruct a TradeOutcome from a shared ledger record."""
+        metadata = record.get("metadata") or {}
+        features = metadata.get("features")
+        if not isinstance(features, list) or not features:
+            return None
+
+        entry_time_raw = metadata.get("entry_time") or record.get("timestamp")
+        exit_time_raw = metadata.get("exit_time") or record.get("timestamp")
+        if not entry_time_raw or not exit_time_raw:
+            return None
+
+        try:
+            direction_code = metadata.get("direction_code")
+            if direction_code is None:
+                direction_label = str(record.get("direction", "")).lower()
+                direction_code = 1 if direction_label in {"1", "long", "buy"} else 0
+
+            pnl_percent = metadata.get("pnl_percent")
+            if pnl_percent is None:
+                pnl_percent = record.get("pnl", 0.0)
+
+            actual_outcome = metadata.get("actual_outcome")
+            if actual_outcome is None:
+                actual_outcome = 1 if float(record.get("pnl_pips") or 0.0) > 0 else 0
+
+            return TradeOutcome(
+                trade_id=str(record.get("trade_id") or ""),
+                instrument=str(record.get("instrument") or ""),
+                direction=int(direction_code),
+                entry_time=datetime.fromisoformat(str(entry_time_raw)),
+                exit_time=datetime.fromisoformat(str(exit_time_raw)),
+                entry_price=float(record.get("entry") or 0.0),
+                exit_price=float(record.get("exit") or 0.0),
+                pnl_pips=float(record.get("pnl_pips") or 0.0),
+                pnl_percent=float(pnl_percent or 0.0),
+                features=np.array(features, dtype=float),
+                prediction=float(record.get("prediction") or 0.0),
+                confidence=float(record.get("confidence") or 0.0),
+                actual_outcome=int(actual_outcome),
+                metadata=dict(metadata),
+            )
+        except Exception as e:
+            trade_id = record.get("trade_id") or record.get("instrument") or "unknown"
+            logger.debug(f"Skipping malformed online-learning trade {trade_id}: {e}")
+            return None
+
+    def _refresh_trade_buffer_from_memory(self) -> None:
+        """Rebuild the in-memory buffer from the shared ledger."""
+        if self._memory_client is None:
+            self.trade_buffer = []
+            return
+
+        try:
+            search_limit = max(self.buffer_size * 4, self.buffer_size)
+            recent_trades = self._memory_client.get_recent_trades(limit=search_limit)
+            rebuilt: List[TradeOutcome] = []
+            for record in recent_trades:
+                if record.get("model") != "market_intelligence":
+                    continue
+                trade = self._trade_from_ledger(record)
+                if trade is None:
+                    continue
+                rebuilt.append(trade)
+                if len(rebuilt) >= self.buffer_size:
+                    break
+            self.trade_buffer = list(reversed(rebuilt))
+        except Exception as e:
+            logger.warning(f"Failed to refresh online learner buffer from shared memory: {e}")
+            self.trade_buffer = []
+
+    def _load_legacy_trade(self, item: Dict[str, Any]) -> Optional[TradeOutcome]:
+        """Convert a legacy trade_buffer.json entry into TradeOutcome."""
+        try:
+            return TradeOutcome(
+                trade_id=item["trade_id"],
+                instrument=item["instrument"],
+                direction=int(item["direction"]),
+                entry_time=datetime.fromisoformat(item["entry_time"]),
+                exit_time=datetime.fromisoformat(item["exit_time"]),
+                entry_price=float(item["entry_price"]),
+                exit_price=float(item["exit_price"]),
+                pnl_pips=float(item["pnl_pips"]),
+                pnl_percent=float(item["pnl_percent"]),
+                features=np.array(item["features"], dtype=float),
+                prediction=float(item["prediction"]),
+                confidence=float(item["confidence"]),
+                actual_outcome=int(item["actual_outcome"]),
+            )
+        except Exception as e:
+            trade_id = item.get("trade_id") or item.get("instrument") or "unknown"
+            logger.debug(f"Skipping malformed legacy trade buffer entry {trade_id}: {e}")
+            return None
+
+    def _migrate_legacy_buffer_to_memory(self) -> None:
+        """Import one legacy trade_buffer.json into shared memory."""
+        if self._memory_client is None:
+            return
+
+        buffer_file = self.storage_dir / "trade_buffer.json"
+        if not buffer_file.exists():
+            return
+
+        try:
+            runtime_state = self._memory_client.get_runtime_state(self._runtime_namespace())
+            if runtime_state.get("legacy_trade_buffer_migrated"):
+                return
+
+            data = json.loads(buffer_file.read_text())
+            migrated = 0
+            for item in data.get("trades", []):
+                trade = self._load_legacy_trade(item)
+                if trade is None:
+                    continue
+                self._memory_client.log_trade(self._serialize_trade(trade))
+                migrated += 1
+
+            state_update = {
+                "legacy_trade_buffer_migrated": True,
+                "legacy_trade_buffer_path": str(buffer_file),
+            }
+            if "trades_since_retrain" not in runtime_state:
+                state_update["trades_since_retrain"] = int(data.get("trades_since_retrain", 0) or 0)
+            self._memory_client.update_runtime_state(self._runtime_namespace(), state_update)
+
+            if migrated:
+                logger.info(f"Migrated {migrated} online-learning trades from legacy buffer")
+        except Exception as e:
+            logger.warning(f"Failed to migrate legacy online-learning buffer: {e}")
+
+    def _persist_trade_to_memory(self, trade: TradeOutcome) -> None:
+        """Insert or update a completed trade in shared memory."""
+        if self._memory_client is None:
+            return
+        try:
+            self._memory_client.log_trade(self._serialize_trade(trade))
+        except Exception as e:
+            logger.debug(f"Failed to persist trade to shared memory: {e}")
 
     def record_trade(self, trade: TradeOutcome):
         """
@@ -1153,14 +1308,18 @@ class OnlineLearner:
         Args:
             trade: TradeOutcome with features and actual result
         """
-        self.trade_buffer.append(trade)
-        self.trades_since_retrain += 1
+        already_recorded = False
+        if self._memory_client is not None and trade.trade_id:
+            already_recorded = self._memory_client.get_trade(trade.trade_id) is not None
+        elif trade.trade_id:
+            already_recorded = any(t.trade_id == trade.trade_id for t in self.trade_buffer)
 
-        # Trim buffer to max size
-        if len(self.trade_buffer) > self.buffer_size:
-            self.trade_buffer = self.trade_buffer[-self.buffer_size:]
+        self._persist_trade_to_memory(trade)
+        self._refresh_trade_buffer_from_memory()
 
-        self._save_buffer()
+        if not already_recorded:
+            self.trades_since_retrain += 1
+            self._save_runtime_state()
 
         # Log trade outcome
         correct = "✓" if trade.was_correct else "✗"
@@ -1231,7 +1390,7 @@ class OnlineLearner:
     def mark_retrained(self):
         """Mark that model was retrained, reset counter."""
         self.trades_since_retrain = 0
-        self._save_buffer()
+        self._save_runtime_state()
         logger.info("Online learning: marked as retrained")
 
 
@@ -1938,6 +2097,7 @@ class MarketIntelligence:
         features: np.ndarray,
         prediction: float,
         confidence: float,
+        context_metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[DriftResult]:
         """
         Record completed trade for online learning and drift detection.
@@ -1964,6 +2124,7 @@ class MarketIntelligence:
                 prediction=prediction,
                 confidence=confidence,
                 actual_outcome=actual_outcome,
+                metadata=context_metadata or {},
             )
             self.online_learner.record_trade(trade)
 

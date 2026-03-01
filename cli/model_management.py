@@ -9,15 +9,79 @@ This module provides commands for managing model lifecycle:
 import json
 import pickle
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from rich.console import Console
 
 from cli.io_utils import DEFAULT_CONFIG_PATH
+from memory_client import MLEngineMemory
 
 console = Console()
+
+
+def _format_recorded_age(timestamp: Any) -> str | None:
+    """Render a compact relative age label for persisted runtime records."""
+    if not timestamp:
+        return None
+
+    try:
+        recorded_at = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+    if recorded_at.tzinfo is None:
+        recorded_at = recorded_at.replace(tzinfo=timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    elapsed_seconds = max(0, int((now - recorded_at.astimezone(timezone.utc)).total_seconds()))
+
+    if elapsed_seconds < 60:
+        age = "just now"
+    elif elapsed_seconds < 3600:
+        age = f"{elapsed_seconds // 60}m ago"
+    elif elapsed_seconds < 86400:
+        age = f"{elapsed_seconds // 3600}h ago"
+    else:
+        age = f"{elapsed_seconds // 86400}d ago"
+
+    return f"recorded {age}"
+
+
+def _render_runtime_decision(title: str, payload: dict[str, Any] | None) -> None:
+    freshness = _format_recorded_age(payload.get("timestamp")) if isinstance(payload, dict) else None
+    title_line = f"\n[bold cyan]{title}[/bold cyan]"
+    if freshness:
+        title_line += f" [dim]({freshness})[/dim]"
+    console.print(title_line)
+    if not isinstance(payload, dict) or not payload:
+        console.print("  [dim]No record available[/dim]")
+        return
+
+    ordered_keys = (
+        "timestamp",
+        "instrument",
+        "granularity",
+        "direction",
+        "decision_type",
+        "reason",
+        "final_decision",
+        "intelligent_review_reason",
+        "adaptive_reason",
+    )
+    for key in ordered_keys:
+        value = payload.get(key)
+        if value not in (None, "", []):
+            console.print(f"  {key}: {value}")
+
+    failed_gates = payload.get("failed_gates")
+    if isinstance(failed_gates, list) and failed_gates:
+        console.print(f"  failed_gates: {', '.join(str(item) for item in failed_gates)}")
+
+    risk_flags = payload.get("risk_flags")
+    if isinstance(risk_flags, list) and risk_flags:
+        console.print(f"  risk_flags: {', '.join(str(item) for item in risk_flags)}")
 
 
 def model_status(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None:
@@ -79,6 +143,18 @@ def model_status(config_path: str = DEFAULT_CONFIG_PATH, **kwargs: Any) -> None:
     if not has_any_model:
         console.print("\n[yellow]✗ No models found[/yellow]")
         console.print("[dim]Train: buddy train --oanda-live --candles 5000[/dim]")
+
+    if bool(kwargs.get("decisions", False)):
+        memory = MLEngineMemory()
+        runtime_state = memory.get_runtime_state("buddy_runtime")
+        _render_runtime_decision(
+            "Last Trade Execution Decision",
+            runtime_state.get("last_trade_execution_decision") if isinstance(runtime_state, dict) else None,
+        )
+        _render_runtime_decision(
+            "Last No-Trade Decision",
+            runtime_state.get("last_no_trade_decision") if isinstance(runtime_state, dict) else None,
+        )
 
     console.print("\n" + "-" * 60)
     console.print("[dim]buddy predict | buddy scan | buddy validate[/dim]")

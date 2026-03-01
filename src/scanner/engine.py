@@ -7,6 +7,7 @@ Handles data fetching, feature engineering, and incremental caching.
 
 from __future__ import annotations
 
+from copy import deepcopy
 import logging
 import math
 import time
@@ -20,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 from .config import ScannerConfig, load_yaml_config
+from .agents import ScannerAgentTeam
 from .gates import GateEvaluator
 from .results import PairAnalysis, ScanResult
 from .execution import ExecutionManager, ExecutionConfig, ExecutionResult
@@ -71,10 +73,12 @@ class Scanner:
         self._last_scan_times: Dict[str, float] = {}
         self._last_prices: Dict[str, float] = {}
         self._cached_results: Dict[str, PairAnalysis] = {}
+        self._cache_contexts: Dict[str, Tuple[Any, ...]] = {}
         self._pair_returns: Dict[str, pd.Series] = {}
         self._feature_snapshots: Dict[str, pd.DataFrame] = {}
         self._raw_snapshots: Dict[str, pd.DataFrame] = {}
         self._ensemble_lock = threading.Lock()
+        self._agent_team = ScannerAgentTeam(self.config)
 
         # Load config
         self._load_yaml_config()
@@ -390,7 +394,7 @@ class Scanner:
                     or self._modular_ensemble.histgb is not None
                 )
             )
-            
+
             if self._ensemble_loaded:
                 self._ensemble_type = "ModularEnsembleInference"
                 logger.info("✓ ModularEnsembleInference loaded successfully")
@@ -411,11 +415,11 @@ class Scanner:
             self._modular_ensemble = MultiPairInference(
                 model_dir=str(self.config.model_dir),
             )
-            
+
             # MultiPairInference may have different loading mechanism
             if hasattr(self._modular_ensemble, 'load_models'):
                 self._modular_ensemble.load_models()
-            
+
             # Check if loaded successfully
             # MultiPairInference stores models differently
             has_models = (
@@ -423,7 +427,7 @@ class Scanner:
             ) or (
                 hasattr(self._modular_ensemble, '_loaded') and self._modular_ensemble._loaded
             )
-            
+
             if has_models or hasattr(self._modular_ensemble, 'predict'):
                 self._ensemble_loaded = True
                 self._ensemble_type = "MultiPairInference"
@@ -1008,6 +1012,65 @@ class Scanner:
 
         return False
 
+    def _build_cache_context(self, pair: str) -> Tuple[Any, ...]:
+        """Return the config/model context that makes a cached scan reusable."""
+        gate_model_type = None
+        if self._gate_evaluator is not None and self._gate_evaluator.is_loaded:
+            gate_model_type = self._gate_evaluator.momentum_model_type
+
+        return (
+            str(pair).upper().replace("/", "_"),
+            self.config.granularity,
+            int(self.config.lookback_candles),
+            str(self.config.profile),
+            bool(self.config.use_master_pair_models),
+            self._resolve_model_source_pair(pair),
+            round(float(self.config.min_tcn_probability), 6),
+            round(float(self.config.min_confidence), 6),
+            round(float(self.config.min_momentum), 6),
+            round(float(self.config.max_drawdown_pct), 6),
+            round(float(self.config.min_atr_pips), 6),
+            int(self.config.min_volatility_regime),
+            bool(self.config.use_tcn_volatility_filter),
+            bool(self.config.require_tcn_volatility),
+            bool(self.config.enable_sub_inference_agents),
+            bool(self.config.enable_trend_agent),
+            bool(self.config.enable_mean_reversion_agent),
+            bool(self.config.enable_volatility_agent),
+            bool(self.config.enable_risk_sentinel_agent),
+            bool(self.config.enable_news_risk_agent),
+            bool(self.config.enable_uncertainty_agent),
+            bool(self.config.enable_execution_quality_agent),
+            round(float(self.config.weighted_vote_threshold), 6),
+            round(float(self.config.max_uncertainty_score), 6),
+            round(float(self.config.max_model_disagreement), 6),
+            round(float(self.config.max_spread_pips), 6),
+            round(float(self.config.max_slippage_pips), 6),
+            round(float(self.config.min_liquidity_score), 6),
+            bool(getattr(self, "_ensemble_loaded", False)),
+            getattr(self, "_ensemble_type", None),
+            gate_model_type,
+        )
+
+    def _get_cached_result(
+        self,
+        pair: str,
+        cache_context: Tuple[Any, ...],
+    ) -> Optional[PairAnalysis]:
+        """Return a defensive copy of cached analysis when context still matches."""
+        if self._cache_contexts.get(pair) != cache_context:
+            return None
+
+        cached = self._cached_results.get(pair)
+        if cached is None:
+            return None
+
+        cached_copy = deepcopy(cached)
+        now = datetime.now(timezone.utc)
+        cached_copy.scan_time = now
+        cached_copy.timestamp = now
+        return cached_copy
+
     def _is_sub_inference_candidate(self, analysis: PairAnalysis) -> bool:
         """Check whether a pair should run sub-inference confirmation agents."""
         if analysis.error is not None:
@@ -1020,9 +1083,9 @@ class Scanner:
             return True
         if analysis.confidence >= float(self.config.sub_inference_min_confidence):
             return True
-        if analysis.momentum_passed and analysis.confidence >= float(self.config.sub_inference_min_confidence) * 0.9:
-            return True
-        return False
+        return analysis.momentum_passed and (
+            analysis.confidence >= float(self.config.sub_inference_min_confidence) * 0.9
+        )
 
     def _run_sub_inference_agents_for_pair(self, analysis: PairAnalysis) -> PairAnalysis:
         """Run rolling-window sub inference agents for one candidate pair."""
@@ -1159,6 +1222,25 @@ class Scanner:
             return analyses
         return [updates.get(a.pair, a) for a in analyses]
 
+    def _apply_specialist_agents(
+        self,
+        analysis: PairAnalysis,
+        df_raw: pd.DataFrame,
+        df_feat: pd.DataFrame,
+        gate_details: Optional[Dict[str, Any]] = None,
+    ) -> PairAnalysis:
+        """Apply the scanner specialist-agent layer to one analysis."""
+        try:
+            return self._agent_team.evaluate(
+                analysis=analysis,
+                df_raw=df_raw,
+                df_feat=df_feat,
+                gate_details=gate_details,
+            )
+        except Exception as e:
+            logger.warning(f"{analysis.pair}: specialist agent evaluation failed - {e}")
+            return analysis
+
     def _scan_pair(self, pair: str) -> Optional[PairAnalysis]:
         """Scan a single pair (atomic unit for parallel execution).
 
@@ -1195,9 +1277,8 @@ class Scanner:
             current_price = df_raw["close"].iloc[-1]
             if self.config.incremental_enabled:
                 if not self._check_price_changed(pair, current_price, self.config.price_change_threshold):
-                    # Return cached result if available
-                    if pair in self._cached_results:
-                        cached = self._cached_results[pair]
+                    cached = self._get_cached_result(pair, self._build_cache_context(pair))
+                    if cached is not None:
                         return cached
 
             # Compute features
@@ -1310,9 +1391,16 @@ class Scanner:
                 if gate_details else str(pair).upper().replace("/", "_"),
                 error=error_msg,
             )
+            result = self._apply_specialist_agents(
+                analysis=result,
+                df_raw=df_raw,
+                df_feat=df_feat,
+                gate_details=gate_details,
+            )
 
             # Cache result
-            self._cached_results[pair] = result
+            self._cached_results[pair] = deepcopy(result)
+            self._cache_contexts[pair] = self._build_cache_context(pair)
             self._last_scan_times[pair] = time.time()
 
             return result
@@ -1329,7 +1417,7 @@ class Scanner:
     def scan(
         self,
         pairs: Optional[List[str]] = None,
-        max_workers: int = 4,
+        max_workers: Optional[int] = None,
         on_pair_complete: Optional[Callable[[PairAnalysis], None]] = None,
     ) -> ScanResult:
         """Scan multiple pairs in parallel.
@@ -1342,7 +1430,8 @@ class Scanner:
         Returns:
             ScanResult with all pair analyses
         """
-        pair_list = pairs or self.config.default_pairs
+        pair_list = pairs if pairs is not None else (self.config.pairs or self.config.default_pairs)
+        worker_count = max(1, int(max_workers or self.config.parallel_workers))
 
         # Check session before starting
         if self.config.enable_session_filter and not self.config.non_interactive:
@@ -1362,7 +1451,7 @@ class Scanner:
         # Parallel scan
         analyses: List[PairAnalysis] = []
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
             futures = {
                 executor.submit(self._scan_pair, pair): pair
                 for pair in pair_list
@@ -1395,7 +1484,7 @@ class Scanner:
 
         # Build scan result
         model_type = "technical"
-        if self._modular_ensemble is not None:
+        if bool(getattr(self, "_ensemble_loaded", False)):
             model_type = "ensemble"
         elif self._gate_evaluator is not None and self._gate_evaluator.is_loaded:
             model_type = self._gate_evaluator.momentum_model_type
@@ -1409,7 +1498,7 @@ class Scanner:
     def scan_with_analysis(
         self,
         pairs: Optional[List[str]] = None,
-        max_workers: int = 4,
+        max_workers: Optional[int] = None,
         run_backtest: bool = True,
         run_correlation: bool = True,
         run_drift_check: bool = True,
@@ -1511,7 +1600,7 @@ class Scanner:
             max_iterations: Stop after N iterations (None = infinite)
             on_update: Callback with updated results
         """
-        pair_list = pairs or self.config.default_pairs
+        pair_list = pairs if pairs is not None else (self.config.pairs or self.config.default_pairs)
         iteration = 0
 
         while max_iterations is None or iteration < max_iterations:

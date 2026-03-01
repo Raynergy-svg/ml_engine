@@ -1083,6 +1083,7 @@ class ModularEnsembleInference:
         features: Optional[np.ndarray] = None,
         entry_time: Optional[datetime] = None,
         exit_time: Optional[datetime] = None,
+        context_metadata: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Record a completed trade for online learning and drift detection.
@@ -1159,6 +1160,7 @@ class ModularEnsembleInference:
                     features=features,
                     prediction=prediction,
                     confidence=confidence,
+                    context_metadata=context_metadata,
                 )
 
                 if drift_result is not None:

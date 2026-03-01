@@ -10,10 +10,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.box import SIMPLE_HEAVY
 from rich.text import Text
@@ -46,27 +46,32 @@ class ScannerDisplay:
         self._model_type: str = "unknown"
         self._granularity: str = "H1"
         self._scan_start_time: Optional[datetime] = None
+        self._is_scanning: bool = False
+        self._planner_orange = "color(215)"
+        self._planner_sand = "color(223)"
+        self._planner_cyan = "color(117)"
+        self._planner_slate = "color(246)"
 
     def _format_direction(self, direction: str, confidence: float) -> Text:
         """Format direction with color based on confidence."""
         if direction == "LONG":
-            color = "green" if confidence >= 0.6 else "yellow"
+            color = self._planner_cyan if confidence >= 0.6 else self._planner_sand
             return Text(f"▲ {direction}", style=f"bold {color}")
         elif direction == "SHORT":
-            color = "red" if confidence >= 0.6 else "yellow"
+            color = self._planner_orange if confidence >= 0.6 else self._planner_sand
             return Text(f"▼ {direction}", style=f"bold {color}")
         else:
-            return Text("● HOLD", style="dim")
+            return Text("● HOLD", style=self._planner_slate)
 
     def _format_confidence(self, confidence: float) -> Text:
         """Format confidence percentage with color."""
         pct = confidence * 100
         if pct >= 70:
-            return Text(f"{pct:.0f}%", style="bold green")
+            return Text(f"{pct:.0f}%", style=f"bold {self._planner_cyan}")
         elif pct >= 50:
-            return Text(f"{pct:.0f}%", style="yellow")
+            return Text(f"{pct:.0f}%", style=self._planner_sand)
         else:
-            return Text(f"{pct:.0f}%", style="dim")
+            return Text(f"{pct:.0f}%", style=self._planner_slate)
 
     def _format_gate(self, passed: bool, value: Optional[float] = None) -> Text:
         """Format gate status."""
@@ -88,14 +93,258 @@ class ScannerDisplay:
     def _format_agent_compact(self, analysis: PairAnalysis) -> Text:
         """Format sub-inference agent consensus."""
         if analysis.agent_total <= 0:
-            return Text("-", style="dim")
+            return Text("-", style=self._planner_slate)
         mark = "\u2713" if analysis.agent_passed else "\u2717"
-        color = "green" if analysis.agent_passed else "yellow"
+        color = self._planner_cyan if analysis.agent_passed else self._planner_sand
         return Text(f"{mark}{analysis.agent_votes}/{analysis.agent_total}", style=color)
+
+    def _format_pair_label(self, analysis: PairAnalysis) -> Text:
+        """Format pair label with a compact visual badge."""
+        pair = analysis.pair.replace("_", "/")
+        text = Text()
+        if analysis.error:
+            text.append("! ", style=f"bold {self._planner_orange}")
+        elif analysis.is_tradeable:
+            text.append("● ", style=f"bold {self._planner_cyan}")
+        elif analysis.gates_passed:
+            text.append("◐ ", style=f"bold {self._planner_cyan}")
+        elif analysis.direction in {"LONG", "SHORT"}:
+            text.append("○ ", style=self._planner_sand)
+        else:
+            text.append("· ", style=self._planner_slate)
+        text.append(pair, style=f"bold {self._planner_sand}")
+        return text
+
+    def _format_checks_compact(self, analysis: PairAnalysis) -> Text:
+        """Format M/A/R gates as a compact labeled strip."""
+        checks = Text()
+        gate_states = [
+            ("M", analysis.momentum_passed),
+            ("A", analysis.confidence_passed),
+            ("R", analysis.risk_passed),
+        ]
+        for idx, (label, passed) in enumerate(gate_states):
+            style = f"bold {self._planner_cyan}" if passed else f"bold {self._planner_orange}"
+            checks.append(label, style=style)
+            checks.append("✓" if passed else "✗", style=style)
+            if idx < len(gate_states) - 1:
+                checks.append(" ", style=self._planner_slate)
+        return checks
+
+    def _format_status(self, analysis: PairAnalysis) -> Text:
+        """Format overall scanner state for a pair."""
+        if analysis.error:
+            return Text("ERROR", style=f"bold {self._planner_orange}")
+        if analysis.is_tradeable:
+            if getattr(analysis, "agent_promoted", False):
+                return Text("PROMOTED", style=f"bold {self._planner_cyan}")
+            return Text("READY", style=f"bold {self._planner_cyan}")
+        if analysis.gates_passed:
+            return Text("FILTERED", style=f"bold {self._planner_sand}")
+        if analysis.direction in {"LONG", "SHORT"}:
+            return Text("WATCH", style=self._planner_sand)
+        return Text("HOLD", style=self._planner_slate)
+
+    def _format_price(self, analysis: PairAnalysis) -> str:
+        """Format price with pair-appropriate precision."""
+        if not analysis.current_price:
+            return "-"
+        decimals = 3 if analysis.pair.endswith("JPY") else 4
+        return f"{analysis.current_price:.{decimals}f}"
 
     def _format_error(self, error: str) -> Text:
         """Format error message."""
-        return Text(f"⚠ {error[:30]}", style="dim red")
+        return Text(f"⚠ {error[:30]}", style=self._planner_orange)
+
+    def _generate_descriptive_note(self, analysis: PairAnalysis) -> str:
+        """Generate a descriptive note based on analysis state.
+
+        Provides specific, actionable notes explaining:
+        - Why trade-ready pairs are attractive
+        - What's preventing execution for watchlist pairs
+        - Specific signals detected (momentum, trend, regime)
+
+        Args:
+            analysis: PairAnalysis with gate and signal data
+
+        Returns:
+            Descriptive note string
+        """
+        # Handle errors first
+        if analysis.error:
+            return analysis.error
+
+        # === TRADE-READY PAIRS (gates_passed=True) ===
+        if analysis.gates_passed:
+            return self._generate_trade_ready_note(analysis)
+
+        # === WATCHLIST PAIRS (gates_passed=False) ===
+        return self._generate_watchlist_note(analysis)
+
+    def _generate_trade_ready_note(self, analysis: PairAnalysis) -> str:
+        """Generate note for trade-ready pairs (all gates passed)."""
+        notes = []
+
+        # Position sizing info
+        notes.append(f"SL:{analysis.sl_pips:.0f} TP:{analysis.tp_pips:.0f}")
+
+        # Signal strength description
+        strength_desc = self._get_strength_description(analysis)
+        if strength_desc:
+            notes.append(strength_desc)
+
+        # Agent consensus
+        if analysis.agent_total > 0:
+            agent_state = "confirmed" if analysis.agent_passed else "weak"
+            notes.append(f"agent {agent_state} ({analysis.agent_votes}/{analysis.agent_total})")
+        else:
+            notes.append("agent n/a")
+
+        if analysis.why_trade:
+            notes.append(analysis.why_trade[0])
+
+        # Execution path if promoted
+        if getattr(analysis, "agent_promoted", False):
+            source = (analysis.master_pair or analysis.pair).replace("_", "/")
+            notes.append(f"exec via {source}")
+
+        return " | ".join(notes)
+
+    def _generate_watchlist_note(self, analysis: PairAnalysis) -> str:
+        """Generate note for watchlist pairs (not trade-ready)."""
+        if analysis.why_no_trade:
+            return analysis.why_no_trade[0]
+        if analysis.why_trade and analysis.direction in {"LONG", "SHORT"}:
+            return analysis.why_trade[0]
+
+        # Check agent-only passes first
+        if analysis.agent_total > 0 and analysis.agent_passed:
+            return f"agent confirmed ({analysis.agent_votes}/{analysis.agent_total})"
+        if analysis.agent_total > 0 and not analysis.agent_passed:
+            return f"agent weak ({analysis.agent_votes}/{analysis.agent_total})"
+
+        # Check individual gate failures (M, A, R)
+        if not analysis.momentum_passed:
+            return self._momentum_failure_note(analysis)
+        if not analysis.confidence_passed:
+            return self._confidence_failure_note(analysis)
+        if not analysis.risk_passed:
+            return self._risk_failure_note(analysis)
+
+        # All basic gates passed but gates_passed=False - check advanced filters
+        if analysis.momentum_passed and analysis.confidence_passed and analysis.risk_passed:
+            return self._advanced_filter_note(analysis)
+
+        # Fallback for other cases
+        if analysis.direction in {"LONG", "SHORT"} and analysis.confidence >= 0.50:
+            return "watchlist setup"
+
+        return "pending review"
+
+    def _get_strength_description(self, analysis: PairAnalysis) -> str:
+        """Get strength signal description for trade-ready pairs."""
+        descriptions = []
+
+        # Momentum acceleration signal
+        if getattr(analysis, "momentum_acceleration", False):
+            descriptions.append("momentum surge")
+        elif analysis.momentum >= 0.6:
+            descriptions.append("strong momentum")
+        elif analysis.momentum >= 0.4:
+            descriptions.append("trend aligned")
+
+        # Confidence/trend strength
+        ridge_conf = getattr(analysis, "ridge_confidence", 0)
+        if ridge_conf >= 70:
+            descriptions.append("strong trend")
+        elif ridge_conf >= 55:
+            descriptions.append("trend confirmed")
+
+        # Directional clarity
+        if analysis.confidence >= 0.65:
+            descriptions.append("high conviction")
+        elif analysis.confidence >= 0.55:
+            descriptions.append("directional clarity")
+
+        return descriptions[0] if descriptions else ""
+
+    def _momentum_failure_note(self, analysis: PairAnalysis) -> str:
+        """Generate note for momentum gate failure."""
+        momentum = analysis.momentum
+
+        if momentum < 0.15:
+            return f"weak momentum ({momentum:.0%})"
+        elif momentum < 0.20:
+            return f"low momentum ({momentum:.0%})"
+        else:
+            return f"momentum below threshold ({momentum:.0%})"
+
+    def _confidence_failure_note(self, analysis: PairAnalysis) -> str:
+        """Generate note for confidence/ADX gate failure."""
+        ridge_conf = getattr(analysis, "ridge_confidence", 0)
+
+        if ridge_conf > 0 and ridge_conf < 40:
+            return f"weak trend (ADX:{ridge_conf:.0f})"
+        elif ridge_conf > 0 and ridge_conf < 50:
+            return f"low ADX ({ridge_conf:.0f})"
+        else:
+            return "low ADX"
+
+    def _risk_failure_note(self, analysis: PairAnalysis) -> str:
+        """Generate note for risk gate failure."""
+        drawdown = getattr(analysis, "drawdown", 0)
+        rf_drawdown = getattr(analysis, "rf_drawdown", 0)
+        risk_val = rf_drawdown if rf_drawdown > 0 else drawdown
+
+        if risk_val > 0.05:
+            return f"high risk (DD:{risk_val:.1%})"
+        elif risk_val > 0.025:
+            return f"elevated risk ({risk_val:.1%})"
+        else:
+            return "high risk"
+
+    def _advanced_filter_note(self, analysis: PairAnalysis) -> str:
+        """Generate note when basic gates pass but advanced filters block trade."""
+        # Check volatility regime filter
+        vol_regime = getattr(analysis, "volatility_regime", "UNKNOWN")
+        vol_gate_passed = getattr(analysis, "volatility_gate_passed", True)
+
+        if not vol_gate_passed or vol_regime in ("LOW", "NORMAL"):
+            regime_note = vol_regime.lower() if vol_regime != "UNKNOWN" else "suboptimal"
+            return f"volatility regime ({regime_note})"
+
+        # Check if blocked by circuit breaker
+        if getattr(analysis, "blocked_by_circuit_breaker", False):
+            breakers = getattr(analysis, "circuit_breakers_triggered", [])
+            if breakers:
+                return f"circuit breaker ({breakers[0]})"
+            return "circuit breaker"
+
+        # Check execution quality
+        if not getattr(analysis, "execution_quality_passed", True):
+            spread = getattr(analysis, "spread_pips", 0)
+            slippage = getattr(analysis, "est_slippage_pips", 0)
+            if spread > 2:
+                return f"wide spread ({spread:.1f} pips)"
+            if slippage > 1:
+                return f"high slippage ({slippage:.1f} pips)"
+            return "execution quality"
+
+        # Check transformer/meta-labeler gates (if available)
+        # These are checked after volatility since they're optional
+        direction = analysis.direction
+        confidence = analysis.confidence
+
+        # Provide context-specific notes based on available signals
+        if confidence >= 0.55:
+            if getattr(analysis, "momentum_acceleration", False):
+                return f"accelerating {direction.lower()} | regime filter"
+            return f"{direction.lower()} setup | regime filter"
+        elif confidence >= 0.50:
+            return f"emerging {direction.lower()} | regime filter"
+
+        # Generic fallback with more context
+        return "regime filter"
 
     def generate_table(self) -> Table:
         """Generate results table for Live display.
@@ -106,24 +355,21 @@ class ScannerDisplay:
         table = Table(
             title=None,
             show_header=True,
-            header_style="bold cyan",
+            header_style=f"bold {self._planner_orange}",
             expand=False,
             padding=(0, 1),
             box=SIMPLE_HEAVY,
+            border_style=self._planner_sand,
         )
 
-        # Columns – compact layout for 80-char terminals
-        # Total: 7+1+7+1+4+1+3+1+3+1+3+1+3+1+9+1+15 = ~62 data + separators
-        table.add_column("Pair", style="bold", no_wrap=True)
-        table.add_column("Dir", justify="center", no_wrap=True)
+        table.add_column("Pair", no_wrap=True)
+        table.add_column("Signal", justify="center", no_wrap=True)
         table.add_column("Conf", justify="right", no_wrap=True)
-        table.add_column("M", justify="center", no_wrap=True)  # Momentum
-        table.add_column("A", justify="center", no_wrap=True)  # ADX
-        table.add_column("R", justify="center", no_wrap=True)  # Risk
-        table.add_column("Ag", justify="center", no_wrap=True)  # Agent consensus
-        table.add_column("G", justify="center", no_wrap=True)  # Gates
+        table.add_column("Checks", justify="center", no_wrap=True)
+        table.add_column("Agent", justify="center", no_wrap=True)
+        table.add_column("State", justify="center", no_wrap=True)
         table.add_column("Price", justify="right", no_wrap=True)
-        table.add_column("Note")
+        table.add_column("Why", overflow="fold")
 
         # Sort analyses: tradeable first, then by opportunity score.
         sorted_analyses = sorted(
@@ -132,76 +378,50 @@ class ScannerDisplay:
             reverse=True,
         )
 
+        if not sorted_analyses:
+            status = Text()
+            if self._is_scanning:
+                status.append("◌ Collecting live scan results...", style=f"bold {self._planner_cyan}")
+            else:
+                status.append("No scan results yet", style=self._planner_slate)
+            table.add_row(
+                Text("waiting", style=self._planner_slate),
+                Text("-", style=self._planner_slate),
+                Text("-", style=self._planner_slate),
+                Text("-", style=self._planner_slate),
+                Text("-", style=self._planner_slate),
+                Text("SCANNING" if self._is_scanning else "IDLE", style=self._planner_cyan if self._is_scanning else self._planner_slate),
+                Text("-", style=self._planner_slate),
+                status,
+            )
+            return table
+
         for analysis in sorted_analyses:
             # Handle hard errors (no data at all)
             if analysis.error and analysis.current_price < 0.0001:
                 table.add_row(
-                    analysis.pair.replace("_", "/"),
+                    self._format_pair_label(analysis),
                     Text("-", style="dim"),
                     Text("-", style="dim"),
                     Text("-", style="dim"),
                     Text("-", style="dim"),
                     Text("-", style="dim"),
-                    Text("-", style="dim"),
-                    Text("-", style="dim"),
-                    Text("-", style="dim"),
+                    self._format_price(analysis),
                     self._format_error(analysis.error),
                 )
                 continue
 
-            # Format each column
-            pair_text = analysis.pair.replace("_", "/")
-            if analysis.gates_passed:
-                pair_text = f"★ {pair_text}"
-
-            # Gates summary
-            gates_text = analysis.gate_summary
-            gates_style = "green bold" if analysis.gates_passed else "dim"
-
-            # Note (warnings or trade suggestion)
-            note = ""
-            if analysis.error:
-                note = analysis.error
-            elif analysis.gates_passed:
-                note = f"SL:{analysis.sl_pips:.0f} TP:{analysis.tp_pips:.0f}"
-                if analysis.agent_total > 0:
-                    agent_state = "confirmed" if analysis.agent_passed else "weak"
-                    note += f" | agent {agent_state} ({analysis.agent_votes}/{analysis.agent_total})"
-                else:
-                    note += " | agent n/a"
-                if getattr(analysis, "agent_promoted", False):
-                    source = (analysis.master_pair or analysis.pair).replace("_", "/")
-                    note += f" | exec via {source}"
-            elif analysis.agent_total > 0 and analysis.agent_passed:
-                note = f"agent confirmed ({analysis.agent_votes}/{analysis.agent_total})"
-            elif analysis.agent_total > 0 and not analysis.agent_passed:
-                note = f"agent weak ({analysis.agent_votes}/{analysis.agent_total})"
-            elif not analysis.momentum_passed:
-                note = "low momentum"
-            elif not analysis.confidence_passed:
-                note = "low ADX"
-            elif not analysis.risk_passed:
-                note = "high risk"
-            elif (
-                not analysis.gates_passed
-                and analysis.momentum_passed
-                and analysis.confidence_passed
-                and analysis.risk_passed
-            ):
-                note = "score/regime filter"
-            elif analysis.direction in {"LONG", "SHORT"} and analysis.confidence >= 0.50:
-                note = "watchlist setup"
+            # Generate descriptive note using new method
+            note = self._generate_descriptive_note(analysis)
 
             table.add_row(
-                pair_text,
+                self._format_pair_label(analysis),
                 self._format_direction(analysis.direction, analysis.confidence),
                 self._format_confidence(analysis.confidence),
-                self._format_gate_compact(analysis.momentum_passed),
-                self._format_gate_compact(analysis.confidence_passed),
-                self._format_gate_compact(analysis.risk_passed),
+                self._format_checks_compact(analysis),
                 self._format_agent_compact(analysis),
-                Text(gates_text, style=gates_style),
-                f"{analysis.current_price:.4f}" if analysis.current_price else "-",
+                self._format_status(analysis),
+                self._format_price(analysis),
                 note,
             )
 
@@ -216,20 +436,26 @@ class ScannerDisplay:
 
         # Build header text
         header_parts = [
-            "[bold cyan]📡 BUDDY SCANNER[/bold cyan]",
-            f"[green]${nav:,.0f}[/green]" if nav > 0 else "",
-            f"[dim]{open_trades} trades[/dim]" if open_trades > 0 else "",
+            f"[bold {self._planner_orange}]BUDDY PLANNER SCANNER[/bold {self._planner_orange}]",
+            f"[{self._planner_cyan}]${nav:,.0f}[/{self._planner_cyan}]" if nav > 0 else "",
+            f"[{self._planner_slate}]{open_trades} trades[/{self._planner_slate}]" if open_trades > 0 else "",
         ]
 
         if unrealized_pl != 0:
-            pl_color = "green" if unrealized_pl > 0 else "red"
+            pl_color = self._planner_cyan if unrealized_pl > 0 else self._planner_orange
             header_parts.append(f"[{pl_color}]P/L: ${unrealized_pl:+,.2f}[/{pl_color}]")
 
-        header_parts.append(f"[dim]{self._model_type} | {self._granularity}[/dim]")
+        header_parts.append(f"[{self._planner_sand}]{self._model_type} | {self._granularity}[/{self._planner_sand}]")
+        if self._is_scanning:
+            header_parts.append(f"[{self._planner_cyan}]◌ scanning[/{self._planner_cyan}]")
 
         header = " | ".join([p for p in header_parts if p])
-
-        return Panel(header, border_style="cyan")
+        legend = (
+            f"[{self._planner_slate}]● ready  ○ watch  ◐ filtered  ! error"
+            "   Checks: M momentum  A confidence  R risk"
+            f"[/{self._planner_slate}]"
+        )
+        return Panel(Group(header, legend), border_style=self._planner_sand)
 
     def show_scanning_progress(self, pairs: List[str]) -> Progress:
         """Create progress display for scanning phase.
@@ -243,6 +469,8 @@ class ScannerDisplay:
         return Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=18),
+            TextColumn("[dim]{task.completed}/{task.total}[/dim]"),
             console=self.console,
             transient=True,
         )
@@ -254,8 +482,9 @@ class ScannerDisplay:
             Rich Live instance
         """
         self._scan_start_time = datetime.now(timezone.utc)
+        self._is_scanning = True
         self._live = Live(
-            self.generate_table(),
+            Group(self.generate_header(), self.generate_table()),
             console=self.console,
             refresh_per_second=4,
         )
@@ -278,10 +507,11 @@ class ScannerDisplay:
 
         # Update Live display
         if self._live is not None:
-            self._live.update(self.generate_table())
+            self._live.update(Group(self.generate_header(), self.generate_table()))
 
     def stop_live(self) -> None:
         """Stop Live display."""
+        self._is_scanning = False
         if self._live is not None:
             self._live.stop()
             self._live = None
@@ -300,6 +530,7 @@ class ScannerDisplay:
         self._current_analyses = result.analyses
         self._model_type = result.model_type
         self._granularity = result.granularity
+        self._is_scanning = False
 
         if account_info:
             self._account_info = account_info

@@ -1,0 +1,46 @@
+[
+  {
+    "id": "planner_eval_001",
+    "user_message": "show status --decisions",
+    "runtime_context": {
+      "active_instrument": "EUR_USD",
+      "granularity": "M5",
+      "execute_mode": "dry-run",
+      "knowledge_only": true
+    },
+    "expected_tools": ["get_status", "get_decisions"]
+  },
+  {
+    "id": "planner_eval_002",
+    "user_message": "scan h1 and auto-execute top 2",
+    "runtime_context": {
+      "active_instrument": "EUR_USD",
+      "granularity": "M5",
+      "execute_mode": "dry-run",
+      "knowledge_only": false
+    },
+    "expected_tools": ["scan_market"]
+  },
+  {
+    "id": "planner_eval_003",
+    "user_message": "import untracked trades into the journal",
+    "runtime_context": {
+      "active_instrument": "EUR_USD",
+      "granularity": "M5",
+      "execute_mode": "dry-run",
+      "knowledge_only": true
+    },
+    "expected_tools": ["import_journal_trades"]
+  },
+  {
+    "id": "planner_eval_004",
+    "user_message": "how do you work?",
+    "runtime_context": {
+      "active_instrument": "EUR_USD",
+      "granularity": "M5",
+      "execute_mode": "dry-run",
+      "knowledge_only": true
+    },
+    "expected_tools": ["answer_buddy_self_question"]
+  }
+]

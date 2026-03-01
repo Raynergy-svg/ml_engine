@@ -80,6 +80,23 @@ def _llm_call(
     Returns:
         The model's response text, or None if the call failed.
     """
+    try:
+        from llm_providers import llm_call as provider_llm_call, select_buddy_provider_name
+
+        provider_name = select_buddy_provider_name(None)
+        if provider_name:
+            response = provider_llm_call(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                model=model,
+                temperature=temperature,
+                provider=provider_name,
+            )
+            if response:
+                return response
+    except Exception as e:
+        logger.debug(f"Unified provider call failed in self_refine: {e}")
+
     if not openai.api_key:
         openai.api_key = os.getenv("OPENAI_API_KEY")
         if not openai.api_key:

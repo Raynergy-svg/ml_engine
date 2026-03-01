@@ -6,6 +6,7 @@ This module intentionally targets the PRACTICE environment only.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import time
@@ -17,6 +18,28 @@ try:
     import requests  # type: ignore
 except Exception:  # pragma: no cover
     requests = None
+
+
+def _session_label_from_iso(ts: str | None) -> str | None:
+    """Map an ISO timestamp to a coarse FX session label."""
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        hour = dt.astimezone(timezone.utc).hour
+    except Exception:
+        return None
+    if 0 <= hour < 7:
+        return "asia"
+    if 7 <= hour < 12:
+        return "london"
+    if 12 <= hour < 17:
+        return "ny_overlap"
+    if 17 <= hour < 21:
+        return "new_york"
+    return "rollover"
 
 
 def _load_project_dotenv() -> None:
@@ -446,6 +469,31 @@ class OandaPracticeClient:
             else:
                 pips = realized_pl * 10  # Rough estimate
 
+            exit_reason = "manual"
+            close_reason = str(close_tx.get("reason", "") or "").upper()
+            if "TAKE_PROFIT" in close_reason:
+                exit_reason = "tp"
+            elif "STOP_LOSS" in close_reason:
+                exit_reason = "sl"
+            elif "TRAILING_STOP" in close_reason:
+                exit_reason = "ts"
+
+            open_time = trade.get("openTime")
+            close_time = close_tx.get("time") or trade.get("closeTime")
+            entry_session = _session_label_from_iso(open_time)
+            exit_session = _session_label_from_iso(close_time)
+
+            context_metadata = {
+                "exit_reason": exit_reason,
+                "close_reason": close_reason or None,
+                "open_time": open_time,
+                "close_time": close_time,
+                "entry_session": entry_session,
+                "session_label": entry_session,
+                "exit_session": exit_session,
+                "units": abs(units_signed),
+            }
+
             # PREFERRED: Use ensemble's record_trade_result for proper drift detection
             if ensemble is not None and hasattr(ensemble, 'record_trade_result'):
                 drift_result = ensemble.record_trade_result(
@@ -458,6 +506,7 @@ class OandaPracticeClient:
                     prediction=prediction,
                     confidence=confidence,
                     features=features,
+                    context_metadata=context_metadata,
                 )
 
                 # Log drift detection result
@@ -489,6 +538,7 @@ class OandaPracticeClient:
                     features=features if features is not None else np.zeros(10),
                     prediction=prediction,
                     confidence=confidence,
+                    context_metadata=context_metadata,
                 )
 
         except ImportError:

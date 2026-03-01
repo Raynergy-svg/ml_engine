@@ -8,7 +8,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
+from memory_client import MLEngineMemory
 from buddy_intelligent_mode import (
+    LLMTradeValidation,
     BuddyArchitectureDescription,
     BuddyIntelligentMode,
     BuddyRawOutput,
@@ -19,6 +21,7 @@ from buddy_intelligent_mode import (
     TradeLessonMemory,
     _extract_modality_weights,
     _parse_reasoning_sections,
+    apply_adaptive_trade_policy,
     generate_adaptive_reasoning,
     generate_trade_reasoning,
     get_intelligent_mode,
@@ -398,7 +401,7 @@ class TestOnlineLearningMemory(unittest.TestCase):
 
     def test_record_outcome(self):
         """Records outcome correctly."""
-        memory = OnlineLearningMemory()
+        memory = OnlineLearningMemory(sync_with_shared_memory=False)
         memory.record_outcome(
             trade_id="T001",
             instrument="EUR_USD",
@@ -412,13 +415,13 @@ class TestOnlineLearningMemory(unittest.TestCase):
 
     def test_extract_lessons_insufficient_data(self):
         """Returns message when insufficient data."""
-        memory = OnlineLearningMemory()
+        memory = OnlineLearningMemory(sync_with_shared_memory=False)
         lessons = memory.extract_lessons()
         self.assertIn("Insufficient data", lessons[0])
 
     def test_extract_lessons_with_data(self):
         """Extracts lessons when data available."""
-        memory = OnlineLearningMemory()
+        memory = OnlineLearningMemory(sync_with_shared_memory=False)
         
         # Add enough outcomes
         for i in range(10):
@@ -436,7 +439,7 @@ class TestOnlineLearningMemory(unittest.TestCase):
 
     def test_get_memory_context(self):
         """Returns memory context."""
-        memory = OnlineLearningMemory()
+        memory = OnlineLearningMemory(sync_with_shared_memory=False)
         memory.record_outcome("T001", "EUR_USD", "long", 0.75, 100.0)
         memory.record_outcome("T002", "EUR_USD", "short", 0.60, -50.0)
         
@@ -450,12 +453,192 @@ class TestOnlineLearningMemory(unittest.TestCase):
             path = Path(tmpdir) / "memory.json"
             
             # Create and populate memory
-            memory1 = OnlineLearningMemory(memory_path=path)
+            memory1 = OnlineLearningMemory(memory_path=path, sync_with_shared_memory=False)
             memory1.record_outcome("T001", "EUR_USD", "long", 0.75, 100.0)
             
             # Load in new instance
-            memory2 = OnlineLearningMemory(memory_path=path)
+            memory2 = OnlineLearningMemory(memory_path=path, sync_with_shared_memory=False)
             self.assertEqual(len(memory2._outcomes), 1)
+
+    def test_syncs_from_shared_memory(self):
+        """Shared trade ledger should seed Buddy learning memory."""
+        with TemporaryDirectory() as tmpdir:
+            shared = MLEngineMemory(storage_path=Path(tmpdir) / ".memory")
+            shared.log_trade({
+                "timestamp": "2026-02-28T12:00:00+00:00",
+                "trade_id": "T001",
+                "instrument": "EUR_USD",
+                "direction": "long",
+                "confidence": 0.75,
+                "pnl": 100.0,
+            })
+
+            memory = OnlineLearningMemory(memory_client=shared)
+            self.assertEqual(len(memory._outcomes), 1)
+            self.assertEqual(memory._outcomes[0]["trade_id"], "T001")
+
+    def test_record_outcome_mirrors_to_shared_memory(self):
+        """Buddy lesson memory should write new outcomes into shared ledger."""
+        with TemporaryDirectory() as tmpdir:
+            shared = MLEngineMemory(storage_path=Path(tmpdir) / ".memory")
+            memory = OnlineLearningMemory(memory_client=shared)
+
+            memory.record_outcome("T002", "GBP_USD", "short", 0.62, -35.0)
+
+            trades = shared.get_recent_trades(limit=10)
+            self.assertEqual(len(trades), 1)
+            self.assertEqual(trades[0]["trade_id"], "T002")
+            self.assertEqual(trades[0]["instrument"], "GBP_USD")
+
+    def test_get_adaptation_policy_reduces_size_after_losses(self):
+        """Recent weak outcomes should reduce future size."""
+        memory = OnlineLearningMemory(sync_with_shared_memory=False)
+        pnls = [20.0, -40.0, -35.0, -15.0]
+        for idx, pnl in enumerate(pnls):
+            memory.record_outcome(
+                trade_id=f"T{idx:03d}",
+                instrument="EUR_USD",
+                direction="long",
+                confidence=0.68,
+                pnl=pnl,
+            )
+
+        policy = memory.get_adaptation_policy(
+            instrument="EUR_USD",
+            direction="long",
+            confidence=0.66,
+        )
+
+        self.assertTrue(policy.approve)
+        self.assertLess(policy.size_multiplier, 1.0)
+        self.assertIn("reducing size", policy.reason.lower())
+
+    def test_get_adaptation_policy_vetoes_after_losing_streak(self):
+        """A sharp losing streak should veto similar low-confidence trades."""
+        memory = OnlineLearningMemory(sync_with_shared_memory=False)
+        for idx in range(4):
+            memory.record_outcome(
+                trade_id=f"L{idx:03d}",
+                instrument="GBP_USD",
+                direction="short",
+                confidence=0.62,
+                pnl=-25.0,
+            )
+
+        policy = memory.get_adaptation_policy(
+            instrument="GBP_USD",
+            direction="short",
+            confidence=0.60,
+        )
+
+        self.assertFalse(policy.approve)
+        self.assertEqual(policy.size_multiplier, 0.0)
+        self.assertIn("veto", policy.reason.lower())
+
+    def test_get_adaptation_policy_prefers_matching_context_tags(self):
+        """Context tags should bias adaptation toward similar regimes/sessions."""
+        memory = OnlineLearningMemory(sync_with_shared_memory=False)
+
+        for idx in range(3):
+            memory.record_outcome(
+                trade_id=f"POS{idx:03d}",
+                instrument="EUR_USD",
+                direction="long",
+                confidence=0.68,
+                pnl=25.0,
+                context={"volatility_regime_name": "LOW", "session_label": "asia"},
+            )
+        for idx in range(3):
+            memory.record_outcome(
+                trade_id=f"NEG{idx:03d}",
+                instrument="EUR_USD",
+                direction="long",
+                confidence=0.68,
+                pnl=-20.0,
+                context={"volatility_regime_name": "HIGH", "session_label": "london"},
+            )
+
+        policy = memory.get_adaptation_policy(
+            instrument="EUR_USD",
+            direction="long",
+            confidence=0.67,
+            context={"volatility_regime_name": "HIGH", "session_label": "london"},
+        )
+
+        self.assertTrue(policy.sample_size >= 3)
+        self.assertLess(policy.size_multiplier, 1.0)
+        self.assertTrue(
+            "reducing size" in policy.reason.lower() or "veto" in policy.reason.lower()
+        )
+
+    def test_get_adaptation_policy_weights_partial_context_matches(self):
+        """Partial context matches should still influence policy severity."""
+        memory = OnlineLearningMemory(sync_with_shared_memory=False)
+
+        for idx in range(3):
+            memory.record_outcome(
+                trade_id=f"RISK{idx:03d}",
+                instrument="EUR_USD",
+                direction="long",
+                confidence=0.68,
+                pnl=-20.0,
+                context={"volatility_regime_name": "HIGH", "session_label": "london"},
+            )
+        for idx in range(3):
+            memory.record_outcome(
+                trade_id=f"SAFE{idx:03d}",
+                instrument="EUR_USD",
+                direction="long",
+                confidence=0.68,
+                pnl=18.0,
+                context={"volatility_regime_name": "LOW", "session_label": "newyork"},
+            )
+
+        risk_tilted = memory.get_adaptation_policy(
+            instrument="EUR_USD",
+            direction="long",
+            confidence=0.67,
+            context={"volatility_regime_name": "HIGH", "session_label": "newyork"},
+        )
+        safer_tilted = memory.get_adaptation_policy(
+            instrument="EUR_USD",
+            direction="long",
+            confidence=0.67,
+            context={"volatility_regime_name": "LOW", "session_label": "london"},
+        )
+
+        self.assertEqual(risk_tilted.sample_size, 6)
+        self.assertEqual(safer_tilted.sample_size, 6)
+        self.assertLess(risk_tilted.win_rate, safer_tilted.win_rate)
+        self.assertLess(risk_tilted.avg_pnl, safer_tilted.avg_pnl)
+        self.assertLess(risk_tilted.size_multiplier, safer_tilted.size_multiplier)
+        self.assertIn("reducing size", risk_tilted.reason.lower())
+        self.assertEqual(safer_tilted.size_multiplier, 1.0)
+
+    def test_apply_adaptive_trade_policy_combines_reason_and_size(self):
+        """Adaptive policy should modify validation without losing flags."""
+        validation = LLMTradeValidation(
+            approve=True,
+            size_multiplier=1.0,
+            reason="llm approved",
+            risk_flags=["llm_flag"],
+        )
+        policy = OnlineLearningMemory(sync_with_shared_memory=False).get_adaptation_policy(
+            instrument="USD_JPY",
+            direction="long",
+            confidence=0.70,
+        )
+        policy.size_multiplier = 0.8
+        policy.reason = "memory reducing size"
+        policy.risk_flags = ["memory_flag"]
+
+        combined = apply_adaptive_trade_policy(validation, policy)
+
+        self.assertTrue(combined.approve)
+        self.assertAlmostEqual(combined.size_multiplier, 0.8)
+        self.assertIn("llm approved", combined.reason)
+        self.assertIn("memory reducing size", combined.reason)
+        self.assertEqual(set(combined.risk_flags), {"llm_flag", "memory_flag"})
 
 
 class TestGenerateAdaptiveReasoning(unittest.TestCase):
@@ -467,7 +650,7 @@ class TestGenerateAdaptiveReasoning(unittest.TestCase):
 
     def test_generates_adaptive_reasoning(self):
         """Generates reasoning with adaptation."""
-        memory = OnlineLearningMemory()
+        memory = OnlineLearningMemory(sync_with_shared_memory=False)
         memory._lessons = ["Past lesson 1", "Past lesson 2"]
         
         raw = BuddyRawOutput(confidence=0.75, prediction=1.0850)
@@ -579,13 +762,13 @@ class TestBuddyIntelligentMode(unittest.TestCase):
 
     def test_initialization(self):
         """Initializes correctly."""
-        mode = BuddyIntelligentMode()
+        mode = BuddyIntelligentMode(sync_with_shared_memory=False)
         self.assertIsNotNone(mode.memory)
         self.assertEqual(mode.default_model, "gpt-4")
 
     def test_get_reasoning(self):
         """get_reasoning returns result."""
-        mode = BuddyIntelligentMode()
+        mode = BuddyIntelligentMode(sync_with_shared_memory=False)
         raw = BuddyRawOutput(confidence=0.75, prediction=1.0850)
         
         result = mode.get_reasoning(
@@ -598,7 +781,7 @@ class TestBuddyIntelligentMode(unittest.TestCase):
 
     def test_get_multi_modal_reasoning(self):
         """get_multi_modal_reasoning returns result."""
-        mode = BuddyIntelligentMode()
+        mode = BuddyIntelligentMode(sync_with_shared_memory=False)
         raw = BuddyRawOutput(confidence=0.75, prediction=1.0850)
         context = MultiModalContext(sentiment_score=0.3)
         
@@ -613,7 +796,7 @@ class TestBuddyIntelligentMode(unittest.TestCase):
 
     def test_get_adaptive_reasoning(self):
         """get_adaptive_reasoning returns result."""
-        mode = BuddyIntelligentMode()
+        mode = BuddyIntelligentMode(sync_with_shared_memory=False)
         raw = BuddyRawOutput(confidence=0.75, prediction=1.0850)
         
         result = mode.get_adaptive_reasoning(
@@ -624,9 +807,131 @@ class TestBuddyIntelligentMode(unittest.TestCase):
         
         self.assertIn("adaptive_reasoning", result)
 
+    def test_get_full_intelligent_analysis_combines_layers(self):
+        """Full analysis should combine context and memory in one result."""
+        mode = BuddyIntelligentMode(sync_with_shared_memory=False)
+        mode.record_trade_outcome("T001", "EUR_USD", "long", 0.75, 100.0)
+        mode.memory._lessons = ["Reduce size near CPI"]
+        raw = BuddyRawOutput(confidence=0.75, prediction=1.0850)
+        context = MultiModalContext(
+            news_summaries=["ECB tone supportive for EUR"],
+            sentiment_score=0.3,
+            upcoming_events=["CPI in 45 minutes"],
+        )
+
+        def integrated_llm(prompt: str, system_prompt: str = None, model: str = "gpt-4", temperature: float = 0.2) -> str:
+            self.assertIn("Memory Summary", prompt)
+            self.assertIn("Multi-Modal Context", prompt)
+            return """**Multi-Modal Fusion**
+- Sentiment supports the setup.
+
+**Adaptation from Experience**
+- Reducing size due to CPI event risk.
+
+**Market Context**
+- Trend remains constructive.
+
+**Buddy Signal Breakdown**
+- Raw: Confidence 75%, Prob 68%
+
+**Key Drivers**
+- Momentum and supportive sentiment align.
+
+**Risks & Alternatives**
+- CPI can disrupt the move.
+
+**Reasoning Summary**
+- Buy bias remains, but with more caution.
+
+**Final Call**
+- Trade: BUY
+- Translated Confidence: Med"""
+
+        self.addCleanup(lambda: set_llm_call_function(mock_llm_call_success))
+        set_llm_call_function(integrated_llm)
+        result = mode.get_full_intelligent_analysis(
+            ticker="EUR_USD",
+            timeframe="H1",
+            buddy_raw=raw,
+            context=context,
+            price_data={"rsi": 61.0},
+        )
+
+        self.assertIn("reducing size", result["adaptive_reasoning"].lower())
+        self.assertEqual(result["reasoning"], result["adaptive_reasoning"])
+        self.assertEqual(result["trade_call"], "BUY")
+        self.assertEqual(result["confidence_level"], "Med")
+        self.assertIn("Reduce size near CPI", result["memory_summary"])
+        self.assertTrue(result["adaptations_made"])
+
+    def test_get_full_intelligent_analysis_uses_cache(self):
+        """Repeated integrated analysis for the same signal should hit cache."""
+        with TemporaryDirectory() as tmpdir:
+            mode = BuddyIntelligentMode(analysis_cache_dir=Path(tmpdir), sync_with_shared_memory=False)
+            mode.record_trade_outcome("T001", "EUR_USD", "long", 0.75, 100.0)
+            mode.memory._lessons = ["Reduce size near CPI"]
+            raw = BuddyRawOutput(confidence=0.75, prediction=1.0850, probability=0.68)
+            context = MultiModalContext(
+                news_summaries=["ECB tone supportive for EUR"],
+                sentiment_score=0.3,
+            )
+
+            calls = {"count": 0}
+
+            def integrated_llm(prompt: str, system_prompt: str = None, model: str = "gpt-4", temperature: float = 0.2) -> str:
+                calls["count"] += 1
+                return """**Multi-Modal Fusion**
+- Sentiment supports the setup.
+
+**Adaptation from Experience**
+- Wait for confirmation around CPI.
+
+**Market Context**
+- Trend remains constructive.
+
+**Buddy Signal Breakdown**
+- Raw: Confidence 75%, Prob 68%
+
+**Key Drivers**
+- Momentum and supportive sentiment align.
+
+**Risks & Alternatives**
+- CPI can disrupt the move.
+
+**Reasoning Summary**
+- Buy bias remains, but with more caution.
+
+**Final Call**
+- Trade: BUY
+- Translated Confidence: Med"""
+
+            self.addCleanup(lambda: set_llm_call_function(mock_llm_call_success))
+            set_llm_call_function(integrated_llm)
+
+            first = mode.get_full_intelligent_analysis(
+                ticker="EUR_USD",
+                timeframe="H1",
+                buddy_raw=raw,
+                context=context,
+                price_data={"rsi": 61.0},
+            )
+            second = mode.get_full_intelligent_analysis(
+                ticker="EUR_USD",
+                timeframe="H1",
+                buddy_raw=raw,
+                context=context,
+                price_data={"rsi": 61.0},
+            )
+
+            self.assertEqual(calls["count"], 1)
+            self.assertFalse(first["cached"])
+            self.assertTrue(second["cached"])
+            self.assertEqual(first["cache_key"], second["cache_key"])
+            self.assertEqual(first["reasoning"], second["reasoning"])
+
     def test_record_trade_outcome(self):
         """Records trade outcome to memory."""
-        mode = BuddyIntelligentMode()
+        mode = BuddyIntelligentMode(sync_with_shared_memory=False)
         mode.record_trade_outcome(
             trade_id="T001",
             instrument="EUR_USD",
@@ -639,7 +944,7 @@ class TestBuddyIntelligentMode(unittest.TestCase):
 
     def test_get_improvement_suggestions(self):
         """Gets improvement suggestions."""
-        mode = BuddyIntelligentMode()
+        mode = BuddyIntelligentMode(sync_with_shared_memory=False)
         arch = BuddyArchitectureDescription()
         perf = PerformanceStats()
         
@@ -655,7 +960,7 @@ class TestBuddyIntelligentMode(unittest.TestCase):
         with TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "memory.json"
             
-            mode = BuddyIntelligentMode(memory_path=path)
+            mode = BuddyIntelligentMode(memory_path=path, sync_with_shared_memory=False)
             mode.record_trade_outcome("T001", "EUR_USD", "long", 0.75, 100.0)
             
             self.assertTrue(path.exists())

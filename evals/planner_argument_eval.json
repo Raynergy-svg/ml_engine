@@ -1,0 +1,94 @@
+[
+  {
+    "id": "planner_args_001",
+    "user_message": "scan h1 and auto-execute top 2",
+    "runtime_context": {
+      "active_instrument": "EUR_USD",
+      "granularity": "M5",
+      "execute_mode": "dry-run",
+      "knowledge_only": false
+    },
+    "expected_steps": [
+      {
+        "tool": "scan_market",
+        "args": {
+          "granularity": "H1",
+          "top_n": 2,
+          "auto_execute": true
+        }
+      }
+    ]
+  },
+  {
+    "id": "planner_args_002",
+    "user_message": "scan eur/usd and gbp/usd on h1",
+    "runtime_context": {
+      "active_instrument": "EUR_USD",
+      "granularity": "M5",
+      "execute_mode": "dry-run",
+      "knowledge_only": false
+    },
+    "expected_steps": [
+      {
+        "tool": "scan_market",
+        "args": {
+          "pairs": "EUR_USD,GBP_USD",
+          "granularity": "H1"
+        }
+      }
+    ]
+  },
+  {
+    "id": "planner_args_003",
+    "user_message": "why eur/usd and not gbp/usd?",
+    "runtime_context": {
+      "active_instrument": "EUR_USD",
+      "granularity": "H1",
+      "execute_mode": "dry-run",
+      "knowledge_only": true
+    },
+    "expected_steps": [
+      {
+        "tool": "compare_scan_results",
+        "args": {
+          "left_pair": "EUR_USD",
+          "right_pair": "GBP_USD"
+        }
+      }
+    ]
+  },
+  {
+    "id": "planner_args_004",
+    "user_message": "do the thing",
+    "runtime_context": {
+      "active_instrument": "EUR_USD",
+      "granularity": "M5",
+      "execute_mode": "dry-run",
+      "knowledge_only": false
+    },
+    "expect_clarification": true,
+    "expected_question_contains": [
+      "status",
+      "scan",
+      "journal"
+    ]
+  },
+  {
+    "id": "planner_args_005",
+    "user_message": "show pnl for the last 14 days",
+    "runtime_context": {
+      "active_instrument": "EUR_USD",
+      "granularity": "M5",
+      "execute_mode": "dry-run",
+      "knowledge_only": true
+    },
+    "expected_steps": [
+      {
+        "tool": "get_journal_summary",
+        "args": {
+          "days": 14
+        }
+      }
+    ]
+  }
+]

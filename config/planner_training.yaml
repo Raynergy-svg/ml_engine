@@ -1,0 +1,32 @@
+model:
+  base_model: "Qwen/Qwen2.5-3B-Instruct"
+  output_dir: "trained_data/planner/checkpoints"
+  max_seq_length: 1024
+  learning_rate: 2.0e-5
+  per_device_train_batch_size: 1
+  per_device_eval_batch_size: 1
+  gradient_accumulation_steps: 4
+  num_train_epochs: 1
+  warmup_ratio: 0.03
+  weight_decay: 0.01
+  gradient_checkpointing: true
+  logging_steps: 5
+dataset:
+  train_path: "training_data/planner/train.jsonl"
+  valid_path: "training_data/planner/valid.jsonl"
+lora:
+  enabled: true
+  r: 8
+  alpha: 16
+  dropout: 0.05
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+format:
+  system_prompt: "You are Buddy's planner model. Emit grounded plans and never invent trading facts."
+  response_system_prompt: "You are Buddy Planner 3B speaking directly to the user. Use the grounded answer and tool outputs as the factual boundary, respond naturally, and never invent trading facts."

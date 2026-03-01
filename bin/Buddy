@@ -81,6 +81,42 @@ cmd_predict() {
     run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --granularity "${granularity}" "${inst_args[@]+"${inst_args[@]}"}" "${args[@]+"${args[@]}"}"
 }
 
+cmd_chat() {
+    local granularity="M5"
+    local instrument=""
+    local args=()
+
+    # Default Buddy chat to planner mode unless the user explicitly overrides it.
+    export BUDDY_CHAT_MODE="${BUDDY_CHAT_MODE:-planner}"
+
+    if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+        instrument="$1"
+        shift
+    fi
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -i|--instrument) instrument="$2"; shift 2 ;;
+            -g|--granularity) granularity="$2"; shift 2 ;;
+            -c|--candles) args+=(--candles "$2"); shift 2 ;;
+            -x|--execute) args+=(--execute); shift ;;
+            --no-execute) args+=(--no-execute); shift ;;
+            --dry-run) args+=(--dry-run); shift ;;
+            -v|--verbose) args+=(--verbose); shift ;;
+            --model-path) args+=(--model-path "$2"); shift 2 ;;
+            --all-features) args+=(--all-features); shift ;;
+            --no-all-features) args+=(--no-all-features); shift ;;
+            *) args+=("$1"); shift ;;
+        esac
+    done
+
+    local inst_args=()
+    if [[ -n "${instrument}" ]]; then
+        inst_args=(--instrument "${instrument}")
+    fi
+    run_py "${ROOT_DIR}/main.py" buddy-chat --config "${CONFIG_FILE}" --granularity "${granularity}" "${inst_args[@]+"${inst_args[@]}"}" "${args[@]+"${args[@]}"}"
+}
+
 cmd_train() {
     local granularity="H1"  # Default to H1 to match config_improved_H1.yaml
     local args=()
@@ -184,7 +220,16 @@ cmd_monitor() {
     run_py "${ROOT_DIR}/main.py" monitor --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
 }
 
-cmd_status() { run_py "${ROOT_DIR}/main.py" model-status --config "${CONFIG_FILE}"; }
+cmd_status() {
+    local args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --decisions) args+=(--decisions); shift ;;
+            *) args+=("$1"); shift ;;
+        esac
+    done
+    run_py "${ROOT_DIR}/main.py" model-status --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+}
 cmd_promote() { run_py "${ROOT_DIR}/main.py" promote-model --config "${CONFIG_FILE}"; }
 cmd_loop() { run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --loop --candles 2000; }
 
@@ -225,6 +270,7 @@ main() {
     local cmd="$1"; shift
     case "${cmd}" in
         predict|p) cmd_predict "$@" ;;
+        chat|c|buddy-chat) cmd_chat "$@" ;;
         train|t) cmd_train "$@" ;;
         train-joint|tj) cmd_train_joint "$@" ;;
         retrain-all|ra) cmd_retrain_all "$@" ;;
@@ -233,7 +279,7 @@ main() {
         test) cmd_test "$@" ;;
         journal|j) cmd_journal "$@" ;;
         find|f) cmd_find "$@" ;;
-        status|s) cmd_status ;;
+        status|s) cmd_status "$@" ;;
         promote) cmd_promote ;;
         loop|l) cmd_loop ;;
         monitor|m) cmd_monitor "$@" ;;
@@ -242,6 +288,7 @@ Buddy v2.2.0 - FX Trading Assistant
 
 COMMANDS:
   predict [PAIR] [-x]     Run prediction (default), -x to execute trade
+  chat [PAIR]             Start Buddy conversational chat REPL
   train -i PAIR           Train models for instrument
   train-joint             Train all scanner pairs jointly (default: 15 pairs)
   retrain-all             Retrain all pairs
@@ -250,7 +297,7 @@ COMMANDS:
   test                    Run test prediction
   journal [-u] [-d N]     View/update trade journal
   monitor                 Show monitoring dashboard and alerts
-  status                  Show model status
+  status [--decisions]    Show model status
   loop                    Run continuous prediction loop
 
 OPTIONS:
@@ -274,6 +321,8 @@ MONITOR OPTIONS:
 
 EXAMPLES:
   ./bin/Buddy EUR_USD              # Predict EUR/USD
+  ./bin/Buddy chat EUR_USD         # Start Buddy chat on EUR/USD
+  ./bin/Buddy status --decisions   # Show persisted trade/no-trade decisions
   ./bin/Buddy EUR_USD -x           # Predict and execute
   ./bin/Buddy train -i EUR_USD     # Train model for EUR/USD
   ./bin/Buddy train-joint          # Train all 15 scanner pairs

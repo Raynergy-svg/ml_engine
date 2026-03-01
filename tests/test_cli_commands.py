@@ -11,6 +11,7 @@ Validates:
 from __future__ import annotations
 
 import pytest
+import sys
 
 # Pre-load cli.commands to handle potential cascading import failures
 # (cli/__init__.py -> candle_optimizer -> modular_trainers -> tensorflow).
@@ -228,6 +229,666 @@ class TestBuddyWizardCheck:
         """_maybe_launch_buddy_repl should exist and be callable."""
         from cli.commands import _maybe_launch_buddy_repl
         assert callable(_maybe_launch_buddy_repl)
+
+    def test_chat_launcher_exists(self):
+        """_maybe_launch_buddy_chat should exist and be callable."""
+        from cli.commands import _maybe_launch_buddy_chat
+        assert callable(_maybe_launch_buddy_chat)
+
+    def test_chat_launcher_opens_grounded_repl(self, monkeypatch):
+        """buddy-chat should launch unified talk via the shared REPL helper."""
+        from cli.commands import _maybe_launch_buddy_chat
+        from types import SimpleNamespace
+
+        called = {}
+
+        monkeypatch.setattr(
+            "cli.commands.launch_buddy_repl_from_wizard",
+            lambda *args, **kwargs: called.update({"args": args, "kwargs": kwargs}),
+        )
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["main.py", "buddy-chat", "--instrument", "EUR_USD"],
+        )
+
+        launched = _maybe_launch_buddy_chat(
+            SimpleNamespace(
+                command="buddy-chat",
+                config="config/config_intel_optimized.yaml",
+                model_path=None,
+                instrument="EUR_USD",
+                granularity="M5",
+                candles=300,
+                dry_run=False,
+                all_features=False,
+                verbose=False,
+            )
+        )
+
+        assert launched is True
+        assert called["kwargs"]["instrument"] == "EUR_USD"
+        assert called["kwargs"]["execute"] is False
+
+
+# ---------------------------------------------------------------------------
+# Test: intelligent-mode wiring helpers
+# ---------------------------------------------------------------------------
+
+class TestBuddyIntelligentWiring:
+    """Verify Buddy intelligent analysis is wired to action inputs."""
+
+    def test_normalize_llm_news_sentiment(self):
+        """Should map market-intel sentiment payload to LLM prompt shape."""
+        from cli.commands import _normalize_llm_news_sentiment
+
+        normalized = _normalize_llm_news_sentiment({
+            "aggregate_label": "bullish",
+            "aggregate_score": 0.42,
+            "num_headlines": 7,
+        })
+
+        assert normalized == {
+            "sentiment": "bullish",
+            "score": 0.42,
+            "headline_count": 7,
+        }
+
+    def test_run_buddy_intelligent_analysis_validates_trade(self, monkeypatch):
+        """Tradable signals should go through LLM validation before action."""
+        pd = pytest.importorskip("pandas")
+        from cli.commands import _run_buddy_intelligent_analysis
+        from types import SimpleNamespace
+
+        calls: dict[str, object] = {}
+
+        class FakeBuddyRawOutput:
+            def __init__(self, **kwargs):
+                self.payload = kwargs
+
+        class FakeMultiModalContext:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def to_dict(self):
+                return dict(self.kwargs)
+
+        class FakeIntelligentMode:
+            def get_full_intelligent_analysis(self, **kwargs):
+                calls["reasoning"] = kwargs
+                return {"reasoning": "Structured reasoning"}
+
+            def get_adaptation_policy(self, **kwargs):
+                calls["adaptive_policy"] = kwargs
+                return SimpleNamespace(
+                    approve=True,
+                    size_multiplier=1.0,
+                    reason="Adaptive memory neutral",
+                    risk_flags=[],
+                    sample_size=3,
+                )
+
+        def fake_validate_trade_with_risk_assessment(**kwargs):
+            calls["validation"] = kwargs
+            return SimpleNamespace(
+                approve=False,
+                size_multiplier=0.75,
+                reason="event risk",
+                risk_flags=["economic_event"],
+            )
+
+        fake_module = SimpleNamespace(
+            BuddyRawOutput=FakeBuddyRawOutput,
+            MultiModalContext=FakeMultiModalContext,
+            get_intelligent_mode=lambda: FakeIntelligentMode(),
+            validate_trade_with_risk_assessment=fake_validate_trade_with_risk_assessment,
+            apply_adaptive_trade_policy=lambda validation, policy: validation,
+        )
+        monkeypatch.setitem(sys.modules, "buddy_intelligent_mode", fake_module)
+
+        signal = SimpleNamespace(
+            trade=True,
+            direction="long",
+            confidence=63.0,
+            tcn_probability=0.61,
+            ridge_confidence=52.0,
+            xgb_momentum=0.24,
+            rf_drawdown_pips=18.0,
+            rf_streak_prob=0.22,
+            meta_confidence=0.58,
+            confidence_gate_passed=True,
+            momentum_gate_passed=True,
+            risk_gate_passed=True,
+            regime_gate_passed=True,
+            meta_gate_passed=True,
+            reason=None,
+            metadata={
+                "intel_data": {
+                    "sentiment": {
+                        "aggregate_label": "bullish",
+                        "aggregate_score": 0.25,
+                        "num_headlines": 4,
+                    }
+                },
+                "gate_observability": {"current": {"trade": True}},
+                "stage_a": {"core_pass": True},
+                "stage_b": {"score_passed": True},
+                "gate_thresholds": {"min_tcn_probability": 0.53},
+            },
+        )
+        df = pd.DataFrame([
+            {
+                "close": 1.1000,
+                "atr": 0.0012,
+                "atr_pct_14": 0.0011,
+                "rsi": 58.0,
+                "adx": 24.0,
+            },
+            {
+                "close": 1.1015,
+                "atr": 0.0013,
+                "atr_pct_14": 0.0012,
+                "rsi": 61.0,
+                "adx": 27.0,
+            },
+        ])
+        ensemble = SimpleNamespace(market_intel=object())
+
+        result = _run_buddy_intelligent_analysis(
+            instrument="EUR_USD",
+            granularity="H1",
+            signal=signal,
+            df=df,
+            ensemble=ensemble,
+            intelligent=True,
+            explain=True,
+            llm_initialized=True,
+        )
+
+        assert result["llm_approved"] is False
+        assert result["validation"].reason == "event risk"
+        assert result["reasoning"]["reasoning"] == "Structured reasoning"
+        assert result["adaptive_policy"].reason == "Adaptive memory neutral"
+        assert isinstance(calls["reasoning"]["context"], FakeMultiModalContext)
+
+    def test_buddy_execute_path_blocks_order_when_intelligent_rejects(self, monkeypatch, tmp_path, capsys):
+        """The live Buddy command path should honor an intelligent-mode veto."""
+        import json
+        import pandas as pd
+        from types import SimpleNamespace
+
+        from cli.commands import buddy
+
+        monkeypatch.chdir(tmp_path)
+        meta_dir = tmp_path / "trained_data" / "models" / "EUR_USD"
+        meta_dir.mkdir(parents=True)
+        (meta_dir / "modular_ensemble.meta.json").write_text(json.dumps({"selected_pairs": ["EUR_USD"]}))
+
+        orders: list[tuple[str, int]] = []
+
+        class FakeProvider:
+            is_available = True
+            name = "fake"
+
+        monkeypatch.setitem(
+            sys.modules,
+            "llm_providers",
+            SimpleNamespace(initialize_buddy_llm=lambda provider=None: FakeProvider()),
+        )
+
+        class FakeTradeJournal:
+            def sync_open_trades(self, client):
+                return {"closed_updated": 0}
+
+            def backfill_online_learning(self):
+                return 0
+
+            def log_trade(self, **kwargs):
+                return None
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.utils.trade_journal",
+            SimpleNamespace(TradeJournal=FakeTradeJournal),
+        )
+
+        class FakeMarketIntelligence:
+            def __init__(self, enable_online_learning=True):
+                self.online_learner = SimpleNamespace(trade_buffer=[])
+
+        monkeypatch.setitem(
+            sys.modules,
+            "market_intelligence",
+            SimpleNamespace(MarketIntelligence=FakeMarketIntelligence),
+        )
+
+        class FakeClient:
+            def get_account_summary(self):
+                return {"account": {"NAV": "10000"}}
+
+            def _request(self, *_args, **_kwargs):
+                return {"trades": []}
+
+            def get_candles(self, instrument, granularity, count, price):
+                return {"candles": []}
+
+            def create_market_order(self, *, instrument: str, units: int, **kwargs):
+                orders.append((instrument, int(units)))
+                return {"orderFillTransaction": {"tradeOpened": {"tradeID": "T-1"}, "price": "1.1010"}}
+
+        fake_client = FakeClient()
+
+        class FakeOandaPracticeClient:
+            @classmethod
+            def from_env(cls):
+                return fake_client
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.utils.oanda_practice",
+            SimpleNamespace(OandaPracticeClient=FakeOandaPracticeClient),
+        )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.utils.fx_paper",
+            SimpleNamespace(
+                candles_to_ohlcv_df=lambda _resp: pd.DataFrame(
+                    [
+                        {"close": 1.1000, "atr": 0.0010, "rsi": 56.0, "adx": 20.0},
+                        {"close": 1.1010, "atr": 0.0012, "rsi": 60.0, "adx": 24.0},
+                    ]
+                )
+            ),
+        )
+
+        class FakeFeatureEngineering:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def create_features(self, df, include_all=True):
+                return df
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.data.feature_engineering",
+            SimpleNamespace(FeatureEngineering=FakeFeatureEngineering),
+        )
+
+        signal = SimpleNamespace(
+            trade=True,
+            direction="long",
+            size=1.0,
+            confidence=63.0,
+            tcn_probability=0.61,
+            ridge_confidence=52.0,
+            xgb_momentum=0.24,
+            rf_drawdown_pips=18.0,
+            rf_streak_prob=0.22,
+            meta_confidence=0.58,
+            confidence_gate_passed=True,
+            momentum_gate_passed=True,
+            risk_gate_passed=True,
+            regime_gate_passed=True,
+            meta_gate_passed=True,
+            reason=None,
+            metadata={
+                "intel_data": {"sentiment": {"aggregate_label": "bullish", "aggregate_score": 0.2, "num_headlines": 3}},
+                "gate_observability": {"current": {"trade": True}},
+                "stage_a": {"core_pass": True},
+                "stage_b": {"score_passed": True},
+                "gate_thresholds": {"min_tcn_probability": 0.53},
+            },
+        )
+
+        class FakeEnsemble:
+            def __init__(self, *args, **kwargs):
+                self.market_intel = object()
+
+            def load_models(self, instrument=None):
+                return None
+
+            def get_model_load_report(self):
+                return []
+
+            def predict_verbose(self, df, equity=None, instrument=None, model_instrument=None):
+                return {
+                    "raw_signal": signal,
+                    "gate_checks": ["gate ok"],
+                    "decision": "→ TRADE",
+                }
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.core.modular_inference",
+            SimpleNamespace(ModularEnsembleInference=FakeEnsemble),
+        )
+
+        class FakeBuddyRawOutput:
+            def __init__(self, **kwargs):
+                self.direction = kwargs.get("direction")
+                self.confidence = kwargs.get("confidence", 0.0)
+                self.probability = kwargs.get("probability")
+                self.payload = kwargs
+
+            def to_dict(self):
+                return dict(self.payload)
+
+        class FakeMultiModalContext:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def to_dict(self):
+                return dict(self.kwargs)
+
+        class FakeIntelligentMode:
+            def get_full_intelligent_analysis(self, **kwargs):
+                return {"reasoning": "Integrated reasoning"}
+
+            def get_adaptation_policy(self, **kwargs):
+                return SimpleNamespace(
+                    approve=True,
+                    size_multiplier=1.0,
+                    reason="Adaptive memory neutral",
+                    risk_flags=[],
+                    sample_size=4,
+                )
+
+        def fake_validate_trade_with_risk_assessment(**kwargs):
+            return SimpleNamespace(
+                approve=False,
+                size_multiplier=1.0,
+                reason="event risk",
+                risk_flags=["economic_event"],
+            )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "buddy_intelligent_mode",
+            SimpleNamespace(
+                BuddyRawOutput=FakeBuddyRawOutput,
+                MultiModalContext=FakeMultiModalContext,
+                get_intelligent_mode=lambda: FakeIntelligentMode(),
+                validate_trade_with_risk_assessment=fake_validate_trade_with_risk_assessment,
+                apply_adaptive_trade_policy=lambda validation, policy: validation,
+            ),
+        )
+
+        monkeypatch.setattr(
+            "cli.commands.load_config",
+            lambda *_args, **_kwargs: {"feature_engineering": {}},
+        )
+        monkeypatch.setattr(
+            "cli.commands._build_inference_config_from_yaml",
+            lambda **kwargs: (
+                SimpleNamespace(
+                    account_equity=10000.0,
+                    use_rsi_extreme_gate=False,
+                    use_trend_contra_gate=False,
+                    risk_per_trade_pct=0.01,
+                ),
+                False,
+            ),
+        )
+        monkeypatch.setattr("cli.commands._resolve_master_pair_for_buddy", lambda **kwargs: "EUR_USD")
+        monkeypatch.setattr(sys, "argv", ["prog", "buddy", "--execute"])
+
+        buddy(
+            config_path="config.yaml",
+            instrument="EUR_USD",
+            granularity="H1",
+            candles=100,
+            execute=True,
+            intelligent=True,
+            explain=False,
+            interactive_master=False,
+        )
+
+        out = capsys.readouterr().out
+        from memory_client import MLEngineMemory
+
+        runtime_state = MLEngineMemory(storage_path=tmp_path / "trained_data" / ".memory").get_runtime_state("buddy_runtime")
+        assert orders == []
+        assert "NO TRADE: LLM VALIDATION FAILED" in out
+        assert "event risk" in out
+        assert runtime_state["selected_llm_provider"] == "fake"
+        assert runtime_state["last_no_trade_decision"]["reason"] == "event risk"
+        assert runtime_state["last_no_trade_decision"]["decision_type"] == "intelligent_reject"
+
+    def test_buddy_dry_run_signal_persists_last_trade_execution_decision(self, monkeypatch, tmp_path, capsys):
+        """Trade signals should persist a positive execution rationale even in dry-run mode."""
+        import json
+        import pandas as pd
+        from types import SimpleNamespace
+
+        from cli.commands import buddy
+        from memory_client import MLEngineMemory
+
+        monkeypatch.chdir(tmp_path)
+        meta_dir = tmp_path / "trained_data" / "models" / "EUR_USD"
+        meta_dir.mkdir(parents=True)
+        (meta_dir / "modular_ensemble.meta.json").write_text(json.dumps({"selected_pairs": ["EUR_USD"]}))
+
+        class FakeProvider:
+            is_available = True
+            name = "fake"
+
+        monkeypatch.setitem(
+            sys.modules,
+            "llm_providers",
+            SimpleNamespace(initialize_buddy_llm=lambda provider=None: FakeProvider()),
+        )
+
+        class FakeTradeJournal:
+            def sync_open_trades(self, client):
+                return {"closed_updated": 0}
+
+            def backfill_online_learning(self):
+                return 0
+
+            def log_trade(self, **kwargs):
+                return None
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.utils.trade_journal",
+            SimpleNamespace(TradeJournal=FakeTradeJournal),
+        )
+
+        class FakeMarketIntelligence:
+            def __init__(self, enable_online_learning=True):
+                self.online_learner = SimpleNamespace(trade_buffer=[])
+
+        monkeypatch.setitem(
+            sys.modules,
+            "market_intelligence",
+            SimpleNamespace(MarketIntelligence=FakeMarketIntelligence),
+        )
+
+        class FakeClient:
+            def get_account_summary(self):
+                return {"account": {"NAV": "10000"}}
+
+            def _request(self, *_args, **_kwargs):
+                return {"trades": []}
+
+            def get_candles(self, instrument, granularity, count, price):
+                return {"candles": []}
+
+        fake_client = FakeClient()
+
+        class FakeOandaPracticeClient:
+            @classmethod
+            def from_env(cls):
+                return fake_client
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.utils.oanda_practice",
+            SimpleNamespace(OandaPracticeClient=FakeOandaPracticeClient),
+        )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.utils.fx_paper",
+            SimpleNamespace(
+                candles_to_ohlcv_df=lambda _resp: pd.DataFrame(
+                    [
+                        {"close": 1.1000, "atr": 0.0010, "rsi": 56.0, "adx": 20.0},
+                        {"close": 1.1010, "atr": 0.0012, "rsi": 60.0, "adx": 24.0},
+                    ]
+                )
+            ),
+        )
+
+        class FakeFeatureEngineering:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def create_features(self, df, include_all=True):
+                return df
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.data.feature_engineering",
+            SimpleNamespace(FeatureEngineering=FakeFeatureEngineering),
+        )
+
+        signal = SimpleNamespace(
+            trade=True,
+            direction="long",
+            size=1.0,
+            confidence=63.0,
+            tcn_probability=0.61,
+            ridge_confidence=52.0,
+            xgb_momentum=0.24,
+            rf_drawdown_pips=18.0,
+            rf_streak_prob=0.22,
+            meta_confidence=0.58,
+            confidence_gate_passed=True,
+            momentum_gate_passed=True,
+            risk_gate_passed=True,
+            regime_gate_passed=True,
+            meta_gate_passed=True,
+            reason=None,
+            metadata={
+                "intel_data": {"sentiment": {"aggregate_label": "bullish", "aggregate_score": 0.2, "num_headlines": 3}},
+                "gate_observability": {"current": {"trade": True}},
+                "stage_a": {"core_pass": True},
+                "stage_b": {"score_passed": True},
+                "gate_thresholds": {"min_tcn_probability": 0.53},
+            },
+        )
+
+        class FakeEnsemble:
+            def __init__(self, *args, **kwargs):
+                self.market_intel = object()
+
+            def load_models(self, instrument=None):
+                return None
+
+            def get_model_load_report(self):
+                return []
+
+            def predict_verbose(self, df, equity=None, instrument=None, model_instrument=None):
+                return {
+                    "raw_signal": signal,
+                    "gate_checks": ["gate ok"],
+                    "decision": "→ TRADE",
+                }
+
+        monkeypatch.setitem(
+            sys.modules,
+            "src.core.modular_inference",
+            SimpleNamespace(ModularEnsembleInference=FakeEnsemble),
+        )
+
+        class FakeBuddyRawOutput:
+            def __init__(self, **kwargs):
+                self.direction = kwargs.get("direction")
+                self.confidence = kwargs.get("confidence", 0.0)
+                self.probability = kwargs.get("probability")
+                self.payload = kwargs
+
+            def to_dict(self):
+                return dict(self.payload)
+
+        class FakeMultiModalContext:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+
+            def to_dict(self):
+                return dict(self.kwargs)
+
+        class FakeIntelligentMode:
+            def get_full_intelligent_analysis(self, **kwargs):
+                return {"reasoning": "Integrated reasoning"}
+
+            def get_adaptation_policy(self, **kwargs):
+                return SimpleNamespace(
+                    approve=True,
+                    size_multiplier=1.0,
+                    reason="Adaptive memory neutral",
+                    risk_flags=[],
+                    sample_size=4,
+                )
+
+        def fake_validate_trade_with_risk_assessment(**kwargs):
+            return SimpleNamespace(
+                approve=True,
+                size_multiplier=1.0,
+                reason="all clear",
+                risk_flags=[],
+            )
+
+        monkeypatch.setitem(
+            sys.modules,
+            "buddy_intelligent_mode",
+            SimpleNamespace(
+                BuddyRawOutput=FakeBuddyRawOutput,
+                MultiModalContext=FakeMultiModalContext,
+                get_intelligent_mode=lambda: FakeIntelligentMode(),
+                validate_trade_with_risk_assessment=fake_validate_trade_with_risk_assessment,
+                apply_adaptive_trade_policy=lambda validation, policy: validation,
+            ),
+        )
+
+        monkeypatch.setattr(
+            "cli.commands.load_config",
+            lambda *_args, **_kwargs: {"feature_engineering": {}},
+        )
+        monkeypatch.setattr(
+            "cli.commands._build_inference_config_from_yaml",
+            lambda **kwargs: (
+                SimpleNamespace(
+                    account_equity=10000.0,
+                    use_rsi_extreme_gate=False,
+                    use_trend_contra_gate=False,
+                    risk_per_trade_pct=0.01,
+                ),
+                False,
+            ),
+        )
+        monkeypatch.setattr("cli.commands._resolve_master_pair_for_buddy", lambda **kwargs: "EUR_USD")
+
+        buddy(
+            config_path="config.yaml",
+            instrument="EUR_USD",
+            granularity="H1",
+            candles=100,
+            execute=False,
+            intelligent=True,
+            explain=False,
+            interactive_master=False,
+        )
+
+        out = capsys.readouterr().out
+        runtime_state = MLEngineMemory(storage_path=tmp_path / "trained_data" / ".memory").get_runtime_state("buddy_runtime")
+
+        assert "DRY RUN MODE" in out
+        assert runtime_state["last_trade_execution_decision"]["decision_type"] == "dry_run_signal"
+        assert runtime_state["last_trade_execution_decision"]["reason"] == "All model gates passed and intelligent review approved"
+        assert runtime_state["last_trade_execution_decision"]["direction"] == "long"
 
 
 # ---------------------------------------------------------------------------

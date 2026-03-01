@@ -61,6 +61,7 @@ from cli import (
     _normalize_command_args,
     _maybe_run_buddy_interactive_wizard,
     _maybe_launch_buddy_repl,
+    _maybe_launch_buddy_chat,
     _dispatch_buddy,
     _dispatch_train_buddy,
 )
@@ -108,6 +109,7 @@ COMMAND_MAP: dict[str, Any] = {
     "train-rl-exits": train_rl_exits,
     "buddy": buddy,
     "Buddy": buddy,
+    "buddy-chat": buddy,
     "promote-model": promote_model,
     "model-status": model_status,
     "test": buddy_test,
@@ -506,7 +508,7 @@ def _handle_promote_model(args: Any) -> None:
 
 
 def _handle_model_status(args: Any) -> None:
-    model_status(args.config)
+    model_status(args.config, decisions=bool(getattr(args, "decisions", False)))
 
 
 def _handle_find_candles(args: Any) -> None:
@@ -543,6 +545,7 @@ _DISPATCH_TABLE: dict[str, Any] = {
     "train-tcn-volatility": _dispatch_train_tcn_volatility,
     "buddy": _handle_buddy,
     "Buddy": _handle_buddy,
+    "buddy-chat": _handle_buddy,
     "scan": _dispatch_scan,
     "validate": _handle_validate,
     "test": _handle_test,
@@ -592,7 +595,7 @@ def main() -> None:
     _normalize_command_args(args)
 
     # REPL shortcut
-    if _maybe_launch_buddy_repl(args):
+    if _maybe_launch_buddy_repl(args) or _maybe_launch_buddy_chat(args):
         return
 
     command = getattr(args, "command", None)

@@ -83,6 +83,7 @@ class TradeEntry:
     feature_vector: Optional[List[float]] = None
     prediction: Optional[float] = None
     confidence: Optional[float] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -186,6 +187,7 @@ class TradeJournal:
         feature_vector: Optional[List[float]] = None,
         prediction: Optional[float] = None,
         confidence: Optional[float] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> TradeEntry:
         """Log a new trade entry."""
         # Calculate slippage
@@ -217,6 +219,7 @@ class TradeJournal:
             feature_vector=feature_vector,
             prediction=prediction,
             confidence=confidence,
+            metadata=metadata or {},
             slippage_pips=slippage_pips,
             fill_price=fill_price,
             status="open",
@@ -346,6 +349,40 @@ class TradeJournal:
             )
         return self._market_intel
 
+    def _build_trade_context_metadata(self, trade: TradeEntry) -> Dict[str, Any]:
+        """Normalize journal entry context for shared learning memory."""
+        metadata = dict(trade.metadata or {})
+        metadata.update({
+            "journal_status": trade.status,
+            "exit_reason": trade.exit_reason,
+            "volatility_regime": trade.volatility_regime,
+            "volatility_regime_name": trade.volatility_regime_name,
+            "volatility_regime_confidence": trade.volatility_regime_confidence,
+        })
+
+        try:
+            entry_dt = datetime.fromisoformat(trade.timestamp.replace('Z', '+00:00'))
+            hour = entry_dt.astimezone(timezone.utc).hour
+            if 0 <= hour < 7:
+                session_label = "asia"
+            elif 7 <= hour < 12:
+                session_label = "london"
+            elif 12 <= hour < 17:
+                session_label = "ny_overlap"
+            elif 17 <= hour < 21:
+                session_label = "new_york"
+            else:
+                session_label = "rollover"
+            metadata.setdefault("session_label", session_label)
+            metadata.setdefault("entry_hour_utc", hour)
+            if trade.exit_time:
+                exit_dt = datetime.fromisoformat(trade.exit_time.replace('Z', '+00:00'))
+                metadata["hold_minutes"] = max(0.0, (exit_dt - entry_dt).total_seconds() / 60.0)
+        except Exception:
+            pass
+
+        return metadata
+
     def _record_online_learning(self, trade: TradeEntry) -> None:
         if np is None:
             return
@@ -388,6 +425,7 @@ class TradeJournal:
             features=np.array(feature_vector, dtype=float),
             prediction=float(prediction),
             confidence=float(confidence),
+            context_metadata=self._build_trade_context_metadata(trade),
         )
 
     def backfill_online_learning(self) -> int:

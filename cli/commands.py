@@ -121,6 +121,259 @@ def _extract_first_json_object(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _normalize_llm_news_sentiment(sentiment: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Normalize market-intel sentiment payload for Buddy LLM prompts."""
+    if not sentiment:
+        return None
+
+    normalized = {
+        "sentiment": sentiment.get("sentiment") or sentiment.get("aggregate_label"),
+        "score": sentiment.get("score", sentiment.get("aggregate_score", 0.0)),
+        "headline_count": sentiment.get("headline_count", sentiment.get("num_headlines", 0)),
+    }
+
+    headlines = sentiment.get("headlines")
+    if isinstance(headlines, list):
+        normalized["headlines"] = headlines
+
+    return normalized
+
+
+def _build_buddy_price_context(df: Any) -> dict[str, Any]:
+    """Build compact market context for intelligent-mode reasoning/validation."""
+    if df is None or len(df) == 0:
+        return {}
+
+    def _latest(col: str, default: Any = None) -> Any:
+        if col not in df.columns:
+            return default
+        try:
+            value = df[col].iloc[-1]
+        except Exception:
+            return default
+        if value is None or (isinstance(value, float) and not np.isfinite(value)):
+            return default
+        return float(value) if isinstance(value, (float, int, np.floating, np.integer)) else value
+
+    last_close = _latest("close")
+    lookback = min(len(df), 20)
+    trend = "unknown"
+    if last_close is not None and lookback >= 2 and "close" in df.columns:
+        try:
+            base_close = float(df["close"].iloc[-lookback])
+            trend = "up" if float(last_close) > base_close else "down"
+        except Exception:
+            trend = "unknown"
+
+    return {
+        "last_close": last_close,
+        "atr": _latest("atr"),
+        "atr_pct": _latest("atr_pct_14"),
+        "rsi": _latest("rsi"),
+        "adx": _latest("adx"),
+        "trend": trend,
+    }
+
+
+def _build_multi_modal_context(intel_data: dict[str, Any] | None) -> Any:
+    """Build MultiModalContext from modular inference intelligence metadata."""
+    from buddy_intelligent_mode import MultiModalContext
+
+    intel_data = intel_data or {}
+    sentiment = intel_data.get("sentiment", {}) if isinstance(intel_data, dict) else {}
+
+    news_summaries: list[str] = []
+    headlines = sentiment.get("headlines")
+    if isinstance(headlines, list):
+        news_summaries.extend(str(item) for item in headlines[:10])
+
+    aggregate_label = sentiment.get("aggregate_label")
+    aggregate_score = sentiment.get("aggregate_score")
+    if aggregate_label and not news_summaries:
+        news_summaries.append(f"Market sentiment is {aggregate_label}")
+
+    upcoming_events: list[str] = []
+    next_event = intel_data.get("next_high_impact")
+    if isinstance(next_event, dict):
+        event_name = next_event.get("name", "High-impact event")
+        minutes_until = next_event.get("minutes_until")
+        if minutes_until is not None:
+            upcoming_events.append(f"{event_name} in {minutes_until} minutes")
+        else:
+            upcoming_events.append(str(event_name))
+
+    impact_flags: list[str] = []
+    if intel_data.get("calendar_high_impact", 0):
+        impact_flags.append(f"{intel_data.get('calendar_high_impact', 0)} high-impact events")
+    calendar_reason = intel_data.get("calendar_reason")
+    if calendar_reason:
+        impact_flags.append(str(calendar_reason))
+
+    return MultiModalContext(
+        news_summaries=news_summaries,
+        sentiment_score=float(aggregate_score or 0.0),
+        upcoming_events=upcoming_events,
+        event_impact_flags=impact_flags,
+    )
+
+
+def _build_buddy_raw_output(signal: Any, current_price: float | None) -> Any:
+    """Convert a modular inference signal into BuddyRawOutput."""
+    from buddy_intelligent_mode import BuddyRawOutput
+
+    metadata = signal.metadata or {}
+    gate_results = {
+        "trade": bool(signal.trade),
+        "reason": signal.reason,
+        "confidence_gate_passed": bool(signal.confidence_gate_passed),
+        "momentum_gate_passed": bool(signal.momentum_gate_passed),
+        "risk_gate_passed": bool(signal.risk_gate_passed),
+        "regime_gate_passed": bool(signal.regime_gate_passed),
+        "meta_gate_passed": bool(signal.meta_gate_passed),
+        "gate_observability": metadata.get("gate_observability", {}).get("current", {}),
+        "stage_a": metadata.get("stage_a", {}),
+        "stage_b": metadata.get("stage_b", {}),
+        "thresholds": metadata.get("gate_thresholds", {}),
+    }
+
+    return BuddyRawOutput(
+        confidence=float(signal.confidence),
+        prediction=float(current_price) if current_price is not None else float(signal.tcn_probability),
+        probability=float(signal.tcn_probability),
+        direction=signal.direction,
+        last_price=float(current_price) if current_price is not None else None,
+        features={
+            "ridge_confidence": float(signal.ridge_confidence),
+            "xgb_momentum": float(signal.xgb_momentum),
+            "rf_drawdown_pips": float(signal.rf_drawdown_pips),
+            "rf_streak_prob": float(signal.rf_streak_prob),
+            "meta_confidence": float(signal.meta_confidence),
+        },
+        gate_results=gate_results,
+    )
+
+
+def _build_trade_journal_metadata(signal: Any) -> dict[str, Any]:
+    """Capture entry-time context for later adaptive learning."""
+    metadata = dict(getattr(signal, "metadata", {}) or {})
+    intel_data = dict(metadata.get("intel_data", {}) or {})
+    sentiment = dict(intel_data.get("sentiment", {}) or {})
+
+    return {
+        "volatility_regime": getattr(signal, "volatility_regime", None),
+        "volatility_regime_name": getattr(signal, "volatility_regime_name", None),
+        "volatility_regime_confidence": getattr(signal, "volatility_regime_confidence", None),
+        "regime": getattr(signal, "regime", None),
+        "regime_confidence": getattr(signal, "regime_confidence", None),
+        "calendar_high_impact": intel_data.get("calendar_high_impact"),
+        "calendar_reason": intel_data.get("calendar_reason"),
+        "next_high_impact": intel_data.get("next_high_impact"),
+        "sentiment_label": sentiment.get("aggregate_label") or sentiment.get("sentiment"),
+        "sentiment_score": sentiment.get("aggregate_score", sentiment.get("score")),
+        "headlines_count": intel_data.get("headlines_count", sentiment.get("num_headlines")),
+        "pre_trade_blocked": intel_data.get("pre_trade_blocked"),
+        "pre_trade_block_reason": intel_data.get("pre_trade_block_reason"),
+        "gate_reason": getattr(signal, "reason", None),
+    }
+
+
+def _update_buddy_runtime_state(**values: Any) -> None:
+    """Persist lightweight Buddy runtime state for grounded chat answers."""
+    try:
+        from memory_client import MLEngineMemory
+
+        memory = MLEngineMemory()
+        memory.update_runtime_state("buddy_runtime", values)
+    except Exception as e:
+        logger.debug("Failed to update Buddy runtime state: %s", e)
+
+
+def _run_buddy_intelligent_analysis(
+    *,
+    instrument: str,
+    granularity: str,
+    signal: Any,
+    df: Any,
+    ensemble: Any,
+    intelligent: bool,
+    explain: bool,
+    llm_initialized: bool,
+) -> dict[str, Any]:
+    """Run intelligent-mode validation/reasoning against the live Buddy signal."""
+    result: dict[str, Any] = {
+        "validation": None,
+        "llm_approved": True,
+        "reasoning": None,
+        "adaptive_policy": None,
+    }
+    if not llm_initialized or not (intelligent or explain):
+        return result
+
+    try:
+        from buddy_intelligent_mode import (
+            apply_adaptive_trade_policy,
+            get_intelligent_mode,
+            validate_trade_with_risk_assessment,
+        )
+    except Exception as e:
+        logger.debug("Buddy intelligent analysis unavailable: %s", e)
+        return result
+
+    price_context = _build_buddy_price_context(df)
+    current_price = price_context.get("last_close")
+    buddy_raw = _build_buddy_raw_output(signal, current_price)
+    intel_data = signal.metadata.get("intel_data", {}) if signal.metadata else {}
+    news_sentiment = _normalize_llm_news_sentiment(intel_data.get("sentiment"))
+    adaptive_context = dict(price_context)
+    adaptive_context.update(_build_trade_journal_metadata(signal))
+
+    intel_mode = None
+    if explain or intelligent:
+        try:
+            intel_mode = get_intelligent_mode()
+        except Exception as e:
+            logger.debug("Buddy intelligent mode unavailable: %s", e)
+
+    if explain and intel_mode is not None:
+        try:
+            multi_modal_context = _build_multi_modal_context(intel_data)
+            result["reasoning"] = intel_mode.get_full_intelligent_analysis(
+                ticker=instrument,
+                timeframe=granularity,
+                buddy_raw=buddy_raw,
+                context=multi_modal_context,
+                price_data=price_context,
+            )
+        except Exception as e:
+            logger.debug("Buddy reasoning generation failed: %s", e)
+
+    if intelligent and signal.trade and signal.direction:
+        try:
+            validation = validate_trade_with_risk_assessment(
+                ticker=instrument,
+                direction=signal.direction,
+                buddy_raw=buddy_raw,
+                price_data=price_context,
+                news_sentiment=news_sentiment,
+                market_intel=getattr(ensemble, "market_intel", None),
+            )
+            if intel_mode is not None:
+                adaptive_policy = intel_mode.get_adaptation_policy(
+                    ticker=instrument,
+                    direction=signal.direction,
+                    confidence=float(signal.confidence),
+                    context=adaptive_context,
+                )
+                result["adaptive_policy"] = adaptive_policy
+                validation = apply_adaptive_trade_policy(validation, adaptive_policy)
+            result["validation"] = validation
+            result["llm_approved"] = bool(validation.approve)
+        except Exception as e:
+            logger.debug("Buddy trade validation failed: %s", e)
+
+    return result
+
+
 def _pair_has_models(pair: str, model_root: Path = Path("trained_data/models")) -> bool:
     """Return True when pair-specific model artifacts exist."""
     normalized_pair = _normalize_instrument(pair)
@@ -715,14 +968,24 @@ def _buddy_execute_all_pairs(
                         trade_id=str(trade_id),
                         instrument=pair,
                         direction=signal.direction,
-                        entry_price=current_price,
+                        units=abs(units),
+                        lots=abs(signal.size),
+                        expected_price=current_price,
+                        fill_price=fill_price,
                         stop_loss=sl_price,
                         take_profit=tp_price,
-                        lot_size=abs(signal.size),
+                        trailing_stop=ts_distance,
+                        atr=atr,
                         tcn_probability=signal.tcn_probability,
                         ridge_confidence=signal.ridge_confidence,
                         xgb_momentum=signal.xgb_momentum,
                         rf_drawdown_pips=signal.rf_drawdown_pips,
+                        volatility_regime=getattr(signal, "volatility_regime", None),
+                        volatility_regime_name=getattr(signal, "volatility_regime_name", None),
+                        volatility_regime_confidence=getattr(signal, "volatility_regime_confidence", None),
+                        prediction=signal.tcn_probability,
+                        confidence=signal.ridge_confidence,
+                        metadata=_build_trade_journal_metadata(signal),
                     )
                 except Exception:
                     pass
@@ -857,8 +1120,16 @@ def buddy(
 
             if provider.is_available:
                 llm_initialized = True
+                _update_buddy_runtime_state(
+                    selected_llm_provider=provider.name,
+                    intelligent_mode_enabled=bool(intelligent or explain),
+                )
                 console.print(f"[cyan]🧠 Intelligent Mode: {provider.name.upper()}[/cyan]")
             else:
+                _update_buddy_runtime_state(
+                    selected_llm_provider=provider.name,
+                    intelligent_mode_enabled=False,
+                )
                 console.print("[yellow]⚠ LLM provider not available - intelligent mode disabled[/yellow]")
                 console.print("[dim]Install Ollama (brew install ollama && ollama pull llama3.1:7b) or set ANTHROPIC_API_KEY[/dim]")
                 intelligent = False
@@ -1203,6 +1474,22 @@ def buddy(
         )
         _lap("modular_inference")
 
+        signal = result['raw_signal']
+        intelligent_analysis = _run_buddy_intelligent_analysis(
+            instrument=instrument,
+            granularity=granularity,
+            signal=signal,
+            df=df,
+            ensemble=ensemble,
+            intelligent=intelligent,
+            explain=explain,
+            llm_initialized=llm_initialized,
+        )
+        llm_validation = intelligent_analysis.get("validation")
+        llm_approved = bool(intelligent_analysis.get("llm_approved", True))
+        llm_reasoning = intelligent_analysis.get("reasoning")
+        adaptive_policy = intelligent_analysis.get("adaptive_policy")
+
         # =====================================================================
         # DISPLAY GATE CHECKS SECTION
         # =====================================================================
@@ -1211,19 +1498,126 @@ def buddy(
         for check in result['gate_checks']:
             console.print(f"  {check}")
 
+        if llm_validation is not None:
+            console.print("")
+            status_color = "green" if llm_validation.approve else "yellow"
+            status_text = "APPROVED" if llm_validation.approve else "REJECTED"
+            review_line = f"  🧠 Intelligent Review: {status_text}"
+            if llm_validation.reason:
+                review_line += f" - {llm_validation.reason}"
+            console.print(f"[{status_color}]{review_line}[/{status_color}]")
+            if llm_validation.approve and llm_validation.size_multiplier != 1.0:
+                console.print(
+                    f"  [dim]LLM size multiplier: {llm_validation.size_multiplier:.2f}x[/dim]"
+                )
+            if llm_validation.risk_flags:
+                console.print(
+                    f"  [dim]Risk flags: {', '.join(str(flag) for flag in llm_validation.risk_flags)}[/dim]"
+                )
+            adaptive_reason = getattr(adaptive_policy, "reason", None)
+            adaptive_samples = getattr(adaptive_policy, "sample_size", 0)
+            if adaptive_reason and adaptive_samples:
+                console.print(
+                    f"  [dim]Adaptive memory ({adaptive_samples} trades): {adaptive_reason}[/dim]"
+                )
+
+        if explain and llm_reasoning:
+            reasoning_text = llm_reasoning.get("reasoning")
+            if reasoning_text:
+                console.print("")
+                console.print(
+                    Panel(
+                        reasoning_text,
+                        title="[bold cyan]Buddy Reasoning[/bold cyan]",
+                        border_style="cyan",
+                    )
+                )
+
         # =====================================================================
         # DISPLAY FINAL TRADING DECISION
         # =====================================================================
-        console.print("")
-        console.print(f"[bold]{result['decision']}[/bold]")
-        console.print("")
+        final_decision = result['decision']
+        if signal.trade and not llm_approved:
+            llm_reason = llm_validation.reason if llm_validation and llm_validation.reason else "intelligent_review_reject"
+            final_decision = f"→ NO TRADE: {llm_reason}"
 
-        signal = result['raw_signal']
+        execution_reason = (
+            "All model gates passed and intelligent review approved"
+            if signal.trade and llm_approved and llm_validation is not None
+            else "All model gates passed and Buddy generated a trade signal"
+        )
+
+        failed_gates: list[str] = []
+        if not signal.trade:
+            if not signal.confidence_gate_passed:
+                failed_gates.append(f"Ridge confidence ({signal.ridge_confidence:.0f}/100)")
+            if not signal.momentum_gate_passed:
+                failed_gates.append(f"XGBoost momentum ({signal.xgb_momentum:.2f})")
+            if not signal.risk_gate_passed:
+                rf_dd_pct = signal.rf_drawdown_pips / 10000 if signal.rf_drawdown_pips > 1.0 else signal.rf_drawdown_pips
+                failed_gates.append(f"RF risk (dd={rf_dd_pct:.2%}, streak={signal.rf_streak_prob:.2f})")
+            if hasattr(signal, 'meta_gate_passed') and not signal.meta_gate_passed:
+                failed_gates.append(f"Meta-labeler ({signal.meta_confidence:.2f})")
+
+        if signal.trade and not llm_approved:
+            _update_buddy_runtime_state(
+                last_no_trade_decision={
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "instrument": instrument,
+                    "granularity": granularity,
+                    "decision_type": "intelligent_reject",
+                    "reason": llm_reason,
+                    "final_decision": final_decision,
+                    "risk_flags": list(getattr(llm_validation, "risk_flags", []) or []),
+                    "adaptive_reason": getattr(adaptive_policy, "reason", None),
+                }
+            )
+        elif not signal.trade:
+            _update_buddy_runtime_state(
+                last_no_trade_decision={
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "instrument": instrument,
+                    "granularity": granularity,
+                    "decision_type": "gate_failure",
+                    "reason": signal.reason,
+                    "final_decision": final_decision,
+                    "failed_gates": failed_gates,
+                }
+            )
+        elif signal.trade:
+            _update_buddy_runtime_state(
+                last_trade_execution_decision={
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "instrument": instrument,
+                    "granularity": granularity,
+                    "direction": signal.direction,
+                    "decision_type": "execute" if execute else "dry_run_signal",
+                    "reason": execution_reason,
+                    "final_decision": final_decision,
+                    "size_lots": float(signal.size),
+                    "confidence": float(signal.confidence),
+                    "tcn_probability": float(signal.tcn_probability),
+                    "intelligent_review_reason": getattr(llm_validation, "reason", None),
+                    "adaptive_reason": getattr(adaptive_policy, "reason", None),
+                }
+            )
+
+        console.print("")
+        console.print(f"[bold]{final_decision}[/bold]")
+        console.print("")
 
         # =====================================================================
         # TRADE EXECUTION OR DRY RUN STATUS
         # =====================================================================
-        if signal.trade and execute:
+        if signal.trade and not llm_approved:
+            # Model gates passed but LLM rejected
+            console.print("[bold yellow]╔═══════════════════════════════════════════════════════════╗[/bold yellow]")
+            console.print("[bold yellow]║              NO TRADE: LLM VALIDATION FAILED              ║[/bold yellow]")
+            console.print("[bold yellow]╚═══════════════════════════════════════════════════════════╝[/bold yellow]")
+            console.print("[yellow]Model gates passed but LLM identified risk factors[/yellow]")
+            console.print("[dim]The intelligent mode override prevented this trade[/dim]")
+
+        elif signal.trade and execute:
             # Trade signal and execution enabled - execute the trade
             from src.utils.oanda_practice import OandaPracticeClient
             trader = OandaPracticeClient.from_env()
@@ -1345,6 +1739,10 @@ def buddy(
                                 ],
                                 prediction=signal.tcn_probability,
                                 confidence=signal.ridge_confidence,
+                                volatility_regime=getattr(signal, "volatility_regime", None),
+                                volatility_regime_name=getattr(signal, "volatility_regime_name", None),
+                                volatility_regime_confidence=getattr(signal, "volatility_regime_confidence", None),
+                                metadata=_build_trade_journal_metadata(signal),
                             )
                             console.print("  [green]✓ Trade logged to journal[/green]")
                         except Exception as je:
@@ -1426,16 +1824,13 @@ def buddy(
             console.print("[bold cyan]╚═══════════════════════════════════════════════════════════╝[/bold cyan]")
             console.print("[green]✓ All gates passed - Trade signal generated[/green]")
             console.print(f"  [cyan]Direction:[/cyan] {signal.direction.upper()}")
-            console.print(f"  [cyan]Position Size:[/cyan] {signal.size:.2f} lots ({int(signal.size * 100000):,} units)")
+            dry_run_size = float(signal.size)
+            if llm_validation and llm_validation.approve:
+                dry_run_size *= float(llm_validation.size_multiplier)
+            console.print(
+                f"  [cyan]Position Size:[/cyan] {dry_run_size:.2f} lots ({int(dry_run_size * 100000):,} units)"
+            )
             console.print("  [dim]To execute this trade, add --execute flag[/dim]")
-
-        elif signal.trade and not llm_approved:
-            # Model gates passed but LLM rejected
-            console.print("[bold yellow]╔═══════════════════════════════════════════════════════════╗[/bold yellow]")
-            console.print("[bold yellow]║              NO TRADE: LLM VALIDATION FAILED              ║[/bold yellow]")
-            console.print("[bold yellow]╚═══════════════════════════════════════════════════════════╝[/bold yellow]")
-            console.print("[yellow]Model gates passed but LLM identified risk factors[/yellow]")
-            console.print("[dim]The intelligent mode override prevented this trade[/dim]")
 
         else:
             # Gates failed - no trade signal
@@ -1445,17 +1840,6 @@ def buddy(
             console.print(f"[yellow]Reason: {signal.reason}[/yellow]")
 
             # Show which specific gates failed
-            failed_gates = []
-            if not signal.confidence_gate_passed:
-                failed_gates.append(f"Ridge confidence ({signal.ridge_confidence:.0f}/100)")
-            if not signal.momentum_gate_passed:
-                failed_gates.append(f"XGBoost momentum ({signal.xgb_momentum:.2f})")
-            if not signal.risk_gate_passed:
-                rf_dd_pct = signal.rf_drawdown_pips / 10000 if signal.rf_drawdown_pips > 1.0 else signal.rf_drawdown_pips
-                failed_gates.append(f"RF risk (dd={rf_dd_pct:.2%}, streak={signal.rf_streak_prob:.2f})")
-            if hasattr(signal, 'meta_gate_passed') and not signal.meta_gate_passed:
-                failed_gates.append(f"Meta-labeler ({signal.meta_confidence:.2f})")
-
             if failed_gates:
                 console.print(f"  [dim]Failed gates: {', '.join(failed_gates)}[/dim]")
 
@@ -2816,6 +3200,26 @@ def _maybe_launch_buddy_repl(args: Any) -> bool:
         )
         return True
     return False
+
+
+def _maybe_launch_buddy_chat(args: Any) -> bool:
+    if getattr(args, "command", None) != "buddy-chat":
+        return False
+
+    explicit_execute = any(token in {"--execute", "-x"} for token in sys.argv[1:])
+    execute = explicit_execute and not bool(getattr(args, "dry_run", False))
+    launch_buddy_repl_from_wizard(
+        args.config,
+        checkpoint_path=getattr(args, "model_path", None),
+        instrument=str(getattr(args, "instrument", "USD_JPY")),
+        granularity=str(getattr(args, "granularity", "M5")),
+        candles=int(getattr(args, "candles", 300)),
+        execute=execute,
+        all_features=bool(getattr(args, "all_features", False)),
+        verbose=bool(getattr(args, "verbose", False)),
+        assistant_name="Buddy",
+    )
+    return True
 
 
 def _compute_force_units(*, force_units_raw: Any, force_margin_raw: Any) -> int | None:

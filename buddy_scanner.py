@@ -38,20 +38,40 @@ class BuddyScanner:
     ) -> None:
         """Render compact Codex-style scanner output with explicit reasoning."""
         c = self._display.console
+        planner_orange = "color(215)"
+        planner_sand = "color(223)"
+        planner_cyan = "color(117)"
+        planner_slate = "color(246)"
         c.print()
-        c.print(f"[bold]BUDDY SCAN[/bold]  {model_type} | {granularity}")
-        c.print(f"[dim]Pairs shown: {len(analyses)}[/dim]")
+        c.print(
+            f"[bold {planner_orange}]BUDDY PLANNER SCAN[/bold {planner_orange}]  "
+            f"[{planner_cyan}]{model_type}[/{planner_cyan}] | [{planner_sand}]{granularity}[/{planner_sand}]"
+        )
+        c.print(f"[{planner_slate}]Pairs shown: {len(analyses)}[/{planner_slate}]")
         c.print()
 
         for idx, a in enumerate(analyses, start=1):
             pair = a.pair.replace("_", "/")
             direction = (a.direction or "HOLD").upper()
-            status = "TRADEABLE" if a.gates_passed else ("ERROR" if a.error else "WATCH")
+            session_blocked = bool(a.error and str(a.error).lower().startswith("outside trading session"))
+            status = "TRADEABLE" if a.gates_passed else ("SESSION" if session_blocked else ("ERROR" if a.error else "WATCH"))
             conf = int(round(float(a.confidence) * 100))
-            c.print(f"{idx}. {pair}  {direction}  {conf}%  [{status}]")
+            status_style = {
+                "TRADEABLE": planner_cyan,
+                "SESSION": planner_sand,
+                "ERROR": "red",
+                "WATCH": planner_slate,
+            }.get(status, planner_slate)
+            direction_style = planner_cyan if direction in {"LONG", "SHORT"} else planner_slate
+            c.print(
+                f"[{planner_slate}]{idx}.[/{planner_slate}] [bold {planner_sand}]{pair}[/bold {planner_sand}]  "
+                f"[{direction_style}]{direction}[/{direction_style}]  "
+                f"[{planner_orange}]{conf}%[/{planner_orange}]  "
+                f"[{status_style}][{status}][/{status_style}]"
+            )
 
             if a.error:
-                c.print(f"   why: {a.error}")
+                c.print(f"   [{planner_slate}]why:[/{planner_slate}] [{planner_sand}]{a.error}[/{planner_sand}]")
                 continue
 
             m_gate = "✓" if a.momentum_passed else "✗"
@@ -65,20 +85,23 @@ class BuddyScanner:
 
             master = a.master_pair.replace("_", "/") if a.master_pair else pair
             c.print(
-                f"   why: gates M{m_gate} A{a_gate} R{r_gate} ({a.gate_summary}), "
-                f"agent {agent_text}, master {master}"
+                f"   [{planner_slate}]why:[/{planner_slate}] gates M{m_gate} A{a_gate} R{r_gate} ({a.gate_summary}), "
+                f"agent {agent_text}, master [{planner_sand}]{master}[/{planner_sand}]"
             )
 
             if a.gates_passed:
                 promoted = " [agent-promoted]" if getattr(a, "agent_promoted", False) else ""
-                c.print(f"   plan: SL {a.sl_pips:.0f} | TP {a.tp_pips:.0f}{promoted}")
+                c.print(
+                    f"   [{planner_slate}]plan:[/{planner_slate}] "
+                    f"[{planner_cyan}]SL {a.sl_pips:.0f} | TP {a.tp_pips:.0f}{promoted}[/{planner_cyan}]"
+                )
 
         tradeable = [a.pair.replace("_", "/") for a in analyses if a.gates_passed]
         c.print()
         if tradeable:
-            c.print(f"[green]Tradeable:[/green] {', '.join(tradeable)}")
+            c.print(f"[{planner_cyan}]Tradeable:[/{planner_cyan}] [{planner_sand}]{', '.join(tradeable)}[/{planner_sand}]")
         else:
-            c.print("[dim]No tradeable setups.[/dim]")
+            c.print(f"[{planner_slate}]No tradeable setups.[/{planner_slate}]")
 
     # ------------------------------------------------------------------
     def scan(

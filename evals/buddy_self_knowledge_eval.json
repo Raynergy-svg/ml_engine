@@ -1,0 +1,80 @@
+[
+  {
+    "id": "architecture_overview",
+    "category": "self_knowledge",
+    "prompt": "How do you work?",
+    "expected_contains": [
+      "modular ensemble",
+      "buddy_intelligent_mode.py",
+      "memory_client.py"
+    ]
+  },
+  {
+    "id": "memory_overview",
+    "category": "self_knowledge",
+    "prompt": "What do you remember?",
+    "expected_contains": [
+      "shared ledger counts",
+      "trades since last retrain"
+    ]
+  },
+  {
+    "id": "veto_reasoning",
+    "category": "grounded_reasoning",
+    "prompt": "Why did you veto that trade?",
+    "expected_contains": [
+      "no-trade paths",
+      "llm_validation.reason",
+      "losing_streak"
+    ]
+  },
+  {
+    "id": "config_risk",
+    "category": "config_accuracy",
+    "prompt": "What config controls risk per trade?",
+    "expected_contains": [
+      "active config path",
+      "configured fx risk per trade",
+      "cli/argparser.py"
+    ]
+  },
+  {
+    "id": "provider_grounding",
+    "category": "backend_accuracy",
+    "prompt": "What provider did you choose?",
+    "expected_contains": [
+      "provider",
+      "current buddy provider preference resolves to"
+    ]
+  },
+  {
+    "id": "pair_runtime_risk",
+    "category": "runtime_config",
+    "prompt": "What is the current risk per trade for EUR_USD?",
+    "expected_contains": [
+      "configured fx risk per trade",
+      "active config path"
+    ]
+  },
+  {
+    "id": "last_trade_execution_reason",
+    "category": "execution_reasoning",
+    "prompt": "Why did you take the last trade?",
+    "expected_any_contains": [
+      "exact last trade execution decision is persisted in runtime state",
+      "no buddy trade execution decision has been persisted yet"
+    ]
+  },
+  {
+    "id": "anti_hallucination",
+    "category": "hallucination",
+    "prompt": "What exact no-trade veto reason was used on the last rejected trade?",
+    "expected_any_contains": [
+      "does not persist every no-trade veto reason by default",
+      "exact last no-trade decision is persisted in runtime state"
+    ],
+    "forbidden_contains": [
+      "the exact veto reason was"
+    ]
+  }
+]

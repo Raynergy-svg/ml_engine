@@ -17,7 +17,7 @@ Usage:
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, asdict
@@ -30,6 +30,10 @@ MEMORY_STORAGE_PATH = Path("trained_data/.memory")
 # TTL settings
 SCAN_TTL_DAYS = 7
 TRAINING_TTL_DAYS = None  # Indefinite
+TRADE_METADATA_MAX_DEPTH = 3
+TRADE_METADATA_MAX_KEYS = 24
+TRADE_METADATA_MAX_LIST_ITEMS = 8
+TRADE_METADATA_MAX_STRING = 180
 
 
 @dataclass
@@ -71,6 +75,39 @@ class TrainingSession:
         return cls(**d)
 
 
+@dataclass
+class TradeRecord:
+    """Stored trade record for shared memory across subsystems."""
+    timestamp: str  # ISO format
+    instrument: str
+    direction: str
+    confidence: float = 0.0
+    trade_id: Optional[str] = None
+    pnl: Optional[float] = None
+    pnl_pips: Optional[float] = None
+    entry: Optional[float] = None
+    exit: Optional[float] = None
+    lots: Optional[float] = None
+    sl: Optional[float] = None
+    tp: Optional[float] = None
+    prediction: Optional[float] = None
+    model: Optional[str] = None
+    account_balance: Optional[float] = None
+    metadata: Dict[str, Any] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        data = asdict(self)
+        if data["metadata"] is None:
+            data["metadata"] = {}
+        return data
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "TradeRecord":
+        payload = dict(d)
+        payload.setdefault("metadata", {})
+        return cls(**payload)
+
+
 class MLEngineMemory:
     """
     Memory client for ML Engine state persistence.
@@ -87,13 +124,14 @@ class MLEngineMemory:
         self.scans_file = self.storage_path / "scan_results.json"
         self.training_file = self.storage_path / "training_sessions.json"
         self.model_state_file = self.storage_path / "model_state.json"
+        self.trades_file = self.storage_path / "trades.json"
         
         # Initialize files if missing
         self._init_storage()
     
     def _init_storage(self):
         """Initialize storage files with empty data."""
-        for filepath in [self.scans_file, self.training_file, self.model_state_file]:
+        for filepath in [self.scans_file, self.training_file, self.model_state_file, self.trades_file]:
             if not filepath.exists():
                 filepath.write_text("[]" if filepath != self.model_state_file else "{}")
     
@@ -208,6 +246,149 @@ class MLEngineMemory:
         self._save_json(self.scans_file, scans)
         return original_count - len(scans)
     
+    # =========================================================================
+    # TRADES (shared ledger for scanner, drift, LLM memory)
+    # =========================================================================
+
+    def log_trade(self, trade: Dict[str, Any]) -> None:
+        """Insert or update a trade record in shared memory."""
+        trades = self._load_json(self.trades_file)
+        record = self._normalize_trade_record(trade)
+        trade_id = record.get("trade_id")
+
+        updated = False
+        if trade_id:
+            for idx, existing in enumerate(trades):
+                if existing.get("trade_id") == trade_id:
+                    merged = dict(existing)
+                    merged.update({k: v for k, v in record.items() if v is not None})
+                    if isinstance(existing.get("metadata"), dict) or isinstance(record.get("metadata"), dict):
+                        merged["metadata"] = self._prune_metadata({
+                            **(existing.get("metadata") or {}),
+                            **(record.get("metadata") or {}),
+                        })
+                    trades[idx] = merged
+                    updated = True
+                    break
+
+        if not updated:
+            trades.append(record)
+
+        trades.sort(key=self._trade_sort_key, reverse=True)
+        self._save_json(self.trades_file, trades)
+        logger.info("📝 %s trade memory: %s", "Updated" if updated else "Stored", trade_id or record["instrument"])
+
+    def get_recent_trades(
+        self,
+        limit: int = 100,
+        pair: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return recent trades from the shared trade ledger."""
+        trades = self._load_json(self.trades_file)
+        if pair:
+            pair_norm = pair.upper()
+            trades = [t for t in trades if str(t.get("instrument", "")).upper() == pair_norm]
+        trades.sort(key=self._trade_sort_key, reverse=True)
+        return trades[:limit]
+
+    def get_trade(self, trade_id: str) -> Optional[Dict[str, Any]]:
+        """Look up one trade record by trade_id."""
+        if not trade_id:
+            return None
+
+        trades = self._load_json(self.trades_file)
+        for trade in trades:
+            if trade.get("trade_id") == trade_id:
+                return trade
+        return None
+
+    def _normalize_trade_record(self, trade: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize heterogeneous trade payloads into one shared shape."""
+        metadata = trade.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        metadata = self._prune_metadata(metadata)
+
+        record = TradeRecord(
+            timestamp=str(trade.get("timestamp") or datetime.now(timezone.utc).isoformat()),
+            instrument=str(trade.get("instrument") or trade.get("pair") or "").upper(),
+            direction=str(trade.get("direction") or "").lower(),
+            confidence=float(trade.get("confidence", 0.0) or 0.0),
+            trade_id=str(trade["trade_id"]) if trade.get("trade_id") else None,
+            pnl=self._maybe_float(trade.get("pnl")),
+            pnl_pips=self._maybe_float(trade.get("pnl_pips")),
+            entry=self._maybe_float(trade.get("entry")),
+            exit=self._maybe_float(trade.get("exit")),
+            lots=self._maybe_float(trade.get("lots")),
+            sl=self._maybe_float(trade.get("sl")),
+            tp=self._maybe_float(trade.get("tp")),
+            prediction=self._maybe_float(trade.get("prediction")),
+            model=str(trade["model"]) if trade.get("model") else None,
+            account_balance=self._maybe_float(trade.get("account_balance")),
+            metadata=metadata,
+        )
+        return record.to_dict()
+
+    def _prune_metadata(self, value: Any, *, depth: int = 0) -> Any:
+        """Keep trade metadata compact and JSON-friendly."""
+        if depth >= TRADE_METADATA_MAX_DEPTH:
+            return self._prune_leaf(value)
+
+        if isinstance(value, dict):
+            items = sorted(value.items(), key=lambda item: str(item[0]))
+            pruned: Dict[str, Any] = {}
+            for idx, (key, item) in enumerate(items):
+                if idx >= TRADE_METADATA_MAX_KEYS:
+                    pruned["_truncated_keys"] = len(items) - TRADE_METADATA_MAX_KEYS
+                    break
+                pruned[str(key)] = self._prune_metadata(item, depth=depth + 1)
+            return pruned
+
+        if isinstance(value, (list, tuple)):
+            seq = list(value)
+            pruned_list = [
+                self._prune_metadata(item, depth=depth + 1)
+                for item in seq[:TRADE_METADATA_MAX_LIST_ITEMS]
+            ]
+            if len(seq) > TRADE_METADATA_MAX_LIST_ITEMS:
+                pruned_list.append({"_truncated_items": len(seq) - TRADE_METADATA_MAX_LIST_ITEMS})
+            return pruned_list
+
+        return self._prune_leaf(value)
+
+    def _prune_leaf(self, value: Any) -> Any:
+        """Normalize metadata leaf values into compact scalar JSON."""
+        if value is None or isinstance(value, (bool, int, float)):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if len(text) > TRADE_METADATA_MAX_STRING:
+                return text[:TRADE_METADATA_MAX_STRING - 3] + "..."
+            return text
+        text = str(value)
+        if len(text) > TRADE_METADATA_MAX_STRING:
+            text = text[:TRADE_METADATA_MAX_STRING - 3] + "..."
+        return text
+
+    def _trade_sort_key(self, trade: Dict[str, Any]) -> float:
+        """Sort trades newest first, tolerating malformed timestamps."""
+        try:
+            dt = datetime.fromisoformat(str(trade.get("timestamp", "")).replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except Exception:
+            return 0.0
+
+    def _maybe_float(self, value: Any) -> Optional[float]:
+        """Best-effort float conversion."""
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except Exception:
+            return None
+
     # =========================================================================
     # TRAINING SESSIONS (Indefinite storage)
     # =========================================================================
@@ -370,6 +551,22 @@ class MLEngineMemory:
         if model_name:
             return state.get(model_name, {})
         return state
+
+    def get_runtime_state(self, namespace: str) -> Dict[str, Any]:
+        """Get auxiliary runtime state stored alongside model state."""
+        state = self._load_json(self.model_state_file)
+        return state.get(f"runtime::{namespace}", {})
+
+    def update_runtime_state(self, namespace: str, values: Dict[str, Any]) -> None:
+        """Update auxiliary runtime state stored alongside model state."""
+        state = self._load_json(self.model_state_file)
+        key = f"runtime::{namespace}"
+        current = state.get(key, {})
+        merged = dict(current) if isinstance(current, dict) else {}
+        merged.update(values)
+        merged["last_updated"] = datetime.now(timezone.utc).isoformat()
+        state[key] = merged
+        self._save_json(self.model_state_file, state)
     
     # =========================================================================
     # UTILITIES
@@ -379,10 +576,12 @@ class MLEngineMemory:
         """Get memory storage statistics."""
         scans = self._load_json(self.scans_file)
         sessions = self._load_json(self.training_file)
+        trades = self._load_json(self.trades_file)
         
         return {
             "scan_results_count": len(scans),
             "training_sessions_count": len(sessions),
+            "trade_records_count": len(trades),
             "storage_path": str(self.storage_path),
             "scan_ttl_days": SCAN_TTL_DAYS,
         }
@@ -528,6 +727,7 @@ class MLEngineMemory:
         self.scans_file.write_text("[]")
         self.training_file.write_text("[]")
         self.model_state_file.write_text("{}")
+        self.trades_file.write_text("[]")
         logger.warning("⚠️ All memory storage cleared!")
 
 

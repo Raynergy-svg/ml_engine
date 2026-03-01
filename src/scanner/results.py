@@ -147,7 +147,7 @@ class PairAnalysis:
         """Check if this pair has a valid trade signal."""
         return (
             self.gates_passed
-            and self.direction is not None
+            and self.direction in {"LONG", "SHORT"}
             and self.error is None
             and not self.blocked_by_circuit_breaker
             and bool(self.execution_quality_passed)

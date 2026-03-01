@@ -12,16 +12,26 @@ No LLM is required; the "AI" here is the trained neural network.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
+import contextlib
+import io
 
 import numpy as np
 import pandas as pd
+from rich.console import Console
+from rich.text import Text
+from src.utils.buddy_knowledge import answer_buddy_question
+import re
 import threading
 
 # PyTorch was removed from this repository. Unified talk supports
 # TensorFlow-only checkpoints.
 torch = None  # type: ignore
+
+logger = logging.getLogger(__name__)
 
 
 def safe_torch_load(*args: Any, **kwargs: Any):
@@ -53,7 +63,31 @@ EXEC_STATUS_DRY_RUN = "⏸️ DRY-RUN"
 
 
 def _assistant_prefix(ctx: "TalkContext") -> str:
+    if _planner_chat_enabled():
+        return "Buddy Planner 3B: "
     return f"{ctx.assistant_name}: "
+
+
+def _planner_chat_enabled() -> bool:
+    return os.getenv("BUDDY_CHAT_MODE", "").strip().lower() == "planner"
+
+
+def _remember_chat_turn(ctx: "TalkContext", role: str, content: str) -> None:
+    """Keep a short rolling chat history for grounded synthesis."""
+    text = (content or "").strip()
+    if not text:
+        return
+    ctx.chat_history.append({"role": role, "content": text})
+    if len(ctx.chat_history) > 8:
+        ctx.chat_history = ctx.chat_history[-8:]
+
+
+def _recent_chat_context(ctx: "TalkContext", turns: int = 4) -> str:
+    if not ctx.chat_history:
+        return "No earlier chat context."
+    recent = ctx.chat_history[-turns:]
+    lines = [f"{item['role']}: {item['content']}" for item in recent if item.get("content")]
+    return "\n".join(lines) if lines else "No earlier chat context."
 
 
 def _load_project_dotenv() -> None:
@@ -121,6 +155,27 @@ class TalkContext:
     confidence_calibrator: Any = None  # ConfidenceCalibrator instance
     position_sizer: Any = None  # DynamicPositionSizer instance
     risk_manager: Any = None  # ConfidenceBasedRiskManager instance
+    chat_history: list[dict[str, str]] = field(default_factory=list)
+    last_scan_summary: Optional[dict[str, Any]] = None
+    planner_runtime: Any = None
+    planner_state: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class TalkPlannedStep:
+    """One planned action in a natural-language talk request."""
+    action: str
+    value: Optional[str] = None
+
+
+@dataclass
+class TalkIntentPlan:
+    """A lightweight action plan derived from a natural-language request."""
+    steps: list[TalkPlannedStep] = field(default_factory=list)
+    answer_after: bool = False
+
+
+_PLANNER_CONSOLE = Console()
 
 
 def select_latest_checkpoint(model_dir: Path) -> Optional[Path]:
@@ -316,6 +371,12 @@ def _inverse_target(y_scaled: np.ndarray, target_scaler: Any) -> np.ndarray:
 
 
 def _predict_one(ctx: TalkContext, df: pd.DataFrame) -> Dict[str, Any]:
+    if ctx.engine is None:
+        raise RuntimeError(
+            "Prediction engine unavailable in this chat session. "
+            "Grounded Buddy self-knowledge still works, but predictive commands need a compatible unified checkpoint."
+        )
+
     # TensorFlow models with feature engineering need all numeric features
     if ctx.is_tensorflow and ctx.apply_feature_engineering:
         seq = _coerce_sequence(
@@ -716,6 +777,128 @@ def _render_answer_verbose(q: str, result: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _compact_float(value: Any, digits: int = 4) -> Optional[str]:
+    try:
+        return f"{float(value):.{digits}f}"
+    except Exception:
+        return None
+
+
+def _prediction_fact_lines(ctx: TalkContext, result: Dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    lines.append(f"active_source={ctx.active_source or 'unknown'}")
+    lines.append(f"instrument={ctx.oanda_instrument}")
+    lines.append(f"granularity={ctx.oanda_granularity}")
+
+    pred = _compact_float(result.get("prediction"), 5)
+    last_close = _compact_float(result.get("last_close"), 5)
+    if pred is not None:
+        lines.append(f"prediction={pred}")
+    if last_close is not None:
+        lines.append(f"last_close={last_close}")
+    if pred is not None and last_close is not None:
+        try:
+            delta = float(result.get("prediction")) - float(result.get("last_close"))
+            lines.append(f"delta={delta:+.5f}")
+        except Exception:
+            pass
+
+    risk = result.get("risk")
+    if risk is not None:
+        try:
+            risk_f = float(risk)
+            lines.append(f"risk={risk_f:.2f} ({_risk_bucket(risk_f)})")
+        except Exception:
+            pass
+
+    trend = result.get("trend")
+    if trend is not None:
+        try:
+            lines.append(f"trend={float(trend):+.4f}")
+        except Exception:
+            pass
+
+    state_probs = result.get("state_probs")
+    if isinstance(state_probs, list) and state_probs:
+        try:
+            conf = float(max(state_probs))
+            best_idx = int(np.argmax(state_probs))
+            lines.append(f"confidence={conf:.0%} ({_confidence_bucket(conf)})")
+            lines.append(f"dominant_state_index={best_idx}")
+            lines.append(f"state_probs={state_probs}")
+        except Exception:
+            pass
+
+    can_trade, reason = _can_execute_trade(result.get("state_probs"), result.get("risk"))
+    lines.append(f"trade_ready={can_trade}")
+    lines.append(f"trade_gate_reason={reason}")
+    lines.append(f"execute_mode={'live' if ctx.oanda_execute else 'dry-run'}")
+    lines.append(f"stop_loss_pips={ctx.stop_loss_pips if ctx.use_stop_loss else 'off'}")
+    lines.append(f"take_profit_pips={ctx.take_profit_pips if ctx.use_take_profit else 'off'}")
+    return lines
+
+
+def _grounded_chat_reply(
+    ctx: TalkContext,
+    *,
+    user_query: str,
+    task: str,
+    fact_lines: list[str],
+    fallback: str,
+    max_tokens: int = 320,
+) -> str:
+    """Synthesize a natural reply from grounded facts, local-first."""
+    facts = [line for line in fact_lines if line]
+    if not facts:
+        return fallback
+
+    try:
+        from llm_providers import llm_call, select_buddy_provider_name
+
+        provider = select_buddy_provider_name(None)
+        if not provider:
+            return fallback
+
+        system_prompt = (
+            "You are Buddy, a trading assistant. "
+            "Answer ONLY from the provided grounded facts and recent chat context. "
+            "Do not invent state, trades, config, or runtime details. "
+            "If the facts are insufficient, say exactly what is missing. "
+            "Keep the answer concise and natural."
+        )
+        prompt = (
+            f"Task: {task}\n"
+            f"User query: {user_query}\n\n"
+            f"Recent chat context:\n{_recent_chat_context(ctx)}\n\n"
+            f"Grounded facts:\n- " + "\n- ".join(facts) + "\n\n"
+            "Write the answer as Buddy speaking directly to the user."
+        )
+        response = llm_call(
+            prompt,
+            system_prompt=system_prompt,
+            provider=provider,
+            temperature=0.1,
+            max_tokens=max_tokens,
+        )
+        if response and response.strip():
+            return response.strip()
+    except Exception as e:
+        logger.debug("Grounded chat synthesis failed: %s", e)
+
+    return fallback
+
+
+def _render_prediction_chat_answer(ctx: TalkContext, q: str, result: Dict[str, Any]) -> str:
+    fallback = _render_answer_verbose(q, result) if ctx.verbose else _render_answer(q, result)
+    return _grounded_chat_reply(
+        ctx,
+        user_query=q,
+        task="Answer the user's market question using the latest prediction context.",
+        fact_lines=_prediction_fact_lines(ctx, result),
+        fallback=fallback,
+    )
+
+
 def _find_pytorch_checkpoint(cfg: Dict[str, Any]) -> Optional[str]:
     """Find a PyTorch checkpoint as fallback."""
     # Check common locations
@@ -778,12 +961,37 @@ def _load_pytorch_model(cfg: Dict[str, Any], ckpt_path: str) -> tuple[UnifiedNeu
 def _load_context(config_path: str, *, checkpoint_path: Optional[str] = None) -> TalkContext:
     cfg = load_config(config_path)
     ckpt_path = checkpoint_path or _default_checkpoint_path(cfg)
+    reasoning = ReasoningEngine(cfg.get("reasoning", {}))
+
+    # Initialize confidence system components
+    from confidence_calibration import create_default_calibrator
+    from position_sizing import create_default_position_sizer
+    from risk_management import create_default_risk_manager
+
+    confidence_calibrator = create_default_calibrator()
+    position_sizer = create_default_position_sizer()
+    risk_manager = create_default_risk_manager()
 
     if not Path(ckpt_path).exists():
-        raise FileNotFoundError(
-            f"Checkpoint not found: {ckpt_path}. Run training first:\n"
-            f"  TensorFlow: python3 train_visual.py --framework tensorflow --model tft --multi-task --data-dir trained_data/data\n"
-            f"  PyTorch: python main.py train-unified --config {config_path} --csv <file.csv>"
+        logger.info(
+            "Unified talk checkpoint not found at %s; starting Buddy chat in grounded knowledge-only mode",
+            ckpt_path,
+        )
+        return TalkContext(
+            config_path=config_path,
+            checkpoint_path=ckpt_path,
+            feature_columns=["open", "high", "low", "close", "volume"],
+            sequence_length=int(cfg.get("data", {}).get("sequence_length") or cfg.get("sequence_length") or 60),
+            target_shift=int(cfg.get("data", {}).get("target_shift") or cfg.get("target_shift") or 1),
+            engine=None,  # type: ignore[arg-type]
+            reasoning=reasoning,
+            feature_scaler=None,
+            target_scaler=None,
+            apply_feature_engineering=False,
+            is_tensorflow=False,
+            confidence_calibrator=confidence_calibrator,
+            position_sizer=position_sizer,
+            risk_manager=risk_manager,
         )
 
     is_tf_model = is_tensorflow_checkpoint(ckpt_path)
@@ -807,17 +1015,6 @@ def _load_context(config_path: str, *, checkpoint_path: Optional[str] = None) ->
     else:
         engine, meta = _load_pytorch_model(cfg, ckpt_path)
 
-    reasoning = ReasoningEngine(cfg.get("reasoning", {}))
-
-    # Initialize confidence system components
-    from confidence_calibration import create_default_calibrator
-    from position_sizing import create_default_position_sizer
-    from risk_management import create_default_risk_manager
-
-    confidence_calibrator = create_default_calibrator()
-    position_sizer = create_default_position_sizer()
-    risk_manager = create_default_risk_manager()
-
     return TalkContext(
         config_path=config_path,
         checkpoint_path=ckpt_path,
@@ -839,7 +1036,7 @@ def _load_context(config_path: str, *, checkpoint_path: Optional[str] = None) ->
 def _print_talk_banner(ctx: TalkContext) -> None:
     import sys
     if ctx.verbose:
-        model_type = "TensorFlow TFT" if ctx.is_tensorflow else "PyTorch LSTM"
+        model_type = "Knowledge-Only" if ctx.engine is None else ("TensorFlow TFT" if ctx.is_tensorflow else "PyTorch LSTM")
         print(f"🤖 Buddy - {model_type} Trading Engine")
         print(f"Model: {ctx.checkpoint_path}")
         print(
@@ -857,7 +1054,18 @@ def _print_talk_banner(ctx: TalkContext) -> None:
     exec_status = EXEC_STATUS_LIVE if ctx.oanda_execute else EXEC_STATUS_DRY_RUN
     sl_info = f"SL={ctx.stop_loss_pips}p" if ctx.use_stop_loss else "SL=OFF"
     tp_info = f"TP={ctx.take_profit_pips}p" if ctx.use_take_profit else "TP=OFF"
-    print(_assistant_prefix(ctx) + f"Hey! I'm ready to help. Mode: {exec_status} | {sl_info} | {tp_info}. Type 'help' for commands.")
+    if _planner_chat_enabled():
+        label = Text("Buddy Planner 3B", style="bold color(215)")
+        prompt = Text("Prompt: scan-first grounded operator", style="color(117)")
+        status = Text()
+        status.append("Mode: planner mode", style="color(223)")
+        status.append(f" | {sl_info} | {tp_info}. ", style="default")
+        status.append("Type 'help' for planner examples.", style="color(246)")
+        _PLANNER_CONSOLE.print(label, " ", prompt)
+        _PLANNER_CONSOLE.print(Text("Buddy Planner 3B: ", style="bold color(215)"), status)
+    else:
+        readiness = "knowledge-first mode" if ctx.engine is None else exec_status
+        print(_assistant_prefix(ctx) + f"Hey! I'm ready to help. Mode: {readiness} | {sl_info} | {tp_info}. Type 'help' for commands.")
     sys.stdout.flush()
 
 
@@ -927,6 +1135,9 @@ def _maybe_run_initial_prediction(
     oanda: bool,
 ) -> None:
     """Run initial prediction based on provided data source."""
+    if ctx.engine is None:
+        return
+
     if csv_path:
         _run_initial_csv_prediction(ctx, csv_path)
         return
@@ -949,6 +1160,245 @@ def _extract_command_arg(q: str, prefix: str) -> Optional[str]:
     return parts[2].strip()
 
 
+_FX_CURRENCY_CODES = {"AUD", "CAD", "CHF", "EUR", "GBP", "JPY", "NZD", "USD"}
+
+
+def _is_explicit_talk_command(ql: str) -> bool:
+    """Return True for direct command forms that should bypass intent planning."""
+    if ql in {"exit", "quit", "q", "help", "?"}:
+        return True
+    return False
+
+
+def _extract_instrument_hint(q: str) -> Optional[str]:
+    """Extract a likely FX instrument from natural-language text."""
+    for match in re.finditer(r"\b([A-Za-z]{3})[\s/_-]?([A-Za-z]{3})\b", q):
+        base = match.group(1).upper()
+        quote = match.group(2).upper()
+        if base in _FX_CURRENCY_CODES and quote in _FX_CURRENCY_CODES:
+            return f"{base}_{quote}"
+    return None
+
+
+def _compute_prediction_for_active_source(ctx: TalkContext) -> Dict[str, Any]:
+    """Run a fresh prediction for the active source without printing."""
+    if ctx.active_df is None:
+        raise ValueError("pick a source first: 'use oanda ...' or 'use csv ...' or 'use ticker ...'.")
+
+    if ctx.active_source and ctx.active_source.startswith("oanda:"):
+        ctx.active_df = _load_df_from_oanda(
+            ctx,
+            instrument=ctx.oanda_instrument,
+            granularity=ctx.oanda_granularity,
+            candles=ctx.oanda_candles,
+            price=ctx.oanda_price,
+        )
+
+    result = _predict_one_locked(ctx, ctx.active_df)
+    ctx.last_result = result
+    return result
+
+
+def _plan_position(q: str, patterns: tuple[str, ...]) -> Optional[int]:
+    """Return the earliest position for any regex pattern in text."""
+    hits = []
+    for pattern in patterns:
+        match = re.search(pattern, q, flags=re.IGNORECASE)
+        if match:
+            hits.append(match.start())
+    return min(hits) if hits else None
+
+
+def _extract_sl_tp_steps(q: str) -> list[tuple[int, TalkPlannedStep]]:
+    """Extract natural-language SL/TP changes in source order."""
+    steps: list[tuple[int, TalkPlannedStep]] = []
+
+    for match in re.finditer(r"\b(?:set\s+)?(?:stop\s*loss|stoploss|sl)\s+(?:to\s+)?(\d+(?:\.\d+)?)\b", q, flags=re.IGNORECASE):
+        steps.append((match.start(), TalkPlannedStep(action="set_sl", value=match.group(1))))
+    for match in re.finditer(r"\b(?:set\s+)?(?:take\s*profit|takeprofit|tp)\s+(?:to\s+)?(\d+(?:\.\d+)?)\b", q, flags=re.IGNORECASE):
+        steps.append((match.start(), TalkPlannedStep(action="set_tp", value=match.group(1))))
+
+    return steps
+
+
+def _extract_execute_mode_steps(q: str) -> list[tuple[int, TalkPlannedStep]]:
+    steps: list[tuple[int, TalkPlannedStep]] = []
+    on_patterns = (
+        r"\bexecute\s+on\b",
+        r"\bturn\s+(?:execution|execute)\s+on\b",
+        r"\benable\s+(?:execution|live trading|live mode)\b",
+        r"\bgo\s+live\b",
+    )
+    off_patterns = (
+        r"\bexecute\s+off\b",
+        r"\bturn\s+(?:execution|execute)\s+off\b",
+        r"\bdisable\s+(?:execution|live trading|live mode)\b",
+        r"\bdry[- ]run\s+only\b",
+    )
+
+    for pattern in on_patterns:
+        match = re.search(pattern, q, flags=re.IGNORECASE)
+        if match:
+            steps.append((match.start(), TalkPlannedStep(action="set_execute_mode", value="on")))
+            break
+    for pattern in off_patterns:
+        match = re.search(pattern, q, flags=re.IGNORECASE)
+        if match:
+            steps.append((match.start(), TalkPlannedStep(action="set_execute_mode", value="off")))
+            break
+
+    return steps
+
+
+def _plan_talk_request(ctx: TalkContext, q: str, ql: str) -> Optional[TalkIntentPlan]:
+    """Map natural-language requests onto existing talk tools."""
+    if _is_explicit_talk_command(ql):
+        return None
+
+    plan = TalkIntentPlan()
+    instrument = _extract_instrument_hint(q)
+    instrument_pos = _plan_position(q, (r"\b[A-Za-z]{3}[\s/_-]?[A-Za-z]{3}\b",))
+    wants_analysis = any(
+        phrase in ql for phrase in (
+            "analy",
+            "check",
+            "look at",
+            "what do you think",
+            "setup",
+            "safe to",
+            "should i",
+            "how risky",
+            "good trade",
+        )
+    )
+    wants_summary = any(
+        phrase in ql for phrase in (
+            "summary",
+            "summarize",
+            "overview",
+            "what am i looking at",
+        )
+    )
+    wants_execution = any(
+        phrase in ql for phrase in (
+            "take the trade",
+            "place the trade",
+            "execute the trade",
+            "enter the trade",
+            "open the trade",
+            "go ahead and trade",
+            "put on the trade",
+        )
+    )
+
+    directional_hint = None
+    has_buy = bool(re.search(r"\b(buy|long)\b", ql))
+    has_sell = bool(re.search(r"\b(sell|short)\b", ql))
+    if has_buy ^ has_sell:
+        directional_hint = "buy" if has_buy else "sell"
+
+    ordered_steps: list[tuple[int, TalkPlannedStep]] = []
+    if instrument and instrument != ctx.oanda_instrument:
+        ordered_steps.append((instrument_pos or 0, TalkPlannedStep(action="use_oanda", value=instrument)))
+
+    ordered_steps.extend(_extract_sl_tp_steps(q))
+    ordered_steps.extend(_extract_execute_mode_steps(q))
+
+    summary_pos = _plan_position(q, (r"\bsummar(?:y|ize)\b", r"\boverview\b"))
+    if wants_summary:
+        ordered_steps.append((summary_pos or len(q), TalkPlannedStep(action="summary")))
+
+    execution_pos = _plan_position(
+        q,
+        (
+            r"take the trade",
+            r"place the trade",
+            r"execute the trade",
+            r"enter the trade",
+            r"open the trade",
+            r"go ahead and trade",
+            r"put on the trade",
+        ),
+    )
+    if wants_execution:
+        ordered_steps.append((
+            execution_pos or len(q),
+            TalkPlannedStep(action="trade_market" if directional_hint else "trade_auto", value=directional_hint),
+        ))
+
+    needs_prediction = wants_analysis or wants_execution or wants_summary
+    if needs_prediction:
+        first_action_pos = min(
+            [pos for pos, step in ordered_steps if step.action not in {"use_oanda", "set_sl", "set_tp"}],
+            default=len(q),
+        )
+        ordered_steps.append((max(0, first_action_pos - 1), TalkPlannedStep(action="predict")))
+
+    if wants_analysis and not wants_summary and not wants_execution:
+        plan.answer_after = True
+
+    if not ordered_steps and not plan.answer_after:
+        return None
+
+    ordered_steps.sort(key=lambda item: item[0])
+    seen_predict = False
+    for _, step in ordered_steps:
+        if step.action == "predict":
+            if seen_predict:
+                continue
+            seen_predict = True
+        plan.steps.append(step)
+
+    return plan
+
+
+def _execute_talk_plan(
+    ctx: TalkContext,
+    plan: TalkIntentPlan,
+    *,
+    q: str,
+    period: str,
+    interval: str,
+) -> bool:
+    """Execute a planned natural-language request."""
+    for step in plan.steps:
+        if step.action == "use_oanda" and step.value:
+            _handle_use_commands(
+                ctx,
+                f"use oanda {step.value} {ctx.oanda_granularity} {ctx.oanda_candles}",
+                period=period,
+                interval=interval,
+            )
+        elif step.action == "predict":
+            _compute_prediction_for_active_source(ctx)
+        elif step.action == "summary":
+            _handle_summary_command(ctx)
+        elif step.action == "set_sl" and step.value:
+            _handle_sl_command(ctx, f"sl {step.value}")
+        elif step.action == "set_tp" and step.value:
+            _handle_tp_command(ctx, f"tp {step.value}")
+        elif step.action == "set_execute_mode" and step.value:
+            if step.value == "on":
+                _handle_basic_commands(ctx, "execute on")
+            else:
+                _handle_basic_commands(ctx, "execute off")
+        elif step.action == "trade_auto":
+            _ensure_oanda_client(ctx)
+            _handle_trade_auto(ctx, ["trade"])
+        elif step.action == "trade_market":
+            _ensure_oanda_client(ctx)
+            _handle_trade_market(ctx, action=step.value or "buy", parts=[step.value or "buy"])
+
+    if plan.answer_after:
+        ans = _render_prediction_chat_answer(ctx, q, ctx.last_result) if ctx.last_result is not None else (
+            "I completed the requested steps, but I don't have a fresh prediction result to summarize yet."
+        )
+        print(_assistant_prefix(ctx) + ans)
+        _remember_chat_turn(ctx, "assistant", ans)
+
+    return True
+
+
 def _answer_from_last(ctx: TalkContext, q: str) -> str:
     if ctx.last_result is None:
         return "I don't have a recent prediction yet. Type 'predict' first, or start with 'use oanda ...'."
@@ -967,11 +1417,24 @@ def _ensure_oanda_client(ctx: TalkContext) -> None:
 
 def _handle_help_command(ctx: TalkContext) -> None:
     """Handle help command."""
+    if _planner_chat_enabled():
+        print(
+            f"{_assistant_prefix(ctx)}Here's how to talk to me in planner mode:\n\n"
+            f"  • 'look for an opportunity' - scan the market for current setups\n"
+            f"  • 'scan M5' / 'scan H1 top 3' - run an explicit scan\n"
+            f"  • 'show status' / 'show model status' - inspect runtime and models\n"
+            f"  • 'compare EUR/USD and GBP/USD' - compare the last scan context\n"
+            f"  • 'journal summary' / 'account status' - grounded account and journal actions\n"
+            f"  • 'sl 25' / 'tp 50' / 'execute on' - change runtime settings\n\n"
+            f"I default to taking the next grounded action. If you ask for a setup or opportunity, I'll scan rather than bounce you into a menu."
+        )
+        return
+
     sl_status = f"{ctx.stop_loss_pips}p" if ctx.use_stop_loss else "OFF"
     tp_status = f"{ctx.take_profit_pips}p" if ctx.use_take_profit else "OFF"
     exec_status = EXEC_STATUS_LIVE if ctx.oanda_execute else EXEC_STATUS_DRY_RUN
     print(
-        f"{ctx.assistant_name}: 📋 Here's what I can do:\n\n"
+        f"{_assistant_prefix(ctx)}📋 Here's what I can do:\n\n"
         f"📊 Analysis:\n"
         f"  • 'predict' - run fresh prediction\n"
         f"  • 'summary' - overview with trade readiness\n"
@@ -1036,7 +1499,9 @@ def _handle_summary_command(ctx: TalkContext) -> None:
     trade_emoji = "✅" if can_trade else "⏸️"
     lines.append(f"  Trade ready: {trade_emoji} {reason}")
 
-    print(_assistant_prefix(ctx) + "\n".join(lines))
+    answer = "\n".join(lines)
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
 
 
 def _handle_sl_command(ctx: TalkContext, ql: str) -> Optional[bool]:
@@ -1100,14 +1565,15 @@ def _handle_risk_settings_command(ctx: TalkContext) -> None:
     sl_status = f"ON ({ctx.stop_loss_pips} pips)" if ctx.use_stop_loss else "OFF"
     tp_status = f"ON ({ctx.take_profit_pips} pips)" if ctx.use_take_profit else "OFF"
     exec_status = EXEC_STATUS_LIVE if ctx.oanda_execute else EXEC_STATUS_DRY_RUN
-    print(
-        _assistant_prefix(ctx)
-        + "📊 Risk Management Settings:\n"
+    answer = (
+        "📊 Risk Management Settings:\n"
         + f"  Execute Mode: {exec_status}\n"
         + f"  Stop Loss: {sl_status}\n"
         + f"  Take Profit: {tp_status}\n"
         + f"  Risk/Reward Ratio: 1:{ctx.take_profit_pips/ctx.stop_loss_pips:.1f}"
     )
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
 
 
 def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
@@ -1119,7 +1585,7 @@ def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
         _handle_help_command(ctx)
         return True
 
-    if ql in {"summary", "status", "overview"}:
+    if ql in {"summary", "overview"}:
         _handle_summary_command(ctx)
         return True
 
@@ -1145,6 +1611,721 @@ def _handle_basic_commands(ctx: TalkContext, ql: str) -> Optional[bool]:
         _handle_risk_settings_command(ctx)
         return True
     return None
+
+
+def _looks_like_buddy_self_query(ql: str) -> bool:
+    """Detect questions about Buddy's own architecture, models, or memory."""
+    phrases = (
+        "who are you",
+        "what are you",
+        "how do you work",
+        "how are you wired",
+        "what model are you using",
+        "what models are you using",
+        "what llm",
+        "what provider",
+        "what backend",
+        "how do you remember",
+        "what do you know about yourself",
+        "what is intelligent mode",
+        "how does intelligent mode work",
+        "how do you learn",
+        "what is in memory",
+        "what's in memory",
+        "how does buddy work",
+        "explain your architecture",
+    )
+    return any(phrase in ql for phrase in phrases)
+
+
+def _handle_buddy_self_query(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    """Answer Buddy self-questions from grounded workspace/runtime context."""
+    if not _looks_like_buddy_self_query(ql):
+        return None
+
+    try:
+        answer = answer_buddy_question(
+            q,
+            config_path=ctx.config_path,
+            use_llm=True,
+        )
+    except Exception as e:
+        logger.debug("Buddy self-knowledge lookup failed: %s", e)
+        answer = "I couldn't load my grounded self-knowledge cleanly from this workspace."
+
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
+    return True
+
+
+def _looks_like_smalltalk(ql: str) -> bool:
+    return ql in {
+        "hi",
+        "hello",
+        "hey",
+        "yo",
+        "sup",
+        "buddy",
+        "buddy?",
+        "are you there",
+        "still there",
+        "good morning",
+        "good afternoon",
+        "good evening",
+        "thanks",
+        "thank you",
+    }
+
+
+def _handle_knowledge_only_chat(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    """Handle casual chat safely when no predictive engine is available."""
+    if ctx.engine is not None:
+        return None
+    if not _looks_like_smalltalk(ql):
+        return None
+
+    facts = [
+        "prediction_engine_available=False",
+        f"active_instrument={ctx.oanda_instrument}",
+        f"granularity={ctx.oanda_granularity}",
+        f"execute_mode={'live' if ctx.oanda_execute else 'dry-run'}",
+        f"stop_loss_pips={ctx.stop_loss_pips if ctx.use_stop_loss else 'off'}",
+        f"take_profit_pips={ctx.take_profit_pips if ctx.use_take_profit else 'off'}",
+        "available_actions=grounded self-knowledge, status, model status, journal, scan, account, settings",
+    ]
+    fallback = (
+        "I'm here in knowledge-first mode. "
+        "I can answer grounded questions about Buddy, show status or decisions, run scans, and manage journal/account tasks. "
+        "I just won't fabricate a market prediction without a compatible prediction checkpoint."
+    )
+    answer = _grounded_chat_reply(
+        ctx,
+        user_query=q,
+        task="Reply naturally to a casual greeting while explaining the current knowledge-first chat mode.",
+        fact_lines=facts,
+        fallback=fallback,
+    )
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
+    return True
+
+
+def _format_runtime_decision(prefix: str, payload: Any) -> Optional[str]:
+    if not isinstance(payload, dict) or not payload:
+        return None
+
+    decision_type = payload.get("decision_type") or "unknown"
+    instrument = payload.get("instrument") or "unknown"
+    direction = payload.get("direction")
+    reason = payload.get("reason") or "no stored reason"
+    parts = [f"{prefix}: {decision_type}", f"instrument={instrument}"]
+    if direction:
+        parts.append(f"direction={direction}")
+    parts.append(f"reason={reason}")
+    return " | ".join(parts)
+
+
+def _status_fact_lines(ctx: TalkContext) -> list[str]:
+    from memory_client import MLEngineMemory
+    from llm_providers import select_buddy_provider_name
+
+    cfg = load_config(ctx.config_path)
+    memory = MLEngineMemory()
+    runtime_state = memory.get_runtime_state("buddy_runtime")
+    configured_risk = (cfg.get("fx", {}) or {}).get("risk", {}).get("risk_per_trade_pct")
+
+    lines = [
+        f"active_source={ctx.active_source or 'none'}",
+        f"active_instrument={ctx.oanda_instrument}",
+        f"granularity={ctx.oanda_granularity}",
+        f"execute_mode={'live' if ctx.oanda_execute else 'dry-run'}",
+        f"stop_loss_pips={ctx.stop_loss_pips if ctx.use_stop_loss else 'off'}",
+        f"take_profit_pips={ctx.take_profit_pips if ctx.use_take_profit else 'off'}",
+        f"configured_risk_per_trade_pct={configured_risk}",
+        f"selected_provider={select_buddy_provider_name(None) or 'none'}",
+    ]
+
+    if isinstance(runtime_state, dict):
+        trade_decision = _format_runtime_decision("last_trade_execution_decision", runtime_state.get("last_trade_execution_decision"))
+        no_trade_decision = _format_runtime_decision("last_no_trade_decision", runtime_state.get("last_no_trade_decision"))
+        if trade_decision:
+            lines.append(trade_decision)
+        if no_trade_decision:
+            lines.append(no_trade_decision)
+
+    if ctx.last_result:
+        lines.extend(_prediction_fact_lines(ctx, ctx.last_result))
+
+    return lines
+
+
+def _handle_status_query(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    if not any(
+        phrase in ql
+        for phrase in (
+            "show status",
+            "current status",
+            "status with",
+            "status --decisions",
+            "last decisions",
+            "last decision",
+            "show decisions",
+            "show me the decisions",
+            "current risk per trade",
+            "what provider did you choose",
+            "which provider",
+            "execute mode",
+        )
+    ):
+        return None
+
+    facts = _status_fact_lines(ctx)
+    fallback = "\n".join(
+        [
+            f"Current status: {ctx.oanda_instrument} {ctx.oanda_granularity} on {ctx.active_source or 'no active source'}.",
+            f"Execution is {'LIVE' if ctx.oanda_execute else 'DRY-RUN'} with SL={ctx.stop_loss_pips if ctx.use_stop_loss else 'OFF'} and TP={ctx.take_profit_pips if ctx.use_take_profit else 'OFF'}.",
+        ]
+        + [line for line in facts if line.startswith("last_")]
+    )
+    answer = _grounded_chat_reply(
+        ctx,
+        user_query=q,
+        task="Summarize Buddy's current runtime status and persisted decisions.",
+        fact_lines=facts,
+        fallback=fallback,
+    )
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
+    return True
+
+
+def _journal_fact_lines() -> list[str]:
+    from src.utils.trade_journal import TradeJournal
+
+    journal = TradeJournal()
+    stats = journal.get_statistics(days=30)
+    recent = journal.get_recent_trades(n=3)
+
+    lines = [
+        f"journal_total_trades={stats.get('total_trades')}",
+        f"journal_open_trades={stats.get('open_trades')}",
+        f"journal_closed_trades={stats.get('closed_trades')}",
+        f"journal_win_rate={stats.get('win_rate')}",
+        f"journal_total_pnl={stats.get('total_pnl')}",
+        f"journal_total_pips={stats.get('total_pips')}",
+        f"journal_profit_factor={stats.get('profit_factor')}",
+    ]
+    for idx, trade in enumerate(recent, start=1):
+        lines.append(
+            "recent_trade_"
+            + str(idx)
+            + "="
+            + f"{trade.instrument} {trade.direction} status={trade.status} pnl={trade.pnl if trade.pnl is not None else 'n/a'} timestamp={trade.timestamp}"
+        )
+    return lines
+
+
+def _journal_update_fact_lines() -> list[str]:
+    from src.utils.trade_journal import TradeJournal
+    from src.utils.oanda_practice import OandaPracticeClient
+
+    journal = TradeJournal()
+    client = OandaPracticeClient.from_env()
+    sync_results = journal.sync_open_trades(client)
+    return [
+        f"closed_updated={sync_results.get('closed_updated', 0)}",
+        f"open_updated={sync_results.get('open_updated', 0)}",
+        f"tracked_live_trades={sync_results.get('tracked_live_trades', 0)}",
+        f"untracked_live_trades={sync_results.get('untracked_live_trades', 0)}",
+    ]
+
+
+def _journal_import_fact_lines() -> list[str]:
+    from src.utils.trade_journal import TradeJournal
+    from src.utils.oanda_practice import OandaPracticeClient
+
+    journal = TradeJournal()
+    client = OandaPracticeClient.from_env()
+    imported = journal.import_untracked_trades(client)
+    return [
+        f"imported_trades={imported}",
+    ]
+
+
+def _handle_journal_query(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    if "journal" in ql and any(phrase in ql for phrase in ("import", "bring in", "load untracked")):
+        try:
+            facts = _journal_import_fact_lines()
+        except Exception as e:
+            logger.debug("Journal import query failed: %s", e)
+            answer = "I couldn't import untracked OANDA trades into the journal right now."
+            print(_assistant_prefix(ctx) + answer)
+            _remember_chat_turn(ctx, "assistant", answer)
+            return True
+
+        imported = next((x.split("=", 1)[1] for x in facts if x.startswith("imported_trades=")), "0")
+        fallback = f"Journal import finished. Imported {imported} untracked trades."
+        answer = _grounded_chat_reply(
+            ctx,
+            user_query=q,
+            task="Summarize the result of importing untracked OANDA trades into the journal.",
+            fact_lines=facts,
+            fallback=fallback,
+        )
+        print(_assistant_prefix(ctx) + answer)
+        _remember_chat_turn(ctx, "assistant", answer)
+        return True
+
+    if "journal" in ql and any(phrase in ql for phrase in ("update", "sync", "refresh")):
+        try:
+            facts = _journal_update_fact_lines()
+        except Exception as e:
+            logger.debug("Journal update query failed: %s", e)
+            answer = "I couldn't sync the trade journal with OANDA right now."
+            print(_assistant_prefix(ctx) + answer)
+            _remember_chat_turn(ctx, "assistant", answer)
+            return True
+
+        fallback = (
+            f"Journal sync finished. "
+            f"Closed updated: {next((x.split('=', 1)[1] for x in facts if x.startswith('closed_updated=')), '0')}, "
+            f"open updated: {next((x.split('=', 1)[1] for x in facts if x.startswith('open_updated=')), '0')}."
+        )
+        answer = _grounded_chat_reply(
+            ctx,
+            user_query=q,
+            task="Summarize the result of syncing the local trade journal with OANDA.",
+            fact_lines=facts,
+            fallback=fallback,
+        )
+        print(_assistant_prefix(ctx) + answer)
+        _remember_chat_turn(ctx, "assistant", answer)
+        return True
+
+    if not any(phrase in ql for phrase in ("journal", "recent trades", "performance", "win rate", "pnl")):
+        return None
+
+    try:
+        facts = _journal_fact_lines()
+    except Exception as e:
+        logger.debug("Journal query failed: %s", e)
+        print(_assistant_prefix(ctx) + "I couldn't read the trade journal cleanly from this workspace.")
+        return True
+
+    fallback = "\n".join(
+        [
+            f"Journal summary: {next((x.split('=', 1)[1] for x in facts if x.startswith('journal_total_trades=')), 'unknown')} total trades.",
+            f"Recent performance facts: {next((x for x in facts if x.startswith('journal_win_rate=')), 'journal_win_rate=unknown')}, {next((x for x in facts if x.startswith('journal_total_pnl=')), 'journal_total_pnl=unknown')}.",
+        ]
+    )
+    answer = _grounded_chat_reply(
+        ctx,
+        user_query=q,
+        task="Summarize recent trade journal performance and recent trades.",
+        fact_lines=facts,
+        fallback=fallback,
+    )
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
+    return True
+
+
+def _model_status_fact_lines(ctx: TalkContext) -> list[str]:
+    model_root = Path("trained_data") / "models"
+    pair_rows: list[str] = []
+    pair_count = 0
+    validated_count = 0
+
+    if model_root.exists():
+        for child in sorted(model_root.iterdir()):
+            if not child.is_dir():
+                continue
+            keras_path = child / "transformer_direction.keras"
+            meta_path = child / "transformer_direction.meta.pkl"
+            if keras_path.exists() and meta_path.exists():
+                pair_count += 1
+                validated = (child / ".validation_result.json").exists()
+                if validated:
+                    validated_count += 1
+                pair_rows.append(f"pair_model={child.name} validated={validated}")
+
+    legacy_meta = model_root / "modular_ensemble.meta.json"
+    facts = [
+        f"model_root={model_root}",
+        f"pair_model_count={pair_count}",
+        f"validated_pair_model_count={validated_count}",
+        f"legacy_modular_ensemble_present={legacy_meta.exists()}",
+    ]
+    facts.extend(pair_rows[:8])
+    facts.extend(_status_fact_lines(ctx))
+    return facts
+
+
+def _handle_model_status_query(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    if not any(phrase in ql for phrase in ("model status", "models status", "show models", "show model status", "which models are loaded")):
+        return None
+
+    facts = _model_status_fact_lines(ctx)
+    fallback_lines = [
+        f"Model status: {next((x.split('=', 1)[1] for x in facts if x.startswith('pair_model_count=')), '0')} pair models found.",
+        f"Validated pair models: {next((x.split('=', 1)[1] for x in facts if x.startswith('validated_pair_model_count=')), '0')}.",
+        f"Legacy modular ensemble present: {next((x.split('=', 1)[1] for x in facts if x.startswith('legacy_modular_ensemble_present=')), 'False')}.",
+    ]
+    sample_models = [x.split("=", 1)[1] for x in facts if x.startswith("pair_model=")]
+    if sample_models:
+        fallback_lines.append("Sample loaded models: " + ", ".join(sample_models[:4]))
+
+    answer = _grounded_chat_reply(
+        ctx,
+        user_query=q,
+        task="Summarize Buddy's current model inventory and runtime model status.",
+        fact_lines=facts,
+        fallback="\n".join(fallback_lines),
+    )
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
+    return True
+
+
+def _handle_account_query(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    if not any(phrase in ql for phrase in ("account", "nav", "balance", "margin available", "margin")):
+        return None
+
+    try:
+        _ensure_oanda_client(ctx)
+        summary = ctx.oanda_client.get_account_summary()
+        account = (summary or {}).get("account") or {}
+        facts = [
+            f"nav={account.get('NAV') or account.get('nav')}",
+            f"balance={account.get('balance')}",
+            f"margin_available={account.get('marginAvailable')}",
+            f"currency={account.get('currency')}",
+        ]
+        fallback = (
+            f"Account status: NAV={account.get('NAV') or account.get('nav')} "
+            f"balance={account.get('balance')} marginAvailable={account.get('marginAvailable')}."
+        )
+        answer = _grounded_chat_reply(
+            ctx,
+            user_query=q,
+            task="Answer the user's account question from the OANDA account summary.",
+            fact_lines=facts,
+            fallback=fallback,
+        )
+        print(_assistant_prefix(ctx) + answer)
+        _remember_chat_turn(ctx, "assistant", answer)
+    except Exception as e:
+        logger.debug("Account query failed: %s", e)
+        answer = "I couldn't load the account summary right now."
+        print(_assistant_prefix(ctx) + answer)
+        _remember_chat_turn(ctx, "assistant", answer)
+    return True
+
+
+def _extract_all_instrument_hints(q: str) -> list[str]:
+    instruments: list[str] = []
+    seen: set[str] = set()
+    patterns = (
+        r"(?<![A-Za-z])([A-Za-z]{3})/([A-Za-z]{3})(?![A-Za-z])",
+        r"(?<![A-Za-z])([A-Za-z]{3})_([A-Za-z]{3})(?![A-Za-z])",
+        r"(?<![A-Za-z])([A-Za-z]{3})-([A-Za-z]{3})(?![A-Za-z])",
+        r"(?<![A-Za-z])([A-Za-z]{3})\s+([A-Za-z]{3})(?![A-Za-z])",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, q):
+            base = match.group(1).upper()
+            quote = match.group(2).upper()
+            if base in _FX_CURRENCY_CODES and quote in _FX_CURRENCY_CODES:
+                instrument = f"{base}_{quote}"
+                if instrument not in seen:
+                    instruments.append(instrument)
+                    seen.add(instrument)
+    return instruments
+
+
+def _summarize_scan_results(raw_results: Any) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    items = raw_results or []
+    for item in items:
+        result = item[0] if isinstance(item, tuple) else item
+        pair = getattr(result, "pair", None) or getattr(result, "instrument", None) or getattr(result, "symbol", None) or "unknown"
+        direction = getattr(result, "direction", None) or "NONE"
+        gates_passed = bool(getattr(result, "gates_passed", False))
+        error = getattr(result, "error", None)
+        confidence = getattr(result, "ridge_confidence", None)
+        if confidence is None:
+            confidence = getattr(result, "confidence", None)
+        agent_total = getattr(result, "agent_total", None)
+        rows.append(
+            {
+                "pair": str(pair),
+                "direction": str(direction),
+                "gates_passed": gates_passed,
+                "error": error,
+                "confidence": confidence,
+                "agent_total": agent_total,
+            }
+        )
+
+    tradable = [row for row in rows if row["direction"] not in {"NONE", "FLAT"} and row["error"] is None]
+    approved = [row for row in tradable if row["gates_passed"]]
+    top_pair = tradable[0] if tradable else (rows[0] if rows else None)
+    return {
+        "count": len(rows),
+        "tradable_count": len(tradable),
+        "approved_count": len(approved),
+        "top_pair": top_pair,
+        "rows": rows[:5],
+        "all_rows": rows,
+    }
+
+
+def _filter_scan_rows(summary: dict[str, Any], *, approved_only: bool = False, limit: Optional[int] = None) -> list[dict[str, Any]]:
+    rows = list(summary.get("all_rows") or [])
+    rows = [row for row in rows if row.get("error") is None]
+    if approved_only:
+        rows = [row for row in rows if row.get("gates_passed")]
+    if limit is not None:
+        rows = rows[:max(0, limit)]
+    return rows
+
+
+def _extract_scan_pair_reference(q: str) -> list[str]:
+    pairs = _extract_all_instrument_hints(q)
+    if pairs:
+        return pairs
+
+    words = re.findall(r"\b[a-z]{3,}[_/-]?[a-z]{0,3}\b", q.lower())
+    known_pairs = [str(row.get("pair")) for row in []]
+    del words, known_pairs
+    return []
+
+
+def _find_scan_row(summary: dict[str, Any], pair: str) -> Optional[dict[str, Any]]:
+    pair_upper = pair.upper().replace("/", "_")
+    for row in summary.get("all_rows") or []:
+        if str(row.get("pair", "")).upper() == pair_upper:
+            return row
+    return None
+
+
+def _fallback_scan_comparison(summary: dict[str, Any], left: dict[str, Any], right: dict[str, Any]) -> str:
+    lines = [
+        f"Comparing {left['pair']} vs {right['pair']}:",
+        f"- {left['pair']}: direction={left['direction']}, gates_passed={left['gates_passed']}, confidence={left['confidence']}, agent_total={left['agent_total']}, error={left['error']}",
+        f"- {right['pair']}: direction={right['direction']}, gates_passed={right['gates_passed']}, confidence={right['confidence']}, agent_total={right['agent_total']}, error={right['error']}",
+    ]
+
+    if left.get("gates_passed") and not right.get("gates_passed"):
+        lines.append(f"{left['pair']} is stronger because it passed the trading gates and {right['pair']} did not.")
+    elif right.get("gates_passed") and not left.get("gates_passed"):
+        lines.append(f"{right['pair']} is stronger because it passed the trading gates and {left['pair']} did not.")
+    else:
+        left_conf = float(left.get("confidence") or 0.0)
+        right_conf = float(right.get("confidence") or 0.0)
+        if left_conf > right_conf:
+            lines.append(f"{left['pair']} looks stronger on confidence.")
+        elif right_conf > left_conf:
+            lines.append(f"{right['pair']} looks stronger on confidence.")
+        else:
+            lines.append("They look similar on the stored scan metrics.")
+
+    return "\n".join(lines)
+
+
+def _handle_scan_comparison_query(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    summary = ctx.last_scan_summary
+    if summary is None:
+        return None
+    pair_count = len(_extract_all_instrument_hints(q))
+    if not (
+        any(phrase in ql for phrase in ("why this setup", "why not", "compare", "versus", "vs "))
+        or (pair_count >= 2 and "why" in ql and "not" in ql)
+    ):
+        return None
+
+    pairs = _extract_all_instrument_hints(q)
+    if len(pairs) < 2:
+        rows = _filter_scan_rows(summary, approved_only=False, limit=2)
+        if len(rows) >= 2:
+            left, right = rows[0], rows[1]
+        else:
+            answer = "I need two scan setups to compare, and I don't have enough from the last scan."
+            print(_assistant_prefix(ctx) + answer)
+            _remember_chat_turn(ctx, "assistant", answer)
+            return True
+    else:
+        left = _find_scan_row(summary, pairs[0])
+        right = _find_scan_row(summary, pairs[1])
+        if left is None or right is None:
+            answer = "I couldn't find both requested pairs in the last scan results."
+            print(_assistant_prefix(ctx) + answer)
+            _remember_chat_turn(ctx, "assistant", answer)
+            return True
+
+    facts = [
+        f"left_pair={left['pair']}",
+        f"left_direction={left['direction']}",
+        f"left_gates_passed={left['gates_passed']}",
+        f"left_confidence={left['confidence']}",
+        f"left_agent_total={left['agent_total']}",
+        f"left_error={left['error']}",
+        f"right_pair={right['pair']}",
+        f"right_direction={right['direction']}",
+        f"right_gates_passed={right['gates_passed']}",
+        f"right_confidence={right['confidence']}",
+        f"right_agent_total={right['agent_total']}",
+        f"right_error={right['error']}",
+    ]
+    answer = _grounded_chat_reply(
+        ctx,
+        user_query=q,
+        task="Compare two scan setups and explain why one is stronger or why one was not approved.",
+        fact_lines=facts,
+        fallback=_fallback_scan_comparison(summary, left, right),
+    )
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
+    return True
+
+
+def _render_scan_followup_fallback(summary: dict[str, Any], *, approved_only: bool, limit: Optional[int]) -> str:
+    rows = _filter_scan_rows(summary, approved_only=approved_only, limit=limit)
+    if not rows:
+        return "I don't have any matching scan setups in the last scan context."
+
+    header = "Approved setups from the last scan:" if approved_only else "Top setups from the last scan:"
+    lines = [header]
+    for idx, row in enumerate(rows, start=1):
+        lines.append(
+            f"{idx}. {row['pair']} {row['direction']} | gates_passed={row['gates_passed']} | confidence={row['confidence']} | agent_total={row['agent_total']}"
+        )
+    return "\n".join(lines)
+
+
+def _handle_scan_followup_query(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    if ctx.last_scan_summary is None:
+        return None
+    if "scan" in ql:
+        return None
+    if not any(phrase in ql for phrase in ("approved setups", "approved only", "top setups", "top 2", "top two", "show approved")):
+        return None
+
+    approved_only = any(phrase in ql for phrase in ("approved setups", "approved only", "show approved"))
+    limit = None
+    if "top two" in ql:
+        limit = 2
+    else:
+        top_match = re.search(r"\btop\s+(\d+)\b", ql)
+        if top_match:
+            limit = int(top_match.group(1))
+
+    rows = _filter_scan_rows(ctx.last_scan_summary, approved_only=approved_only, limit=limit)
+    facts = [
+        f"last_scan_result_count={ctx.last_scan_summary.get('count')}",
+        f"last_scan_tradable_count={ctx.last_scan_summary.get('tradable_count')}",
+        f"last_scan_approved_count={ctx.last_scan_summary.get('approved_count')}",
+        f"approved_only={approved_only}",
+        f"limit={limit}",
+    ]
+    for idx, row in enumerate(rows, start=1):
+        facts.append(
+            f"filtered_scan_row_{idx}={row['pair']} direction={row['direction']} gates_passed={row['gates_passed']} confidence={row['confidence']} agent_total={row['agent_total']}"
+        )
+
+    answer = _grounded_chat_reply(
+        ctx,
+        user_query=q,
+        task="Answer a follow-up question about the most recent scan results.",
+        fact_lines=facts,
+        fallback=_render_scan_followup_fallback(ctx.last_scan_summary, approved_only=approved_only, limit=limit),
+    )
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
+    return True
+
+
+def _handle_scan_query(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
+    if "scan" not in ql:
+        return None
+
+    try:
+        from cli.buddy_scanning import buddy_scan
+    except Exception as e:
+        logger.debug("Buddy scan import failed in chat: %s", e)
+        print(_assistant_prefix(ctx) + "I couldn't load the scanner from this workspace.")
+        return True
+
+    instruments = _extract_all_instrument_hints(q)
+    granularity_match = re.search(r"\b(M1|M5|M15|M30|H1|H4|D|D1)\b", q, flags=re.IGNORECASE)
+    granularity = granularity_match.group(1).upper() if granularity_match else ctx.oanda_granularity
+    auto_execute = any(phrase in ql for phrase in ("auto-execute", "auto execute", "execute if approved", "execute approved"))
+    force = any(phrase in ql for phrase in (" force", "ignore session", "outside hours", "bypass session"))
+    diversified = any(phrase in ql for phrase in ("diversified", "avoid correlated", "correlation cluster"))
+    top_match = re.search(r"\btop\s+(\d+)\b", ql)
+    top_n = int(top_match.group(1)) if top_match else 5
+    pairs_arg = ",".join(instruments) if instruments else None
+
+    capture = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(capture), contextlib.redirect_stderr(capture):
+            raw_results = buddy_scan(
+                config_path=ctx.config_path,
+                pairs=pairs_arg,
+                granularity=granularity,
+                top_n=top_n,
+                force=force,
+                diversified=diversified,
+                auto_execute=auto_execute,
+                no_execute=not auto_execute,
+                clean_output=True,
+            )
+    except Exception as e:
+        logger.debug("Chat scan failed: %s", e)
+        print(_assistant_prefix(ctx) + f"I couldn't complete the scan cleanly: {e}")
+        return True
+
+    summary = _summarize_scan_results(raw_results)
+    ctx.last_scan_summary = summary
+    facts = [
+        f"scan_pairs={pairs_arg or 'default majors'}",
+        f"scan_granularity={granularity}",
+        f"scan_auto_execute={auto_execute}",
+        f"scan_force={force}",
+        f"scan_diversified={diversified}",
+        f"scan_result_count={summary['count']}",
+        f"scan_tradable_count={summary['tradable_count']}",
+        f"scan_approved_count={summary['approved_count']}",
+        f"scan_requested_top_n={top_n}",
+    ]
+    for idx, row in enumerate(summary["rows"], start=1):
+        facts.append(
+            f"scan_row_{idx}={row['pair']} direction={row['direction']} gates_passed={row['gates_passed']} confidence={row['confidence']} agent_total={row['agent_total']} error={row['error']}"
+        )
+
+    top_pair = summary.get("top_pair")
+    fallback_lines = [
+        f"Scan finished on {granularity} for {pairs_arg or 'the default major pairs'}.",
+        f"I found {summary['tradable_count']} tradable setups out of {summary['count']} scanned results.",
+    ]
+    if top_pair:
+        fallback_lines.append(
+            f"Best setup right now looks like {top_pair['pair']} {top_pair['direction']} with gates_passed={top_pair['gates_passed']} and confidence={top_pair['confidence']}."
+        )
+    if auto_execute:
+        fallback_lines.append("Auto-execute was enabled for approved setups.")
+
+    answer = _grounded_chat_reply(
+        ctx,
+        user_query=q,
+        task="Summarize the multi-pair scan and highlight the best setups.",
+        fact_lines=facts,
+        fallback="\n".join(fallback_lines),
+        max_tokens=360,
+    )
+    print(_assistant_prefix(ctx) + answer)
+    _remember_chat_turn(ctx, "assistant", answer)
+    return True
 
 
 def _handle_use_commands(ctx: TalkContext, q: str, *, period: str, interval: str) -> Optional[bool]:
@@ -1713,11 +2894,87 @@ def _handle_trade_commands(ctx: TalkContext, q: str, ql: str) -> Optional[bool]:
     return True
 
 
+def _planner_runtime_context(ctx: TalkContext) -> dict[str, Any]:
+    return {
+        "active_instrument": ctx.oanda_instrument,
+        "granularity": ctx.oanda_granularity,
+        "execute_mode": "live" if ctx.oanda_execute else "dry-run",
+        "stop_loss_pips": ctx.stop_loss_pips if ctx.use_stop_loss else "off",
+        "take_profit_pips": ctx.take_profit_pips if ctx.use_take_profit else "off",
+        "knowledge_only": ctx.engine is None,
+        "active_source": ctx.active_source,
+        "has_prediction": ctx.last_result is not None,
+    }
+
+
+def _handle_planner_chat(ctx: TalkContext, q: str, *, period: str, interval: str) -> Optional[bool]:
+    if not _planner_chat_enabled():
+        return None
+
+    try:
+        from src.agent.planner_runtime import PlannerRuntime
+    except Exception as e:
+        logger.debug("Planner runtime unavailable: %s", e)
+        return None
+
+    if ctx.planner_runtime is None:
+        try:
+            ctx.planner_runtime = PlannerRuntime.create_default(ctx.config_path)
+        except Exception as e:
+            logger.debug("Planner runtime init failed: %s", e)
+            return None
+
+    ctx.planner_state.update(_planner_runtime_context(ctx))
+    ctx.planner_state["_talk_context"] = ctx
+    ctx.planner_state["_period"] = period
+    ctx.planner_state["_interval"] = interval
+    if ctx.last_scan_summary is not None:
+        ctx.planner_state["last_scan_summary"] = ctx.last_scan_summary
+
+    response = ctx.planner_runtime.handle_request(
+        q,
+        chat_history=ctx.chat_history,
+        runtime_context=_planner_runtime_context(ctx),
+        state=ctx.planner_state,
+    )
+    state = (response.metadata or {}).get("state") or {}
+    if isinstance(state, dict):
+        ctx.planner_state = dict(state)
+        if isinstance(state.get("last_scan_summary"), dict):
+            ctx.last_scan_summary = state["last_scan_summary"]
+
+    if response.answer:
+        print(_assistant_prefix(ctx) + response.answer)
+        _remember_chat_turn(ctx, "assistant", response.answer)
+        return True
+    return None
+
+
 def _handle_talk_command(ctx: TalkContext, q: str, *, period: str, interval: str) -> bool:
-    ql = q.lower().strip()
+    ql = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", q.lower()).strip()
+    _remember_chat_turn(ctx, "user", q)
+
+    if _is_explicit_talk_command(ql):
+        basic_out = _handle_basic_commands(ctx, ql)
+        if basic_out is not None:
+            return basic_out
+
+    if _planner_chat_enabled() and not _is_explicit_talk_command(ql):
+        planner_out = _handle_planner_chat(ctx, q, period=period, interval=interval)
+        if planner_out is not None:
+            return planner_out
 
     for handler in (
         lambda: _handle_basic_commands(ctx, ql),
+        lambda: _handle_buddy_self_query(ctx, q, ql),
+        lambda: _handle_knowledge_only_chat(ctx, q, ql),
+        lambda: _handle_status_query(ctx, q, ql),
+        lambda: _handle_model_status_query(ctx, q, ql),
+        lambda: _handle_journal_query(ctx, q, ql),
+        lambda: _handle_account_query(ctx, q, ql),
+        lambda: _handle_scan_comparison_query(ctx, q, ql),
+        lambda: _handle_scan_followup_query(ctx, q, ql),
+        lambda: _handle_scan_query(ctx, q, ql),
         lambda: _handle_use_commands(ctx, q, period=period, interval=interval),
         lambda: _handle_predict_commands(ctx, q, ql, period=period, interval=interval),
         lambda: _handle_oanda_info_commands(ctx, q, ql),
@@ -1727,11 +2984,29 @@ def _handle_talk_command(ctx: TalkContext, q: str, *, period: str, interval: str
         if out is not None:
             return out
 
-    if ctx.active_df is not None and ctx.last_result is None:
+    plan = _plan_talk_request(ctx, q, ql)
+    if plan is not None:
+        return _execute_talk_plan(ctx, plan, q=q, period=period, interval=interval)
+
+    if ctx.engine is not None and ctx.active_df is not None and ctx.last_result is None:
         ctx.last_result = _predict_one_locked(ctx, ctx.active_df)
 
-    ans = _render_answer_verbose(q, ctx.last_result) if ctx.verbose else _render_answer(q, ctx.last_result)
+    if ctx.last_result is None:
+        if ctx.engine is None:
+            ans = (
+                "I'm in knowledge-first mode right now. "
+                "I can help with grounded Buddy questions, status, decisions, scans, journal, or account tasks, "
+                "but I don't have a compatible prediction checkpoint loaded for free-form market answers."
+            )
+        else:
+            ans = (
+                "I don't have a fresh market prediction yet. "
+                "Ask me to use OANDA or another source first, or ask a grounded Buddy self-knowledge question."
+            )
+    else:
+        ans = _render_prediction_chat_answer(ctx, q, ctx.last_result)
     print(_assistant_prefix(ctx) + ans)
+    _remember_chat_turn(ctx, "assistant", ans)
     return True
 
 
@@ -1749,10 +3024,7 @@ def _read_input_with_timeout(prompt: str, timeout: float) -> Optional[str]:
     import sys
 
     if not sys.stdin.isatty():
-        try:
-            return input(prompt)
-        except EOFError:
-            return ""
+        return input(prompt)
 
     try:
         import signal

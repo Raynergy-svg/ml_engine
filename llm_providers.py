@@ -530,6 +530,37 @@ def get_llm_provider(prefer: str | None = None) -> LLMProvider:
     return get_provider("claude")
 
 
+def select_buddy_provider_name(prefer: str | None = None) -> str | None:
+    """Choose Buddy's provider, preferring local inference unless overridden."""
+    explicit = prefer or os.getenv("BUDDY_LLM_PROVIDER")
+    if explicit:
+        return explicit
+
+    prefer_local = os.getenv("BUDDY_PREFER_LOCAL_LLM", "1").strip().lower() not in {
+        "0", "false", "no", "off",
+    }
+    if prefer_local:
+        try:
+            if get_provider("ollama").is_available:
+                return "ollama"
+        except Exception:
+            pass
+
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "claude"
+    if os.getenv("OPENAI_API_KEY"):
+        return "openai"
+
+    if not prefer_local:
+        try:
+            if get_provider("ollama").is_available:
+                return "ollama"
+        except Exception:
+            pass
+
+    return None
+
+
 def set_active_provider(provider: str | LLMProvider) -> None:
     """Set the active LLM provider."""
     global _active_provider
@@ -630,7 +661,8 @@ def initialize_buddy_llm(provider: str | None = None) -> LLMProvider:
         The initialized provider
     """
     # Get provider
-    p = get_llm_provider(prefer=provider)
+    selected = select_buddy_provider_name(provider)
+    p = get_llm_provider(prefer=selected)
     
     # Register with buddy_intelligent_mode
     try:
