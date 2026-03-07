@@ -374,6 +374,29 @@ def test_non_tty_eof_does_not_spin_forever(monkeypatch, capsys):
     assert out.strip().endswith("Bye.")
 
 
+def test_repl_only_shows_idle_prompt_once_until_user_responds(monkeypatch, capsys):
+    ctx = _ctx()
+    responses = iter([None, None, "status"])
+    handled = []
+
+    monkeypatch.setattr(
+        unified_talk,
+        "_read_input_with_timeout",
+        lambda _prompt, timeout: next(responses),
+    )
+    monkeypatch.setattr(
+        unified_talk,
+        "_handle_talk_command",
+        lambda _ctx, q, **_kwargs: handled.append(q) or False,
+    )
+
+    unified_talk._run_repl(ctx, period="5d", interval="1h")
+
+    out = capsys.readouterr().out
+    assert handled == ["status"]
+    assert out.count("Still here? Type something or 'exit' to quit.") == 1
+
+
 def test_knowledge_only_startup_skips_initial_oanda_warmup(monkeypatch):
     ctx = _ctx()
     called = {"warmup": False}

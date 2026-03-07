@@ -43,6 +43,9 @@ def buddy_scan(
     no_execute: bool = False,
     auto_execute: bool = False,
     clean_output: bool = False,
+    run_agent_confirmation: bool = False,
+    session_filter_enabled_override: Optional[bool] = None,
+    session_window_utc_override: Optional[tuple[int, int]] = None,
     **kwargs: Any,
 ) -> list:
     """
@@ -94,18 +97,32 @@ def buddy_scan(
             pair_list = [p.strip().upper().replace("/", "_") for p in pairs.split(",")]
 
         # Run enhanced scan (display only, no execution prompt)
-        with suppress_logging(level=logging.ERROR):
-            results = scanner.scan(
-                pairs=pair_list,
-                granularity=granularity,
-                top_n=top_n,
-                verbose=True,  # Always verbose for CLI
-                clean_output=clean_output,
-                prompt_train=prompt_train,
-                diversified=diversified,
-                force=force,
-                profile=profile,
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"Argument `input_shape` is deprecated\. Use `shape` instead\.",
+                category=UserWarning,
             )
+            warnings.filterwarnings(
+                "ignore",
+                message=r".*structure of `inputs` doesn't match the expected structure.*",
+                category=UserWarning,
+            )
+            with suppress_logging(level=logging.ERROR):
+                results = scanner.scan(
+                    pairs=pair_list,
+                    granularity=granularity,
+                    top_n=top_n,
+                    verbose=True,  # Always verbose for CLI
+                    clean_output=clean_output,
+                    prompt_train=prompt_train,
+                    diversified=diversified,
+                    force=force,
+                    profile=profile,
+                    run_agent_confirmation=run_agent_confirmation,
+                    session_filter_enabled_override=session_filter_enabled_override,
+                    session_window_utc_override=session_window_utc_override,
+                )
 
         if auto_execute and not no_execute:
             try:

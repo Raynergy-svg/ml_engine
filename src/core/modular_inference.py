@@ -178,6 +178,18 @@ def _allow_rl_gates_exits_autoload() -> bool:
     return True
 
 
+def _normalize_sentiment_directions(values: Optional[List[str]]) -> set[str]:
+    """Normalize configured sentiment-gate direction names."""
+    normalized: set[str] = set()
+    for value in values or []:
+        key = str(value).strip().lower()
+        if key in {"long", "buy"}:
+            normalized.add("long")
+        elif key in {"short", "sell"}:
+            normalized.add("short")
+    return normalized
+
+
 def _rl_gates_worker_main(request_queue, response_queue) -> None:
     """Child process: load RL gates model and serve threshold requests."""
     try:
@@ -455,6 +467,7 @@ class InferenceConfig:
     sentiment_block_enabled: bool = True
     sentiment_block_threshold: float = 0.60  # Absolute sentiment score to block
     sentiment_min_headlines: int = 3  # Require minimum headlines before using sentiment
+    sentiment_block_directions: Optional[List[str]] = None  # Optional subset like ["short"]
 
     # Transformer weight for direction (TCN no longer in ensemble, Transformer-only)
     transformer_weight: float = 1.0  # Transformer-only for direction prediction
@@ -1661,26 +1674,42 @@ class ModularEnsembleInference:
             )
 
         if momentum_path is not None:
-            # Try LightGBM loader first (some runs save LightGBM momentum under xgb_momentum.pkl).
-            try:
-                from src.training.modular_trainers import LightGBMMomentumTrainer
+            native_xgb_artifact = (
+                momentum_path.name == "xgb_momentum.pkl"
+                and XGBoostTrainer.has_native_artifacts(momentum_path)
+            )
 
-                self.xgb = LightGBMMomentumTrainer()
-                self.xgb.load(str(momentum_path))
-                logger.info(f"✓ LightGBM Momentum loaded from {momentum_path}")
-                self._log_model_trained_at(momentum_path, "LightGBM momentum", category="gates")
-            except Exception as e:
-                logger.warning(f"Failed to load LightGBM momentum from {momentum_path}: {e}")
-                # Fall back to XGBoost loader
+            if native_xgb_artifact:
                 try:
                     self.xgb = XGBoostTrainer()
                     self.xgb.load(str(momentum_path))
-                    logger.info(f"✓ XGBoost loaded from {momentum_path}")
-                except Exception as e2:
-                    logger.warning(f"Failed to load XGBoost momentum from {momentum_path}: {e2}")
+                    logger.info(f"✓ Native XGBoost loaded from {momentum_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to load native XGBoost momentum from {momentum_path}: {e}")
                     self.xgb = None
                 else:
                     self._log_model_trained_at(momentum_path, "XGBoost momentum", category="gates")
+            else:
+                # Try LightGBM loader first (some runs save LightGBM momentum under xgb_momentum.pkl).
+                try:
+                    from src.training.modular_trainers import LightGBMMomentumTrainer
+
+                    self.xgb = LightGBMMomentumTrainer()
+                    self.xgb.load(str(momentum_path))
+                    logger.info(f"✓ LightGBM Momentum loaded from {momentum_path}")
+                    self._log_model_trained_at(momentum_path, "LightGBM momentum", category="gates")
+                except Exception as e:
+                    logger.warning(f"Failed to load LightGBM momentum from {momentum_path}: {e}")
+                    # Fall back to XGBoost loader
+                    try:
+                        self.xgb = XGBoostTrainer()
+                        self.xgb.load(str(momentum_path))
+                        logger.info(f"✓ XGBoost loaded from {momentum_path}")
+                    except Exception as e2:
+                        logger.warning(f"Failed to load XGBoost momentum from {momentum_path}: {e2}")
+                        self.xgb = None
+                    else:
+                        self._log_model_trained_at(momentum_path, "XGBoost momentum", category="gates")
         else:
             logger.warning("Momentum model not found (tried lgbm_momentum.pkl and xgb_momentum.pkl)")
 
@@ -2390,7 +2419,9 @@ class ModularEnsembleInference:
         for path in meta_labeler_paths:
             if path.exists():
                 try:
-                    loaded_labeler = MetaLabeler.load(path)
+                    from src.utils.meta_labeler_artifacts import load_meta_labeler_artifact
+
+                    loaded_labeler, source = load_meta_labeler_artifact(path)
 
                     # Guardrail: skip stale meta-labelers trained on materially different
                     # feature dimensions, as they can over-filter valid trades.
@@ -2405,7 +2436,7 @@ class ModularEnsembleInference:
                     self._meta_labeler_loaded = True
                     threshold = self.config.min_meta_confidence
                     primary_acc = getattr(self.meta_labeler, '_primary_accuracy', 0.5)
-                    logger.info(f"✓ Meta-labeler loaded from {path}")
+                    logger.info(f"✓ Meta-labeler loaded from {path} ({source})")
                     logger.info(f"  Threshold: {threshold:.0%}, Primary accuracy: {primary_acc:.1%}")
                     self._log_model_trained_at(path, "Meta labeler", category="meta")
                     return
@@ -4232,7 +4263,13 @@ class ModularEnsembleInference:
                 score = float(sent.get('aggregate_score', 0.0))
                 label = sent.get('aggregate_label', 'neutral')
                 n_headlines = int(sent.get('num_headlines', 0))
-                if n_headlines >= self.config.sentiment_min_headlines and abs(score) >= self.config.sentiment_block_threshold:
+                allowed_sentiment_directions = _normalize_sentiment_directions(self.config.sentiment_block_directions)
+                sentiment_gate_applies = not allowed_sentiment_directions or direction_str in allowed_sentiment_directions
+                if (
+                    sentiment_gate_applies
+                    and n_headlines >= self.config.sentiment_min_headlines
+                    and abs(score) >= self.config.sentiment_block_threshold
+                ):
                     # Map sentiment to directional bias
                     sentiment_dir = 'long' if label == 'bullish' else 'short' if label == 'bearish' else None
                     if sentiment_dir and direction_str and sentiment_dir != direction_str:

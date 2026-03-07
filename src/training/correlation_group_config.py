@@ -339,6 +339,64 @@ for group_name, group in CORRELATION_GROUPS.items():
         PAIR_TO_GROUP[pair] = group_name
 
 
+# Direction map for each group assuming the group's master pair is LONG.
+# SHORT simply inverts these directions.
+GROUP_LONG_DIRECTION_MAPS: Dict[str, Dict[str, str]] = {
+    'yen_carry': {
+        'EUR_JPY': 'long',
+        'GBP_JPY': 'long',
+        'AUD_JPY': 'long',
+        'NZD_JPY': 'long',
+        'USD_JPY': 'long',
+    },
+    'euro_basket': {
+        'EUR_USD': 'long',
+        'EUR_JPY': 'long',
+        'EUR_GBP': 'long',
+        'EUR_AUD': 'long',
+    },
+    'sterling_cluster': {
+        'GBP_USD': 'short',
+        'GBP_JPY': 'short',
+        'GBP_AUD': 'short',
+        'EUR_GBP': 'long',
+    },
+    'aussie_kiwi_commodity': {
+        'AUD_USD': 'long',
+        'NZD_USD': 'long',
+        'AUD_JPY': 'long',
+        'NZD_JPY': 'long',
+    },
+    'usd_safe_haven': {
+        'USD_JPY': 'long',
+        'USD_CHF': 'long',
+        'USD_CAD': 'long',
+    },
+    'crosses': {
+        'GBP_AUD': 'short',
+        'EUR_AUD': 'short',
+        'AUD_NZD': 'long',
+    },
+}
+
+BASKET_ALIASES: Dict[str, List[str]] = {
+    'euro': ['euro_basket'],
+    'euro_basket': ['euro_basket'],
+    'sterling': ['sterling_cluster'],
+    'sterling_cluster': ['sterling_cluster'],
+    'yen': ['yen_carry'],
+    'carry': ['yen_carry'],
+    'yen_carry': ['yen_carry'],
+    'usd': ['usd_safe_haven'],
+    'usd_safe_haven': ['usd_safe_haven'],
+    'aussie': ['aussie_kiwi_commodity', 'crosses'],
+    'aussie_basket': ['aussie_kiwi_commodity', 'crosses'],
+    'kiwi': ['aussie_kiwi_commodity'],
+    'commodity': ['aussie_kiwi_commodity', 'crosses'],
+    'crosses': ['crosses'],
+}
+
+
 # =============================================================================
 # PUBLIC API
 # =============================================================================
@@ -356,6 +414,73 @@ def get_correlation_group(pair: str) -> Optional[CorrelationGroup]:
     if group_name:
         return CORRELATION_GROUPS[group_name]
     return None
+
+
+def get_groups_for_master(master_pair: str) -> List[CorrelationGroup]:
+    """Return all groups sourced from a given master pair."""
+    normalized = str(master_pair).upper().replace("/", "_")
+    return [
+        group for group in CORRELATION_GROUPS.values()
+        if str(group.master_pair).upper().replace("/", "_") == normalized
+    ]
+
+
+def get_unique_master_pairs() -> List[str]:
+    """Return unique master pairs preserving declaration order."""
+    seen: set[str] = set()
+    masters: List[str] = []
+    for group in CORRELATION_GROUPS.values():
+        master = str(group.master_pair).upper().replace("/", "_")
+        if master not in seen:
+            seen.add(master)
+            masters.append(master)
+    return masters
+
+
+def get_correlated_direction_map(master_pair: str, direction: str) -> Dict[str, str]:
+    """Map correlated pairs to the direction implied by a master-pair stance."""
+    normalized_master = str(master_pair).upper().replace("/", "_")
+    normalized_direction = str(direction).strip().lower()
+    if normalized_direction not in {"long", "short"}:
+        raise ValueError(f"Unsupported direction {direction!r}; expected 'long' or 'short'.")
+
+    correlated: Dict[str, str] = {}
+    for group_name, group in CORRELATION_GROUPS.items():
+        if str(group.master_pair).upper().replace("/", "_") != normalized_master:
+            continue
+        long_map = GROUP_LONG_DIRECTION_MAPS.get(group_name, {})
+        for pair, long_direction in long_map.items():
+            if normalized_direction == "long":
+                correlated[pair] = long_direction
+            else:
+                correlated[pair] = "short" if long_direction == "long" else "long"
+
+    if normalized_master not in correlated:
+        correlated[normalized_master] = normalized_direction
+    return correlated
+
+
+def expand_basket_alias(name: str) -> List[str]:
+    """Expand a basket alias into one or more correlation group names."""
+    key = str(name).strip().lower().replace(" ", "_")
+    return list(BASKET_ALIASES.get(key, []))
+
+
+def get_pairs_for_baskets(basket_names: List[str]) -> List[str]:
+    """Return unique pairs for the requested basket aliases."""
+    seen: set[str] = set()
+    pairs: List[str] = []
+    for basket_name in basket_names:
+        for group_name in expand_basket_alias(basket_name):
+            group = CORRELATION_GROUPS.get(group_name)
+            if group is None:
+                continue
+            for pair in group.pairs:
+                normalized = str(pair).upper().replace("/", "_")
+                if normalized not in seen:
+                    seen.add(normalized)
+                    pairs.append(normalized)
+    return pairs
 
 
 def get_master_pair(pair: str) -> str:

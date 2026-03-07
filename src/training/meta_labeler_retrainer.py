@@ -31,6 +31,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from src.utils.xgboost_artifacts import (
+    is_xgboost_model,
+    load_xgboost_bundle,
+    save_native_xgboost_bundle,
+)
 
 # Suppress warnings for cleaner output
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -236,6 +241,8 @@ class MetaLabelerRetrainer:
         directional_accuracy: float = 0.708,
         short_accuracy: float = 0.726,
         long_accuracy: float = 0.593,
+        short_bias: float = 0.55,
+        seed: Optional[int] = None,
     ) -> List[TradeSample]:
         """Simulate trades based on model performance characteristics.
         
@@ -247,41 +254,43 @@ class MetaLabelerRetrainer:
             directional_accuracy: Overall directional accuracy
             short_accuracy: Accuracy for short signals
             long_accuracy: Accuracy for long signals
+            short_bias: Probability of generating a short trade
+            seed: Optional RNG seed for reproducible simulation runs
             
         Returns:
             List of simulated TradeSample objects
         """
-        np.random.seed(42)
+        rng = np.random.default_rng(seed)
         samples = []
         
         # Simulate trades
         for i in range(n_trades):
             # Random direction (slightly more shorts as per typical FX)
-            is_short = np.random.random() < 0.55
+            is_short = float(rng.random()) < short_bias
             direction = "short" if is_short else "long"
             
             # Accuracy based on direction
             accuracy = short_accuracy if is_short else long_accuracy
             
             # Generate probability (higher for more confident predictions)
-            base_prob = 0.65 + np.random.random() * 0.25  # 0.65-0.90
+            base_prob = 0.65 + float(rng.random()) * 0.25  # 0.65-0.90
             tcn_prob = base_prob if is_short else base_prob * 0.85
             
             # Generate outcome based on accuracy
-            is_correct = np.random.random() < accuracy
+            is_correct = float(rng.random()) < accuracy
             outcome = "win" if is_correct else "loss"
             
             # Generate supporting features
-            ridge_conf = 50 + np.random.random() * 40  # 50-90
-            xgb_momentum = tcn_prob + np.random.normal(0, 0.1)
-            rf_drawdown = np.random.exponential(30) + 10  # 10-100+ pips
+            ridge_conf = 50 + float(rng.random()) * 40  # 50-90
+            xgb_momentum = tcn_prob + float(rng.normal(0, 0.1))
+            rf_drawdown = float(rng.exponential(30)) + 10  # 10-100+ pips
             
             # PnL simulation
             if outcome == "win":
-                pnl_pips = np.random.exponential(25) + 5  # 5-100+ pips
+                pnl_pips = float(rng.exponential(25)) + 5  # 5-100+ pips
                 pnl = pnl_pips * 0.10  # ~$0.10 per pip per micro lot
             else:
-                pnl_pips = -(np.random.exponential(20) + 5)
+                pnl_pips = -(float(rng.exponential(20)) + 5)
                 pnl = pnl_pips * 0.10
             
             sample = TradeSample(
@@ -290,7 +299,7 @@ class MetaLabelerRetrainer:
                 xgb_momentum=np.clip(xgb_momentum, 0.0, 1.0),
                 rf_drawdown_pips=max(0, rf_drawdown),
                 direction=direction,
-                instrument=np.random.choice(["EUR_USD", "GBP_USD", "USD_JPY"]),
+                instrument=str(rng.choice(["EUR_USD", "GBP_USD", "USD_JPY"])),
                 actual_outcome=outcome,
                 pnl=pnl,
                 pnl_pips=pnl_pips,
@@ -760,7 +769,6 @@ class MetaLabelerRetrainer:
         
         save_dict = {
             "config": asdict(self.config),
-            "xgb_model": self.xgb_model,
             "ridge_model": self.ridge_model,
             "rf_model": self.rf_model,
             "scaler": self.scaler,
@@ -770,9 +778,23 @@ class MetaLabelerRetrainer:
             "training_metrics": self.training_metrics,
             "saved_at": datetime.now(timezone.utc).isoformat(),
         }
-        
-        with open(output_path, "wb") as f:
-            pickle.dump(save_dict, f)
+
+        native_models = {}
+        if is_xgboost_model(self.xgb_model):
+            native_models["xgb_model"] = self.xgb_model
+        else:
+            save_dict["xgb_model"] = self.xgb_model
+
+        if native_models:
+            save_native_xgboost_bundle(
+                output_path,
+                metadata=save_dict,
+                models=native_models,
+                alias_map={"xgb_model": "xgb"},
+            )
+        else:
+            with open(output_path, "wb") as f:
+                pickle.dump(save_dict, f)
         
         logger.info(f"✓ Saved meta-labeler to {output_path}")
         
@@ -798,13 +820,15 @@ class MetaLabelerRetrainer:
         Returns:
             Loaded MetaLabelerRetrainer
         """
-        with open(model_path, "rb") as f:
-            save_dict = pickle.load(f)
+        save_dict, native_models, _source = load_xgboost_bundle(
+            model_path,
+            alias_map={"xgb_model": "xgb"},
+        )
         
         config = MetaLabelerTrainingConfig(**save_dict.get("config", {}))
         instance = cls(config=config)
         
-        instance.xgb_model = save_dict.get("xgb_model")
+        instance.xgb_model = native_models.get("xgb_model", save_dict.get("xgb_model"))
         instance.ridge_model = save_dict.get("ridge_model")
         instance.rf_model = save_dict.get("rf_model")
         instance.scaler = save_dict.get("scaler")

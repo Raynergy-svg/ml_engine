@@ -22,12 +22,12 @@ Usage:
 from __future__ import annotations
 
 import logging
-import pickle
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from src.utils.xgboost_artifacts import load_xgboost_bundle, save_native_xgboost_bundle
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,11 @@ class XGBoostTradingModel:
     1. Direction model: Predicts up/down
     2. Confidence model: Predicts probability of correct prediction
     """
+
+    MODEL_ALIAS_MAP = {
+        "direction_model": "direction",
+        "confidence_model": "confidence",
+    }
 
     def __init__(self, config: Optional[XGBoostConfig] = None):
         if not XGBOOST_AVAILABLE:
@@ -306,30 +311,42 @@ class XGBoostTradingModel:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        save_dict = {
+        metadata = {
             "config": self.config.__dict__,
-            "direction_model": self.direction_model,
-            "confidence_model": self.confidence_model,
             "feature_names": self.feature_names,
             "feature_importance": self._feature_importance,
             "is_fitted": self.is_fitted,
         }
 
-        with open(path, "wb") as f:
-            pickle.dump(save_dict, f)
+        save_native_xgboost_bundle(
+            path,
+            metadata=metadata,
+            models={
+                "direction_model": self.direction_model,
+                "confidence_model": self.confidence_model,
+            },
+            alias_map=self.MODEL_ALIAS_MAP,
+        )
 
         logger.info(f"Saved XGBoost model to {path}")
 
     @classmethod
     def load(cls, path: Union[str, Path]) -> "XGBoostTradingModel":
         """Load model from disk."""
-        with open(path, "rb") as f:
-            save_dict = pickle.load(f)
+        save_dict, native_models, source = load_xgboost_bundle(
+            path,
+            required_models=("direction_model", "confidence_model"),
+            alias_map=cls.MODEL_ALIAS_MAP,
+        )
 
         config = XGBoostConfig(**save_dict["config"])
         model = cls(config)
-        model.direction_model = save_dict["direction_model"]
-        model.confidence_model = save_dict["confidence_model"]
+        if source == "native":
+            model.direction_model = native_models["direction_model"]
+            model.confidence_model = native_models["confidence_model"]
+        else:
+            model.direction_model = save_dict["direction_model"]
+            model.confidence_model = save_dict["confidence_model"]
         model.feature_names = save_dict["feature_names"]
         model._feature_importance = save_dict["feature_importance"]
         model.is_fitted = save_dict["is_fitted"]

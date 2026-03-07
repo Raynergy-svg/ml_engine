@@ -34,6 +34,46 @@ export MPLCONFIGDIR="${MPLCONFIGDIR:-${CACHE_ROOT}/matplotlib}"
 export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${CACHE_ROOT}/xdg}"
 mkdir -p "${MPLCONFIGDIR}" "${XDG_CACHE_HOME}/fontconfig" >/dev/null 2>&1 || true
 
+declare -a PYTHON_LAUNCHER=()
+
+init_python_launcher() {
+    # Prefer an explicitly configured interpreter (useful for custom conda layouts).
+    if [[ -n "${BUDDY_PYTHON:-}" && -x "${BUDDY_PYTHON}" ]]; then
+        PYTHON_LAUNCHER=("${BUDDY_PYTHON}")
+        return
+    fi
+
+    # Prefer the active conda interpreter when available.
+    if [[ -n "${CONDA_PREFIX:-}" ]]; then
+        local active_python="${CONDA_PREFIX}/bin/python"
+        if [[ -x "${active_python}" ]]; then
+            PYTHON_LAUNCHER=("${active_python}")
+            return
+        fi
+    fi
+
+    # If the target environment exists on disk but `conda run` has issues, use it directly.
+    local named_env_python=""
+    if [[ -x "${HOME}/miniforge3/envs/${ENV_NAME}/bin/python" ]]; then
+        named_env_python="${HOME}/miniforge3/envs/${ENV_NAME}/bin/python"
+    elif [[ -x "${HOME}/miniconda3/envs/${ENV_NAME}/bin/python" ]]; then
+        named_env_python="${HOME}/miniconda3/envs/${ENV_NAME}/bin/python"
+    fi
+    if [[ -n "${named_env_python}" ]]; then
+        PYTHON_LAUNCHER=("${named_env_python}")
+        return
+    fi
+
+    PYTHON_LAUNCHER=(
+        "$(get_conda)"
+        run
+        -n
+        "${ENV_NAME}"
+        --no-capture-output
+        python
+    )
+}
+
 get_conda() {
     for p in "${HOME}/miniforge3/bin/conda" "${HOME}/miniconda3/bin/conda"; do
         [[ -x "$p" ]] && { echo "$p"; return; }
@@ -41,7 +81,8 @@ get_conda() {
     command -v conda 2>/dev/null || { echo "conda not found" >&2; exit 1; }
 }
 
-run_py() { "$(get_conda)" run -n "${ENV_NAME}" --no-capture-output python "$@"; }
+init_python_launcher
+run_py() { "${PYTHON_LAUNCHER[@]}" "$@"; }
 
 cmd_predict() {
     local granularity="H1"

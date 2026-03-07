@@ -12,17 +12,14 @@ Functions:
 from __future__ import annotations
 
 import logging
-import pickle
 import shutil
-import warnings
 from pathlib import Path
 from typing import Dict, Optional
 
-from src.training.trainers.utils import (
-    PRODUCTION_MODELS_DIR,
-    RIDGE_CONFIDENCE_FILENAME,
-    SERIALIZED_MODEL_WARNING,
-)
+from src.models.xgboost_model import XGBoostTradingModel
+from src.training.trainers.utils import PRODUCTION_MODELS_DIR
+from src.training.trainers.xgboost_trainer import XGBoostTrainer
+from src.utils.meta_labeler_artifacts import load_meta_labeler_artifact
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +39,6 @@ def migrate_xgboost_model(model_path: str, output_path: Optional[str] = None) ->
     Returns:
         True if migration successful, False otherwise
     """
-    # Suppress warnings during migration
-    warnings.filterwarnings("ignore", category=UserWarning, module="xgboost")
-    warnings.filterwarnings("ignore", message=SERIALIZED_MODEL_WARNING)
-
     model_path = Path(model_path)
     output_path = Path(output_path) if output_path else model_path
 
@@ -54,20 +47,22 @@ def migrate_xgboost_model(model_path: str, output_path: Optional[str] = None) ->
         return False
 
     try:
-        # Load existing model
-        with open(model_path, "rb") as f:
-            data = pickle.load(f)
-
-        # Re-save (this ensures internal XGBoost state is updated)
         backup_path = model_path.with_suffix(".pkl.bak")
         if model_path == output_path:
-            # Backup original
             shutil.copy(model_path, backup_path)
 
-        with open(output_path, "wb") as f:
-            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+        if model_path.name in {"meta_labeler.pkl", "buddy_xgb_meta.pkl"}:
+            model, _source = load_meta_labeler_artifact(model_path)
+            model.save(output_path)
+        elif model_path.name.endswith(".xgb.pkl"):
+            model = XGBoostTradingModel.load(model_path)
+            model.save(output_path)
+        else:
+            trainer = XGBoostTrainer()
+            trainer.load(str(model_path))
+            trainer.save(str(output_path))
 
-        logger.info(f"✅ XGBoost model migrated: {output_path}")
+        logger.info(f"✅ XGBoost model migrated to native sidecars: {output_path}")
         return True
 
     except Exception as e:
@@ -88,19 +83,15 @@ def migrate_all_models(model_dir: str = PRODUCTION_MODELS_DIR) -> Dict[str, bool
     model_dir = Path(model_dir)
     results = {}
 
-    # Models that may need migration
-    pkl_models = [
-        "xgb_momentum.pkl",
-        "rf_risk.pkl",
-        RIDGE_CONFIDENCE_FILENAME,
-        "histgb_direction.pkl",
-    ]
+    xgb_candidates = set()
+    for pattern in ("xgb_momentum.pkl", "meta_labeler.pkl", "buddy_xgb_meta.pkl", "*.xgb.pkl"):
+        xgb_candidates.update(model_dir.rglob(pattern))
 
-    for model_name in pkl_models:
-        model_path = model_dir / model_name
-        if model_path.exists():
-            results[model_name] = migrate_xgboost_model(str(model_path))
-        else:
-            results[model_name] = None  # Not found
+    for model_path in sorted(xgb_candidates):
+        try:
+            rel_name = str(model_path.relative_to(model_dir))
+        except ValueError:
+            rel_name = str(model_path)
+        results[rel_name] = migrate_xgboost_model(str(model_path))
 
     return results

@@ -65,6 +65,10 @@ class ExecutionConfig:
     leverage: int = 50
     position_sizing_enabled: bool = True
     aggressive_mode: bool = True
+    regime_scaling_enabled: bool = True
+    aggressive_scale_high_vol: float = 1.5
+    aggressive_scale_extreme_vol: float = 1.75
+    aggressive_min_meta_confidence: float = 0.52
 
     # SL/TP settings (tight scalping)
     atr_sl_multiplier: float = 1.0
@@ -186,10 +190,10 @@ class ExecutionManager:
                 # Use regime-aware position sizer with aggressive scaling
                 # This is the "highest-ROI toggle in the entire system"
                 self._position_sizer = create_regime_aware_position_sizer(
-                    aggressive_scale_high_vol=1.5,  # 1.5x in HIGH vol
-                    aggressive_scale_extreme_vol=1.75,  # 1.75x in EXTREME vol
-                    aggressive_min_meta_confidence=0.52,  # Meta confidence threshold
-                    regime_scaling_enabled=True,
+                    aggressive_scale_high_vol=float(self.config.aggressive_scale_high_vol),
+                    aggressive_scale_extreme_vol=float(self.config.aggressive_scale_extreme_vol),
+                    aggressive_min_meta_confidence=float(self.config.aggressive_min_meta_confidence),
+                    regime_scaling_enabled=bool(self.config.regime_scaling_enabled),
                 )
                 logger.info("✓ Regime-aware position sizer initialized (aggressive mode)")
             else:

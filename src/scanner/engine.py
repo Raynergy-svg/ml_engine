@@ -111,6 +111,12 @@ class Scanner:
                 self.config.max_drawdown_pct = inference_config.get(
                     "max_drawdown_pct", self.config.max_drawdown_pct
                 )
+                self.config.final_score_threshold = inference_config.get(
+                    "final_score_threshold", self.config.final_score_threshold
+                )
+                self.config.max_uncertainty_std = inference_config.get(
+                    "max_uncertainty_std", self.config.max_uncertainty_std
+                )
                 self.config.use_tcn_volatility_filter = bool(
                     inference_config.get(
                         "use_tcn_volatility_filter",
@@ -208,6 +214,42 @@ class Scanner:
                     scan_config.get(
                         "use_master_pair_models",
                         self.config.use_master_pair_models,
+                    )
+                )
+                self.config.position_sizing_enabled = bool(
+                    scan_config.get(
+                        "position_sizing_enabled",
+                        self.config.position_sizing_enabled,
+                    )
+                )
+                self.config.aggressive_mode = bool(
+                    scan_config.get(
+                        "aggressive_mode",
+                        self.config.aggressive_mode,
+                    )
+                )
+                self.config.regime_scaling_enabled = bool(
+                    scan_config.get(
+                        "regime_scaling_enabled",
+                        self.config.regime_scaling_enabled,
+                    )
+                )
+                self.config.aggressive_scale_high_vol = float(
+                    scan_config.get(
+                        "aggressive_scale_high_vol",
+                        self.config.aggressive_scale_high_vol,
+                    )
+                )
+                self.config.aggressive_scale_extreme_vol = float(
+                    scan_config.get(
+                        "aggressive_scale_extreme_vol",
+                        self.config.aggressive_scale_extreme_vol,
+                    )
+                )
+                self.config.aggressive_min_meta_confidence = float(
+                    scan_config.get(
+                        "aggressive_min_meta_confidence",
+                        self.config.aggressive_min_meta_confidence,
                     )
                 )
                 self.config.apply_profile(self.config.profile)
@@ -336,6 +378,7 @@ class Scanner:
             True if ensemble loaded successfully
         """
         if self._modular_ensemble is not None:
+            self._sync_modular_ensemble_config()
             return self._ensemble_loaded
 
         self._ensemble_loaded = False
@@ -353,6 +396,7 @@ class Scanner:
                 min_confidence=float(self.config.min_confidence),
                 min_momentum=float(self.config.min_momentum),
                 max_drawdown_pct=float(self.config.max_drawdown_pct),
+                max_uncertainty_std=float(self.config.max_uncertainty_std),
                 use_tcn_volatility_filter=bool(self.config.use_tcn_volatility_filter),
                 min_volatility_regime=int(self.config.min_volatility_regime),
                 tcn_required=bool(self.config.require_tcn_volatility),
@@ -368,7 +412,7 @@ class Scanner:
                 sentiment_block_enabled=False,
                 enable_meta_labeling=False,
                 overlay_meta_enabled=False,
-                final_score_threshold=0.45,
+                final_score_threshold=float(self.config.final_score_threshold),
             )
 
             self._modular_ensemble = ModularEnsembleInference(
@@ -396,6 +440,7 @@ class Scanner:
             )
 
             if self._ensemble_loaded:
+                self._sync_modular_ensemble_config()
                 self._ensemble_type = "ModularEnsembleInference"
                 logger.info("✓ ModularEnsembleInference loaded successfully")
                 return True
@@ -413,17 +458,21 @@ class Scanner:
             from multi_pair_inference import MultiPairInference
 
             self._modular_ensemble = MultiPairInference(
-                model_dir=str(self.config.model_dir),
+                models_dir=str(self.config.model_dir),
             )
 
             # MultiPairInference may have different loading mechanism
             if hasattr(self._modular_ensemble, 'load_models'):
                 self._modular_ensemble.load_models()
+            elif hasattr(self._modular_ensemble, 'load'):
+                self._modular_ensemble.load()
 
             # Check if loaded successfully
             # MultiPairInference stores models differently
             has_models = (
                 hasattr(self._modular_ensemble, 'models') and self._modular_ensemble.models
+            ) or (
+                hasattr(self._modular_ensemble, '_pair_models') and self._modular_ensemble._pair_models
             ) or (
                 hasattr(self._modular_ensemble, '_loaded') and self._modular_ensemble._loaded
             )
@@ -449,6 +498,22 @@ class Scanner:
         # No ensemble available - will fall back to gate evaluator
         logger.warning("No ensemble inference available - using gate evaluator or technical indicators")
         return False
+
+    def _sync_modular_ensemble_config(self) -> None:
+        """Push current scanner thresholds into the mutable ensemble config."""
+        ensemble_cfg = getattr(getattr(self, "_modular_ensemble", None), "config", None)
+        if ensemble_cfg is None:
+            return
+
+        ensemble_cfg.min_tcn_probability = float(self.config.min_tcn_probability)
+        ensemble_cfg.min_confidence = float(self.config.min_confidence)
+        ensemble_cfg.min_momentum = float(self.config.min_momentum)
+        ensemble_cfg.max_drawdown_pct = float(self.config.max_drawdown_pct)
+        ensemble_cfg.max_uncertainty_std = float(self.config.max_uncertainty_std)
+        ensemble_cfg.use_tcn_volatility_filter = bool(self.config.use_tcn_volatility_filter)
+        ensemble_cfg.min_volatility_regime = int(self.config.min_volatility_regime)
+        ensemble_cfg.tcn_required = bool(self.config.require_tcn_volatility)
+        ensemble_cfg.final_score_threshold = float(self.config.final_score_threshold)
 
     def _init_analysis_tools(self) -> None:
         """Initialize analysis and filter components."""
@@ -733,6 +798,7 @@ class Scanner:
             score_meta = signal_meta.get("scores") if isinstance(signal_meta.get("scores"), dict) else {}
 
             details = {
+                "tcn_probability": float(signal.tcn_probability),
                 "momentum": float(signal.xgb_momentum),
                 "momentum_acceleration": bool(signal.xgb_acceleration),
                 "momentum_passed": bool(signal.momentum_gate_passed),
@@ -741,6 +807,9 @@ class Scanner:
                 "risk_passed": bool(signal.risk_gate_passed),
                 "volatility_gate_passed": bool(signal.volatility_gate_passed),
                 "drawdown": float(signal.rf_drawdown_pips) / 10000.0 if signal.rf_drawdown_pips else None,
+                "meta_confidence": float(signal.meta_confidence),
+                "trade_allowed": bool(signal.trade),
+                "volatility_regime_name": str(signal.volatility_regime_name or "UNKNOWN"),
                 "reason": signal.reason,
                 "reason_codes": signal_meta.get("reason_codes", []),
                 "core_score": score_meta.get("core_score"),
@@ -1029,6 +1098,8 @@ class Scanner:
             round(float(self.config.min_confidence), 6),
             round(float(self.config.min_momentum), 6),
             round(float(self.config.max_drawdown_pct), 6),
+            round(float(self.config.final_score_threshold), 6),
+            round(float(self.config.max_uncertainty_std), 6),
             round(float(self.config.min_atr_pips), 6),
             int(self.config.min_volatility_regime),
             bool(self.config.use_tcn_volatility_filter),
@@ -1042,6 +1113,9 @@ class Scanner:
             bool(self.config.enable_uncertainty_agent),
             bool(self.config.enable_execution_quality_agent),
             round(float(self.config.weighted_vote_threshold), 6),
+            round(float(self.config.sub_inference_min_confidence), 6),
+            round(float(self.config.sub_inference_vote_threshold), 6),
+            round(float(self.config.agent_promotion_min_confidence), 6),
             round(float(self.config.max_uncertainty_score), 6),
             round(float(self.config.max_model_disagreement), 6),
             round(float(self.config.max_spread_pips), 6),
@@ -1252,16 +1326,14 @@ class Scanner:
         """
         try:
             # Check session timing
-            if self.config.enable_session_filter:
-                if not self.config.is_within_session():
-                    current_hour = datetime.now(timezone.utc).hour
-                    return PairAnalysis(
-                        pair=pair,
-                        direction="HOLD",
-                        confidence=0.0,
-                        error=f"Outside trading session ({current_hour}:00 UTC, "
-                              f"active: {self.config.session_start_utc}-{self.config.session_end_utc} UTC)",
-                    )
+            session_status = self.config.get_trading_session_status()
+            if not session_status["session_allowed"]:
+                return PairAnalysis(
+                    pair=pair,
+                    direction="HOLD",
+                    confidence=0.0,
+                    error=str(session_status.get("message") or "Trading currently blocked"),
+                )
 
             # Fetch data
             df_raw = self._fetch_pair_data(pair, self.config.lookback_candles + 200)
@@ -1364,6 +1436,7 @@ class Scanner:
                 direction=direction,
                 confidence=confidence,
                 tcn_confidence=tcn_conf,
+                tcn_probability=float(gate_details.get("tcn_probability", 0.5)) if gate_details else 0.5,
                 ridge_confidence=ridge_conf,
                 momentum=_momentum_val,
                 xgb_momentum=_momentum_val,
@@ -1434,13 +1507,10 @@ class Scanner:
         worker_count = max(1, int(max_workers or self.config.parallel_workers))
 
         # Check session before starting
-        if self.config.enable_session_filter and not self.config.non_interactive:
-            if not self.config.is_within_session():
-                current_hour = datetime.now(timezone.utc).hour
-                logger.warning(
-                    f"Outside trading session ({current_hour}:00 UTC). "
-                    f"Active hours: {self.config.session_start_utc}-{self.config.session_end_utc} UTC"
-                )
+        if not self.config.non_interactive:
+            session_status = self.config.get_trading_session_status()
+            if not session_status["session_allowed"] and session_status.get("message"):
+                logger.warning(str(session_status["message"]))
 
         # Initialize components
         self._init_oanda_client()

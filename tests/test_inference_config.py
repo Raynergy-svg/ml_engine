@@ -9,7 +9,7 @@ This test suite verifies:
 import pytest
 import yaml
 from pathlib import Path
-from src.core.modular_inference import InferenceConfig
+from src.core.modular_inference import InferenceConfig, _normalize_sentiment_directions
 
 
 class TestInferenceConfig:
@@ -37,12 +37,13 @@ class TestInferenceConfig:
         
         # Gate 5: Meta-labeling
         assert config.enable_meta_labeling is True
-        assert config.min_meta_confidence == 0.55
+        assert config.min_meta_confidence == 0.52
         
         # Gate 6: Sentiment
         assert config.sentiment_block_enabled is True
         assert config.sentiment_block_threshold == 0.60
         assert config.sentiment_min_headlines == 3
+        assert config.sentiment_block_directions is None
 
         # Optional heuristic veto gates
         assert config.use_rsi_extreme_gate is True
@@ -157,6 +158,25 @@ class TestInferenceConfig:
         )
         assert config.use_rsi_extreme_gate is False
         assert config.use_trend_contra_gate is False
+
+    def test_sentiment_direction_normalization(self):
+        """Sentiment direction config should normalize buy/sell aliases."""
+        assert _normalize_sentiment_directions(["short", "sell", "buy", "long"]) == {"short", "long"}
+        assert _normalize_sentiment_directions(["SELL"]) == {"short"}
+        assert _normalize_sentiment_directions(None) == set()
+
+    def test_default_config_scopes_aud_nzd_sentiment_to_shorts(self):
+        """Default config should wire AUD_NZD sentiment confirmation to shorts only."""
+        config_path = Path("config/config_improved_H1.yaml")
+        if not config_path.exists():
+            pytest.skip(f"Config file not found: {config_path}")
+
+        with open(config_path, "r") as f:
+            cfg = yaml.safe_load(f)
+
+        pair_cfg = cfg["inference"]["by_pair"]["AUD_NZD"]
+        assert pair_cfg["sentiment_block_enabled"] is True
+        assert pair_cfg["sentiment_block_directions"] == ["short"]
 
 
 class TestGateThresholds:

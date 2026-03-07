@@ -31,6 +31,7 @@ from src.training.trainers.utils import (
     MODEL_NOT_TRAINED_ERROR,
     create_sequences,
     get_config_seq_len,
+    predict_with_named_input_if_needed,
 )
 
 logger = logging.getLogger(__name__)
@@ -340,7 +341,7 @@ class TransformerRegimeTrainer(BaseTrainer):
             x_seq = x_padded.reshape(1, self.seq_len, -1)
 
         # Predict
-        probs = self.model.predict(x_seq, verbose=0)[0]
+        probs = predict_with_named_input_if_needed(self.model, x_seq, verbose=0)[0]
         regime = int(np.argmax(probs))
 
         return {

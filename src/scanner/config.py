@@ -54,17 +54,35 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     "conservative": {
         "min_confidence": 58.0,
         "min_momentum": 0.28,
+        "min_tcn_probability": 0.63,
         "max_drawdown_pct": 0.020,
+        "final_score_threshold": 0.48,
+        "max_uncertainty_std": 0.13,
         "min_atr_pips": 6.0,
         "min_volatility_regime": 2,
+        "weighted_vote_threshold": 0.58,
+        "sub_inference_min_confidence": 0.52,
+        "sub_inference_vote_threshold": 0.72,
+        "agent_promotion_min_confidence": 0.56,
+        "max_uncertainty_score": 0.35,
+        "max_model_disagreement": 0.45,
     },
     # More trade frequency with looser gates (still risk-bounded).
     "aggressive": {
         "min_confidence": 45.0,
         "min_momentum": 0.12,
+        "min_tcn_probability": 0.58,
         "max_drawdown_pct": 0.035,
+        "final_score_threshold": 0.42,
+        "max_uncertainty_std": 0.18,
         "min_atr_pips": 3.0,
         "min_volatility_regime": 0,
+        "weighted_vote_threshold": 0.52,
+        "sub_inference_min_confidence": 0.45,
+        "sub_inference_vote_threshold": 0.60,
+        "agent_promotion_min_confidence": 0.50,
+        "max_uncertainty_score": 0.48,
+        "max_model_disagreement": 0.60,
     },
 }
 VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
@@ -164,6 +182,7 @@ class ScannerConfig:
     enable_session_filter: bool = True
     session_start_utc: int = 8   # London open (08:00 UTC)
     session_end_utc: int = 21    # NY close (21:00 UTC = 17:00 ET winter, 16:00 ET summer)
+    block_when_market_closed: bool = False  # Live scanner/chat can opt in to weekend closure enforcement
 
     # Volatility filter
     min_atr_pips: float = 5.0  # Minimum ATR in pips to trade
@@ -183,12 +202,18 @@ class ScannerConfig:
     sl_pips: float = 15.0  # Default stop loss
     tp_pips: float = 30.0  # Default take profit
     min_tcn_probability: float = 0.60  # TCN direction gate
+    final_score_threshold: float = 0.45  # Ensemble composite score gate (0-1)
+    max_uncertainty_std: float = 0.15  # MC-dropout uncertainty ceiling (0-1)
 
     # Execution settings (from buddy_scanner)
     enable_execution: bool = False  # Enable trade execution
     daily_trade_limit: int = 30  # Max trades per day
     position_sizing_enabled: bool = True
     aggressive_mode: bool = True  # Enable larger positions for compounding
+    regime_scaling_enabled: bool = True
+    aggressive_scale_high_vol: float = 1.5
+    aggressive_scale_extreme_vol: float = 1.75
+    aggressive_min_meta_confidence: float = 0.52
 
     # RL model settings (disabled by default to avoid TF/PyTorch GPU conflicts)
     use_rl_sizer: bool = False  # RL position sizing (PPO model)
@@ -320,9 +345,16 @@ class ScannerConfig:
             1.0,
             max(0.34, float(self.sub_inference_vote_threshold)),
         )
+        self.min_tcn_probability = min(0.99, max(0.50, float(self.min_tcn_probability)))
+        self.final_score_threshold = min(0.99, max(0.20, float(self.final_score_threshold)))
+        self.max_uncertainty_std = min(0.50, max(0.01, float(self.max_uncertainty_std)))
+        self.weighted_vote_threshold = min(0.95, max(0.40, float(self.weighted_vote_threshold)))
+        self.sub_inference_min_confidence = min(0.95, max(0.30, float(self.sub_inference_min_confidence)))
         self.sub_inference_window_checks = max(1, int(self.sub_inference_window_checks))
         self.sub_inference_workers = max(1, int(self.sub_inference_workers))
         self.sub_inference_max_candidates = max(1, int(self.sub_inference_max_candidates))
+        self.max_uncertainty_score = min(0.95, max(0.10, float(self.max_uncertainty_score)))
+        self.max_model_disagreement = min(0.95, max(0.10, float(self.max_model_disagreement)))
         self.agent_promotion_min_confidence = min(
             0.99,
             max(0.30, float(self.agent_promotion_min_confidence)),
@@ -391,63 +423,92 @@ class ScannerConfig:
         # Keep regime in valid classifier range.
         self.min_volatility_regime = max(0, min(3, int(self.min_volatility_regime)))
 
-    def is_within_session(self) -> bool:
-        """Check if current time is within Forex trading session.
-        
-        Forex market hours (UTC):
-        - Opens: Sunday 22:00 UTC (5 PM ET Sunday)
-        - Closes: Friday 22:00 UTC (5 PM ET Friday)
-        - Peak liquidity hours: 08:00-21:00 UTC (London + NY sessions)
-        
-        The session filter restricts trading to peak liquidity hours when
-        major pairs like EUR/USD and NZD/USD have tight spreads and
-        good volatility.
-        
-        Returns:
-            True if within peak trading hours AND market is open (not weekend)
-        """
-        if not self.enable_session_filter:
-            logger.debug("Session filter disabled, allowing trade")
-            return True
+    def get_trading_session_status(self, now: Optional[Any] = None) -> Dict[str, Any]:
+        """Return current market-open/session status for the scanner.
 
+        Weekend market closure is treated separately from the intraday
+        liquidity-hour session filter so `force` can bypass session hours
+        without pretending the FX market is open on Saturday.
+        """
         from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
-        hour = now.hour
-        weekday = now.weekday()  # 0=Monday, 6=Sunday
-        
-        # === WEEKEND MARKET CLOSURE CHECK ===
-        # Forex markets close Friday 22:00 UTC and reopen Sunday 22:00 UTC
-        # Saturday (weekday=5) = closed all day
-        if weekday == 5:  # Saturday
-            logger.debug("Weekend closure: Saturday, blocking trade")
-            return False
-            
-        # Sunday (weekday=6) = opens at 22:00 UTC
-        if weekday == 6 and hour < 22:
-            logger.debug("Weekend closure: Sunday before 22:00 UTC, blocking trade")
-            return False
-            
-        # Friday (weekday=4) = closes at 22:00 UTC
-        if weekday == 4 and hour >= 22:
-            logger.debug("Weekend closure: Friday after 22:00 UTC, blocking trade")
-            return False
-        
-        # === PEAK LIQUIDITY HOURS CHECK ===
-        # Check if within London+NY overlap (08:00-21:00 UTC by default)
+
+        current_time = now or datetime.now(timezone.utc)
+        hour = int(current_time.hour)
+        weekday = int(current_time.weekday())  # 0=Monday, 6=Sunday
+        day_name = current_time.strftime("%A")
+
+        market_open = True
+        reason_code = None
+        message = None
+
+        if self.block_when_market_closed and weekday == 5:
+            market_open = False
+            reason_code = "market_closed"
+            message = (
+                f"FX market closed (weekend: {day_name} {hour:02d}:00 UTC; "
+                "reopens Sunday 22:00 UTC)"
+            )
+        elif self.block_when_market_closed and weekday == 6 and hour < 22:
+            market_open = False
+            reason_code = "market_closed"
+            message = (
+                f"FX market closed (weekend: {day_name} {hour:02d}:00 UTC; "
+                "reopens Sunday 22:00 UTC)"
+            )
+        elif self.block_when_market_closed and weekday == 4 and hour >= 22:
+            market_open = False
+            reason_code = "market_closed"
+            message = (
+                f"FX market closed (weekend: {day_name} {hour:02d}:00 UTC; "
+                "reopens Sunday 22:00 UTC)"
+            )
+
         within_hours = self.session_start_utc <= hour < self.session_end_utc
-        
-        if within_hours:
-            logger.debug(
-                f"Within trading session: {hour}:00 UTC "
-                f"(peak hours: {self.session_start_utc}:00-{self.session_end_utc}:00 UTC)"
+        session_allowed = market_open and (not self.enable_session_filter or within_hours)
+
+        if reason_code is None and self.enable_session_filter and not within_hours:
+            reason_code = "outside_session"
+            message = (
+                f"Outside trading session ({hour}:00 UTC, "
+                f"active: {self.session_start_utc}-{self.session_end_utc} UTC)"
             )
+
+        if market_open and self.enable_session_filter:
+            if within_hours:
+                logger.debug(
+                    f"Within trading session: {hour}:00 UTC "
+                    f"(peak hours: {self.session_start_utc}:00-{self.session_end_utc}:00 UTC)"
+                )
+            else:
+                logger.debug(
+                    f"Outside peak hours: {hour}:00 UTC "
+                    f"(peak hours: {self.session_start_utc}:00-{self.session_end_utc}:00 UTC)"
+                )
+        elif market_open:
+            logger.debug("Session filter disabled, but FX market is open")
         else:
-            logger.debug(
-                f"Outside peak hours: {hour}:00 UTC "
-                f"(peak hours: {self.session_start_utc}:00-{self.session_end_utc}:00 UTC)"
-            )
-        
-        return within_hours
+            logger.debug(message or "FX market closed")
+
+        return {
+            "now_utc": current_time,
+            "hour_utc": hour,
+            "weekday": weekday,
+            "day_name": day_name,
+            "market_open": market_open,
+            "within_hours": within_hours,
+            "session_filter_enabled": bool(self.enable_session_filter),
+            "session_allowed": session_allowed,
+            "reason_code": reason_code,
+            "message": message,
+        }
+
+    def is_market_open(self, now: Optional[Any] = None) -> bool:
+        """Return whether the FX market is open right now."""
+        return bool(self.get_trading_session_status(now).get("market_open"))
+
+    def is_within_session(self, now: Optional[Any] = None) -> bool:
+        """Return whether trading is currently allowed by market-open + session rules."""
+        return bool(self.get_trading_session_status(now).get("session_allowed"))
 
     @classmethod
     def from_cli_args(

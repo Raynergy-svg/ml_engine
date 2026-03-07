@@ -41,14 +41,13 @@
             }
         }
     },
-    "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.pythonProjects": [],
+    "python-envs.defaultEnvManager": "ms-python.python:venv",
     "chat.tools.terminal.autoApprove": {
         "./Buddy": true
     },
     "idf.pythonInstallPath": "/Users/davidcertan/miniforge3/bin/python",
     "robotcode.disableExtension": true,
-    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:pip",
     "diffEditor.maxComputationTime": 0,
     "sonarlint.rules": {
         "python:S117": {

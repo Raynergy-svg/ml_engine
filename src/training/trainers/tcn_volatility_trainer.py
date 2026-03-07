@@ -49,6 +49,7 @@ from src.training.trainers.callbacks import (
     AutoAdjustCallback,
 )
 from src.training.trainers.display import TrainingDisplay
+from src.training.trainers.utils import predict_with_named_input_if_needed
 
 # Import custom LR schedules early so they're registered with Keras before
 # any pickle deserialization that might contain Keras models with these schedules
@@ -584,7 +585,7 @@ class TCNVolatilityRegimeTrainer(BaseTrainer):
             raise ValueError(f"Expected 2D or 3D input, got shape {X.shape}")
 
         # Get predictions
-        outputs = self.model.predict(X_seq, verbose=0)
+        outputs = predict_with_named_input_if_needed(self.model, X_seq, verbose=0)
 
         if isinstance(outputs, dict):
             probs = outputs['classification'][0]

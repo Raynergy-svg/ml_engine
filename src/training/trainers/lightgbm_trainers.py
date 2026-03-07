@@ -14,9 +14,13 @@ LightGBM advantages:
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import logging
+import os
 import pickle
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -47,6 +51,27 @@ except ImportError:
     pass
 
 logger = logging.getLogger(__name__)
+
+
+@contextlib.contextmanager
+def _suppress_native_stderr():
+    """Suppress native-library stderr output during pickle deserialization."""
+    try:
+        stderr_fd = sys.stderr.fileno()
+    except (AttributeError, io.UnsupportedOperation):
+        with contextlib.redirect_stderr(io.StringIO()):
+            yield
+        return
+
+    saved_fd = os.dup(stderr_fd)
+    try:
+        with open(os.devnull, "w") as devnull:
+            os.dup2(devnull.fileno(), stderr_fd)
+            with contextlib.redirect_stderr(devnull):
+                yield
+    finally:
+        os.dup2(saved_fd, stderr_fd)
+        os.close(saved_fd)
 
 
 class RegimeLGBMTrainer(BaseTrainer):
@@ -605,7 +630,8 @@ class LightGBMMomentumTrainer(BaseTrainer):
         warnings.filterwarnings("ignore", message=SERIALIZED_MODEL_WARNING)
 
         with open(path, "rb") as f:
-            data = pickle.load(f)
+            with _suppress_native_stderr():
+                data = pickle.load(f)
 
         self.momentum_model = data["momentum_model"]
         self.accel_model = data["accel_model"]
@@ -835,7 +861,8 @@ class LightGBMRiskTrainer(BaseTrainer):
         warnings.filterwarnings("ignore", message=SERIALIZED_MODEL_WARNING)
 
         with open(path, "rb") as f:
-            data = pickle.load(f)
+            with _suppress_native_stderr():
+                data = pickle.load(f)
 
         self.drawdown_model = data["drawdown_model"]
         self.streak_model = data["streak_model"]

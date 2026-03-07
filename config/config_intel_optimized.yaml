@@ -1,27 +1,3 @@
-# =============================================================================
-# INTEL MAC OPTIMIZED Configuration for FX Trading Bot - H1 TIMEFRAME
-# =============================================================================
-# Optimized for Intel-based Macs (2017+) with CPU-only TensorFlow
-# Key differences from M1/Metal config:
-#   - batch_size: 32 (reduces memory pressure on CPU)
-#   - recurrent_dropout: 0.15 (safe on Intel, improves regularization)
-#   - mixed_precision: false (no GPU for FP16 acceleration)
-#   - workers: 4 (parallel data loading on CPU)
-#
-# CRITICAL FOR macOS SIGSEGV PREVENTION:
-# If you experience "Segmentation fault: 11", set these environment variables
-# before running training:
-#   export KMP_DUPLICATE_LIB_OK=TRUE
-#   export MKL_THREADING_LAYER=GNU
-#   export KMP_AFFINITY=disabled
-#   export OMP_NUM_THREADS=4
-#   export MKL_NUM_THREADS=4
-#
-# Or run with: python main.py train-buddy --config config_intel_optimized.yaml ...
-# (main.py now sets these automatically on macOS)
-# =============================================================================
-
-# ----- PATH CONFIGURATION -----
 paths:
   data_dir: trained_data/data
   model_dir: trained_data/models
@@ -30,304 +6,179 @@ paths:
   cache_dir: trained_data/cache
   viz_dir: trained_data/visualizations
   tensorboard_dir: trained_data/tensorboard
-
-# ----- DEVICE CONFIGURATION FOR INTEL CPU -----
 device: cpu
-
-# ----- DATA CONFIGURATION -----
 data:
   data_dir: market_data/
   cache_dir: trained_data/cache
   required_features:
-    - open
-    - high
-    - low
-    - close
-    - volume
-    - rsi
-    - macd
-    - macd_signal
-    - macd_hist
-    - bb_upper_20
-    - bb_lower_20
-    - bb_width_20
-    - bb_position_20
-    - atr
-    - adx
-    - stoch_k
-    - stoch_d
-    - cci
-    - obv
-    - mfi
-    - williams_r
-    - sma_5
-    - sma_10
-    - sma_20
-    - sma_50
-    - ema_12
-    - ema_26
-    - returns
-    - volatility_20
-    - momentum_10
-    - zscore_20
-    - roc_5
-    - roc_10
-    - roc_20
-
-# ----- SEQUENCE CONFIGURATION -----
+  - open
+  - high
+  - low
+  - close
+  - volume
+  - rsi
+  - macd
+  - macd_signal
+  - macd_hist
+  - bb_upper_20
+  - bb_lower_20
+  - bb_width_20
+  - bb_position_20
+  - atr
+  - adx
+  - stoch_k
+  - stoch_d
+  - cci
+  - obv
+  - mfi
+  - williams_r
+  - sma_5
+  - sma_10
+  - sma_20
+  - sma_50
+  - ema_12
+  - ema_26
+  - returns
+  - volatility_20
+  - momentum_10
+  - zscore_20
+  - roc_5
+  - roc_10
+  - roc_20
 sequence_length: 60
-
-# ----- H1 DIRECTION LABELING -----
-# [2026-02-21] Optimal settings from best performing model (EUR_JPY: 65.2% val_acc)
 direction_lookahead: 24
-direction_threshold: 0.005  # Min 0.5% move for clear signal (validated on EUR_JPY)
-
-# ----- MODEL CONFIGURATION -----
+direction_threshold: 0.005
 model:
   type: ensemble
-  
-  # Feature dimension (will be auto-detected)
   input_size: 192
-  
-  # Increased capacity for H1 patterns
   hidden_size: 64
   num_layers: 3
-  
-  # INTEL MAC: Stronger dropout to prevent overfitting
   dropout: 0.6
-  
-  # INTEL MAC: Can use recurrent_dropout (no Metal GPU slowdown)
-  # Higher value helps reduce train/val gap
   recurrent_dropout: 0.25
-  
-  # Strong L2 regularization to prevent overfitting
   kernel_regularizer: 0.01
-  
-  # TCN-specific (legacy, kept for backward compatibility)
   kernel_size: 3
   use_residual: true
-  
-  # Multi-task heads
   multi_task: true
-  state_classes: 4    # Market states: LOW, NORMAL, HIGH, EXTREME volatility
-  
-  # Attention heads
+  state_classes: 4
   num_heads: 4
-
-# ----- TRANSFORMER DIRECTION MODEL -----
-# Replaces TCN for direction prediction - better at capturing trends
-# [2026-02-15] Increased capacity for better feature learning
 transformer:
-  d_model: 48          # Increased from 32 for more capacity
-  num_heads: 4         # Attention heads
-  num_layers: 3        # Increased from 2 for deeper representation
-  dff: 96              # Increased from 64 for better feature mixing
-  dropout: 0.35        # Slightly reduced for more learning
-  dense_dropout: 0.3   # Reduced dense dropout
-  use_transformer: true  # Use Transformer instead of TCN for direction
-
-# ----- TCN VOLATILITY REGIME MODEL -----
-# Research-backed architecture for 4-class volatility regime classification
-# Based on Bai et al. "TCN for Sequence Modeling" and Unit8 best practices
-# Success criteria: >75% accuracy, >0.70 F1 for minority classes, >80% HIGH/EXTREME detection
-# [2026-02-14] Enhanced regularization
+  d_model: 48
+  num_heads: 4
+  num_layers: 3
+  dff: 96
+  dropout: 0.35
+  dense_dropout: 0.3
+  use_transformer: true
 tcn_regime:
   enabled: true
-  
-  # Architecture (research-backed optimal parameters)
-  kernel_size: 5              # Larger kernels capture longer patterns
-  num_filters: 64             # Channel capacity per layer
-  num_residual_blocks: 5      # Depth for receptive field coverage
-  dilation_base: 2            # Exponential dilation: 1, 2, 4, 8, 16
-  dropout: 0.3                # [2026-02-14] Increased from 0.2 to 0.3 for dense layers
-  dense_dropout: 0.35         # [2026-02-14] Added: Explicit dense layer dropout (0.3-0.4 range)
-  weight_norm: true           # Weight normalization for training stability
-  use_residual: true          # Skip connections in residual blocks
-  
-  # Receptive field calculation: (kernel_size - 1) * sum(dilation_base^i for i in 0..n-1)
-  # With kernel_size=5, dilation_base=2, num_blocks=5:
-  # RF = (5-1) * (1+2+4+8+16) = 4 * 31 = 124 > seq_len(60) ✓
-  
-  # Regularization
-  kernel_regularizer: 0.001   # L2 on conv weights
-  activity_regularizer: 0.0   # L2 on activations (disabled by default)
-  label_smoothing: 0.1        # [2026-02-14] Changed from 0.15 to 0.1 for enhanced regularization
-  
-  # Training
-  learning_rate: 0.0005       # TCN-specific learning rate (was 0.001 - reduced to prevent gradient explosion)
-  batch_size: 32              # INTEL MAC optimized
-  epochs: 150                 # Max epochs (early stopping will kick in)
-  early_stopping_patience: 30 # [2026-02-14] Reduced from 25 to 15 for enhanced regularization
-  early_stopping_min_delta: 0.001  # [2026-02-14] Added: Minimum change to qualify as improvement
-  min_epochs: 50              # Train at least this many epochs
-  
-  # Class weighting for imbalanced volatility regimes
-  # Classes: LOW (0), NORMAL (1), HIGH (2), EXTREME (3)
-  use_class_weights: true     # Auto-compute from class distribution
-  class_weight_method: balanced  # 'balanced' or 'manual'
-  # Manual weights (used if class_weight_method: manual)
+  kernel_size: 5
+  num_filters: 64
+  num_residual_blocks: 5
+  dilation_base: 2
+  dropout: 0.3
+  dense_dropout: 0.35
+  weight_norm: true
+  use_residual: true
+  kernel_regularizer: 0.001
+  activity_regularizer: 0.0
+  label_smoothing: 0.1
+  learning_rate: 0.0005
+  batch_size: 32
+  epochs: 150
+  early_stopping_patience: 30
+  early_stopping_min_delta: 0.001
+  min_epochs: 50
+  use_class_weights: true
+  class_weight_method: balanced
   manual_class_weights:
-    0: 1.0                    # LOW - most common
-    1: 1.0                    # NORMAL - second most common  
-    2: 2.0                    # HIGH - less common
-    3: 4.0                    # EXTREME - rarest, highest weight
-  
-  # Volatility regime thresholds (ATR percentiles)
-  # These define class boundaries based on rolling ATR
-  # Adjusted to rebalance classes and prevent EXTREME dominance
-  atr_window: 14              # ATR calculation window
-  percentile_low: 20          # Below 20th percentile = LOW (was 25)
-  percentile_normal: 45       # 20th-45th percentile = NORMAL (was 50)
-  percentile_high: 70         # 45th-70th percentile = HIGH (was 75)
-  # Above 70th percentile = EXTREME (more samples than before)
-  
-  # Success criteria thresholds
+    0: 1.0
+    1: 1.0
+    2: 2.0
+    3: 4.0
+  atr_window: 14
+  percentile_low: 20
+  percentile_normal: 45
+  percentile_high: 70
   success_criteria:
-    min_accuracy: 0.75        # >75% overall accuracy
-    min_f1_minority: 0.70     # >0.70 F1 for HIGH/EXTREME classes
-    min_high_extreme_recall: 0.80  # >80% detection of HIGH/EXTREME regimes
-
-# ----- OPTIMIZER CONFIGURATION -----
+    min_accuracy: 0.75
+    min_f1_minority: 0.7
+    min_high_extreme_recall: 0.8
 optimizer:
   type: adamw
-  
-  # Learning rate
   learning_rate: 0.0003
-  
-  # [2026-02-14] Enhanced regularization - weight decay for L2 regularization
-  # Reduced from 0.01 to 1e-4 for better gradient flow while preventing overfitting
-  weight_decay: 0.0001  # 1e-4
-  
+  weight_decay: 0.0001
   betas:
-    - 0.9
-    - 0.999
-  
-  # Gradient clipping
+  - 0.9
+  - 0.999
   clipnorm: 1.0
-
-# ----- FEATURE SELECTION CONFIGURATION -----
-# [2026-02-15] Increased features for better model performance
 feature_selection:
   enabled: true
-  method: random_forest          # 'random_forest' or 'f_test'
-  top_k_features: 100            # Increased from 50 to 100 for more signal
-  min_importance_threshold: 0.001  # Minimum feature importance to keep
-
-# ----- TRAINING CONFIGURATION -----
-# [2026-02-14] Enhanced regularization
+  method: random_forest
+  top_k_features: 100
+  min_importance_threshold: 0.001
 training:
   epochs: 200
-
-  # [2026-02-14] Enhanced early stopping configuration
-  early_stopping_patience: 20      # Increased from 15 to 20 for more exploration
-  early_stopping_min_delta: 0.0005 # Reduced threshold for finer improvements
-
-  # Minimum epochs before early stopping
+  early_stopping_patience: 20
+  early_stopping_min_delta: 0.0005
   min_epochs: 60
-
-  # [2026-02-14] Label smoothing for classification tasks
   label_smoothing: 0.1
-  
-  # INTEL MAC: Disable JIT (better CPU compatibility)
   jit_compile: false
   run_eagerly: false
-  
-  # Batch progress
   batch_progress_every: 50
-  
-  # INTEL MAC: Parallel data loading workers
   workers: 4
-  use_multiprocessing: true  # Use threading instead (more stable on macOS)
-  
-  # ----- HYBRID SFT-RL TRAINING SETTINGS -----
-  # Combines Supervised Fine-Tuning with Reinforcement Learning
-  use_hybrid_sft_rl: true          # Enable Hybrid SFT-RL loss module
-  rl_prob: 0.5                     # 50% chance of RL loss per batch
-  entropy_coef: 0.01               # Entropy bonus for exploration
-  initial_baseline: 0.5            # Starting baseline for variance reduction
-  baseline_momentum: 0.9           # EMA momentum for baseline updates
-
-# ----- BATCH SIZE -----
-# INTEL MAC: Smaller batches reduce memory pressure on CPU
+  use_multiprocessing: true
+  use_hybrid_sft_rl: true
+  rl_prob: 0.5
+  entropy_coef: 0.01
+  initial_baseline: 0.5
+  baseline_momentum: 0.9
 batch_size: 32
-
-# ----- LEARNING RATE SCHEDULE -----
 scheduler:
   type: cosine_annealing
   T_max: 50
-  eta_min: 0.00001
-
-# ----- LOSS CONFIGURATION -----
+  eta_min: 1.0e-05
 loss_type: huber
 huber_delta: 1.0
-
-# ----- MULTI-TASK HEAD LOSS WEIGHTS -----
 unified_head_loss_weights:
   price: 1.0
   trend: 0.5
   direction: 5.0
   risk: 2.0
   state_logits: 2.0
-
-# ----- FOCAL LOSS FOR DIRECTION -----
 auto_focal_alpha: true
 focal_gamma: 2.0
 direction_loss: focal
-
-# ----- DATA SCALING -----
 enable_data_scaling: true
 normalize_features: true
-
-# ----- MIXED PRECISION -----
-# INTEL MAC: DISABLED - no GPU for FP16 acceleration
 mixed_precision: false
-
-# ----- VALIDATION -----
 validation_split: 0.15
-
-# ----- EARLY STOPPING -----
 early_stop_monitor: val_loss
 early_stopping_patience: 40
 min_epochs: 60
-
-# ----- REGULARIZATION -----
 noise_std: 0.02
 kernel_regularizer: 0.001
-
-# ----- OVERFIT PREVENTION -----
-# Controls the OverfitPreventionCallback that monitors train-val gap
 overfit_prevention:
-  overfit_threshold: 0.08       # 8% train-val gap triggers warning
-  critical_threshold: 0.15      # 15% gap triggers LR reduction
-  severe_threshold: 0.25        # 25% gap triggers early stop
-  max_acceptable_gap: 0.12      # Won't save checkpoint if gap > 12%
-  patience_epochs: 3            # Consecutive overfit epochs before intervention
-  auto_adjust_dropout: true     # Dynamically increase dropout on overfitting
-  auto_reduce_lr: true          # Dynamically reduce LR on overfitting
-  max_dropout_increase: 0.3     # Cap on dropout increase
-
-# ----- STOCHASTIC WEIGHT AVERAGING (SWA) -----
-# Averages weights in final portion of training for flatter optima
+  overfit_threshold: 0.08
+  critical_threshold: 0.15
+  severe_threshold: 0.25
+  max_acceptable_gap: 0.12
+  patience_epochs: 3
+  auto_adjust_dropout: true
+  auto_reduce_lr: true
+  max_dropout_increase: 0.3
 swa:
-  enabled: true                 # Enable SWA
-  start_fraction: 0.75          # Start at 75% of training
-  lr_factor: 0.5                # SWA constant LR = initial_lr * factor
-
-# ----- COSINE ANNEALING WITH WARM RESTARTS -----
-# Periodically resets LR to escape sharp local minima
+  enabled: true
+  start_fraction: 0.75
+  lr_factor: 0.5
 cosine_restarts:
-  enabled: true                 # Enable cosine annealing w/ warm restarts
-  restart_period: 10            # Restart every N epochs
-  lr_mult: 0.8                  # Each restart uses 80% of prev LR
-
-# ----- WARM-START OVERFIT RECOVERY -----
+  enabled: true
+  restart_period: 10
+  lr_mult: 0.8
 warmstart_recovery:
-  enabled: true                 # Detect/recover from warm-start overfitting
-  reset_threshold: 0.15         # If initial gap > 15%, intervene
-  weight_perturbation_scale: 0.02  # Noise to break memorization
-  reset_optimizer_on_overfit: true # Reset optimizer momentum on critical overfit
-
-# ----- TENSORBOARD -----
+  enabled: true
+  reset_threshold: 0.15
+  weight_perturbation_scale: 0.02
+  reset_optimizer_on_overfit: true
 tensorboard:
   enabled: true
   log_dir: trained_data/tensorboard
@@ -336,24 +187,22 @@ tensorboard:
   write_images: false
   profile_batch: 0
   update_freq: epoch
-
-# ----- FX TRADING CONFIGURATION -----
 fx:
   enabled: true
   tier: 1
   timezone: America/New_York
-  granularity: H1  # HOURLY TIMEFRAME
+  granularity: H1
   horizon_bars: 1
   equity: 10000.0
   instruments:
-    - EUR_USD
-    - GBP_USD
-    - USD_JPY
+  - EUR_USD
+  - GBP_USD
+  - USD_JPY
   session:
-    start: "08:00"
-    end: "11:30"
-    force_flat_at: "11:55"
-    reset_at: "08:00"
+    start: 08:00
+    end: '11:30'
+    force_flat_at: '11:55'
+    reset_at: 08:00
   limits:
     max_open_positions: 1
     max_entries_per_day: 1
@@ -375,24 +224,19 @@ fx:
   confidence:
     low_lt: 0.6
     high_gte: 0.75
-
-# ----- BUDDY CONFIGURATION -----
-# [2026-02-14] Enhanced regularization
 buddy:
   head_hidden: 64
   head_layers: 3
-  head_dropout: 0.3            # [2026-02-14] Increased from 0.2 to 0.3
+  head_dropout: 0.3
   dense_hidden: 128
-  dense_dropout: 0.35          # [2026-02-14] Increased from 0.3 to 0.35 (0.3-0.4 range)
-  
+  dense_dropout: 0.35
   train_defaults:
-    # DATA SETTINGS - Increased for better model training
-    default_candles: 15000     # 15k H1 candles = ~625 days (~2 years) - more data for Transformer
-    tier2_calibration_stride: 3  # Every 3 H1 candles (3 hours) - appropriate for H1
-    tier2_horizon_candles: 48    # 48 H1 candles = 2 days
+    default_candles: 15000
+    tier2_calibration_stride: 3
+    tier2_horizon_candles: 48
     seq_len: 60
     epochs: 200
-    batch_size: 32             # INTEL MAC: Smaller batches
+    batch_size: 32
     lr: 0.0003
     patience: 40
     es_monitor: combined
@@ -401,29 +245,23 @@ buddy:
     steps_per_execution: 10
     shared_encoder: false
     fit_verbose: 2
-    mixed_precision: false     # INTEL MAC: Disabled
+    mixed_precision: false
     jit_compile: false
     cache_val: true
-    no_train_smoothing: true  # CRITICAL: Disable M5 resampling for H1 data
-    workers: 4                 # INTEL MAC: Parallel data loading
-    
-    # REGIME MODEL SETTINGS (replaces direction prediction)
-    use_transformer: true      # Use Transformer architecture
-    use_regime: true           # NEW: Classify market regime instead of direction
-    regime_lookback: 20        # 20 bars to analyze regime
-    regime_lookahead: 12       # 12 bars to confirm regime
-    # Legacy direction settings (only used if use_regime: false)
-    direction_threshold: 0.003 # Min 0.3% move for clear signal
-    direction_lookahead: 24    # 24 hours lookahead
-  
-  # TIGHT SCALPING SL/TP - Quick targets for volatile markets
-  stop_loss_pips: 15.0    # 15 pips SL - tight risk (user requested)
-  take_profit_pips: 30.0  # 30 pips TP base (50 if prob > 65%)
-  tier2_horizon_candles: 24  # 24 hours max to hit target
+    no_train_smoothing: true
+    workers: 4
+    use_transformer: true
+    use_regime: true
+    regime_lookback: 20
+    regime_lookahead: 12
+    direction_threshold: 0.003
+    direction_lookahead: 24
+  stop_loss_pips: 15.0
+  take_profit_pips: 30.0
+  tier2_horizon_candles: 24
   tier2_spread_fallback_pips: 1.5
-  tier2_tie_break: "sl"
-  risk_per_trade_pct: 0.02  # 2% risk for larger lots
-  
+  tier2_tie_break: sl
+  risk_per_trade_pct: 0.02
   tier2:
     enabled: true
     p_win_threshold: 0.45
@@ -436,24 +274,18 @@ buddy:
     force_temperature_scaling: true
     require_trending: true
     min_atr_percentile: 0.3
-
-  # ----- TRIPLE BARRIER LABELING -----
   triple_barrier:
     enabled: true
     use_for_direction: true
     exclude_timeouts: false
     timeout_weight: 0.3
     use_best_direction: true
-  
-  # ----- META-LABELING -----
   meta_labeling:
     enabled: true
     n_estimators: 200
     max_depth: 4
     learning_rate: 0.1
     threshold: 0.55
-
-# ----- XGBOOST BASELINE -----
 xgboost:
   enabled: true
   run_baseline_check: true
@@ -467,99 +299,63 @@ xgboost:
   reg_alpha: 0.1
   reg_lambda: 1.0
   early_stopping_rounds: 50
-
-# ----- MEMORY MONITORING -----
 monitoring:
   enable_memory_monitoring: true
   memory_check_interval: 30
   cpu_memory_threshold: 80
   log_memory_usage: true
-
-# ----- PERFORMANCE TARGETS -----
 performance:
   max_mse: 0.1
   min_accuracy: 0.55
   min_r2_score: 0.1
-
-# ----- DATA AUGMENTATION -----
-# [2026-02-14] Enhanced regularization - Time-series appropriate augmentation
 augmentation:
-  enabled: true                    # [2026-02-14] Enabled for enhanced regularization
+  enabled: true
   factor: 2
   noise_level: 0.01
-  
-  # [2026-02-14] Time-series specific augmentation methods
   time_series:
-    enabled: true                  # Master switch for time-series augmentation
-    augment_prob: 0.5              # Probability of applying augmentation per sample
-    
-    # Jittering: Add small Gaussian noise to features
+    enabled: true
+    augment_prob: 0.5
     jittering:
       enabled: true
-      noise_std_min: 0.01          # Minimum noise standard deviation
-      noise_std_max: 0.05          # Maximum noise standard deviation
-      apply_prob: 0.5              # Probability of applying jittering
-    
-    # Scaling: Random scaling factor applied to sequences
+      noise_std_min: 0.01
+      noise_std_max: 0.05
+      apply_prob: 0.5
     scaling:
       enabled: true
-      scale_min: 0.95              # Minimum scale factor
-      scale_max: 1.05              # Maximum scale factor
-      apply_prob: 0.5              # Probability of applying scaling
-  
+      scale_min: 0.95
+      scale_max: 1.05
+      apply_prob: 0.5
   use_mixup: true
   mixup_alpha: 0.2
-
-# ----- DIAGNOSTIC SETTINGS -----
 diagnostics:
   enabled: true
   run_xgboost_baseline: true
   log_gradient_stats: true
   log_feature_importance: true
   save_label_distribution: true
-
-# ----- INFERENCE GATE CONFIGURATION (BUDDY) -----
-# NOTE:
-# - Buddy now requires this section and does not use inline hardcoded fallbacks.
-# - Tune thresholds here globally or per pair under `by_pair`.
 inference:
-  # Direction confidence gate (Transformer probability)
-  # Tuned for current EUR_USD direction model (~58-60% validation accuracy).
-  # Keep above random while avoiding over-filtering before calibration is fitted.
   min_tcn_probability: 0.53
-
-  # Supporting gate models
   min_confidence: 50.0
-  min_momentum: 0.20
+  min_momentum: 0.2
   require_fresh_or_accel: true
   max_drawdown_pct: 0.025
   max_streak_prob: 0.95
-
-  # Meta-labeler gate
   enable_meta_labeling: true
   min_meta_confidence: 0.55
-
-  # Sentiment gate
   sentiment_block_enabled: true
-  sentiment_block_threshold: 0.60
+  sentiment_block_threshold: 0.6
   sentiment_min_headlines: 3
-
-  # Safety / compatibility behavior
   permissive_mode: false
   bypass_risk_gate_in_permissive: false
-
-  # Probability calibration
   enable_calibration: true
   calibration_method: platt
-
-  # Position sizing
   account_equity: 103000.0
   risk_per_trade_pct: 0.05
   pip_value: 10.0
   min_stop_loss_pips: 10.0
   min_position_lots: 0.01
   position_sizing_mode: rl_hybrid
-  rl_min_risk_utilization: 0.25  # Premium execution: enforce >=25% of configured risk budget
+  rl_min_risk_utilization: 0.25
   max_lots_by_pair:
     EUR_USD: 50.0
     USD_JPY: 40.0
@@ -572,157 +368,92 @@ inference:
     EUR_GBP: 15.0
     EUR_JPY: 15.0
     DEFAULT: 10.0
-
-  # Volatility regime gate
   use_tcn_volatility_filter: true
   min_volatility_regime: 0
   tcn_required: false
-
-  # Optional pair-specific overrides
   by_pair:
     EUR_USD:
       min_tcn_probability: 0.53
-      min_momentum: 0.20
-
-# ----- BUDDY SCANNER SETTINGS -----
-# Configuration for buddy scan command
-# TARGET: Aggressive trading for $2k+ per trade
+      min_momentum: 0.2
 scan:
-  # Number of candles to fetch for analysis
   lookback_candles: 200
-  
-  # Number of parallel workers for scanning
   parallel_workers: 4
-  
-  # Number of candles for quick backtest validation
   backtest_window: 50
-  
-  # Prompt user to retrain when drift detected
   auto_retrain_prompt: true
-  
-  # Model drift threshold (retrain warning if accuracy drops by this much)
   drift_threshold: 0.03
-  
-  # Minimum confidence to include in results (78% model outputs realistic probs)
-  min_confidence: 0.53  # 53%+ is above random, model verified at 78%
-  
-  # Enable position sizing in scan results
+  min_confidence: 0.53
   position_sizing_enabled: true
-  
-  # Account equity: 0 = fetch live balance from OANDA (recommended for compounding)
-  account_equity: 0  # 0 = use live OANDA balance
-  
-  # Risk per trade percentage - 5% for aggressive trading (~$5k on $100k)
-  risk_per_trade_pct: 0.05  # 5% risk per trade (larger lots, ~$2k+ profit potential)
-  
-  # Leverage ratio
+  account_equity: 0
+  risk_per_trade_pct: 0.05
   leverage: 50
-  
-  # Aggressive mode - enabled for larger position sizes
   aggressive_mode: true
-  
-  # Tight SL/TP for quick trades
   min_sl_pips: 15.0
-  max_sl_pips: 15.0  # Fixed 15 pip SL
+  max_sl_pips: 15.0
   min_tp_pips: 20.0
-  max_tp_pips: 30.0  # 20-30 pip TP base
-  high_prob_threshold: 0.65  # Bonus TP if prob > 65%
-  high_prob_tp_bonus: 20.0   # +20 pips bonus for high prob
-  
-  # Max trades per day limit
+  max_tp_pips: 30.0
+  high_prob_threshold: 0.65
+  high_prob_tp_bonus: 20.0
   max_trades_per_day: 30
-  
-  # Default pairs to scan (if none specified)
   default_pairs:
-    - EUR_USD
-    - GBP_USD
-    - USD_JPY
-    - USD_CHF
-    - AUD_USD
-    - USD_CAD
-    - NZD_USD
-
-# =============================================================================
-# JOINT TCN REGIME TRAINING (FOR SCANNER)
-# =============================================================================
-# This is SEPARATE from the ensemble regime training in tcn_regime section.
-# train-tcn-regime command uses these settings for scanner-specific model.
-# Model saved to: trained_data/models/joint/tcn_volatility_regime.keras
-# [2026-02-14] Enhanced regularization
+  - EUR_USD
+  - GBP_USD
+  - USD_JPY
+  - USD_CHF
+  - AUD_USD
+  - USD_CAD
+  - NZD_USD
+  profile: aggressive
 joint_tcn_regime:
   enabled: true
-  
-  # Training pairs (joint = learns from ALL pairs together)
   pairs:
-    - EUR_USD
-    - GBP_USD
-    - USD_JPY
-    - USD_CHF
-    - AUD_USD
-    - USD_CAD
-    - NZD_USD
-    - EUR_GBP
-    - EUR_JPY
-    - GBP_JPY
-  
-  # Data fetching
-  candles_per_pair: 8000         # 8k H1 candles = ~333 days per pair
+  - EUR_USD
+  - GBP_USD
+  - USD_JPY
+  - USD_CHF
+  - AUD_USD
+  - USD_CAD
+  - NZD_USD
+  - EUR_GBP
+  - EUR_JPY
+  - GBP_JPY
+  candles_per_pair: 8000
   granularity: H1
-  
-  # Forward-looking label generation
-  lookahead_bars: 12             # 12 bars = 12 hours for H1 (was 48, too noisy)
-  quiet_percentile: 20           # Below 20th = QUIET_NEXT (adjusted from 25)
-  stable_percentile: 45          # 20th-45th = STABLE_NEXT (adjusted from 60)
-  active_percentile: 70          # 45th-70th = ACTIVE_NEXT (adjusted from 85)
-  # Above 70th = EXTREME_NEXT
-  
-  # INTEL MAC Architecture (optimized for CPU)
-  kernel_size: 3                 # Smaller kernel (was 5) - less parameters
-  num_filters: 32                # Reduced filters (was 64) - less overfitting
-  num_residual_blocks: 3         # Fewer blocks (was 5) - simpler model
+  lookahead_bars: 12
+  quiet_percentile: 20
+  stable_percentile: 45
+  active_percentile: 70
+  kernel_size: 3
+  num_filters: 32
+  num_residual_blocks: 3
   dilation_base: 2
-  dropout: 0.35                  # [2026-02-14] Increased from 0.4 to 0.35 (0.3-0.4 range)
-  dense_dropout: 0.4             # [2026-02-14] Added: Explicit dense layer dropout
+  dropout: 0.35
+  dense_dropout: 0.4
   weight_norm: true
-  
-  # INTEL MAC Training settings
-  batch_size: 32                 # Smaller for CPU memory
+  batch_size: 32
   epochs: 150
-  learning_rate: 0.002           # Higher LR for faster learning
-  early_stopping_patience: 15    # [2026-02-14] Reduced from 25 to 15
-  early_stopping_min_delta: 0.001  # [2026-02-14] Added: Minimum change threshold
+  learning_rate: 0.002
+  early_stopping_patience: 15
+  early_stopping_min_delta: 0.001
   min_epochs: 30
-  workers: 4                     # Parallel data loading
-  
-  # Loss configuration
-  label_smoothing: 0.1           # [2026-02-14] Increased from 0.05 to 0.1
-  focal_gamma: 1.0               # Reduced gamma (was 2.0, suppressed gradients)
-  focal_alpha:                   # Per-class weights (boost minority)
-    - 0.20                       # QUIET_NEXT
-    - 0.20                       # STABLE_NEXT  
-    - 0.30                       # ACTIVE_NEXT (boost)
-    - 0.30                       # EXTREME_NEXT (boost)
-  
-  # Variance regularization to prevent mode collapse
-  variance_penalty: 0.1          # Penalize when class variance < min_variance
-  min_class_variance: 0.04       # Minimum variance threshold
-  
-  # Class weighting
+  workers: 4
+  label_smoothing: 0.1
+  focal_gamma: 1.0
+  focal_alpha:
+  - 0.2
+  - 0.2
+  - 0.3
+  - 0.3
+  variance_penalty: 0.1
+  min_class_variance: 0.04
   use_class_weights: true
-  class_weight_method: balanced  # Auto-compute from distribution
-  
-  # Sample weighting (based on volatility change magnitude)
-  sample_weight_scale: 2.0       # Multiply abs(vol_change) by this
-  max_sample_weight: 5.0         # Cap to prevent instability
-  
-  # Output paths
+  class_weight_method: balanced
+  sample_weight_scale: 2.0
+  max_sample_weight: 5.0
   model_dir: trained_data/models/joint
   model_name: tcn_volatility_regime.keras
-
-# [2026-02-14] RL Integration Configuration
 rl_integration:
   enabled: true
-  agent_type: "PPO"
+  agent_type: PPO
   reward_scaling: 1.0
   action_space_dim: 3
   observation_normalization: true

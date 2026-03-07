@@ -12,8 +12,6 @@ Output: Two predictions for Gate 3 in the ensemble system
 from __future__ import annotations
 
 import logging
-import pickle
-import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -22,6 +20,11 @@ import numpy as np
 
 from src.training.trainers.base import BaseTrainer
 from src.training.trainers.config import TrainerConfig
+from src.utils.xgboost_artifacts import (
+    has_native_xgboost_sidecars,
+    load_xgboost_bundle,
+    save_native_xgboost_bundle,
+)
 
 # Import custom LR schedules early so they're registered with Keras before
 # any pickle deserialization that might contain Keras models with these schedules
@@ -37,7 +40,6 @@ logger = logging.getLogger(__name__)
 
 # Constants
 MODEL_NOT_TRAINED_ERROR = "Model not trained"
-SERIALIZED_MODEL_WARNING = ".*serialized model.*"
 
 
 class XGBoostTrainer(BaseTrainer):
@@ -49,6 +51,11 @@ class XGBoostTrainer(BaseTrainer):
         - momentum_score (0-1): How fast price is moving
         - acceleration (bool): Is momentum growing?
     """
+
+    MODEL_ALIAS_MAP = {
+        "momentum_model": "momentum",
+        "accel_model": "accel",
+    }
 
     def __init__(self, config: Optional[TrainerConfig] = None):
         super().__init__(config)
@@ -195,9 +202,7 @@ class XGBoostTrainer(BaseTrainer):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        data = {
-            "momentum_model": self.momentum_model,
-            "accel_model": self.accel_model,
+        metadata = {
             "scaler": self.scaler,
             "metrics": self.metrics,
             "config": self.config.__dict__,
@@ -210,8 +215,15 @@ class XGBoostTrainer(BaseTrainer):
             "saved_at": datetime.now().isoformat(),
         }
 
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
+        save_native_xgboost_bundle(
+            path,
+            metadata=metadata,
+            models={
+                "momentum_model": self.momentum_model,
+                "accel_model": self.accel_model,
+            },
+            alias_map=self.MODEL_ALIAS_MAP,
+        )
 
         logger.info(
             f"XGBoost saved to {path} (sklearn={sklearn.__version__}, xgboost={xgboost.__version__})"
@@ -219,26 +231,29 @@ class XGBoostTrainer(BaseTrainer):
 
     def load(self, path: str) -> None:
         """Load XGBoost models."""
-        # Suppress XGBoost version warnings (common when loading older serialized models)
-        warnings.filterwarnings("ignore", category=UserWarning, module="xgboost")
-        warnings.filterwarnings("ignore", message=SERIALIZED_MODEL_WARNING)
-        warnings.filterwarnings("ignore", message=".*older version of XGBoost.*")
-
-        with open(path, "rb") as f:
-            data = pickle.load(f)
+        data, native_models, source = load_xgboost_bundle(
+            path,
+            required_models=("momentum_model", "accel_model"),
+            alias_map=self.MODEL_ALIAS_MAP,
+        )
 
         # DEBUG: Log scaler info
         scaler = data.get("scaler")
-        if scaler is not None:
+        if scaler is not None and hasattr(scaler, "mean_") and hasattr(scaler, "scale_"):
             logger.info(f"XGB Scaler - mean_: {scaler.mean_}")
             logger.info(f"XGB Scaler - scale_: {scaler.scale_}")
 
-        self.momentum_model = data["momentum_model"]
-        self.accel_model = data["accel_model"]
+        if source == "native":
+            self.momentum_model = native_models["momentum_model"]
+            self.accel_model = native_models["accel_model"]
+        else:
+            self.momentum_model = data["momentum_model"]
+            self.accel_model = data["accel_model"]
         self.scaler = data["scaler"]
         self.metrics = data["metrics"]
         self.feature_names = data.get("feature_names")
         self.n_features = data.get("n_features")
+        self.momentum_norm_factor = data.get("momentum_norm_factor")
         self.is_trained = True
 
         # Store version info for compatibility checking
@@ -246,4 +261,13 @@ class XGBoostTrainer(BaseTrainer):
         self._saved_xgboost_version = data.get("xgboost_version")
         self._saved_at = data.get("saved_at")
 
-        logger.info(f"XGBoost loaded from {path}")
+        logger.info(f"XGBoost loaded from {path} ({source})")
+
+    @classmethod
+    def has_native_artifacts(cls, path: str | Path) -> bool:
+        """Whether the artifact path already has native XGBoost sidecars."""
+        return has_native_xgboost_sidecars(
+            path,
+            model_keys=("momentum_model", "accel_model"),
+            alias_map=cls.MODEL_ALIAS_MAP,
+        )

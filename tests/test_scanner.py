@@ -8,11 +8,14 @@ Tests cover:
 - GateEvaluator existence
 """
 
+import builtins
 import pytest
 import pandas as pd
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
+import sys
+import types
 
 
 # ---------------------------------------------------------------------------
@@ -34,6 +37,8 @@ class TestScannerConfig:
         assert cfg.min_confidence == 50.0  # 0-100 scale (Ridge ADX score)
         assert cfg.min_momentum == 0.20
         assert cfg.max_drawdown_pct == 0.025
+        assert cfg.final_score_threshold == 0.45
+        assert cfg.max_uncertainty_std == 0.15
 
     def test_string_paths_converted(self):
         from src.scanner.config import ScannerConfig
@@ -64,25 +69,54 @@ class TestScannerConfig:
         cfg = ScannerConfig.from_cli_args(force=True)
         assert cfg.enable_session_filter is False
 
+    def test_force_does_not_bypass_weekend_market_closure(self):
+        from src.scanner.config import ScannerConfig
+
+        cfg = ScannerConfig()
+        cfg.enable_session_filter = False
+        cfg.block_when_market_closed = True
+        saturday = datetime(2026, 3, 7, 17, 0, tzinfo=timezone.utc)
+
+        status = cfg.get_trading_session_status(saturday)
+
+        assert status["market_open"] is False
+        assert status["session_allowed"] is False
+        assert status["reason_code"] == "market_closed"
+        assert "fx market closed" in str(status["message"]).lower()
+
     def test_profile_aggressive_lowers_gate_thresholds(self):
         from src.scanner.config import ScannerConfig
         cfg = ScannerConfig()
         cfg.apply_profile("aggressive")
         assert cfg.profile == "aggressive"
+        assert cfg.min_tcn_probability == 0.58
         assert cfg.min_confidence == 45.0
         assert cfg.min_momentum == 0.12
+        assert cfg.final_score_threshold == 0.42
+        assert cfg.max_uncertainty_std == 0.18
         assert cfg.min_atr_pips == 3.0
         assert cfg.min_volatility_regime == 0
+        assert cfg.weighted_vote_threshold == 0.52
+        assert cfg.sub_inference_vote_threshold == 0.60
+        assert cfg.agent_promotion_min_confidence == 0.50
+        assert cfg.max_uncertainty_score == 0.48
 
     def test_profile_conservative_tightens_gate_thresholds(self):
         from src.scanner.config import ScannerConfig
         cfg = ScannerConfig()
         cfg.apply_profile("conservative")
         assert cfg.profile == "conservative"
+        assert cfg.min_tcn_probability == 0.63
         assert cfg.min_confidence == 58.0
         assert cfg.min_momentum == 0.28
+        assert cfg.final_score_threshold == 0.48
+        assert cfg.max_uncertainty_std == 0.13
         assert cfg.min_atr_pips == 6.0
         assert cfg.min_volatility_regime == 2
+        assert cfg.weighted_vote_threshold == 0.58
+        assert cfg.sub_inference_vote_threshold == 0.72
+        assert cfg.agent_promotion_min_confidence == 0.56
+        assert cfg.max_uncertainty_score == 0.35
 
     def test_unknown_profile_raises(self):
         from src.scanner.config import ScannerConfig
@@ -350,6 +384,85 @@ class TestScannerEngine:
         result = scanner.scan(max_workers=1)
 
         assert result.model_type == "technical"
+
+    def test_init_modular_ensemble_uses_multipair_fallback_signature(self, monkeypatch):
+        from src.scanner.engine import Scanner
+        from src.scanner.config import ScannerConfig
+
+        class FakeMultiPairInference:
+            def __init__(self, models_dir="trained_data/models", pairs=None):
+                self.models_dir = Path(models_dir)
+                self.pairs = pairs or []
+                self._pair_models = {}
+
+            def load(self):
+                self._pair_models["AUD_NZD"] = object()
+                return True
+
+            def predict(self, *args, **kwargs):
+                return "LONG", 0.6
+
+        class FallbackScanner(Scanner):
+            def _load_yaml_config(self):
+                return None
+
+        monkeypatch.setitem(
+            sys.modules,
+            "multi_pair_inference",
+            types.SimpleNamespace(MultiPairInference=FakeMultiPairInference),
+        )
+
+        real_import = builtins.__import__
+
+        def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "src.core.modular_inference":
+                raise ImportError("forced primary import failure")
+            return real_import(name, globals, locals, fromlist, level)
+
+        monkeypatch.setattr(builtins, "__import__", fake_import)
+
+        cfg = ScannerConfig(pairs=["AUD_NZD"])
+        scanner = FallbackScanner(cfg)
+
+        assert scanner._init_modular_ensemble() is True
+        assert scanner._ensemble_type == "MultiPairInference"
+        assert scanner._ensemble_loaded is True
+
+    def test_sync_modular_ensemble_config_uses_current_scanner_thresholds(self):
+        from src.scanner.engine import Scanner
+        from src.scanner.config import ScannerConfig
+
+        class SyncScanner(Scanner):
+            def _load_yaml_config(self):
+                return None
+
+        cfg = ScannerConfig()
+        cfg.apply_profile("aggressive")
+        scanner = SyncScanner(cfg)
+        scanner._modular_ensemble = types.SimpleNamespace(
+            config=types.SimpleNamespace(
+                min_tcn_probability=0.60,
+                min_confidence=50.0,
+                min_momentum=0.20,
+                max_drawdown_pct=0.025,
+                max_uncertainty_std=0.15,
+                use_tcn_volatility_filter=True,
+                min_volatility_regime=1,
+                tcn_required=False,
+                final_score_threshold=0.45,
+            )
+        )
+
+        scanner._sync_modular_ensemble_config()
+
+        ensemble_cfg = scanner._modular_ensemble.config
+        assert ensemble_cfg.min_tcn_probability == 0.58
+        assert ensemble_cfg.min_confidence == 45.0
+        assert ensemble_cfg.min_momentum == 0.12
+        assert ensemble_cfg.max_drawdown_pct == 0.035
+        assert ensemble_cfg.max_uncertainty_std == 0.18
+        assert ensemble_cfg.min_volatility_regime == 0
+        assert ensemble_cfg.final_score_threshold == 0.42
 
     def test_cache_invalidates_when_profile_changes(self):
         from src.scanner.engine import Scanner

@@ -26,8 +26,12 @@ consistent feature computation between scanner and inference pipeline.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import logging
+import os
 import pickle
+import sys
 import warnings
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -60,6 +64,64 @@ logger = logging.getLogger(__name__)
 
 # Joint model directory constant
 JOINT_MODEL_DIR = "joint"
+
+
+def _predict_with_named_input_if_needed(model: Any, batch: np.ndarray) -> Any:
+    """Match single-input Keras models by input name to avoid structure warnings."""
+    model_inputs = getattr(model, "inputs", None)
+    if isinstance(model_inputs, list) and len(model_inputs) == 1:
+        input_name = getattr(model_inputs[0], "name", None)
+        if isinstance(input_name, str) and input_name:
+            candidates = [input_name.split(":", 1)[0]]
+            if candidates[0] != input_name:
+                candidates.append(input_name)
+            for candidate in candidates:
+                try:
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings(
+                            "ignore",
+                            message=".*structure of `inputs` doesn't match the expected structure.*",
+                            category=UserWarning,
+                        )
+                        return model.predict({candidate: batch}, verbose=0)
+                except (TypeError, ValueError, KeyError):
+                    continue
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=".*structure of `inputs` doesn't match the expected structure.*",
+            category=UserWarning,
+        )
+        return model.predict(batch, verbose=0)
+
+
+@contextlib.contextmanager
+def _suppress_native_stderr():
+    """Silence native-library stderr output during fragile pickle loads."""
+    try:
+        stderr_fd = sys.stderr.fileno()
+    except (AttributeError, io.UnsupportedOperation):
+        with contextlib.redirect_stderr(io.StringIO()):
+            yield
+        return
+
+    saved_fd = os.dup(stderr_fd)
+    try:
+        with open(os.devnull, "w") as devnull:
+            os.dup2(devnull.fileno(), stderr_fd)
+            with contextlib.redirect_stderr(devnull):
+                yield
+    finally:
+        os.dup2(saved_fd, stderr_fd)
+        os.close(saved_fd)
+
+
+def _load_pickle_quietly(handle: Any) -> Any:
+    """Load pickles while suppressing noisy compatibility warnings."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with _suppress_native_stderr():
+            return pickle.load(handle)
 
 
 class GateEvaluator:
@@ -142,6 +204,7 @@ class GateEvaluator:
         # XGBoost metadata (loaded from dict wrapper)
         self._xgb_feature_names = None
         self._xgb_scaler = None
+        self._xgb_accel_model = None
 
         # Risk model metadata
         self._rf_feature_names = None
@@ -264,19 +327,25 @@ class GateEvaluator:
             return False
 
         try:
-            import keras
+            from src.utils.keras_model_loader import load_keras_model
 
-            self._tcn_volatility = keras.models.load_model(str(model_path), compile=False)
+            self._tcn_volatility, load_meta = load_keras_model(
+                str(model_path),
+                compile=False,
+            )
 
             # Load metadata if available
             if meta_path.exists():
                 with open(meta_path, 'rb') as f:
-                    meta = pickle.load(f)
+                    meta = _load_pickle_quietly(f)
                     self._tcn_scaler = meta.get('scaler')
                     self._tcn_feature_names = meta.get('feature_names')
                     logger.debug(f"TCN metadata loaded: {meta.get('metrics', {})}")
 
-            logger.info("✓ TCN Volatility Regime gate loaded (REQUIRED)")
+            logger.info(
+                "✓ TCN Volatility Regime gate loaded (REQUIRED) via %s",
+                load_meta.get("approach_used"),
+            )
             return True
 
         except ImportError:
@@ -356,7 +425,7 @@ class GateEvaluator:
             X = np.expand_dims(X, axis=0)
 
             # Predict
-            proba = self._tcn_volatility.predict(X, verbose=0)
+            proba = _predict_with_named_input_if_needed(self._tcn_volatility, X)
 
             # Get predicted regime and confidence
             if len(proba.shape) > 1 and proba.shape[-1] > 1:
@@ -445,6 +514,8 @@ class GateEvaluator:
 
         try:
             import xgboost as xgb
+            xgb.set_config(verbosity=0)
+            self._xgb_accel_model = None
             self._xgboost_momentum = xgb.Booster()
             self._xgboost_momentum.load_model(str(json_model_path))
             self._momentum_model_type = "xgboost"
@@ -467,7 +538,24 @@ class GateEvaluator:
             return False
 
         try:
+            from src.training.trainers.xgboost_trainer import XGBoostTrainer
+
+            trainer = XGBoostTrainer()
+            trainer.load(str(model_path))
+            self._xgboost_momentum = trainer.momentum_model
+            self._xgb_accel_model = trainer.accel_model
+            self._xgb_feature_names = trainer.feature_names
+            self._xgb_scaler = trainer.scaler
+            self._momentum_model_type = "xgboost"
+            logger.info("✓ XGBoost momentum gate loaded via XGBoostTrainer")
+            return True
+
+        except Exception as trainer_err:
+            logger.debug(f"Trainer-backed XGBoost load failed, trying legacy fallbacks: {trainer_err}")
+
+        try:
             import xgboost as xgb
+            xgb.set_config(verbosity=0)
 
             # Load using Booster API (recommended for cross-version compatibility)
             self._xgboost_momentum = xgb.Booster()
@@ -506,7 +594,8 @@ class GateEvaluator:
             with open(model_path, 'rb') as f, warnings.catch_warnings():
                 # Suppress XGBoost pickle deprecation warning - model loads fine
                 warnings.simplefilter("ignore", UserWarning)
-                loaded_obj = pickle.load(f)
+                with contextlib.redirect_stderr(io.StringIO()):
+                    loaded_obj = _load_pickle_quietly(f)
 
             booster = None
             sklearn_model = None
@@ -532,6 +621,8 @@ class GateEvaluator:
                         self._xgb_feature_names = loaded_obj['feature_names']
                     if 'scaler' in loaded_obj:
                         self._xgb_scaler = loaded_obj['scaler']
+                    if 'accel_model' in loaded_obj:
+                        self._xgb_accel_model = loaded_obj['accel_model']
 
                     logger.debug(f"Loaded XGBoost model from dict with {len(loaded_obj.get('feature_names', []))} features")
                 else:
@@ -554,6 +645,7 @@ class GateEvaluator:
                 self._xgboost_momentum = sklearn_model
             else:
                 self._xgboost_momentum = booster
+                self._xgb_accel_model = None
             self._momentum_model_type = "xgboost"
 
             # Convert to .json format for future cross-version compatibility
@@ -583,6 +675,7 @@ class GateEvaluator:
             True if loaded successfully
         """
         try:
+            self._xgb_accel_model = None
             self._xgboost_momentum.load_model(str(model_path))
             self._momentum_model_type = "xgboost"
             logger.info("✓ XGBoost momentum gate loaded (fallback, .pkl file path)")
@@ -608,7 +701,7 @@ class GateEvaluator:
 
         try:
             with open(model_path, 'rb') as f:
-                loaded_obj = pickle.load(f)
+                loaded_obj = _load_pickle_quietly(f)
 
             # Handle dict wrapper (from modular_trainers.py)
             if isinstance(loaded_obj, dict):
@@ -646,7 +739,7 @@ class GateEvaluator:
 
         try:
             with open(model_path, 'rb') as f:
-                loaded_obj = pickle.load(f)
+                loaded_obj = _load_pickle_quietly(f)
 
             # Handle dict wrapper (keys: drawdown_model, streak_model)
             if isinstance(loaded_obj, dict):
@@ -684,7 +777,7 @@ class GateEvaluator:
 
         try:
             with open(model_path, 'rb') as f:
-                loaded_obj = pickle.load(f)
+                loaded_obj = _load_pickle_quietly(f)
 
             # Handle dict wrapper (from RidgeTrainer.save())
             if isinstance(loaded_obj, dict):
@@ -698,7 +791,7 @@ class GateEvaluator:
             if self._ridge_feature_names is None and meta_path.exists():
                 try:
                     with open(meta_path, 'rb') as f:
-                        meta = pickle.load(f)
+                        meta = _load_pickle_quietly(f)
                     self._ridge_scaler = self._ridge_scaler or meta.get('scaler')
                     self._ridge_feature_names = meta.get('feature_names')
                     logger.debug("✓ Ridge metadata loaded (scaler + feature names)")
@@ -726,7 +819,7 @@ class GateEvaluator:
 
         try:
             with open(model_path, 'rb') as f:
-                self._rf_risk = pickle.load(f)
+                self._rf_risk = _load_pickle_quietly(f)
 
             logger.debug("✓ RF risk gate loaded")
             return True
@@ -751,17 +844,20 @@ class GateEvaluator:
                 return False
 
         try:
-            import tensorflow as tf
+            from src.utils.keras_model_loader import load_keras_model
 
             # Suppress TF warnings during load
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                self._transformer = tf.keras.models.load_model(
+                self._transformer, load_meta = load_keras_model(
                     str(model_path),
                     compile=False,
                 )
 
-            logger.debug("✓ Transformer direction gate loaded")
+            logger.debug(
+                "✓ Transformer direction gate loaded via %s",
+                load_meta.get("approach_used"),
+            )
             return True
 
         except ImportError:
@@ -784,10 +880,24 @@ class GateEvaluator:
             return False
 
         try:
-            with open(model_path, 'rb') as f:
-                self._meta_labeler = pickle.load(f)
+            from src.utils.meta_labeler_artifacts import load_meta_labeler_artifact
 
-            logger.debug("✓ Meta-labeler gate loaded")
+            loaded_labeler, source = load_meta_labeler_artifact(model_path)
+            if hasattr(loaded_labeler, "meta_model"):
+                self._meta_labeler = getattr(loaded_labeler, "meta_model")
+            else:
+                self._meta_labeler = loaded_labeler
+            logger.debug("✓ Meta-labeler gate loaded via %s", source)
+            return True
+
+        except Exception as load_err:
+            logger.debug(f"MetaLabeler loader failed, trying legacy pickle fallback: {load_err}")
+
+        try:
+            with open(model_path, 'rb') as f:
+                self._meta_labeler = _load_pickle_quietly(f)
+
+            logger.debug("✓ Meta-labeler gate loaded (legacy)")
             return True
 
         except Exception as e:
@@ -893,7 +1003,11 @@ class GateEvaluator:
         try:
             proba = self._catboost_momentum.predict_proba(X)
             momentum_score = self._extract_momentum_score(proba)
-            acceleration = momentum_score > self.ACCELERATION_THRESHOLD
+            if self._xgb_accel_model is not None and hasattr(self._xgb_accel_model, "predict"):
+                accel_pred = self._xgb_accel_model.predict(X)
+                acceleration = bool(np.asarray(accel_pred).reshape(-1)[0])
+            else:
+                acceleration = momentum_score > self.ACCELERATION_THRESHOLD
 
             logger.debug(
                 f"CatBoost momentum prediction: score={momentum_score:.3f}, "
@@ -922,6 +1036,7 @@ class GateEvaluator:
         """
         try:
             import xgboost as xgb
+            xgb.set_config(verbosity=0)
 
             # Apply scaler if available
             if self._xgb_scaler is not None:
@@ -1337,7 +1452,7 @@ class GateEvaluator:
             X = X.reshape(1, seq_len, -1).astype(np.float32)
 
             # Predict
-            proba = self._transformer.predict(X, verbose=0)
+            proba = _predict_with_named_input_if_needed(self._transformer, X)
 
             # Extract probability (assumes binary classification)
             if len(proba.shape) > 1 and proba.shape[1] > 1:
@@ -1382,8 +1497,10 @@ class GateEvaluator:
             # Add direction indicator if meta-labeler expects it
             # (direction encoded as 1 for LONG, -1 for SHORT)
 
-            # Check if model has predict_proba
-            if hasattr(self._meta_labeler, 'predict_proba'):
+            if hasattr(self._meta_labeler, 'predict_meta_confidence'):
+                meta_conf = self._meta_labeler.predict_meta_confidence(X)
+                success_prob = float(np.asarray(meta_conf).reshape(-1)[0])
+            elif hasattr(self._meta_labeler, 'predict_proba'):
                 proba = self._meta_labeler.predict_proba(X)
                 success_prob = float(proba[0, 1]) if proba.shape[1] > 1 else float(proba[0])
             else:

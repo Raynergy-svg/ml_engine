@@ -26,8 +26,37 @@ class BuddyScanner:
             cfg.account_equity = account_equity
         cfg.use_rl_sizer = use_rl_sizer
         cfg.non_interactive = True  # CLI never prompts
+        cfg.block_when_market_closed = True
         self._scanner = Scanner(config=cfg)
         self._display = ScannerDisplay()
+
+    @staticmethod
+    def _approval_holdback_reason(analysis: PairAnalysis) -> Optional[str]:
+        """Summarize why a directional setup did not clear full approval."""
+        if analysis.error or analysis.gates_passed:
+            return None
+
+        why_no_trade = list(getattr(analysis, "why_no_trade", []) or [])
+        if why_no_trade:
+            return str(why_no_trade[0])
+
+        if bool(getattr(analysis, "blocked_by_circuit_breaker", False)):
+            breakers = list(getattr(analysis, "circuit_breakers_triggered", []) or [])
+            if breakers:
+                return f"circuit breaker ({breakers[0]})"
+            return "circuit breaker"
+
+        if not bool(getattr(analysis, "volatility_gate_passed", True)):
+            regime = str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").lower()
+            return f"volatility regime ({regime})"
+
+        if not bool(getattr(analysis, "execution_quality_passed", True)):
+            return "execution quality"
+
+        if analysis.momentum_passed and analysis.confidence_passed and analysis.risk_passed:
+            return "advanced approval filter"
+
+        return None
 
     def _render_clean_output(
         self,
@@ -54,10 +83,14 @@ class BuddyScanner:
             pair = a.pair.replace("_", "/")
             direction = (a.direction or "HOLD").upper()
             session_blocked = bool(a.error and str(a.error).lower().startswith("outside trading session"))
-            status = "TRADEABLE" if a.gates_passed else ("SESSION" if session_blocked else ("ERROR" if a.error else "WATCH"))
+            market_closed = bool(a.error and str(a.error).lower().startswith("fx market closed"))
+            status = "TRADEABLE" if a.gates_passed else (
+                "CLOSED" if market_closed else ("SESSION" if session_blocked else ("ERROR" if a.error else "WATCH"))
+            )
             conf = int(round(float(a.confidence) * 100))
             status_style = {
                 "TRADEABLE": planner_cyan,
+                "CLOSED": planner_sand,
                 "SESSION": planner_sand,
                 "ERROR": "red",
                 "WATCH": planner_slate,
@@ -81,11 +114,11 @@ class BuddyScanner:
                 agent_state = "confirmed" if a.agent_passed else "weak"
                 agent_text = f"{agent_state} ({a.agent_votes}/{a.agent_total})"
             else:
-                agent_text = "n/a"
+                agent_text = "not-run"
 
             master = a.master_pair.replace("_", "/") if a.master_pair else pair
             c.print(
-                f"   [{planner_slate}]why:[/{planner_slate}] gates M{m_gate} A{a_gate} R{r_gate} ({a.gate_summary}), "
+                f"   [{planner_slate}]why:[/{planner_slate}] core gates M{m_gate} A{a_gate} R{r_gate} ({a.gate_summary}), "
                 f"agent {agent_text}, master [{planner_sand}]{master}[/{planner_sand}]"
             )
 
@@ -95,6 +128,13 @@ class BuddyScanner:
                     f"   [{planner_slate}]plan:[/{planner_slate}] "
                     f"[{planner_cyan}]SL {a.sl_pips:.0f} | TP {a.tp_pips:.0f}{promoted}[/{planner_cyan}]"
                 )
+            else:
+                holdback_reason = self._approval_holdback_reason(a)
+                if holdback_reason:
+                    c.print(
+                        f"   [{planner_slate}]holdback:[/{planner_slate}] "
+                        f"[{planner_sand}]{holdback_reason}[/{planner_sand}]"
+                    )
 
         tradeable = [a.pair.replace("_", "/") for a in analyses if a.gates_passed]
         c.print()
@@ -114,6 +154,9 @@ class BuddyScanner:
         diversified: bool = False,
         force: bool = False,
         profile: str = "balanced",
+        run_agent_confirmation: bool = False,
+        session_filter_enabled_override: Optional[bool] = None,
+        session_window_utc_override: Optional[tuple[int, int]] = None,
         clean_output: bool = False,
         **kwargs: Any,
     ) -> List[PairAnalysis]:
@@ -123,12 +166,21 @@ class BuddyScanner:
         prev_session_filter = self._scanner.config.enable_session_filter
         profile_fields = (
             "profile",
+            "min_tcn_probability",
             "min_confidence",
             "min_momentum",
             "max_drawdown_pct",
+            "final_score_threshold",
+            "max_uncertainty_std",
             "min_atr_pips",
             "min_volatility_regime",
             "use_tcn_volatility_filter",
+            "weighted_vote_threshold",
+            "sub_inference_min_confidence",
+            "sub_inference_vote_threshold",
+            "agent_promotion_min_confidence",
+            "max_uncertainty_score",
+            "max_model_disagreement",
         )
         prev_profile_values = {
             name: getattr(self._scanner.config, name)
@@ -137,10 +189,23 @@ class BuddyScanner:
         prev_gate_min_regime = None
         if self._scanner._gate_evaluator is not None:
             prev_gate_min_regime = self._scanner._gate_evaluator.min_volatility_regime
+        prev_sub_inference_tradeable_only = self._scanner.config.sub_inference_tradeable_only
+        prev_enable_sub_inference_agents = self._scanner.config.enable_sub_inference_agents
+        prev_session_start_utc = self._scanner.config.session_start_utc
+        prev_session_end_utc = self._scanner.config.session_end_utc
         self._scanner.config.granularity = granularity
         self._scanner.config.apply_profile(profile)
         if self._scanner._gate_evaluator is not None:
             self._scanner._gate_evaluator.min_volatility_regime = self._scanner.config.min_volatility_regime
+        if run_agent_confirmation:
+            # Allow confirmation agents to review directional watchlist setups.
+            self._scanner.config.enable_sub_inference_agents = True
+            self._scanner.config.sub_inference_tradeable_only = False
+        if session_filter_enabled_override is not None:
+            self._scanner.config.enable_session_filter = bool(session_filter_enabled_override)
+        if session_window_utc_override is not None:
+            self._scanner.config.session_start_utc = int(session_window_utc_override[0])
+            self._scanner.config.session_end_utc = int(session_window_utc_override[1])
         if force:
             self._scanner.config.enable_session_filter = False
 
@@ -152,6 +217,10 @@ class BuddyScanner:
             self._scanner.config.enable_session_filter = prev_session_filter
             for name, value in prev_profile_values.items():
                 setattr(self._scanner.config, name, value)
+            self._scanner.config.sub_inference_tradeable_only = prev_sub_inference_tradeable_only
+            self._scanner.config.enable_sub_inference_agents = prev_enable_sub_inference_agents
+            self._scanner.config.session_start_utc = prev_session_start_utc
+            self._scanner.config.session_end_utc = prev_session_end_utc
             if self._scanner._gate_evaluator is not None and prev_gate_min_regime is not None:
                 self._scanner._gate_evaluator.min_volatility_regime = prev_gate_min_regime
 

@@ -71,6 +71,7 @@ from src.training.trainers.utils import (
     create_ewc_loss,
     create_sequences_with_weights,
     get_config_seq_len,
+    predict_with_named_input_if_needed,
 )
 
 logger = logging.getLogger(__name__)
@@ -1970,6 +1971,30 @@ class TransformerDirectionTrainer(BaseTrainer):
             )
             self.lineage.ema_enabled = True
 
+    def _build_overfit_prevention_config(self) -> OverfitPreventionConfig:
+        """Build overfit-prevention callback config from TrainerConfig."""
+        return OverfitPreventionConfig(
+            overfit_threshold=self.config.overfit_threshold,
+            critical_threshold=self.config.critical_threshold,
+            severe_threshold=self.config.severe_threshold,
+            max_acceptable_gap=self.config.max_acceptable_gap,
+            patience_epochs=self.config.overfit_patience_epochs,
+            auto_adjust_dropout=self.config.auto_adjust_dropout,
+            auto_reduce_lr=self.config.auto_reduce_lr,
+            enable_swa=self.config.enable_swa,
+            swa_start_fraction=self.config.swa_start_fraction,
+            swa_lr_factor=self.config.swa_lr_factor,
+            enable_cosine_restarts=self.config.enable_cosine_restarts,
+            restart_period=self.config.cosine_restart_period,
+            restart_lr_mult=self.config.cosine_restart_lr_mult,
+            max_dropout_increase=self.config.max_dropout_increase,
+            enable_warmstart_detection=self.config.enable_warmstart_detection,
+            warmstart_reset_threshold=self.config.warmstart_reset_threshold,
+            weight_perturbation_scale=self.config.weight_perturbation_scale,
+            reset_optimizer_on_overfit=self.config.reset_optimizer_on_overfit,
+            warm_start_best_acc=self._warm_start_val_acc,
+        )
+
     def _create_training_callbacks(
         self,
         x_val_filtered: np.ndarray,
@@ -2007,20 +2032,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             OverfitPreventionCallback(
                 checkpoint_dir=self.config.checkpoint_dir,
                 model_name="transformer_direction",
-                config=OverfitPreventionConfig(
-                    overfit_threshold=0.08,
-                    critical_threshold=0.12,
-                    severe_threshold=0.20,
-                    max_acceptable_gap=0.10,
-                    patience_epochs=2,
-                    auto_adjust_dropout=True,
-                    auto_reduce_lr=True,
-                    enable_swa=True,
-                    swa_start_fraction=0.5,
-                    enable_cosine_restarts=True,
-                    restart_period=15,
-                    warm_start_best_acc=self._warm_start_val_acc,
-                ),
+                config=self._build_overfit_prevention_config(),
             ),
         ]
 
@@ -2871,7 +2883,9 @@ class TransformerDirectionTrainer(BaseTrainer):
             self.ema.apply()  # Apply EMA weights
 
         try:
-            prob_raw = float(self.model.predict(x_input, verbose=0)[0, 0])
+            prob_raw = float(
+                predict_with_named_input_if_needed(self.model, x_input, verbose=0)[0, 0]
+            )
         finally:
             if use_ema_weights:
                 self.ema.restore()  # Restore training weights

@@ -42,6 +42,7 @@ from cli.tf_config import _configure_tf_metal
 from cli.models import _build_buddy_model_for_type, _build_buddy_model_shared_encoder
 
 from src.utils import load_config
+from src.utils.utils import merge_config
 from src.utils.seed_manager import set_global_seed, get_global_seed
 from src.core.constants import DIRECTION_DEFAULTS
 
@@ -222,6 +223,52 @@ def _load_config_suppressed(config_path: str):
     cfg = load_config(config_path)
     _utils_logger.setLevel(_utils_prev)
     return cfg
+
+
+def _apply_pair_config_overrides(
+    *,
+    cfg: dict[str, Any],
+    config_path: str,
+    training_instrument: str,
+):
+    """Overlay pair-specific config when training a concrete instrument."""
+    if training_instrument == "GENERIC":
+        return cfg
+
+    pair_config_path = Path("trained_data/configs") / f"{training_instrument}.yaml"
+    if not pair_config_path.exists():
+        return cfg
+
+    try:
+        if pair_config_path.resolve() == Path(config_path).resolve():
+            return cfg
+    except OSError:
+        # Best effort only; continue with merge if path resolution fails.
+        pass
+
+    pair_cfg = _load_config_suppressed(str(pair_config_path))
+    merged_cfg = merge_config(pair_cfg, cfg)
+
+    old_threshold = cfg.get("direction_threshold")
+    new_threshold = merged_cfg.get("direction_threshold")
+    old_lookahead = cfg.get("direction_lookahead")
+    new_lookahead = merged_cfg.get("direction_lookahead")
+
+    console.print(
+        f"[cyan]📁 Applied pair config overrides: {pair_config_path}[/cyan]"
+    )
+    if (
+        old_threshold != new_threshold
+        or old_lookahead != new_lookahead
+    ):
+        console.print(
+            "[dim]"
+            f"direction_threshold: {old_threshold} → {new_threshold}, "
+            f"direction_lookahead: {old_lookahead} → {new_lookahead}"
+            "[/dim]"
+        )
+
+    return merged_cfg
 
 
 def _is_rl_auto_train_enabled(cfg: dict, options: BuddyTrainingOptions) -> bool:
@@ -3668,7 +3715,13 @@ def _train_buddy_impl(
     # Determine training instrument early to apply correlation group params
     oanda_fetch = opts["oanda_fetch"]
     training_instrument, training_granularity = _determine_training_instrument(oanda_fetch, csv_path)
-    
+
+    cfg = _apply_pair_config_overrides(
+        cfg=cfg,
+        config_path=config_path,
+        training_instrument=training_instrument,
+    )
+
     # Apply optimized sweep parameters from correlation group config
     # This merges best params from wandb sweeps for the instrument
     if training_instrument != "GENERIC":

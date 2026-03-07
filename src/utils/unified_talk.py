@@ -1422,6 +1422,10 @@ def _handle_help_command(ctx: TalkContext) -> None:
             f"{_assistant_prefix(ctx)}Here's how to talk to me in planner mode:\n\n"
             f"  • 'look for an opportunity' - scan the market for current setups\n"
             f"  • 'scan M5' / 'scan H1 top 3' - run an explicit scan\n"
+            f"  • 'ignore session filter' / 'disable session filter for this scan' - bypass session guardrail\n"
+            f"  • 'restore session filter' / 'enable session filter' - re-enable session guardrails\n"
+            f"  • 'set session window 8 to 21 utc' - temporarily change trading window\n"
+            f"  • 'set session window 8-21' (this session) - same as above\n"
             f"  • 'show status' / 'show model status' - inspect runtime and models\n"
             f"  • 'compare EUR/USD and GBP/USD' - compare the last scan context\n"
             f"  • 'journal summary' / 'account status' - grounded account and journal actions\n"
@@ -2907,6 +2911,78 @@ def _planner_runtime_context(ctx: TalkContext) -> dict[str, Any]:
     }
 
 
+def _planner_transitions_enabled() -> bool:
+    raw = os.getenv("BUDDY_PLANNER_TRANSITIONS", "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+def _planner_tool_status_text(tool_name: str) -> str:
+    tool_key = str(tool_name or "").strip().lower()
+    labels = {
+        "scan_market": "scanning market",
+        "run_prediction": "running prediction",
+        "compare_scan_results": "comparing scan results",
+        "get_status": "checking runtime status",
+        "get_account_summary": "checking account summary",
+        "get_journal_summary": "checking journal summary",
+        "get_model_status": "checking model status",
+        "run_trade_command": "preparing trade command",
+        "run_runtime_command": "applying runtime settings",
+        "override_guardrail": "updating guardrail override",
+        "run_oanda_command": "running oanda command",
+        "use_market_source": "loading market source",
+        "summarize_last_prediction": "summarizing prediction",
+        "answer_buddy_self_question": "answering grounded self question",
+        "sync_journal": "syncing journal",
+        "import_journal_trades": "importing journal trades",
+    }
+    if tool_key in labels:
+        return labels[tool_key]
+    return f"running {tool_key.replace('_', ' ')}"
+
+
+def _planner_progress_callback(ctx: TalkContext):
+    if not _planner_transitions_enabled():
+        return None
+
+    def callback(event: str, payload: dict[str, Any]) -> None:
+        prefix = _assistant_prefix(ctx)
+        if event == "thinking_start":
+            print(prefix + "thinking...", flush=True)
+            return
+        if event == "plan_ready":
+            step_count = int(payload.get("step_count") or 0)
+            if step_count > 0:
+                print(prefix + f"plan ready: {step_count} step(s).", flush=True)
+            else:
+                print(prefix + "plan ready.", flush=True)
+            return
+        if event == "tool_start":
+            tool_name = str(payload.get("tool") or "")
+            idx = int(payload.get("index") or 0)
+            total = int(payload.get("total") or 0)
+            phase = _planner_tool_status_text(tool_name)
+            if idx > 0 and total > 0:
+                print(prefix + f"{phase} ({idx}/{total})...", flush=True)
+            else:
+                print(prefix + f"{phase}...", flush=True)
+            return
+        if event == "tool_done":
+            tool_name = str(payload.get("tool") or "").replace("_", " ")
+            if bool(payload.get("ok", True)):
+                print(prefix + f"{tool_name} complete.", flush=True)
+            else:
+                print(prefix + f"{tool_name} failed.", flush=True)
+            return
+        if event == "reasoning_start":
+            print(prefix + "reasoning...", flush=True)
+            return
+        if event == "done":
+            print(prefix + "response ready.", flush=True)
+
+    return callback
+
+
 def _handle_planner_chat(ctx: TalkContext, q: str, *, period: str, interval: str) -> Optional[bool]:
     if not _planner_chat_enabled():
         return None
@@ -2931,11 +3007,13 @@ def _handle_planner_chat(ctx: TalkContext, q: str, *, period: str, interval: str
     if ctx.last_scan_summary is not None:
         ctx.planner_state["last_scan_summary"] = ctx.last_scan_summary
 
+    progress_callback = _planner_progress_callback(ctx)
     response = ctx.planner_runtime.handle_request(
         q,
         chat_history=ctx.chat_history,
         runtime_context=_planner_runtime_context(ctx),
         state=ctx.planner_state,
+        progress_callback=progress_callback,
     )
     state = (response.metadata or {}).get("state") or {}
     if isinstance(state, dict):
@@ -3052,17 +3130,21 @@ def _read_input_with_timeout(prompt: str, timeout: float) -> Optional[str]:
 
 def _run_repl(ctx: TalkContext, *, period: str, interval: str) -> None:
     INPUT_TIMEOUT = 300.0  # seconds
+    idle_prompt_shown = False
 
     while True:
         try:
             q = _read_input_with_timeout("You: ", timeout=INPUT_TIMEOUT)
             if q is None:
-                print(f"\n{_assistant_prefix(ctx)}Still here? Type something or 'exit' to quit.")
+                if not idle_prompt_shown:
+                    print(f"\n{_assistant_prefix(ctx)}Still here? Type something or 'exit' to quit.")
+                    idle_prompt_shown = True
                 continue
         except (EOFError, KeyboardInterrupt):
             print("\nBye.")
             return
 
+        idle_prompt_shown = False
         if not q:
             continue
 

@@ -143,6 +143,46 @@ def _get_numpy_dtype(keras_dtype) -> np.dtype:
         return np.float32
 
 
+def predict_with_named_input_if_needed(
+    model: Any,
+    batch: np.ndarray,
+    *,
+    verbose: int = 0,
+) -> Any:
+    """Prefer named-input inference for single-input Keras models.
+
+    Some saved models expose a single named input such as ``features``. Passing
+    a bare ndarray still runs, but Keras emits structure warnings. This helper
+    uses the named-input form first and falls back to the plain array call only
+    when the runtime rejects the mapping.
+    """
+    model_inputs = getattr(model, "inputs", None)
+    if isinstance(model_inputs, list) and len(model_inputs) == 1:
+        input_name = getattr(model_inputs[0], "name", None)
+        if isinstance(input_name, str) and input_name:
+            candidates = [input_name.split(":", 1)[0]]
+            if candidates[0] != input_name:
+                candidates.append(input_name)
+            for candidate in candidates:
+                try:
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings(
+                            "ignore",
+                            message=".*structure of `inputs` doesn't match the expected structure.*",
+                            category=UserWarning,
+                        )
+                        return model.predict({candidate: batch}, verbose=verbose)
+                except (TypeError, ValueError, KeyError):
+                    continue
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=".*structure of `inputs` doesn't match the expected structure.*",
+            category=UserWarning,
+        )
+        return model.predict(batch, verbose=verbose)
+
+
 # =============================================================================
 # SHARED SEQUENCE CREATION UTILITIES
 # =============================================================================

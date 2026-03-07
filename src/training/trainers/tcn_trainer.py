@@ -47,6 +47,7 @@ from src.training.trainers.utils import (
     _safe_reset_optimizer_state,
     _validate_weight_shapes,
     _get_numpy_dtype,
+    predict_with_named_input_if_needed,
 )
 
 # Import custom LR schedules early so they're registered with Keras before
@@ -428,6 +429,27 @@ class TCNTrainer(BaseTrainer):
         self, keras_module: Any
     ) -> List[Any]:
         """Create callbacks for TCN training."""
+        overfit_cfg = OverfitPreventionConfig(
+            overfit_threshold=self.config.overfit_threshold,
+            critical_threshold=self.config.critical_threshold,
+            severe_threshold=self.config.severe_threshold,
+            max_acceptable_gap=self.config.max_acceptable_gap,
+            patience_epochs=self.config.overfit_patience_epochs,
+            auto_adjust_dropout=self.config.auto_adjust_dropout,
+            auto_reduce_lr=self.config.auto_reduce_lr,
+            max_dropout_increase=self.config.max_dropout_increase,
+            enable_swa=self.config.enable_swa,
+            swa_start_fraction=self.config.swa_start_fraction,
+            swa_lr_factor=self.config.swa_lr_factor,
+            enable_cosine_restarts=self.config.enable_cosine_restarts,
+            restart_period=self.config.cosine_restart_period,
+            restart_lr_mult=self.config.cosine_restart_lr_mult,
+            enable_warmstart_detection=self.config.enable_warmstart_detection,
+            warmstart_reset_threshold=self.config.warmstart_reset_threshold,
+            weight_perturbation_scale=self.config.weight_perturbation_scale,
+            reset_optimizer_on_overfit=self.config.reset_optimizer_on_overfit,
+        )
+
         callbacks = [
             RichEpochCallback(
                 model_name="TCN Volatility Regime",
@@ -450,19 +472,7 @@ class TCNTrainer(BaseTrainer):
             OverfitPreventionCallback(
                 checkpoint_dir=self.config.checkpoint_dir,
                 model_name="tcn_volatility_regime",
-                config=OverfitPreventionConfig(
-                    overfit_threshold=0.10,
-                    critical_threshold=0.15,
-                    severe_threshold=0.25,
-                    max_acceptable_gap=0.12,
-                    patience_epochs=2,
-                    auto_adjust_dropout=True,
-                    auto_reduce_lr=True,
-                    enable_swa=True,
-                    swa_start_fraction=0.5,
-                    enable_cosine_restarts=True,
-                    restart_period=15,
-                ),
+                config=overfit_cfg,
             ),
         ]
 
@@ -759,7 +769,7 @@ class TCNTrainer(BaseTrainer):
             x_padded = np.vstack([np.zeros((pad_len, x_scaled.shape[1])), x_scaled])
             x_seq = x_padded.reshape(1, self.seq_len, -1)
 
-        probs = self.model.predict(x_seq, verbose=0)[0]  # Shape: (4,)
+        probs = predict_with_named_input_if_needed(self.model, x_seq, verbose=0)[0]  # Shape: (4,)
         regime = int(np.argmax(probs))
         regime_name = self.REGIME_NAMES[regime]
 

@@ -7,6 +7,7 @@ Provides volatility regime detection using TCN models and ATR thresholds.
 from __future__ import annotations
 
 import logging
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -24,6 +25,35 @@ REGIME_HIGH = 2
 REGIME_EXTREME = 3
 
 REGIME_NAMES = ["LOW", "NORMAL", "HIGH", "EXTREME"]
+
+
+def _predict_with_named_input_if_needed(model: object, batch: np.ndarray) -> np.ndarray:
+    """Match single-input Keras models by name to avoid input-structure warnings."""
+    model_inputs = getattr(model, "inputs", None)
+    if isinstance(model_inputs, list) and len(model_inputs) == 1:
+        input_name = getattr(model_inputs[0], "name", None)
+        if isinstance(input_name, str) and input_name:
+            candidates = [input_name.split(":", 1)[0]]
+            if candidates[0] != input_name:
+                candidates.append(input_name)
+            for candidate in candidates:
+                try:
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings(
+                            "ignore",
+                            message=".*structure of `inputs` doesn't match the expected structure.*",
+                            category=UserWarning,
+                        )
+                        return model.predict({candidate: batch}, verbose=0)
+                except (TypeError, ValueError, KeyError):
+                    continue
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=".*structure of `inputs` doesn't match the expected structure.*",
+            category=UserWarning,
+        )
+        return model.predict(batch, verbose=0)
 
 
 @dataclass
@@ -109,10 +139,13 @@ class VolatilityFilter:
             return False
 
         try:
-            import keras
             import pickle
+            from src.utils.keras_model_loader import load_keras_model
 
-            self._tcn_model = keras.models.load_model(str(tcn_path), compile=False)
+            self._tcn_model, load_meta = load_keras_model(
+                str(tcn_path),
+                compile=False,
+            )
 
             if meta_path.exists():
                 with open(meta_path, 'rb') as f:
@@ -120,7 +153,10 @@ class VolatilityFilter:
                     self._tcn_scaler = meta.get('scaler')
                     logger.debug(f"TCN volatility model loaded: {meta.get('metrics', {})}")
 
-            logger.info("✓ TCN Volatility Regime filter loaded")
+            logger.info(
+                "✓ TCN Volatility Regime filter loaded via %s",
+                load_meta.get("approach_used"),
+            )
             return True
 
         except Exception as e:
@@ -228,7 +264,7 @@ class VolatilityFilter:
             X = X.reshape(1, X.shape[0], X.shape[1])
 
             # Predict regime
-            probs = self._tcn_model.predict(X, verbose=0)[0]
+            probs = _predict_with_named_input_if_needed(self._tcn_model, X)[0]
             regime = int(np.argmax(probs))
             confidence = float(probs[regime])
 

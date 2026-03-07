@@ -308,9 +308,9 @@ class OverfitPreventionConfig:
     """
     # Threshold settings
     overfit_threshold: float = 0.08  # 8% gap triggers warning
-    critical_threshold: float = 0.12  # 12% gap triggers intervention
-    severe_threshold: float = 0.20  # 20% gap triggers early stop
-    max_acceptable_gap: float = 0.10  # Won't save checkpoint if gap > 10%
+    critical_threshold: float = 0.15  # 15% gap triggers intervention
+    severe_threshold: float = 0.25  # 25% gap triggers early stop
+    max_acceptable_gap: float = 0.12  # Won't save checkpoint if gap > 12%
     patience_epochs: int = 2  # Epochs before intervention
     auto_adjust_dropout: bool = True
     auto_reduce_lr: bool = True
@@ -324,7 +324,7 @@ class OverfitPreventionConfig:
     # Cosine restart settings - helps escape local minima
     enable_cosine_restarts: bool = True  # Warm restarts improve convergence
     restart_period: int = 15  # Restart every 15 epochs
-    restart_lr_mult: float = 0.9  # Each restart uses 90% of prev LR
+    restart_lr_mult: float = 0.8  # Each restart uses 80% of prev LR
 
     # Mixup augmentation (applied at batch level)
     enable_mixup: bool = False  # Disabled by default

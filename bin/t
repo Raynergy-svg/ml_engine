@@ -17,9 +17,13 @@ if [ -n "$CONDA_BIN" ] && [ -d "${HOME}/miniforge3/envs/tf-metal" ]; then
 fi
 
 PY="$ROOT_DIR/.venv/bin/python"
-if [ ! -x "$PY" ]; then
+if [ -n "${BUDDY_PYTHON:-}" ] && [ -x "${BUDDY_PYTHON}" ]; then
+  PY="$BUDDY_PYTHON"
+elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/python" ]; then
+  PY="${CONDA_PREFIX}/bin/python"
+elif [ ! -x "$PY" ]; then
   PY="python3"
 fi
 
-# Default to the unified predictor.
+# Default to the unified predictor with conda environment fallback.
 exec "$PY" "$ROOT_DIR/main.py" predict "$@"

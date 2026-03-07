@@ -10,6 +10,7 @@ Date: 2025-01-29
 """
 
 import json
+import inspect
 import logging
 import os
 from pathlib import Path
@@ -37,7 +38,10 @@ def _compact_error(exc: Exception, max_len: int = 320) -> str:
 _EXPECTED_COMPAT_ERROR_FRAGMENTS = (
     "could not deserialize class 'functional' because its parent module "
     "keras.src.engine.functional cannot be imported",
+    "could not deserialize class 'functional' because its parent module "
+    "keras.src.models.functional cannot be imported",
     "keras.src.engine.functional",
+    "keras.src.models.functional",
 )
 
 
@@ -330,9 +334,13 @@ def extract_model_metadata(model_path: Union[str, Path]) -> Dict[str, Any]:
         model_path = Path(model_path)
 
         if metadata['format'] == 'keras':
-            # Try to read config.json
+            archive_metadata = None
+            config = None
+
+            # Try to read config.json / metadata.json
             if model_path.is_dir():
                 config_path = model_path / "config.json"
+                archive_metadata_path = model_path / "metadata.json"
             else:
                 # It's a .keras zip file
                 config_path = model_path  # Will be handled below
@@ -343,17 +351,26 @@ def extract_model_metadata(model_path: Union[str, Path]) -> Dict[str, Any]:
                     if 'config.json' in zip_ref.namelist():
                         with zip_ref.open('config.json') as f:
                             config = json.load(f)
-                            metadata['config'] = config
-                            metadata['keras_version'] = config.get('keras_version')
-                            metadata['backend'] = config.get('backend')
-                            metadata['model_name'] = config.get('config', {}).get('name')
+                    if 'metadata.json' in zip_ref.namelist():
+                        with zip_ref.open('metadata.json') as f:
+                            archive_metadata = json.load(f)
             elif config_path.exists():
                 with open(config_path) as f:
                     config = json.load(f)
-                    metadata['config'] = config
-                    metadata['keras_version'] = config.get('keras_version')
-                    metadata['backend'] = config.get('backend')
-                    metadata['model_name'] = config.get('config', {}).get('name')
+                if archive_metadata_path.exists():
+                    with open(archive_metadata_path) as f:
+                        archive_metadata = json.load(f)
+
+            if config is not None:
+                metadata['config'] = config
+                metadata['keras_version'] = config.get('keras_version')
+                metadata['backend'] = config.get('backend')
+                metadata['model_name'] = config.get('config', {}).get('name')
+
+            if archive_metadata:
+                metadata['keras_version'] = metadata['keras_version'] or archive_metadata.get('keras_version')
+                metadata['backend'] = metadata['backend'] or archive_metadata.get('backend')
+                metadata['model_name'] = metadata['model_name'] or archive_metadata.get('model_name')
 
         logger.info(
             f"Extracted metadata: Keras {metadata['keras_version']}, "
@@ -604,9 +621,18 @@ def load_with_tf_keras(
                 logger.error(error_msg)
                 raise Exception(error_msg) from retry_e
 
-        error_msg = f"Failed to load model with {keras_source}: {_compact_error(e)}"
+        compact = _compact_error(e)
+        error_msg = f"Failed to load model with {keras_source}: {compact}"
         metadata['warnings'].append(error_msg)
-        logger.error(error_msg)
+        if _is_expected_compat_load_error(compact):
+            logger.debug(
+                "%s compatibility miss for %s (will fallback): %s",
+                keras_source,
+                model_path,
+                compact,
+            )
+        else:
+            logger.error(error_msg)
         raise Exception(error_msg) from e
 
 
@@ -651,11 +677,11 @@ def parse_model_config(config_path: Union[str, Path]) -> Dict[str, Any]:
             logger.info("Parsed config from directory")
             return config
 
-    # Handle direct config.json file
-    elif config_path.is_file() and config_path.name == "config.json":
+    # Handle direct JSON config files (config.json / *.arch.json)
+    elif config_path.is_file() and config_path.suffix == ".json":
         with open(config_path) as f:
             config = json.load(f)
-            logger.info("Parsed config from config.json file")
+            logger.info("Parsed config from JSON file")
             return config
 
     else:
@@ -723,26 +749,43 @@ def rebuild_tcn_model_from_config(
         raise ValueError("No layers found in configuration")
 
     # Build the model layer by layer
-    inputs = None
     layer_map = {}  # Map layer names to layer instances
+    unsupported_layers = []
 
     for layer_config in layers_config:
         class_name = layer_config.get('class_name')
         name = layer_config.get('config', {}).get('name')
-        layer_config_dict = layer_config.get('config', {})
+        layer_config_dict = _normalize_layer_config_for_compat(
+            class_name,
+            layer_config.get('config', {}),
+        )
 
         logger.info(f"Building layer: {class_name} ({name})")
 
         # Handle input layer
         if class_name == 'InputLayer':
-            input_shape = layer_config_dict.get('batch_input_shape')
+            input_shape = layer_config_dict.get('input_shape') or layer_config_dict.get('shape')
+            batch_size = layer_config_dict.get('batch_size')
             if input_shape:
-                inputs = keras.layers.InputLayer(
-                    batch_input_shape=input_shape,
-                    name=name
-                )
-                layer_map[name] = inputs
+                keras_version = str(getattr(keras, "__version__", "") or "")
+                try:
+                    keras_major = int(keras_version.split(".", 1)[0])
+                except (TypeError, ValueError):
+                    keras_major = 0
+                input_kwargs = {
+                    "batch_size": batch_size,
+                    "dtype": layer_config_dict.get('dtype', 'float32'),
+                    "sparse": layer_config_dict.get('sparse', False),
+                    "ragged": layer_config_dict.get('ragged', False),
+                    "name": name,
+                }
+                if keras_major >= 3:
+                    input_kwargs["shape"] = tuple(input_shape)
+                else:
+                    input_kwargs["input_shape"] = tuple(input_shape)
+                layer_map[name] = keras.layers.InputLayer(**input_kwargs)
                 continue
+            raise ValueError(f"Input layer '{name}' is missing a supported input shape")
 
         # Build other layers
         layer = None
@@ -801,7 +844,8 @@ def rebuild_tcn_model_from_config(
             layer = keras.layers.Softmax(name=name)
 
         else:
-            logger.warning(f"Unsupported layer class: {class_name}, skipping")
+            unsupported_layers.append(class_name)
+            logger.warning(f"Unsupported layer class for rebuild: {class_name}")
             continue
 
         if layer is not None:
@@ -819,18 +863,23 @@ def rebuild_tcn_model_from_config(
         raise ValueError("Input or output layers not specified in configuration")
 
     # Get the first input layer
-    input_name = input_layers_config[0][0]
+    input_name = _extract_layer_ref_name(input_layers_config)
+    if not input_name:
+        raise ValueError(f"Could not determine input layer from configuration: {input_layers_config}")
     if input_name not in layer_map:
         raise ValueError(f"Input layer '{input_name}' not found in reconstructed layers")
 
-    # Build the model by connecting layers
-    # For simplicity, we'll create a sequential model from the layers
-    # (This is a simplified approach - full functional API reconstruction would be more complex)
+    if unsupported_layers:
+        unsupported_summary = ", ".join(sorted(set(unsupported_layers)))
+        raise ValueError(
+            "Rebuild only supports linear TCN-style stacks; "
+            f"unsupported layers present: {unsupported_summary}"
+        )
 
     logger.warning("Using simplified sequential reconstruction - may not match exact architecture")
 
     # Create a list of layers in order
-    layer_list = [layer for name, layer in layer_map.items() if name != input_name]
+    layer_list = list(layer_map.values())
 
     # Build the model
     model = keras.Sequential(layer_list, name=config.get('config', {}).get('name', 'rebuilt_model'))
@@ -872,6 +921,18 @@ def rebuild_tcn_model_from_config(
 
     logger.info("TCN model rebuilt successfully")
     return model
+
+
+def _extract_layer_ref_name(layer_refs: Any) -> Optional[str]:
+    """Extract the first layer name from flat or nested Keras layer refs."""
+    if isinstance(layer_refs, list):
+        if layer_refs and isinstance(layer_refs[0], str):
+            return layer_refs[0]
+        for value in layer_refs:
+            resolved = _extract_layer_ref_name(value)
+            if resolved:
+                return resolved
+    return None
 
 
 def load_by_rebuilding(
@@ -999,6 +1060,74 @@ def register_custom_deserializers() -> Dict[str, Any]:
         logger.warning("Keras not available for custom deserializers")
         return {}
 
+    class LegacyTFOpLambda(keras.layers.Layer):
+        """Compatibility shim for serialized TFOpLambda add nodes."""
+
+        def __init__(self, function: str = "__operators__.add", **kwargs):
+            super().__init__(**kwargs)
+            self.function = function
+
+        def call(self, inputs, y=None, **kwargs):
+            if y is None and isinstance(inputs, (list, tuple)) and len(inputs) == 2:
+                inputs, y = inputs
+            if self.function in {"__operators__.add", "math.add", "add"}:
+                return inputs if y is None else inputs + y
+            raise ValueError(f"Unsupported LegacyTFOpLambda function: {self.function}")
+
+        def get_config(self):
+            config = super().get_config()
+            config["function"] = self.function
+            return config
+
+    class LegacyAddOperation(keras.layers.Layer):
+        """Accept Keras 3 op-style add calls that pass two positional tensors."""
+
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.supports_masking = True
+
+        def call(self, inputs, y=None, **kwargs):
+            del kwargs
+            if y is not None:
+                return inputs + y
+            if isinstance(inputs, (list, tuple)) and len(inputs) == 2:
+                return inputs[0] + inputs[1]
+            raise ValueError(
+                "LegacyAddOperation expects either two positional tensors or a 2-item input list"
+            )
+
+    class LegacyMultiHeadAttention(keras.layers.MultiHeadAttention):
+        """Accept legacy list-style positional inputs emitted by old configs."""
+
+        def build(self, query_shape, value_shape=None, key_shape=None):
+            if value_shape is None and isinstance(query_shape, (list, tuple)):
+                if len(query_shape) == 2:
+                    query_shape, value_shape = query_shape
+                elif len(query_shape) == 3:
+                    query_shape, value_shape, key_shape = query_shape
+            if value_shape is None:
+                value_shape = query_shape
+            if key_shape is None:
+                key_shape = value_shape
+
+            build_from_signature = getattr(self, "_build_from_signature", None)
+            if callable(build_from_signature):
+                build_from_signature(query_shape, value_shape, key_shape)
+                self.built = True
+                return
+
+            return super().build(query_shape, value_shape, key_shape)
+
+        def compute_output_spec(self, query, value=None, key=None, **kwargs):
+            if value is None and isinstance(query, (list, tuple)) and len(query) == 2:
+                query, value = query
+            return super().compute_output_spec(query, value=value, key=key, **kwargs)
+
+        def call(self, query, value=None, key=None, **kwargs):
+            if value is None and isinstance(query, (list, tuple)) and len(query) == 2:
+                query, value = query
+            return super().call(query, value=value, key=key, **kwargs)
+
     # Map old Keras 2.x module paths to new Keras 3.x classes
     custom_objects = {
         # Functional model paths (critical for Keras 2.15.0 -> 3.x migration)
@@ -1036,11 +1165,11 @@ def register_custom_deserializers() -> Dict[str, Any]:
         'keras.src.layers.core.dense.Dense': keras.layers.Dense,
         'keras.layers.Softmax': keras.layers.Softmax,
         'keras.src.layers.activations.softmax.Softmax': keras.layers.Softmax,
-        'keras.layers.MultiHeadAttention': keras.layers.MultiHeadAttention,
-        'keras.src.layers.attention.multi_head_attention.MultiHeadAttention': keras.layers.MultiHeadAttention,
+        'keras.layers.MultiHeadAttention': LegacyMultiHeadAttention,
+        'keras.src.layers.attention.multi_head_attention.MultiHeadAttention': LegacyMultiHeadAttention,
         'keras.layers.Add': keras.layers.Add,
         'keras.src.layers.merging.add.Add': keras.layers.Add,
-        'keras.src.ops.numpy.Add': keras.layers.Add,  # Keras 3.x ops.numpy path
+        'keras.src.ops.numpy.Add': LegacyAddOperation,  # Keras 3.x op path uses 2 positional inputs
         'Add': keras.layers.Add,  # Short name fallback
         'keras.layers.Concatenate': keras.layers.Concatenate,
         'keras.src.layers.merging.concatenate.Concatenate': keras.layers.Concatenate,
@@ -1048,6 +1177,12 @@ def register_custom_deserializers() -> Dict[str, Any]:
         'keras.src.layers.reshaping.flatten.Flatten': keras.layers.Flatten,
         'keras.layers.Reshape': keras.layers.Reshape,
         'keras.src.layers.reshaping.reshape.Reshape': keras.layers.Reshape,
+        'LegacyAddOperation': LegacyAddOperation,
+        'LegacyMultiHeadAttention': LegacyMultiHeadAttention,
+        'LegacyTFOpLambda': LegacyTFOpLambda,
+        'TFOpLambda': LegacyTFOpLambda,
+        'keras.src.layers.core.tf_op_layer.TFOpLambda': LegacyTFOpLambda,
+        'keras.layers.core.tf_op_layer.TFOpLambda': LegacyTFOpLambda,
     }
 
     # Try to add LSTM/GRU if available
@@ -1120,6 +1255,474 @@ def update_module_paths_in_config(config: Dict[str, Any]) -> Dict[str, Any]:
     return updated_config
 
 
+def _build_model_from_serialized_config(
+    keras_module: Any,
+    config: Dict[str, Any],
+    custom_objects: Dict[str, Any],
+) -> Any:
+    """Build a model from a full serialized Keras config or raw model config."""
+    sanitized_config = _sanitize_serialized_keras_config(
+        config=config,
+        keras_module=keras_module,
+        custom_objects=custom_objects,
+    )
+
+    class_name = sanitized_config.get("class_name")
+    model_config = sanitized_config.get("config", sanitized_config)
+
+    if class_name == "Sequential":
+        return keras_module.Sequential.from_config(
+            model_config,
+            custom_objects=custom_objects,
+        )
+
+    if class_name in {"Functional", "Model"} or (
+        isinstance(model_config, dict)
+        and "layers" in model_config
+        and "input_layers" in model_config
+    ):
+        return keras_module.Model.from_config(
+            model_config,
+            custom_objects=custom_objects,
+        )
+
+    deserialize = getattr(getattr(keras_module, "saving", None), "deserialize_keras_object", None)
+    if deserialize is not None:
+        return deserialize(sanitized_config, custom_objects=custom_objects)
+
+    return keras_module.models.model_from_config(
+        sanitized_config,
+        custom_objects=custom_objects,
+    )
+
+
+def _resolve_serialized_class(
+    keras_module: Any,
+    config: Dict[str, Any],
+    custom_objects: Dict[str, Any],
+) -> Any:
+    """Resolve a serialized Keras class to a runtime class when possible."""
+    class_name = config.get("class_name")
+    module = config.get("module")
+    if not class_name:
+        return None
+
+    fq_name = f"{module}.{class_name}" if module else class_name
+    if fq_name in custom_objects:
+        return custom_objects[fq_name]
+    if class_name in custom_objects:
+        return custom_objects[class_name]
+
+    layers_mod = getattr(keras_module, "layers", None)
+    if layers_mod is not None and hasattr(layers_mod, class_name):
+        return getattr(layers_mod, class_name)
+    if hasattr(keras_module, class_name):
+        return getattr(keras_module, class_name)
+    return None
+
+
+def _filter_constructor_kwargs(cls: Any, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop serialized kwargs that the current constructor does not accept."""
+    try:
+        sig = inspect.signature(cls.__init__)
+    except (TypeError, ValueError):
+        return config_dict
+
+    allowed = {
+        name
+        for name, param in sig.parameters.items()
+        if name != "self"
+        and param.kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+    }
+
+    # Most Keras layers expose ``**kwargs`` only to forward a narrow set of
+    # base layer args such as ``name``/``dtype``. Legacy archives also include
+    # shape hints (for example MultiHeadAttention query/key/value shapes) that
+    # must not be passed back into modern constructors.
+    allowed.update(
+        {
+            "name",
+            "dtype",
+            "input_shape",
+            "batch_input_shape",
+            "sparse",
+            "ragged",
+            "input_tensor",
+        }
+    )
+    return {key: value for key, value in config_dict.items() if key in allowed}
+
+
+def _normalize_layer_config_for_compat(
+    class_name: Optional[str],
+    config_dict: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Rewrite known cross-version config fields into broadly supported forms."""
+    normalized = dict(config_dict)
+
+    if class_name == "InputLayer":
+        batch_shape = normalized.pop("batch_shape", None)
+        batch_input_shape = normalized.pop("batch_input_shape", None)
+        normalized.pop("optional", None)
+
+        input_shape = batch_shape if batch_shape is not None else batch_input_shape
+        if input_shape is not None:
+            if isinstance(input_shape, tuple):
+                input_shape = list(input_shape)
+
+            if isinstance(input_shape, list) and input_shape:
+                batch_size = input_shape[0]
+                feature_shape = input_shape[1:]
+                if "input_shape" not in normalized:
+                    normalized["input_shape"] = feature_shape
+                if batch_size is not None and "batch_size" not in normalized:
+                    normalized["batch_size"] = batch_size
+            elif "input_shape" not in normalized:
+                normalized["input_shape"] = input_shape
+
+    if class_name == "BatchNormalization":
+        axis = normalized.get("axis")
+        if isinstance(axis, list) and len(axis) == 1:
+            normalized["axis"] = axis[0]
+
+    return normalized
+
+
+def _normalize_build_config_for_compat(
+    class_name: Optional[str],
+    build_config: Any,
+    keras_module: Any,
+    custom_objects: Dict[str, Any],
+) -> Optional[Any]:
+    """Preserve only the build_config forms that modern Keras still needs."""
+    if not isinstance(build_config, dict):
+        return None
+
+    sanitized = _sanitize_serialized_keras_config(build_config, keras_module, custom_objects)
+
+    if class_name == "MultiHeadAttention":
+        shapes_dict = sanitized.get("shapes_dict")
+        if isinstance(shapes_dict, dict) and shapes_dict.get("query_shape") is not None:
+            compact_shapes = {
+                key: value
+                for key, value in shapes_dict.items()
+                if value is not None
+            }
+            if compact_shapes.get("key_shape") is None:
+                compact_shapes["key_shape"] = (
+                    compact_shapes.get("value_shape")
+                    or compact_shapes.get("query_shape")
+                )
+            keras_version = str(getattr(keras_module, "__version__", "") or "")
+            try:
+                keras_major = int(keras_version.split(".", 1)[0])
+            except (TypeError, ValueError):
+                keras_major = 0
+            if keras_major and keras_major < 3:
+                return compact_shapes
+            return {"shapes_dict": compact_shapes}
+        if sanitized.get("query_shape") is not None:
+            compact_shapes = {
+                key: sanitized[key]
+                for key in ("query_shape", "value_shape", "key_shape")
+                if sanitized.get(key) is not None
+            }
+            if compact_shapes.get("key_shape") is None:
+                compact_shapes["key_shape"] = (
+                    compact_shapes.get("value_shape")
+                    or compact_shapes.get("query_shape")
+                )
+            return compact_shapes
+
+    return None
+
+
+def _keras_major_version(keras_module: Any) -> int:
+    """Best-effort major-version detection for standalone or tf.keras packages."""
+    version = str(getattr(keras_module, "__version__", "") or "")
+    try:
+        return int(version.split(".", 1)[0])
+    except (TypeError, ValueError):
+        return 0
+
+
+def _collapse_serialized_dtype_policy(config: Any) -> Any:
+    """Collapse serialized Keras dtype policy objects to plain dtype names."""
+    if not isinstance(config, dict):
+        return None
+
+    if config.get("class_name") != "DTypePolicy":
+        return None
+
+    inner = config.get("config")
+    if isinstance(inner, dict) and isinstance(inner.get("name"), str):
+        return inner["name"]
+    return None
+
+
+def _normalize_legacy_inbound_nodes(nodes: Any) -> Any:
+    """Wrap flat legacy node refs so modern Keras sees a list of input refs per node."""
+    if not isinstance(nodes, list):
+        return nodes
+
+    normalized = []
+    for node in nodes:
+        if (
+            isinstance(node, list)
+            and len(node) in {3, 4}
+            and isinstance(node[0], str)
+            and isinstance(node[1], int)
+            and isinstance(node[2], int)
+        ):
+            normalized.append([node])
+        else:
+            normalized.append(node)
+    return normalized
+
+
+def _normalize_inbound_nodes_for_keras2(nodes: Any) -> Any:
+    """Convert Keras 3 node dicts and wrap flat refs for Keras 2 runtimes."""
+    if not isinstance(nodes, list):
+        return nodes
+
+    normalized = []
+    for node in nodes:
+        if isinstance(node, dict) and "args" in node:
+            normalized.append(_convert_keras3_node_data(node))
+            continue
+        if (
+            isinstance(node, list)
+            and len(node) in {3, 4}
+            and isinstance(node[0], str)
+            and isinstance(node[1], int)
+            and isinstance(node[2], int)
+        ):
+            normalized.append([node])
+            continue
+        normalized.append(node)
+    return normalized
+
+
+def _convert_keras3_tensor_ref(value: Any) -> Any:
+    """Convert a Keras 3 serialized tensor payload into a legacy tensor ref."""
+    if isinstance(value, dict):
+        class_name = value.get("class_name")
+        config = value.get("config")
+        if class_name == "__keras_tensor__" and isinstance(config, dict):
+            keras_history = config.get("keras_history")
+            if (
+                isinstance(keras_history, list)
+                and len(keras_history) >= 3
+                and isinstance(keras_history[0], str)
+            ):
+                return keras_history[:3]
+        if class_name == "__tensor__" and isinstance(config, dict):
+            return ["_CONSTANT_VALUE", -1, config.get("value")]
+        return value
+    if isinstance(value, tuple):
+        return [_convert_keras3_tensor_ref(item) for item in value]
+    if isinstance(value, list):
+        return [_convert_keras3_tensor_ref(item) for item in value]
+    return ["_CONSTANT_VALUE", -1, value]
+
+
+def _attach_kwargs_to_first_tensor_ref(node_data: Any, kwargs: Dict[str, Any]) -> tuple[Any, bool]:
+    """Attach call kwargs to the first legacy tensor ref in a node structure."""
+    if isinstance(node_data, list):
+        if len(node_data) in {3, 4} and isinstance(node_data[0], str):
+            merged_kwargs = {}
+            if len(node_data) == 4 and isinstance(node_data[3], dict):
+                merged_kwargs.update(node_data[3])
+            merged_kwargs.update(kwargs)
+            return node_data[:3] + [merged_kwargs], True
+
+        updated = []
+        attached = False
+        for item in node_data:
+            if attached:
+                updated.append(item)
+                continue
+            new_item, attached = _attach_kwargs_to_first_tensor_ref(item, kwargs)
+            updated.append(new_item)
+        return updated, attached
+
+    return node_data, False
+
+
+def _convert_keras3_node_data(node: Dict[str, Any]) -> Any:
+    """Translate Keras 3 ``{'args': ..., 'kwargs': ...}`` nodes to legacy refs."""
+    raw_args = node.get("args")
+    raw_kwargs = node.get("kwargs")
+
+    args = raw_args if isinstance(raw_args, list) else ([] if raw_args is None else [raw_args])
+    converted_args = [_convert_keras3_tensor_ref(arg) for arg in args]
+    if not converted_args:
+        return []
+
+    if len(converted_args) == 1:
+        node_data = converted_args[0]
+        if not (
+            isinstance(node_data, list)
+            and not (len(node_data) in {3, 4} and isinstance(node_data[0], str))
+        ):
+            node_data = [node_data]
+    else:
+        node_data = converted_args
+
+    if isinstance(raw_kwargs, dict) and raw_kwargs:
+        node_data, _ = _attach_kwargs_to_first_tensor_ref(node_data, raw_kwargs)
+
+    return node_data
+
+
+def _is_legacy_tensor_ref(value: Any) -> bool:
+    """True for old-style layer refs like ['layer_name', 0, 0]."""
+    return (
+        isinstance(value, list)
+        and len(value) in {3, 4}
+        and isinstance(value[0], str)
+        and isinstance(value[1], int)
+        and isinstance(value[2], int)
+    )
+
+
+def _legacy_tensor_ref_to_input_data(ref: Any) -> Any:
+    """Convert a legacy tensor ref into legacy inbound-node input data."""
+    if not _is_legacy_tensor_ref(ref):
+        return ref
+    if len(ref) == 4 and isinstance(ref[3], dict) and ref[3]:
+        return ref
+    return ref[:3]
+
+
+def _rewrite_legacy_call_kwargs(class_name: Optional[str], nodes: Any) -> Any:
+    """Convert old kwargs-based graph wiring into positional input refs where needed."""
+    if not isinstance(nodes, list):
+        return nodes
+
+    rewritten = []
+    for node in nodes:
+        if not (isinstance(node, list) and node and isinstance(node[0], list)):
+            rewritten.append(node)
+            continue
+
+        if len(node) != 1 or len(node[0]) not in {3, 4}:
+            rewritten.append(node)
+            continue
+
+        input_data = node[0]
+        kwargs = input_data[3] if len(input_data) == 4 and isinstance(input_data[3], dict) else {}
+        if not kwargs:
+            rewritten.append(node)
+            continue
+
+        base_kwargs = {k: v for k, v in kwargs.items() if k != "name" or v is not None}
+        base_ref = input_data[:3] if not base_kwargs else [input_data[0], input_data[1], input_data[2], base_kwargs]
+
+        if class_name == "MultiHeadAttention" and _is_legacy_tensor_ref(base_kwargs.get("value")):
+            extra_ref = _legacy_tensor_ref_to_input_data(base_kwargs.pop("value"))
+            base_ref = input_data[:3] if not base_kwargs else [input_data[0], input_data[1], input_data[2], base_kwargs]
+            rewritten.append([base_ref, extra_ref])
+            continue
+
+        if class_name == "TFOpLambda" and _is_legacy_tensor_ref(base_kwargs.get("y")):
+            extra_ref = _legacy_tensor_ref_to_input_data(base_kwargs.pop("y"))
+            base_ref = input_data[:3] if not base_kwargs else [input_data[0], input_data[1], input_data[2], base_kwargs]
+            rewritten.append([base_ref, extra_ref])
+            continue
+
+        rewritten.append([base_ref])
+
+    return rewritten
+
+
+def _sanitize_serialized_keras_config(
+    config: Any,
+    keras_module: Any,
+    custom_objects: Dict[str, Any],
+) -> Any:
+    """Recursively sanitize serialized Keras configs for cross-version loading."""
+    collapsed_dtype = _collapse_serialized_dtype_policy(config)
+    if collapsed_dtype is not None:
+        return collapsed_dtype
+
+    if isinstance(config, list):
+        return [
+            _sanitize_serialized_keras_config(item, keras_module, custom_objects)
+            for item in config
+        ]
+
+    if not isinstance(config, dict):
+        return config
+
+    sanitized = {}
+    for key, value in config.items():
+        if key == "build_config":
+            normalized_build_config = _normalize_build_config_for_compat(
+                config.get("class_name"),
+                value,
+                keras_module,
+                custom_objects,
+            )
+            if normalized_build_config is not None:
+                if config.get("class_name") == "MultiHeadAttention" and _keras_major_version(keras_module) < 3:
+                    continue
+                sanitized[key] = normalized_build_config
+            continue
+        if key == "inbound_nodes":
+            sanitized_nodes = _sanitize_serialized_keras_config(
+                value,
+                keras_module,
+                custom_objects,
+            )
+            if _keras_major_version(keras_module) < 3:
+                sanitized_nodes = _normalize_inbound_nodes_for_keras2(sanitized_nodes)
+            else:
+                sanitized_nodes = _normalize_legacy_inbound_nodes(sanitized_nodes)
+            sanitized[key] = _rewrite_legacy_call_kwargs(
+                config.get("class_name"),
+                sanitized_nodes,
+            )
+            continue
+        if key == "config" and "class_name" in config and isinstance(value, dict):
+            cls = _resolve_serialized_class(keras_module, config, custom_objects)
+            nested = _sanitize_serialized_keras_config(value, keras_module, custom_objects)
+            nested = _normalize_layer_config_for_compat(config.get("class_name"), nested)
+            keras_major = _keras_major_version(keras_module)
+            if config.get("class_name") == "MultiHeadAttention" and keras_major < 3:
+                build_shapes = _normalize_build_config_for_compat(
+                    "MultiHeadAttention",
+                    config.get("build_config"),
+                    keras_module,
+                    custom_objects,
+                )
+                if isinstance(build_shapes, dict):
+                    for shape_key in ("query_shape", "value_shape", "key_shape"):
+                        shape_value = build_shapes.get(shape_key)
+                        if shape_value is not None and shape_key not in nested:
+                            nested[shape_key] = shape_value
+            if (
+                cls is not None
+                and config.get("class_name") not in {"Functional", "Sequential", "Model"}
+                and not (config.get("class_name") == "MultiHeadAttention" and keras_major < 3)
+            ):
+                nested = _filter_constructor_kwargs(cls, nested)
+            sanitized[key] = nested
+        else:
+            sanitized[key] = _sanitize_serialized_keras_config(value, keras_module, custom_objects)
+
+    if config.get("class_name") == "MultiHeadAttention":
+        sanitized["registered_name"] = "LegacyMultiHeadAttention"
+    elif config.get("class_name") == "Add" and config.get("module") == "keras.src.ops.numpy":
+        sanitized["registered_name"] = "LegacyAddOperation"
+    elif config.get("class_name") == "TFOpLambda":
+        sanitized["registered_name"] = "LegacyTFOpLambda"
+    return sanitized
+
+
 def load_with_custom_deserialization(
     model_path: Union[str, Path],
     custom_objects: Optional[Dict] = None
@@ -1174,10 +1777,12 @@ def load_with_custom_deserialization(
         config = parse_model_config(model_path)
         updated_config = update_module_paths_in_config(config)
 
-        # Create model from updated configuration
-        model = keras.models.model_from_config(
-            updated_config['config'],
-            custom_objects=registered_objects
+        # Build the model from the serialized object config. Functional models need
+        # Model.from_config(inner_config), not keras.models.model_from_config(...).
+        model = _build_model_from_serialized_config(
+            keras_module=keras,
+            config=updated_config,
+            custom_objects=registered_objects,
         )
 
         # Try to load weights

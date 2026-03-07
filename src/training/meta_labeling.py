@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -32,6 +32,11 @@ import numpy as np
 
 # [2026-02-14] Feature alignment fix: Import feature alignment utilities
 from src.training.feature_alignment import save_feature_indices
+from src.utils.xgboost_artifacts import (
+    is_xgboost_model,
+    load_xgboost_bundle,
+    save_native_xgboost_bundle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -821,7 +826,6 @@ class MetaLabeler:
 
         save_dict = {
             "config": self.config.__dict__,
-            "meta_model": self.meta_model,
             "is_fitted": self.is_fitted,
             "feature_names": self.feature_names,
             "primary_accuracy": self._primary_accuracy,
@@ -836,8 +840,22 @@ class MetaLabeler:
         if hasattr(self, "_scaler"):
             save_dict["scaler"] = self._scaler
 
-        with open(path, "wb") as f:
-            pickle.dump(save_dict, f)
+        native_models = {}
+        if is_xgboost_model(self.meta_model):
+            native_models["meta_model"] = self.meta_model
+        else:
+            save_dict["meta_model"] = self.meta_model
+
+        if native_models:
+            save_native_xgboost_bundle(
+                path,
+                metadata=save_dict,
+                models=native_models,
+                alias_map={"meta_model": "model"},
+            )
+        else:
+            with open(path, "wb") as f:
+                pickle.dump(save_dict, f)
 
         # Also save feature indices separately for easier access
         if hasattr(self.meta_model, 'n_features_in_'):
@@ -866,15 +884,22 @@ class MetaLabeler:
     @classmethod
     def load(cls, path: Union[str, Path]) -> "MetaLabeler":
         """Load meta-labeler from disk."""
-        with open(path, "rb") as f:
-            save_dict = pickle.load(f)
+        save_dict, native_models, source = load_xgboost_bundle(
+            path,
+            alias_map={"meta_model": "model"},
+        )
 
-        config = MetaLabelingConfig(**save_dict["config"])
+        config_data = save_dict.get("config", {})
+        valid_config_keys = {field.name for field in fields(MetaLabelingConfig)}
+        filtered_config = {
+            key: value for key, value in config_data.items() if key in valid_config_keys
+        }
+        config = MetaLabelingConfig(**filtered_config)
         labeler = cls(config)
-        labeler.meta_model = save_dict["meta_model"]
-        labeler.is_fitted = save_dict["is_fitted"]
-        labeler.feature_names = save_dict["feature_names"]
-        labeler._primary_accuracy = save_dict["primary_accuracy"]
+        labeler.meta_model = native_models.get("meta_model", save_dict.get("meta_model"))
+        labeler.is_fitted = save_dict.get("is_fitted", False)
+        labeler.feature_names = save_dict.get("feature_names", [])
+        labeler._primary_accuracy = save_dict.get("primary_accuracy", 0.5)
 
         if "scaler" in save_dict:
             labeler._scaler = save_dict["scaler"]
@@ -888,6 +913,7 @@ class MetaLabeler:
         labeler.pair_name = save_dict.get("pair_name")
         labeler.model_dir = save_dict.get("model_dir")
 
+        logger.debug("Loaded meta-labeler artifact from %s (%s)", path, source)
         return labeler
 
 

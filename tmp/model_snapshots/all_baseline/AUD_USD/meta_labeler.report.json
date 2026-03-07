@@ -1,0 +1,44 @@
+{
+  "training_metrics": {
+    "xgb_train_accuracy": 0.75,
+    "xgb_val_accuracy": 0.6153846153846154,
+    "xgb_overfitting_gap": 0.13461538461538458,
+    "xgb_val_auc": 0.6449704142011834,
+    "ridge_train_accuracy": 0.6,
+    "ridge_val_accuracy": 0.5769230769230769,
+    "rf_train_accuracy": 0.78,
+    "rf_val_accuracy": 0.5769230769230769,
+    "rf_val_auc": 0.6745562130177515,
+    "ensemble_val_accuracy": 0.6923076923076923,
+    "ensemble_val_auc": 0.6745562130177515
+  },
+  "config": {
+    "use_xgboost": true,
+    "n_estimators": 150,
+    "max_depth": 3,
+    "learning_rate": 0.03,
+    "reg_alpha": 0.5,
+    "reg_lambda": 3.0,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "min_child_weight": 3,
+    "early_stopping_rounds": 25,
+    "min_confidence_threshold": 0.5,
+    "max_overfitting_gap": 0.08,
+    "include_primary_proba": true,
+    "include_market_regime": true,
+    "use_reduced_features": true,
+    "auto_tune": true,
+    "validation_split": 0.2,
+    "min_samples": 100
+  },
+  "feature_names": [
+    "tcn_probability",
+    "ridge_confidence_norm",
+    "xgb_momentum",
+    "rf_drawdown_norm",
+    "primary_confidence",
+    "direction_enc"
+  ],
+  "saved_at": "2026-03-02T09:54:07.390774+00:00"
+}

@@ -56,6 +56,28 @@ def test_clean_output_keeps_real_failures_as_error():
     assert "[ERROR]" in out
 
 
+def test_clean_output_labels_weekend_market_close_as_closed():
+    scanner, console = _scanner_with_recording_console()
+
+    scanner._render_clean_output(
+        [
+            PairAnalysis(
+                pair="EUR_USD",
+                direction="HOLD",
+                confidence=0.0,
+                gates_passed=False,
+                error="FX market closed (weekend: Saturday 17:00 UTC; reopens Sunday 22:00 UTC)",
+            )
+        ],
+        model_type="ensemble",
+        granularity="H1",
+    )
+
+    out = console.export_text()
+    assert "[CLOSED]" in out
+    assert "[SESSION]" not in out
+
+
 def test_rich_display_uses_planner_palette_header():
     console = Console(record=True, force_terminal=False, width=120)
     display = ScannerDisplay(console=console)

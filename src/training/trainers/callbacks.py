@@ -775,6 +775,16 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         self.auto_adjust_dropout = cfg.auto_adjust_dropout
         self.auto_reduce_lr = cfg.auto_reduce_lr
         self.max_dropout_increase = cfg.max_dropout_increase
+        
+        # === SEVERE OVERFIT WARMUP (Fix for premature stopping) ===
+        # Don't trigger severe overfit stop until after warmup epochs
+        # This gives the model time to generalize before we panic about overfitting
+        self.severe_overfit_warmup_epochs: int = 5  # Min epochs before severe check
+        self._severe_overfit_count: int = 0  # Consecutive epochs with severe overfit after warmup
+        
+        # === RL METRICS INTEGRATION ===
+        # Track if RL metrics callback is present to coordinate overfit handling
+        self._rl_callback_present: bool = False
 
         # SWA settings
         self.enable_swa = cfg.enable_swa
@@ -1317,10 +1327,35 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
         self.model.stop_training = True
         return True
 
-    def _handle_severe_overfit(self, overfit_gap: float) -> bool:
-        """Handle severe overfitting (>25% gap). Returns True if should stop."""
+    def _handle_severe_overfit(self, overfit_gap: float, epoch: int) -> bool:
+        """Handle severe overfitting (>20% gap). Returns True if should stop.
+        
+        NOTE: Has a warmup period to prevent premature stopping during early
+        training when the model may temporarily overfit before generalizing.
+        """
         self.critical_epochs += 1
-        if self.critical_epochs < 2:
+        
+        # === WARMUP CHECK: Don't stop during early epochs ===
+        # Early epochs often show high train-val gap as model learns patterns
+        # Give the model time to generalize before panicking about overfitting
+        if epoch < self.severe_overfit_warmup_epochs:
+            if self.critical_epochs == 1:  # Only log once
+                self.console.print(
+                    f"  [yellow]⚠️ High gap ({overfit_gap:.1%}) detected in warmup phase "
+                    f"(epoch {epoch + 1}/{self.severe_overfit_warmup_epochs})[/yellow]"
+                )
+                self.console.print(
+                    f"  [dim]   Continuing training - model may generalize with more epochs[/dim]"
+                )
+            return False
+        
+        # After warmup: require consecutive severe overfit epochs before stopping
+        self._severe_overfit_count += 1
+        if self._severe_overfit_count < 3:  # Need3 consecutive severe epochs
+            self.console.print(
+                f"  [yellow]⚠️ Severe overfitting: gap={overfit_gap:.1%} > "
+                f"{self.severe_threshold:.0%} ({self._severe_overfit_count}/3 warnings)[/yellow]"
+            )
             return False
 
         self.console.print(
@@ -1386,11 +1421,11 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             self.overfit_epochs = 0
 
     def _classify_overfit_severity(
-        self, train_acc: float, val_acc: float, overfit_gap: float
+        self, train_acc: float, val_acc: float, overfit_gap: float, epoch: int
     ) -> bool:
         """Classify overfit severity and take action. Returns True if should stop training."""
         if overfit_gap > self.severe_threshold:
-            return self._handle_severe_overfit(overfit_gap)
+            return self._handle_severe_overfit(overfit_gap, epoch)
         elif overfit_gap > self.critical_threshold:
             self._handle_critical_overfit(train_acc, val_acc, overfit_gap)
         elif overfit_gap > self.overfit_threshold:
@@ -1399,6 +1434,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             # HEALTHY: gap < 8%
             self.overfit_epochs = 0
             self.critical_epochs = 0
+            self._severe_overfit_count = 0  # Reset severe counter on healthy epoch
         return False
 
     # =========================================================================
@@ -1453,7 +1489,7 @@ class OverfitPreventionCallback(tf.keras.callbacks.Callback):
             return
 
         # Classify overfit severity and take action
-        if self._classify_overfit_severity(train_acc, val_acc, overfit_gap):
+        if self._classify_overfit_severity(train_acc, val_acc, overfit_gap, epoch):
             return
 
     def _increase_dropout(self, aggressive: bool = False):

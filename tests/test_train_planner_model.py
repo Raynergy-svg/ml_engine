@@ -137,6 +137,21 @@ def test_format_example_supports_direct_buddy_reply_mode():
     assert formatted["completion"] == "I'm on EUR/USD and ready to walk through the current mode."
 
 
+def test_dataset_builder_routes_plain_english_prompts_to_scan():
+    module = _load_dataset_builder_module()
+    rows = module._generate_records()
+
+    by_prompt = {row["user_message"]: row for row in rows if row["training_mode"] == "planner_json"}
+
+    for prompt in ("do the thing", "go ahead", "find best pair to trade tomorrow"):
+        row = by_prompt[prompt]
+        assert row["target_plan"]["needs_clarification"] is False
+        assert row["target_plan"]["steps"][0]["tool"] == "scan_market"
+
+    clarification_row = by_prompt["write me a poem"]
+    assert clarification_row["target_plan"]["needs_clarification"] is True
+
+
 def test_resolve_warmup_steps_from_max_steps():
     module = _load_module()
     steps = module._resolve_warmup_steps(
@@ -206,6 +221,7 @@ def test_build_planner_dataset_includes_new_chat_tools_and_more_rows():
         "run_prediction",
         "summarize_last_prediction",
         "run_runtime_command",
+        "override_guardrail",
         "run_oanda_command",
         "run_trade_command",
     }.issubset(tools)
