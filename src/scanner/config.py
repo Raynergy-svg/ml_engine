@@ -84,6 +84,50 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "max_uncertainty_score": 0.48,
         "max_model_disagreement": 0.60,
     },
+    # Smart: Agent-driven with RL integration.  Sub-inference agents run on
+    # ALL candidates (not just gate-passed) so the agent team can promote
+    # borderline setups that have strong multi-timeframe confluence.  Slightly
+    # relaxed uncertainty ceiling to let agents make the final call while
+    # maintaining risk gates.
+    "smart": {
+        "min_confidence": 48.0,
+        "min_momentum": 0.15,
+        "min_tcn_probability": 0.58,
+        "max_drawdown_pct": 0.030,
+        "final_score_threshold": 0.44,
+        "max_uncertainty_std": 0.16,
+        "min_atr_pips": 4.0,
+        "min_volatility_regime": 0,
+        "weighted_vote_threshold": 0.52,
+        "sub_inference_tradeable_only": False,
+        "sub_inference_min_confidence": 0.45,
+        "sub_inference_vote_threshold": 0.60,
+        "sub_inference_max_candidates": 15,
+        "agent_promotion_min_confidence": 0.50,
+        "max_uncertainty_score": 0.52,
+        "max_model_disagreement": 0.65,
+        "use_rl_sizer": True,
+        "use_rl_gates": True,
+        "use_rl_exits": True,
+        "enable_agent_trade_promotion": True,
+        # Soft uncertainty: penalize confidence instead of hard-blocking trades
+        "soft_uncertainty_blocking": True,
+        # ATR-based dynamic SL/TP (wider range for volatility-adaptive sizing)
+        "atr_sl_multiplier": 1.2,
+        "atr_tp_multiplier": 2.0,
+        "min_sl_pips": 10.0,
+        "max_sl_pips": 35.0,
+        "min_tp_pips": 15.0,
+        "max_tp_pips": 60.0,
+        "high_prob_threshold": 0.65,
+        "high_prob_tp_bonus": 15.0,
+        # Multi-timeframe confluence agent (H1 → H4 → D1)
+        "enable_multi_timeframe_agent": True,
+        # Pair performance agent (adjusts confidence from historical W/L)
+        "enable_pair_performance_agent": True,
+        # Minimum risk:reward ratio to execute a trade
+        "min_risk_reward_ratio": 1.2,
+    },
 }
 VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
 
@@ -175,6 +219,7 @@ class ScannerConfig:
     account_equity: float = 0.0  # 0 = fetch from OANDA
     risk_per_trade_pct: float = 0.02  # 2% risk per trade
     leverage: int = 50
+    min_risk_reward_ratio: float = 1.0  # Minimum R:R to allow execution (TP/SL >= this)
 
     # Session filter (UTC hours)
     # FX markets are open 24/5 (Sun 22:00 UTC – Fri 22:00 UTC).
@@ -272,6 +317,8 @@ class ScannerConfig:
     enable_news_risk_agent: bool = False  # Default off if no news data
     enable_uncertainty_agent: bool = True
     enable_execution_quality_agent: bool = True
+    enable_multi_timeframe_agent: bool = False  # Default off; smart profile enables it
+    enable_pair_performance_agent: bool = False  # Default off; smart profile enables it
 
     # --- Weighted Voting Config ---
     weighted_vote_threshold: float = 0.55  # Minimum weighted score to pass
@@ -293,6 +340,7 @@ class ScannerConfig:
     # --- Uncertainty Blocking ---
     max_uncertainty_score: float = 0.4  # Block if uncertainty above this
     max_model_disagreement: float = 0.5  # Block if disagreement above this
+    soft_uncertainty_blocking: bool = False  # If True, uncertainty reduces confidence instead of hard blocking
 
     # --- Circuit-Breaker Config ---
     enable_circuit_breakers: bool = True

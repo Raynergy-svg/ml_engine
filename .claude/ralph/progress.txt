@@ -1,0 +1,11 @@
+# Ralph Progress - Buddy Self-Improvement Loop
+
+## Stories: 0/12 completed
+
+## Context
+- ML Engine FX trading bot (Buddy)
+- Currently: scan → trade → RL feedback loop works
+- Missing: persistent learning, cross-session memory, adaptive config
+- Key files: src/scanner/automation/continuous.py, src/scanner/execution.py, src/scanner/agents.py
+- Trade journal: trained_data/trade_journal_rl.json (5 trades, 3 won / 2 lost)
+- Account: OANDA practice, NAV ~$102,580

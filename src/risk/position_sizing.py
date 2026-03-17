@@ -625,23 +625,23 @@ def create_regime_aware_position_sizer(
         aggressive_scale_high_vol=aggressive_scale_high_vol,
         aggressive_scale_extreme_vol=aggressive_scale_extreme_vol,
         aggressive_min_meta_confidence=aggressive_min_meta_confidence,
-        conservative_scale_low_vol=0.5,
-        conservative_scale_normal_vol=0.75,
+        conservative_scale_low_vol=0.75,
+        conservative_scale_normal_vol=1.0,  # NORMAL = baseline, no reduction
         max_aggressive_scale=2.0,
     )
     
     config = PositionSizingConfig(
-        risk_per_trade_pct=0.02,  # 2% base risk
+        risk_per_trade_pct=0.05,  # 5% base risk — meaningful on practice account
         min_confidence_threshold=0.5,
-        max_position_multiplier=3.0,
-        low_confidence_band=(0.5, 0.65),
-        medium_confidence_band=(0.65, 0.8),
-        high_confidence_band=(0.8, 1.0),
-        low_confidence_multiplier=0.5,
-        medium_confidence_multiplier=1.0,
-        high_confidence_multiplier=2.0,
-        max_position_pct=0.10,  # 10% max position
-        min_position_size=1000,
+        max_position_multiplier=10.0,
+        low_confidence_band=(0.5, 0.60),
+        medium_confidence_band=(0.60, 0.75),
+        high_confidence_band=(0.75, 1.0),
+        low_confidence_multiplier=1.5,   # 1.5x at low confidence
+        medium_confidence_multiplier=2.5,  # 2.5x at medium (most of our trades)
+        high_confidence_multiplier=4.0,  # 4x at high confidence
+        max_position_pct=0.30,  # 30% max position — aggressive for practice
+        min_position_size=100000,  # 1.0 lots minimum
         regime_scaling=regime_config,
     )
     

@@ -29,6 +29,41 @@ from cli.config import BuddyTrainingOptions, OandaFetchOptions
 from src.utils import load_config
 
 
+def _filter_correlated_exposure(candidates: list) -> list:
+    """Remove candidates that would double exposure on correlation groups already open."""
+    try:
+        from src.scanner.execution import ExecutionManager
+        from src.training.correlation_group_config import get_correlation_group
+
+        em = ExecutionManager()
+        open_trades = em.monitor_open_trades()
+        if not open_trades:
+            return candidates
+
+        open_groups: set = set()
+        open_pairs: set = set()
+        for t in open_trades:
+            pair = t.get("pair", "")
+            open_pairs.add(pair)
+            group = get_correlation_group(pair)
+            if group and group.master_pair:
+                open_groups.add(group.master_pair)
+
+        filtered = []
+        for a in candidates:
+            if a.pair in open_pairs:
+                console.print(f"[dim]  skip {a.pair}: already open[/dim]")
+                continue
+            group = get_correlation_group(a.pair)
+            if group and group.master_pair in open_groups:
+                console.print(f"[dim]  skip {a.pair}: correlated with open {group.master_pair} group[/dim]")
+                continue
+            filtered.append(a)
+        return filtered
+    except Exception:
+        return candidates
+
+
 def buddy_scan(
     config_path: str = DEFAULT_CONFIG_PATH,
     *,
@@ -128,15 +163,15 @@ def buddy_scan(
             try:
                 # Enable execution path for this scan call.
                 scanner._scanner.config.enable_execution = True
-                tradeable_candidates = [
-                    r for r in results
-                    if r.direction in {"LONG", "SHORT"} and r.gates_passed and r.error is None
-                ]
+                tradeable_candidates = [r for r in results if r.is_tradeable]
                 confirmed_candidates = [
                     r for r in tradeable_candidates
                     if r.agent_total > 0 and r.agent_passed
                 ]
                 execution_candidates = confirmed_candidates or tradeable_candidates
+
+                # Filter correlated exposure (don't double up on same group)
+                execution_candidates = _filter_correlated_exposure(execution_candidates)
 
                 if execution_candidates:
                     execution_results = scanner._scanner.execute_trades(

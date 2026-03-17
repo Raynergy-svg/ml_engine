@@ -1,0 +1,37 @@
+{
+  "goal": "Autonomous scan-trade-learn loop with meaningful position sizing and self-improvement",
+  "status": "in-progress",
+  "done": [
+    "Keras 3 model loader fix (seed param)",
+    "Soft uncertainty blocking (proportional penalty)",
+    "ATR-based dynamic SL/TP",
+    "Position sizing scaled to account ($100K → 2.5 lot trades)",
+    "Correlation filter for double-exposure prevention",
+    "RL feedback loop (agent weights from trade outcomes)",
+    "Drawdown guardian with trailing SL",
+    "Multi-timeframe confirmation agent (H1/H4/D1)",
+    "Pair performance agent (historical win-rate gating)",
+    "Agent weight decay (prevents RL overfitting)",
+    "Minimum R:R ratio gate (1.2:1)",
+    "Scan cycle JSONL logging",
+    "Per-pair performance tracking",
+    "Bootstrap .claude/ learning infrastructure"
+  ],
+  "next": "Run next scan cycle with improved position sizing and analyze results",
+  "open_questions": [
+    "EUR_USD model predicted LONG but pair was bearish — is the model stale or is this a regime issue?",
+    "Should we increase min_confidence threshold given EUR_USD losses at 67% confidence?",
+    "Walk-forward orchestrator (US-005 from old PRD) still deferred — needs train-joint run first"
+  ],
+  "last_updated": "2026-03-17T06:15:00Z",
+  "portfolio_snapshot": {
+    "nav": 102580.84,
+    "open_trades": 0,
+    "total_realized_pnl": -381.42,
+    "session_trades": 5,
+    "session_wins": 3,
+    "session_losses": 2,
+    "win_rate": 0.60
+  },
+  "improvement_focus": "Self-improvement loop infrastructure (learnings → rules → config adaptation)"
+}

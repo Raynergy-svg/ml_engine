@@ -33,7 +33,9 @@ class BuddyScanner:
     @staticmethod
     def _approval_holdback_reason(analysis: PairAnalysis) -> Optional[str]:
         """Summarize why a directional setup did not clear full approval."""
-        if analysis.error or analysis.gates_passed:
+        if analysis.error:
+            return None
+        if analysis.is_tradeable:
             return None
 
         why_no_trade = list(getattr(analysis, "why_no_trade", []) or [])
@@ -84,7 +86,7 @@ class BuddyScanner:
             direction = (a.direction or "HOLD").upper()
             session_blocked = bool(a.error and str(a.error).lower().startswith("outside trading session"))
             market_closed = bool(a.error and str(a.error).lower().startswith("fx market closed"))
-            status = "TRADEABLE" if a.gates_passed else (
+            status = "TRADEABLE" if a.is_tradeable else (
                 "CLOSED" if market_closed else ("SESSION" if session_blocked else ("ERROR" if a.error else "WATCH"))
             )
             conf = int(round(float(a.confidence) * 100))
@@ -116,17 +118,29 @@ class BuddyScanner:
             else:
                 agent_text = "not-run"
 
+            # MTF confluence tag
+            mtf_reason = next((ar for ar in (a.agent_reasons or []) if ar.get("name") == "multi_timeframe"), None)
+            mtf_tag = ""
+            if mtf_reason:
+                mtf_count = mtf_reason.get("metadata", {}).get("confluence_count", 0)
+                mtf_tag = f", MTF {mtf_count}/3"
+
             master = a.master_pair.replace("_", "/") if a.master_pair else pair
             c.print(
                 f"   [{planner_slate}]why:[/{planner_slate}] core gates M{m_gate} A{a_gate} R{r_gate} ({a.gate_summary}), "
-                f"agent {agent_text}, master [{planner_sand}]{master}[/{planner_sand}]"
+                f"agent {agent_text}{mtf_tag}, master [{planner_sand}]{master}[/{planner_sand}]"
             )
 
-            if a.gates_passed:
+            if a.is_tradeable:
                 promoted = " [agent-promoted]" if getattr(a, "agent_promoted", False) else ""
+                soft_tag = ""
+                for reason in (a.agent_reasons or []):
+                    if reason.get("reason_code") == "uncertainty_soft_penalty":
+                        soft_tag = " [soft-penalized]"
+                        break
                 c.print(
                     f"   [{planner_slate}]plan:[/{planner_slate}] "
-                    f"[{planner_cyan}]SL {a.sl_pips:.0f} | TP {a.tp_pips:.0f}{promoted}[/{planner_cyan}]"
+                    f"[{planner_cyan}]SL {a.sl_pips:.0f} | TP {a.tp_pips:.0f}{promoted}{soft_tag}[/{planner_cyan}]"
                 )
             else:
                 holdback_reason = self._approval_holdback_reason(a)
@@ -136,7 +150,7 @@ class BuddyScanner:
                         f"[{planner_sand}]{holdback_reason}[/{planner_sand}]"
                     )
 
-        tradeable = [a.pair.replace("_", "/") for a in analyses if a.gates_passed]
+        tradeable = [a.pair.replace("_", "/") for a in analyses if a.is_tradeable]
         c.print()
         if tradeable:
             c.print(f"[{planner_cyan}]Tradeable:[/{planner_cyan}] [{planner_sand}]{', '.join(tradeable)}[/{planner_sand}]")
@@ -178,9 +192,26 @@ class BuddyScanner:
             "weighted_vote_threshold",
             "sub_inference_min_confidence",
             "sub_inference_vote_threshold",
+            "sub_inference_max_candidates",
             "agent_promotion_min_confidence",
             "max_uncertainty_score",
             "max_model_disagreement",
+            "soft_uncertainty_blocking",
+            "use_rl_sizer",
+            "use_rl_gates",
+            "use_rl_exits",
+            "enable_agent_trade_promotion",
+            "atr_sl_multiplier",
+            "atr_tp_multiplier",
+            "min_sl_pips",
+            "max_sl_pips",
+            "min_tp_pips",
+            "max_tp_pips",
+            "high_prob_threshold",
+            "high_prob_tp_bonus",
+            "enable_multi_timeframe_agent",
+            "enable_pair_performance_agent",
+            "min_risk_reward_ratio",
         )
         prev_profile_values = {
             name: getattr(self._scanner.config, name)

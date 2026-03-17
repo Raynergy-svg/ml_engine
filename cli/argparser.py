@@ -405,9 +405,9 @@ def _add_scan_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--profile",
         type=str,
-        choices=["conservative", "balanced", "aggressive"],
+        choices=["conservative", "balanced", "aggressive", "smart"],
         default="balanced",
-        help="For buddy/scan: gate profile tuning (conservative|balanced|aggressive)",
+        help="For buddy/scan: gate profile tuning (conservative|balanced|aggressive|smart)",
     )
     parser.add_argument(
         "--clean-output",

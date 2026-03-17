@@ -142,14 +142,17 @@ def _dispatch_scan(args: Any) -> None:
                 [p.strip().upper().replace("/", "_") for p in pairs_str.split(",")]
                 if pairs_str else None
             )
+            profile = str(getattr(args, "profile", "balanced"))
             config = ScannerConfig.from_cli_args(
                 config_path=args.config,
                 pairs=pair_list,
                 granularity=str(getattr(args, "granularity", "H1")),
                 top_n=int(getattr(args, "top", 5)),
-                profile=str(getattr(args, "profile", "balanced")),
+                profile=profile,
                 force=bool(getattr(args, "force", False)),
             )
+            # Apply profile settings (agents, RL, etc.)
+            config.apply_profile(profile)
             scanner = Scanner(config=config)
             interval_minutes = int(getattr(args, "interval", 5))
             auto_execute = bool(getattr(args, "auto_execute", False))
@@ -162,6 +165,7 @@ def _dispatch_scan(args: Any) -> None:
                 top_n=int(getattr(args, "top", 5)),
             )
         else:
+            profile = str(getattr(args, "profile", "balanced"))
             buddy_scan(
                 args.config,
                 pairs=getattr(args, "pairs", None),
@@ -175,7 +179,8 @@ def _dispatch_scan(args: Any) -> None:
                 use_rl_sizer=bool(getattr(args, "use_rl_sizer", True)),
                 diversified=bool(getattr(args, "diversified", False)),
                 force=bool(getattr(args, "force", False)),
-                profile=str(getattr(args, "profile", "balanced")),
+                profile=profile,
+                run_agent_confirmation=(profile == "smart"),
             )
     finally:
         root_logger.setLevel(prev_level)

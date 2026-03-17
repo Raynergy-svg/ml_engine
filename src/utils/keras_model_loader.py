@@ -1363,6 +1363,22 @@ def _normalize_layer_config_for_compat(
     """Rewrite known cross-version config fields into broadly supported forms."""
     normalized = dict(config_dict)
 
+    # Keras 2 → 3: 'seed' was accepted by Dense, Conv1D, etc. in Keras 2.x
+    # but removed in Keras 3.x.  Strip it from layers that no longer accept it.
+    _LAYERS_SEED_REMOVED_IN_K3 = {
+        "Dense", "Conv1D", "Conv2D", "Conv3D",
+        "Conv1DTranspose", "Conv2DTranspose", "Conv3DTranspose",
+        "DepthwiseConv1D", "DepthwiseConv2D",
+        "SeparableConv1D", "SeparableConv2D",
+        "EinsumDense",
+        "Embedding",
+        "MultiHeadAttention",
+        "Add", "Multiply", "Concatenate", "Average",
+        "LayerNormalization",
+    }
+    if class_name in _LAYERS_SEED_REMOVED_IN_K3:
+        normalized.pop("seed", None)
+
     if class_name == "InputLayer":
         batch_shape = normalized.pop("batch_shape", None)
         batch_input_shape = normalized.pop("batch_input_shape", None)

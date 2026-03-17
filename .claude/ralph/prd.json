@@ -1,0 +1,213 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-self-improvement-loop",
+  "description": "Buddy Self-Improvement Loop — Transform Buddy from a static trading bot into a self-improving learning system that captures what works, extracts patterns from trade outcomes, and evolves its own configuration autonomously across sessions",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Bootstrap .claude/ learning infrastructure for ML Engine",
+      "description": "As a developer, I need the foundational files for Buddy's self-improvement system so that learnings persist across sessions.",
+      "acceptanceCriteria": [
+        "Create CLAUDE.md at project root with: project identity (ML Engine FX trading bot), use case (autonomous scan-trade-learn loop), pointer to .claude/learnings.md and .claude/rules/, key architectural decisions (scanner → agents → execution → RL feedback)",
+        "CLAUDE.md is under 100 lines",
+        "Create .claude/learnings.md with header: '# Buddy Trading Learnings' and date-stamped seed entries from known facts: (1) Keras 3 seed param fix, (2) soft uncertainty blocking > hard blocking, (3) ATR-based SL/TP > hardcoded 15/30, (4) position sizing must scale to account size, (5) correlation filter prevents double exposure",
+        "Create .claude/rules/trading.md with imperative rules extracted from codebase: minimum R:R ratio 1.2:1, never skip RL sync after trade closes, always log to trade_journal_rl.json, correlation filter before execution, drawdown guardian every scan cycle",
+        "Create .claude/rules/improvement.md with meta-rules: every trade outcome triggers learning capture, promote patterns that repeat 3+ times to rules, consolidate learnings when >30 entries",
+        ".claude/rules/ total is under 200 lines",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Foundation story. .claude/ already exists with settings.local.json — add to it, don't overwrite. CLAUDE.md doesn't exist yet."
+    },
+    {
+      "id": "US-002",
+      "title": "Create session state engine for cross-session continuity",
+      "description": "As a trading system, I need to persist my state between sessions so the next session can resume intelligently without re-discovering context.",
+      "acceptanceCriteria": [
+        "Create .claude/state.json with schema: { goal, status (ready|in-progress|blocked|done), done (list of completed items), next (singular concrete action), open_questions (list), last_updated (ISO timestamp), portfolio_snapshot: { nav, open_trades, total_pnl, win_rate }, improvement_focus (current area being optimized) }",
+        "Create src/scanner/automation/state_engine.py with StateEngine class",
+        "StateEngine.save_state(goal, status, done, next_action, open_questions, portfolio) writes to .claude/state.json",
+        "StateEngine.load_state() reads .claude/state.json and returns dict (or empty default if missing)",
+        "StateEngine.update_portfolio_snapshot() fetches NAV from OANDA and open trade count, writes to state",
+        "Integrate into ContinuousScanner._run_smart_loop(): after RL sync, call state_engine.update_portfolio_snapshot()",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "State file enables session continuity. ContinuousScanner already has _run_smart_loop() at src/scanner/automation/continuous.py:257."
+    },
+    {
+      "id": "US-003",
+      "title": "Build trade outcome analyzer for automatic learning extraction",
+      "description": "As a learning system, I need to automatically analyze every closed trade and extract actionable patterns into learnings.md.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/learning_engine.py with LearningEngine class",
+        "LearningEngine.analyze_trade(trade_journal_entry: dict) examines a closed trade and returns list of LearningEntry(date, category, insight, action, source_trade_id)",
+        "Categories: 'sizing', 'entry_timing', 'sl_tp', 'agent_accuracy', 'regime', 'pair_behavior'",
+        "Analysis rules: (1) if SL hit and pnl_pips > 2x atr_pips → 'sl_too_tight for {pair}', (2) if TP hit in <15min → 'tp_could_be_wider for {pair}', (3) if trade lost and uncertainty_score > 0.45 → 'uncertainty_was_warning for {pair}', (4) if trade won and weighted_vote_score > 0.7 → 'high_consensus_works', (5) if model_disagreement > 0.3 and trade lost → 'disagreement_predicted_loss'",
+        "LearningEngine.append_to_learnings(entries: list[LearningEntry]) appends formatted entries to .claude/learnings.md with date prefix",
+        "Integrate into ExecutionManager.sync_closed_trades_rl(): after syncing each trade, call learning_engine.analyze_trade(entry) and append results",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "sync_closed_trades_rl() is at src/scanner/execution.py. Each journal entry has full context: gates, agents, regime, outcome."
+    },
+    {
+      "id": "US-004",
+      "title": "Implement rule promotion from learnings (pattern → rule)",
+      "description": "As a learning system, I need to automatically promote repeated patterns into active trading rules.",
+      "acceptanceCriteria": [
+        "Add LearningEngine.check_promotions() method that reads .claude/learnings.md and counts category occurrences",
+        "When a category has 3+ entries with same pattern (e.g., 'sl_too_tight for EUR_USD' appears 3 times), auto-promote to .claude/rules/trading.md",
+        "Promoted rule format: '- [{date}] {category}: {actionable_rule} (promoted from {count} observations)'",
+        "After promotion, mark source learnings as '[PROMOTED]' in learnings.md",
+        "Add LearningEngine.consolidate() method: when learnings.md exceeds 30 entries, group by theme, archive promoted/old entries to .claude/learnings-archive.md, keep only active learnings",
+        "Call check_promotions() at end of each sync_closed_trades_rl() cycle",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "This is the evolution mechanism. Patterns that repeat become rules that actively gate or adjust trading behavior."
+    },
+    {
+      "id": "US-005",
+      "title": "Create adaptive config tuner that reads rules and adjusts scanner config",
+      "description": "As a learning system, I need promoted rules to actually change my behavior, not just be documentation.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/config_tuner.py with ConfigTuner class",
+        "ConfigTuner.load_rules() parses .claude/rules/trading.md and extracts actionable rules",
+        "ConfigTuner.apply_to_config(scanner_config: ScannerConfig) reads rules and adjusts config fields: (1) 'sl_too_tight for {pair}' → increase atr_sl_multiplier by 0.1 for that pair, (2) 'tp_could_be_wider for {pair}' → increase atr_tp_multiplier by 0.1, (3) 'uncertainty_was_warning' → lower max_uncertainty_score by 0.02, (4) 'high_consensus_works' → lower weighted_vote_threshold by 0.01, (5) 'disagreement_predicted_loss' → lower max_model_disagreement by 0.02",
+        "ConfigTuner tracks adjustments in .claude/config_adjustments.json with timestamp and reason",
+        "Each adjustment is bounded: atr_sl_multiplier max 2.0, atr_tp_multiplier max 3.0, max_uncertainty_score min 0.30, weighted_vote_threshold min 0.45, max_model_disagreement min 0.20",
+        "Integrate into ContinuousScanner: before each scan, call config_tuner.apply_to_config(self.scanner.config)",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "This closes the loop: trade outcome → learning → rule → config change → better trades. Bounds prevent runaway tuning."
+    },
+    {
+      "id": "US-006",
+      "title": "Add per-pair adaptive SL/TP multipliers based on historical outcomes",
+      "description": "As a trading system, I need SL/TP multipliers to adapt per pair based on what actually works, not use one-size-fits-all values.",
+      "acceptanceCriteria": [
+        "Create trained_data/models/pair_sl_tp_config.json schema: { pair: { atr_sl_multiplier, atr_tp_multiplier, last_updated, sample_size } }",
+        "Add LearningEngine.update_pair_sl_tp(trade_entry: dict) method: after each closed trade, calculate optimal SL/TP based on actual price movement vs ATR",
+        "If trade hit TP early (within 30% of estimated time), suggest wider TP (multiplier += 0.05)",
+        "If trade hit SL and reversed to profit within 2x ATR, suggest wider SL (multiplier += 0.05)",
+        "If trade hit SL and continued against, SL was correct (no change)",
+        "Scanner engine.py _scan_pair() reads pair_sl_tp_config.json and overrides global atr_sl_multiplier / atr_tp_multiplier for that specific pair",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Per-pair tuning is critical. EUR_USD 13.6 ATR behaves differently from USD_JPY 27.3 ATR. The scan phase calculates SL/TP in engine.py around line 1397."
+    },
+    {
+      "id": "US-007",
+      "title": "Add session improvement summary and metrics tracking",
+      "description": "As a learning system, I need to track my improvement over time so I can measure whether learnings are working.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/improvement_tracker.py with ImprovementTracker class",
+        "ImprovementTracker.record_session(trades: list, learnings_added: int, rules_promoted: int, config_adjustments: list) appends to trained_data/improvement_log.jsonl",
+        "Each record includes: date, session_trades (count, wins, losses, net_pnl), win_rate, avg_pips, learnings_added, rules_promoted, config_adjustments, agent_weights_snapshot",
+        "ImprovementTracker.get_trend(window=10) returns rolling metrics over last N sessions: win_rate_trend (improving/declining/stable), avg_pnl_trend, learning_velocity (learnings per session)",
+        "ImprovementTracker.generate_report() returns formatted string with: total trades, overall win rate, best/worst pair, most promoted rule category, improvement trend direction",
+        "Integrate into ContinuousScanner: after _run_smart_loop(), if any trades were synced, call improvement_tracker.record_session()",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "This is the meta-learning dashboard. Without metrics, we can't know if the learning system itself is improving."
+    },
+    {
+      "id": "US-008",
+      "title": "Add observation logging for interesting market patterns",
+      "description": "As a learning system, I need to capture interesting observations during scans even when no trade is taken, building a knowledge base for future pattern matching.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/observation_log.py with ObservationLog class",
+        "ObservationLog.log_observation(pair, category, description, metadata) appends to trained_data/observations.jsonl",
+        "Categories: 'regime_change' (vol regime shifted), 'unusual_spread' (ATR > 2x normal), 'agent_disagreement' (agents split 50/50), 'near_miss' (confidence 1-2% below threshold), 'correlation_break' (correlated pairs diverging)",
+        "In Scanner._scan_pair(): after analysis, detect and log observations: (1) if volatility_regime != pair's historical mode → log regime_change, (2) if agent_votes == agent_total/2 → log agent_disagreement, (3) if confidence within 2% of min_confidence → log near_miss",
+        "ObservationLog.get_recent(pair=None, category=None, limit=20) queries recent observations",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Observations build context even from non-trades. This data can later feed into a more sophisticated meta-learner."
+    },
+    {
+      "id": "US-009",
+      "title": "Wire self-refine into post-trade analysis for LLM-based insight extraction",
+      "description": "As a learning system, I want to use LLM reasoning to analyze losing trades and suggest improvements beyond simple rule-based analysis.",
+      "acceptanceCriteria": [
+        "In src/scanner/automation/learning_engine.py, add LearningEngine.deep_analyze_loss(trade_entry: dict, pair_history: list) method",
+        "deep_analyze_loss() constructs a prompt with: trade context (entry, SL, TP, confidence, agents, regime), pair's recent history from pair_performance.json, and asks: 'What pattern caused this loss? What config change would prevent it?'",
+        "Use the existing self_refine.py buddy_self_improve() function to process the prompt with iterative refinement",
+        "Parse LLM response into structured LearningEntry objects and append to learnings.md",
+        "Only trigger deep_analyze_loss() for trades losing > $100 (to avoid wasting LLM calls on small losses)",
+        "Add config flag: enable_llm_trade_analysis: bool = False in ScannerConfig, enabled in smart profile",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "self_refine.py exists at project root. This wires LLM reasoning into the learning loop for qualitative insights."
+    },
+    {
+      "id": "US-010",
+      "title": "Add learnings consolidation and anti-proliferation guard",
+      "description": "As a learning system, I need to prevent my knowledge files from growing unbounded and ensure rules stay focused.",
+      "acceptanceCriteria": [
+        "Add LearningEngine.audit() method that checks: (1) learnings.md line count > 30 → trigger consolidation, (2) rules/trading.md line count > 50 → flag for split, (3) config_adjustments.json entry count > 100 → archive old adjustments",
+        "Consolidation groups learnings by category, removes duplicates, archives to .claude/learnings-archive.md",
+        "If rules/trading.md exceeds 50 lines, split into rules/trading-entry.md (entry rules) and rules/trading-risk.md (risk management rules)",
+        "Add anti-proliferation check: before creating any new file in .claude/, verify it doesn't duplicate existing content",
+        "Call audit() once per 10 scan cycles (track cycle count in state.json)",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Context discipline. Files must stay concise or they become noise. Archive aggressively."
+    },
+    {
+      "id": "US-011",
+      "title": "Create buddy_learn CLI command for manual learning triggers",
+      "description": "As a developer, I want a CLI command to manually trigger learning analysis, view current learnings, and force rule promotion.",
+      "acceptanceCriteria": [
+        "Add 'learn' subcommand to CLI that accepts: buddy_scanner.py learn [--analyze] [--promote] [--consolidate] [--report] [--status]",
+        "--analyze: run trade outcome analysis on all unanalyzed journal entries",
+        "--promote: run promotion check and promote qualifying patterns to rules",
+        "--consolidate: run learnings consolidation",
+        "--report: print improvement tracker report (total trades, win rate, trends)",
+        "--status: print current state from .claude/state.json and recent learnings",
+        "Default (no flag): run --analyze then --promote then --report",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "buddy_scanner.py already has CLI with scan/watch/trade subcommands. Add 'learn' alongside."
+    },
+    {
+      "id": "US-012",
+      "title": "Integrate full learning loop into ContinuousScanner watch mode",
+      "description": "As a trading system, the entire learning loop should run automatically in watch mode: scan → trade → monitor → close → learn → adapt → scan.",
+      "acceptanceCriteria": [
+        "In ContinuousScanner._run_smart_loop(): after RL sync (step 3) and weight decay (step 4), add step 5: learning engine analysis",
+        "Step 5a: for each newly synced trade, call learning_engine.analyze_trade(entry)",
+        "Step 5b: call learning_engine.check_promotions()",
+        "Step 5c: call config_tuner.apply_to_config(self.scanner.config) to apply any new rules",
+        "Step 5d: call improvement_tracker.record_session() if trades were synced",
+        "Step 5e: call state_engine.update_portfolio_snapshot()",
+        "Step 5f: every 10th cycle, call learning_engine.audit()",
+        "Log learning loop activity to console: 'Learning: {n} insights captured, {m} rules promoted'",
+        "Respect existing error handling: wrap in try/except, log errors, don't crash the scan loop",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "This is the integration story. All components from US-002 through US-010 get wired into the continuous loop here."
+    }
+  ]
+}

@@ -1392,9 +1392,22 @@ class Scanner:
             # Calculate metrics
             metrics = self._calculate_metrics(df_feat, pair)
 
-            # Calculate position sizing
-            sl_pips = self.config.sl_pips
-            tp_pips = self.config.tp_pips
+            # Dynamic ATR-based SL/TP (replaces fixed 15/30 defaults)
+            if atr_pips > 0:
+                sl_pips = max(
+                    self.config.min_sl_pips,
+                    min(atr_pips * self.config.atr_sl_multiplier, self.config.max_sl_pips),
+                )
+                tp_pips = max(
+                    self.config.min_tp_pips,
+                    min(atr_pips * self.config.atr_tp_multiplier, self.config.max_tp_pips),
+                )
+                # High-confidence TP bonus
+                if confidence >= self.config.high_prob_threshold:
+                    tp_pips = min(tp_pips + self.config.high_prob_tp_bonus, self.config.max_tp_pips + self.config.high_prob_tp_bonus)
+            else:
+                sl_pips = self.config.sl_pips
+                tp_pips = self.config.tp_pips
 
             # Kelly-based position sizing (simplified)
             risk_pct = self.config.risk_per_trade_pct
@@ -1785,7 +1798,7 @@ class Scanner:
             logger.info("No tradeable pairs to execute")
             return []
 
-        # Convert to execution format
+        # Convert to execution format with full analysis context for journal
         trades = [
             {
                 "pair": a.pair,
@@ -1796,6 +1809,27 @@ class Scanner:
                 "sl_pips": a.sl_pips,
                 "tp_pips": a.tp_pips,
                 "recommended_lots": (a.recommended_lots if float(a.recommended_lots) > 0 else None),
+                "analysis_context": {
+                    "momentum_passed": a.momentum_passed,
+                    "confidence_passed": a.confidence_passed,
+                    "risk_passed": a.risk_passed,
+                    "gate_summary": a.gate_summary,
+                    "agent_votes": a.agent_votes,
+                    "agent_total": a.agent_total,
+                    "agent_passed": a.agent_passed,
+                    "agent_promoted": a.agent_promoted,
+                    "weighted_vote_score": a.weighted_vote_score,
+                    "agent_reasons": a.agent_reasons[:5] if a.agent_reasons else [],
+                    "volatility_regime": a.volatility_regime,
+                    "atr_pips": a.atr_pips,
+                    "uncertainty_score": a.uncertainty_score,
+                    "model_disagreement": a.model_disagreement,
+                    "tcn_confidence": a.tcn_confidence,
+                    "ridge_confidence": a.ridge_confidence,
+                    "momentum": a.momentum,
+                    "drawdown": a.drawdown,
+                    "overall_score": a.overall_score,
+                },
             }
             for a in tradeable
         ]

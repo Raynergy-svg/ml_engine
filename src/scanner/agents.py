@@ -88,10 +88,114 @@ class ScannerAgentTeam:
         "uncertainty": 1.10,
         "execution_quality": 1.05,
         "news_risk": 0.95,
+        "multi_timeframe": 1.10,
+        "pair_performance": 0.85,
     }
+
+    _WEIGHTS_FILE = "trained_data/models/agent_weights.json"
 
     def __init__(self, config: Any):
         self.config = config
+        self._learned_weights: Dict[str, float] = self._load_learned_weights()
+
+    # --- Persistent weight management ---
+
+    def _load_learned_weights(self) -> Dict[str, float]:
+        """Load learned agent weights from disk."""
+        import json
+        from pathlib import Path
+
+        path = Path(self._WEIGHTS_FILE)
+        if path.exists():
+            try:
+                with open(path) as f:
+                    data = json.load(f)
+                return {str(k): float(v) for k, v in data.items()}
+            except Exception:
+                pass
+        return {}
+
+    def _save_learned_weights(self) -> None:
+        """Persist learned agent weights to disk."""
+        import json
+        from pathlib import Path
+
+        path = Path(self._WEIGHTS_FILE)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(self._learned_weights, f, indent=2)
+
+    def apply_weight_decay(self, decay_rate: float = 0.02) -> Dict[str, float]:
+        """Decay learned weights toward base weights to prevent overfitting.
+
+        Should be called once per scan cycle (e.g., from ContinuousScanner).
+        Each call moves learned weights ``decay_rate`` fraction closer to the
+        base weight.  This ensures recent RL adjustments don't persist
+        indefinitely when the sample size is small.
+
+        Args:
+            decay_rate: Fraction to move toward base weight per call (0.0–1.0).
+
+        Returns:
+            Dict of agent name -> new weight after decay.
+        """
+        if not self._learned_weights:
+            return {}
+
+        decay_rate = max(0.0, min(1.0, decay_rate))
+        changed = False
+        for name in list(self._learned_weights):
+            base = self._BASE_WEIGHTS.get(name, 1.0)
+            current = self._learned_weights[name]
+            if abs(current - base) < 1e-4:
+                # Already at base – remove from learned dict
+                del self._learned_weights[name]
+                changed = True
+                continue
+            new_weight = current + decay_rate * (base - current)
+            new_weight = round(new_weight, 4)
+            self._learned_weights[name] = new_weight
+            changed = True
+
+        if changed:
+            self._save_learned_weights()
+        return dict(self._learned_weights)
+
+    def update_weights_from_outcome(
+        self,
+        agent_verdicts: List[Dict[str, Any]],
+        trade_won: bool,
+    ) -> Dict[str, float]:
+        """Update agent weights based on trade outcome (RL feedback).
+
+        Args:
+            agent_verdicts: List of agent verdict dicts from the trade's PairAnalysis
+            trade_won: True if trade hit TP, False if hit SL
+
+        Returns:
+            Dict of agent name -> new weight
+        """
+        boost = _safe_float(getattr(self.config, "weight_boost_on_win", 0.10), 0.10)
+        penalty = _safe_float(getattr(self.config, "weight_penalty_on_loss", 0.15), 0.15)
+        min_w = _safe_float(getattr(self.config, "min_agent_weight", 0.1), 0.1)
+        max_w = _safe_float(getattr(self.config, "max_agent_weight", 2.0), 2.0)
+
+        for verdict in agent_verdicts:
+            name = str(verdict.get("name", ""))
+            if not name:
+                continue
+            current = self._learned_weights.get(name, self._BASE_WEIGHTS.get(name, 1.0))
+            if verdict.get("passed"):
+                # Agent voted for the trade
+                delta = boost if trade_won else -penalty
+            else:
+                # Agent voted against the trade
+                delta = -boost * 0.5 if trade_won else penalty * 0.5
+            new_weight = max(min_w, min(max_w, current + delta))
+            self._learned_weights[name] = round(new_weight, 4)
+
+        self._save_learned_weights()
+        return dict(self._learned_weights)
 
     def evaluate(
         self,
@@ -130,6 +234,12 @@ class ScannerAgentTeam:
             news_verdict = self._evaluate_news_risk(ctx)
             if news_verdict is not None:
                 verdicts.append(news_verdict)
+        if getattr(self.config, "enable_multi_timeframe_agent", False):
+            verdicts.append(self._evaluate_multi_timeframe(ctx))
+        if getattr(self.config, "enable_pair_performance_agent", False):
+            perf_verdict = self._evaluate_pair_performance(ctx)
+            if perf_verdict is not None:
+                verdicts.append(perf_verdict)
 
         if not verdicts:
             return analysis
@@ -186,6 +296,9 @@ class ScannerAgentTeam:
         return analysis
 
     def _weight_for(self, name: str) -> float:
+        # Prefer learned weights from RL feedback, fall back to base
+        if name in self._learned_weights:
+            return float(self._learned_weights[name])
         return float(self._BASE_WEIGHTS.get(name, 1.0))
 
     def _direction_matches(self, signal_direction: float, expected: str) -> bool:
@@ -380,9 +493,18 @@ class ScannerAgentTeam:
 
         max_uncertainty = _clip01(_safe_float(getattr(ctx.config, "max_uncertainty_score", 0.40), 0.40))
         max_disagreement = _clip01(_safe_float(getattr(ctx.config, "max_model_disagreement", 0.50), 0.50))
-        block_trade = uncertainty_score > max_uncertainty or model_disagreement > max_disagreement
+        soft_blocking = bool(getattr(ctx.config, "soft_uncertainty_blocking", False))
+        exceeds_threshold = uncertainty_score > max_uncertainty or model_disagreement > max_disagreement
+        # Soft blocking: penalize confidence heavily instead of hard-blocking
+        block_trade = exceeds_threshold and not soft_blocking
 
-        if block_trade:
+        if exceeds_threshold and soft_blocking:
+            # Scale penalty by how far over the threshold we are
+            overshoot = max(uncertainty_score - max_uncertainty, 0.0)
+            reason = f"uncertainty high ({uncertainty_score:.2f}) [soft penalty]"
+            reason_code = "uncertainty_soft_penalty"
+            confidence_delta = -0.05 - (overshoot * 0.30)  # -5% to -14% penalty
+        elif block_trade:
             reason = f"uncertainty high ({uncertainty_score:.2f})"
             reason_code = "uncertainty_block"
             confidence_delta = -0.10
@@ -521,4 +643,149 @@ class ScannerAgentTeam:
             confidence_delta=confidence_delta,
             block_trade=block_trade,
             metadata={"headline_count": len(headlines)},
+        )
+
+    def _evaluate_multi_timeframe(self, ctx: AgentDecisionContext) -> AgentVerdict:
+        """Multi-timeframe confluence: synthesize H4 and D1 signals from H1 candles.
+
+        Aggregates H1 data to approximate higher timeframe trend direction,
+        checking if the trade direction aligns across H1, H4, and D1.
+        """
+        df = ctx.df_raw
+        direction = ctx.analysis.direction
+        confluence_count = 0  # how many timeframes agree
+
+        # H1 trend (already the primary): use SMA crossover
+        if len(df) >= 20:
+            h1_close = float(df["close"].iloc[-1])
+            h1_sma20 = float(df["close"].iloc[-20:].mean())
+            h1_sma50 = float(df["close"].iloc[-min(50, len(df)):].mean()) if len(df) >= 50 else h1_sma20
+            if direction == "LONG" and h1_close > h1_sma20:
+                confluence_count += 1
+            elif direction == "SHORT" and h1_close < h1_sma20:
+                confluence_count += 1
+
+        # H4 trend: aggregate last 80 H1 candles (20 H4 candles) by groups of 4
+        if len(df) >= 80:
+            h4_closes = df["close"].iloc[-80:].values.reshape(-1, 4).mean(axis=1)
+            h4_last = float(h4_closes[-1])
+            h4_sma = float(h4_closes[-min(20, len(h4_closes)):].mean())
+            if direction == "LONG" and h4_last > h4_sma:
+                confluence_count += 1
+            elif direction == "SHORT" and h4_last < h4_sma:
+                confluence_count += 1
+        elif len(df) >= 20:
+            # Not enough data for H4 - treat as neutral agreement
+            confluence_count += 1
+
+        # D1 trend: aggregate last 120 H1 candles (5 daily candles) by groups of 24
+        if len(df) >= 120:
+            usable = len(df) - (len(df) % 24)
+            if usable >= 120:
+                d1_closes = df["close"].iloc[-usable:].values.reshape(-1, 24).mean(axis=1)
+                d1_last = float(d1_closes[-1])
+                d1_prev = float(d1_closes[-2]) if len(d1_closes) >= 2 else d1_last
+                if direction == "LONG" and d1_last > d1_prev:
+                    confluence_count += 1
+                elif direction == "SHORT" and d1_last < d1_prev:
+                    confluence_count += 1
+                # else: no agreement
+            else:
+                confluence_count += 1  # Insufficient data, neutral
+        elif len(df) >= 24:
+            confluence_count += 1  # Insufficient data, neutral
+
+        # Score based on confluence
+        score = 0.30 + confluence_count * 0.20  # 0.30, 0.50, 0.70, 0.90
+        passed = confluence_count >= 2
+        confidence_delta = (confluence_count - 1.5) * 0.03  # -0.045 to +0.045
+
+        if confluence_count >= 3:
+            reason = f"full MTF confluence ({confluence_count}/3 timeframes agree)"
+            reason_code = "mtf_full_confluence"
+        elif confluence_count == 2:
+            reason = f"partial MTF confluence ({confluence_count}/3)"
+            reason_code = "mtf_partial"
+        elif confluence_count == 1:
+            reason = f"weak MTF support ({confluence_count}/3)"
+            reason_code = "mtf_weak"
+        else:
+            reason = "no MTF confluence (all timeframes disagree)"
+            reason_code = "mtf_none"
+
+        return AgentVerdict(
+            name="multi_timeframe",
+            score=_clip01(score),
+            passed=passed,
+            weight=self._weight_for("multi_timeframe"),
+            reason=reason,
+            reason_code=reason_code,
+            confidence_delta=confidence_delta,
+            metadata={"confluence_count": confluence_count, "timeframes": 3},
+        )
+
+    def _evaluate_pair_performance(self, ctx: AgentDecisionContext) -> Optional[AgentVerdict]:
+        """Check historical performance for this pair and adjust confidence.
+
+        Reads ``trained_data/models/pair_performance.json`` (updated by
+        :meth:`ExecutionManager._update_pair_performance`) and emits a verdict
+        based on the pair's historical win rate and P/L.
+
+        Returns ``None`` when no history exists for the pair (agent not counted).
+        """
+        import json
+        from pathlib import Path
+
+        perf_path = Path("trained_data/models/pair_performance.json")
+        if not perf_path.exists():
+            return None
+
+        try:
+            data = json.loads(perf_path.read_text())
+        except Exception:
+            return None
+
+        pair = ctx.analysis.pair
+        stats = data.get(pair)
+        if not stats or stats.get("trades", 0) < 3:
+            # Not enough history — skip this agent
+            return None
+
+        win_rate = _safe_float(stats.get("win_rate"), 0.5)
+        total_pnl_pips = _safe_float(stats.get("total_pnl_pips"), 0.0)
+        trades = int(stats.get("trades", 0))
+
+        # Score: base 0.50, boost for good win rate, penalize for bad
+        score = 0.50 + (win_rate - 0.50) * 0.60
+        score = _clip01(score)
+
+        # Confidence delta: up to +/- 5% based on historical edge
+        confidence_delta = (win_rate - 0.50) * 0.10  # e.g., 60% WR -> +1%, 40% -> -1%
+        confidence_delta = max(-0.05, min(0.05, confidence_delta))
+
+        passed = win_rate >= 0.45
+
+        if win_rate >= 0.60:
+            reason = f"pair has strong history ({win_rate:.0%} WR, {total_pnl_pips:+.0f} pips over {trades} trades)"
+            reason_code = "pair_perf_strong"
+        elif win_rate >= 0.45:
+            reason = f"pair has neutral history ({win_rate:.0%} WR, {total_pnl_pips:+.0f} pips over {trades} trades)"
+            reason_code = "pair_perf_neutral"
+        else:
+            reason = f"pair has weak history ({win_rate:.0%} WR, {total_pnl_pips:+.0f} pips over {trades} trades)"
+            reason_code = "pair_perf_weak"
+
+        return AgentVerdict(
+            name="pair_performance",
+            score=score,
+            passed=passed,
+            weight=self._weight_for("pair_performance"),
+            reason=reason,
+            reason_code=reason_code,
+            confidence_delta=confidence_delta,
+            metadata={
+                "win_rate": win_rate,
+                "total_pnl_pips": total_pnl_pips,
+                "trades_history": trades,
+            },
         )
