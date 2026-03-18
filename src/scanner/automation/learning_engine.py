@@ -301,10 +301,10 @@ class LearningEngine:
     def deep_analyze_loss(
         self, entry: Dict[str, Any], pair_history: Optional[List[Dict[str, Any]]] = None
     ) -> List[LearningEntry]:
-        """Use LLM reasoning to analyze a losing trade and suggest improvements.
+        """Use local 3B model to analyze a losing trade and suggest improvements.
 
-        Only call for trades losing > $100. Uses self_refine.buddy_self_improve()
-        for iterative refinement.
+        Only call for trades losing > $100. Uses llm_providers.llm_call() which
+        prefers the local Buddy Planner 3B (Qwen2.5-3B-Instruct) — no API tokens needed.
         """
         outcome = entry.get("outcome", {})
         realized_pl = outcome.get("realized_pl", 0)
@@ -317,8 +317,16 @@ class LearningEngine:
         agents = entry.get("agents", {})
         regime = entry.get("volatility_regime", "UNKNOWN")
 
+        system_prompt = (
+            "You are Buddy Planner 3B, an FX trading analysis assistant. "
+            "Analyze losing trades and suggest specific, actionable config improvements. "
+            "Be concise. Return 1-3 insights in this exact format per line:\n"
+            "CATEGORY: insight text -> action to take\n"
+            "Categories: sizing, entry_timing, sl_tp, agent_accuracy, regime, pair_behavior"
+        )
+
         prompt = (
-            f"Analyze this losing FX trade and suggest specific config improvements:\n\n"
+            f"Analyze this losing FX trade:\n"
             f"Pair: {pair}, Direction: {direction}, Confidence: {confidence:.0%}\n"
             f"Entry: {entry.get('entry_price', 0)}, SL: {entry.get('sl_pips', 0)}p, TP: {entry.get('tp_pips', 0)}p\n"
             f"Outcome: ${realized_pl:.2f}, {outcome.get('pnl_pips', 0):.1f} pips\n"
@@ -334,18 +342,22 @@ class LearningEngine:
             )
             prompt += f"Recent {pair} history: {history_str}\n"
 
-        prompt += (
-            "\nReturn exactly 1-3 specific, actionable insights in this format:\n"
-            "CATEGORY: insight text -> action to take\n"
-            "Categories: sizing, entry_timing, sl_tp, agent_accuracy, regime, pair_behavior"
-        )
+        prompt += "\nWhat caused this loss and what config change would prevent it?"
 
         try:
-            from self_refine import buddy_self_improve
-            result = buddy_self_improve(query=prompt, max_iterations=2, verbose=False)
-            response = result.get("response", "")
+            from llm_providers import llm_call, select_buddy_provider_name
+            provider = select_buddy_provider_name()  # Prefers local 3B model
+            response = llm_call(
+                prompt,
+                system_prompt=system_prompt,
+                provider=provider,
+                max_tokens=256,
+                temperature=0.1,
+            )
+            if not response:
+                return []
         except Exception as e:
-            logger.warning(f"LLM deep analysis failed: {e}")
+            logger.warning(f"Local model deep analysis failed: {e}")
             return []
 
         # Parse LLM response into LearningEntry objects
@@ -370,7 +382,7 @@ class LearningEngine:
             entries.append(LearningEntry(
                 date=now,
                 category=category,
-                insight=f"[LLM] {insight_part.strip()}",
+                insight=f"[3B] {insight_part.strip()}",
                 action=action,
                 source_trade_id=str(entry.get("trade_id", "")),
             ))
