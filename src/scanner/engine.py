@@ -1393,14 +1393,29 @@ class Scanner:
             metrics = self._calculate_metrics(df_feat, pair)
 
             # Dynamic ATR-based SL/TP (replaces fixed 15/30 defaults)
+            # Per-pair adaptive multipliers (US-006) override global config
+            _pair_sl_mult = self.config.atr_sl_multiplier
+            _pair_tp_mult = self.config.atr_tp_multiplier
+            try:
+                import json as _json
+                from pathlib import Path as _Path
+                _pair_cfg_path = _Path("trained_data/models/pair_sl_tp_config.json")
+                if _pair_cfg_path.exists():
+                    _pair_cfg = _json.loads(_pair_cfg_path.read_text())
+                    if pair in _pair_cfg:
+                        _pair_sl_mult = _pair_cfg[pair].get("atr_sl_multiplier", _pair_sl_mult)
+                        _pair_tp_mult = _pair_cfg[pair].get("atr_tp_multiplier", _pair_tp_mult)
+            except Exception:
+                pass
+
             if atr_pips > 0:
                 sl_pips = max(
                     self.config.min_sl_pips,
-                    min(atr_pips * self.config.atr_sl_multiplier, self.config.max_sl_pips),
+                    min(atr_pips * _pair_sl_mult, self.config.max_sl_pips),
                 )
                 tp_pips = max(
                     self.config.min_tp_pips,
-                    min(atr_pips * self.config.atr_tp_multiplier, self.config.max_tp_pips),
+                    min(atr_pips * _pair_tp_mult, self.config.max_tp_pips),
                 )
                 # High-confidence TP bonus
                 if confidence >= self.config.high_prob_threshold:

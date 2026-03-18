@@ -155,7 +155,29 @@ class ContinuousScanner:
                 # Log scan cycle for analytics
                 self._log_scan_cycle(result, auto_execute)
 
-                # Smart trading loop: monitor, drawdown guardian, RL sync
+                # Log observations from scan results (US-008)
+                try:
+                    from src.scanner.automation.observation_log import ObservationLog
+                    obs_log = ObservationLog()
+                    obs_count = 0
+                    for analysis in result.analyses:
+                        obs_count += obs_log.log_from_analysis(analysis)
+                    if obs_count > 0 and console:
+                        console.print(f"  [dim]Observations: {obs_count} patterns logged[/dim]")
+                except Exception as obs_err:
+                    logger.debug(f"Observation logging error: {obs_err}")
+
+                # Apply config tuning before next scan (US-005)
+                try:
+                    from src.scanner.automation.config_tuner import ConfigTuner
+                    ct = ConfigTuner()
+                    adjustments = ct.apply_to_config(self.scanner.config)
+                    if adjustments and console:
+                        console.print(f"  [dim]Config tuned: {len(adjustments)} adjustments[/dim]")
+                except Exception as tune_err:
+                    logger.debug(f"Pre-scan config tuning error: {tune_err}")
+
+                # Smart trading loop: monitor, drawdown guardian, RL sync, learning
                 self._run_smart_loop()
 
                 # Idle maintenance
@@ -262,7 +284,7 @@ class ContinuousScanner:
             return tradeable
 
     def _run_smart_loop(self) -> None:
-        """Run the smart trading loop: monitor open trades, drawdown guardian, RL sync."""
+        """Run the smart trading loop: monitor, guardian, RL sync, learning, adaptation."""
         try:
             from src.scanner.execution import ExecutionManager
 
@@ -289,7 +311,8 @@ class ContinuousScanner:
 
             # 3. RL feedback sync
             rl_result = em.sync_closed_trades_rl()
-            if rl_result.get("trades_synced", 0) > 0 and console:
+            trades_synced = rl_result.get("trades_synced", 0)
+            if trades_synced > 0 and console:
                 console.print(
                     f"  [cyan]RL sync: {rl_result['detail']}[/cyan]"
                 )
@@ -307,8 +330,111 @@ class ContinuousScanner:
             except Exception as decay_err:
                 logger.debug(f"Weight decay error: {decay_err}")
 
+            # 5. Learning loop (US-012)
+            self._run_learning_loop(em, trades_synced)
+
         except Exception as e:
             logger.debug(f"Smart loop error: {e}")
+
+    def _run_learning_loop(self, em: object, trades_synced: int) -> None:
+        """Step 5: Learning engine analysis, promotion, config tuning, metrics.
+
+        Wraps all learning components in try/except to never crash the scan loop.
+        """
+        try:
+            import json
+            from pathlib import Path
+            from src.scanner.automation.learning_engine import LearningEngine
+            from src.scanner.automation.config_tuner import ConfigTuner
+            from src.scanner.automation.improvement_tracker import ImprovementTracker
+            from src.scanner.automation.state_engine import StateEngine
+
+            le = LearningEngine()
+            learnings_added = 0
+            rules_promoted = 0
+            config_adjustments = []
+
+            # 5a. Analyze each newly synced trade
+            if trades_synced > 0:
+                journal_path = Path("trained_data/trade_journal_rl.json")
+                if journal_path.exists():
+                    entries = json.loads(journal_path.read_text())
+                    closed = [e for e in entries if e.get("outcome") is not None]
+
+                    for entry in closed:
+                        insights = le.analyze_trade(entry)
+                        if insights:
+                            learnings_added += le.append_to_learnings(insights)
+
+                        # Per-pair SL/TP adaptation (US-006)
+                        le.update_pair_sl_tp(entry)
+
+                        # LLM deep analysis for significant losses (US-009)
+                        if getattr(self.scanner.config, "enable_llm_trade_analysis", False):
+                            outcome = entry.get("outcome", {})
+                            if outcome.get("realized_pl", 0) < -100:
+                                pair_entries = [e for e in entries if e.get("pair") == entry.get("pair")]
+                                llm_insights = le.deep_analyze_loss(entry, pair_entries)
+                                if llm_insights:
+                                    learnings_added += le.append_to_learnings(llm_insights)
+
+            # 5b. Check for rule promotions
+            promoted = le.check_promotions()
+            rules_promoted = len(promoted)
+
+            # 5c. Apply config tuning from promoted rules
+            try:
+                ct = ConfigTuner()
+                config_adjustments = ct.apply_to_config(self.scanner.config)
+            except Exception as tune_err:
+                logger.debug(f"Config tuning error: {tune_err}")
+
+            # 5d. Record session metrics
+            if trades_synced > 0:
+                try:
+                    tracker = ImprovementTracker()
+                    journal_path = Path("trained_data/trade_journal_rl.json")
+                    all_entries = json.loads(journal_path.read_text()) if journal_path.exists() else []
+                    tracker.record_session(
+                        trades=all_entries,
+                        learnings_added=learnings_added,
+                        rules_promoted=rules_promoted,
+                        config_adjustments=config_adjustments,
+                    )
+                except Exception as track_err:
+                    logger.debug(f"Improvement tracking error: {track_err}")
+
+            # 5e. Update portfolio snapshot
+            try:
+                se = StateEngine()
+                se.update_portfolio_snapshot()
+            except Exception as state_err:
+                logger.debug(f"State update error: {state_err}")
+
+            # 5f. Audit every 10th cycle
+            try:
+                se = StateEngine()
+                cycle = se.increment_scan_cycle()
+                if cycle % 10 == 0:
+                    audit_result = le.audit()
+                    if audit_result.get("actions") and console:
+                        console.print(f"  [dim]Audit: {audit_result['actions']}[/dim]")
+            except Exception as audit_err:
+                logger.debug(f"Audit error: {audit_err}")
+
+            # Log learning activity
+            if (learnings_added > 0 or rules_promoted > 0) and console:
+                console.print(
+                    f"  [magenta]Learning: {learnings_added} insights captured, "
+                    f"{rules_promoted} rules promoted[/magenta]"
+                )
+            if config_adjustments and console:
+                console.print(
+                    f"  [magenta]Config: {len(config_adjustments)} adjustments applied[/magenta]"
+                )
+
+        except Exception as e:
+            logger.debug(f"Learning loop error: {e}")
 
     def _sleep_with_progress(self, minutes: int):
         """Sleep with progress indication, allowing Ctrl+C to interrupt."""
