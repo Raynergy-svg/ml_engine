@@ -1,0 +1,50 @@
+{
+  "training_type": "joint_multi_pair",
+  "instruments": [
+    "EUR_USD",
+    "GBP_USD",
+    "USD_JPY",
+    "AUD_USD",
+    "NZD_USD",
+    "USD_CAD",
+    "USD_CHF"
+  ],
+  "metrics": {
+    "direction": {
+      "train_accuracy": 0.8448532223701477,
+      "val_accuracy": 0.5530791788856305,
+      "val_balanced_accuracy": 0.5578171828171828,
+      "val_up_accuracy": 0.5474525474525475,
+      "val_down_accuracy": 0.5681818181818182,
+      "val_direction_gap": 0.020729270729270777,
+      "epochs_trained": 10,
+      "n_train_samples": 5382,
+      "n_val_samples": 1705,
+      "total_weight_norm": 60.62589268528973,
+      "avg_weight_norm": 1.595418228560256,
+      "drift_detected": false
+    },
+    "momentum": {
+      "momentum_mae": 0.026455849786257847,
+      "acceleration_accuracy": 0.8459664708410947,
+      "model_type": "lightgbm"
+    },
+    "risk": {
+      "drawdown_mae_pct": 0.0014434506959040284,
+      "drawdown_mae_bps": 14.434506959040284,
+      "streak_prob_mae": 0.021581651698011187,
+      "model_type": "lightgbm"
+    },
+    "confidence": {
+      "confidence_mae": 0.27994477381743293,
+      "r2_score": 0.9966222936256018,
+      "model_type": "lightgbm",
+      "n_estimators": 100,
+      "n_important_features": 17,
+      "n_total_features": 21
+    }
+  },
+  "per_instrument_metrics": {},
+  "fine_tune_decisions": {},
+  "saved_at": "2026-03-18T23:11:39.526814"
+}

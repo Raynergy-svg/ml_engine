@@ -91,7 +91,7 @@ class Orchestrator:
 
         try:
             from src.scanner.automation.state_engine import StateEngine
-            self._state = StateEngine(project_root=root_str)
+            self._state = StateEngine(base_dir=root_str)
         except Exception as e:
             logger.warning(f"StateEngine init failed: {e}")
             self._state = None

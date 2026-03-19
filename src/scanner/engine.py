@@ -1369,6 +1369,16 @@ class Scanner:
             PairAnalysis or None on failure
         """
         try:
+            # Check if pair is blocked (model accuracy issues or other constraints)
+            if pair in self.config.blocked_pairs:
+                logger.warning(f"Skipping {pair}: blocked (model accuracy issue)")
+                return PairAnalysis(
+                    pair=pair,
+                    direction="HOLD",
+                    confidence=0.0,
+                    error=f"Pair blocked: {pair} is in blocked_pairs list",
+                )
+
             # Check session timing
             session_status = self.config.get_trading_session_status()
             if not session_status["session_allowed"]:

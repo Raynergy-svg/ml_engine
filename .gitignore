@@ -32,23 +32,22 @@ output/
 node_modules
 
 # ===========================================
-# Machine-specific artifacts (DO NOT COMMIT)
+# Trained models — COMMITTED for reproducibility
 # ===========================================
 
-# Trained models (large binary files)
-*.pkl
-*.keras
-*.h5
+# Allow trained_data/models/ to be tracked (trained models)
+# But exclude raw market data CSVs and large intermediaries
+trained_data/cache/
+trained_data/*.tmp
+market_data/*.csv
+
+# Exclude large non-model binaries elsewhere
 *.onnx
 *.pt
 *.pth
 *.zip
 *.npz
 *.npy
-
-# Training data & caches
-trained_data/
-market_data/*.csv
 
 # Calendar/API caches
 *_cache/

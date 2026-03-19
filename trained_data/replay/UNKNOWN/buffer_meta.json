@@ -1,0 +1,14 @@
+{
+  "capacity_ratio": 0.1,
+  "mix_ratio": 0.2,
+  "sample_count": 5382,
+  "buffer_size": 538,
+  "saved_at": "2026-03-18T23:11:31.008886",
+  "data_sources": [
+    {
+      "id": "JOINT_7pairs_20260318_230931_a70230e5",
+      "n_samples": 5382,
+      "timestamp": "2026-03-18T23:09:41.742725"
+    }
+  ]
+}

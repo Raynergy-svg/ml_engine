@@ -18,6 +18,13 @@ from fastapi.templating import Jinja2Templates
 
 # Ensure project root is on path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Load .env from project root
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+except ImportError:
+    pass
 sys.path.insert(0, str(PROJECT_ROOT))
 os.chdir(str(PROJECT_ROOT))
 
@@ -89,6 +96,7 @@ async def run_scan(request: Request, background_tasks: BackgroundTasks):
     profile = body.get("profile", "balanced")
     pairs = body.get("pairs", [])
     granularity = body.get("granularity", "H1")
+    force = bool(body.get("force", False))
 
     def _do_scan():
         global _scan_running, _last_scan_results
@@ -98,10 +106,12 @@ async def run_scan(request: Request, background_tasks: BackgroundTasks):
             from src.scanner.engine import Scanner
 
             config = ScannerConfig(profile=profile)
+            config.granularity = granularity
+            if force:
+                config.enable_session_filter = False
             scanner = Scanner(config)
             result = scanner.scan(
                 pairs=pairs or None,
-                granularity=granularity,
             )
             _last_scan_results = []
             for a in (result.analyses if result else []):
@@ -191,7 +201,10 @@ async def get_agents():
             })
         return JSONResponse(agents)
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        import traceback
+        tb = traceback.format_exc()
+        print(f"[/api/agents] ERROR: {e}\n{tb}")
+        return JSONResponse({"error": str(e), "traceback": tb}, status_code=500)
 
 
 @app.post("/api/agents/weights")
@@ -226,9 +239,11 @@ async def get_open_trades():
 
 @app.get("/api/trades/journal")
 async def get_trade_journal():
-    journal = _load_json("trained_data/trade_journal_rl.json")
-    if isinstance(journal, list):
-        return JSONResponse(journal[-50:])  # Last 50 trades
+    # Try both journal file names
+    for path in ["trained_data/trade_journal.json", "trained_data/trade_journal_rl.json"]:
+        journal = _load_json(path)
+        if isinstance(journal, list) and journal:
+            return JSONResponse(journal[-50:])
     return JSONResponse([])
 
 

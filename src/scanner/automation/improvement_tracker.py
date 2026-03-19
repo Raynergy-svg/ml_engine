@@ -77,11 +77,12 @@ class ImprovementTracker:
         recent = records[-window:]
         older = records[:-window] if len(records) > window else records[:1]
 
-        recent_wr = _avg([r.get("win_rate", 0) for r in recent])
-        older_wr = _avg([r.get("win_rate", 0) for r in older])
-        recent_pnl = _avg([r.get("net_pnl", 0) for r in recent])
-        older_pnl = _avg([r.get("net_pnl", 0) for r in older])
-        learning_vel = _avg([r.get("learnings_added", 0) for r in recent])
+        # Prevent division by zero in _avg
+        recent_wr = _avg([r.get("win_rate", 0) for r in recent]) if recent else 0.0
+        older_wr = _avg([r.get("win_rate", 0) for r in older]) if older else 0.0
+        recent_pnl = _avg([r.get("net_pnl", 0) for r in recent]) if recent else 0.0
+        older_pnl = _avg([r.get("net_pnl", 0) for r in older]) if older else 0.0
+        learning_vel = _avg([r.get("learnings_added", 0) for r in recent]) if recent else 0.0
 
         def _trend(recent_val: float, older_val: float) -> str:
             diff = recent_val - older_val
@@ -135,7 +136,10 @@ class ImprovementTracker:
         if not self.log_path.exists():
             return []
         records = []
-        for line in self.log_path.read_text().strip().split("\n"):
+        text = self.log_path.read_text().strip()
+        if not text:
+            return []
+        for line in text.splitlines():
             if line.strip():
                 try:
                     records.append(json.loads(line))

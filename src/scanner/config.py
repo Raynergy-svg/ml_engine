@@ -49,9 +49,13 @@ PIP_VALUES = {
 SCAN_PROFILE_BALANCED = "balanced"
 SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     # Uses configuration defaults (YAML + dataclass); no extra overrides.
-    SCAN_PROFILE_BALANCED: {},
+    SCAN_PROFILE_BALANCED: {
+        "blocked_pairs": ["EUR_USD"],
+        "sub_inference_min_confidence": 0.60,
+    },
     # Fewer trades, higher signal quality requirements.
     "conservative": {
+        "blocked_pairs": ["EUR_USD"],
         "min_confidence": 58.0,
         "min_momentum": 0.28,
         "min_tcn_probability": 0.63,
@@ -61,7 +65,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "min_atr_pips": 6.0,
         "min_volatility_regime": 2,
         "weighted_vote_threshold": 0.58,
-        "sub_inference_min_confidence": 0.52,
+        "sub_inference_min_confidence": 0.62,
         "sub_inference_vote_threshold": 0.72,
         "agent_promotion_min_confidence": 0.56,
         "max_uncertainty_score": 0.35,
@@ -69,6 +73,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     },
     # More trade frequency with looser gates (still risk-bounded).
     "aggressive": {
+        "blocked_pairs": ["EUR_USD"],
         "min_confidence": 45.0,
         "min_momentum": 0.12,
         "min_tcn_probability": 0.58,
@@ -90,6 +95,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     # relaxed uncertainty ceiling to let agents make the final call while
     # maintaining risk gates.
     "smart": {
+        "blocked_pairs": ["EUR_USD"],
         "min_confidence": 48.0,
         "min_momentum": 0.15,
         "min_tcn_probability": 0.58,
@@ -100,7 +106,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "min_volatility_regime": 0,
         "weighted_vote_threshold": 0.52,
         "sub_inference_tradeable_only": False,
-        "sub_inference_min_confidence": 0.45,
+        "sub_inference_min_confidence": 0.60,
         "sub_inference_vote_threshold": 0.60,
         "sub_inference_max_candidates": 15,
         "agent_promotion_min_confidence": 0.50,
@@ -301,6 +307,9 @@ class ScannerConfig:
     # Default pairs (for easy access)
     default_pairs: List[str] = field(default_factory=lambda: DEFAULT_PAIRS.copy())
     pip_values: Dict[str, float] = field(default_factory=lambda: PIP_VALUES.copy())
+
+    # Blocked pairs (pairs with model accuracy issues or other constraints)
+    blocked_pairs: List[str] = field(default_factory=lambda: ["EUR_USD"])
 
     # Output
     top_n: int = 5  # Show top N pairs

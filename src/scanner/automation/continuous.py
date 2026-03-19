@@ -125,9 +125,19 @@ class ContinuousScanner:
                     now = datetime.now().strftime("%H:%M:%S")
                     console.print(f"\n[bold]── Scan #{self._scan_count} at {now} ──[/bold]")
 
+                # Filter out blocked pairs before scanning
+                scan_pairs = pairs
+                if scan_pairs and self.scanner.config.blocked_pairs:
+                    filtered = [p for p in scan_pairs if p not in self.scanner.config.blocked_pairs]
+                    if len(filtered) < len(scan_pairs):
+                        skipped = [p for p in scan_pairs if p in self.scanner.config.blocked_pairs]
+                        if console:
+                            console.print(f"[dim]Skipping blocked pairs: {', '.join(skipped)}[/dim]")
+                        scan_pairs = filtered
+
                 # Run scan
                 result = self.scanner.scan(
-                    pairs=pairs,
+                    pairs=scan_pairs,
                     max_workers=4,
                 )
 

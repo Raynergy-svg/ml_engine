@@ -86,7 +86,9 @@ class LearningEngine:
         tp_pips = entry.get("tp_pips", 0) or 0
         atr_pips = entry.get("atr_pips", 0) or 0
         confidence = entry.get("confidence", 0)
-        agents = entry.get("agents", {})
+        agents = entry.get("agents") or {}
+        if not isinstance(agents, dict):
+            agents = {}
         agent_reasons = agents.get("agent_reasons", [])
 
         # Extract agent metrics
@@ -231,6 +233,9 @@ class LearningEngine:
                 full_key = f"{category}:{pattern_key}"
                 pattern_counter[full_key] += 1
                 pattern_lines.setdefault(full_key, []).append(idx)
+            elif line.strip().startswith("-") and "[" in line and "]" in line and "PROMOTED" not in line:
+                # Line looks like a learning entry but didn't match the pattern
+                logger.warning(f"Unmatched learning line at {idx}: {line[:80]}")
 
         promoted: List[str] = []
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -282,9 +287,14 @@ class LearningEngine:
         if self.rules_path.exists():
             existing = self.rules_path.read_text()
 
-        # Don't duplicate
-        if rule_line.strip() in existing:
-            return
+        # Don't duplicate: compare normalized rule text (strip dates and counts)
+        # Extract the core rule by removing date, source count, and parenthetical notes
+        normalized_new = re.sub(r'\[\d{4}-\d{2}-\d{2}\]|\(.*?\)', '', rule_line).strip()
+        for existing_line in existing.split("\n"):
+            normalized_existing = re.sub(r'\[\d{4}-\d{2}-\d{2}\]|\(.*?\)', '', existing_line).strip()
+            if normalized_new and normalized_existing == normalized_new:
+                logger.debug(f"Rule already exists (similar): {rule_line[:60]}")
+                return
 
         # Add under a Promoted Rules section
         promoted_header = "\n## Promoted Rules\n"
@@ -421,7 +431,7 @@ class LearningEngine:
                 if len(adjustments) > 100:
                     # Archive entries older than 30 days
                     cutoff = datetime.now(timezone.utc).timestamp() - (30 * 86400)
-                    recent = [a for a in adjustments if _parse_ts(a.get("timestamp", "")) > cutoff]
+                    recent = [a for a in adjustments if (_parse_ts(a.get("timestamp", "")) or 0) > cutoff]
                     archived = len(adjustments) - len(recent)
                     adj_path.write_text(json.dumps(recent, indent=2))
                     results["actions"].append(f"Archived {archived} old config adjustments")
@@ -486,6 +496,11 @@ class LearningEngine:
         if not pair:
             return None
 
+        # Validate pair name format (3 uppercase letters + underscore + 3 uppercase letters, e.g. EUR_USD)
+        if not re.match(r"^[A-Z]{3}_[A-Z]{3}$", pair):
+            logger.warning(f"Invalid pair name format: {pair} (expected XXX_YYY format)")
+            return None
+
         config_path = Path("trained_data/models/pair_sl_tp_config.json")
         config: Dict[str, Any] = {}
         if config_path.exists():
@@ -542,9 +557,9 @@ class LearningEngine:
         return pair_cfg if changed else None
 
 
-def _parse_ts(ts_str: str) -> float:
-    """Parse an ISO timestamp to epoch seconds, return 0 on failure."""
+def _parse_ts(ts_str: str) -> Optional[float]:
+    """Parse an ISO timestamp to epoch seconds, return None on failure."""
     try:
         return datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
     except (ValueError, TypeError):
-        return 0.0
+        return None

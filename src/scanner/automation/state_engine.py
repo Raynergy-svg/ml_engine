@@ -51,6 +51,14 @@ class StateEngine:
             return dict(_DEFAULT_STATE)
         try:
             data = json.loads(self.state_path.read_text())
+            # Validate required keys exist
+            required_keys = {"goal", "status", "done", "next", "last_updated"}
+            missing_keys = required_keys - set(data.keys())
+            if missing_keys:
+                logger.warning(f"State missing keys {missing_keys}, merging with defaults")
+                defaults = dict(_DEFAULT_STATE)
+                defaults.update(data)
+                data = defaults
             return data
         except Exception as e:
             logger.warning(f"Failed to load state: {e}")
@@ -88,6 +96,15 @@ class StateEngine:
         state = self.load_state()
         token = os.getenv("OANDA_API_TOKEN", "")
         acct = os.getenv("OANDA_ACCOUNT_ID", "")
+
+        # Validate env vars before API call
+        if not token or not isinstance(token, str):
+            logger.warning("OANDA_API_TOKEN not set or invalid, skipping portfolio update")
+            return state.get("portfolio_snapshot", dict(_DEFAULT_STATE["portfolio_snapshot"]))
+        if not acct or not isinstance(acct, str):
+            logger.warning("OANDA_ACCOUNT_ID not set or invalid, skipping portfolio update")
+            return state.get("portfolio_snapshot", dict(_DEFAULT_STATE["portfolio_snapshot"]))
+
         base = "https://api-fxpractice.oanda.com"
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
@@ -100,10 +117,24 @@ class StateEngine:
                 timeout=10,
             )
             if resp.status_code == 200:
-                acct_data = resp.json().get("account", {})
-                snapshot["nav"] = float(acct_data.get("NAV", 0))
-                snapshot["open_trades"] = int(acct_data.get("openTradeCount", 0))
-                snapshot["total_realized_pnl"] = float(acct_data.get("pl", 0))
+                resp_json = resp.json()
+                # Validate response structure
+                if not isinstance(resp_json, dict) or "account" not in resp_json:
+                    logger.warning("OANDA response missing 'account' key, skipping update")
+                else:
+                    acct_data = resp_json.get("account", {})
+                    if isinstance(acct_data, dict):
+                        snapshot["nav"] = float(acct_data.get("NAV", 0))
+                        snapshot["open_trades"] = int(acct_data.get("openTradeCount", 0))
+                        snapshot["total_realized_pnl"] = float(acct_data.get("pl", 0))
+            elif resp.status_code == 401:
+                logger.warning("OANDA API: Unauthorized (401) — check credentials")
+            elif resp.status_code == 429:
+                logger.warning("OANDA API: Rate limit (429) — backing off")
+            else:
+                logger.warning(f"OANDA API returned status {resp.status_code}")
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"OANDA request failed: {e}")
         except Exception as e:
             logger.warning(f"Failed to fetch OANDA account summary: {e}")
 
@@ -111,14 +142,25 @@ class StateEngine:
         try:
             journal_path = Path("trained_data/trade_journal_rl.json")
             if journal_path.exists():
-                entries = json.loads(journal_path.read_text())
-                closed = [e for e in entries if e.get("outcome") is not None]
-                wins = sum(1 for e in closed if e["outcome"].get("trade_won", False))
-                losses = len(closed) - wins
-                snapshot["session_trades"] = len(closed)
-                snapshot["session_wins"] = wins
-                snapshot["session_losses"] = losses
-                snapshot["win_rate"] = round(wins / len(closed), 2) if closed else 0.0
+                journal_text = journal_path.read_text()
+                if not journal_text.strip():
+                    logger.debug("Journal file is empty, using default stats")
+                else:
+                    entries = json.loads(journal_text)
+                    if not isinstance(entries, list):
+                        logger.warning("Journal file is not a JSON list, skipping stats")
+                    else:
+                        closed = [e for e in entries if e.get("outcome") is not None]
+                        wins = sum(1 for e in closed if e["outcome"].get("trade_won", False))
+                        losses = len(closed) - wins
+                        snapshot["session_trades"] = len(closed)
+                        snapshot["session_wins"] = wins
+                        snapshot["session_losses"] = losses
+                        snapshot["win_rate"] = round(wins / len(closed), 2) if closed else 0.0
+            else:
+                logger.debug("Journal file does not exist, using default stats")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Journal file contains invalid JSON: {e}, using default stats")
         except Exception as e:
             logger.debug(f"Journal stats error: {e}")
 

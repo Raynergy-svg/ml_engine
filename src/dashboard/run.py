@@ -22,4 +22,6 @@ if __name__ == "__main__":
         port=port,
         loop="asyncio",
         http="h11",
+        reload=True,
+        reload_dirs=["src/dashboard"],
     )

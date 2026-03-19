@@ -7,7 +7,13 @@
     "test": "tests"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "scan": "python buddy_scanner.py scan",
+    "watch": "python buddy_scanner.py watch",
+    "trade": "python buddy_scanner.py trade",
+    "learn": "python buddy_scanner.py learn",
+    "setup": "pip install -r requirements.txt",
+    "setup:tf": "pip install -r requirements_tf_metal.txt",
+    "test": "python -m pytest tests/ -v"
   },
   "repository": {
     "type": "git",

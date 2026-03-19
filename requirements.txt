@@ -5,17 +5,17 @@
 # ============================================================
 # Core ML and Data Science
 # ============================================================
-numpy==1.26.4
+numpy>=1.26.4
 pandas==2.3.3
-scikit-learn==1.8.0
-scipy==1.11.4
+scikit-learn>=1.6.0
+scipy>=1.13.0
 joblib==1.5.3
 
 # ============================================================
 # Deep Learning - TensorFlow Stack
 # ============================================================
 tensorflow>=2.16,<2.19
-tensorflow-metal==1.1.0; sys_platform == 'darwin' and platform_machine == 'arm64'  # Apple Silicon GPU only
+tensorflow-metal>=1.2.0; sys_platform == 'darwin' and platform_machine == 'arm64'  # Apple Silicon GPU only
 tensorboard>=2.16
 
 # ============================================================

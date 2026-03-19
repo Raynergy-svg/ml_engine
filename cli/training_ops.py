@@ -1124,13 +1124,16 @@ def retrain_all(
         console.print(f"{'=' * 60}\n")
 
         try:
+            from src.cli.config import OandaFetchOptions
+            oanda_opts = OandaFetchOptions(
+                instrument=pair,
+                granularity=granularity,
+                candles=candles,
+            )
             _train_buddy(
                 config_path=config_path,
-                instrument=pair,
                 csv_path=None,
-                oanda_fetch=True,
-                oanda_granularity=granularity,
-                oanda_candles=candles,
+                oanda_fetch=oanda_opts,
                 **kwargs,
             )
             pair_time = time.time() - pair_start

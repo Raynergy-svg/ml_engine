@@ -26,14 +26,23 @@
     "US-009: LLM deep analysis for losing trades (>$100)",
     "US-010: Learnings consolidation and anti-proliferation",
     "US-011: buddy learn CLI command",
-    "US-012: Full learning loop integration into ContinuousScanner"
+    "US-012: Full learning loop integration into ContinuousScanner",
+    "Robustness hardening: learning_engine.py (agents dict validation, timestamp parsing, pair name validation, duplicate rule prevention, unmatched line logging)",
+    "Robustness hardening: config_tuner.py (file locking for race conditions, comprehensive bounds, persistent rule hashes, case-insensitive regex)",
+    "Robustness hardening: state_engine.py (JSON structure validation, OANDA response validation, env var checks, corrupted journal handling)",
+    "Robustness hardening: improvement_tracker.py (splitlines for cross-platform, empty file handling, division-by-zero prevention)",
+    "EUR_USD blocked from trading (100% loss rate, 53.6% val accuracy)",
+    "min_confidence raised to 60%+ across balanced/smart/conservative profiles",
+    "blocked_pairs config field added to ScannerConfig + engine + continuous scanner"
   ],
-  "next": "Run scan cycle in watch mode to validate full learning loop end-to-end",
+  "next": "Retrain EUR_USD model with per-pair validation splits, then unblock if accuracy > 58%",
   "open_questions": [
-    "EUR_USD model predicted LONG but pair was bearish — is the model stale or is this a regime issue?",
-    "Should we increase min_confidence threshold given EUR_USD losses at 67% confidence?"
+    "EUR_USD model accuracy RESOLVED: blocked from trading, root cause = GBP_USD tier2 labels applied to EUR_USD (domain shift). Will unblock after per-pair retrained model is available.",
+    "min_confidence threshold RESOLVED: raised from 50% to 60%+ across profiles. Conservative at 62%.",
+    "5 of 7 pairs failed retraining due to network errors — need to retry USD_JPY, AUD_USD, NZD_USD, USD_CAD, USD_CHF",
+    "Should we add per-pair accuracy tracking to auto-block underperforming pairs in the future?"
   ],
-  "last_updated": "2026-03-18T00:00:00Z",
+  "last_updated": "2026-03-18T12:00:00Z",
   "portfolio_snapshot": {
     "nav": 102580.84,
     "open_trades": 0,
@@ -43,6 +52,6 @@
     "session_losses": 2,
     "win_rate": 0.60
   },
-  "improvement_focus": "Full self-improvement loop live — monitoring learning extraction and rule promotion",
+  "improvement_focus": "Robustness hardening complete. Next: retrain models for blocked pairs, add per-pair accuracy gating",
   "scan_cycle_count": 0
 }

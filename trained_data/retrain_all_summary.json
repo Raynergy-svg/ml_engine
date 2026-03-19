@@ -1,0 +1,36 @@
+{
+  "completed_at": "2026-03-18T23:18:48.377960",
+  "total_time_seconds": 578.7702031135559,
+  "granularity": "H1",
+  "candles": 5000,
+  "results": {
+    "EUR_USD": {
+      "status": "success",
+      "time_seconds": 76.5202271938324
+    },
+    "GBP_USD": {
+      "status": "success",
+      "time_seconds": 84.34113788604736
+    },
+    "USD_JPY": {
+      "status": "success",
+      "time_seconds": 98.21027708053589
+    },
+    "AUD_USD": {
+      "status": "success",
+      "time_seconds": 90.91725707054138
+    },
+    "NZD_USD": {
+      "status": "success",
+      "time_seconds": 58.00875377655029
+    },
+    "USD_CAD": {
+      "status": "success",
+      "time_seconds": 117.28493118286133
+    },
+    "USD_CHF": {
+      "status": "success",
+      "time_seconds": 53.4841730594635
+    }
+  }
+}

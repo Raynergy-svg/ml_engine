@@ -694,9 +694,13 @@
                             <option value="D">D</option>
                         </select>
                     </div>
-                    <button class="btn btn-primary" id="btn-scan" onclick="runScan()">
+                    <button class="btn btn-primary" id="btn-scan" onclick="runScan(false)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                         Run Scan
+                    </button>
+                    <button class="btn btn-secondary" id="btn-force-scan" onclick="runScan(true)" title="Bypass session hours and missing-model warnings">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Force
                     </button>
                 </div>
             </div>
@@ -833,10 +837,16 @@
                         <h3>Scanner Configuration</h3>
                         <p class="card-subtitle">Runtime parameters controlling scan behavior, gates, and risk thresholds</p>
                     </div>
-                    <button class="btn btn-secondary" onclick="loadConfig()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                        Reload
-                    </button>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-secondary" onclick="loadConfig()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                            Reload
+                        </button>
+                        <button class="btn btn-primary" id="btn-save-config" onclick="saveConfig()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            Save
+                        </button>
+                    </div>
                 </div>
                 <div id="config-fields"></div>
             </div>
@@ -1004,9 +1014,11 @@ setInterval(updateClock, 1000);
 updateClock();
 
 // ── Scanner ───────────────────────────────────────────────────────
-async function runScan() {
+async function runScan(force = false) {
     const btn = document.getElementById('btn-scan');
+    const forceBtn = document.getElementById('btn-force-scan');
     btn.disabled = true;
+    forceBtn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Scanning...';
 
     const statusEl = document.getElementById('scan-status');
@@ -1018,7 +1030,7 @@ async function runScan() {
     await fetch('/api/scan', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({profile, granularity})
+        body: JSON.stringify({profile, granularity, force})
     });
 
     // Poll for results
@@ -1035,6 +1047,7 @@ async function runScan() {
             if (fill) fill.style.width = '100%';
             setTimeout(() => { statusEl.style.display = 'none'; }, 600);
             btn.disabled = false;
+            forceBtn.disabled = false;
             btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Scan`;
             renderScanResults(data.results);
         }
@@ -1166,6 +1179,37 @@ async function loadConfig() {
         return `<div class="config-row"><label>${key}</label>${input}</div>`;
     }).join('');
     container.innerHTML = rows;
+}
+
+async function saveConfig() {
+    const btn = document.getElementById('btn-save-config');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Saving...';
+
+    const overrides = {};
+    document.querySelectorAll('#config-fields [data-key]').forEach(el => {
+        const key = el.dataset.key;
+        if (el.type === 'checkbox') overrides[key] = el.checked;
+        else if (el.type === 'number') overrides[key] = parseFloat(el.value);
+        else overrides[key] = el.value;
+    });
+
+    try {
+        const res = await fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(overrides)
+        });
+        const data = await res.json();
+        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Saved ${data.fields} fields`;
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save`;
+        }, 2000);
+    } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '✕ Error';
+    }
 }
 
 // ── Learning ──────────────────────────────────────────────────────

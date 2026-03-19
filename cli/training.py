@@ -4383,8 +4383,7 @@ def _train_buddy_impl(
 
         # XGBoost model - handles training separately
         elif effective_model_type == "xgboost":
-            import json
-            from datetime import datetime
+            from datetime import datetime  # json already imported at module level
             console.print("[cyan]Model: XGBoost (gradient boosting - often better on tabular data)[/cyan]")
             from src.models.xgboost_model import train_xgboost_buddy, XGBoostKerasWrapper
 
