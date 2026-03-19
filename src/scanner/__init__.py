@@ -38,36 +38,67 @@ Usage:
     from src.scanner.filters import VolatilityFilter, DiversificationFilter
 """
 
-from src.scanner.config import ScannerConfig, DEFAULT_PAIRS, PIP_VALUES, load_yaml_config, PROJECT_ROOT, DEFAULT_CONFIG_PATH
-from src.scanner.results import ScanResult, PairAnalysis
-from src.scanner.agents import AgentDecisionContext, AgentVerdict, ScannerAgentTeam
-from src.scanner.gates import GateEvaluator
-from src.scanner.engine import Scanner
-from src.scanner.display import ScannerDisplay
-from src.scanner.execution import ExecutionManager, ExecutionConfig, ExecutionResult
+import importlib as _importlib
+import logging as _logging
 
-# Analysis submodule
-from src.scanner.analysis import (
-    QuickBacktester,
-    BacktestResult,
-    CorrelationAnalyzer,
-    CorrelationResult,
-    DriftDetector,
-    DriftResult,
-)
+_logger = _logging.getLogger(__name__)
 
-# Filters submodule
-from src.scanner.filters import (
-    VolatilityFilter,
-    VolatilityResult,
-    DiversificationFilter,
-)
+# --- Lazy imports ---
+# Eager imports of display/engine/analysis pull in heavy deps (rich, tensorflow, etc.)
+# which breaks lightweight consumers (automation modules, CLI tools, tests).
+# All public names are still available via `from src.scanner import X` thanks to __getattr__.
 
-# Automation submodule
-from src.scanner.automation import (
-    ContinuousScanner,
-    IdleMaintenance,
-)
+def __getattr__(name):
+    """Lazy import: only load heavy modules when their symbols are actually accessed."""
+    _LAZY_MAP = {
+        # Config (lightweight — safe to import eagerly but kept lazy for consistency)
+        "ScannerConfig": ("src.scanner.config", "ScannerConfig"),
+        "DEFAULT_PAIRS": ("src.scanner.config", "DEFAULT_PAIRS"),
+        "PIP_VALUES": ("src.scanner.config", "PIP_VALUES"),
+        "load_yaml_config": ("src.scanner.config", "load_yaml_config"),
+        "PROJECT_ROOT": ("src.scanner.config", "PROJECT_ROOT"),
+        "DEFAULT_CONFIG_PATH": ("src.scanner.config", "DEFAULT_CONFIG_PATH"),
+        # Results
+        "ScanResult": ("src.scanner.results", "ScanResult"),
+        "PairAnalysis": ("src.scanner.results", "PairAnalysis"),
+        # Agents
+        "AgentDecisionContext": ("src.scanner.agents", "AgentDecisionContext"),
+        "AgentVerdict": ("src.scanner.agents", "AgentVerdict"),
+        "ScannerAgentTeam": ("src.scanner.agents", "ScannerAgentTeam"),
+        # Gates
+        "GateEvaluator": ("src.scanner.gates", "GateEvaluator"),
+        # Engine
+        "Scanner": ("src.scanner.engine", "Scanner"),
+        # Display (requires rich)
+        "ScannerDisplay": ("src.scanner.display", "ScannerDisplay"),
+        # Execution
+        "ExecutionManager": ("src.scanner.execution", "ExecutionManager"),
+        "ExecutionConfig": ("src.scanner.execution", "ExecutionConfig"),
+        "ExecutionResult": ("src.scanner.execution", "ExecutionResult"),
+        # Analysis
+        "QuickBacktester": ("src.scanner.analysis", "QuickBacktester"),
+        "BacktestResult": ("src.scanner.analysis", "BacktestResult"),
+        "CorrelationAnalyzer": ("src.scanner.analysis", "CorrelationAnalyzer"),
+        "CorrelationResult": ("src.scanner.analysis", "CorrelationResult"),
+        "DriftDetector": ("src.scanner.analysis", "DriftDetector"),
+        "DriftResult": ("src.scanner.analysis", "DriftResult"),
+        # Filters
+        "VolatilityFilter": ("src.scanner.filters", "VolatilityFilter"),
+        "VolatilityResult": ("src.scanner.filters", "VolatilityResult"),
+        "DiversificationFilter": ("src.scanner.filters", "DiversificationFilter"),
+        # Automation
+        "ContinuousScanner": ("src.scanner.automation", "ContinuousScanner"),
+        "IdleMaintenance": ("src.scanner.automation", "IdleMaintenance"),
+    }
+    if name in _LAZY_MAP:
+        module_path, attr_name = _LAZY_MAP[name]
+        try:
+            module = _importlib.import_module(module_path)
+            return getattr(module, attr_name)
+        except (ImportError, AttributeError) as e:
+            _logger.debug(f"Lazy import {module_path}.{attr_name} failed: {e}")
+            raise ImportError(f"Cannot import {attr_name} from {module_path}: {e}") from e
+    raise AttributeError(f"module 'src.scanner' has no attribute {name!r}")
 
 __all__ = [
     # Core scanner

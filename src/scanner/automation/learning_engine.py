@@ -54,6 +54,13 @@ class LearningEngine:
     ):
         self.learnings_path = learnings_path or LEARNINGS_PATH
         self.rules_path = rules_path or RULES_TRADING_PATH
+        # Initialize accuracy gate for per-pair accuracy tracking
+        try:
+            from src.scanner.automation.accuracy_gate import AccuracyGate
+            self.accuracy_gate = AccuracyGate(min_accuracy=0.55, min_trades=5)
+        except Exception as e:
+            logger.warning(f"Failed to initialize AccuracyGate: {e}")
+            self.accuracy_gate = None
 
     # ------------------------------------------------------------------
     # US-003: Trade outcome analysis
@@ -180,6 +187,18 @@ class LearningEngine:
             action=f"Track {pair} directional accuracy",
             source_trade_id=trade_id,
         ))
+
+        # Record outcome in accuracy gate for per-pair gating (US-013)
+        if self.accuracy_gate and pair and direction:
+            try:
+                self.accuracy_gate.record_outcome(
+                    pair=pair,
+                    predicted_direction=direction,
+                    actual_outcome=trade_won,
+                    confidence=confidence,
+                )
+            except Exception as e:
+                logger.debug(f"Accuracy gate recording error for {pair}: {e}")
 
         return entries
 

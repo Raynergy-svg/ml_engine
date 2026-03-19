@@ -432,6 +432,27 @@ class ContinuousScanner:
             except Exception as audit_err:
                 logger.debug(f"Audit error: {audit_err}")
 
+            # 5g. Merge accuracy-gated blocked pairs into scanner config (US-013)
+            try:
+                from src.scanner.automation.accuracy_gate import AccuracyGate
+                ag = AccuracyGate(min_accuracy=0.55, min_trades=5)
+                blocked_by_accuracy = ag.get_blocked_pairs()
+
+                if blocked_by_accuracy:
+                    # Merge with existing blocked_pairs from config
+                    original_blocked = set(self.scanner.config.blocked_pairs or [])
+                    new_blocked = set(blocked_by_accuracy)
+                    merged = list(original_blocked | new_blocked)
+                    self.scanner.config.blocked_pairs = merged
+
+                    if console and blocked_by_accuracy:
+                        console.print(
+                            f"  [yellow]Accuracy gate blocking {len(blocked_by_accuracy)} "
+                            f"pair(s): {', '.join(blocked_by_accuracy)}[/yellow]"
+                        )
+            except Exception as accuracy_err:
+                logger.debug(f"Accuracy gate merge error: {accuracy_err}")
+
             # Log learning activity
             if (learnings_added > 0 or rules_promoted > 0) and console:
                 console.print(

@@ -260,6 +260,69 @@ def _buddy_load_and_validate_csv(
     return df
 
 
+def _retry_with_backoff(
+    func: Callable[..., Any],
+    *args: Any,
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    **kwargs: Any,
+) -> Any:
+    """
+    Retry a function with exponential backoff.
+
+    Args:
+        func: Function to call
+        *args: Positional arguments to func
+        max_retries: Maximum number of retry attempts (default: 3)
+        initial_delay: Initial delay in seconds (default: 1.0)
+        backoff_factor: Multiplier for delay between retries (default: 2.0)
+        **kwargs: Keyword arguments to func
+
+    Returns:
+        Result of func if successful
+
+    Raises:
+        The original exception after all retries exhausted
+    """
+    last_exception = None
+    delay = initial_delay
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            return func(*args, **kwargs)
+        except (ConnectionError, TimeoutError) as e:
+            last_exception = e
+            if attempt < max_retries:
+                logger.warning(
+                    f"Attempt {attempt}/{max_retries} failed: {type(e).__name__}: {e}. "
+                    f"Retrying in {delay:.1f}s..."
+                )
+                time.sleep(delay)
+                delay *= backoff_factor
+            else:
+                logger.error(
+                    f"All {max_retries} attempts failed for {func.__name__}. "
+                    f"Last error: {type(e).__name__}: {e}"
+                )
+        except Exception as e:
+            # Don't retry on non-transient errors (auth, validation, etc.)
+            if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+                status = e.response.status_code
+                if status in (401, 403):
+                    logger.error(
+                        f"Authentication/authorization error ({status}). "
+                        f"Not retrying: {e}"
+                    )
+                    raise
+            logger.error(f"Non-retryable error in {func.__name__}: {e}")
+            raise
+
+    # If we get here, all retries failed
+    if last_exception:
+        raise last_exception
+
+
 def _fetch_paginated_candles(
     oanda: Any,
     pair: str,
@@ -267,7 +330,11 @@ def _fetch_paginated_candles(
     candles_per_pair: int,
     max_per_request: int = 5000,
 ) -> list[dict]:
-    """Fetch candles with pagination for amounts > OANDA's 5000 limit."""
+    """Fetch candles with pagination for amounts > OANDA's 5000 limit.
+
+    Uses exponential backoff (1s → 2s → 4s) for transient errors.
+    Auth errors (401, 403) are not retried.
+    """
     pair_rows = []
     remaining = candles_per_pair
     to_time = None
@@ -278,7 +345,16 @@ def _fetch_paginated_candles(
         if to_time:
             params["to_time"] = to_time
 
-        response = oanda.get_candles(pair, **params)
+        # Wrap the API call with retry logic
+        response = _retry_with_backoff(
+            oanda.get_candles,
+            pair,
+            max_retries=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            **params,
+        )
+
         candles = response.get("candles", [])
         if not candles:
             break
@@ -837,7 +913,11 @@ def _fetch_instrument_data(
     oanda_client: Any,
     console: _ConsoleLike | None = None,
 ) -> pd.DataFrame | None:
-    """Fetch and normalize data for a single instrument."""
+    """Fetch and normalize data for a single instrument.
+
+    Fetches data with automatic retry on transient errors (3 retries with exponential backoff).
+    Auth errors (401, 403) are not retried. Returns None on failure, allowing other pairs to continue.
+    """
     from src.core.modular_data_loaders import compute_normalized_features
 
     try:
@@ -859,6 +939,7 @@ def _fetch_instrument_data(
         return df
 
     except Exception as e:
+        logger.error(f"Failed to fetch {instrument} after all retries: {type(e).__name__}: {e}")
         if console:
             console.print(f"    [red]Error: {e}[/red]")
         return None
