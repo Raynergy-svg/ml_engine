@@ -1,6 +1,6 @@
 {
   "project": "ML_Engine",
-  "branchName": "ralph/buddy-self-improvement-loop",
+  "branchName": "main",
   "description": "Buddy Self-Improvement Loop — Transform Buddy from a static trading bot into a self-improving learning system that captures what works, extracts patterns from trade outcomes, and evolves its own configuration autonomously across sessions",
   "userStories": [
     {
@@ -17,8 +17,8 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": "Foundation story. .claude/ already exists with settings.local.json — add to it, don't overwrite. CLAUDE.md doesn't exist yet."
+      "passes": true,
+      "notes": "DONE. .claude/ infrastructure bootstrapped: CLAUDE.md, learnings.md, rules/trading.md, rules/improvement.md, state.json all exist."
     },
     {
       "id": "US-002",

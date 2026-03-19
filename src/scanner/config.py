@@ -319,6 +319,9 @@ class ScannerConfig:
     enable_execution_quality_agent: bool = True
     enable_multi_timeframe_agent: bool = False  # Default off; smart profile enables it
     enable_pair_performance_agent: bool = False  # Default off; smart profile enables it
+    enable_momentum_agent: bool = True
+    enable_session_timing_agent: bool = False
+    enable_support_resistance_agent: bool = False
 
     # --- Weighted Voting Config ---
     weighted_vote_threshold: float = 0.55  # Minimum weighted score to pass

@@ -11,7 +11,7 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 
 ## Core Loop
 1. **Scan**: Multi-pair analysis with TCN/Ridge/RF ensemble models
-2. **Agents**: Trend, volatility, uncertainty, multi-timeframe, pair performance
+2. **Agents**: 12-agent team (trend, mean_reversion, volatility, risk_sentinel, uncertainty, execution_quality, momentum, news_risk, multi_timeframe, pair_performance, session_timing, support_resistance)
 3. **Gates**: Confidence, momentum, risk — all must pass
 4. **Execute**: ATR-based SL/TP, regime-aware position sizing
 5. **Monitor**: Drawdown guardian, trailing SL, real-time P/L
@@ -33,9 +33,17 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 ## Key Files
 - `buddy_scanner.py` — CLI entry point (scan/watch/trade/learn)
 - `src/scanner/engine.py` — Core scanner with model ensemble
-- `src/scanner/agents.py` — Sub-inference agent team
+- `src/scanner/agents.py` — 12-agent specialist team with RL weight learning
 - `src/scanner/execution.py` — OANDA trade execution + RL sync
+- `src/scanner/config.py` — ScannerConfig with agent toggles and thresholds
 - `src/scanner/automation/continuous.py` — Watch mode loop
 - `src/risk/position_sizing.py` — Regime-aware position sizer
 - `trained_data/trade_journal_rl.json` — Trade outcomes for RL
 - `trained_data/models/agent_weights.json` — Learned agent weights
+
+## Ralph (Autonomous Dev Loop)
+- `scripts/ralph.sh` — Iterative AI agent loop for PRD stories
+- `.claude/ralph/prd.json` — 12-story self-improvement loop PRD
+- `.claude/skills/prd/` — PRD generation skill
+- `.claude/skills/ralph/` — PRD-to-JSON conversion skill
+- `.claude/agents/` — 37 LLM personality prompts (reference material)

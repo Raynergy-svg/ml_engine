@@ -9,6 +9,7 @@ that can be combined into a weighted vote.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -90,6 +91,9 @@ class ScannerAgentTeam:
         "news_risk": 0.95,
         "multi_timeframe": 1.10,
         "pair_performance": 0.85,
+        "momentum": 1.05,
+        "session_timing": 0.80,
+        "support_resistance": 1.00,
     }
 
     _WEIGHTS_FILE = "trained_data/models/agent_weights.json"
@@ -240,6 +244,14 @@ class ScannerAgentTeam:
             perf_verdict = self._evaluate_pair_performance(ctx)
             if perf_verdict is not None:
                 verdicts.append(perf_verdict)
+        if self.config.enable_momentum_agent:
+            verdicts.append(self._evaluate_momentum(ctx))
+        if self.config.enable_session_timing_agent:
+            verdicts.append(self._evaluate_session_timing(ctx))
+        if self.config.enable_support_resistance_agent:
+            sr_verdict = self._evaluate_support_resistance(ctx)
+            if sr_verdict is not None:
+                verdicts.append(sr_verdict)
 
         if not verdicts:
             return analysis
@@ -722,6 +734,260 @@ class ScannerAgentTeam:
             reason_code=reason_code,
             confidence_delta=confidence_delta,
             metadata={"confluence_count": confluence_count, "timeframes": 3},
+        )
+
+    def _evaluate_momentum(self, ctx: AgentDecisionContext) -> AgentVerdict:
+        """Momentum agent: MACD crossover + rate-of-change assessment.
+
+        Evaluates whether price momentum supports the trade direction using
+        MACD signal alignment and short-term rate of change.
+        """
+        direction = ctx.analysis.direction
+        df = ctx.df_feat if not ctx.df_feat.empty else ctx.df_raw
+
+        # MACD components (normalized by price in feature engineering)
+        macd = _last_value(df, "macd_norm", 0.0)
+        macd_signal = _last_value(df, "macd_signal_norm", 0.0)
+        macd_hist = _last_value(df, "macd_hist_norm", macd - macd_signal)
+
+        # Rate of change (5-bar, try roc_5 first then roc)
+        roc = _last_value(df, "roc_5", 0.0)
+        if abs(roc) < 1e-8:
+            roc = _last_value(df, "roc", 0.0)
+        if abs(roc) < 1e-8 and "close" in ctx.df_raw.columns and len(ctx.df_raw) >= 6:
+            closes = ctx.df_raw["close"]
+            prev = float(closes.iloc[-6])
+            if prev != 0:
+                roc = (float(closes.iloc[-1]) / prev - 1.0) * 100.0
+
+        # Direction alignment
+        if direction == "LONG":
+            macd_aligned = macd_hist > 0
+            roc_aligned = roc > 0
+            macd_strength = _clip01(macd_hist / max(abs(macd) + 1e-6, 1e-6))
+        else:
+            macd_aligned = macd_hist < 0
+            roc_aligned = roc < 0
+            macd_strength = _clip01(-macd_hist / max(abs(macd) + 1e-6, 1e-6))
+
+        # Composite score
+        score = 0.45
+        if macd_aligned:
+            score += 0.25
+        if roc_aligned:
+            score += 0.15
+        score += min(macd_strength * 0.15, 0.15)
+
+        if macd_aligned and roc_aligned:
+            reason = f"momentum aligned with {direction.lower()} (MACD hist {macd_hist:+.5f})"
+            reason_code = "momentum_aligned"
+            confidence_delta = 0.03
+        elif macd_aligned or roc_aligned:
+            reason = f"momentum mixed (MACD {'aligned' if macd_aligned else 'opposed'}, ROC {'aligned' if roc_aligned else 'opposed'})"
+            reason_code = "momentum_mixed"
+            confidence_delta = 0.0
+        else:
+            reason = f"momentum opposes {direction.lower()} bias"
+            reason_code = "momentum_opposed"
+            confidence_delta = -0.04
+
+        return AgentVerdict(
+            name="momentum",
+            score=_clip01(score),
+            passed=score >= 0.52,
+            weight=self._weight_for("momentum"),
+            reason=reason,
+            reason_code=reason_code,
+            confidence_delta=confidence_delta,
+            metadata={
+                "macd_hist": macd_hist,
+                "roc": roc,
+                "macd_aligned": macd_aligned,
+                "roc_aligned": roc_aligned,
+            },
+        )
+
+    def _evaluate_session_timing(self, ctx: AgentDecisionContext) -> AgentVerdict:
+        """Session timing agent: forex session overlap awareness.
+
+        Major pairs trade best during London/NY overlap (13:00-17:00 UTC).
+        Scores higher during active sessions for the pair's currencies.
+        """
+        # Use last candle timestamp if available, otherwise system clock
+        now = datetime.now(timezone.utc)
+        if not ctx.df_raw.empty and ctx.df_raw.index.dtype.kind == 'M':
+            try:
+                last_ts = ctx.df_raw.index[-1]
+                if hasattr(last_ts, 'to_pydatetime'):
+                    now = last_ts.to_pydatetime().replace(tzinfo=timezone.utc)
+            except Exception:
+                pass  # Fall back to system clock
+        hour = now.hour
+
+        # Define forex sessions (UTC hours)
+        tokyo_active = 0 <= hour < 9
+        london_active = 7 <= hour < 16
+        ny_active = 13 <= hour < 22
+        overlap_london_ny = 13 <= hour < 16
+
+        pair = ctx.analysis.pair.upper()
+
+        # Map currencies to their primary sessions
+        jpy_pair = "JPY" in pair
+        eur_gbp_pair = any(c in pair for c in ("EUR", "GBP", "CHF"))
+        usd_cad_pair = any(c in pair for c in ("USD", "CAD"))
+        aud_nzd_pair = any(c in pair for c in ("AUD", "NZD"))
+
+        # Base score from session relevance
+        score = 0.40
+        active_sessions = []
+
+        if overlap_london_ny:
+            score += 0.35
+            active_sessions.append("London/NY overlap")
+        elif london_active:
+            score += 0.25 if eur_gbp_pair else 0.15
+            active_sessions.append("London")
+        elif ny_active:
+            score += 0.25 if usd_cad_pair else 0.15
+            active_sessions.append("New York")
+        elif tokyo_active:
+            score += 0.25 if (jpy_pair or aud_nzd_pair) else 0.08
+            active_sessions.append("Tokyo")
+        else:
+            active_sessions.append("off-hours")
+
+        # Weekend/low-liquidity penalty
+        weekday = now.weekday()
+        if weekday >= 5:  # Saturday/Sunday
+            score -= 0.25
+            active_sessions.append("weekend")
+
+        score = _clip01(score)
+        passed = score >= 0.45
+
+        if score >= 0.65:
+            reason = f"optimal session timing ({', '.join(active_sessions)})"
+            reason_code = "session_optimal"
+            confidence_delta = 0.02
+        elif passed:
+            reason = f"acceptable session ({', '.join(active_sessions)})"
+            reason_code = "session_ok"
+            confidence_delta = 0.0
+        else:
+            reason = f"suboptimal session ({', '.join(active_sessions)})"
+            reason_code = "session_weak"
+            confidence_delta = -0.03
+
+        return AgentVerdict(
+            name="session_timing",
+            score=score,
+            passed=passed,
+            weight=self._weight_for("session_timing"),
+            reason=reason,
+            reason_code=reason_code,
+            confidence_delta=confidence_delta,
+            metadata={
+                "hour_utc": hour,
+                "weekday": weekday,
+                "active_sessions": active_sessions,
+            },
+        )
+
+    def _evaluate_support_resistance(self, ctx: AgentDecisionContext) -> Optional[AgentVerdict]:
+        """Support/resistance agent: proximity to key price levels.
+
+        Identifies recent swing highs/lows as S/R levels and checks if
+        the current price is near a level that supports or opposes the trade.
+        """
+        df = ctx.df_raw
+        if "close" not in df.columns or "high" not in df.columns or "low" not in df.columns:
+            return None
+        if len(df) < 30:
+            return None
+
+        close = float(df["close"].iloc[-1])
+        highs = df["high"].values[-60:] if len(df) >= 60 else df["high"].values
+        lows = df["low"].values[-60:] if len(df) >= 60 else df["low"].values
+        atr_pips = max(_safe_float(ctx.analysis.atr_pips), 0.1)
+
+        # Estimate pip value for the pair
+        pip_value = 0.0001
+        if "JPY" in ctx.analysis.pair.upper():
+            pip_value = 0.01
+
+        atr_price = atr_pips * pip_value
+
+        # Find swing highs/lows (simple 5-bar pivot)
+        resistance_levels: List[float] = []
+        support_levels: List[float] = []
+
+        for i in range(2, len(highs) - 2):
+            if highs[i] >= max(highs[i - 2], highs[i - 1], highs[i + 1], highs[i + 2]):
+                resistance_levels.append(float(highs[i]))
+            if lows[i] <= min(lows[i - 2], lows[i - 1], lows[i + 1], lows[i + 2]):
+                support_levels.append(float(lows[i]))
+
+        if not resistance_levels and not support_levels:
+            return None
+
+        # Find nearest S/R levels
+        nearest_resistance = min(resistance_levels, key=lambda r: abs(r - close)) if resistance_levels else close + atr_price * 5
+        nearest_support = min(support_levels, key=lambda s: abs(s - close)) if support_levels else close - atr_price * 5
+
+        dist_to_resistance = (nearest_resistance - close) / atr_price if atr_price > 0 else 5.0
+        dist_to_support = (close - nearest_support) / atr_price if atr_price > 0 else 5.0
+
+        direction = ctx.analysis.direction
+        score = 0.50
+
+        if direction == "LONG":
+            # Good: support nearby (bounce), resistance far (room to run)
+            if dist_to_support < 1.5:
+                score += 0.20  # Near support - good entry
+            if dist_to_resistance > 2.0:
+                score += 0.15  # Room to TP
+            if dist_to_resistance < 0.5:
+                score -= 0.25  # Resistance right above - bad
+        else:  # SHORT
+            # Good: resistance nearby (rejection), support far (room to run)
+            if dist_to_resistance < 1.5:
+                score += 0.20  # Near resistance - good entry
+            if dist_to_support > 2.0:
+                score += 0.15  # Room to TP
+            if dist_to_support < 0.5:
+                score -= 0.25  # Support right below - bad
+
+        score = _clip01(score)
+        passed = score >= 0.50
+
+        if score >= 0.65:
+            reason = f"S/R structure supports {direction.lower()} (R:{dist_to_resistance:.1f}x ATR, S:{dist_to_support:.1f}x ATR)"
+            reason_code = "sr_support"
+            confidence_delta = 0.03
+        elif score >= 0.45:
+            reason = f"S/R neutral (R:{dist_to_resistance:.1f}x ATR, S:{dist_to_support:.1f}x ATR)"
+            reason_code = "sr_neutral"
+            confidence_delta = 0.0
+        else:
+            reason = f"S/R opposes {direction.lower()} (price near {'resistance' if direction == 'LONG' else 'support'})"
+            reason_code = "sr_opposed"
+            confidence_delta = -0.04
+
+        return AgentVerdict(
+            name="support_resistance",
+            score=score,
+            passed=passed,
+            weight=self._weight_for("support_resistance"),
+            reason=reason,
+            reason_code=reason_code,
+            confidence_delta=confidence_delta,
+            metadata={
+                "nearest_resistance": nearest_resistance,
+                "nearest_support": nearest_support,
+                "dist_to_resistance_atr": round(dist_to_resistance, 2),
+                "dist_to_support_atr": round(dist_to_support, 2),
+            },
         )
 
     def _evaluate_pair_performance(self, ctx: AgentDecisionContext) -> Optional[AgentVerdict]:
