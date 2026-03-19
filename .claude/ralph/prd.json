@@ -1,6 +1,6 @@
 {
   "project": "ML_Engine",
-  "branchName": "main",
+  "branchName": "ralph/buddy-self-improvement-loop",
   "description": "Buddy Self-Improvement Loop — Transform Buddy from a static trading bot into a self-improving learning system that captures what works, extracts patterns from trade outcomes, and evolves its own configuration autonomously across sessions",
   "userStories": [
     {
@@ -18,7 +18,7 @@
       ],
       "priority": 1,
       "passes": true,
-      "notes": "DONE. .claude/ infrastructure bootstrapped: CLAUDE.md, learnings.md, rules/trading.md, rules/improvement.md, state.json all exist."
+      "notes": "Foundation story. .claude/ already exists with settings.local.json — add to it, don't overwrite. CLAUDE.md doesn't exist yet."
     },
     {
       "id": "US-002",
@@ -34,7 +34,7 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "State file enables session continuity. ContinuousScanner already has _run_smart_loop() at src/scanner/automation/continuous.py:257."
     },
     {
@@ -51,7 +51,7 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "sync_closed_trades_rl() is at src/scanner/execution.py. Each journal entry has full context: gates, agents, regime, outcome."
     },
     {
@@ -68,7 +68,7 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "This is the evolution mechanism. Patterns that repeat become rules that actively gate or adjust trading behavior."
     },
     {
@@ -85,7 +85,7 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "This closes the loop: trade outcome → learning → rule → config change → better trades. Bounds prevent runaway tuning."
     },
     {
@@ -102,7 +102,7 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Per-pair tuning is critical. EUR_USD 13.6 ATR behaves differently from USD_JPY 27.3 ATR. The scan phase calculates SL/TP in engine.py around line 1397."
     },
     {
@@ -119,7 +119,7 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "This is the meta-learning dashboard. Without metrics, we can't know if the learning system itself is improving."
     },
     {
@@ -135,7 +135,7 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Observations build context even from non-trades. This data can later feed into a more sophisticated meta-learner."
     },
     {
@@ -152,7 +152,7 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "self_refine.py exists at project root. This wires LLM reasoning into the learning loop for qualitative insights."
     },
     {
@@ -168,7 +168,7 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "Context discipline. Files must stay concise or they become noise. Archive aggressively."
     },
     {
@@ -186,7 +186,7 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "buddy_scanner.py already has CLI with scan/watch/trade subcommands. Add 'learn' alongside."
     },
     {
@@ -206,7 +206,7 @@
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "This is the integration story. All components from US-002 through US-010 get wired into the continuous loop here."
     }
   ]

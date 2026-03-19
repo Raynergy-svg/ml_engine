@@ -1,178 +1,148 @@
-"""Session improvement metrics tracking.
+"""Improvement tracker — measures whether the learning system itself is improving.
 
-Tracks win rates, learning velocity, and improvement trends over time.
-Implementation target: PRD US-007.
+US-007: Add session improvement summary and metrics tracking.
 """
 
 from __future__ import annotations
 
 import json
-import os
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+logger = logging.getLogger(__name__)
+
+IMPROVEMENT_LOG_PATH = Path("trained_data/improvement_log.jsonl")
+
 
 class ImprovementTracker:
-    """Records and tracks improvement metrics across sessions."""
+    """Records and analyzes session-level improvement metrics."""
 
-    LOG_FILE = "trained_data/improvement_log.jsonl"
-
-    def __init__(self, project_root: Optional[str] = None):
-        self._root = Path(project_root) if project_root else Path.cwd()
-        self._log_path = self._root / self.LOG_FILE
-        self._log_path.parent.mkdir(parents=True, exist_ok=True)
+    def __init__(self, log_path: Optional[Path] = None):
+        self.log_path = log_path or IMPROVEMENT_LOG_PATH
 
     def record_session(
         self,
-        session_id: str = None,
-        scan_count: int = 0,
-        trade_count: int = 0,
-        wins: int = 0,
-        losses: int = 0,
-        total_pnl: float = 0.0,
-        learnings_extracted: int = 0,
+        trades: List[Dict[str, Any]],
+        learnings_added: int = 0,
         rules_promoted: int = 0,
-        config_adjustments: int = 0,
-        duration_minutes: float = 0.0,
-        **extra,
-    ) -> None:
-        """Record a session's improvement metrics to the JSONL log."""
-        entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "session_id": session_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S"),
-            "scan_count": scan_count,
-            "trade_count": trade_count,
+        config_adjustments: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Append a session record to improvement_log.jsonl."""
+        closed = [t for t in trades if t.get("outcome")]
+        wins = sum(1 for t in closed if t["outcome"].get("trade_won", False))
+        losses = len(closed) - wins
+        net_pnl = sum(t["outcome"].get("realized_pl", 0) for t in closed)
+        avg_pips = 0.0
+        if closed:
+            avg_pips = sum(abs(t["outcome"].get("pnl_pips", 0)) for t in closed) / len(closed)
+
+        # Snapshot agent weights
+        weights_snapshot: Dict[str, float] = {}
+        try:
+            wp = Path("trained_data/models/agent_weights.json")
+            if wp.exists():
+                weights_snapshot = json.loads(wp.read_text())
+        except Exception:
+            pass
+
+        record = {
+            "date": datetime.now(timezone.utc).isoformat(),
+            "session_trades": len(closed),
             "wins": wins,
             "losses": losses,
-            "win_rate": round(wins / max(trade_count, 1), 4),
-            "total_pnl": round(total_pnl, 2),
-            "learnings_extracted": learnings_extracted,
+            "net_pnl": round(net_pnl, 2),
+            "win_rate": round(wins / len(closed), 3) if closed else 0.0,
+            "avg_pips": round(avg_pips, 1),
+            "learnings_added": learnings_added,
             "rules_promoted": rules_promoted,
-            "config_adjustments": config_adjustments,
-            "duration_minutes": round(duration_minutes, 1),
+            "config_adjustments": config_adjustments or [],
+            "agent_weights_snapshot": weights_snapshot,
         }
-        entry.update(extra)
 
-        with open(self._log_path, "a") as f:
-            f.write(json.dumps(entry) + "\n")
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.log_path, "a") as f:
+            f.write(json.dumps(record, default=str) + "\n")
 
-    def _load_entries(self) -> List[Dict[str, Any]]:
-        """Load all JSONL entries."""
-        if not self._log_path.exists():
-            return []
-        entries = []
-        for line in self._log_path.read_text().strip().split("\n"):
-            line = line.strip()
-            if line:
-                try:
-                    entries.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-        return entries
+        logger.info("Session recorded: %d trades, %.0f%% win, $%.2f P/L", len(closed), record["win_rate"] * 100, net_pnl)
+        return record
 
-    def get_trend(self, window: int = 10) -> dict:
-        """Compute improvement trend over the last N sessions.
+    def get_trend(self, window: int = 10) -> Dict[str, str]:
+        """Return rolling metrics over last N sessions."""
+        records = self._load_records()
+        if len(records) < 2:
+            return {"win_rate_trend": "insufficient_data", "avg_pnl_trend": "insufficient_data", "learning_velocity": "0"}
 
-        Returns:
-            Dict with trend metrics: win_rate_trend, pnl_trend,
-            learning_velocity, avg_trades_per_session.
-        """
-        entries = self._load_entries()
-        if not entries:
-            return {
-                "sessions_analyzed": 0,
-                "win_rate_trend": "insufficient_data",
-                "pnl_trend": "insufficient_data",
-                "learning_velocity": 0,
-            }
+        recent = records[-window:]
+        older = records[:-window] if len(records) > window else records[:1]
 
-        recent = entries[-window:]
-        older = entries[:-window] if len(entries) > window else []
+        recent_wr = _avg([r.get("win_rate", 0) for r in recent])
+        older_wr = _avg([r.get("win_rate", 0) for r in older])
+        recent_pnl = _avg([r.get("net_pnl", 0) for r in recent])
+        older_pnl = _avg([r.get("net_pnl", 0) for r in older])
+        learning_vel = _avg([r.get("learnings_added", 0) for r in recent])
 
-        recent_wr = (
-            sum(e.get("win_rate", 0) for e in recent) / len(recent)
-            if recent
-            else 0
-        )
-        older_wr = (
-            sum(e.get("win_rate", 0) for e in older) / len(older)
-            if older
-            else recent_wr
-        )
-
-        recent_pnl = sum(e.get("total_pnl", 0) for e in recent)
-        older_pnl = sum(e.get("total_pnl", 0) for e in older) if older else 0
-
-        total_learnings = sum(e.get("learnings_extracted", 0) for e in recent)
-        total_days = max(len(recent), 1)
-
-        wr_delta = recent_wr - older_wr
-        if wr_delta > 0.02:
-            wr_trend = "improving"
-        elif wr_delta < -0.02:
-            wr_trend = "declining"
-        else:
-            wr_trend = "stable"
-
-        pnl_delta = recent_pnl - older_pnl
-        if pnl_delta > 50:
-            pnl_trend = "improving"
-        elif pnl_delta < -50:
-            pnl_trend = "declining"
-        else:
-            pnl_trend = "stable"
+        def _trend(recent_val: float, older_val: float) -> str:
+            diff = recent_val - older_val
+            if abs(diff) < 0.02:
+                return "stable"
+            return "improving" if diff > 0 else "declining"
 
         return {
-            "sessions_analyzed": len(entries),
-            "window": min(window, len(entries)),
-            "recent_win_rate": round(recent_wr, 4),
-            "win_rate_trend": wr_trend,
-            "win_rate_delta": round(wr_delta, 4),
-            "recent_pnl": round(recent_pnl, 2),
-            "pnl_trend": pnl_trend,
-            "learning_velocity": round(total_learnings / total_days, 1),
-            "avg_trades_per_session": round(
-                sum(e.get("trade_count", 0) for e in recent) / len(recent), 1
-            ),
-            "total_rules_promoted": sum(
-                e.get("rules_promoted", 0) for e in entries
-            ),
-            "total_config_adjustments": sum(
-                e.get("config_adjustments", 0) for e in entries
-            ),
+            "win_rate_trend": _trend(recent_wr, older_wr),
+            "avg_pnl_trend": _trend(recent_pnl, older_pnl),
+            "learning_velocity": f"{learning_vel:.1f}",
         }
 
     def generate_report(self) -> str:
-        """Generate a human-readable improvement report."""
-        trend = self.get_trend()
-        entries = self._load_entries()
+        """Return formatted improvement report string."""
+        records = self._load_records()
+        if not records:
+            return "No improvement data recorded yet."
 
-        if not entries:
-            return "No session data recorded yet."
+        total_trades = sum(r.get("session_trades", 0) for r in records)
+        total_wins = sum(r.get("wins", 0) for r in records)
+        total_pnl = sum(r.get("net_pnl", 0) for r in records)
+        overall_wr = total_wins / total_trades if total_trades else 0
+
+        # Best/worst pair (from recent records)
+        pair_pnl: Dict[str, float] = {}
+        for r in records:
+            for adj in r.get("config_adjustments", []):
+                pass  # adjustments don't have pair info directly
+
+        trend = self.get_trend()
+        total_learnings = sum(r.get("learnings_added", 0) for r in records)
+        total_promotions = sum(r.get("rules_promoted", 0) for r in records)
 
         lines = [
-            "# Improvement Report",
-            f"",
-            f"**Sessions tracked:** {trend['sessions_analyzed']}",
-            f"**Recent win rate:** {trend['recent_win_rate']:.1%} ({trend['win_rate_trend']})",
-            f"**Recent P/L:** ${trend['recent_pnl']:.2f} ({trend['pnl_trend']})",
-            f"**Learning velocity:** {trend['learning_velocity']:.1f} learnings/session",
-            f"**Avg trades/session:** {trend['avg_trades_per_session']:.1f}",
-            f"**Total rules promoted:** {trend['total_rules_promoted']}",
-            f"**Total config adjustments:** {trend['total_config_adjustments']}",
+            "=== Improvement Report ===",
+            f"Sessions: {len(records)}",
+            f"Total trades: {total_trades} ({total_wins}W / {total_trades - total_wins}L)",
+            f"Overall win rate: {overall_wr:.0%}",
+            f"Total P/L: ${total_pnl:.2f}",
+            f"Total learnings extracted: {total_learnings}",
+            f"Total rules promoted: {total_promotions}",
+            f"Win rate trend: {trend['win_rate_trend']}",
+            f"P/L trend: {trend['avg_pnl_trend']}",
+            f"Learning velocity: {trend['learning_velocity']}/session",
         ]
-
-        # Last 5 sessions summary
-        recent = entries[-5:]
-        if recent:
-            lines.append("")
-            lines.append("## Recent Sessions")
-            for e in reversed(recent):
-                ts = e.get("timestamp", "?")[:10]
-                wr = e.get("win_rate", 0)
-                pnl = e.get("total_pnl", 0)
-                tc = e.get("trade_count", 0)
-                lines.append(f"- {ts}: {tc} trades, {wr:.0%} WR, ${pnl:.2f} P/L")
-
         return "\n".join(lines)
+
+    def _load_records(self) -> List[Dict[str, Any]]:
+        """Load all records from JSONL file."""
+        if not self.log_path.exists():
+            return []
+        records = []
+        for line in self.log_path.read_text().strip().split("\n"):
+            if line.strip():
+                try:
+                    records.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        return records
+
+
+def _avg(values: List[float]) -> float:
+    return sum(values) / len(values) if values else 0.0

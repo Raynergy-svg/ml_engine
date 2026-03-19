@@ -89,6 +89,7 @@ from cli.training_ops import (
     retrain_all,
 )
 from cli.candle_optimizer import find_optimal_candles
+from cli.learn_commands import handle_learn
 
 # ---------------------------------------------------------------------------
 # Global state
@@ -562,6 +563,7 @@ _DISPATCH_TABLE: dict[str, Any] = {
     "model-status": _handle_model_status,
     "find-candles": _handle_find_candles,
     "transfer": _handle_transfer,
+    "learn": handle_learn,
 }
 
 
