@@ -41,6 +41,7 @@ COMMANDS = [
     "monitor",
     "find-candles",
     "transfer",
+    "learn",
 ]
 
 CLI_EPILOG = """
@@ -947,6 +948,41 @@ def _add_correlation_transfer_arguments(parser: argparse.ArgumentParser) -> None
     parser.add_argument("--transfer-epochs", type=int, default=50, help=argparse.SUPPRESS)
 
 
+def _add_learn_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add learning loop CLI arguments (buddy learn command)."""
+    learn_group = parser.add_argument_group("Learn", "Self-improvement learning loop commands")
+    learn_group.add_argument(
+        "--analyze",
+        action="store_true",
+        default=False,
+        help="For learn: run trade outcome analysis on all unanalyzed journal entries",
+    )
+    learn_group.add_argument(
+        "--promote",
+        action="store_true",
+        default=False,
+        help="For learn: run promotion check and promote qualifying patterns to rules",
+    )
+    learn_group.add_argument(
+        "--consolidate",
+        action="store_true",
+        default=False,
+        help="For learn: run learnings consolidation (archive promoted, group by category)",
+    )
+    learn_group.add_argument(
+        "--report",
+        action="store_true",
+        default=False,
+        help="For learn: print improvement tracker report (total trades, win rate, trends)",
+    )
+    learn_group.add_argument(
+        "--status",
+        action="store_true",
+        default=False,
+        help="For learn: print current state from .claude/state.json and recent learnings",
+    )
+
+
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the main argument parser.
 
@@ -979,6 +1015,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     _add_wandb_arguments(parser)
     _add_multi_pair_arguments(parser)
     _add_correlation_transfer_arguments(parser)
+    _add_learn_arguments(parser)
 
     return parser
 

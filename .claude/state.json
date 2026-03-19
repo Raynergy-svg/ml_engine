@@ -15,15 +15,25 @@
     "Minimum R:R ratio gate (1.2:1)",
     "Scan cycle JSONL logging",
     "Per-pair performance tracking",
-    "Bootstrap .claude/ learning infrastructure"
+    "Bootstrap .claude/ learning infrastructure",
+    "US-002: Session state engine (StateEngine class)",
+    "US-003: Trade outcome analyzer (LearningEngine.analyze_trade)",
+    "US-004: Rule promotion (3+ observations → promoted rules)",
+    "US-005: Adaptive config tuner (rules → config changes)",
+    "US-006: Per-pair adaptive SL/TP multipliers",
+    "US-007: Improvement tracker and meta-learning metrics",
+    "US-008: Observation logging for market patterns",
+    "US-009: LLM deep analysis for losing trades (>$100)",
+    "US-010: Learnings consolidation and anti-proliferation",
+    "US-011: buddy learn CLI command",
+    "US-012: Full learning loop integration into ContinuousScanner"
   ],
-  "next": "Run next scan cycle with improved position sizing and analyze results",
+  "next": "Run scan cycle in watch mode to validate full learning loop end-to-end",
   "open_questions": [
     "EUR_USD model predicted LONG but pair was bearish — is the model stale or is this a regime issue?",
-    "Should we increase min_confidence threshold given EUR_USD losses at 67% confidence?",
-    "Walk-forward orchestrator (US-005 from old PRD) still deferred — needs train-joint run first"
+    "Should we increase min_confidence threshold given EUR_USD losses at 67% confidence?"
   ],
-  "last_updated": "2026-03-17T06:15:00Z",
+  "last_updated": "2026-03-18T00:00:00Z",
   "portfolio_snapshot": {
     "nav": 102580.84,
     "open_trades": 0,
@@ -33,5 +43,6 @@
     "session_losses": 2,
     "win_rate": 0.60
   },
-  "improvement_focus": "Self-improvement loop infrastructure (learnings → rules → config adaptation)"
+  "improvement_focus": "Full self-improvement loop live — monitoring learning extraction and rule promotion",
+  "scan_cycle_count": 0
 }

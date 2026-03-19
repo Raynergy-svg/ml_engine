@@ -1,259 +1,139 @@
 """Session state engine for cross-session continuity.
 
-Persists portfolio state, goals, and progress to .claude/state.json.
-Implementation target: PRD US-002.
+Persists trading state between sessions so the next session can resume
+intelligently without re-discovering context.
+
+US-002: Create session state engine for cross-session continuity.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
+
+STATE_PATH = Path(".claude/state.json")
+
+_DEFAULT_STATE: Dict[str, Any] = {
+    "goal": "",
+    "status": "ready",
+    "done": [],
+    "next": "",
+    "open_questions": [],
+    "last_updated": "",
+    "portfolio_snapshot": {
+        "nav": 0.0,
+        "open_trades": 0,
+        "total_realized_pnl": 0.0,
+        "session_trades": 0,
+        "session_wins": 0,
+        "session_losses": 0,
+        "win_rate": 0.0,
+    },
+    "improvement_focus": "",
+}
 
 
 class StateEngine:
-    """Manages cross-session state persistence.
+    """Manages .claude/state.json for cross-session continuity."""
 
-    Reads and writes .claude/state.json to maintain continuity across
-    scanner sessions. Tracks portfolio snapshots, scan history, and
-    learnings with bounded list sizes to prevent unbounded growth.
-    """
+    def __init__(self, state_path: Optional[Path] = None):
+        self.state_path = state_path or STATE_PATH
 
-    STATE_FILE = ".claude/state.json"
+    def load_state(self) -> Dict[str, Any]:
+        """Read .claude/state.json and return dict (or empty default if missing)."""
+        if not self.state_path.exists():
+            return dict(_DEFAULT_STATE)
+        try:
+            data = json.loads(self.state_path.read_text())
+            return data
+        except Exception as e:
+            logger.warning(f"Failed to load state: {e}")
+            return dict(_DEFAULT_STATE)
 
-    _MAX_SCAN_HISTORY = 100
-    _MAX_RECENT_LEARNINGS = 20
+    def save_state(
+        self,
+        goal: str,
+        status: str,
+        done: List[str],
+        next_action: str,
+        open_questions: Optional[List[str]] = None,
+        portfolio: Optional[Dict[str, Any]] = None,
+        improvement_focus: str = "",
+    ) -> None:
+        """Write state to .claude/state.json."""
+        state = {
+            "goal": goal,
+            "status": status,
+            "done": done,
+            "next": next_action,
+            "open_questions": open_questions or [],
+            "last_updated": datetime.now(timezone.utc).isoformat(),
+            "portfolio_snapshot": portfolio or _DEFAULT_STATE["portfolio_snapshot"],
+            "improvement_focus": improvement_focus,
+        }
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self.state_path.write_text(json.dumps(state, indent=2, default=str))
+        logger.info("State saved to %s", self.state_path)
 
-    _DEFAULT_STATE: dict[str, Any] = {
-        "goal": "Autonomous scan-trade-learn loop",
-        "status": "in-progress",
-        "done": [],
-        "next": "",
-        "open_questions": [],
-        "last_updated": "",
-        "portfolio_snapshot": {
-            "nav": 0.0,
-            "open_trades": 0,
-            "total_realized_pnl": 0.0,
-            "session_trades": 0,
-            "session_wins": 0,
-            "session_losses": 0,
-            "win_rate": 0.0,
-        },
-        "improvement_focus": "",
-        "scan_history": [],
-        "recent_learnings": [],
-    }
+    def update_portfolio_snapshot(self) -> Dict[str, Any]:
+        """Fetch NAV from OANDA and open trade count, update state."""
+        import requests
 
-    def __init__(self, base_dir: str | Path | None = None) -> None:
-        """Initialize the state engine.
+        state = self.load_state()
+        token = os.getenv("OANDA_API_TOKEN", "")
+        acct = os.getenv("OANDA_ACCOUNT_ID", "")
+        base = "https://api-fxpractice.oanda.com"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-        Args:
-            base_dir: Project root directory. Defaults to the current
-                working directory. The state file path is resolved
-                relative to this directory.
-        """
-        self._base_dir = Path(base_dir) if base_dir else Path.cwd()
-        self._state_path = self._base_dir / self.STATE_FILE
-
-    @property
-    def state_path(self) -> Path:
-        """Absolute path to the state file."""
-        return self._state_path
-
-    def load_state(self) -> dict[str, Any]:
-        """Read and return the persisted state.
-
-        Returns the full state dictionary from disk. If the file does
-        not exist or contains invalid JSON, returns a default skeleton
-        that preserves the expected schema.
-        """
-        if not self._state_path.exists():
-            return self._build_default_state()
+        snapshot = state.get("portfolio_snapshot", dict(_DEFAULT_STATE["portfolio_snapshot"]))
 
         try:
-            raw = self._state_path.read_text(encoding="utf-8")
-            state = json.loads(raw)
-            if not isinstance(state, dict):
-                return self._build_default_state()
-            return state
-        except (json.JSONDecodeError, OSError):
-            return self._build_default_state()
-
-    def save_state(self, **kwargs: Any) -> None:
-        """Merge keyword arguments into existing state and persist.
-
-        Performs a shallow merge of kwargs into the current state,
-        stamps ``last_updated`` with the current UTC time, and writes
-        the result back to disk atomically.
-
-        Args:
-            **kwargs: Key-value pairs to merge into state. Values
-                overwrite existing keys at the top level.
-        """
-        state = self.load_state()
-        state.update(kwargs)
-        state["last_updated"] = self._utc_now_iso()
-        self._write_state(state)
-
-    def update_portfolio_snapshot(
-        self,
-        nav: float,
-        open_trades: int,
-        total_realized_pnl: float,
-        session_trades: int,
-        session_wins: int,
-        session_losses: int,
-    ) -> None:
-        """Update the portfolio_snapshot sub-object.
-
-        Computes win_rate from session_wins and session_trades, then
-        persists the updated snapshot.
-
-        Args:
-            nav: Current net asset value.
-            open_trades: Number of currently open positions.
-            total_realized_pnl: Cumulative realized profit/loss.
-            session_trades: Total trades in the current session.
-            session_wins: Winning trades in the current session.
-            session_losses: Losing trades in the current session.
-        """
-        win_rate = round(session_wins / session_trades, 2) if session_trades > 0 else 0.0
-
-        snapshot = {
-            "nav": nav,
-            "open_trades": open_trades,
-            "total_realized_pnl": total_realized_pnl,
-            "session_trades": session_trades,
-            "session_wins": session_wins,
-            "session_losses": session_losses,
-            "win_rate": win_rate,
-        }
-
-        self.save_state(portfolio_snapshot=snapshot)
-
-    def record_scan_cycle(
-        self,
-        scan_result_count: int,
-        tradeable_count: int,
-        duration_secs: float,
-    ) -> None:
-        """Record a completed scan cycle in the scan history.
-
-        Appends a timestamped entry and trims the list to the most
-        recent ``_MAX_SCAN_HISTORY`` entries.
-
-        Args:
-            scan_result_count: Number of pairs scanned.
-            tradeable_count: Number of tradeable setups found.
-            duration_secs: Wall-clock duration of the scan in seconds.
-        """
-        state = self.load_state()
-        history = state.get("scan_history", [])
-
-        entry = {
-            "timestamp": self._utc_now_iso(),
-            "scan_result_count": scan_result_count,
-            "tradeable_count": tradeable_count,
-            "duration_secs": round(duration_secs, 2),
-        }
-        history.append(entry)
-        history = history[-self._MAX_SCAN_HISTORY :]
-
-        state["scan_history"] = history
-        state["last_updated"] = self._utc_now_iso()
-        self._write_state(state)
-
-    def record_learning(self, learning_text: str) -> None:
-        """Record a learning insight.
-
-        Appends a timestamped learning entry and trims the list to the
-        most recent ``_MAX_RECENT_LEARNINGS`` entries.
-
-        Args:
-            learning_text: Free-text description of the learning.
-        """
-        state = self.load_state()
-        learnings = state.get("recent_learnings", [])
-
-        entry = {
-            "timestamp": self._utc_now_iso(),
-            "text": learning_text,
-        }
-        learnings.append(entry)
-        learnings = learnings[-self._MAX_RECENT_LEARNINGS :]
-
-        state["recent_learnings"] = learnings
-        state["last_updated"] = self._utc_now_iso()
-        self._write_state(state)
-
-    def get_session_summary(self) -> dict[str, Any]:
-        """Return a summary dictionary of the current session state.
-
-        Provides a snapshot suitable for logging or display, including
-        portfolio metrics, recent scan activity, and learning count.
-        """
-        state = self.load_state()
-        snapshot = state.get("portfolio_snapshot", {})
-        scan_history = state.get("scan_history", [])
-        learnings = state.get("recent_learnings", [])
-
-        summary: dict[str, Any] = {
-            "status": state.get("status", "unknown"),
-            "goal": state.get("goal", ""),
-            "next": state.get("next", ""),
-            "last_updated": state.get("last_updated", ""),
-            "portfolio": {
-                "nav": snapshot.get("nav", 0.0),
-                "open_trades": snapshot.get("open_trades", 0),
-                "total_realized_pnl": snapshot.get("total_realized_pnl", 0.0),
-                "win_rate": snapshot.get("win_rate", 0.0),
-                "session_trades": snapshot.get("session_trades", 0),
-            },
-            "scan_cycles_recorded": len(scan_history),
-            "recent_learnings_count": len(learnings),
-            "improvement_focus": state.get("improvement_focus", ""),
-        }
-
-        if scan_history:
-            last_scan = scan_history[-1]
-            summary["last_scan"] = {
-                "timestamp": last_scan.get("timestamp", ""),
-                "pairs_scanned": last_scan.get("scan_result_count", 0),
-                "tradeable": last_scan.get("tradeable_count", 0),
-                "duration_secs": last_scan.get("duration_secs", 0.0),
-            }
-
-        return summary
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
-    def _build_default_state(self) -> dict[str, Any]:
-        """Return a fresh copy of the default state skeleton."""
-        state = json.loads(json.dumps(self._DEFAULT_STATE))
-        state["last_updated"] = self._utc_now_iso()
-        return state
-
-    def _write_state(self, state: dict[str, Any]) -> None:
-        """Write state to disk, creating parent directories if needed."""
-        self._state_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = self._state_path.with_suffix(".tmp")
-        try:
-            tmp_path.write_text(
-                json.dumps(state, indent=2, default=str) + "\n",
-                encoding="utf-8",
+            resp = requests.get(
+                f"{base}/v3/accounts/{acct}/summary",
+                headers=headers,
+                timeout=10,
             )
-            tmp_path.replace(self._state_path)
-        except BaseException:
-            if tmp_path.exists():
-                tmp_path.unlink()
-            raise
+            if resp.status_code == 200:
+                acct_data = resp.json().get("account", {})
+                snapshot["nav"] = float(acct_data.get("NAV", 0))
+                snapshot["open_trades"] = int(acct_data.get("openTradeCount", 0))
+                snapshot["total_realized_pnl"] = float(acct_data.get("pl", 0))
+        except Exception as e:
+            logger.warning(f"Failed to fetch OANDA account summary: {e}")
 
-    @staticmethod
-    def _utc_now_iso() -> str:
-        """Return the current UTC time as an ISO 8601 string."""
-        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Update trade stats from journal
+        try:
+            journal_path = Path("trained_data/trade_journal_rl.json")
+            if journal_path.exists():
+                entries = json.loads(journal_path.read_text())
+                closed = [e for e in entries if e.get("outcome") is not None]
+                wins = sum(1 for e in closed if e["outcome"].get("trade_won", False))
+                losses = len(closed) - wins
+                snapshot["session_trades"] = len(closed)
+                snapshot["session_wins"] = wins
+                snapshot["session_losses"] = losses
+                snapshot["win_rate"] = round(wins / len(closed), 2) if closed else 0.0
+        except Exception as e:
+            logger.debug(f"Journal stats error: {e}")
+
+        state["portfolio_snapshot"] = snapshot
+        state["last_updated"] = datetime.now(timezone.utc).isoformat()
+        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        self.state_path.write_text(json.dumps(state, indent=2, default=str))
+        logger.info("Portfolio snapshot updated: NAV=%.2f, open=%d", snapshot["nav"], snapshot["open_trades"])
+        return snapshot
+
+    def increment_scan_cycle(self) -> int:
+        """Increment and return the scan cycle count (stored in state)."""
+        state = self.load_state()
+        count = state.get("scan_cycle_count", 0) + 1
+        state["scan_cycle_count"] = count
+        state["last_updated"] = datetime.now(timezone.utc).isoformat()
+        self.state_path.write_text(json.dumps(state, indent=2, default=str))
+        return count

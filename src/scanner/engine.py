@@ -8,6 +8,7 @@ Handles data fetching, feature engineering, and incremental caching.
 from __future__ import annotations
 
 from copy import deepcopy
+import json as _json
 import logging
 import math
 import time
@@ -778,6 +779,49 @@ class Scanner:
 
         try:
             model_source_pair = self._resolve_model_source_pair(pair)
+
+            # --- MultiPairInference fallback path ---
+            # MultiPairInference.predict() has a different signature and returns
+            # a simple (direction, confidence) tuple instead of a signal object.
+            if self._ensemble_type == "MultiPairInference":
+                with self._ensemble_lock:
+                    direction_raw, conf_raw = self._modular_ensemble.predict(
+                        df_feat, pair,
+                    )
+                direction = direction_raw.upper() if direction_raw else "HOLD"
+                confidence = float(conf_raw) if conf_raw is not None else 0.5
+                confidence = confidence / 100.0 if confidence > 1.0 else confidence
+                confidence = min(max(confidence, 0.0), 1.0)
+                details = {
+                    "tcn_probability": 0.5,
+                    "momentum": 0.0,
+                    "momentum_acceleration": False,
+                    "momentum_passed": True,
+                    "confidence_score": confidence,
+                    "confidence_passed": confidence >= 0.55,
+                    "risk_passed": True,
+                    "volatility_gate_passed": True,
+                    "drawdown": None,
+                    "meta_confidence": confidence,
+                    "trade_allowed": confidence >= 0.55,
+                    "volatility_regime_name": "UNKNOWN",
+                    "reason": "MultiPairInference fallback",
+                    "reason_codes": [],
+                    "core_score": confidence,
+                    "final_score": confidence,
+                    "model_source_pair": model_source_pair,
+                }
+                return (
+                    direction,
+                    confidence,
+                    0.0,   # tcn_conf
+                    confidence,  # ridge_conf
+                    confidence >= 0.55,  # gates_passed
+                    None,  # volatility_regime
+                    details,
+                )
+
+            # --- Primary: ModularEnsembleInference path ---
             # Shared ModularEnsembleInference is mutable (instrument-specific loading),
             # so serialize calls across scanner worker threads.
             with self._ensemble_lock:
@@ -1393,14 +1437,27 @@ class Scanner:
             metrics = self._calculate_metrics(df_feat, pair)
 
             # Dynamic ATR-based SL/TP (replaces fixed 15/30 defaults)
+            # Per-pair adaptive multipliers (US-006) override global config
+            _pair_sl_mult = self.config.atr_sl_multiplier
+            _pair_tp_mult = self.config.atr_tp_multiplier
+            try:
+                _pair_cfg_path = Path("trained_data/models/pair_sl_tp_config.json")
+                if _pair_cfg_path.exists():
+                    _pair_cfg = _json.loads(_pair_cfg_path.read_text())
+                    if pair in _pair_cfg:
+                        _pair_sl_mult = _pair_cfg[pair].get("atr_sl_multiplier", _pair_sl_mult)
+                        _pair_tp_mult = _pair_cfg[pair].get("atr_tp_multiplier", _pair_tp_mult)
+            except Exception:
+                pass
+
             if atr_pips > 0:
                 sl_pips = max(
                     self.config.min_sl_pips,
-                    min(atr_pips * self.config.atr_sl_multiplier, self.config.max_sl_pips),
+                    min(atr_pips * _pair_sl_mult, self.config.max_sl_pips),
                 )
                 tp_pips = max(
                     self.config.min_tp_pips,
-                    min(atr_pips * self.config.atr_tp_multiplier, self.config.max_tp_pips),
+                    min(atr_pips * _pair_tp_mult, self.config.max_tp_pips),
                 )
                 # High-confidence TP bonus
                 if confidence >= self.config.high_prob_threshold:

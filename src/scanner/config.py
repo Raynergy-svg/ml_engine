@@ -127,6 +127,8 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_pair_performance_agent": True,
         # Minimum risk:reward ratio to execute a trade
         "min_risk_reward_ratio": 1.2,
+        # LLM deep analysis for losing trades
+        "enable_llm_trade_analysis": True,
     },
 }
 VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
@@ -360,6 +362,7 @@ class ScannerConfig:
 
     # --- Learning Loop Config (post-trade agent weight updates) ---
     enable_agent_learning: bool = True
+    enable_llm_trade_analysis: bool = False  # LLM deep analysis for losing trades (US-009)
     weight_boost_on_win: float = 0.1  # Weight increase on winning trade
     weight_penalty_on_loss: float = 0.15  # Weight decrease on losing trade
 
