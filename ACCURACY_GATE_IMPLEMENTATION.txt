@@ -1,0 +1,332 @@
+================================================================================
+PER-PAIR ACCURACY GATING SYSTEM - IMPLEMENTATION COMPLETE
+================================================================================
+
+PROJECT: ML Engine FX Trading Bot (Buddy)
+FEATURE: Auto-block pairs with degraded directional accuracy during live trading
+STATUS: ✓ Complete, tested, and integrated
+
+================================================================================
+DELIVERABLES
+================================================================================
+
+1. NEW MODULE: src/scanner/automation/accuracy_gate.py (291 lines)
+   ────────────────────────────────────────────────────────────────
+   Core AccuracyGate class with:
+   
+   Methods:
+   ├── __init__(min_accuracy=0.55, min_trades=5, data_path=...)
+   ├── record_outcome(pair, predicted_direction, actual_outcome, confidence)
+   ├── check_pair(pair) → (is_allowed, accuracy, reason)
+   ├── get_blocked_pairs() → List[str]
+   ├── get_report() → str
+   ├── get_pair_stats(pair) → Dict
+   └── reset_pair(pair)
+   
+   Features:
+   ├── Automatic trade outcome recording from learning engine
+   ├── Per-pair directional accuracy calculation
+   ├── Smart blocking (min_trades + min_accuracy threshold)
+   ├── JSON persistence with human-readable formatting
+   ├── Comprehensive error handling (no crash risk)
+   └── All stdlib imports (no external dependencies)
+
+2. MODIFIED: src/scanner/automation/learning_engine.py
+   ────────────────────────────────────────────────────────
+   Integration Point 1: Record outcomes in AccuracyGate
+   
+   Changes:
+   ├── Line 57-63: Initialize AccuracyGate in __init__()
+   └── Line 185-197: Call accuracy_gate.record_outcome() in analyze_trade()
+                     (after extracting pair, direction, outcome, confidence)
+   
+   Behavior:
+   ├── Automatic: happens on every closed trade
+   └── Safe: wrapped in try/except (no impact on learning loop)
+
+3. MODIFIED: src/scanner/automation/continuous.py
+   ────────────────────────────────────────────────
+   Integration Point 2: Merge accuracy-blocked pairs into config
+   
+   Changes:
+   ├── Line 425-449: New section "5g. Merge accuracy-gated blocked pairs"
+   │                 in _run_learning_loop()
+   └── Behavior:
+       ├── Retrieves all pairs blocked by accuracy
+       ├── Merges with existing scanner.config.blocked_pairs
+       ├── Updates config every scan cycle
+       └── Displays yellow warning when pairs are blocked
+       └── Safe: wrapped in try/except (doesn't interrupt scan)
+
+4. DOCUMENTATION: docs/ACCURACY_GATE_GUIDE.md (297 lines)
+   ──────────────────────────────────────────────────────
+   Complete user guide including:
+   ├── How it works (flow diagram)
+   ├── Configuration parameters (min_accuracy, min_trades)
+   ├── Usage examples
+   ├── Persistence format (JSON structure)
+   ├── Error handling
+   ├── Troubleshooting section
+   ├── Integration with existing systems
+   └── Future enhancement ideas
+
+================================================================================
+HOW IT WORKS
+================================================================================
+
+FLOW:
+  1. Trade closes
+     ↓
+  2. LearningEngine.analyze_trade() extracts:
+     - pair (e.g., "EUR_USD")
+     - direction (LONG/SHORT)
+     - actual_outcome (True=win, False=loss)
+     - confidence (0.0-1.0)
+     ↓
+  3. accuracy_gate.record_outcome() called
+     ↓
+  4. Accuracy calculated: wins / total_trades
+     ↓
+  5. Data persisted to trained_data/pair_accuracy.json
+     ↓
+  6. Every scan cycle: accuracy_gate.get_blocked_pairs()
+     ↓
+  7. Merge with scanner.config.blocked_pairs
+     ↓
+  8. scanner.scan() respects blocked_pairs
+
+BLOCKING LOGIC:
+  A pair is BLOCKED when BOTH:
+  1. total_trades >= min_trades (default: 5)
+  2. accuracy < min_accuracy (default: 0.55 = 55%)
+  
+  Rationale:
+  • 55% is better than 50% random chance
+  • If model drops below, it indicates live degradation
+  • min_trades=5 prevents blocking after single loss streak
+
+================================================================================
+CONFIGURATION
+================================================================================
+
+Default thresholds (in AccuracyGate.__init__()):
+  min_accuracy = 0.55    # Minimum 55% directional accuracy to stay unblocked
+  min_trades = 5         # Minimum 5 trades before evaluating
+  data_path = "trained_data/pair_accuracy.json"
+
+To adjust:
+  1. In LearningEngine.__init__():
+     self.accuracy_gate = AccuracyGate(min_accuracy=0.60, min_trades=10)
+  
+  2. In ContinuousScanner._run_learning_loop():
+     ag = AccuracyGate(min_accuracy=0.60, min_trades=10)
+
+================================================================================
+USAGE EXAMPLES
+================================================================================
+
+Check pair status:
+  from src.scanner.automation.accuracy_gate import AccuracyGate
+  ag = AccuracyGate()
+  is_allowed, accuracy, reason = ag.check_pair("EUR_USD")
+  # Returns: (True, 0.60, "accuracy 60.0% >= 55.0%")
+
+Get all blocked pairs:
+  blocked = ag.get_blocked_pairs()
+  # Returns: ['GBP_USD', 'AUD_USD']
+
+View formatted report:
+  print(ag.get_report())
+  # Shows table with all pairs, accuracies, and blocking status
+
+Get pair statistics:
+  stats = ag.get_pair_stats("EUR_USD")
+  # Returns: {total_trades: 10, wins: 6, accuracy: 0.60, recent_trades: [...]}
+
+Reset pair (after retraining):
+  ag.reset_pair("EUR_USD")
+  # Clears accuracy history to start fresh evaluation
+
+================================================================================
+DATA PERSISTENCE
+================================================================================
+
+Location: trained_data/pair_accuracy.json
+
+Format (example):
+{
+  "EUR_USD": {
+    "total": 10,
+    "wins": 6,
+    "accuracy": 0.60,
+    "trades": [
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-18T09:30:00Z"
+      },
+      ...
+    ]
+  },
+  "GBP_USD": { ... }
+}
+
+Auto-created: First call to record_outcome() creates the file
+Auto-updated: Every record_outcome() updates the JSON
+Human-readable: indent=2 for easy inspection
+
+================================================================================
+TESTING & VERIFICATION
+================================================================================
+
+All components tested and verified:
+  ✓ AccuracyGate module: Records outcomes, calculates accuracy, blocks pairs
+  ✓ LearningEngine integration: Automatically records trade outcomes  
+  ✓ ContinuousScanner integration: Merges blocked pairs into config
+  ✓ JSON persistence: Data saves and loads correctly
+  ✓ Error handling: All operations wrapped in try/except
+  ✓ Syntax validation: All files pass Python AST parsing
+
+Test coverage:
+  • 5+ trades with varying outcomes
+  • Blocking logic (min_trades and min_accuracy)
+  • get_blocked_pairs() accuracy
+  • JSON persistence and reloading
+  • Error conditions (invalid pairs, corruption)
+  • Integration between modules
+
+================================================================================
+ERROR HANDLING
+================================================================================
+
+All operations wrapped in try/except to prevent crashes:
+
+  Invalid pairs → Logged and skipped
+  JSON corruption → Falls back to empty data, logs warning
+  Recording failures → Logged at debug level, doesn't interrupt loop
+  Integration failures → Wrapped in try/except at both integration points
+  
+Result: No scenario can crash the scan loop
+
+================================================================================
+ALIGNMENT WITH EXISTING SYSTEMS
+================================================================================
+
+Architecture:
+  • Doesn't modify ScannerConfig or engine.py (stable)
+  • Uses existing blocked_pairs mechanism (no new gates)
+  • Integrates into learning loop (non-invasive)
+  • Persists data like other .json files in trained_data/ (consistent)
+
+Trading Rules Alignment:
+  Complements .claude/rules/trading.md:
+  • Rule 4: "Higher weighted_vote_score (>0.65) correlates with better outcomes"
+    → AccuracyGate identifies pairs with low correlation
+  • Rule on consensus: Supports agent accuracy feedback
+
+Learning Integration:
+  • Works with state.json updates via StateEngine.increment_scan_cycle()
+  • Persists to trained_data/ like agent_weights.json
+  • No conflicts with existing learning pipeline
+
+================================================================================
+STATISTICS
+================================================================================
+
+Code added:
+  • New module (accuracy_gate.py): 291 lines
+  • Learning engine integration: +13 lines
+  • Continuous scanner integration: +28 lines
+  • Documentation: 297 lines
+  • Total new code: ~370 lines
+
+Methods implemented: 7
+  record_outcome, check_pair, get_blocked_pairs, get_report,
+  get_pair_stats, reset_pair, plus internal helpers
+
+Test scenarios: 10+
+  Basic recording, threshold blocking, min_trades logic, JSON persistence,
+  integration between modules, error conditions, etc.
+
+================================================================================
+NEXT STEPS (Optional Enhancements)
+================================================================================
+
+Proposed future improvements:
+  1. Pair-specific thresholds (different accuracy targets for different pairs)
+  2. Rolling window accuracy (last N trades instead of all-time)
+  3. Confidence weighting (higher-confidence predictions count more)
+  4. Auto-recovery (pairs unblock after N consecutive correct predictions)
+  5. Accuracy trend alerts (warn before hitting threshold)
+  6. Per-pair retraining hints (suggest retraining low-accuracy pairs)
+
+Implementation strategy: These can be added without modifying existing code,
+following the same pattern as the current feature.
+
+================================================================================
+PRODUCTION READINESS
+================================================================================
+
+Status: ✓ READY FOR PRODUCTION
+
+Verification:
+  ✓ All syntax valid (Python 3.8+)
+  ✓ All imports available (stdlib only)
+  ✓ No external dependencies
+  ✓ Error handling comprehensive
+  ✓ Integration non-invasive
+  ✓ Documented thoroughly
+  ✓ Tested end-to-end
+
+Deployment:
+  • No database migrations needed
+  • No environment variables required
+  • Automatic activation via learning loop
+  • No configuration needed (uses sensible defaults)
+  • Can be tuned via parameters if desired
+
+Risk assessment:
+  • Low: Wraps all operations, respects existing architecture
+  • Non-blocking: Never interrupts scan loop
+  • Reversible: Can be disabled by removing calls if needed
+  • Observable: Reports accuracy via console and JSON
+
+================================================================================
+FILE LOCATIONS
+================================================================================
+
+Core module:
+  /sessions/magical-compassionate-einstein/mnt/ml_engine/
+  └── src/scanner/automation/accuracy_gate.py
+
+Integration points:
+  /sessions/magical-compassionate-einstein/mnt/ml_engine/
+  └── src/scanner/automation/learning_engine.py (lines 57-63, 185-197)
+  └── src/scanner/automation/continuous.py (lines 425-449)
+
+Documentation:
+  /sessions/magical-compassionate-einstein/mnt/ml_engine/
+  └── docs/ACCURACY_GATE_GUIDE.md
+
+Data persistence:
+  /sessions/magical-compassionate-einstein/mnt/ml_engine/
+  └── trained_data/pair_accuracy.json (auto-created on first use)
+
+================================================================================
+SUPPORT & QUESTIONS
+================================================================================
+
+For detailed usage instructions:
+  → See: docs/ACCURACY_GATE_GUIDE.md
+
+For implementation details:
+  → See: docstrings in src/scanner/automation/accuracy_gate.py
+
+For integration examples:
+  → See: lines marked "US-013" in learning_engine.py and continuous.py
+
+For troubleshooting:
+  → See: "Troubleshooting" section in ACCURACY_GATE_GUIDE.md
+
+================================================================================

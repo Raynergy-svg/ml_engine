@@ -27,22 +27,27 @@
     "US-010: Learnings consolidation and anti-proliferation",
     "US-011: buddy learn CLI command",
     "US-012: Full learning loop integration into ContinuousScanner",
-    "Robustness hardening: learning_engine.py (agents dict validation, timestamp parsing, pair name validation, duplicate rule prevention, unmatched line logging)",
-    "Robustness hardening: config_tuner.py (file locking for race conditions, comprehensive bounds, persistent rule hashes, case-insensitive regex)",
-    "Robustness hardening: state_engine.py (JSON structure validation, OANDA response validation, env var checks, corrupted journal handling)",
-    "Robustness hardening: improvement_tracker.py (splitlines for cross-platform, empty file handling, division-by-zero prevention)",
+    "Robustness hardening: learning_engine.py (6 fixes)",
+    "Robustness hardening: config_tuner.py (4 fixes — file locking, bounds, persistent hashes)",
+    "Robustness hardening: state_engine.py (4 fixes — OANDA validation, env checks)",
+    "Robustness hardening: improvement_tracker.py (3 fixes — cross-platform, empty file, div-zero)",
     "EUR_USD blocked from trading (100% loss rate, 53.6% val accuracy)",
     "min_confidence raised to 60%+ across balanced/smart/conservative profiles",
-    "blocked_pairs config field added to ScannerConfig + engine + continuous scanner"
+    "blocked_pairs config field added to ScannerConfig + engine + continuous scanner",
+    "Lazy imports in src/scanner/__init__.py (fixes rich dependency blocker)",
+    "Per-pair accuracy gating: AccuracyGate auto-blocks pairs below 55% accuracy after 5 trades",
+    "AccuracyGate integrated into LearningEngine.analyze_trade() and ContinuousScanner learning loop",
+    "Exponential backoff retry (1s→2s→4s, 3 max) for OANDA data fetching in training pipeline",
+    "All 7 pairs successfully retrained (retrain_all_summary.json confirms 7/7 success)"
   ],
-  "next": "Retrain EUR_USD model with per-pair validation splits, then unblock if accuracy > 58%",
+  "next": "Run first live watch mode cycle to validate full learning loop end-to-end. Monitor AccuracyGate behavior with real trade outcomes.",
   "open_questions": [
-    "EUR_USD model accuracy RESOLVED: blocked from trading, root cause = GBP_USD tier2 labels applied to EUR_USD (domain shift). Will unblock after per-pair retrained model is available.",
-    "min_confidence threshold RESOLVED: raised from 50% to 60%+ across profiles. Conservative at 62%.",
-    "5 of 7 pairs failed retraining due to network errors — need to retry USD_JPY, AUD_USD, NZD_USD, USD_CAD, USD_CHF",
-    "Should we add per-pair accuracy tracking to auto-block underperforming pairs in the future?"
+    "EUR_USD model accuracy RESOLVED: blocked from trading. Will auto-unblock via AccuracyGate if retrained model shows >55% accuracy on 5+ trades.",
+    "min_confidence threshold RESOLVED: raised to 60%+ across profiles.",
+    "Should AccuracyGate min_trades threshold be tuned? 5 may be too low for statistical significance but fast enough for protection.",
+    "Per-pair model fine-tuning: joint model at 55.3% direction accuracy — per-pair sweep shows 64-67%. Should we switch to per-pair models?"
   ],
-  "last_updated": "2026-03-18T12:00:00Z",
+  "last_updated": "2026-03-18T14:00:00Z",
   "portfolio_snapshot": {
     "nav": 102580.84,
     "open_trades": 0,
@@ -52,6 +57,6 @@
     "session_losses": 2,
     "win_rate": 0.60
   },
-  "improvement_focus": "Robustness hardening complete. Next: retrain models for blocked pairs, add per-pair accuracy gating",
+  "improvement_focus": "Production readiness: lazy imports, accuracy gating, retry logic complete. Ready for first live validation.",
   "scan_cycle_count": 0
 }

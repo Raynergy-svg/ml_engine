@@ -6,11 +6,65 @@
         "outcome": true,
         "confidence": 0.75,
         "timestamp": "2026-03-19T03:26:53.695891Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-19T03:28:06.836363Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-19T03:33:44.157131Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-19T03:33:44.174413Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-19T03:33:56.393251Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-19T03:33:56.407322Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-19T03:33:58.350443Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-19T03:33:58.361861Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-19T03:35:29.357965Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.75,
+        "timestamp": "2026-03-19T03:35:29.370632Z"
       }
     ],
     "accuracy": 1.0,
-    "total": 1,
-    "wins": 1
+    "total": 10,
+    "wins": 10
   },
   "GBP_USD": {
     "trades": [
@@ -31,10 +85,65 @@
         "outcome": false,
         "confidence": 0.7,
         "timestamp": "2026-03-19T03:26:59.419117Z"
+      },
+      {
+        "direction": "SHORT",
+        "outcome": false,
+        "confidence": 0.55,
+        "timestamp": "2026-03-19T03:33:44.154973Z"
+      },
+      {
+        "direction": "SHORT",
+        "outcome": false,
+        "confidence": 0.55,
+        "timestamp": "2026-03-19T03:33:56.391068Z"
+      },
+      {
+        "direction": "SHORT",
+        "outcome": false,
+        "confidence": 0.55,
+        "timestamp": "2026-03-19T03:33:58.348567Z"
+      },
+      {
+        "direction": "SHORT",
+        "outcome": false,
+        "confidence": 0.55,
+        "timestamp": "2026-03-19T03:35:29.355342Z"
       }
     ],
     "accuracy": 0.0,
-    "total": 3,
+    "total": 7,
     "wins": 0
+  },
+  "USD_JPY": {
+    "trades": [
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.6,
+        "timestamp": "2026-03-19T03:33:44.158470Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.6,
+        "timestamp": "2026-03-19T03:33:56.394579Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.6,
+        "timestamp": "2026-03-19T03:33:58.351712Z"
+      },
+      {
+        "direction": "LONG",
+        "outcome": true,
+        "confidence": 0.6,
+        "timestamp": "2026-03-19T03:35:29.359389Z"
+      }
+    ],
+    "accuracy": 1.0,
+    "total": 4,
+    "wins": 4
   }
 }

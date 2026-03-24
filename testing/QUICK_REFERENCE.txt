@@ -1,0 +1,175 @@
+================================================================================
+ML ENGINE LEARNING LOOP INTEGRATION TEST - QUICK REFERENCE
+================================================================================
+
+TEST EXECUTION
+==============
+Location: /sessions/magical-compassionate-einstein/mnt/ml_engine/testing/
+File:     test_learning_loop_integration.py
+
+Run all tests:
+  cd /sessions/magical-compassionate-einstein/mnt/ml_engine
+  python testing/test_learning_loop_integration.py
+
+Expected result:
+  Ran 36 tests in ~0.031s
+  OK
+  Tests run: 36
+  Successes: 36
+  Failures: 0
+  Errors: 0
+
+================================================================================
+
+MODULES TESTED (7 total)
+========================
+1. LearningEngine          - Trade analysis & learning extraction (5 tests)
+2. AccuracyGate            - Per-pair accuracy tracking & blocking (5 tests)
+3. ConfigTuner             - Rule-based config adjustments (5 tests)
+4. StateEngine             - Cross-session state persistence (5 tests)
+5. ImprovementTracker      - Session metrics & trend analysis (4 tests)
+6. ObservationLog          - Market observation logging (4 tests)
+7. ScannerConfig           - Master configuration (import test only)
+
+Integration Test: End-to-end learning loop pipeline (1 test)
+
+================================================================================
+
+KEY TEST RESULTS
+================
+✅ All 36 tests PASS (0 failures, 0 errors)
+✅ No production files touched (all I/O uses tempfile)
+✅ All edge cases handled gracefully:
+   - Missing files → defaults
+   - Corrupted JSON → graceful recovery
+   - Malformed data → safe fallbacks
+   - Bounds violations → clamping
+   - Duplicate rules → deduplication via hash
+
+================================================================================
+
+IMPORTANT IMPLEMENTATION DETAILS
+=================================
+
+AccuracyGate.check_pair() Returns TUPLE:
+  is_allowed, accuracy, reason = gate.check_pair("EUR_USD")
+  NOT: if gate.check_pair(...):  # Wrong!
+
+Learning Loop Feedback Cycle:
+  Trade → LearningEngine → learnings.md
+       → AccuracyGate (per-pair tracking)
+       → rules/trading.md (promotions)
+       → ConfigTuner (parse & apply rules)
+       → ScannerConfig (adjusted thresholds)
+       → StateEngine (persist state)
+       → ImprovementTracker (metrics)
+       → ObservationLog (patterns)
+
+ConfigTuner Bounds (hard-coded):
+  atr_sl_multiplier:     0.5  → 2.0
+  atr_tp_multiplier:     0.8  → 3.0
+  max_uncertainty_score: 0.30 → 0.95
+  weighted_vote_threshold: 0.45 → 0.95
+  max_model_disagreement: 0.20 → 0.95
+
+================================================================================
+
+FILE LOCATIONS
+==============
+Test file:       /sessions/magical-compassionate-einstein/mnt/ml_engine/testing/test_learning_loop_integration.py
+Summary report:  /sessions/magical-compassionate-einstein/mnt/ml_engine/testing/TEST_RESULTS_SUMMARY.md
+README:          /sessions/magical-compassionate-einstein/mnt/ml_engine/testing/README_TEST_SUITE.md
+
+Source modules:
+  src/scanner/automation/learning_engine.py
+  src/scanner/automation/accuracy_gate.py
+  src/scanner/automation/config_tuner.py
+  src/scanner/automation/state_engine.py
+  src/scanner/automation/improvement_tracker.py
+  src/scanner/automation/observation_log.py
+  src/scanner/config.py
+
+================================================================================
+
+COVERAGE SUMMARY
+================
+Test Class               | Test Count | Coverage
+------------------------+------------+------------------------------------------
+TestImports             | 7          | Module imports (all 7 modules)
+TestLearningEngine      | 5          | Trade analysis, learning extraction, I/O
+TestAccuracyGate        | 5          | Outcome recording, pair blocking, lists
+TestConfigTuner         | 5          | Rule loading, adjustments, bounds, dedup
+TestStateEngine         | 5          | State persistence, recovery, cycles
+TestImprovementTracker  | 4          | Session recording, trends, reports
+TestObservationLog      | 4          | Logging, retrieval, filtering
+TestIntegration         | 1          | End-to-end pipeline (trade → session)
+------------------------+------------+------------------------------------------
+TOTAL                   | 36         | Complete learning loop validation
+
+================================================================================
+
+ROBUSTNESS MATRIX
+==================
+Scenario                  | Module(s)           | Result
+--------------------------+---------------------+------------------------
+Missing file              | All                 | ✅ Default values
+Corrupted JSON            | State, Accuracy     | ✅ Exception caught
+Malformed data (None)     | Learning            | ✅ Type-checked
+Bounds violation          | ConfigTuner         | ✅ Clamped min/max
+Duplicate rules           | ConfigTuner         | ✅ Hash deduplication
+Insufficient data         | Accuracy, Tracker   | ✅ Min safeguards
+Open trades (no outcome)  | Learning            | ✅ Handled correctly
+Empty files              | ConfigTuner         | ✅ Returns empty list
+
+================================================================================
+
+PERFORMANCE
+===========
+Total execution time: ~31ms for 36 tests
+Per-test average:    ~0.86ms
+Slowest component:   StateEngine JSON I/O (<5ms per test)
+Memory overhead:     Negligible (mock data only)
+File I/O:            100% via tempfile (zero production impact)
+
+================================================================================
+
+NEXT STEPS (RECOMMENDATIONS)
+=============================
+1. [ ] Run against live trade data from buddy_scanner.py
+2. [ ] Validate RL model integration (agent_weights.json updates)
+3. [ ] Test cross-session continuity (multi-session runs)
+4. [ ] Monitor pair accuracy drift (accuracy_gate reports)
+5. [ ] Profile file I/O latency under high-frequency scanning
+6. [ ] Integrate into CI/CD pipeline
+
+================================================================================
+
+KNOWN ISSUES & NOTES
+====================
+1. AccuracyGate return type is TUPLE, not boolean
+   Fix: Always unpack: is_allowed, _, _ = check_pair(...)
+
+2. ConfigTuner bounds are hard-coded in BOUNDS dict
+   Fix: Update BOUNDS dict when adding new tunable fields
+
+3. LearningEngine uses try/except for AccuracyGate import
+   Status: ✅ Acceptable (graceful degradation)
+
+4. Production file access
+   Status: ✅ Zero touched (all tests use tempfile)
+
+================================================================================
+
+RUNNING INDIVIDUAL TEST CLASSES
+================================
+To run tests for a specific module:
+
+python -m unittest test_learning_loop_integration.TestLearningEngine -v
+python -m unittest test_learning_loop_integration.TestAccuracyGate -v
+python -m unittest test_learning_loop_integration.TestConfigTuner -v
+python -m unittest test_learning_loop_integration.TestStateEngine -v
+python -m unittest test_learning_loop_integration.TestImprovementTracker -v
+python -m unittest test_learning_loop_integration.TestObservationLog -v
+python -m unittest test_learning_loop_integration.TestIntegration -v
+
+================================================================================

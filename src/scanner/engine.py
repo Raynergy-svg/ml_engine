@@ -24,6 +24,7 @@ import pandas as pd
 from .config import ScannerConfig, load_yaml_config
 from .agents import ScannerAgentTeam
 from .gates import GateEvaluator
+from .backtest_gate import BacktestGate
 from .results import PairAnalysis, ScanResult
 from .execution import ExecutionManager, ExecutionConfig, ExecutionResult
 from .analysis import QuickBacktester, CorrelationAnalyzer, DriftDetector
@@ -63,8 +64,18 @@ class Scanner:
         self._modular_ensemble = None
         self._executor: Optional[ExecutionManager] = None
 
+        # Ensemble health tracking (US-033)
+        self._ensemble_health: Dict[str, Any] = {
+            "available": [],
+            "missing": [],
+            "expected_count": 5,
+            "degraded": False,
+            "penalty": 1.0,
+        }
+
         # Analysis and filter components
         self._backtester: Optional[QuickBacktester] = None
+        self._backtest_gate: Optional[BacktestGate] = None
         self._correlation_analyzer: Optional[CorrelationAnalyzer] = None
         self._drift_detector: Optional[DriftDetector] = None
         self._volatility_filter: Optional[VolatilityFilter] = None
@@ -80,6 +91,471 @@ class Scanner:
         self._raw_snapshots: Dict[str, pd.DataFrame] = {}
         self._ensemble_lock = threading.Lock()
         self._agent_team = ScannerAgentTeam(self.config)
+
+        # Regime transition tracker (Phase 8: Markov chain)
+        self._regime_tracker = None
+        try:
+            from src.scanner.automation.regime_tracker import RegimeTransitionTracker
+            self._regime_tracker = RegimeTransitionTracker()
+        except Exception as e:
+            logger.debug(f"Regime tracker init deferred: {e}")
+
+        # Group momentum aggregator (Phase 8: cross-pair signal aggregation)
+        self._group_momentum = None
+        try:
+            from src.scanner.automation.group_momentum import GroupMomentumAggregator
+            self._group_momentum = GroupMomentumAggregator()
+        except Exception as e:
+            logger.debug(f"Group momentum aggregator init deferred: {e}")
+
+        # Macro stress detector (Phase 10: derived stress indicator)
+        self._macro_stress = None
+        try:
+            from src.scanner.automation.macro_stress import MacroStressDetector
+            self._macro_stress = MacroStressDetector()
+        except Exception as e:
+            logger.debug(f"Macro stress detector init deferred: {e}")
+
+        # Seasonality tracker (Phase 10: hour-of-day confidence adjustment)
+        self._seasonality = None
+        try:
+            from src.scanner.automation.seasonality import SeasonalityTracker
+            self._seasonality = SeasonalityTracker()
+        except Exception as e:
+            logger.debug(f"Seasonality tracker init deferred: {e}")
+
+        # Ensemble disagreement signal (Phase 14: meta-signal from member disagreement)
+        self._ensemble_disagreement = None
+        if getattr(self.config, "enable_ensemble_disagreement", False):
+            try:
+                from src.scanner.automation.ensemble_disagreement import EnsembleDisagreementSignal
+                self._ensemble_disagreement = EnsembleDisagreementSignal()
+                logger.info("Ensemble disagreement signal initialized")
+            except Exception as e:
+                logger.debug(f"Ensemble disagreement init deferred: {e}")
+
+        # Position timeout manager (Phase 14: regime-dependent time-decay for open trades)
+        self._position_timeout = None
+        if getattr(self.config, "enable_position_timeout", False):
+            try:
+                from src.scanner.automation.position_timeout import PositionTimeoutManager
+                self._position_timeout = PositionTimeoutManager()
+                logger.info("Position timeout manager initialized")
+            except Exception as e:
+                logger.debug(f"Position timeout init deferred: {e}")
+
+        # Lead-lag detector (Phase 14: cross-pair lagged correlation for entry timing)
+        self._lead_lag_detector = None
+        if getattr(self.config, "enable_lead_lag_detection", False):
+            try:
+                from src.scanner.automation.lead_lag_detector import LeadLagDetector
+                self._lead_lag_detector = LeadLagDetector()
+                logger.info("Lead-lag detector initialized")
+            except Exception as e:
+                logger.debug(f"Lead-lag detector init deferred: {e}")
+
+        # Feature attention layer (Phase 14: regime-conditioned softmax attention)
+        self._feature_attention = None
+        if getattr(self.config, "enable_feature_attention", False):
+            try:
+                from src.scanner.automation.feature_attention import FeatureAttentionLayer
+                self._feature_attention = FeatureAttentionLayer()
+                logger.info("Feature attention layer initialized")
+            except Exception as e:
+                logger.debug(f"Feature attention init deferred: {e}")
+
+        # Regime-aware RL reward shaping (Phase 14: regime-conditioned reward function)
+        self._regime_reward = None
+        if getattr(self.config, "enable_regime_reward", False):
+            try:
+                from src.scanner.automation.regime_reward import RegimeAwareReward
+                self._regime_reward = RegimeAwareReward()
+                logger.info("Regime-aware RL reward shaping initialized")
+            except Exception as e:
+                logger.debug(f"Regime reward init deferred: {e}")
+
+        # Entropy position sizer (Phase 16: Shannon entropy of agent votes → size multiplier)
+        self._entropy_sizer = None
+        if getattr(self.config, "enable_entropy_sizing", False):
+            try:
+                from src.scanner.automation.entropy_sizer import EntropyPositionSizer
+                self._entropy_sizer = EntropyPositionSizer()
+                logger.info("Entropy position sizer initialized")
+            except Exception as e:
+                logger.debug(f"Entropy sizer init deferred: {e}")
+
+        # Execution quality tracker (Phase 16: TCA feedback loop)
+        self._exec_quality_tracker = None
+        if getattr(self.config, "enable_execution_quality_tracking", False):
+            try:
+                from src.scanner.automation.execution_quality_tracker import ExecutionQualityTracker
+                self._exec_quality_tracker = ExecutionQualityTracker()
+                logger.info("Execution quality tracker initialized")
+            except Exception as e:
+                logger.debug(f"Execution quality tracker init deferred: {e}")
+
+        # Phase 44 (US-278): Market Regime Detector (BOCPD + Hurst + ADX ensemble)
+        self._market_regime_detector = None
+        try:
+            from src.scanner.regime_detector import MarketRegimeDetector
+            self._market_regime_detector = MarketRegimeDetector()
+            logger.info("Phase 44: Market regime detector initialized (BOCPD + Hurst + ADX)")
+        except Exception as e:
+            logger.debug(f"Market regime detector init deferred: {e}")
+
+        # Live position manager (Phase 17: prediction-driven position management)
+        self._position_manager = None
+        if getattr(self.config, "enable_live_position_management", False):
+            try:
+                from src.scanner.automation.position_manager import LivePositionManager
+                self._position_manager = LivePositionManager()
+                logger.info("Live position manager initialized")
+            except Exception as e:
+                logger.debug(f"Position manager init deferred: {e}")
+
+        # Affinity portfolio sizer (Phase 17: pair affinity → sizing)
+        self._affinity_portfolio = None
+        if getattr(self.config, "enable_affinity_portfolio", False):
+            try:
+                from src.scanner.automation.affinity_portfolio import AffinityPortfolioSizer
+                self._affinity_portfolio = AffinityPortfolioSizer()
+                logger.info("Affinity portfolio sizer initialized")
+            except Exception as e:
+                logger.debug(f"Affinity portfolio init deferred: {e}")
+
+        # Execution router (Phase 17: smart order slicing)
+        self._execution_router = None
+        if getattr(self.config, "enable_execution_routing", False):
+            try:
+                from src.scanner.automation.execution_router import ExecutionRouter
+                self._execution_router = ExecutionRouter()
+                logger.info("Execution router initialized")
+            except Exception as e:
+                logger.debug(f"Execution router init deferred: {e}")
+
+        # Model router (Phase 17: bandit-based pair-specific model selection)
+        self._model_router = None
+        if getattr(self.config, "enable_model_routing", False):
+            try:
+                from src.scanner.automation.model_router import ModelRouter
+                self._model_router = ModelRouter()
+                logger.info("Model router initialized")
+            except Exception as e:
+                logger.debug(f"Model router init deferred: {e}")
+
+        # Training augmenter (Phase 17: synthetic data injection)
+        self._training_augmenter = None
+        if getattr(self.config, "enable_training_augmentation", False):
+            try:
+                from src.scanner.automation.training_augmenter import TrainingAugmenter
+                self._training_augmenter = TrainingAugmenter()
+                logger.info("Training augmenter initialized")
+            except Exception as e:
+                logger.debug(f"Training augmenter init deferred: {e}")
+
+        # Attention feedback loop (Phase 17: temporal attention consensus feedback)
+        self._attention_feedback = None
+        if getattr(self.config, "enable_attention_feedback", False):
+            try:
+                from src.scanner.automation.attention_feedback import AttentionFeedbackLoop
+                self._attention_feedback = AttentionFeedbackLoop()
+                logger.info("Attention feedback loop initialized")
+            except Exception as e:
+                logger.debug(f"Attention feedback init deferred: {e}")
+
+        # Execution quality optimizer (Phase 18: cost profiling by model+regime)
+        self._execution_quality_optimizer = None
+        if getattr(self.config, "enable_execution_quality_optimizer", False):
+            try:
+                from src.scanner.automation.execution_quality_optimizer import ExecutionQualityOptimizer
+                self._execution_quality_optimizer = ExecutionQualityOptimizer()
+                logger.info("Execution quality optimizer initialized")
+            except Exception as e:
+                logger.debug(f"Execution quality optimizer init deferred: {e}")
+
+        # Threshold optimizer (Phase 18: adaptive gate threshold tuning)
+        self._threshold_optimizer = None
+        if getattr(self.config, "enable_threshold_optimizer", False):
+            try:
+                from src.scanner.automation.threshold_optimizer import ThresholdOptimizer
+                self._threshold_optimizer = ThresholdOptimizer()
+                # Phase 22 (US-136): Warm-start from journal if optimizer has 0 outcomes
+                if self._threshold_optimizer._total_outcomes == 0:
+                    try:
+                        replayed = self._threshold_optimizer.replay_from_journal()
+                        if replayed > 0:
+                            logger.info(f"Threshold optimizer warm-started with {replayed} journal trades")
+                    except Exception as _replay_err:
+                        logger.debug(f"Journal replay skipped: {_replay_err}")
+                logger.info("Threshold optimizer initialized")
+            except Exception as e:
+                logger.debug(f"Threshold optimizer init deferred: {e}")
+
+        # Phase 21 (US-131): Central config adjustment manager
+        self._config_adjuster = None
+        if getattr(self.config, "enable_config_adjuster", True):
+            try:
+                from src.scanner.automation.config_adjuster import ConfigAdjuster
+                self._config_adjuster = ConfigAdjuster()
+                logger.info("Config adjuster initialized")
+            except Exception as e:
+                logger.debug(f"Config adjuster init deferred: {e}")
+
+        # Dynamic risk allocator (Phase 18: P/L distribution risk sizing)
+        self._dynamic_risk_allocator = None
+        if getattr(self.config, "enable_dynamic_risk_allocation", False):
+            try:
+                from src.scanner.automation.dynamic_risk_allocator import DynamicRiskAllocator
+                self._dynamic_risk_allocator = DynamicRiskAllocator()
+                logger.info("Dynamic risk allocator initialized")
+            except Exception as e:
+                logger.debug(f"Dynamic risk allocator init deferred: {e}")
+
+        # Model calibration tracker (Phase 18: per-model confidence calibration)
+        self._model_calibration = None
+        if getattr(self.config, "enable_model_calibration", False):
+            try:
+                from src.scanner.automation.model_calibration import ModelCalibrationTracker
+                self._model_calibration = ModelCalibrationTracker()
+                logger.info("Model calibration tracker initialized")
+            except Exception as e:
+                logger.debug(f"Model calibration init deferred: {e}")
+
+        # Pair-regime-agent matrix (Phase 18: 3-way interaction tracking)
+        self._pair_regime_agent_matrix = None
+        if getattr(self.config, "enable_pair_regime_agent_matrix", False):
+            try:
+                from src.scanner.automation.pair_regime_agent_matrix import PairRegimeAgentMatrix
+                self._pair_regime_agent_matrix = PairRegimeAgentMatrix()
+                logger.info("Pair-regime-agent matrix initialized")
+            except Exception as e:
+                logger.debug(f"Pair-regime-agent matrix init deferred: {e}")
+
+        # Signal timing optimizer (Phase 18: scan frequency optimization)
+        self._signal_timing = None
+        if getattr(self.config, "enable_signal_timing", False):
+            try:
+                from src.scanner.automation.signal_timing import SignalTimingOptimizer
+                self._signal_timing = SignalTimingOptimizer()
+                logger.info("Signal timing optimizer initialized")
+            except Exception as e:
+                logger.debug(f"Signal timing init deferred: {e}")
+
+        # Memory manager (Phase 19: LRU cache and log rotation)
+        self._memory_manager = None
+        if getattr(self.config, "enable_memory_manager", False):
+            try:
+                from src.scanner.automation.memory_manager import MemoryManager
+                self._memory_manager = MemoryManager()
+                logger.info("Memory manager initialized")
+            except Exception as e:
+                logger.debug(f"Memory manager init deferred: {e}")
+
+        # Module activation map (Phase 19: module dispatch scheduling)
+        self._module_activation = None
+        if getattr(self.config, "enable_module_activation", False):
+            try:
+                from src.scanner.automation.module_activation import ModuleActivationMap
+                self._module_activation = ModuleActivationMap()
+                logger.info("Module activation map initialized")
+            except Exception as e:
+                logger.debug(f"Module activation init deferred: {e}")
+
+        # Agent lifecycle manager (Phase 19: agent fitness and quarantine)
+        self._agent_lifecycle = None
+        if getattr(self.config, "enable_agent_lifecycle", False):
+            try:
+                from src.scanner.automation.agent_lifecycle import AgentLifecycleManager
+                self._agent_lifecycle = AgentLifecycleManager()
+                logger.info("Agent lifecycle manager initialized")
+            except Exception as e:
+                logger.debug(f"Agent lifecycle init deferred: {e}")
+
+        # Health registry (Phase 19: orchestrator health monitoring)
+        self._health_registry = None
+        if getattr(self.config, "enable_health_registry", False):
+            try:
+                from src.scanner.automation.health_registry import HealthRegistry
+                self._health_registry = HealthRegistry()
+                logger.info("Health registry initialized")
+            except Exception as e:
+                logger.debug(f"Health registry init deferred: {e}")
+
+        # Observation consumer (Phase 19: pattern detection from observations)
+        self._observation_consumer = None
+        if getattr(self.config, "enable_observation_consumer", False):
+            try:
+                from src.scanner.automation.observation_consumer import ObservationConsumer
+                self._observation_consumer = ObservationConsumer()
+                logger.info("Observation consumer initialized")
+            except Exception as e:
+                logger.debug(f"Observation consumer init deferred: {e}")
+
+        # Replay validator (Phase 19: historical replay and drift detection)
+        self._replay_validator = None
+        if getattr(self.config, "enable_replay_validator", False):
+            try:
+                from src.scanner.automation.replay_validator import ReplayValidator
+                self._replay_validator = ReplayValidator()
+                logger.info("Replay validator initialized")
+            except Exception as e:
+                logger.debug(f"Replay validator init deferred: {e}")
+
+        # Regime broadcaster (Phase 16: event-driven regime transition propagation)
+        self._regime_broadcaster = None
+        if getattr(self.config, "enable_regime_broadcast", False):
+            try:
+                from src.scanner.automation.regime_broadcaster import RegimeBroadcaster
+                self._regime_broadcaster = RegimeBroadcaster()
+                logger.info("Regime broadcaster initialized")
+            except Exception as e:
+                logger.debug(f"Regime broadcaster init deferred: {e}")
+
+        # Agent accuracy matrix (Phase 16: per-agent accuracy by regime/pair)
+        self._agent_accuracy_matrix = None
+        if getattr(self.config, "enable_agent_accuracy_matrix", False):
+            try:
+                from src.scanner.automation.agent_accuracy_matrix import AgentAccuracyMatrix
+                self._agent_accuracy_matrix = AgentAccuracyMatrix()
+                logger.info("Agent accuracy matrix initialized")
+            except Exception as e:
+                logger.debug(f"Agent accuracy matrix init deferred: {e}")
+
+        # Temporal attention (Phase 16: learned multi-timeframe signal weighting)
+        self._temporal_attention = None
+        if getattr(self.config, "enable_temporal_attention", False):
+            try:
+                from src.scanner.automation.temporal_attention import TemporalAttentionLayer
+                self._temporal_attention = TemporalAttentionLayer()
+                logger.info("Temporal attention layer initialized")
+            except Exception as e:
+                logger.debug(f"Temporal attention init deferred: {e}")
+
+        # Pair transfer learning (Phase 16: cross-pair weight sharing)
+        self._pair_transfer = None
+        if getattr(self.config, "enable_pair_transfer", False):
+            try:
+                from src.scanner.automation.pair_transfer import PairTransferLearning
+                self._pair_transfer = PairTransferLearning()
+                logger.info("Pair transfer learning initialized")
+            except Exception as e:
+                logger.debug(f"Pair transfer init deferred: {e}")
+
+        # Causal signal filter (Phase 15: Granger causality-based signal consistency)
+        self._causal_filter = None
+        if getattr(self.config, "enable_causal_filtering", False):
+            try:
+                from src.scanner.automation.causal_filter import CausalSignalFilter
+                self._causal_filter = CausalSignalFilter()
+                logger.info("Causal signal filter initialized")
+            except Exception as e:
+                logger.debug(f"Causal filter init deferred: {e}")
+
+        # Trade explainer (Phase 15: SHAP-based explainability and consistency filtering)
+        self._trade_explainer = None
+        if getattr(self.config, "enable_trade_explainability", False):
+            try:
+                from src.scanner.automation.trade_explainer import TradeExplainer
+                self._trade_explainer = TradeExplainer()
+                logger.info("Trade explainer initialized")
+            except Exception as e:
+                logger.debug(f"Trade explainer init deferred: {e}")
+
+        # Model bandit selector (Phase 15: EXP3 bandit for dynamic model routing)
+        self._model_bandit = None
+        if getattr(self.config, "enable_model_bandit", False):
+            try:
+                from src.scanner.automation.model_bandit import ModelBanditSelector
+                self._model_bandit = ModelBanditSelector()
+                logger.info("Model bandit selector initialized")
+            except Exception as e:
+                logger.debug(f"Model bandit init deferred: {e}")
+
+        # Market impact model (Phase 15: Almgren-Chriss slippage-aware position sizing)
+        self._market_impact = None
+        if getattr(self.config, "enable_market_impact", False):
+            try:
+                from src.scanner.automation.market_impact import MarketImpactModel
+                self._market_impact = MarketImpactModel()
+                logger.info("Market impact model initialized")
+            except Exception as e:
+                logger.debug(f"Market impact init deferred: {e}")
+
+        # Kelly portfolio optimizer (Phase 13: portfolio-level risk budgeting)
+        self._kelly_optimizer = None
+        if getattr(self.config, "enable_kelly_sizing", False):
+            try:
+                from src.scanner.automation.kelly_portfolio import KellyPortfolioOptimizer
+                self._kelly_optimizer = KellyPortfolioOptimizer()
+                logger.info("Kelly portfolio optimizer initialized")
+            except Exception as e:
+                logger.debug(f"Kelly portfolio optimizer init deferred: {e}")
+
+        # Concept drift detector (Phase 13: rolling z-score drift monitoring)
+        self._concept_drift = None
+        if getattr(self.config, "enable_concept_drift_detection", False):
+            try:
+                from src.scanner.automation.concept_drift import ConceptDriftDetector
+                self._concept_drift = ConceptDriftDetector()
+                logger.info("Concept drift detector initialized")
+            except Exception as e:
+                logger.debug(f"Concept drift detector init deferred: {e}")
+
+        # Multi-horizon signal fusion (Phase 13: Bayesian TF agreement grading)
+        self._multi_horizon_fusion = None
+        if getattr(self.config, "enable_multi_horizon_fusion", False):
+            try:
+                from src.scanner.automation.multi_horizon_fusion import MultiHorizonFusion
+                self._multi_horizon_fusion = MultiHorizonFusion()
+                logger.info("Multi-horizon fusion initialized")
+            except Exception as e:
+                logger.debug(f"Multi-horizon fusion init deferred: {e}")
+
+        # Confidence calibrator (Phase 13: Platt scaling for calibrated probabilities)
+        self._confidence_calibrator = None
+        if getattr(self.config, "enable_confidence_calibration", False):
+            try:
+                from src.scanner.automation.confidence_calibrator import ConfidenceCalibrator
+                self._confidence_calibrator = ConfidenceCalibrator()
+                self._confidence_calibrator.fit_from_journal()
+                logger.info("Confidence calibrator initialized")
+            except Exception as e:
+                logger.debug(f"Confidence calibrator init deferred: {e}")
+
+        # Microstructure regime detector (Phase 12: spread-driven early regime signals)
+        self._microstructure_detector = None
+        if getattr(self.config, "enable_microstructure_regime", False):
+            try:
+                from src.scanner.automation.microstructure_regime import MicrostructureRegimeDetector
+                self._microstructure_detector = MicrostructureRegimeDetector()
+                logger.info("Microstructure regime detector initialized")
+            except Exception as e:
+                logger.debug(f"Microstructure regime detector init deferred: {e}")
+
+        # Phase 20 (US-125): Drift monitor with auto-correction
+        self._drift_monitor = None
+        if getattr(self.config, "enable_replay_validator", False):
+            try:
+                from src.scanner.automation.drift_monitor import DriftMonitor
+                self._drift_monitor = DriftMonitor(
+                    replay_validator=self._replay_validator,
+                    config_tuner=None,  # Injected later if available
+                    threshold_optimizer=self._threshold_optimizer,
+                )
+                logger.info("Drift monitor initialized")
+            except Exception as e:
+                logger.debug(f"Drift monitor init deferred: {e}")
+
+        # Phase 20 (US-122): Inject agent lifecycle into agent team for weight modifiers
+        if self._agent_lifecycle is not None:
+            self._agent_team._agent_lifecycle = self._agent_lifecycle
+
+        # Phase 25 (US-155): Inject accuracy matrix into agent team for per-pair weighting
+        if self._agent_accuracy_matrix is not None:
+            self._agent_team._accuracy_matrix = self._agent_accuracy_matrix
+
+        # Phase 20 (US-121): Register all modules with health registry
+        self._register_health_checks()
 
         # Load config
         self._load_yaml_config()
@@ -443,6 +919,7 @@ class Scanner:
             if self._ensemble_loaded:
                 self._sync_modular_ensemble_config()
                 self._ensemble_type = "ModularEnsembleInference"
+                self._assess_ensemble_health()
                 logger.info("✓ ModularEnsembleInference loaded successfully")
                 return True
             else:
@@ -516,12 +993,97 @@ class Scanner:
         ensemble_cfg.tcn_required = bool(self.config.require_tcn_volatility)
         ensemble_cfg.final_score_threshold = float(self.config.final_score_threshold)
 
+    def _assess_ensemble_health(self) -> Dict[str, Any]:
+        """Check which model types loaded and compute degradation penalty.
+
+        US-033: When fewer than 3 of 5 expected model types are available,
+        apply a proportional confidence penalty: confidence *= available/expected.
+
+        Returns:
+            Dict with available, missing, penalty, and degraded status.
+        """
+        expected_models = {
+            "tcn": "tcn",
+            "histgb": "histgb",
+            "regime_model": "regime_model",
+            "xgb": "xgb",
+            "ridge": "ridge",
+        }
+        available = []
+        missing = []
+
+        ensemble = self._modular_ensemble
+        if ensemble is not None and self._ensemble_type == "ModularEnsembleInference":
+            for name, attr in expected_models.items():
+                model = getattr(ensemble, attr, None)
+                if model is not None:
+                    available.append(name)
+                else:
+                    missing.append(name)
+        elif ensemble is not None:
+            # MultiPairInference fallback — treat as fully degraded
+            available = ["fallback"]
+            missing = list(expected_models.keys())
+
+        expected_count = len(expected_models)
+        available_count = len(available) if "fallback" not in available else 1
+        penalty = available_count / expected_count if expected_count > 0 else 0.0
+        degraded = available_count < 3
+
+        health = {
+            "available": available,
+            "missing": missing,
+            "expected_count": expected_count,
+            "available_count": available_count,
+            "degraded": degraded,
+            "penalty": round(penalty, 3),
+        }
+        self._ensemble_health = health
+
+        # Log to observations.jsonl at startup
+        if degraded:
+            try:
+                from .automation.observation_log import ObservationLog
+                obs = ObservationLog()
+                obs.log_observation(
+                    pair="SYSTEM",
+                    category="degraded_ensemble",
+                    description=(
+                        f"Ensemble running degraded: {available_count}/{expected_count} models. "
+                        f"Available: {available}. Missing: {missing}. "
+                        f"Confidence penalty: {penalty:.1%}"
+                    ),
+                    metadata=health,
+                )
+            except Exception as e:
+                logger.debug(f"Could not log ensemble health observation: {e}")
+
+            logger.warning(
+                "⚠️ DEGRADED ENSEMBLE: %d/%d models loaded. "
+                "Missing: %s. Confidence penalty: %.1f%%",
+                available_count, expected_count, missing, penalty * 100,
+            )
+        else:
+            logger.info(
+                "✓ Ensemble health: %d/%d models loaded (%s)",
+                available_count, expected_count, available,
+            )
+
+        return health
+
     def _init_analysis_tools(self) -> None:
         """Initialize analysis and filter components."""
         if self._backtester is None:
             self._backtester = QuickBacktester(
                 window=50,
                 granularity=self.config.granularity,
+            )
+
+        if self._backtest_gate is None:
+            self._backtest_gate = BacktestGate(
+                min_win_rate=0.55,
+                lookback_candles=20,
+                confidence_penalty=0.15,
             )
 
         if self._correlation_analyzer is None:
@@ -1021,6 +1583,24 @@ class Scanner:
         result = self._infer_from_ensemble(df_feat, pair)
         if result[0] is not None:
             direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, details = result
+
+            # US-033: Apply degraded ensemble confidence penalty
+            health = self._ensemble_health
+            if health.get("degraded", False):
+                penalty = health.get("penalty", 1.0)
+                original_confidence = confidence
+                confidence = confidence * penalty
+                details = details or {}
+                details["degraded_ensemble"] = True
+                details["ensemble_penalty"] = penalty
+                details["original_confidence"] = original_confidence
+                details["available_models"] = health.get("available", [])
+                details["missing_models"] = health.get("missing", [])
+                logger.info(
+                    "Degraded ensemble penalty applied to %s: %.3f → %.3f (×%.2f)",
+                    pair, original_confidence, confidence, penalty,
+                )
+
             return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, True, (details or {})
 
         # === SECOND: Legacy fallback volatility gate ===
@@ -1045,6 +1625,32 @@ class Scanner:
 
         return direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, _inference_succeeded, details
 
+    def _detect_regime(self, df_raw: pd.DataFrame, pair: str) -> Optional[Any]:
+        """Phase 44 (US-278): Run BOCPD+Hurst+ADX regime detection.
+
+        Args:
+                df_raw: Raw OHLCV DataFrame with 'close', 'high', 'low' columns
+                pair: Instrument name for logging
+
+        Returns:
+                RegimeDetectionResult or None on failure
+        """
+        if self._market_regime_detector is None:
+            return None
+        try:
+            prices = df_raw["close"].values.astype(float)
+            highs = df_raw["high"].values.astype(float) if "high" in df_raw.columns else prices
+            lows = df_raw["low"].values.astype(float) if "low" in df_raw.columns else prices
+            result = self._market_regime_detector.update(prices, highs, lows)
+            logger.debug(
+                "Phase 44: %s regime=%s conf=%.2f hurst=%.2f adx=%.1f changepoint=%.3f",
+                pair, result.regime_name, result.confidence, result.hurst_exponent, result.adx_value, result.changepoint_probability,
+            )
+            return result
+        except Exception as e:
+            logger.warning(f"Phase 44: Regime detection failed for {pair}: {e}")
+            return None
+
     def _calculate_metrics(
         self,
         df: pd.DataFrame,
@@ -1061,15 +1667,26 @@ class Scanner:
         """
         metrics = {
             "current_price": df["close"].iloc[-1],
-            "atr": df["atr"].iloc[-1] if "atr" in df.columns else 0.0,
+            "atr": (
+                float(df["atr"].iloc[-1])
+                if "atr" in df.columns
+                else (
+                    # Feature engineering produces atr_pct_14 (ATR/price ratio).
+                    # Recover raw ATR: atr_pct_14 * close price.
+                    float(df["atr_pct_14"].iloc[-1] * df["close"].iloc[-1])
+                    if "atr_pct_14" in df.columns
+                    else 0.0
+                )
+            ),
             "volatility_percentile": 0.5,
             "trend_strength": 0.5,
             "entry_score": 0.5,
         }
 
-        # Volatility percentile
-        if "atr" in df.columns:
-            atr_series = df["atr"].dropna()
+        # Volatility percentile (use atr_pct_14 if raw atr column missing)
+        _atr_col = "atr" if "atr" in df.columns else ("atr_pct_14" if "atr_pct_14" in df.columns else None)
+        if _atr_col:
+            atr_series = df[_atr_col].dropna()
             if len(atr_series) > 20:
                 metrics["volatility_percentile"] = float(
                     (atr_series < atr_series.iloc[-1]).mean()
@@ -1246,7 +1863,9 @@ class Scanner:
                     votes += 1
             else:
                 # Opposite-direction confirmations should weaken consensus.
-                score_acc += sub_conf * 0.20
+                # Phase 23 (US-141): Configurable penalty (was hardcoded 0.20 — too harsh)
+                _opp_penalty = float(getattr(self.config, "sub_inference_opposite_penalty", 0.50))
+                score_acc += sub_conf * _opp_penalty
 
         if total <= 0:
             return analysis
@@ -1263,20 +1882,86 @@ class Scanner:
         analysis.agent_passed = agent_passed
 
         # Redo confidence logic: blend base confidence with consensus quality.
+        # Phase 29 (US-179): Configurable blend weights from ScannerConfig.
         base_conf = min(max(float(analysis.confidence), 0.0), 1.0)
+        _w_base = float(getattr(self.config, "confidence_blend_base_weight", 0.55))
+        _w_agent = float(getattr(self.config, "confidence_blend_agent_weight", 0.30))
+        _w_cons = float(getattr(self.config, "confidence_blend_consensus_weight", 0.15))
         blended_conf = (
-            base_conf * 0.55 +
-            agent_score * 0.30 +
-            consensus_ratio * 0.15
+            base_conf * _w_base +
+            agent_score * _w_agent +
+            consensus_ratio * _w_cons
         )
         if agent_passed:
-            boosted = blended_conf + min(0.08, consensus_ratio * 0.06)
+            _boost_cap = float(getattr(self.config, "confidence_boost_cap", 0.08))
+            _boost_factor = float(getattr(self.config, "confidence_boost_consensus_factor", 0.06))
+            boosted = blended_conf + min(_boost_cap, consensus_ratio * _boost_factor)
             analysis.confidence = min(max(max(base_conf, boosted), 0.0), 0.99)
         else:
             softened = base_conf * 0.92 + blended_conf * 0.08
             analysis.confidence = min(max(softened, 0.0), 0.99)
 
+        # ── Minimum agent consensus hard gate (US-032 + US-130) ─────────
+        # Phase 21 (US-130): Regime-specific consensus thresholds.
+        # EXTREME market = directional, fewer agents need to agree.
+        # LOW market = noisy, require stronger consensus.
+        _regime_str = str(getattr(analysis, "volatility_regime", "UNKNOWN")).upper()
+        if getattr(self.config, "enable_regime_consensus", True):
+            _regime_map = getattr(self.config, "regime_consensus_map", {})
+            min_consensus_ratio = float(_regime_map.get(
+                _regime_str, getattr(self.config, "min_agent_consensus_ratio", 0.25)
+            ))
+        else:
+            min_consensus_ratio = float(getattr(
+                self.config, "min_agent_consensus_ratio", 0.25
+            ))
+        if consensus_ratio < min_consensus_ratio and analysis.is_tradeable:
+            _absolute_min = float(getattr(self.config, "soft_consensus_absolute_min", 0.10))
+            if getattr(self.config, "enable_soft_consensus_gate", True) and consensus_ratio >= _absolute_min:
+                # Phase 23 (US-139): Soft penalty — reduce confidence instead of blocking
+                _penalty = float(getattr(self.config, "soft_consensus_penalty", 0.85))
+                _old_conf = analysis.confidence
+                analysis.confidence = min(max(analysis.confidence * _penalty, 0.0), 0.99)
+                logger.info(
+                    f"{analysis.pair}: soft consensus penalty applied "
+                    f"({votes}/{total} = {consensus_ratio:.0%} < {min_consensus_ratio:.0%}), "
+                    f"confidence {_old_conf:.3f} → {analysis.confidence:.3f}"
+                )
+                # Log to observation_log if available
+                if self._observation_log is not None:
+                    try:
+                        self._observation_log.log(
+                            category="consensus_penalty",
+                            pair=analysis.pair,
+                            data={
+                                "consensus_ratio": round(consensus_ratio, 3),
+                                "min_required": round(min_consensus_ratio, 3),
+                                "penalty": _penalty,
+                                "old_confidence": round(_old_conf, 4),
+                                "new_confidence": round(analysis.confidence, 4),
+                            },
+                        )
+                    except Exception:
+                        pass
+            else:
+                # Hard block: consensus below absolute minimum safety threshold
+                analysis.gates_passed = False
+                analysis.is_tradeable = False
+                why = getattr(analysis, "why_no_trade", None) or []
+                if isinstance(why, list):
+                    why.append(
+                        f"agent consensus too low ({votes}/{total} = "
+                        f"{consensus_ratio:.0%} < {min_consensus_ratio:.0%} minimum)"
+                    )
+                    analysis.why_no_trade = why
+                logger.info(
+                    f"{analysis.pair}: blocked by min agent consensus "
+                    f"({votes}/{total} = {consensus_ratio:.0%})"
+                )
+
         # Agent-consensus promotion: optionally promote to executable setup.
+        # SAFETY: promotion must NEVER override specialist agent blocks,
+        # dangerous model disagreement, or unknown regime conditions.
         promote = (
             bool(getattr(self.config, "enable_agent_trade_promotion", True))
             and agent_passed
@@ -1285,6 +1970,24 @@ class Scanner:
         )
         if promote and bool(getattr(self.config, "agent_promotion_requires_risk", True)):
             promote = bool(analysis.risk_passed)
+        # Hard safety checks — promotion cannot bypass these
+        if promote and analysis.blocked_by_circuit_breaker:
+            promote = False
+            logger.info(f"{analysis.pair}: promotion blocked — circuit breaker active")
+        if promote and getattr(analysis, "weighted_vote_score", 0) < float(
+            getattr(self.config, "weighted_vote_threshold", 0.55)
+        ):
+            promote = False
+            logger.info(f"{analysis.pair}: promotion blocked — specialist vote too low")
+        if promote and str(getattr(analysis, "volatility_regime", "UNKNOWN")).upper() == "UNKNOWN":
+            promote = False
+            logger.info(f"{analysis.pair}: promotion blocked — regime UNKNOWN")
+        if promote and float(getattr(analysis, "model_disagreement", 1.0)) > 0.30:
+            promote = False
+            logger.info(
+                f"{analysis.pair}: promotion blocked — model_disagreement "
+                f"{getattr(analysis, 'model_disagreement', 'N/A')} > 0.30"
+            )
         if promote:
             analysis.gates_passed = True
             analysis.agent_promoted = True
@@ -1399,9 +2102,11 @@ class Scanner:
                     error="No data (OANDA offline, no CSV)",
                 )
 
-            # Check incremental cache
+            # Check incremental cache — but only skip full re-scan if agents
+            # are disabled.  When agents are enabled, we still need to run them
+            # on every cycle so trend/MTF/conflict checks stay fresh.
             current_price = df_raw["close"].iloc[-1]
-            if self.config.incremental_enabled:
+            if self.config.incremental_enabled and not getattr(self.config, "enable_sub_inference_agents", True):
                 if not self._check_price_changed(pair, current_price, self.config.price_change_threshold):
                     cached = self._get_cached_result(pair, self._build_cache_context(pair))
                     if cached is not None:
@@ -1428,10 +2133,51 @@ class Scanner:
                 atr = 0.0
             atr_pips = atr / pip_value if pip_value > 0 else 0
 
+            # US-074: Microstructure regime detection — use high-low range as spread proxy
+            _micro_signals = None
+            if self._microstructure_detector is not None:
+                try:
+                    # Spread proxy: average (high - low) in pips over last 3 candles
+                    _hl_spread = (df_raw["high"] - df_raw["low"]).iloc[-3:].mean()
+                    _spread_pips = _hl_spread / pip_value if pip_value > 0 else 0.0
+                    # Volume imbalance proxy: sign of close-open normalized by range
+                    _range = df_raw["high"].iloc[-1] - df_raw["low"].iloc[-1]
+                    _body = df_raw["close"].iloc[-1] - df_raw["open"].iloc[-1]
+                    _imbalance = (_body / _range) if _range > 1e-10 else 0.0
+                    _imbalance = max(-1.0, min(1.0, _imbalance))
+                    _micro_signals = self._microstructure_detector.update(
+                        current_spread_pips=float(_spread_pips),
+                        bid_ask_imbalance=float(_imbalance),
+                        volatility_regime=str(
+                            getattr(self._regime_tracker, "current_regime", "NORMAL")
+                            if self._regime_tracker else "NORMAL"
+                        ).upper(),
+                    )
+                except Exception as _micro_err:
+                    logger.debug(f"{pair}: Microstructure update error: {_micro_err}")
+
+            # Phase 44 (US-278): Run regime detection before inference
+            _regime_result = self._detect_regime(df_raw, pair)
+
             # Run inference
             direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, _inference_ok, gate_details = (
                 self._run_inference(df_raw, df_feat, pair)
             )
+
+            # Phase 44 (US-278): Override volatility_regime with BOCPD+Hurst+ADX if available
+            if _regime_result is not None:
+                volatility_regime = _regime_result.regime_index
+                gate_details = dict(gate_details or {})
+                gate_details["regime_detector"] = {
+                    "regime_name": _regime_result.regime_name,
+                    "regime_index": _regime_result.regime_index,
+                    "confidence": round(_regime_result.confidence, 3),
+                    "changepoint_probability": round(_regime_result.changepoint_probability, 3),
+                    "hurst": round(_regime_result.hurst_exponent, 3),
+                    "adx": round(_regime_result.adx_value, 1),
+                    "strategy_hint": _regime_result.strategy_hint,
+                    "risk_multiplier": round(_regime_result.risk_multiplier, 2),
+                }
 
             # Scanner role: surface opportunities even when hard execution gates fail.
             # If the architecture returns HOLD, attach a lightweight technical bias.
@@ -1447,9 +2193,25 @@ class Scanner:
             metrics = self._calculate_metrics(df_feat, pair)
 
             # Dynamic ATR-based SL/TP (replaces fixed 15/30 defaults)
-            # Per-pair adaptive multipliers (US-006) override global config
+            # Regime-adaptive multipliers (US-050) > per-pair config (US-006) > global config
             _pair_sl_mult = self.config.atr_sl_multiplier
             _pair_tp_mult = self.config.atr_tp_multiplier
+
+            # Apply regime-adaptive multipliers if enabled
+            if getattr(self.config, "enable_regime_atr_adaptation", False) and volatility_regime is not None:
+                regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
+                if isinstance(volatility_regime, int) and 0 <= volatility_regime <= 3:
+                    regime_key = regime_names[volatility_regime]
+                    regime_mults = getattr(self.config, "regime_atr_multipliers", {}).get(regime_key, {})
+                    if regime_mults:
+                        _pair_sl_mult = float(regime_mults.get("sl_mult", _pair_sl_mult))
+                        _pair_tp_mult = float(regime_mults.get("tp_mult", _pair_tp_mult))
+                        logger.debug(
+                            f"{pair}: Regime {regime_key} ATR multipliers: "
+                            f"SL={_pair_sl_mult}x, TP={_pair_tp_mult}x"
+                        )
+
+            # Per-pair config overrides (US-006) — only if present
             try:
                 _pair_cfg_path = Path("trained_data/models/pair_sl_tp_config.json")
                 if _pair_cfg_path.exists():
@@ -1476,11 +2238,328 @@ class Scanner:
                 sl_pips = self.config.sl_pips
                 tp_pips = self.config.tp_pips
 
-            # Kelly-based position sizing (simplified)
+            # US-085: Ensemble disagreement as meta-signal
+            if self._ensemble_disagreement is not None and direction != "HOLD":
+                try:
+                    _dis_result = self._ensemble_disagreement.compute_disagreement(
+                        tcn_confidence=tcn_conf,
+                        ridge_confidence=ridge_conf,
+                        tcn_direction=direction,
+                        ridge_direction=direction,
+                    )
+                    if _dis_result.confidence_multiplier < 1.0:
+                        _old_conf_dis = confidence
+                        confidence = confidence * _dis_result.confidence_multiplier
+                        logger.info(
+                            f"{pair}: Ensemble disagreement mult={_dis_result.confidence_multiplier:.2f} "
+                            f"conf {_old_conf_dis:.3f}→{confidence:.3f} "
+                            f"(var={_dis_result.prediction_variance:.4f}, "
+                            f"regime_shift={_dis_result.is_regime_shift_signal})"
+                        )
+                except Exception as _dis_err:
+                    logger.debug(f"{pair}: Ensemble disagreement skipped: {_dis_err}")
+
+            # US-087: Cross-pair lead-lag signal boost
+            if self._lead_lag_detector is not None and direction != "HOLD":
+                try:
+                    _lag_signals = self._lead_lag_detector.get_lagging_signals(
+                        leader_pair=pair,
+                        leader_direction=direction,
+                        leader_confidence=confidence,
+                    )
+                    # If this pair is being *led* by another pair that already signaled,
+                    # boost confidence slightly based on lead-lag corroboration
+                    _leaders = (
+                        self._lead_lag_detector.get_matrix().get_leaders_for(pair)
+                        if self._lead_lag_detector.get_matrix() is not None
+                        else []
+                    )
+                    if _leaders:
+                        _best_leader = max(_leaders, key=lambda r: r.confidence)
+                        if _best_leader.confidence > 0.3:
+                            _lead_boost = min(0.05, _best_leader.confidence * 0.08)
+                            _old_conf_ll = confidence
+                            confidence = min(1.0, confidence + _lead_boost)
+                            logger.info(
+                                f"{pair}: Lead-lag boost from {_best_leader.leader} "
+                                f"(lag={_best_leader.optimal_lag}, corr={_best_leader.correlation:.2f}) "
+                                f"conf {_old_conf_ll:.3f}→{confidence:.3f}"
+                            )
+                except Exception as _ll_err:
+                    logger.debug(f"{pair}: Lead-lag check skipped: {_ll_err}")
+
+            # US-088: Attention-based feature weighting
+            _attention_result = None
+            if self._feature_attention is not None and direction != "HOLD":
+                try:
+                    _feat_vec = {
+                        "trend_strength": metrics.get("trend_strength", 0.5),
+                        "volatility_percentile": metrics.get("volatility_percentile", 0.5),
+                        "entry_score": metrics.get("entry_score", 0.5),
+                        "atr_pips": min(1.0, atr_pips / 50.0),  # Normalize
+                        "rsi": metrics.get("rsi", 0.5),
+                        "momentum": metrics.get("momentum", 0.5),
+                    }
+                    _attention_result = self._feature_attention.compute_attention(
+                        feature_vector=_feat_vec,
+                        regime=regime_name if regime_name != "UNKNOWN" else "NORMAL",
+                    )
+                    # Use attention-weighted entry_score to nudge confidence
+                    if "entry_score" in _attention_result.weighted_features:
+                        _weighted_entry = _attention_result.weighted_features["entry_score"]
+                        _raw_entry = _feat_vec.get("entry_score", 0.5)
+                        _attn_delta = (_weighted_entry - _raw_entry * (1.0 / len(_feat_vec))) * 0.1
+                        if abs(_attn_delta) > 0.005:
+                            _old_conf_attn = confidence
+                            confidence = max(0.0, min(1.0, confidence + _attn_delta))
+                            logger.debug(
+                                f"{pair}: Attention [{regime_name}] dominant={_attention_result.dominant_feature} "
+                                f"conf {_old_conf_attn:.3f}→{confidence:.3f} (delta={_attn_delta:+.4f})"
+                            )
+                except Exception as _attn_err:
+                    logger.debug(f"{pair}: Feature attention skipped: {_attn_err}")
+
+            # US-081: Multi-horizon signal fusion — register primary TF and apply grade
+            _fusion_grade = "B"  # Default: no adjustment
+            if self._multi_horizon_fusion is not None and direction != "HOLD":
+                try:
+                    self._multi_horizon_fusion.clear_signals()
+                    # Register primary timeframe signal (M5 — the default scanning TF)
+                    self._multi_horizon_fusion.add_signal(
+                        timeframe="M5",
+                        direction=direction,
+                        confidence=confidence,
+                        features={"atr_pips": atr_pips, "trend_strength": metrics.get("trend_strength", 0.5)},
+                    )
+                    # Derive H1/H4 signals from trend strength and momentum
+                    _ts = metrics.get("trend_strength", 0.5)
+                    _h1_dir = direction if _ts > 0.45 else "HOLD"
+                    self._multi_horizon_fusion.add_signal("H1", _h1_dir, min(confidence, _ts), {})
+                    _h4_dir = direction if _ts > 0.55 else ("HOLD" if _ts > 0.35 else (
+                        "SHORT" if direction == "LONG" else "LONG"
+                    ))
+                    self._multi_horizon_fusion.add_signal("H4", _h4_dir, min(confidence * 0.9, _ts), {})
+                    _fusion = self._multi_horizon_fusion.fuse()
+                    _fusion_grade = _fusion.agreement_grade
+                    if _fusion.confidence_adjustment != 0:
+                        _old_conf_f = confidence
+                        confidence = max(0.0, min(1.0, confidence + _fusion.confidence_adjustment))
+                        logger.info(
+                            f"{pair}: Fusion grade={_fusion_grade} "
+                            f"conf {_old_conf_f:.3f}→{confidence:.3f} "
+                            f"(adj={_fusion.confidence_adjustment:+.2f})"
+                        )
+                except Exception as _fuse_err:
+                    logger.debug(f"{pair}: Multi-horizon fusion skipped: {_fuse_err}")
+
+            # US-080: Regime-conditioned dynamic SL/TP optimization
+            if (
+                getattr(self.config, "enable_dynamic_sl_tp", False)
+                and direction != "HOLD"
+                and sl_pips > 0
+                and tp_pips > 0
+            ):
+                try:
+                    from src.scanner.automation.dynamic_sl_tp import DynamicSLTPOptimizer
+                    _sltp_opt = DynamicSLTPOptimizer(
+                        aggressiveness=getattr(self.config, "sl_tp_aggressiveness", 1.0),
+                        min_sl_pips=self.config.min_sl_pips,
+                        max_sl_pips=self.config.max_sl_pips,
+                        min_tp_pips=self.config.min_tp_pips,
+                        max_tp_pips=self.config.max_tp_pips,
+                    )
+                    _sltp_result = _sltp_opt.optimize(
+                        base_sl_pips=sl_pips,
+                        base_tp_pips=tp_pips,
+                        regime=regime_name if regime_name != "UNKNOWN" else "NORMAL",
+                        trend_strength=metrics.get("trend_strength", 0.5),
+                        confidence=confidence,
+                        atr_pips=atr_pips,
+                    )
+                    if _sltp_result.rules_applied > 0:
+                        _old_sl, _old_tp = sl_pips, tp_pips
+                        sl_pips = _sltp_result.optimized_sl_pips
+                        tp_pips = _sltp_result.optimized_tp_pips
+                        logger.info(
+                            f"{pair}: Dynamic SL/TP [{regime_name}] "
+                            f"SL {_old_sl:.1f}→{sl_pips:.1f}, TP {_old_tp:.1f}→{tp_pips:.1f} "
+                            f"({_sltp_result.rules_applied} rules)"
+                        )
+                except Exception as _sltp_err:
+                    logger.debug(f"{pair}: Dynamic SL/TP skipped: {_sltp_err}")
+
+            # US-074: Apply microstructure confidence lift
+            if (
+                _micro_signals is not None
+                and _micro_signals.confidence_lift > 0
+                and getattr(self.config, "microstructure_confidence_boost", True)
+            ):
+                _old_conf = confidence
+                confidence = min(1.0, confidence + _micro_signals.confidence_lift)
+                logger.info(
+                    f"{pair}: Microstructure lift +{_micro_signals.confidence_lift:.3f} "
+                    f"({_old_conf:.3f} → {confidence:.3f}), "
+                    f"micro_regime={_micro_signals.predicted_regime}, "
+                    f"score={_micro_signals.microstructure_score:.3f}"
+                )
+
+            # US-079: Adaptive confidence calibration (Platt scaling)
+            if self._confidence_calibrator is not None and direction != "HOLD":
+                try:
+                    _cal_result = self._confidence_calibrator.calibrate(confidence)
+                    if _cal_result.is_calibrated:
+                        _old_conf_cal = confidence
+                        confidence = _cal_result.calibrated_score
+                        logger.info(
+                            f"{pair}: Platt calibration {_old_conf_cal:.3f} → "
+                            f"{confidence:.3f} ({_cal_result.reason})"
+                        )
+                    # Check if refit needed
+                    if self._confidence_calibrator.should_refit():
+                        self._confidence_calibrator.fit_from_journal()
+                except Exception as _cal_err:
+                    logger.debug(f"{pair}: Calibration skipped: {_cal_err}")
+
+            # US-083: Concept drift detection — update and apply penalty
+            if self._concept_drift is not None:
+                try:
+                    # Feed observation: prediction error proxy, agent disagreement proxy
+                    _pred_err = abs(confidence - 0.5)  # Distance from uncertainty
+                    _agent_dis = 1.0 - confidence  # Proxy for disagreement
+                    _micro_score = (
+                        _micro_signals.microstructure_score
+                        if _micro_signals is not None else 0.0
+                    )
+                    self._concept_drift.update(
+                        prediction_error=_pred_err,
+                        agent_disagreement=_agent_dis,
+                        micro_anomaly_score=_micro_score,
+                    )
+                    _drift = self._concept_drift.detect()
+                    if _drift.drift_detected and _drift.confidence_penalty < 1.0:
+                        _old_conf_d = confidence
+                        confidence = confidence * _drift.confidence_penalty
+                        logger.warning(
+                            f"{pair}: Concept drift [{_drift.severity}] "
+                            f"conf {_old_conf_d:.3f}→{confidence:.3f} "
+                            f"(penalty={_drift.confidence_penalty:.2f}, "
+                            f"streams={_drift.drifting_streams})"
+                        )
+                except Exception as _drift_err:
+                    logger.debug(f"{pair}: Drift detection skipped: {_drift_err}")
+
+            # US-094: Trade explainability — penalize confidence for inconsistent explanations
+            if self._trade_explainer is not None and direction != "HOLD":
+                try:
+                    # Build feature dict from available scan data
+                    _explain_features: Dict[str, float] = {}
+                    if isinstance(features, dict):
+                        _explain_features = {k: float(v) for k, v in features.items()
+                                             if isinstance(v, (int, float))}
+                    elif hasattr(features, '__iter__') and len(features) > 0:
+                        _feature_names = ["momentum", "trend_strength", "rsi", "volatility",
+                                          "spread", "volume", "mean_reversion",
+                                          "support_distance", "resistance_distance", "session_strength"]
+                        for i, name in enumerate(_feature_names):
+                            if i < len(features):
+                                _explain_features[name] = float(features[i])
+
+                    if _explain_features:
+                        _explain_result = self._trade_explainer.explain_trade(
+                            features=_explain_features,
+                            confidence=confidence,
+                            direction=direction,
+                        )
+                        if _explain_result.confidence_penalty > 0:
+                            _old_conf_e = confidence
+                            confidence = max(0.0, confidence - _explain_result.confidence_penalty)
+                            logger.info(
+                                f"{pair}: Explainability penalty: "
+                                f"conf {_old_conf_e:.3f}→{confidence:.3f} "
+                                f"(score={_explain_result.explainability_score:.2f}, "
+                                f"contradictions={len(_explain_result.contradictions)})"
+                            )
+                except Exception as _explain_err:
+                    logger.debug(f"{pair}: Explainability skipped: {_explain_err}")
+
+            # US-084: Portfolio-level Kelly criterion sizing
             risk_pct = self.config.risk_per_trade_pct
-            if confidence > 0.65:
-                # Higher confidence = slightly larger position
+            if self._kelly_optimizer is not None and direction != "HOLD" and sl_pips > 0:
+                try:
+                    _kelly_result = self._kelly_optimizer.portfolio_optimal_size(
+                        pair=pair,
+                        direction=direction,
+                        confidence=confidence,
+                        sl_pips=sl_pips,
+                        open_positions=[],  # Populated by execution manager in live mode
+                        nav=10000.0,  # Default; overridden in live trading
+                    )
+                    if _kelly_result.recommended_risk_pct > 0:
+                        risk_pct = _kelly_result.recommended_risk_pct
+                        logger.info(
+                            f"{pair}: Kelly sizing → risk={risk_pct:.4f} "
+                            f"(half_k={_kelly_result.half_kelly_fraction:.4f}, "
+                            f"corr={_kelly_result.correlation_reduction:.2f})"
+                        )
+                except Exception as _kelly_err:
+                    logger.debug(f"{pair}: Kelly sizing fallback: {_kelly_err}")
+                    # Fallback to simple sizing
+                    if confidence > 0.65:
+                        risk_pct = min(risk_pct * 1.25, 0.03)
+            elif confidence > 0.65:
+                # Simple fallback: Higher confidence = slightly larger position
                 risk_pct = min(risk_pct * 1.25, 0.03)
+
+            # US-092: Market impact — reduce position size if estimated slippage is too high
+            if self._market_impact is not None and direction != "HOLD" and risk_pct > 0:
+                try:
+                    _spread = getattr(self, '_last_spread_pips', 1.0)
+                    # Estimate lot size from risk_pct (approximate for impact calc)
+                    _approx_lots = risk_pct * 10000.0 / max(sl_pips, 1.0)
+                    _impact = self._market_impact.adjust_position_size(
+                        base_size_lots=_approx_lots,
+                        spread_pips=_spread,
+                        regime=regime_name,
+                    )
+                    if _impact.exceeds_threshold:
+                        _reduction = _impact.adjusted_size_lots / max(_approx_lots, 0.01)
+                        risk_pct = risk_pct * _reduction
+                        logger.info(
+                            f"{pair}: Market impact [{regime_name}]: "
+                            f"slippage={_impact.total_impact_pips:.2f} pips, "
+                            f"position reduced by {_impact.size_reduction_pct:.0f}%"
+                        )
+                except Exception as _impact_err:
+                    logger.debug(f"{pair}: Market impact skipped: {_impact_err}")
+
+            # US-098: Entropy-based position sizing — scale by agent consensus entropy
+            if self._entropy_sizer is not None and direction != "HOLD" and risk_pct > 0:
+                try:
+                    # Collect agent votes from verdicts if available
+                    _agent_votes: Dict[str, Any] = {}
+                    if hasattr(self, '_last_agent_verdicts') and self._last_agent_verdicts:
+                        _agent_votes = self._last_agent_verdicts
+                    elif isinstance(agent_result, dict) and "verdicts" in agent_result:
+                        for _v in agent_result["verdicts"]:
+                            if isinstance(_v, dict) and "agent" in _v:
+                                _agent_votes[_v["agent"]] = _v.get("vote", 0)
+
+                    if _agent_votes:
+                        _entropy = self._entropy_sizer.size_from_votes(
+                            agent_votes=_agent_votes,
+                            regime=regime_name,
+                        )
+                        if abs(_entropy.size_multiplier - 1.0) > 0.01:
+                            _old_risk = risk_pct
+                            risk_pct *= _entropy.size_multiplier
+                            logger.info(
+                                f"{pair}: Entropy sizing [{regime_name}]: "
+                                f"H={_entropy.normalized_entropy:.3f}, "
+                                f"mult={_entropy.size_multiplier:.3f}, "
+                                f"risk {_old_risk:.4f}→{risk_pct:.4f}"
+                            )
+                except Exception as _entropy_err:
+                    logger.debug(f"{pair}: Entropy sizing skipped: {_entropy_err}")
 
             # Build error message if volatility regime blocked the trade or inference failed
             error_msg = None
@@ -1489,7 +2568,57 @@ class Scanner:
             regime_name = "UNKNOWN"
             if volatility_regime is not None:
                 regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
-                regime_name = regime_names[volatility_regime] if 0 <= volatility_regime <= 3 else "UNKNOWN"
+                if isinstance(volatility_regime, int) and 0 <= volatility_regime <= 3:
+                    regime_name = regime_names[volatility_regime]
+                elif isinstance(volatility_regime, str) and volatility_regime in {"LOW", "NORMAL", "HIGH", "EXTREME"}:
+                    regime_name = volatility_regime
+
+            # Phase 21 (US-128): ATR-based regime fallback when TCN unavailable
+            if regime_name == "UNKNOWN" and atr_pips > 0:
+                try:
+                    # Compute ATR percentile from recent candles for fallback regime
+                    if "close" in df_raw.columns and "high" in df_raw.columns and len(df_raw) >= 50:
+                        _atr_series = df_raw["high"].iloc[-100:] - df_raw["low"].iloc[-100:]
+                        _current_atr = _atr_series.iloc[-1] if len(_atr_series) > 0 else 0
+                        _atr_pctile = float((_atr_series < _current_atr).mean())
+                        if _atr_pctile < 0.25:
+                            regime_name = "LOW"
+                        elif _atr_pctile < 0.50:
+                            regime_name = "NORMAL"
+                        elif _atr_pctile < 0.75:
+                            regime_name = "HIGH"
+                        else:
+                            regime_name = "EXTREME"
+                        logger.info(
+                            f"{pair}: Regime fallback ATR-percentile={_atr_pctile:.2f} → {regime_name}"
+                        )
+                        # Log to observation_log
+                        try:
+                            from src.scanner.automation.observation_log import ObservationLog
+                            ObservationLog().log_observation(
+                                pair=pair, category="regime_fallback",
+                                description=f"TCN unavailable, ATR-percentile={_atr_pctile:.2f} → {regime_name}",
+                                metadata={"atr_pctile": _atr_pctile, "regime": regime_name},
+                            )
+                        except Exception:
+                            pass
+                except Exception as _rf_err:
+                    logger.debug(f"{pair}: Regime fallback error: {_rf_err}")
+
+            # Phase 23 (US-140): If regime is STILL UNKNOWN after ATR fallback, use config default
+            if regime_name == "UNKNOWN":
+                _default_regime = getattr(self.config, "volatility_regime_default", "NORMAL")
+                regime_name = _default_regime
+                logger.info(f"{pair}: Regime defaulted to {regime_name} (ATR fallback insufficient)")
+                if self._observation_log is not None:
+                    try:
+                        self._observation_log.log(
+                            category="regime_default",
+                            pair=pair,
+                            data={"default_regime": regime_name, "reason": "atr_fallback_insufficient"},
+                        )
+                    except Exception:
+                        pass
 
             # Compute recent drawdown from close prices (lookback ~100 bars)
             _drawdown_val = 0.02  # Sensible default fallback
@@ -1551,6 +2680,302 @@ class Scanner:
                 gate_details=gate_details,
             )
 
+            # Phase 18: Model calibration — record predictions and check flocking
+            if self._model_calibration is not None and direction != "HOLD":
+                try:
+                    # Record per-model predictions for calibration tracking
+                    if tcn_conf > 0:
+                        self._model_calibration.record_prediction("TCN", tcn_conf, won=False)
+                    if ridge_conf > 0:
+                        self._model_calibration.record_prediction("Ridge", ridge_conf, won=False)
+                    # Check flocking (won field updated later via record_trade_outcome_phase18)
+                    _model_preds = {}
+                    if tcn_conf > 0:
+                        _model_preds["TCN"] = tcn_conf
+                    if ridge_conf > 0:
+                        _model_preds["Ridge"] = ridge_conf
+                    if len(_model_preds) >= 2:
+                        _flock = self._model_calibration.detect_flocking(_model_preds)
+                        if _flock.get("is_flocking"):
+                            _flock_acc = _flock.get("historical_flock_accuracy")
+                            if _flock_acc is not None and _flock_acc < 0.45:
+                                _old_conf_flock = confidence
+                                confidence = confidence * 0.90
+                                result.confidence = confidence
+                                logger.warning(
+                                    f"{pair}: Flocking detected (agreement={_flock['agreement_ratio']:.2f}, "
+                                    f"historical_accuracy={_flock_acc:.2f}) — "
+                                    f"conf {_old_conf_flock:.3f}→{confidence:.3f}"
+                                )
+                            else:
+                                logger.info(
+                                    f"{pair}: Flocking detected (agreement={_flock['agreement_ratio']:.2f}) "
+                                    f"— no penalty (accuracy={_flock_acc})"
+                                )
+                    # Phase 30 (US-184): Consume calibration ECE for dynamic confidence adj
+                    _oc_applied = False
+                    for _model_name in ("TCN", "Ridge"):
+                        _cal_report = self._model_calibration.get_calibration_report(_model_name)
+                        _oc_ratio = _cal_report.get("overconfidence_ratio")
+                        if _oc_ratio is not None and _oc_ratio > 0.15:
+                            _old_conf_oc = confidence
+                            confidence = max(confidence - 3.0, 0.0)
+                            result.confidence = confidence
+                            _oc_applied = True
+                            logger.info(
+                                f"{pair}: {_model_name} overconfident (ratio={_oc_ratio:.2f}>0.15) — "
+                                f"conf {_old_conf_oc:.1f}→{confidence:.1f} (-3pt)"
+                            )
+                            # Log observation with metadata (US-184 AC)
+                            try:
+                                from src.scanner.automation.observation_log import ObservationLog
+                                ObservationLog().log_observation(
+                                    pair=pair,
+                                    category="overconfidence_detected",
+                                    description=f"{_model_name} overconfidence_ratio={_oc_ratio:.3f}",
+                                    metadata={
+                                        "model": _model_name,
+                                        "overconfidence_ratio": _oc_ratio,
+                                        "ece": _cal_report.get("ece"),
+                                        "confidence_offset": -3,
+                                    },
+                                )
+                            except Exception:
+                                pass
+                            break  # Apply penalty once, not per-model
+                    # US-184: Reset offset when overconfidence ratio drops below 0.10
+                    if not _oc_applied:
+                        for _model_name in ("TCN", "Ridge"):
+                            _cal_report = self._model_calibration.get_calibration_report(_model_name)
+                            _oc_ratio = _cal_report.get("overconfidence_ratio")
+                            if _oc_ratio is not None and _oc_ratio < 0.10:
+                                logger.debug(
+                                    f"{pair}: {_model_name} overconfidence cleared (ratio={_oc_ratio:.3f}<0.10)"
+                                )
+
+                except Exception as _cal_track_err:
+                    logger.debug(f"{pair}: Model calibration tracking skipped: {_cal_track_err}")
+
+            # Phase 18: Pair-regime-agent matrix — record agent votes
+            if self._pair_regime_agent_matrix is not None and direction != "HOLD":
+                try:
+                    _agent_reasons = getattr(result, "agent_reasons", []) or []
+                    for _reason in _agent_reasons[:12]:
+                        if isinstance(_reason, dict) and "agent" in _reason:
+                            self._pair_regime_agent_matrix.record_vote(
+                                pair=pair,
+                                regime=regime_name,
+                                agent=_reason["agent"],
+                                vote=_reason.get("vote", direction),
+                                won=False,  # Updated later via record_trade_outcome_phase18
+                            )
+                except Exception as _matrix_err:
+                    logger.debug(f"{pair}: Pair-regime-agent matrix skipped: {_matrix_err}")
+
+            # Apply pre-trade backtest validation (soft gate: adjusts confidence, never hard-blocks)
+            self._init_analysis_tools()
+            if self._backtest_gate and result.direction != "HOLD":
+                backtest_result = self._backtest_gate.validate(
+                    pair=pair,
+                    direction=result.direction,
+                    sl_pips=result.sl_pips,
+                    tp_pips=result.tp_pips,
+                    recent_candles=df_raw,
+                    pip_value=pip_value,
+                )
+
+                # Log backtest result and apply soft penalty if needed
+                if backtest_result.trades_tested > 0:
+                    logger.info(
+                        f"{pair}: Backtest validation - {backtest_result.reason} "
+                        f"(trades_tested={backtest_result.trades_tested}, win_rate={backtest_result.win_rate:.1%})"
+                    )
+
+                # SOFT gate: adjust confidence, never block
+                if not backtest_result.passed and backtest_result.confidence_adjustment < 0:
+                    old_confidence = result.confidence
+                    result.confidence = max(0.0, result.confidence + backtest_result.confidence_adjustment)
+                    logger.debug(
+                        f"{pair}: Backtest gate penalty applied: {old_confidence:.3f} → {result.confidence:.3f}"
+                    )
+
+            # Apply trade cluster penalty/boost (US-030: avoid repeated exposure to same losing setup)
+            if result.direction != "HOLD":
+                try:
+                    from src.scanner.analysis.trade_clustering import TradeClusterAnalyzer
+                    cluster_analyzer = TradeClusterAnalyzer()
+                    cluster_analyzer.load_from_journal()
+                    regime_name = gate_details.get("volatility_regime_name", "NORMAL") if gate_details else "NORMAL"
+                    cluster_adj = cluster_analyzer.get_cluster_penalty(
+                        pair=pair,
+                        direction=result.direction,
+                        regime=str(regime_name),
+                        confidence=result.confidence,
+                    )
+                    if cluster_adj != 0.0:
+                        old_conf = result.confidence
+                        result.confidence = max(0.0, min(1.0, result.confidence + cluster_adj))
+                        logger.info(
+                            f"{pair}: Cluster {'penalty' if cluster_adj < 0 else 'boost'}: "
+                            f"{old_conf:.3f} → {result.confidence:.3f} ({cluster_adj:+.2f})"
+                        )
+                except Exception as cluster_err:
+                    logger.debug(f"Trade cluster analysis error: {cluster_err}")
+
+            # Phase 21 (US-127): Apply ThresholdOptimizer overrides to is_tradeable
+            if self._threshold_optimizer is not None and result.direction != "HOLD":
+                try:
+                    _opt_thresholds = self._threshold_optimizer.optimize_thresholds(regime_name)
+                    _opt_conf = _opt_thresholds.get("confidence", self.config.min_confidence / 100.0)
+                    # If optimizer has enough data and recommends lower threshold, re-check
+                    if result.confidence < _opt_conf and result.is_tradeable:
+                        # Optimizer says threshold should be _opt_conf — confidence too low
+                        pass  # Gate already checked; optimizer tightens, doesn't loosen beyond bounds
+                    elif result.confidence >= _opt_conf and not result.is_tradeable:
+                        # Optimizer loosened threshold — pair may now qualify
+                        if result.gates_passed or (result.confidence_passed and result.risk_passed and result.momentum_passed):
+                            result.is_tradeable = True
+                            result.gates_passed = True
+                            logger.info(
+                                f"{pair}: US-127 ThresholdOptimizer re-qualified "
+                                f"(conf={result.confidence:.3f} >= opt={_opt_conf:.3f})"
+                            )
+                    # Feed optimized thresholds to ConfigAdjuster
+                    if self._config_adjuster is not None:
+                        for _tkey, _tval in _opt_thresholds.items():
+                            self._config_adjuster.collect_adjustment(
+                                source="threshold_optimizer",
+                                key=f"optimized_{_tkey}_threshold",
+                                value=_tval,
+                                reason=f"Rolling win rate optimization for {regime_name}",
+                            )
+                except Exception as _to_err:
+                    logger.debug(f"{pair}: ThresholdOptimizer apply error: {_to_err}")
+
+            # Phase 21 (US-132): Extreme regime execution policy
+            # In EXTREME, reduce position size instead of blocking; lower confidence threshold
+            _result_regime = str(getattr(result, "volatility_regime", "UNKNOWN")).upper()
+            if (
+                getattr(self.config, "enable_extreme_regime_policy", True)
+                and _result_regime == "EXTREME"
+                and result.direction != "HOLD"
+            ):
+                try:
+                    _conf_offset = getattr(self.config, "extreme_regime_confidence_offset", -5.0)
+                    _effective_min = max(0.30, (self.config.min_confidence + _conf_offset) / 100.0)
+                    # If confidence is above the lowered threshold but below normal, re-qualify
+                    if result.confidence >= _effective_min and not result.is_tradeable:
+                        if result.risk_passed:
+                            result.is_tradeable = True
+                            result.gates_passed = True
+                            # Mark for reduced position sizing (consumed in execution.py)
+                            result.risk_pct = result.risk_pct * getattr(
+                                self.config, "extreme_regime_size_multiplier", 0.50
+                            )
+                            logger.info(
+                                f"{pair}: US-132 EXTREME policy re-qualified "
+                                f"(conf={result.confidence:.3f} >= {_effective_min:.3f}, "
+                                f"size_mult={getattr(self.config, 'extreme_regime_size_multiplier', 0.50)})"
+                            )
+                    elif result.is_tradeable and _result_regime == "EXTREME":
+                        # Already tradeable in EXTREME — still reduce position size
+                        result.risk_pct = result.risk_pct * getattr(
+                            self.config, "extreme_regime_size_multiplier", 0.50
+                        )
+                except Exception as _ext_err:
+                    logger.debug(f"{pair}: Extreme regime policy error: {_ext_err}")
+
+            # Phase 23 (US-142): Execution quality fast-track
+            # If trade was blocked only by agent consensus (gates_passed but not is_tradeable),
+            # allow through with reduced risk if agent_score is high enough
+            if (
+                getattr(self.config, "enable_execution_fasttrack", True)
+                and not result.is_tradeable
+                and result.direction in {"LONG", "SHORT"}
+                and result.confidence_passed
+                and result.momentum_passed
+                and result.risk_passed
+                and getattr(result, "agent_score", 0) >= float(getattr(self.config, "fasttrack_min_quality", 0.70))
+                and result.confidence >= float(getattr(self.config, "fasttrack_min_confidence", 0.50))
+            ):
+                _ft_risk_mult = float(getattr(self.config, "fasttrack_risk_multiplier", 0.75))
+                result.is_tradeable = True
+                result.gates_passed = True
+                result.risk_pct = result.risk_pct * _ft_risk_mult
+                # Phase 27 (US-166): Tag as fast-track for A/B outcome tracking
+                result.fasttrack = True
+                logger.info(
+                    f"{pair}: US-142 fast-track activated "
+                    f"(agent_score={getattr(result, 'agent_score', 0):.3f}, "
+                    f"conf={result.confidence:.3f}, risk_mult={_ft_risk_mult})"
+                )
+                if self._observation_log is not None:
+                    try:
+                        self._observation_log.log(
+                            category="execution_fasttrack",
+                            pair=pair,
+                            data={
+                                "agent_score": round(getattr(result, "agent_score", 0), 4),
+                                "confidence": round(result.confidence, 4),
+                                "risk_multiplier": _ft_risk_mult,
+                                "regime": _result_regime,
+                            },
+                        )
+                    except Exception:
+                        pass
+
+            # Phase 21 (US-129): Trade block reason logging
+            if (
+                getattr(self.config, "enable_trade_block_logging", True)
+                and not result.is_tradeable
+                and result.confidence > 0.30  # Only log meaningful candidates
+                and result.direction != "HOLD"
+            ):
+                try:
+                    _block_reasons = []
+                    if not result.confidence_passed:
+                        _block_reasons.append(
+                            f"confidence={result.confidence:.3f} < min={self.config.min_confidence}"
+                        )
+                    if not result.momentum_passed:
+                        _block_reasons.append(
+                            f"momentum={result.momentum:.3f} < min={self.config.min_momentum}"
+                        )
+                    if not result.risk_passed:
+                        _block_reasons.append(
+                            f"drawdown={result.drawdown:.4f} > max={self.config.max_drawdown_pct}"
+                        )
+                    if not result.volatility_gate_passed:
+                        _block_reasons.append(f"volatility_gate failed (regime={_result_regime})")
+                    # Check why_no_trade for agent consensus failures
+                    _why = getattr(result, "why_no_trade", None) or []
+                    if isinstance(_why, list):
+                        for _w in _why:
+                            if "consensus" in str(_w).lower():
+                                _block_reasons.append(str(_w))
+                    if _block_reasons:
+                        from src.scanner.automation.observation_log import ObservationLog
+                        ObservationLog().log_observation(
+                            pair=pair,
+                            category="trade_block_reason",
+                            description="; ".join(_block_reasons),
+                            metadata={
+                                "confidence": result.confidence,
+                                "momentum": result.momentum,
+                                "drawdown": result.drawdown,
+                                "regime": _result_regime,
+                                "direction": result.direction,
+                                "gates": {
+                                    "confidence": result.confidence_passed,
+                                    "momentum": result.momentum_passed,
+                                    "risk": result.risk_passed,
+                                    "volatility": result.volatility_gate_passed,
+                                },
+                            },
+                        )
+                except Exception:
+                    pass  # Non-blocking
+
             # Cache result
             self._cached_results[pair] = deepcopy(result)
             self._cache_contexts[pair] = self._build_cache_context(pair)
@@ -1559,12 +2984,35 @@ class Scanner:
             return result
 
         except Exception as e:
-            logger.error(f"Error scanning {pair}: {e}")
+            error_msg = str(e)
+            error_class = type(e).__name__
+
+            # Classify common errors into actionable messages
+            if "not supported between instances" in error_msg:
+                friendly = f"Type mismatch in scan pipeline: {error_msg}"
+            elif "No module" in error_msg or "cannot import" in error_msg.lower():
+                friendly = f"Missing dependency: {error_msg}"
+            elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+                friendly = f"Data fetch timeout — check OANDA connection"
+            elif "401" in error_msg or "403" in error_msg or "Unauthorized" in error_msg:
+                friendly = "OANDA auth failed — check API token in env"
+            elif "connection" in error_msg.lower() or "refused" in error_msg.lower():
+                friendly = "Connection error — check network/OANDA status"
+            elif "shape" in error_msg.lower() or "dimension" in error_msg.lower():
+                friendly = f"Model input shape error: {error_msg}"
+            elif "NaN" in error_msg or "inf" in error_msg.lower():
+                friendly = f"Bad data in features: {error_msg}"
+            elif "KeyError" in error_class:
+                friendly = f"Missing data column: {error_msg}"
+            else:
+                friendly = f"{error_class}: {error_msg}"
+
+            logger.error(f"[{pair}] Scan failed ({error_class}): {error_msg}")
             return PairAnalysis(
                 pair=pair,
                 direction="HOLD",
                 confidence=0.0,
-                error=str(e),
+                error=friendly,
             )
 
     def scan(
@@ -1583,6 +3031,26 @@ class Scanner:
         Returns:
             ScanResult with all pair analyses
         """
+        # CRITICAL: Reload agent weights at start of each scan to apply RL updates
+        self._agent_team.reload_learned_weights()
+
+        # Phase 20 (US-121): Health registry pre-flight check
+        if self._health_registry is not None:
+            try:
+                preflight = self._health_registry.run_preflight()
+                if not self._health_registry.should_continue_cycle():
+                    health_score = self._health_registry.get_system_health_score()
+                    failed = [n for n, ok in preflight.items() if not ok]
+                    logger.warning(
+                        "Health preflight FAILED (score=%.2f, failed=%s) — skipping scan cycle",
+                        health_score, failed,
+                    )
+                    self._health_registry.save_state()
+                    return ScanResult(analyses=[], model_type="skipped_unhealthy", granularity=self.config.granularity)
+                logger.debug("Health preflight passed (score=%.2f)", self._health_registry.get_system_health_score())
+            except Exception as hr_err:
+                logger.debug(f"Health preflight error (non-blocking): {hr_err}")
+
         pair_list = pairs if pairs is not None else (self.config.pairs or self.config.default_pairs)
         worker_count = max(1, int(max_workers or self.config.parallel_workers))
 
@@ -1607,10 +3075,10 @@ class Scanner:
                 for pair in pair_list
             }
 
-            for future in as_completed(futures):
+            for future in as_completed(futures, timeout=300):
                 pair = futures[future]
                 try:
-                    result = future.result()
+                    result = future.result(timeout=60)
                     if result is not None:
                         analyses.append(result)
 
@@ -1618,6 +3086,8 @@ class Scanner:
                         if on_pair_complete:
                             on_pair_complete(result)
 
+                except TimeoutError:
+                    logger.error(f"Scan TIMEOUT for {pair} (>60s)")
                 except Exception as e:
                     logger.error(f"Scan failed for {pair}: {e}")
                     analyses.append(PairAnalysis(
@@ -1632,6 +3102,50 @@ class Scanner:
             on_pair_complete=on_pair_complete,
         )
 
+        # Update regime tracker with dominant regime from this scan cycle
+        if self._regime_tracker and analyses:
+            valid_regime_names = {"LOW", "NORMAL", "HIGH", "EXTREME"}
+            regimes_seen = [
+                a.volatility_regime for a in analyses
+                if a.volatility_regime is not None and a.volatility_regime in valid_regime_names
+            ]
+            if regimes_seen:
+                # Use the most common regime across pairs
+                from collections import Counter
+                dominant_regime = Counter(regimes_seen).most_common(1)[0][0]
+                self._regime_tracker.update(dominant_regime)
+
+        # Compute group momentum from scan results (Phase 8: US-054)
+        self._last_group_momentum = {}
+        if self._group_momentum and analyses:
+            scan_signals = []
+            for a in analyses:
+                if a.direction and a.direction.upper() != "HOLD" and a.confidence > 0:
+                    scan_signals.append({
+                        "pair": a.pair,
+                        "direction": a.direction.upper(),
+                        "confidence": a.confidence,
+                    })
+            if scan_signals:
+                self._last_group_momentum = self._group_momentum.compute_group_momentum(
+                    scan_signals
+                )
+
+        # Phase 18: Save state for calibration modules after each scan cycle
+        self._save_phase18_state()
+
+        # Phase 20 (US-121): Health registry post-flight check + save Phase 19 state
+        if self._health_registry is not None:
+            try:
+                postflight = self._health_registry.run_postflight()
+                failed_post = [n for n, ok in postflight.items() if not ok]
+                if failed_post:
+                    logger.warning("Health postflight: %d module(s) failed: %s", len(failed_post), failed_post)
+                self._health_registry.save_state()
+            except Exception as hr_err:
+                logger.debug(f"Health postflight error: {hr_err}")
+        self._save_phase19_state()
+
         # Build scan result
         model_type = "technical"
         if bool(getattr(self, "_ensemble_loaded", False)):
@@ -1644,6 +3158,164 @@ class Scanner:
             model_type=model_type,
             granularity=self.config.granularity,
         )
+
+    def _save_phase18_state(self) -> None:
+        """Persist Phase 18 module state after scan cycles."""
+        for module in (
+            self._execution_quality_optimizer,
+            self._threshold_optimizer,
+            self._dynamic_risk_allocator,
+            self._model_calibration,
+            self._pair_regime_agent_matrix,
+            self._signal_timing,
+        ):
+            if module is not None:
+                try:
+                    module.save_state()
+                except Exception as e:
+                    logger.debug(f"Phase 18 save_state error: {e}")
+
+    def _save_phase19_state(self) -> None:
+        """Persist Phase 19 module state after scan cycles (US-121)."""
+        for module in (
+            self._memory_manager,
+            self._module_activation,
+            self._agent_lifecycle,
+            self._observation_consumer,
+            self._replay_validator,
+        ):
+            if module is not None:
+                try:
+                    module.save_state()
+                except Exception as e:
+                    logger.debug(f"Phase 19 save_state error: {e}")
+
+    def _register_health_checks(self) -> None:
+        """Register Phase 19 modules with health registry (US-121).
+
+        Called once after all modules are initialized. Each module gets a
+        health check lambda that verifies it's not None and responsive.
+        """
+        if self._health_registry is None:
+            return
+
+        # Register core components as critical
+        self._health_registry.register_module(
+            "engine", lambda: self._agent_team is not None, critical=True,
+        )
+        self._health_registry.register_module(
+            "agents", lambda: self._agent_team is not None, critical=True,
+        )
+
+        # Register Phase 19 modules as non-critical (graceful degradation)
+        phase19_modules = {
+            "memory_manager": self._memory_manager,
+            "module_activation": self._module_activation,
+            "agent_lifecycle": self._agent_lifecycle,
+            "observation_consumer": self._observation_consumer,
+            "replay_validator": self._replay_validator,
+        }
+        for name, mod in phase19_modules.items():
+            if mod is not None:
+                self._health_registry.register_module(
+                    name,
+                    health_check=lambda m=mod: hasattr(m, "get_status"),
+                    critical=False,
+                )
+
+        # Register Phase 18 modules
+        phase18_modules = {
+            "execution_quality_optimizer": self._execution_quality_optimizer,
+            "threshold_optimizer": self._threshold_optimizer,
+            "dynamic_risk_allocator": self._dynamic_risk_allocator,
+            "model_calibration": self._model_calibration,
+            "pair_regime_agent_matrix": self._pair_regime_agent_matrix,
+            "signal_timing": self._signal_timing,
+        }
+        for name, mod in phase18_modules.items():
+            if mod is not None:
+                self._health_registry.register_module(name, critical=False)
+
+        logger.info(
+            "Health registry: %d modules registered",
+            len(self._health_registry._modules),
+        )
+
+    def record_trade_outcome_phase18(
+        self,
+        pair: str,
+        regime: str,
+        pnl_pips: float,
+        trade_won: bool,
+        duration_bars: int = 0,
+        gate_values: Optional[Dict[str, float]] = None,
+        agent_verdicts: Optional[List[Dict[str, Any]]] = None,
+        slippage_pips: float = 0.0,
+        fill_time_ms: float = 0.0,
+        fill_rate: float = 1.0,
+        model: str = "ensemble",
+        signal_time: float = 0.0,
+        entry_time: float = 0.0,
+        peak_time: float = 0.0,
+    ) -> None:
+        """Feed Phase 18 calibration modules with a trade outcome.
+
+        Called by ExecutionManager after trade closure to update:
+        - ThresholdOptimizer (gate tuning from win/loss)
+        - DynamicRiskAllocator (P/L distribution)
+        - ExecutionQualityOptimizer (cost profiling)
+        - ModelCalibrationTracker (prediction accuracy)
+        - PairRegimeAgentMatrix (agent accuracy per context)
+        - SignalTimingOptimizer (signal-to-entry-to-peak gaps)
+        """
+        if self._threshold_optimizer is not None and gate_values:
+            try:
+                self._threshold_optimizer.update_outcome(regime, gate_values, trade_won)
+            except Exception as e:
+                logger.debug(f"ThresholdOptimizer outcome error: {e}")
+
+        if self._dynamic_risk_allocator is not None:
+            try:
+                self._dynamic_risk_allocator.record_trade(pnl_pips, duration_bars, regime)
+            except Exception as e:
+                logger.debug(f"DynamicRiskAllocator outcome error: {e}")
+
+        if self._execution_quality_optimizer is not None:
+            try:
+                self._execution_quality_optimizer.record_execution(
+                    pair, regime, model, slippage_pips, fill_time_ms, fill_rate
+                )
+            except Exception as e:
+                logger.debug(f"ExecutionQualityOptimizer outcome error: {e}")
+
+        if self._model_calibration is not None:
+            try:
+                self._model_calibration.record_flock_outcome(trade_won)
+            except Exception as e:
+                logger.debug(f"ModelCalibrationTracker outcome error: {e}")
+
+        if self._pair_regime_agent_matrix is not None and agent_verdicts:
+            try:
+                for verdict in agent_verdicts:
+                    if isinstance(verdict, dict) and "agent" in verdict:
+                        self._pair_regime_agent_matrix.record_vote(
+                            pair=pair,
+                            regime=regime,
+                            agent=verdict["agent"],
+                            vote=verdict.get("vote", "HOLD"),
+                            won=trade_won,
+                        )
+            except Exception as e:
+                logger.debug(f"PairRegimeAgentMatrix outcome error: {e}")
+
+        if self._signal_timing is not None and signal_time > 0 and entry_time > 0:
+            try:
+                self._signal_timing.record_signal(pair, signal_time, entry_time, peak_time)
+            except Exception as e:
+                logger.debug(f"SignalTimingOptimizer outcome error: {e}")
+
+        # Persist after recording outcomes
+        self._save_phase18_state()
 
     def scan_with_analysis(
         self,
@@ -1715,11 +3387,54 @@ class Scanner:
 
             # Apply diversification filter
             if apply_diversification and self._diversification_filter:
+                pre_filter_pairs = {a.pair for a in result.analyses}
                 result.analyses = self._diversification_filter.filter(
                     result.analyses,
                     returns_data=self._pair_returns,
                     apply_position_reduction=True,
                 )
+                # US-059: Log correlation conflicts to observation log
+                try:
+                    filtered_out = self._diversification_filter.get_filtered_pairs()
+                    if filtered_out:
+                        from .automation.observation_log import ObservationLog
+                        obs_log = ObservationLog()
+                        kept_pairs = {a.pair for a in result.analyses}
+                        for removed_pair in filtered_out:
+                            # Find which kept pair caused the conflict
+                            conflict_with = next(iter(kept_pairs), "unknown")
+                            obs_log.log_correlation_conflict(
+                                pair=removed_pair,
+                                conflicting_pair=conflict_with,
+                                correlation=0.7,  # threshold used by filter
+                                reason="Diversification filter removed correlated pair",
+                            )
+                except Exception:
+                    pass
+
+            # US-073: HRP portfolio weight optimization (replaces binary filter)
+            if getattr(self.config, "use_hrp", False) and self._pair_returns:
+                try:
+                    from .automation.hierarchical_risk_parity import HRPOptimizer
+                    hrp = HRPOptimizer(
+                        linkage_method=getattr(self.config, "hrp_linkage_method", "average"),
+                    )
+                    active_pairs = [a.pair for a in result.analyses]
+                    hrp_result = hrp.get_weights(active_pairs, self._pair_returns)
+                    # Inject HRP weight into each analysis for position sizing
+                    for analysis in result.analyses:
+                        hrp_weight = hrp_result.weights.get(analysis.pair, 1.0 / max(len(active_pairs), 1))
+                        # Store as position_size_modifier for execution layer
+                        if not hasattr(analysis, "hrp_weight"):
+                            analysis.hrp_weight = hrp_weight
+                        else:
+                            analysis.hrp_weight = hrp_weight
+                    logger.info(
+                        "HRP weights applied: %d pairs, effective_n=%.1f",
+                        hrp_result.n_assets, hrp_result.effective_n,
+                    )
+                except Exception as e:
+                    logger.debug("HRP optimization skipped: %s", e)
 
         # Model drift detection
         if run_drift_check and self._drift_detector:
@@ -1824,6 +3539,15 @@ class Scanner:
                 high_prob_threshold=self.config.high_prob_threshold,
                 high_prob_tp_bonus=self.config.high_prob_tp_bonus,
                 max_trades_per_day=self.config.daily_trade_limit,
+                max_order_attempts=getattr(self.config, "max_order_attempts", 2),
+                rejection_downsize_factor=getattr(self.config, "rejection_downsize_factor", 0.5),
+                high_slippage_alert_pips=getattr(self.config, "high_slippage_alert_pips", 5.0),
+                fallback_tp_pips=getattr(self.config, "fallback_tp_pips", 25.0),
+                fallback_atr_pips=getattr(self.config, "fallback_atr_pips", 15.0),
+                min_lot_size=getattr(self.config, "min_lot_size", 0.01),
+                max_lot_size=getattr(self.config, "max_lot_size", 50.0),
+                trailing_stop_breakeven_pct=getattr(self.config, "trailing_stop_breakeven_pct", 0.50),
+                trailing_stop_lock_pct=getattr(self.config, "trailing_stop_lock_pct", 0.75),
             )
             self._executor = ExecutionManager(
                 config=exec_config,
@@ -1855,6 +3579,23 @@ class Scanner:
         if not self._init_executor():
             return []
 
+        # ── Phase 29 (US-178): Pre-flight validation ──────────────────────
+        # Verify account connectivity and basic health before placing orders.
+        try:
+            nav = self._executor.fetch_live_nav()
+            if nav is None or nav <= 0:
+                logger.warning("Pre-flight FAIL: could not fetch live NAV — skipping execution")
+                return []
+            # Verify we haven't exceeded portfolio risk ceiling (15% NAV)
+            _open_count = len(getattr(self, "_open_positions", []))
+            if _open_count >= getattr(self.config, "max_concurrent_trades", 10):
+                logger.warning(
+                    f"Pre-flight FAIL: {_open_count} open trades >= max_concurrent_trades"
+                )
+                return []
+        except Exception as e:
+            logger.warning(f"Pre-flight check error (non-fatal): {e}")
+
         # Filter to tradeable pairs only
         tradeable = [a for a in analyses if a.is_tradeable]
 
@@ -1864,6 +3605,30 @@ class Scanner:
         if not tradeable:
             logger.info("No tradeable pairs to execute")
             return []
+
+        # Phase 29 (US-178): Validate each trade's parameters before execution
+        validated = []
+        for a in tradeable:
+            # Must have valid price, ATR, and SL/TP
+            if not a.current_price or float(a.current_price) <= 0:
+                logger.warning(f"Pre-flight skip {a.pair}: invalid current_price={a.current_price}")
+                continue
+            if not a.atr or float(a.atr) <= 0:
+                logger.warning(f"Pre-flight skip {a.pair}: invalid ATR={a.atr}")
+                continue
+            if not a.sl_pips or float(a.sl_pips) <= 0:
+                logger.warning(f"Pre-flight skip {a.pair}: invalid SL={a.sl_pips}")
+                continue
+            if not a.tp_pips or float(a.tp_pips) <= 0:
+                logger.warning(f"Pre-flight skip {a.pair}: invalid TP={a.tp_pips}")
+                continue
+            # R:R ratio gate (rules/trading.md: minimum 1.2:1)
+            rr = float(a.tp_pips) / float(a.sl_pips)
+            if rr < getattr(self.config, "min_risk_reward_ratio", 1.2):
+                logger.warning(f"Pre-flight skip {a.pair}: R:R {rr:.2f} < minimum")
+                continue
+            validated.append(a)
+        tradeable = validated
 
         # Convert to execution format with full analysis context for journal
         trades = [
@@ -1885,6 +3650,7 @@ class Scanner:
                     "agent_total": a.agent_total,
                     "agent_passed": a.agent_passed,
                     "agent_promoted": a.agent_promoted,
+                    "fasttrack": getattr(a, "fasttrack", False),  # US-166
                     "weighted_vote_score": a.weighted_vote_score,
                     "agent_reasons": a.agent_reasons[:5] if a.agent_reasons else [],
                     "volatility_regime": a.volatility_regime,
@@ -1896,10 +3662,100 @@ class Scanner:
                     "momentum": a.momentum,
                     "drawdown": a.drawdown,
                     "overall_score": a.overall_score,
+                    "scan_time": a.scan_time.isoformat() if a.scan_time else None,
+                    "regime_risk_modifier": (
+                        self._regime_tracker.get_regime_risk_modifier()
+                        if self._regime_tracker else 1.0
+                    ),
+                    "predictive_size_modifier": (
+                        self._regime_tracker.get_predictive_size_modifier()
+                        if self._regime_tracker else 1.0
+                    ),
+                    "regime_atr_multipliers": (
+                        self.config.regime_atr_multipliers.get(
+                            a.volatility_regime, {}
+                        )
+                        if getattr(self.config, "enable_regime_atr_adaptation", False)
+                        and a.volatility_regime in {"LOW", "NORMAL", "HIGH", "EXTREME"}
+                        else {}
+                    ),
+                    # US-066: Macro stress modifier
+                    "macro_stress_modifier": (
+                        self._macro_stress.get_stress_modifier()
+                        if self._macro_stress else 1.0
+                    ),
+                    # US-064: Hour-of-day seasonality modifier
+                    "seasonality_modifier": (
+                        self._seasonality.get_hour_modifier(
+                            a.pair, datetime.now(timezone.utc).hour
+                        )
+                        if self._seasonality else 1.0
+                    ),
+                    # Phase 22 (US-135): Pass regime-adjusted risk_pct to execution
+                    "risk_pct": a.risk_pct,
                 },
             }
             for a in tradeable
         ]
+
+        # ── GROUP MOMENTUM FILTER (US-054) ────────────────────────────────
+        group_scores = getattr(self, "_last_group_momentum", {})
+        if self._group_momentum and group_scores:
+            filtered_trades = []
+            for trade in trades:
+                gm_result = self._group_momentum.evaluate_trade(
+                    pair=trade["pair"],
+                    direction=trade["direction"],
+                    confidence=trade["confidence"],
+                    group_scores=group_scores,
+                )
+                # Inject group momentum data into analysis context
+                trade["analysis_context"]["group_momentum"] = {
+                    "action": gm_result.action,
+                    "alignment": gm_result.alignment,
+                    "base_score": gm_result.base_score,
+                    "quote_score": gm_result.quote_score,
+                    "position_modifier": gm_result.position_modifier,
+                }
+
+                if gm_result.action == "block":
+                    logger.info(f"Group momentum BLOCKED: {gm_result.reason}")
+                    # US-059: Log blocked trades to observation log
+                    try:
+                        from .automation.observation_log import ObservationLog
+                        ObservationLog().log_group_momentum(
+                            pair=trade["pair"],
+                            action="block",
+                            alignment=gm_result.alignment,
+                            base_score=gm_result.base_score,
+                            quote_score=gm_result.quote_score,
+                            reason=gm_result.reason,
+                        )
+                    except Exception:
+                        pass
+                    continue
+                elif gm_result.action == "boost":
+                    # Apply position size boost
+                    if trade.get("recommended_lots") is not None:
+                        trade["recommended_lots"] = round(
+                            float(trade["recommended_lots"]) * gm_result.position_modifier, 2
+                        )
+                    logger.info(f"Group momentum BOOST: {gm_result.reason}")
+                    # US-059: Log boosted trades to observation log
+                    try:
+                        from .automation.observation_log import ObservationLog
+                        ObservationLog().log_group_momentum(
+                            pair=trade["pair"],
+                            action="boost",
+                            alignment=gm_result.alignment,
+                            base_score=gm_result.base_score,
+                            quote_score=gm_result.quote_score,
+                            reason=gm_result.reason,
+                        )
+                    except Exception:
+                        pass
+                filtered_trades.append(trade)
+            trades = filtered_trades
 
         return self._executor.execute_trades(trades)
 

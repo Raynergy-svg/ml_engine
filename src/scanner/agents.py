@@ -119,6 +119,14 @@ class ScannerAgentTeam:
                 pass
         return {}
 
+    def reload_learned_weights(self) -> None:
+        """Reload agent weights from disk (after RL sync or weight decay).
+
+        This ensures the team always uses the latest learned weights.
+        Call before scanning if weights may have been updated since __init__.
+        """
+        self._learned_weights = self._load_learned_weights()
+
     def _save_learned_weights(self) -> None:
         """Persist learned agent weights to disk."""
         import json

@@ -287,6 +287,7 @@ def _retry_with_backoff(
     """
     last_exception = None
     delay = initial_delay
+    func_name = getattr(func, '__name__', 'unknown')
 
     for attempt in range(1, max_retries + 1):
         try:
@@ -302,7 +303,7 @@ def _retry_with_backoff(
                 delay *= backoff_factor
             else:
                 logger.error(
-                    f"All {max_retries} attempts failed for {func.__name__}. "
+                    f"All {max_retries} attempts failed for {func_name}. "
                     f"Last error: {type(e).__name__}: {e}"
                 )
         except Exception as e:
@@ -315,7 +316,7 @@ def _retry_with_backoff(
                         f"Not retrying: {e}"
                     )
                     raise
-            logger.error(f"Non-retryable error in {func.__name__}: {e}")
+            logger.error(f"Non-retryable error in {func_name}: {e}")
             raise
 
     # If we get here, all retries failed
