@@ -15,6 +15,31 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:
+    from src.scanner.automation.safe_json import safe_json_write as _safe_json_write
+except ImportError:
+    _safe_json_write = None  # fallback to atomic inline write if not available
+
+
+def _atomic_write(path: Path, data: Any) -> None:
+    """Atomic JSON write: write to .tmp then os.rename. H-1 fix."""
+    if _safe_json_write is not None:
+        _safe_json_write(path, data)
+        return
+    import tempfile
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        os.replace(str(tmp), str(path))
+    except Exception as e:
+        logger.error(f"_atomic_write failed for {path}: {e}")
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
 logger = logging.getLogger(__name__)
 
 STATE_PATH = Path(".claude/state.json")
@@ -86,7 +111,7 @@ class StateEngine:
             "improvement_focus": improvement_focus,
         }
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(json.dumps(state, indent=2, default=str))
+        _atomic_write(self.state_path, state)  # H-1: atomic write prevents corruption
         logger.info("State saved to %s", self.state_path)
 
     def update_portfolio_snapshot(self) -> Dict[str, Any]:
@@ -151,7 +176,11 @@ class StateEngine:
                         logger.warning("Journal file is not a JSON list, skipping stats")
                     else:
                         closed = [e for e in entries if e.get("outcome") is not None]
-                        wins = sum(1 for e in closed if e["outcome"].get("trade_won", False))
+                        # C-6: outcome can be a legacy string ("win") or a dict — guard both
+                        wins = sum(
+                            1 for e in closed
+                            if isinstance(e.get("outcome"), dict) and e["outcome"].get("trade_won", False)
+                        )
                         losses = len(closed) - wins
                         snapshot["session_trades"] = len(closed)
                         snapshot["session_wins"] = wins
@@ -167,7 +196,7 @@ class StateEngine:
         state["portfolio_snapshot"] = snapshot
         state["last_updated"] = datetime.now(timezone.utc).isoformat()
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        self.state_path.write_text(json.dumps(state, indent=2, default=str))
+        _atomic_write(self.state_path, state)  # H-1: atomic write prevents corruption
         logger.info("Portfolio snapshot updated: NAV=%.2f, open=%d", snapshot["nav"], snapshot["open_trades"])
         return snapshot
 
@@ -177,5 +206,5 @@ class StateEngine:
         count = state.get("scan_cycle_count", 0) + 1
         state["scan_cycle_count"] = count
         state["last_updated"] = datetime.now(timezone.utc).isoformat()
-        self.state_path.write_text(json.dumps(state, indent=2, default=str))
+        _atomic_write(self.state_path, state)  # H-1: atomic write prevents corruption
         return count

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import json
+import os
 
 try:
     from zoneinfo import ZoneInfo
@@ -322,7 +323,10 @@ def save_state(cfg: Dict[str, Any], *args) -> Path:
         "disabled_kind": state.disabled_kind,
         "last_updated_at": state.last_updated_at,
     }
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    # H-3: atomic write — prevents guardrail state corruption on crash
+    _tmp = path.with_suffix(".tmp")
+    _tmp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(str(_tmp), str(path))
     return path
 
 

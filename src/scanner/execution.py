@@ -88,6 +88,17 @@ class ExecutionConfig:
     # Portfolio risk limits
     max_open_risk_pct: float = 0.15  # Max 15% of NAV at risk across all open trades
 
+    # Execution recovery and fallback params (US-048)
+    max_order_attempts: int = 2  # Original + N-1 retries on rejection
+    rejection_downsize_factor: float = 0.5  # Multiply lots by this on order rejection
+    high_slippage_alert_pips: float = 5.0  # Log observation when |slippage| exceeds
+    fallback_tp_pips: float = 25.0  # TP fallback when ATR unavailable
+    fallback_atr_pips: float = 15.0  # ATR fallback for trailing stop when ATR unavailable
+    min_lot_size: float = 0.01  # Minimum order size in lots
+    max_lot_size: float = 50.0  # Maximum order size in lots
+    trailing_stop_breakeven_pct: float = 0.50  # Progress % to move SL to breakeven
+    trailing_stop_lock_pct: float = 0.75  # Progress % to lock 50% of profit
+
 
 @dataclass
 class ExecutionResult:
@@ -122,6 +133,9 @@ class ExecutionResult:
     regime_scale: float = 1.0
     regime_name: str = "UNKNOWN"
     aggressive_scaling_reason: str = ""
+    # Execution quality fields (Phase 7)
+    fill_status: str = "UNKNOWN"  # FULL, PARTIAL, REJECTED, RETRIED
+    slippage_pips: float = 0.0  # fill_price - expected_price in pips
 
 
 class ExecutionManager:
@@ -161,6 +175,38 @@ class ExecutionManager:
         self._trades_today: int = 0
         self._last_nav_fetch: float = 0.0
 
+        # Phase 30 (US-183): Shared observation logger (lazy-init)
+        self._observer = None
+
+        # Phase 24 (US-148): Rolling slippage tracker per pair (last 20 trades)
+        self._slippage_history: Dict[str, List[float]] = {}
+        self._slippage_window: int = 20
+        self._slippage_threshold_pips: float = 2.5  # Avg above this triggers reduction
+        self._slippage_size_reduction: float = 0.15  # 15% size reduction
+
+        # Phase 44 (US-279): Adaptive Exit Manager (Chandelier + partial profit + vol trail + time + confidence decay)
+        self._adaptive_exit_manager = None
+        try:
+            from src.scanner.adaptive_exits import create_default_exit_manager
+            self._adaptive_exit_manager = create_default_exit_manager()
+            logger.info("Phase 44: Adaptive exit manager initialized")
+        except Exception as e:
+            logger.debug(f"Adaptive exit manager init deferred: {e}")
+
+        # Phase 45 (US-282): Adaptive Position Sizer (Kelly + Sigmoid + Drawdown + Regime)
+        self._adaptive_position_sizer = None
+        self._last_regime_name = "NORMAL"
+        self._current_drawdown_pct = 0.0
+
+        # Phase 45 (US-285): EWMA Correlation Engine for dynamic diversification
+        self._ewma_correlation = None
+
+        # Phase 47 (US-296): Session Detector for session-aware position sizing
+        self._session_detector = None
+
+        # Phase 47 (US-297): Expectancy Tracker for per-agent per-regime performance
+        self._expectancy_tracker = None
+
     def _init_oanda_client(self) -> bool:
         """Initialize OANDA client.
 
@@ -177,6 +223,43 @@ class ExecutionManager:
         except Exception as e:
             logger.error(f"Failed to initialize OANDA client: {e}")
             return False
+
+    def _retry_oanda(self, func: Any, *args: Any, **kwargs: Any) -> Any:
+        """Execute an OANDA API call with retry and circuit breaker.
+
+        Args:
+            func: Callable to execute.
+            *args, **kwargs: Passed to func.
+
+        Returns:
+            Result from func.
+
+        Raises:
+            RuntimeError if circuit breaker is tripped.
+            Last exception if all retries exhausted.
+        """
+        try:
+            from src.scanner.automation.api_retry import retry_api_call, get_oanda_breaker
+            return retry_api_call(
+                func, *args,
+                max_retries=3,
+                backoff_base=1.0,
+                circuit_breaker=get_oanda_breaker(),
+                **kwargs,
+            )
+        except ImportError:
+            # Fallback — direct call without retry
+            return func(*args, **kwargs)
+
+    def _get_observer(self):
+        """Phase 30 (US-183): Shared observation logger instance (lazy-init)."""
+        if self._observer is None:
+            try:
+                from .automation.observation_log import ObservationLog
+                self._observer = ObservationLog()
+            except ImportError:
+                pass
+        return self._observer
 
     def _init_position_sizer(self) -> None:
         """Initialize position sizer with regime-aware scaling."""
@@ -208,6 +291,68 @@ class ExecutionManager:
         except ImportError:
             logger.debug("DynamicPositionSizer not available")
 
+    def _init_adaptive_position_sizer(self) -> None:
+        """Phase 45 (US-282): Initialize adaptive position sizer with Kelly+Sigmoid+Drawdown+Regime."""
+        if self._adaptive_position_sizer is not None:
+            return
+        try:
+            from pathlib import Path
+            from src.scanner.adaptive_position_sizing import (
+                AdaptivePositionSizer,
+                create_default_position_sizer as create_default_adaptive_sizer,
+                create_conservative_position_sizer as create_conservative_adaptive_sizer,
+                create_aggressive_position_sizer as create_aggressive_adaptive_sizer,
+            )
+            if self.config.aggressive_mode:
+                self._adaptive_position_sizer = create_aggressive_adaptive_sizer()
+            else:
+                self._adaptive_position_sizer = create_default_adaptive_sizer()
+
+            # Load persisted state if available
+            _state_path = Path("trained_data/adaptive_sizer_state.json")
+            if _state_path.exists():
+                try:
+                    self._adaptive_position_sizer.load_state(str(_state_path))
+                    logger.info("Phase 45: Loaded adaptive position sizer state")
+                except Exception as e:
+                    logger.warning(f"Phase 45: Could not load adaptive sizer state: {e}")
+
+            logger.info("Phase 45: Adaptive position sizer initialized")
+        except Exception as e:
+            logger.debug(f"Phase 45: Adaptive position sizer init deferred: {e}")
+
+    def _init_ewma_correlation(self) -> None:
+        """Phase 45 (US-285): Initialize EWMA correlation engine."""
+        if self._ewma_correlation is not None:
+            return
+        try:
+            from src.risk.ewma_correlation import (
+                EWMACorrelationEngine,
+                create_default_ewma_engine,
+            )
+            # Get tracked pairs from config
+            _pairs = getattr(self.config, 'pairs', None)
+            if _pairs and isinstance(_pairs, (list, tuple)):
+                _pair_list = list(_pairs)
+            else:
+                _pair_list = None
+
+            self._ewma_correlation = create_default_ewma_engine(pairs=_pair_list)
+
+            # Load persisted state
+            _state_path = "trained_data/ewma_correlation_state.json"
+            import os
+            if os.path.exists(_state_path):
+                try:
+                    self._ewma_correlation.load_state(_state_path)
+                    logger.info("Phase 45: Loaded EWMA correlation state")
+                except Exception as e:
+                    logger.warning(f"Phase 45: Could not load EWMA state: {e}")
+
+            logger.info("Phase 45: EWMA correlation engine initialized")
+        except Exception as e:
+            logger.debug(f"Phase 45: EWMA correlation init deferred: {e}")
+
     def _init_risk_manager(self) -> None:
         """Initialize risk manager."""
         if self._risk_manager is not None:
@@ -232,6 +377,53 @@ class ExecutionManager:
         except ImportError:
             logger.debug("MemoryClient not available")
 
+    def _init_session_detector(self) -> None:
+        """Phase 47 (US-296): Initialize session detector for session-aware position sizing."""
+        if self._session_detector is not None:
+            return
+        try:
+            from src.scanner.session_detector import SessionDetector
+            self._session_detector = SessionDetector()
+            logger.info("Phase 47: Session detector initialized")
+        except Exception as e:
+            logger.debug(f"Phase 47: Session detector init deferred: {e}")
+
+    def _init_expectancy_tracker(self) -> None:
+        """Phase 47 (US-297): Initialize expectancy tracker for per-agent per-regime performance."""
+        if self._expectancy_tracker is not None:
+            return
+        try:
+            from src.scanner.expectancy_tracker import (
+                ExpectancyTracker,
+                create_default_expectancy_tracker,
+            )
+            self._expectancy_tracker = create_default_expectancy_tracker()
+            self._expectancy_tracker.load_state()
+            logger.info("Phase 47: Expectancy tracker initialized")
+        except Exception as e:
+            logger.debug(f"Phase 47: Expectancy tracker init deferred: {e}")
+
+    def _update_ewma_correlation(self, pair: str, current_price: float, previous_price: float) -> None:
+        """Phase 45 (US-285): Update EWMA correlation with latest return.
+
+        Args:
+            pair: Currency pair name
+            current_price: Current price
+            previous_price: Previous price
+        """
+        if self._ewma_correlation is None:
+            self._init_ewma_correlation()
+        if self._ewma_correlation is None:
+            return
+
+        try:
+            import numpy as np
+            if previous_price > 0 and current_price > 0:
+                log_return = float(np.log(current_price / previous_price))
+                self._ewma_correlation.update({pair: log_return})
+        except Exception as e:
+            logger.debug(f"Phase 45: EWMA correlation update failed: {e}")
+
     def fetch_live_nav(self) -> Optional[float]:
         """Fetch live NAV from OANDA for proper compounding.
 
@@ -242,13 +434,16 @@ class ExecutionManager:
             return None
 
         try:
-            result = self._oanda.get_account_summary()
+            result = self._retry_oanda(self._oanda.get_account_summary)
             account = result.get('account', {})
             nav = float(account.get('NAV', 0))
             if nav > 0:
                 self._cached_nav = nav
                 logger.debug(f"Fetched live NAV: ${nav:,.2f}")
                 return nav
+        except RuntimeError as e:
+            # Circuit breaker tripped
+            logger.warning(f"OANDA circuit breaker open: {e}")
         except Exception as e:
             logger.debug(f"Could not fetch live NAV: {e}")
         return self._cached_nav
@@ -265,10 +460,12 @@ class ExecutionManager:
         try:
             today_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
-            result = self._oanda._request(
+            # Phase 30 (US-181): Wrap in retry logic
+            result = self._retry_oanda(
+                self._oanda._request,
                 'GET',
                 f'/accounts/{self._oanda._config.account_id}/trades',
-                params={'state': 'ALL', 'count': 100}
+                params={'state': 'ALL', 'count': 100},
             )
             trades = result.get('trades', [])
 
@@ -350,6 +547,253 @@ class ExecutionManager:
             logger.debug(f"Risk limit check failed: {e}")
             return True, "risk check unavailable"
 
+    def _check_correlation_exposure(self, pair: str) -> Tuple[bool, str]:
+        """Check if opening a trade on this pair would breach correlation exposure limits.
+
+        Uses correlation group config to determine if the pair belongs to a
+        correlated group, then counts how many open trades already exist in
+        that group.  If the count >= max_correlated_exposure, the trade is blocked.
+
+        Returns:
+            Tuple of (allowed, reason)
+        """
+        max_corr = getattr(self.config, "max_correlated_exposure", 2)
+        if max_corr <= 0:
+            return True, "correlation limit disabled"
+
+        try:
+            from src.training.correlation_group_config import get_correlation_group
+
+            group = get_correlation_group(pair)
+            if not group:
+                return True, "no correlation group"
+
+            # Get open trades
+            statuses = self.monitor_open_trades()
+            if not statuses:
+                return True, "no open trades"
+
+            # Count how many open trades are in the same correlation group
+            corr_count = 0
+            corr_pairs = []
+            for s in statuses:
+                open_pair = s.get("pair", "")
+                open_group = get_correlation_group(open_pair)
+                if open_group and open_group.name == group.name:
+                    corr_count += 1
+                    corr_pairs.append(open_pair)
+
+            if corr_count >= max_corr:
+                reason = (
+                    f"Correlated pair blocked: {pair} in group '{group.name}' "
+                    f"({corr_count}/{max_corr} already open: {', '.join(corr_pairs)})"
+                )
+                # Log to observations
+                try:
+                    # Phase 30 (US-183): Use shared observer
+                    obs = self._get_observer()
+                    obs.log(
+                        category="correlation_block",
+                        detail=reason,
+                        data={
+                            "pair": pair, "group": group.name,
+                            "open_correlated": corr_pairs,
+                            "max_allowed": max_corr,
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"Execution correlation check skipped: {e}")
+                return False, reason
+
+            return True, f"correlation ok ({corr_count}/{max_corr} in {group.name})"
+
+        except ImportError:
+            logger.debug("correlation_group_config not available")
+            return True, "correlation check unavailable"
+        except Exception as e:
+            logger.debug(f"Correlation check failed: {e}")
+            return True, "correlation check error"
+
+    def _check_projected_portfolio_risk(
+        self,
+        pair: str,
+        sl_pips: float,
+        lots: float,
+    ) -> Tuple[bool, str, float]:
+        """Check if adding the proposed trade would breach portfolio risk limit.
+
+        Unlike _check_portfolio_risk_limit() which only checks existing positions,
+        this projects the new trade's risk INTO the total before deciding.
+
+        Returns:
+            Tuple of (within_limit, reason, max_safe_lots)
+            max_safe_lots is the largest position that fits within the risk budget
+            (0.0 if even minimum lot breaches the limit).
+        """
+        max_risk_pct = self.config.max_open_risk_pct
+        if max_risk_pct <= 0:
+            return True, "risk limit disabled", lots
+
+        try:
+            nav = self.fetch_live_nav() or self.config.account_equity or 100000.0
+            max_risk_amount = nav * max_risk_pct
+
+            # Calculate existing risk across open positions
+            existing_risk = 0.0
+            statuses = self.monitor_open_trades()
+            if statuses:
+                for s in statuses:
+                    sl_dist = s.get("sl_dist_pips", 0)
+                    units = abs(s.get("units", 0))
+                    pip_val = PIP_VALUES.get(s.get("pair", ""), 0.0001)
+                    existing_risk += sl_dist * pip_val * units
+
+            remaining_budget = max(0.0, max_risk_amount - existing_risk)
+
+            # Calculate the new trade's projected risk
+            pip_value = PIP_VALUES.get(pair, 0.0001)
+            new_trade_risk = sl_pips * pip_value * lots * 100_000  # lots → units
+
+            projected_total = existing_risk + new_trade_risk
+            projected_pct = projected_total / nav if nav > 0 else 0.0
+
+            if projected_pct <= max_risk_pct:
+                return True, f"projected risk {projected_pct:.1%} within {max_risk_pct:.0%}", lots
+
+            # Over budget — calculate max lots that fit
+            if remaining_budget > 0 and sl_pips > 0 and pip_value > 0:
+                max_units = remaining_budget / (sl_pips * pip_value)
+                max_safe_lots = round(max_units / 100_000, 2)
+                max_safe_lots = max(max_safe_lots, 0.0)
+            else:
+                max_safe_lots = 0.0
+
+            reason = (
+                f"Projected risk {projected_pct:.1%} exceeds {max_risk_pct:.0%} limit "
+                f"(existing=${existing_risk:,.0f} + new=${new_trade_risk:,.0f} = "
+                f"${projected_total:,.0f} on ${nav:,.0f} NAV). "
+                f"Max safe lots: {max_safe_lots:.2f}"
+            )
+            return False, reason, max_safe_lots
+
+        except Exception as e:
+            logger.debug(f"Projected risk check failed: {e}")
+            return True, "projected risk check unavailable", lots
+
+    def _apply_diversification_adjustment(self, lots: float, pair: str) -> float:
+        """Phase 45 (US-285): Apply EWMA diversification multiplier to position size.
+
+        Args:
+            lots: Base position size in lots
+            pair: Currency pair name
+
+        Returns:
+            Adjusted position size in lots
+        """
+        if self._ewma_correlation is None:
+            return lots
+
+        try:
+            # Get currently open trade pairs
+            _open_pairs = []
+            if hasattr(self, '_open_trade_pairs'):
+                _open_pairs = list(self._open_trade_pairs)
+
+            if not _open_pairs:
+                return lots
+
+            multiplier = self._ewma_correlation.diversification_multiplier(pair, _open_pairs)
+            adjusted_lots = round(lots * multiplier, 2)
+
+            if multiplier < 1.0:
+                logger.info(
+                    f"Phase 45: Diversification adjustment for {pair}: "
+                    f"{lots} -> {adjusted_lots} lots (mult={multiplier:.3f}, "
+                    f"portfolio={_open_pairs})"
+                )
+
+            return max(adjusted_lots, self.config.min_lot_size)
+        except Exception as e:
+            logger.debug(f"Phase 45: Diversification adjustment failed: {e}")
+            return lots
+
+    def _get_portfolio_risk_limit(self) -> float:
+        """Phase 45 (US-285): Get portfolio risk limit adjusted for correlation regime.
+
+        Returns:
+            Portfolio risk limit as fraction (e.g., 0.15 for 15%)
+        """
+        base_limit = 0.15  # 15% max portfolio risk from trading rules
+
+        if self._ewma_correlation is None:
+            try:
+                self._init_ewma_correlation()
+            except Exception as e:
+                logger.debug(f"Phase 45: Correlation init failed in risk limit: {e}")
+                return base_limit
+
+        if self._ewma_correlation is not None:
+            try:
+                regime = self._ewma_correlation.detect_correlation_regime()
+                if regime == "RISK_OFF":
+                    adjusted = base_limit * 0.67  # Reduce to ~10%
+                    logger.info(f"Phase 45: RISK_OFF correlation regime — portfolio risk limit reduced to {adjusted:.1%}")
+                    return adjusted
+            except Exception as e:
+                logger.debug(f"Phase 45: Correlation regime detection failed: {e}")
+
+        return base_limit
+
+    def _check_spread_conditions(self, pair: str) -> Tuple[bool, float, str]:
+        """Check if current bid-ask spread is acceptable for entry.
+
+        Fetches live pricing from OANDA and compares spread to max_spread_pips.
+
+        Args:
+            pair: Instrument name
+
+        Returns:
+            Tuple of (spread_ok, spread_pips, reason)
+        """
+        max_spread = float(getattr(self.config, "max_spread_pips", 3.0))
+        pip_value = PIP_VALUES.get(pair, 0.0001)
+
+        if self._oanda is None:
+            return True, 0.0, "spread check skipped (no OANDA client)"
+
+        try:
+            pricing = self._oanda.get_pricing(pair)
+            if not pricing:
+                return True, 0.0, "spread check skipped (no pricing data)"
+
+            # Extract bid/ask from pricing response
+            prices = pricing if isinstance(pricing, list) else [pricing]
+            for p in prices:
+                asks = p.get("asks", [])
+                bids = p.get("bids", [])
+                if asks and bids:
+                    ask = float(asks[0].get("price", 0))
+                    bid = float(bids[0].get("price", 0))
+                    if ask > 0 and bid > 0 and pip_value > 0:
+                        spread_pips = (ask - bid) / pip_value
+                        spread_pips = round(spread_pips, 1)
+
+                        if spread_pips > max_spread:
+                            reason = (
+                                f"Spread too wide: {spread_pips:.1f} pips > "
+                                f"{max_spread:.1f} max for {pair}"
+                            )
+                            logger.warning(reason)
+                            return False, spread_pips, reason
+
+                        return True, spread_pips, f"spread {spread_pips:.1f} pips OK"
+
+            return True, 0.0, "spread check skipped (incomplete pricing)"
+
+        except Exception as e:
+            logger.debug(f"Spread check failed for {pair}: {e}")
+            return True, 0.0, f"spread check unavailable: {e}"
+
     def _calculate_base_tp_pips(self, atr: float, pip_value: float, confidence: float) -> float:
         """Calculate base take profit pips from ATR with high probability bonus.
 
@@ -364,7 +808,7 @@ class ExecutionManager:
         if pip_value > 0 and atr > 0:
             base_tp = (atr * self.config.atr_tp_multiplier) / pip_value
         else:
-            base_tp = 25.0
+            base_tp = self.config.fallback_tp_pips
 
         tp_pips = max(self.config.min_tp_pips, min(base_tp, self.config.max_tp_pips))
 
@@ -429,7 +873,7 @@ class ExecutionManager:
             pip_value_usd = 7.5 if str(pair).upper().endswith("JPY") else 10.0
             denom = max(float(sl_pips), 1.0) * pip_value_usd
             lots = (risk_amount / denom) if denom > 0 else 0.0
-            lots = round(min(max(lots, 0.01), 50.0), 2)
+            lots = round(min(max(lots, self.config.min_lot_size), self.config.max_lot_size), 2)
             return lots, risk_pct, "fallback"
 
         if self._position_sizer is None:
@@ -489,13 +933,27 @@ class ExecutionManager:
         
         # Get account equity
         equity = account_equity or self.fetch_live_nav() or self.config.account_equity or 10000.0
-        
-        # Fixed SL (tight scalping)
-        sl_pips = self.config.max_sl_pips
-        
+
+        # ATR-based SL (rule: SL = ATR * atr_sl_multiplier / pip_value, clamped to [min_sl_pips, max_sl_pips])
+        # Fixes C-3: previously hardcoded to max_sl_pips regardless of volatility
+        if atr > 0 and pip_value > 0:
+            sl_pips = max(
+                self.config.min_sl_pips,
+                min(
+                    (atr * self.config.atr_sl_multiplier) / pip_value,
+                    self.config.max_sl_pips,
+                ),
+            )
+        else:
+            logger.warning(
+                f"calculate_regime_aware_position_size: atr={atr}, pip_value={pip_value} — "
+                f"cannot compute ATR-based SL, falling back to min_sl_pips"
+            )
+            sl_pips = self.config.min_sl_pips
+
         # Calculate base TP with high probability bonus
         tp_pips = self._calculate_base_tp_pips(atr, pip_value, confidence)
-        
+
         # Apply risk manager adjustments
         sl_pips, tp_pips, confidence_level = self._apply_risk_manager(
             pair, confidence, sl_pips, tp_pips
@@ -537,6 +995,64 @@ class ExecutionManager:
         
         return lots, risk_pct, sl_pips, tp_pips, confidence_level, 1.0, regime_name
 
+    def _calculate_adaptive_position_size(
+        self,
+        equity: float,
+        confidence: float,
+        regime_name: str = "NORMAL",
+        current_drawdown_pct: float = 0.0,
+    ) -> Optional[Tuple[float, float, str]]:
+        """Phase 45 (US-282): Calculate position size using adaptive sizer.
+
+        Args:
+            equity: Account equity in dollars
+            confidence: Model confidence [0, 1]
+            regime_name: Market regime (LOW, NORMAL, HIGH, EXTREME)
+            current_drawdown_pct: Current drawdown percentage [0, 1]
+
+        Returns:
+            Tuple of (lots, risk_pct, strategy_label) or None if adaptive sizer unavailable.
+        """
+        if self._adaptive_position_sizer is None:
+            self._init_adaptive_position_sizer()
+
+        if self._adaptive_position_sizer is None:
+            return None
+
+        try:
+            result = self._adaptive_position_sizer.calculate_size(
+                account_equity=equity,
+                confidence=confidence,
+                current_drawdown_pct=current_drawdown_pct,
+                regime_name=regime_name,
+            )
+
+            # Convert position size result to lots (units / 100,000)
+            lots = result.final_size / 100_000
+            lots = round(min(max(lots, self.config.min_lot_size), self.config.max_lot_size), 2)
+
+            risk_pct = result.final_size / equity if equity > 0 else 0
+
+            strategy_label = (
+                f"adaptive(K={result.kelly_factor:.2f},"
+                f"C={result.confidence_factor:.2f},"
+                f"D={result.drawdown_factor:.2f},"
+                f"R={result.regime_factor:.2f})"
+            )
+
+            logger.info(
+                f"Phase 45: Adaptive sizing: {lots} lots, risk={risk_pct:.3f}, "
+                f"regime={regime_name}, {strategy_label}"
+            )
+
+            if lots > 0:
+                return lots, risk_pct, strategy_label
+
+            return None
+        except Exception as e:
+            logger.warning(f"Phase 45: Adaptive position sizing failed: {e}")
+            return None
+
     def calculate_position_size(
         self,
         pair: str,
@@ -567,8 +1083,22 @@ class ExecutionManager:
         # Get account equity
         equity = account_equity or self.fetch_live_nav() or self.config.account_equity or 10000.0
 
-        # Fixed SL (tight scalping)
-        sl_pips = self.config.max_sl_pips
+        # ATR-based SL (rule: SL = ATR * atr_sl_multiplier / pip_value, clamped to [min_sl_pips, max_sl_pips])
+        # Fixes C-3: previously hardcoded to max_sl_pips (15.0) regardless of volatility
+        if atr > 0 and pip_value > 0:
+            sl_pips = max(
+                self.config.min_sl_pips,
+                min(
+                    (atr * self.config.atr_sl_multiplier) / pip_value,
+                    self.config.max_sl_pips,
+                ),
+            )
+        else:
+            logger.warning(
+                f"calculate_position_size: atr={atr}, pip_value={pip_value} — "
+                f"cannot compute ATR-based SL, falling back to min_sl_pips"
+            )
+            sl_pips = self.config.min_sl_pips
 
         # Calculate base TP with high probability bonus
         tp_pips = self._calculate_base_tp_pips(atr, pip_value, confidence)
@@ -576,12 +1106,102 @@ class ExecutionManager:
         # Apply risk manager adjustments
         sl_pips, tp_pips, confidence_level = self._apply_risk_manager(pair, confidence, sl_pips, tp_pips)
 
-        # Calculate position size
+        # Phase 34 (US-222): Guard against zero SL/TP from risk manager edge cases
+        if sl_pips <= 0:
+            logger.warning(f"calculate_position_size: sl_pips={sl_pips} after risk manager — using min_sl_pips")
+            sl_pips = max(self.config.min_sl_pips, 1.0)
+        if tp_pips <= 0:
+            logger.warning(f"calculate_position_size: tp_pips={tp_pips} after risk manager — using min_tp_pips")
+            tp_pips = max(self.config.min_tp_pips, 1.0)
+
+        # Phase 45 (US-282): Try adaptive position sizer first
+        _regime_name = getattr(self, '_last_regime_name', 'NORMAL') or 'NORMAL'
+        _drawdown_pct = getattr(self, '_current_drawdown_pct', 0.0) or 0.0
+        _adaptive_result = self._calculate_adaptive_position_size(
+            equity=equity,
+            confidence=confidence,
+            regime_name=_regime_name,
+            current_drawdown_pct=_drawdown_pct,
+        )
+        if _adaptive_result is not None:
+            lots, risk_pct, _strategy_label = _adaptive_result
+            logger.debug(f"Phase 45: Using adaptive position sizing {_strategy_label}")
+
+            # Phase 47 (US-298): Apply regime position multiplier
+            lots = self._apply_regime_position_multiplier(lots, _regime_name)
+
+            # Phase 47 (US-296): Apply session position multiplier
+            lots = self._apply_session_position_multiplier(lots)
+
+            return lots, risk_pct, sl_pips, tp_pips, confidence_level
+
+        # Calculate position size (fallback)
         lots, risk_pct, confidence_level = self._calculate_lots_from_sizer(
             equity, sl_pips, pair, confidence
         )
 
+        # Phase 47 (US-298): Apply regime position multiplier
+        lots = self._apply_regime_position_multiplier(lots, _regime_name)
+
+        # Phase 47 (US-296): Apply session position multiplier
+        lots = self._apply_session_position_multiplier(lots)
+
         return lots, risk_pct, sl_pips, tp_pips, confidence_level
+
+    def _apply_regime_position_multiplier(self, lots: float, regime_name: str) -> float:
+        """Phase 47 (US-298): Apply regime-based position size multiplier.
+
+        Args:
+            lots: Base position size in lots
+            regime_name: Current volatility regime (LOW, NORMAL, HIGH, EXTREME)
+
+        Returns:
+            Adjusted position size after applying regime multiplier
+        """
+        try:
+            from src.scanner.regime_gates import get_regime_profile
+            profile = get_regime_profile(regime_name)
+            if profile is None:
+                logger.debug(f"Phase 47: No regime profile for {regime_name}, using 1.0x multiplier")
+                return lots
+
+            regime_mult = profile.position_size_multiplier
+            adjusted_lots = lots * regime_mult
+            logger.debug(
+                f"Phase 47 (US-298): Regime {regime_name} applied {regime_mult:.2f}x "
+                f"to position size ({lots:.2f} → {adjusted_lots:.2f} lots)"
+            )
+            return adjusted_lots
+        except Exception as e:
+            logger.debug(f"Phase 47 (US-298): Regime multiplier error: {e}, using original lots")
+            return lots
+
+    def _apply_session_position_multiplier(self, lots: float) -> float:
+        """Phase 47 (US-296): Apply session-based position size multiplier.
+
+        Args:
+            lots: Base position size in lots
+
+        Returns:
+            Adjusted position size after applying session multiplier
+        """
+        if self._session_detector is None:
+            self._init_session_detector()
+        if self._session_detector is None:
+            return lots
+
+        try:
+            session_mult = self._session_detector.get_position_size_multiplier()
+            adjusted_lots = lots * session_mult
+            session_info = self._session_detector.get_current_session()
+            logger.debug(
+                f"Phase 47 (US-296): Session {session_info.name} applied {session_mult:.2f}x "
+                f"to position size ({lots:.2f} → {adjusted_lots:.2f} lots)"
+            )
+            return adjusted_lots
+        except Exception as e:
+            logger.debug(f"Phase 47 (US-296): Session multiplier error: {e}, using original lots")
+            return lots
 
     def execute_trade(
         self,
@@ -614,6 +1234,64 @@ class ExecutionManager:
         Returns:
             ExecutionResult with trade details
         """
+        # Check data freshness
+        ctx = analysis_context or {}
+        scan_time = ctx.get("scan_time") or ctx.get("analysis_timestamp")
+        if scan_time:
+            try:
+                if isinstance(scan_time, str):
+                    scan_dt = datetime.fromisoformat(scan_time.replace("Z", "+00:00"))
+                else:
+                    scan_dt = scan_time
+                age_seconds = (datetime.now(timezone.utc) - scan_dt).total_seconds()
+                max_age = getattr(self.config, "max_data_age_seconds", 60.0)
+                if age_seconds > max_age:
+                    reason = f"Stale data: analysis {age_seconds:.0f}s old (max {max_age:.0f}s)"
+                    try:
+                        # Phase 30 (US-183): Use shared observer
+                        self._get_observer().log(
+                            category="stale_data_skip",
+                            detail=reason,
+                            data={"pair": pair, "age_seconds": age_seconds},
+                        )
+                    except Exception as e:
+                        logger.debug(f"Execution pair operation skipped: {e}")
+                    return ExecutionResult(success=False, error=reason)
+            except Exception as e:
+                logger.debug(f"Data freshness check error: {e}")
+
+        # ── DEFENSE-IN-DEPTH: Signal quality validation ──────────
+        # These checks are the last safety net before real money leaves the account.
+        # They enforce trading rules even if upstream gate logic has a bug.
+        if not ctx.get("agent_passed", False):
+            return ExecutionResult(
+                success=False,
+                error=f"BLOCKED: agent_passed=False (agents voted NO)",
+            )
+        _ctx_disagreement = float(ctx.get("model_disagreement", 0.0))
+        if _ctx_disagreement > 0.30:
+            return ExecutionResult(
+                success=False,
+                error=f"BLOCKED: model_disagreement={_ctx_disagreement:.2f} > 0.30",
+            )
+        _ctx_regime = str(ctx.get("volatility_regime", "UNKNOWN")).upper()
+        if _ctx_regime == "UNKNOWN":
+            return ExecutionResult(
+                success=False,
+                error="BLOCKED: cannot execute with UNKNOWN regime",
+            )
+        _ctx_confidence = float(ctx["confidence"]) if "confidence" in ctx else confidence
+        if _ctx_confidence < 0.45:
+            return ExecutionResult(
+                success=False,
+                error=f"BLOCKED: confidence={_ctx_confidence:.3f} < 0.45 minimum",
+            )
+        logger.info(
+            "PRE-ORDER AUDIT: %s %s conf=%.3f agent_passed=%s disagreement=%.2f regime=%s",
+            pair, direction, _ctx_confidence,
+            ctx.get("agent_passed"), _ctx_disagreement, _ctx_regime,
+        )
+
         # Check daily limit
         can_trade, reason = self.can_trade()
         if not can_trade:
@@ -622,11 +1300,30 @@ class ExecutionManager:
         # Check portfolio risk limit
         risk_ok, risk_reason = self._check_portfolio_risk_limit()
         if not risk_ok:
+            # Phase 26 (US-157): Log portfolio risk block to observations
+            try:
+                # Phase 30 (US-183): Use shared observer
+                self._get_observer().log_observation(
+                    pair=pair,
+                    category="portfolio_risk_block",
+                    description=f"US-157: Trade blocked — {risk_reason}",
+                    metadata={"pair": pair, "reason": risk_reason, "gate": "portfolio_risk_limit"},
+                )
+            except Exception as e:
+                logger.debug(f"Execution pair operation skipped: {e}")
             return ExecutionResult(success=False, error=risk_reason)
+
+        # Check correlation exposure limit
+        corr_ok, corr_reason = self._check_correlation_exposure(pair)
+        if not corr_ok:
+            return ExecutionResult(success=False, error=corr_reason)
 
         # Initialize OANDA
         if not self._init_oanda_client():
             return ExecutionResult(success=False, error="OANDA client not available")
+
+        # Phase 31 (US-191): Cache NAV once per execute_trade to avoid redundant API calls
+        _cached_nav = self.fetch_live_nav() or self.config.account_equity or 10000.0
 
         # Initialize regime scaling info
         regime_scale = 1.0
@@ -662,7 +1359,7 @@ class ExecutionManager:
                 )
                 # Re-calculate lots using actual SL if scan provided one
                 if scan_sl and lots is None and calc_lots > 0:
-                    equity = self.fetch_live_nav() or self.config.account_equity or 10000.0
+                    equity = _cached_nav  # Phase 31 (US-191): cached NAV
                     calc_lots, risk_pct, conf_level = self._calculate_lots_from_sizer(
                         equity, scan_sl, pair, confidence
                     )
@@ -672,7 +1369,7 @@ class ExecutionManager:
                 )
                 # Re-calculate lots using actual SL if scan provided one
                 if scan_sl and lots is None:
-                    equity = self.fetch_live_nav() or self.config.account_equity or 10000.0
+                    equity = _cached_nav  # Phase 31 (US-191): cached NAV
                     calc_lots, risk_pct, conf_level = self._calculate_lots_from_sizer(
                         equity, scan_sl, pair, confidence
                     )
@@ -683,18 +1380,248 @@ class ExecutionManager:
             risk_pct = self.config.risk_per_trade_pct
             conf_level = "custom"
 
+        # Phase 22 (US-135): Apply analysis-level risk_pct override from regime policy
+        _ctx_risk_pct = (analysis_context or {}).get("risk_pct")
+        if _ctx_risk_pct is not None and float(_ctx_risk_pct) > 0:
+            _analysis_risk = float(_ctx_risk_pct)
+            if _analysis_risk < risk_pct:
+                _old_risk = risk_pct
+                risk_pct = _analysis_risk
+                # Re-calculate lots with reduced risk
+                if sl_pips > 0:
+                    equity = _cached_nav  # Phase 31 (US-191): cached NAV
+                    pip_value_usd = 7.5 if str(pair).upper().endswith("JPY") else 10.0
+                    risk_amount = equity * risk_pct
+                    lots = round(min(max(risk_amount / (sl_pips * pip_value_usd), self.config.min_lot_size), self.config.max_lot_size), 2)
+                logger.info(
+                    f"US-135 regime risk_pct override: {_old_risk:.4f} → {risk_pct:.4f} "
+                    f"(lots recalculated)"
+                )
+
+        # Apply regime risk modifier from Markov chain tracker (Phase 8)
+        regime_risk_mod = float(
+            (analysis_context or {}).get("regime_risk_modifier", 1.0)
+        )
+        if 0.0 < regime_risk_mod < 1.0:
+            original_lots = lots
+            lots = round(lots * regime_risk_mod, 2)
+            logger.info(
+                f"Regime risk modifier {regime_risk_mod:.2f}x applied: "
+                f"{original_lots:.2f} → {lots:.2f} lots"
+            )
+
+        # Apply predictive size modifier from Markov forward-looking predictions (Phase 9)
+        predictive_mod = float(
+            (analysis_context or {}).get("predictive_size_modifier", 1.0)
+        )
+        if 0.0 < predictive_mod < 1.0:
+            original_lots = lots
+            lots = round(lots * predictive_mod, 2)
+            logger.info(
+                f"Predictive size modifier {predictive_mod:.2f}x applied: "
+                f"{original_lots:.2f} → {lots:.2f} lots"
+            )
+
+        # Apply macro stress modifier (Phase 10, US-066)
+        macro_mod = float(
+            (analysis_context or {}).get("macro_stress_modifier", 1.0)
+        )
+        if 0.0 < macro_mod < 1.0:
+            original_lots = lots
+            lots = round(lots * macro_mod, 2)
+            logger.info(
+                f"Macro stress modifier {macro_mod:.2f}x applied: "
+                f"{original_lots:.2f} → {lots:.2f} lots"
+            )
+
         if lots <= 0:
             return ExecutionResult(success=False, error="Invalid position size")
 
         # Minimum risk:reward ratio gate
-        min_rr = getattr(self.config, "min_risk_reward_ratio", 1.0)
-        if sl_pips > 0 and tp_pips > 0:
-            rr_ratio = tp_pips / sl_pips
-            if rr_ratio < min_rr:
+        # C-7: reject immediately if SL or TP is zero — fail-closed, not fail-open
+        min_rr = getattr(self.config, "min_risk_reward_ratio", 1.2)
+        if sl_pips <= 0 or tp_pips <= 0:
+            return ExecutionResult(
+                success=False,
+                error=f"Invalid SL/TP values: sl={sl_pips:.4f}, tp={tp_pips:.4f} — trade rejected",
+            )
+        rr_ratio = tp_pips / sl_pips
+        if rr_ratio < min_rr:
+            return ExecutionResult(
+                success=False,
+                error=f"R:R {rr_ratio:.2f}:1 below minimum {min_rr}:1 (SL {sl_pips:.1f}p / TP {tp_pips:.1f}p)",
+            )
+
+        # ── PROJECTED PORTFOLIO RISK CHECK (US-031) ────────────────────────
+        # Must run AFTER sizing but BEFORE order placement.
+        # Projects the new trade's risk into total portfolio risk to prevent
+        # breaching the 15% NAV limit (the old check only looked at existing).
+        proj_ok, proj_reason, max_safe_lots = self._check_projected_portfolio_risk(
+            pair, sl_pips, lots
+        )
+        if not proj_ok:
+            if max_safe_lots >= 0.01:
+                # Downsize to fit within risk budget
+                logger.info(
+                    f"⚠ Risk budget: downsizing {pair} from {lots:.2f} to "
+                    f"{max_safe_lots:.2f} lots. {proj_reason}"
+                )
+                lots = max_safe_lots
+            else:
+                # Can't fit even minimum lot — skip trade
+                # Phase 26 (US-157): Log projected risk block
+                try:
+                    # Phase 30 (US-183): Use shared observer
+                    self._get_observer().log_observation(
+                        pair=pair,
+                        category="portfolio_risk_block",
+                        description=f"US-157: Projected risk block — {proj_reason}",
+                        metadata={
+                            "pair": pair,
+                            "reason": proj_reason,
+                            "gate": "projected_portfolio_risk",
+                            "max_safe_lots": max_safe_lots,
+                            "requested_lots": lots,
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"Execution non-critical operation skipped: {e}")
                 return ExecutionResult(
                     success=False,
-                    error=f"R:R {rr_ratio:.2f}:1 below minimum {min_rr}:1 (SL {sl_pips:.1f}p / TP {tp_pips:.1f}p)",
+                    error=f"Portfolio risk breach (projected): {proj_reason}",
                 )
+
+        # ── Phase 24 (US-148): Slippage-based position size reduction ──────
+        if pair in self._slippage_history and len(self._slippage_history[pair]) >= 5:
+            _avg_slip = sum(self._slippage_history[pair]) / len(self._slippage_history[pair])
+            if _avg_slip > self._slippage_threshold_pips:
+                _reduction = 1.0 - self._slippage_size_reduction
+                _old_lots = lots
+                lots = max(self.config.min_lot_size, lots * _reduction)
+                logger.info(
+                    f"US-148: Slippage reduction for {pair}: "
+                    f"{_old_lots:.2f} → {lots:.2f} lots "
+                    f"(avg slippage {_avg_slip:.1f} pips > {self._slippage_threshold_pips})"
+                )
+                # Phase 27 (US-165): Log slippage event for trending
+                try:
+                    # Phase 30 (US-183): Use shared observer
+                    self._get_observer().log_observation(
+                        pair=pair,
+                        category="high_slippage",
+                        description=(
+                            f"US-165: High slippage on {pair} — "
+                            f"avg {_avg_slip:.1f} pips, "
+                            f"size reduced {_old_lots:.2f}→{lots:.2f}"
+                        ),
+                        metadata={
+                            "pair": pair,
+                            "avg_slippage_pips": round(_avg_slip, 2),
+                            "threshold_pips": self._slippage_threshold_pips,
+                            "sample_count": len(self._slippage_history[pair]),
+                            "lot_reduction": round(_old_lots - lots, 4),
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"Execution slippage tracking skipped: {e}")
+
+        # ── SPREAD CHECK (US-053) ──────────────────────────────────────────
+        spread_ok, spread_pips, spread_reason = self._check_spread_conditions(pair)
+        if not spread_ok:
+            return ExecutionResult(success=False, error=spread_reason)
+        # Inject spread data into context for journal logging
+        ctx["spread_pips"] = spread_pips
+
+        # ── Phase 25 (US-152): Real-time correlation enforcement ──────────
+        try:
+            open_trades = self.monitor_open_trades()
+            if open_trades:
+                _CORR_THRESHOLD = 0.80
+                # Known high-correlation pairs (static fallback)
+                _CORR_PAIRS = {
+                    "EUR_USD": {"GBP_USD", "EUR_GBP", "EUR_CHF"},
+                    "GBP_USD": {"EUR_USD", "EUR_GBP", "GBP_JPY"},
+                    "USD_JPY": {"USD_CHF", "EUR_JPY"},
+                    "USD_CHF": {"USD_JPY", "EUR_CHF"},
+                    "EUR_JPY": {"USD_JPY", "EUR_USD"},
+                    "AUD_USD": {"NZD_USD", "AUD_NZD"},
+                    "NZD_USD": {"AUD_USD", "AUD_NZD"},
+                    "EUR_GBP": {"EUR_USD", "GBP_USD"},
+                    "EUR_CHF": {"EUR_USD", "USD_CHF"},
+                    "GBP_JPY": {"GBP_USD", "USD_JPY"},
+                }
+                _open_pairs = {t["pair"] for t in open_trades if t.get("pair")}
+                _corr_set = _CORR_PAIRS.get(pair, set())
+                _conflicting = _open_pairs & _corr_set
+                if _conflicting:
+                    _block_msg = (
+                        f"US-152: Correlation block — {pair} has >{_CORR_THRESHOLD:.0%} "
+                        f"correlation with open position(s): {', '.join(_conflicting)}"
+                    )
+                    logger.info(_block_msg)
+                    # Phase 26 (US-162): Enrich with blocking pair P/L and duration
+                    _blocking_detail = []
+                    for _ot in open_trades:
+                        _ot_pair = _ot.get("pair", "")
+                        if _ot_pair in _conflicting:
+                            _blocking_detail.append({
+                                "pair": _ot_pair,
+                                "unrealized_pl": _ot.get("unrealizedPL", _ot.get("unrealized_pl", 0)),
+                                "units": _ot.get("units", 0),
+                                "open_time": _ot.get("openTime", _ot.get("open_time", "")),
+                            })
+                    # Track conflict frequency
+                    if not hasattr(self, "_correlation_block_counts"):
+                        self._correlation_block_counts: Dict[str, int] = {}
+                    _conflict_key = f"{pair}_vs_{'|'.join(sorted(_conflicting))}"
+                    self._correlation_block_counts[_conflict_key] = (
+                        self._correlation_block_counts.get(_conflict_key, 0) + 1
+                    )
+                    try:
+                        # Phase 30 (US-183): Use shared observer
+                        self._get_observer().log_observation(
+                            pair=pair,
+                            category="correlation_block",
+                            description=_block_msg,
+                            metadata={
+                                "blocked_pair": pair,
+                                "conflicting_open": list(_conflicting),
+                                "threshold": _CORR_THRESHOLD,
+                                "blocking_pair_detail": _blocking_detail,
+                                "conflict_frequency": self._correlation_block_counts.get(_conflict_key, 1),
+                            },
+                        )
+                    except Exception as e:
+                        logger.debug(f"Execution correlation check skipped: {e}")
+                    return ExecutionResult(
+                        success=False,
+                        error=_block_msg,
+                    )
+        except Exception as _corr_err:
+            logger.debug(f"US-152: Correlation check skipped: {_corr_err}")
+
+        # US-075: Smart execution planning (log execution plan for larger positions)
+        _smart_plan = None
+        if getattr(self.config, "enable_smart_execution", False) and lots > 0:
+            try:
+                from src.scanner.automation.smart_execution import SmartExecutionEngine
+                _se = SmartExecutionEngine(
+                    strategy=getattr(self.config, "execution_strategy", "TWAP"),
+                    window_seconds=getattr(self.config, "execution_window_minutes", 5.0) * 60,
+                )
+                if _se.should_use_smart_execution(lots, atr_pips=float(sl_pips or 0)):
+                    _smart_plan = _se.plan_execution(
+                        position_size_lots=lots,
+                        pair=pair,
+                        direction=direction,
+                        market_data={"atr_pips": float(atr / PIP_VALUES.get(pair, 0.0001)) if atr > 0 else 0},
+                    )
+                    logger.info(
+                        "SmartExecution: %s plan for %s — %d slices, %.4f lots total",
+                        _smart_plan.strategy, pair, _smart_plan.slice_count, _smart_plan.total_lots,
+                    )
+            except Exception as _se_err:
+                logger.debug(f"Smart execution planning skipped: {_se_err}")
 
         # Calculate SL/TP prices
         pip_value = PIP_VALUES.get(pair, 0.0001)
@@ -702,65 +1629,141 @@ class ExecutionManager:
         if direction.upper() == "LONG":
             sl_price = current_price - (sl_pips * pip_value)
             tp_price = current_price + (tp_pips * pip_value)
-            units = int(lots * 100_000)
+            units = round(lots * 100_000)  # M-10: round instead of int() to prevent truncation bias
         else:
             sl_price = current_price + (sl_pips * pip_value)
             tp_price = current_price - (tp_pips * pip_value)
-            units = -int(lots * 100_000)
+            units = -round(lots * 100_000)  # M-10: round instead of int() to prevent truncation bias
 
         try:
-            result = self._oanda.create_market_order(
-                instrument=pair,
-                units=units,
-                take_profit_price=round(tp_price, 5),
-                stop_loss_price=round(sl_price, 5),
-            )
+            # Attempt order with rejection recovery (downsize by 50% on rejection)
+            fill_status = "UNKNOWN"
+            attempt_units = units
+            attempt_lots = lots
 
-            if result and "orderFillTransaction" in result:
-                fill = result["orderFillTransaction"]
-                fill_price = float(fill.get("price", current_price))
-                trade_id = fill.get("tradeOpened", {}).get("tradeID", "N/A")
-
-                # Log to memory client with full analysis context
-                self._log_trade(
-                    pair=pair,
-                    direction=direction,
-                    confidence=confidence,
-                    lots=lots,
-                    entry=fill_price,
-                    sl=sl_price,
-                    tp=tp_price,
-                    trade_id=trade_id,
-                    analysis_context=analysis_context,
+            for order_attempt in range(self.config.max_order_attempts):
+                result = self._oanda.create_market_order(
+                    instrument=pair,
+                    units=attempt_units,
+                    take_profit_price=round(tp_price, 5),
+                    stop_loss_price=round(sl_price, 5),
                 )
-                
-                # Log aggressive scaling if applied
-                if regime_scale > 1.0:
-                    logger.info(
-                        f"🚀 Trade executed with AGGRESSIVE SCALING: {regime_name} vol, "
-                        f"{regime_scale:.2f}x scale, {lots:.2f} lots"
+
+                if result and "orderFillTransaction" in result:
+                    fill = result["orderFillTransaction"]
+                    fill_price = float(fill.get("price", current_price))
+                    trade_id = fill.get("tradeOpened", {}).get("tradeID", "N/A")
+
+                    # Calculate slippage
+                    pip_value = PIP_VALUES.get(pair, 0.0001)
+                    slippage = (fill_price - current_price) / pip_value if pip_value > 0 else 0.0
+                    if direction.upper() == "SHORT":
+                        slippage = -slippage
+                    slippage = round(slippage, 1)
+
+                    fill_status = "RETRIED" if order_attempt > 0 else "FULL"
+
+                    # Log slippage warning if excessive
+                    if abs(slippage) > self.config.high_slippage_alert_pips:
+                        try:
+                            # Phase 30 (US-183): Use shared observer
+                            self._get_observer().log(
+                                category="high_slippage",
+                                detail=f"{pair} slippage {slippage:.1f} pips (fill {fill_price} vs expected {current_price})",
+                                data={"pair": pair, "slippage_pips": slippage, "fill_price": fill_price},
+                            )
+                        except Exception as e:
+                            logger.debug(f"Execution pair operation skipped: {e}")
+
+                    # Phase 24 (US-148): Record slippage for rolling tracker
+                    if pair not in self._slippage_history:
+                        self._slippage_history[pair] = []
+                    self._slippage_history[pair].append(abs(slippage))
+                    if len(self._slippage_history[pair]) > self._slippage_window:
+                        self._slippage_history[pair] = self._slippage_history[pair][-self._slippage_window:]
+                    _avg_slip = sum(self._slippage_history[pair]) / len(self._slippage_history[pair])
+                    if _avg_slip > self._slippage_threshold_pips:
+                        logger.info(
+                            f"US-148: {pair} avg slippage {_avg_slip:.1f} pips "
+                            f"(>{self._slippage_threshold_pips}) over "
+                            f"{len(self._slippage_history[pair])} trades — "
+                            f"size reduction {self._slippage_size_reduction:.0%} will apply"
+                        )
+                        try:
+                            # Phase 30 (US-183): Use shared observer
+                            self._get_observer().log_observation(
+                                pair=pair,
+                                category="slippage_feedback",
+                                description=(
+                                    f"US-148: Rolling avg slippage {_avg_slip:.1f} pips "
+                                    f"exceeds threshold {self._slippage_threshold_pips} — "
+                                    f"sizing reduced by {self._slippage_size_reduction:.0%}"
+                                ),
+                                metadata={
+                                    "avg_slippage_pips": round(_avg_slip, 2),
+                                    "threshold": self._slippage_threshold_pips,
+                                    "size_reduction": self._slippage_size_reduction,
+                                    "trade_count": len(self._slippage_history[pair]),
+                                },
+                            )
+                        except Exception as e:
+                            logger.debug(f"Execution slippage tracking skipped: {e}")
+
+                    # Log to journal AFTER successful fill (not before)
+                    self._log_trade(
+                        pair=pair,
+                        direction=direction,
+                        confidence=confidence,
+                        lots=attempt_lots,
+                        entry=fill_price,
+                        sl=sl_price,
+                        tp=tp_price,
+                        trade_id=trade_id,
+                        analysis_context=analysis_context,
                     )
 
-                return ExecutionResult(
-                    success=True,
-                    trade_id=trade_id,
-                    fill_price=fill_price,
-                    units=abs(units),
-                    lots=lots,
-                    sl_price=sl_price,
-                    tp_price=tp_price,
-                    sl_pips=sl_pips,
-                    tp_pips=tp_pips,
-                    risk_pct=risk_pct,
-                    confidence_level=conf_level,
-                    regime_scale=regime_scale,
-                    regime_name=regime_name,
-                    aggressive_scaling_reason=aggressive_reason,
-                )
-            else:
-                return ExecutionResult(
-                    success=False,
-                    error=f"Order rejected: {result}",
+                    # Log aggressive scaling if applied
+                    if regime_scale > 1.0:
+                        logger.info(
+                            f"Trade executed with AGGRESSIVE SCALING: {regime_name} vol, "
+                            f"{regime_scale:.2f}x scale, {attempt_lots:.2f} lots"
+                        )
+
+                    return ExecutionResult(
+                        success=True,
+                        trade_id=trade_id,
+                        fill_price=fill_price,
+                        units=abs(attempt_units),
+                        lots=attempt_lots,
+                        sl_price=sl_price,
+                        tp_price=tp_price,
+                        sl_pips=sl_pips,
+                        tp_pips=tp_pips,
+                        risk_pct=risk_pct,
+                        confidence_level=conf_level,
+                        regime_scale=regime_scale,
+                        regime_name=regime_name,
+                        aggressive_scaling_reason=aggressive_reason,
+                        fill_status=fill_status,
+                        slippage_pips=slippage,
+                    )
+                else:
+                    # Order rejected — try downsizing by 50% on first rejection
+                    if order_attempt < self.config.max_order_attempts - 1:
+                        new_lots = max(self.config.min_lot_size, attempt_lots * self.config.rejection_downsize_factor)
+                        new_units = int(new_lots * 100_000) * (1 if direction.upper() == "LONG" else -1)
+                        logger.warning(
+                            f"Order rejected for {pair}: downsizing from {attempt_lots:.2f} to {new_lots:.2f} lots"
+                        )
+                        attempt_lots = new_lots
+                        attempt_units = new_units
+                        continue
+                    else:
+                        # Second rejection — give up
+                        return ExecutionResult(
+                            success=False,
+                            error=f"Order rejected twice: {result}",
+                            fill_status="REJECTED",
                 )
 
         except Exception as e:
@@ -895,7 +1898,8 @@ class ExecutionManager:
         if journal_path.exists():
             try:
                 entries = json.loads(journal_path.read_text())
-            except Exception:
+            except Exception as e:
+                logger.debug("US-178: Journal read failed in _log_trade: %s", e)
                 entries = []
 
         ctx = analysis_context or {}
@@ -927,15 +1931,39 @@ class ExecutionManager:
                 "atr_pips": ctx.get("atr_pips"),
                 "uncertainty_score": ctx.get("uncertainty_score"),
                 "model_disagreement": ctx.get("model_disagreement"),
+                "regime_risk_modifier": ctx.get("regime_risk_modifier"),
+                "predictive_size_modifier": ctx.get("predictive_size_modifier"),
+                "regime_atr_multipliers": ctx.get("regime_atr_multipliers"),
             },
+            "spread_pips": ctx.get("spread_pips"),
+            "group_momentum": ctx.get("group_momentum"),
             "outcome": None,  # Filled by sync_closed_trades_rl
+            "fill_price": entry,  # Actual fill price from OANDA
+            "expected_price": ctx.get("current_price", entry),
+            "slippage_pips": round(
+                (entry - float(ctx.get("current_price", entry)))
+                / PIP_VALUES.get(pair, 0.0001), 1
+            ) if ctx.get("current_price") else 0.0,
         }
 
         # Deduplicate by trade_id
         entries = [e for e in entries if e.get("trade_id") != trade_id]
         entries.append(entry_record)
 
-        journal_path.write_text(json.dumps(entries, indent=2, default=str))
+        try:
+            from src.scanner.automation.safe_json import safe_json_write
+            safe_json_write(journal_path, entries)
+        except ImportError:
+            # Phase 32 (US-193): Fallback with file locking
+            _data = json.dumps(entries, indent=2, default=str)
+            try:
+                import fcntl
+                with open(journal_path, "w") as _f:
+                    fcntl.flock(_f, fcntl.LOCK_EX)
+                    _f.write(_data)
+                    fcntl.flock(_f, fcntl.LOCK_UN)
+            except (ImportError, OSError):
+                journal_path.write_text(_data)
         logger.debug(f"Journal entry appended for trade #{trade_id}")
 
     def fetch_actual_win_rate(self) -> Tuple[float, int]:
@@ -996,6 +2024,139 @@ class ExecutionManager:
             logger.debug(f"Journal sync failed: {e}")
             return 0
 
+    def evaluate_exits(
+        self,
+        trade_statuses: List[Dict[str, Any]],
+        regime_name: str = "NORMAL",
+        current_confidence: float = 0.5,
+        atr_values: Optional[Dict[str, float]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Phase 44 (US-279): Evaluate adaptive exit strategies for open trades.
+
+        Uses AdaptiveExitManager to determine if trades should be closed,
+        partially closed, or have stops adjusted based on regime, confidence,
+        and price action.
+
+        Note: Full exit evaluation requires OHLC data (price arrays, bar indices)
+        which are not currently available in monitor_open_trades. This method
+        gracefully degrades when those are unavailable and logs warnings.
+
+        Args:
+            trade_statuses: Output from monitor_open_trades()
+            regime_name: Current market regime (LOW/NORMAL/HIGH/EXTREME)
+            current_confidence: Current calibrated confidence (0-1)
+            atr_values: Dict of pair -> ATR value. If None, uses fallback.
+
+        Returns:
+            List of exit action dicts with trade_id, action, reason, details
+        """
+        if self._adaptive_exit_manager is None:
+            return []
+
+        exit_actions = []
+        for status in trade_statuses:
+            try:
+                from src.scanner.adaptive_exits import TradeContext
+                import numpy as np
+
+                pair = status.get("pair", "")
+                entry = status.get("entry", 0.0)
+                direction = status.get("direction", "LONG")
+                sl_price = status.get("sl_price", 0.0)
+                tp_price = status.get("tp_price", 0.0)
+                time_in_minutes = status.get("time_in_minutes", 0)
+                trade_id = status.get("trade_id")
+
+                # Safely get units, default to 1 to avoid division by zero
+                units = status.get("units", 0)
+                safe_units = max(abs(units), 1)
+
+                # Estimate current price from unrealized P/L
+                unrealized_pl = status.get("unrealized_pl", 0.0)
+                if direction == "LONG":
+                    current_price = entry + (unrealized_pl / safe_units)
+                    highest_price = max(entry, current_price)
+                    lowest_price = min(entry, current_price)
+                else:  # SHORT
+                    current_price = entry - (unrealized_pl / safe_units)
+                    highest_price = max(entry, current_price)
+                    lowest_price = min(entry, current_price)
+
+                # Get ATR or estimate from SL distance
+                atr = (atr_values or {}).get(pair, 0.0)
+                if atr <= 0:
+                    if sl_price > 0:
+                        atr = abs(entry - sl_price)
+                    else:
+                        atr = entry * 0.001
+                atr = max(atr, 1e-6)
+
+                # Convert direction string
+                trade_direction = "BUY" if direction == "LONG" else "SELL"
+
+                # Approximate bars held (assume 15-min bars)
+                bars_held = max(1, time_in_minutes // 15)
+
+                # Build minimal TradeContext with synthetic price arrays
+                # This is a fallback since we don't have full OHLC history
+                # Create 50-bar lookback with synthetic data (current price repeated)
+                price_array_size = 50
+                prices_close = np.full(price_array_size, current_price, dtype=np.float64)
+                prices_high = np.full(price_array_size, max(highest_price, current_price), dtype=np.float64)
+                prices_low = np.full(price_array_size, min(lowest_price, current_price), dtype=np.float64)
+
+                # Set the last price to actual current
+                prices_close[-1] = current_price
+                prices_high[-1] = max(highest_price, current_price)
+                prices_low[-1] = min(lowest_price, current_price)
+
+                ctx = TradeContext(
+                    entry_price=entry,
+                    entry_time_bar=max(0, price_array_size - bars_held - 1),
+                    current_bar=price_array_size - 1,
+                    direction=trade_direction,
+                    prices_close=prices_close,
+                    prices_high=prices_high,
+                    prices_low=prices_low,
+                    sl_pips=abs(entry - sl_price) if sl_price > 0 else 15.0,
+                    tp_pips=abs(tp_price - entry) if tp_price > 0 else 20.0,
+                    atr_current=atr,
+                    current_price=current_price,
+                    highest_price_since_entry=highest_price,
+                    lowest_price_since_entry=lowest_price,
+                    initial_confidence=max(current_confidence, 0.50),
+                    current_confidence=current_confidence,
+                    regime_name=regime_name,
+                    tranches_closed=[],
+                )
+
+                action = self._adaptive_exit_manager.evaluate_exit(ctx)
+
+                if action.action != "HOLD":
+                    exit_actions.append({
+                        "trade_id": trade_id,
+                        "pair": pair,
+                        "action": action.action,
+                        "reason": action.reason,
+                        "strategy": action.strategy,
+                        "new_stop": action.new_sl_price,
+                        "close_fraction": action.partial_close_ratio,
+                        "confidence": action.confidence,
+                        "urgency": action.urgency,
+                        "details": action.metadata,
+                    })
+                    logger.info(
+                        "Phase 44: Exit signal for %s trade %s: %s (%s) — %s",
+                        pair, trade_id, action.action, action.strategy, action.reason,
+                    )
+
+            except ValueError as e:
+                logger.debug(f"Phase 44: TradeContext validation failed for trade {status.get('trade_id')}: {e}")
+            except Exception as e:
+                logger.warning(f"Phase 44: Exit evaluation failed for trade {status.get('trade_id')}: {e}")
+
+        return exit_actions
+
     def monitor_open_trades(self) -> List[Dict[str, Any]]:
         """Monitor open trades and return status for each.
 
@@ -1015,7 +2176,13 @@ class ExecutionManager:
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
         try:
-            resp = requests.get(f"{base}/v3/accounts/{acct}/openTrades", headers=headers, timeout=10)
+            # Phase 30 (US-181): Wrap in retry logic
+            resp = self._retry_oanda(
+                requests.get,
+                f"{base}/v3/accounts/{acct}/openTrades",
+                headers=headers,
+                timeout=10,
+            )
             trades = resp.json().get("trades", [])
         except Exception as e:
             logger.warning(f"Failed to fetch open trades: {e}")
@@ -1051,8 +2218,8 @@ class ExecutionManager:
                 try:
                     open_dt = datetime.fromisoformat(open_time.replace("Z", "+00:00"))
                     time_in_minutes = int((datetime.now(timezone.utc) - open_dt).total_seconds() / 60)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"Execution non-critical operation skipped: {e}")
 
             statuses.append({
                 "trade_id": t.get("id"),
@@ -1068,7 +2235,83 @@ class ExecutionManager:
                 "time_in_minutes": time_in_minutes,
             })
 
+        # Phase 44 (US-279): Run adaptive exit evaluation on collected statuses
+        if self._adaptive_exit_manager is not None and statuses:
+            try:
+                exit_actions = self.evaluate_exits(statuses)
+                for status in statuses:
+                    tid = status.get("trade_id")
+                    matching = [a for a in exit_actions if a.get("trade_id") == tid]
+                    if matching:
+                        status["exit_signal"] = matching[0]
+            except Exception as e:
+                logger.warning(f"Phase 44: Adaptive exit evaluation failed: {e}")
+
         return statuses
+
+    def _batch_fetch_prices(self, pairs: List[str]) -> Dict[str, float]:
+        """Phase 30 (US-180): Fetch mid prices for multiple pairs in a single OANDA call.
+
+        Eliminates N+1 pricing API calls by batching instruments into one request.
+
+        Args:
+            pairs: List of instrument names (e.g. ["EUR_USD", "GBP_USD"]).
+
+        Returns:
+            Dict mapping pair → mid price. Missing pairs are omitted.
+        """
+        if not pairs:
+            return {}
+
+        import requests
+        import os
+
+        token = os.getenv("OANDA_API_TOKEN", "")
+        acct = os.getenv("OANDA_ACCOUNT_ID", "")
+        base = "https://api-fxpractice.oanda.com"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        # Deduplicate pairs
+        unique_pairs = list(dict.fromkeys(pairs))
+        instruments = ",".join(unique_pairs)
+
+        prices_map: Dict[str, float] = {}
+        try:
+            resp = self._retry_oanda(
+                requests.get,
+                f"{base}/v3/accounts/{acct}/pricing?instruments={instruments}",
+                headers=headers,
+                timeout=15,
+            )
+            for p in resp.json().get("prices", []):
+                instrument = p.get("instrument", "")
+                asks = p.get("asks", [{}])
+                bids = p.get("bids", [{}])
+                if asks and bids:
+                    ask_price = float(asks[0].get("price", 0))
+                    bid_price = float(bids[0].get("price", 0))
+                    if ask_price > 0 and bid_price > 0:
+                        prices_map[instrument] = (ask_price + bid_price) / 2
+        except Exception as e:
+            logger.debug("US-180: Batch price fetch failed, falling back to individual: %s", e)
+            # Fallback: fetch individually
+            for pair in unique_pairs:
+                try:
+                    resp = requests.get(
+                        f"{base}/v3/accounts/{acct}/pricing?instruments={pair}",
+                        headers=headers,
+                        timeout=10,
+                    )
+                    price_list = resp.json().get("prices", [])
+                    if price_list:
+                        ask_p = float(price_list[0].get("asks", [{}])[0].get("price", 0))
+                        bid_p = float(price_list[0].get("bids", [{}])[0].get("price", 0))
+                        if ask_p > 0 and bid_p > 0:
+                            prices_map[pair] = (ask_p + bid_p) / 2
+                except Exception as e2:
+                    logger.debug("US-180: Individual price fetch failed (%s): %s", pair, e2)
+
+        return prices_map
 
     def apply_drawdown_guardian(self) -> List[str]:
         """Check open trades and tighten SL when trade moves in favor.
@@ -1090,6 +2333,10 @@ class ExecutionManager:
         statuses = self.monitor_open_trades()
         modifications = []
 
+        # Phase 30 (US-180): Batch fetch all prices in one call
+        _all_pairs = list({s["pair"] for s in statuses if s.get("pair")})
+        _price_cache = self._batch_fetch_prices(_all_pairs)
+
         for status in statuses:
             trade_id = status["trade_id"]
             pair = status["pair"]
@@ -1102,19 +2349,10 @@ class ExecutionManager:
             if tp_price <= 0 or sl_price <= 0:
                 continue
 
-            # Get current price
-            try:
-                resp = requests.get(
-                    f"{base}/v3/accounts/{acct}/pricing?instruments={pair}",
-                    headers=headers,
-                    timeout=10,
-                )
-                prices = resp.json().get("prices", [])
-                if not prices:
-                    continue
-                mid = (float(prices[0].get("asks", [{}])[0].get("price", 0)) +
-                       float(prices[0].get("bids", [{}])[0].get("price", 0))) / 2
-            except Exception:
+            # Phase 30 (US-180): Use batch-cached price
+            mid = _price_cache.get(pair)
+            if mid is None:
+                logger.debug("US-180: No cached price for %s, skipping guardian", pair)
                 continue
 
             # Calculate progress toward TP
@@ -1133,28 +2371,45 @@ class ExecutionManager:
             new_sl = None
             reason = ""
 
-            if progress_pct >= 0.75:
+            # Dynamic drawdown thresholds (Phase 9: US-058)
+            lock_pct = getattr(self.config, "trailing_stop_lock_pct", 0.75)
+            be_pct = getattr(self.config, "trailing_stop_breakeven_pct", 0.50)
+            try:
+                from src.scanner.automation.dynamic_drawdown import DynamicDrawdownManager
+                dd_mgr = DynamicDrawdownManager(
+                    normal_breakeven_pct=be_pct,
+                    normal_lock_pct=lock_pct,
+                )
+                current_dd = getattr(self, "_current_drawdown", 0.0)
+                max_dd = getattr(self.config, "max_drawdown_pct", 0.15)
+                dd_thresholds = dd_mgr.get_dynamic_thresholds(current_dd, max_dd)
+                lock_pct = dd_thresholds.lock_pct
+                be_pct = dd_thresholds.breakeven_pct
+            except Exception as e:
+                logger.debug(f"Execution Fall back to static thresholds: {e}")
+
+            if progress_pct >= lock_pct:
                 # Lock in 50% of unrealized profit
                 if direction == "LONG":
                     new_sl = entry + (current_progress * 0.50)
                     if new_sl > sl_price:
-                        reason = f"75% TP reached, locking 50% profit (SL {sl_price:.5f} -> {new_sl:.5f})"
+                        reason = f"{lock_pct:.0%} TP reached, locking 50% profit (SL {sl_price:.5f} -> {new_sl:.5f})"
                     else:
                         new_sl = None
                 else:
                     new_sl = entry - (current_progress * 0.50)
                     if new_sl < sl_price:
-                        reason = f"75% TP reached, locking 50% profit (SL {sl_price:.5f} -> {new_sl:.5f})"
+                        reason = f"{lock_pct:.0%} TP reached, locking 50% profit (SL {sl_price:.5f} -> {new_sl:.5f})"
                     else:
                         new_sl = None
-            elif progress_pct >= 0.50:
+            elif progress_pct >= be_pct:
                 # Move SL to breakeven
                 if direction == "LONG" and sl_price < entry:
                     new_sl = entry + (pip_value * 2)  # Breakeven + 2 pips
-                    reason = f"50% TP reached, SL to breakeven (SL {sl_price:.5f} -> {new_sl:.5f})"
+                    reason = f"{be_pct:.0%} TP reached, SL to breakeven (SL {sl_price:.5f} -> {new_sl:.5f})"
                 elif direction == "SHORT" and sl_price > entry:
                     new_sl = entry - (pip_value * 2)
-                    reason = f"50% TP reached, SL to breakeven (SL {sl_price:.5f} -> {new_sl:.5f})"
+                    reason = f"{be_pct:.0%} TP reached, SL to breakeven (SL {sl_price:.5f} -> {new_sl:.5f})"
 
             if new_sl is not None:
                 try:
@@ -1162,7 +2417,9 @@ class ExecutionManager:
                     modify_data = {
                         "stopLoss": {"price": f"{new_sl:.5f}"}
                     }
-                    resp = requests.put(
+                    # Phase 30 (US-181): Wrap SL modification in retry
+                    resp = self._retry_oanda(
+                        requests.put,
                         f"{base}/v3/accounts/{acct}/trades/{trade_id}/orders",
                         headers=headers,
                         json=modify_data,
@@ -1178,11 +2435,282 @@ class ExecutionManager:
 
         return modifications
 
-    def sync_closed_trades_rl(self) -> Dict[str, Any]:
+    # ------------------------------------------------------------------
+    # Phase 24 (US-147): OANDA helpers for position management
+    # ------------------------------------------------------------------
+
+    def close_trade_oanda(self, trade_id: str) -> bool:
+        """Close an open trade on OANDA.
+
+        Args:
+            trade_id: OANDA trade ID to close.
+
+        Returns:
+            True if closed successfully.
+        """
+        import requests
+        import os
+
+        token = os.getenv("OANDA_API_TOKEN", "")
+        acct = os.getenv("OANDA_ACCOUNT_ID", "")
+        base = "https://api-fxpractice.oanda.com"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        try:
+            # Phase 30 (US-181): Wrap close trade in retry
+            resp = self._retry_oanda(
+                requests.put,
+                f"{base}/v3/accounts/{acct}/trades/{trade_id}/close",
+                headers=headers,
+                json={},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                logger.info(f"US-147: Closed trade #{trade_id} via position manager")
+                return True
+            else:
+                logger.warning(f"US-147: Close trade #{trade_id} failed: {resp.text}")
+                return False
+        except Exception as e:
+            logger.warning(f"US-147: Close trade #{trade_id} error: {e}")
+            return False
+
+    def modify_sl_oanda(self, trade_id: str, new_sl: float) -> bool:
+        """Modify the stop loss of an open trade on OANDA.
+
+        Args:
+            trade_id: OANDA trade ID.
+            new_sl: New stop loss price.
+
+        Returns:
+            True if modified successfully.
+        """
+        import requests
+        import os
+
+        token = os.getenv("OANDA_API_TOKEN", "")
+        acct = os.getenv("OANDA_ACCOUNT_ID", "")
+        base = "https://api-fxpractice.oanda.com"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        try:
+            modify_data = {"stopLoss": {"price": f"{new_sl:.5f}"}}
+            # Phase 30 (US-181): Wrap SL modification in retry
+            resp = self._retry_oanda(
+                requests.put,
+                f"{base}/v3/accounts/{acct}/trades/{trade_id}/orders",
+                headers=headers,
+                json=modify_data,
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                logger.info(f"US-147: Modified SL for trade #{trade_id} to {new_sl:.5f}")
+                return True
+            else:
+                logger.warning(f"US-147: Modify SL #{trade_id} failed: {resp.text}")
+                return False
+        except Exception as e:
+            logger.warning(f"US-147: Modify SL #{trade_id} error: {e}")
+            return False
+
+    def update_trailing_stops(self, atr_by_pair: Optional[Dict[str, float]] = None) -> List[str]:
+        """ATR-based trailing stop: move SL to trail behind price by ATR * multiplier.
+
+        US-038: Only moves SL in the profitable direction (never widens).
+        Trail distance = ATR * trailing_atr_multiplier.
+
+        Args:
+            atr_by_pair: Optional dict of pair → current ATR value.
+                If None, uses a default trail of 15 pips.
+
+        Returns:
+            List of modification messages.
+        """
+        if not getattr(self.config, "enable_trailing_stop", True):
+            return []
+
+        import requests
+        import os
+
+        token = os.getenv("OANDA_API_TOKEN", "")
+        acct = os.getenv("OANDA_ACCOUNT_ID", "")
+        base = "https://api-fxpractice.oanda.com"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+        trail_mult = float(getattr(self.config, "trailing_atr_multiplier", 1.5))
+        statuses = self.monitor_open_trades()
+        modifications: List[str] = []
+
+        # Phase 30 (US-180): Batch fetch all prices in one call
+        _all_pairs = list({s["pair"] for s in statuses if s.get("pair")})
+        _price_cache = self._batch_fetch_prices(_all_pairs)
+
+        for status in statuses:
+            trade_id = status["trade_id"]
+            pair = status["pair"]
+            direction = status["direction"]
+            entry = status["entry"]
+            sl_price = status["sl_price"]
+            pip_value = PIP_VALUES.get(pair, 0.0001)
+
+            if sl_price <= 0:
+                continue  # No SL set — skip
+
+            # Get current ATR for trail distance
+            if atr_by_pair and pair in atr_by_pair:
+                atr = atr_by_pair[pair]
+            else:
+                # Fallback ATR from config
+                atr = getattr(self.config, "fallback_atr_pips", 15.0) * pip_value
+
+            trail_distance = atr * trail_mult
+
+            # Phase 30 (US-180): Use batch-cached price
+            mid = _price_cache.get(pair)
+            if mid is None:
+                logger.debug("US-180: No cached price for %s, skipping trailing SL", pair)
+                continue
+
+            new_sl = None
+            if direction == "LONG":
+                # Trail SL below current price
+                candidate_sl = mid - trail_distance
+                # Only move SL up (tighter), never down (wider)
+                if candidate_sl > sl_price and candidate_sl > entry:
+                    new_sl = candidate_sl
+            else:  # SHORT
+                candidate_sl = mid + trail_distance
+                if candidate_sl < sl_price and candidate_sl < entry:
+                    new_sl = candidate_sl
+
+            if new_sl is not None:
+                try:
+                    modify_data = {"stopLoss": {"price": f"{new_sl:.5f}"}}
+                    # Phase 30 (US-181): Wrap trailing SL modification in retry
+                    resp = self._retry_oanda(
+                        requests.put,
+                        f"{base}/v3/accounts/{acct}/trades/{trade_id}/orders",
+                        headers=headers,
+                        json=modify_data,
+                        timeout=10,
+                    )
+                    if resp.status_code == 200:
+                        msg = (
+                            f"{pair} #{trade_id}: Trailing SL "
+                            f"{sl_price:.5f} → {new_sl:.5f} "
+                            f"(trail={trail_distance/pip_value:.1f} pips)"
+                        )
+                        modifications.append(msg)
+                        logger.info(f"Trailing stop: {msg}")
+
+                        # Log to observations (Phase 30 US-183: uses shared _observer)
+                        try:
+                            self._get_observer().log_observation(
+                                pair=pair,
+                                category="trailing_stop",
+                                description=msg,
+                                metadata={
+                                    "trade_id": trade_id,
+                                    "old_sl": sl_price,
+                                    "new_sl": new_sl,
+                                    "trail_pips": round(trail_distance / pip_value, 1),
+                                    "mid_price": mid,
+                                },
+                            )
+                        except Exception as e:
+                            logger.debug(f"Execution trade tracking skipped: {e}")
+                    else:
+                        logger.warning(f"Trailing SL modify failed {pair} #{trade_id}: {resp.text}")
+                except Exception as e:
+                    logger.warning(f"Trailing SL error {pair} #{trade_id}: {e}")
+
+        return modifications
+
+    @staticmethod
+    def _get_current_regime(scanner: Any, entry: Dict[str, Any]) -> str:
+        """Phase 24 (US-145): Derive current volatility regime for exit recording.
+
+        Tries: (1) scanner's cached regime, (2) scanner config default, (3) entry regime fallback.
+        """
+        # Try scanner's last known regime from cached results
+        if scanner is not None:
+            try:
+                _cached = getattr(scanner, "_cached_results", {})
+                pair = entry.get("pair", "")
+                if pair in _cached:
+                    _regime = str(getattr(_cached[pair], "volatility_regime", "")).upper()
+                    if _regime and _regime != "UNKNOWN":
+                        return _regime
+                # Try any cached result's regime as proxy
+                for _r in _cached.values():
+                    _regime = str(getattr(_r, "volatility_regime", "")).upper()
+                    if _regime and _regime != "UNKNOWN":
+                        return _regime
+                # Fall back to config default
+                _default = getattr(getattr(scanner, "config", None), "volatility_regime_default", None)
+                if _default:
+                    return str(_default).upper()
+            except Exception as e:
+                logger.debug(f"Execution regime detection skipped: {e}")
+        # Fall back to entry's regime_at_entry
+        _entry_regime = (entry.get("regime") or {}).get("volatility_regime", "NORMAL")
+        return str(_entry_regime).upper() if _entry_regime else "NORMAL"
+
+    @staticmethod
+    def _determine_exit_reason(
+        entry: Dict[str, Any],
+        close_price: float,
+        entry_price: float,
+        pip_value: float,
+        duration_minutes: Optional[float] = None,
+    ) -> str:
+        """Determine why a trade was closed (US-061).
+
+        Compares close_price against SL/TP levels to classify exit reason.
+
+        Returns:
+            One of: tp_hit, sl_hit, trailing_stop, breakeven_stop, timeout, manual_close
+        """
+        sl_price = float(entry.get("sl_price", 0))
+        tp_price = float(entry.get("tp_price", 0))
+        direction = str(entry.get("direction", "")).upper()
+
+        # Tolerance: within 2 pips of SL/TP counts as a hit
+        tolerance = pip_value * 2 if pip_value > 0 else 0.0002
+
+        if tp_price > 0 and abs(close_price - tp_price) <= tolerance:
+            return "tp_hit"
+
+        if sl_price > 0 and abs(close_price - sl_price) <= tolerance:
+            return "sl_hit"
+
+        # Check if SL was moved to breakeven (close near entry)
+        if entry_price > 0 and abs(close_price - entry_price) <= tolerance:
+            return "breakeven_stop"
+
+        # Check for trailing stop: trade was profitable but closed before TP
+        if direction == "LONG" and close_price > entry_price and tp_price > 0 and close_price < tp_price:
+            return "trailing_stop"
+        if direction == "SHORT" and close_price < entry_price and tp_price > 0 and close_price > tp_price:
+            return "trailing_stop"
+
+        # Timeout: if duration exceeds 24 hours (1440 minutes)
+        if duration_minutes is not None and duration_minutes > 1440:
+            return "timeout"
+
+        # Default: can't determine specific reason
+        return "manual_close"
+
+    def sync_closed_trades_rl(self, scanner: Any = None) -> Dict[str, Any]:
         """Check OANDA for recently closed trades and run RL feedback on agent weights.
 
         Reads the RL journal, matches against OANDA closed trades, updates outcomes,
         and calls ScannerAgentTeam.update_weights_from_outcome for each closed trade.
+
+        Args:
+            scanner: Optional Scanner instance for Phase 18 calibration feedback.
+                     When provided, trade outcomes feed threshold optimizer,
+                     dynamic risk allocator, execution quality profiler, etc.
 
         Returns:
             Dict with sync results: trades_synced, weights_updated, new_weights.
@@ -1198,8 +2726,9 @@ class ExecutionManager:
 
         try:
             entries = json.loads(journal_path.read_text())
-        except Exception:
-            return {"trades_synced": 0, "weights_updated": False, "detail": "journal parse error"}
+        except Exception as e:
+            logger.debug("US-178: Journal parse failed in sync_closed_trades_rl: %s", e)
+            return {"trades_synced": 0, "weights_updated": False, "detail": f"journal parse error: {e}"}
 
         # Find entries without outcomes
         pending = [e for e in entries if e.get("outcome") is None]
@@ -1213,7 +2742,9 @@ class ExecutionManager:
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
         try:
-            resp = requests.get(
+            # Phase 30 (US-181): Wrap closed trades fetch in retry
+            resp = self._retry_oanda(
+                requests.get,
                 f"{base}/v3/accounts/{acct}/trades",
                 params={"state": "CLOSED", "count": 50},
                 headers=headers,
@@ -1243,42 +2774,299 @@ class ExecutionManager:
                 if entry.get("direction", "").upper() == "SHORT":
                     pnl_pips = -pnl_pips
 
-            entry["outcome"] = {
+            # Calculate duration
+            close_time_str = ct.get("closeTime", "")
+            duration_minutes = None
+            entry_ts = entry.get("timestamp", "")
+            try:
+                if entry_ts and close_time_str:
+                    open_dt = datetime.fromisoformat(entry_ts.replace("Z", "+00:00"))
+                    close_dt = datetime.fromisoformat(close_time_str.replace("Z", "+00:00"))
+                    duration_minutes = round((close_dt - open_dt).total_seconds() / 60.0, 1)
+            except Exception as e:
+                logger.debug(f"Execution non-critical operation skipped: {e}")
+
+            # US-061: Determine exit reason by comparing close_price to SL/TP
+            exit_reason = self._determine_exit_reason(
+                entry=entry,
+                close_price=close_price,
+                entry_price=entry_price,
+                pip_value=pip_value,
+                duration_minutes=duration_minutes,
+            )
+
+            outcome_data = {
                 "realized_pl": realized_pl,
                 "pnl_pips": round(pnl_pips, 1),
                 "trade_won": trade_won,
                 "close_price": close_price,
-                "close_time": ct.get("closeTime"),
+                "close_time": close_time_str,
+                "exit_price": close_price,
+                "exit_time": close_time_str,
+                "duration_minutes": duration_minutes,
+                "exit_reason": exit_reason,
+                "regime_at_entry": entry.get("regime", {}).get("volatility_regime"),
+                # Phase 24 (US-145): Derive regime at exit from scanner or entry fallback
+                "regime_at_exit": self._get_current_regime(scanner, entry)
             }
+            entry["outcome"] = outcome_data
             synced += 1
 
-            # Collect agent verdicts for RL feedback
+            # Feed RL replay buffer for sizer/gates/exits models
+            try:
+                self._sync_trade_outcome_to_rl(entry, outcome_data)
+            except Exception as rl_err:
+                logger.debug(f"RL replay buffer error for {tid}: {rl_err}")
+
+            # Collect agent verdicts for RL feedback (with regime from entry)
             agents = entry.get("agents", {})
+            regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
             if agents.get("agent_reasons"):
                 rl_updates.append({
                     "agent_verdicts": agents["agent_reasons"],
                     "trade_won": trade_won,
+                    "regime": regime,
+                    # Phase 24 (US-149): Pass exit_reason for trailing stop differentiation
+                    "exit_reason": exit_reason,
+                    "pnl": realized_pl,
                 })
 
-        # Write updated journal
-        journal_path.write_text(json.dumps(entries, indent=2, default=str))
+        # Phase 47 (US-297): Record trade outcomes to expectancy tracker for per-agent per-regime learning
+        self._record_expectancy_from_trades(pending, closed_trades)
 
-        # Run RL agent weight updates
+        # Write updated journal (atomic)
+        try:
+            from src.scanner.automation.safe_json import safe_json_write
+            safe_json_write(journal_path, entries)
+        except ImportError:
+            journal_path.write_text(json.dumps(entries, indent=2, default=str))
+
+        # Phase 45 (US-282): Feed trade outcomes to adaptive position sizer
+        if self._adaptive_position_sizer is not None:
+            try:
+                for entry in pending:
+                    tid = str(entry.get("trade_id", ""))
+                    if tid not in closed_trades:
+                        continue
+                    ct = closed_trades[tid]
+                    realized_pl = float(ct.get("realizedPL", 0))
+                    trade_won = realized_pl > 0
+                    self._adaptive_position_sizer.record_trade(
+                        pnl=realized_pl,
+                        win=trade_won,
+                    )
+            except Exception as _aps_err:
+                logger.debug(f"Phase 45: Adaptive sizer trade recording failed: {_aps_err}")
+
+        # Run RL agent weight updates (regime-aware)
         weights_updated = False
         new_weights: Dict[str, float] = {}
         if rl_updates:
             try:
                 from src.scanner.agents import ScannerAgentTeam
-                agent_team = ScannerAgentTeam(config=None)
+                # Phase 24 (US-146): Use scanner config instead of None for proper boost/penalty rates
+                _rl_config = getattr(scanner, "config", None) if scanner is not None else None
+                if _rl_config is None:
+                    try:
+                        from src.scanner.config import ScannerConfig
+                        _rl_config = ScannerConfig()
+                    except Exception as e:
+                        logger.debug(f"Execution non-critical operation skipped: {e}")
+                agent_team = ScannerAgentTeam(config=_rl_config)
+                _weights_before = dict(agent_team._learned_weights.get("_global", agent_team._BASE_WEIGHTS))
+                # Phase 24 (US-149): Store original penalty for restoration after trailing-stop override
+                _orig_penalty = getattr(_rl_config, "weight_penalty_on_loss", 0.15) if _rl_config else 0.15
                 for upd in rl_updates:
+                    # US-149: Trailing stop exit learning — reduced penalty for profitable exits
+                    _exit_reason = upd.get("exit_reason", "")
+                    _is_trailing = "trailing" in str(_exit_reason).lower()
+                    _pnl = float(upd.get("pnl", 0))
+                    if _is_trailing and _pnl > 0:
+                        # Profitable trailing stop: reduced penalty (0.05x instead of 0.15x)
+                        # because trailing stop is a SUCCESS mechanism — it locked in profit
+                        if _rl_config is not None:
+                            setattr(_rl_config, "weight_penalty_on_loss", 0.05)
+                        logger.info(
+                            f"US-149: Trailing stop profitable exit — "
+                            f"reduced penalty 0.05 (was {_orig_penalty:.2f})"
+                        )
+                    elif _is_trailing and _pnl <= 0:
+                        # Trailing stop hit at a loss — SL was tightened but still hit
+                        # Normal penalty applies
+                        if _rl_config is not None:
+                            setattr(_rl_config, "weight_penalty_on_loss", _orig_penalty)
+                    else:
+                        # Non-trailing exit: use original penalty
+                        if _rl_config is not None:
+                            setattr(_rl_config, "weight_penalty_on_loss", _orig_penalty)
+
                     new_weights = agent_team.update_weights_from_outcome(
                         agent_verdicts=upd["agent_verdicts"],
                         trade_won=upd["trade_won"],
+                        regime=upd.get("regime", "NORMAL"),
                     )
+                # Restore original penalty
+                if _rl_config is not None:
+                    setattr(_rl_config, "weight_penalty_on_loss", _orig_penalty)
+
                 weights_updated = True
-                logger.info(f"RL feedback: updated weights from {len(rl_updates)} closed trades")
+                # Log weight changes for observability
+                _changed = {
+                    k: f"{_weights_before.get(k, 0):.3f}→{new_weights.get(k, 0):.3f}"
+                    for k in new_weights
+                    if abs(new_weights.get(k, 0) - _weights_before.get(k, 0)) > 0.001
+                }
+                # US-149: Include exit reason distribution in log
+                _exit_reasons = {}
+                for upd in rl_updates:
+                    _er = upd.get("exit_reason", "unknown")
+                    _exit_reasons[_er] = _exit_reasons.get(_er, 0) + 1
+                logger.info(
+                    f"RL feedback: updated weights from {len(rl_updates)} closed trades "
+                    f"(regime-aware, exit_reasons={_exit_reasons}, changed: {_changed or 'none'})"
+                )
             except Exception as e:
                 logger.warning(f"RL weight update failed: {e}")
+
+        # Phase 25 (US-155): Record agent verdicts to accuracy matrix for per-pair tracking
+        if scanner is not None and synced > 0:
+            _acc_matrix = getattr(scanner, "_agent_accuracy_matrix", None)
+            if _acc_matrix is not None:
+                try:
+                    _am_recorded = 0
+                    for entry in entries:
+                        _outcome = entry.get("outcome")
+                        if _outcome is None:
+                            continue
+                        _pair = entry.get("pair", "")
+                        _regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
+                        _direction = entry.get("direction", "BUY").upper()
+                        _trade_won = bool(_outcome.get("trade_won", False))
+                        _actual = "win" if _trade_won else "loss"
+                        _agents_info = entry.get("agents", {})
+                        _agent_reasons = _agents_info.get("agent_reasons", [])
+                        for _ar in _agent_reasons:
+                            _agent_name = _ar.get("name", "")
+                            if not _agent_name:
+                                continue
+                            # Only record agents that voted FOR the trade (passed=True)
+                            # Their prediction was the trade direction — outcome tells if correct
+                            if _ar.get("passed", False):
+                                _acc_matrix.record_verdict(
+                                    agent_name=_agent_name,
+                                    pair=_pair,
+                                    regime=_regime,
+                                    predicted_direction=_direction,
+                                    actual_outcome=_actual,
+                                )
+                                _am_recorded += 1
+                    if _am_recorded > 0:
+                        _acc_matrix.save_state()
+                        logger.info(
+                            "US-155: Recorded %d agent verdicts to accuracy matrix "
+                            "(%d closed trades)",
+                            _am_recorded, synced,
+                        )
+                except Exception as _am_err:
+                    logger.debug(f"US-155: Accuracy matrix recording error: {_am_err}")
+
+        # Phase 27 (US-167): Feed outcomes to pair_regime_agent_matrix
+        if scanner is not None and synced > 0:
+            _pram = getattr(scanner, "_pair_regime_agent_matrix", None)
+            if _pram is not None:
+                try:
+                    _pram_recorded = 0
+                    for entry in entries:
+                        _outcome = entry.get("outcome")
+                        if _outcome is None:
+                            continue
+                        _pair = entry.get("pair", "")
+                        _regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
+                        _direction = entry.get("direction", "BUY").upper()
+                        _won = bool(_outcome.get("trade_won", False))
+                        _agent_reasons = entry.get("agents", {}).get("agent_reasons", [])
+                        for _ar in _agent_reasons:
+                            _aname = _ar.get("name", "")
+                            if _aname and _ar.get("passed", False):
+                                _pram.record_vote(
+                                    pair=_pair,
+                                    regime=_regime,
+                                    agent=_aname,
+                                    vote=_direction,
+                                    won=_won,
+                                )
+                                _pram_recorded += 1
+                    if _pram_recorded > 0:
+                        _pram.save_state()
+                        logger.info(
+                            "US-167: Fed %d agent outcomes to pair_regime_agent_matrix",
+                            _pram_recorded,
+                        )
+                except Exception as _pram_err:
+                    logger.debug(f"US-167: PRAM feed error: {_pram_err}")
+
+        # Phase 27 (US-166): Track fast-track trade A/B performance
+        if synced > 0:
+            try:
+                if not hasattr(self, "_fasttrack_stats"):
+                    self._fasttrack_stats = {"wins": 0, "losses": 0, "total": 0}
+                for entry in entries:
+                    _outcome = entry.get("outcome")
+                    if _outcome is None:
+                        continue
+                    _ctx = entry.get("analysis_context", entry.get("agents", {}))
+                    _is_ft = _ctx.get("fasttrack", False)
+                    if _is_ft:
+                        self._fasttrack_stats["total"] += 1
+                        if _outcome.get("trade_won", False):
+                            self._fasttrack_stats["wins"] += 1
+                        else:
+                            self._fasttrack_stats["losses"] += 1
+                _ft_total = self._fasttrack_stats["total"]
+                if _ft_total > 0 and _ft_total % 5 == 0:
+                    _ft_wr = self._fasttrack_stats["wins"] / _ft_total
+                    logger.info(
+                        "US-166: Fast-track A/B — %d trades, "
+                        "win_rate=%.1f%% (%d W / %d L)",
+                        _ft_total, _ft_wr * 100,
+                        self._fasttrack_stats["wins"],
+                        self._fasttrack_stats["losses"],
+                    )
+            except Exception as _ft_err:
+                logger.debug(f"US-166: Fast-track tracking error: {_ft_err}")
+
+        # Phase 18: Feed trade outcomes to calibration modules via Scanner
+        if scanner is not None and synced > 0:
+            try:
+                _phase18_method = getattr(scanner, "record_trade_outcome_phase18", None)
+                if _phase18_method is not None:
+                    for entry in entries:
+                        _outcome = entry.get("outcome")
+                        if _outcome is None:
+                            continue
+                        _gate_vals = None
+                        _agents_info = entry.get("agents", {})
+                        if _agents_info:
+                            _gate_vals = {
+                                "confidence": float(entry.get("confidence", 0)),
+                                "momentum": float(_agents_info.get("weighted_vote_score", 0)),
+                                "rr_ratio": (
+                                    float(entry.get("tp_pips", 0)) / max(float(entry.get("sl_pips", 1)), 0.1)
+                                ),
+                            }
+                        _phase18_method(
+                            pair=entry.get("pair", ""),
+                            regime=entry.get("regime", {}).get("volatility_regime", "NORMAL"),
+                            pnl_pips=float(_outcome.get("pnl_pips", 0)),
+                            trade_won=bool(_outcome.get("trade_won", False)),
+                            duration_bars=int(_outcome.get("duration_minutes", 0) / 5),
+                            gate_values=_gate_vals,
+                            agent_verdicts=_agents_info.get("agent_reasons"),
+                            model=entry.get("model", "ensemble"),
+                        )
+                    logger.info(f"Phase 18: Fed {synced} trade outcomes to calibration modules")
+            except Exception as _p18_err:
+                logger.debug(f"Phase 18 outcome feedback error: {_p18_err}")
 
         # Update per-pair performance summary after syncing
         if synced > 0:
@@ -1287,12 +3075,152 @@ class ExecutionManager:
             except Exception as perf_err:
                 logger.debug(f"Pair performance update error: {perf_err}")
 
+        # Phase 45 (US-282): Persist adaptive sizer state
+        if self._adaptive_position_sizer is not None:
+            try:
+                self._adaptive_position_sizer.save_state("trained_data/adaptive_sizer_state.json")
+            except Exception as _save_err:
+                logger.debug(f"Phase 45: Adaptive sizer state save failed: {_save_err}")
+
+        # Phase 45 (US-285): Persist EWMA correlation state
+        if self._ewma_correlation is not None:
+            try:
+                self._ewma_correlation.save_state("trained_data/ewma_correlation_state.json")
+            except Exception as _ewma_save_err:
+                logger.debug(f"Phase 45: EWMA state save failed: {_ewma_save_err}")
+
         return {
             "trades_synced": synced,
             "weights_updated": weights_updated,
             "new_weights": new_weights,
             "detail": f"synced {synced} trades, {len(rl_updates)} RL updates",
         }
+
+    def _record_expectancy_from_trades(
+        self, pending: List[Dict[str, Any]], closed_trades: Dict[str, Dict[str, Any]]
+    ) -> None:
+        """Phase 47 (US-297): Record trade outcomes to expectancy tracker for per-agent per-regime learning.
+
+        Iterates through pending trades, finds matches in closed_trades, and records each
+        agent's performance in the regime where the trade executed.
+
+        Args:
+            pending: List of pending entries from trade journal
+            closed_trades: Dict mapping trade_id -> OANDA trade data
+        """
+        if self._expectancy_tracker is None:
+            self._init_expectancy_tracker()
+        if self._expectancy_tracker is None:
+            return
+
+        recorded_count = 0
+        try:
+            for entry in pending:
+                tid = str(entry.get("trade_id", ""))
+                if tid not in closed_trades:
+                    continue
+
+                ct = closed_trades[tid]
+                realized_pl = float(ct.get("realizedPL", 0))
+                trade_won = realized_pl > 0
+
+                # Get regime and agent verdicts
+                regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
+                agents_info = entry.get("agents", {})
+                agent_reasons = agents_info.get("agent_reasons", [])
+
+                # Record each agent that participated
+                for agent_reason in agent_reasons:
+                    agent_name = agent_reason.get("name", "")
+                    if not agent_name:
+                        continue
+
+                    try:
+                        self._expectancy_tracker.record_trade(
+                            agent_name=agent_name,
+                            regime=regime,
+                            pnl=realized_pl,
+                            won=trade_won,
+                        )
+                        recorded_count += 1
+                    except ValueError as e:
+                        # Graceful skip for unknown agent/regime
+                        logger.debug(
+                            f"Phase 47 (US-297): Could not record expectancy for {agent_name}/{regime}: {e}"
+                        )
+
+            # Save state after recording
+            if recorded_count > 0:
+                try:
+                    self._expectancy_tracker.save_state()
+                    logger.debug(
+                        f"Phase 47 (US-297): Recorded expectancy for {recorded_count} agent-trade outcomes"
+                    )
+                except Exception as save_err:
+                    logger.warning(f"Phase 47 (US-297): Failed to save expectancy state: {save_err}")
+
+        except Exception as e:
+            logger.warning(f"Phase 47 (US-297): Expectancy recording failed: {e}")
+
+    def _sync_trade_outcome_to_rl(self, entry: Dict[str, Any], outcome: Dict[str, Any]) -> None:
+        """Append (state, action, reward) tuple to RL replay buffer.
+
+        This feeds the RL sizer/gates/exits models with live trade outcomes.
+        Reward = normalized P/L relative to risk taken (pnl / sl_pips).
+
+        Args:
+            entry: Journal entry with trade context (pair, direction, confidence, etc.)
+            outcome: Outcome dict with realized_pl, pnl_pips, trade_won, close_price, close_time.
+        """
+        import json
+        from pathlib import Path
+
+        buffer_path = Path("trained_data/rl_replay_buffer.jsonl")
+
+        try:
+            sl_pips = float(entry.get("sl_pips", 0) or entry.get("stop_loss_pips", 0) or 1.0)
+            pnl_pips = float(outcome.get("pnl_pips", 0))
+            # Reward = normalized P/L relative to risk taken
+            reward = pnl_pips / sl_pips if sl_pips > 0 else 0.0
+
+            state = {
+                "pair": entry.get("pair"),
+                "direction": entry.get("direction"),
+                "confidence": entry.get("confidence"),
+                "atr": entry.get("atr"),
+                "regime": entry.get("regime", {}).get("volatility_regime", "NORMAL"),
+                "agent_consensus": entry.get("agents", {}).get("weighted_vote_score"),
+                "uncertainty": entry.get("agents", {}).get("uncertainty_score"),
+                "risk_pct": entry.get("risk_pct"),
+                "lots": entry.get("lots"),
+            }
+
+            action = {
+                "type": "trade",
+                "direction": entry.get("direction"),
+                "lots": entry.get("lots"),
+                "sl_pips": sl_pips,
+                "tp_pips": entry.get("tp_pips"),
+            }
+
+            record = {
+                "timestamp": outcome.get("close_time"),
+                "state": state,
+                "action": action,
+                "reward": round(reward, 4),
+                "pnl_pips": pnl_pips,
+                "realized_pl": outcome.get("realized_pl", 0),
+                "trade_won": outcome.get("trade_won", False),
+            }
+
+            # Append to JSONL buffer (atomic write)
+            with open(buffer_path, "a") as f:
+                f.write(json.dumps(record, default=str) + "\n")
+
+            logger.debug(f"RL replay: {entry.get('pair')} reward={reward:.3f}")
+
+        except Exception as e:
+            logger.warning(f"RL replay buffer write failed: {e}")  # L-6: elevated from debug; RL data loss must surface
 
     def _update_pair_performance(self) -> None:
         """Aggregate per-pair performance stats from the trade journal."""
@@ -1306,7 +3234,15 @@ class ExecutionManager:
         if not journal_path.exists():
             return
 
-        entries = json.loads(journal_path.read_text())
+        # Phase 31 (US-188): Guard JSON parse with try/except
+        try:
+            entries = json.loads(journal_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"_update_pair_performance: journal parse failed: {e}")
+            return
+        if not isinstance(entries, list):
+            logger.warning("_update_pair_performance: journal is not a list")
+            return
         closed = [e for e in entries if e.get("outcome") is not None]
         if not closed:
             return
@@ -1350,7 +3286,10 @@ class ExecutionManager:
             s["worst_pnl_pips"] = round(s["worst_pnl_pips"], 1)
 
         perf_path.parent.mkdir(parents=True, exist_ok=True)
-        perf_path.write_text(json.dumps(dict(stats), indent=2))
+        # M-4: atomic write — prevents pair performance data corruption on crash
+        _perf_tmp = perf_path.with_suffix(".tmp")
+        _perf_tmp.write_text(json.dumps(dict(stats), indent=2), encoding="utf-8")
+        import os as _os; _os.replace(str(_perf_tmp), str(perf_path))
 
     def get_pair_performance(self, pair: Optional[str] = None) -> Dict[str, Any]:
         """Read per-pair performance stats.
@@ -1370,9 +3309,176 @@ class ExecutionManager:
 
         try:
             data = json.loads(perf_path.read_text())
-        except Exception:
+        except Exception as e:
+            logger.debug("US-178: Pair performance data parse failed: %s", e)
             return {}
 
         if pair:
             return data.get(pair, {})
         return data
+
+    # ── Trade Journal Summary Stats ──────────────────────────────────
+
+    def win_rate_by_pair(self) -> Dict[str, float]:
+        """Calculate win rate for each pair from the trade journal.
+
+        Returns:
+            Dict mapping pair name to win rate (0.0 - 1.0).
+        """
+        import json
+        from pathlib import Path
+        from collections import defaultdict
+
+        journal_path = Path("trained_data/trade_journal_rl.json")
+        if not journal_path.exists():
+            return {}
+
+        try:
+            entries = json.loads(journal_path.read_text())
+        except Exception as e:
+            logger.debug("US-178: Journal parse failed in win_rate_by_pair: %s", e)
+            return {}
+
+        wins: Dict[str, int] = defaultdict(int)
+        total: Dict[str, int] = defaultdict(int)
+
+        for e in entries:
+            outcome = e.get("outcome")
+            if outcome is None:
+                continue
+            pair = e.get("pair", "UNKNOWN")
+            total[pair] += 1
+            if outcome.get("trade_won"):
+                wins[pair] += 1
+
+        return {
+            pair: round(wins[pair] / total[pair], 3) if total[pair] > 0 else 0.0
+            for pair in total
+        }
+
+    def avg_duration(self, pair: Optional[str] = None) -> float:
+        """Calculate average trade duration in minutes.
+
+        Args:
+            pair: Optional pair filter. None = all pairs.
+
+        Returns:
+            Average duration in minutes, or 0.0 if no data.
+        """
+        import json
+        from pathlib import Path
+
+        journal_path = Path("trained_data/trade_journal_rl.json")
+        if not journal_path.exists():
+            return 0.0
+
+        try:
+            entries = json.loads(journal_path.read_text())
+        except Exception as e:
+            logger.debug("US-178: Journal parse failed in avg_trade_duration: %s", e)
+            return 0.0
+
+        durations = []
+        for e in entries:
+            outcome = e.get("outcome")
+            if outcome is None:
+                continue
+            if pair and e.get("pair") != pair:
+                continue
+            dur = outcome.get("duration_minutes")
+            if dur is not None and dur > 0:
+                durations.append(dur)
+
+        return round(sum(durations) / len(durations), 1) if durations else 0.0
+
+    def avg_rr_ratio(self, pair: Optional[str] = None) -> float:
+        """Calculate average realized risk:reward ratio from closed trades.
+
+        R:R = |pnl_pips| / sl_distance_pips for winners, negative for losers.
+
+        Args:
+            pair: Optional pair filter. None = all pairs.
+
+        Returns:
+            Average R:R ratio, or 0.0 if no data.
+        """
+        import json
+        from pathlib import Path
+
+        journal_path = Path("trained_data/trade_journal_rl.json")
+        if not journal_path.exists():
+            return 0.0
+
+        try:
+            entries = json.loads(journal_path.read_text())
+        except Exception as e:
+            logger.debug("US-178: Journal parse failed in avg_rr_ratio: %s", e)
+            return 0.0
+
+        ratios = []
+        for e in entries:
+            outcome = e.get("outcome")
+            if outcome is None:
+                continue
+            if pair and e.get("pair") != pair:
+                continue
+
+            pnl_pips = abs(float(outcome.get("pnl_pips", 0)))
+            # Estimate SL distance from entry
+            entry_price = float(e.get("entry_price", 0))
+            sl_price = float(e.get("sl_price", 0))
+            pip_val = PIP_VALUES.get(e.get("pair", ""), 0.0001)
+
+            if entry_price > 0 and sl_price > 0 and pip_val > 0:
+                sl_dist = abs(entry_price - sl_price) / pip_val
+                if sl_dist > 0:
+                    rr = pnl_pips / sl_dist
+                    if not outcome.get("trade_won"):
+                        rr = -rr
+                    ratios.append(rr)
+
+        return round(sum(ratios) / len(ratios), 2) if ratios else 0.0
+
+    def execution_quality_summary(self) -> Dict[str, Any]:
+        """Calculate execution quality metrics from trade journal.
+
+        Returns:
+            Dict with avg_slippage_pips, max_slippage_pips, fill_rate,
+            total_trades, rejected_count.
+        """
+        import json
+        from pathlib import Path
+
+        journal_path = Path("trained_data/trade_journal_rl.json")
+        if not journal_path.exists():
+            return {"avg_slippage_pips": 0.0, "max_slippage_pips": 0.0,
+                    "fill_rate": 1.0, "total_trades": 0, "rejected_count": 0}
+
+        try:
+            entries = json.loads(journal_path.read_text())
+        except Exception as e:
+            logger.debug("US-178: Journal parse failed in execution_quality_stats: %s", e)
+            return {"avg_slippage_pips": 0.0, "max_slippage_pips": 0.0,
+                    "fill_rate": 1.0, "total_trades": 0, "rejected_count": 0}
+
+        slippages = []
+        for e in entries:
+            slip = e.get("slippage_pips")
+            if slip is not None:
+                slippages.append(abs(float(slip)))
+
+        total = len(entries)
+        avg_slip = round(sum(slippages) / len(slippages), 2) if slippages else 0.0
+        max_slip = round(max(slippages), 2) if slippages else 0.0
+
+        # Count outcomes to estimate fill rate
+        filled = sum(1 for e in entries if e.get("outcome") is not None or e.get("fill_price"))
+        fill_rate = round(filled / total, 3) if total > 0 else 1.0
+
+        return {
+            "avg_slippage_pips": avg_slip,
+            "max_slippage_pips": max_slip,
+            "fill_rate": fill_rate,
+            "total_trades": total,
+            "rejected_count": total - filled,
+        }

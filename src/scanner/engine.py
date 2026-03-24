@@ -1988,6 +1988,20 @@ class Scanner:
                 f"{analysis.pair}: promotion blocked — model_disagreement "
                 f"{getattr(analysis, 'model_disagreement', 'N/A')} > 0.30"
             )
+        # H-7: Explicit three-gate verification before promotion — agent consensus
+        # cannot substitute for failed momentum, confidence, or risk gates
+        if promote and not (
+            getattr(analysis, "momentum_passed", False)
+            and getattr(analysis, "confidence_passed", False)
+            and getattr(analysis, "risk_passed", False)
+        ):
+            promote = False
+            logger.info(
+                f"{analysis.pair}: promotion blocked — not all three gates passed "
+                f"(momentum={getattr(analysis, 'momentum_passed', False)}, "
+                f"confidence={getattr(analysis, 'confidence_passed', False)}, "
+                f"risk={getattr(analysis, 'risk_passed', False)})"
+            )
         if promote:
             analysis.gates_passed = True
             analysis.agent_promoted = True
@@ -2865,7 +2879,7 @@ class Scanner:
                     _effective_min = max(0.30, (self.config.min_confidence + _conf_offset) / 100.0)
                     # If confidence is above the lowered threshold but below normal, re-qualify
                     if result.confidence >= _effective_min and not result.is_tradeable:
-                        if result.risk_passed:
+                        if result.risk_passed and result.confidence_passed and result.momentum_passed:
                             result.is_tradeable = True
                             result.gates_passed = True
                             # Mark for reduced position sizing (consumed in execution.py)
