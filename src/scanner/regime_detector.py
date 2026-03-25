@@ -534,7 +534,6 @@ class MarketRegimeDetector:
 
             # EMA smoothing
             period = self.config.adx_period
-            alpha = 2.0 / (period + 1)
 
             atr = self._ema_smooth(tr, period)
             plus_di_raw = 100 * self._ema_smooth(plus_dm, period) / (atr + 1e-10)

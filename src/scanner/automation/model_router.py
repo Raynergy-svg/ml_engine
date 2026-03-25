@@ -240,7 +240,8 @@ class ModelRouter:
     ) -> Dict[str, float]:
         """Get arm probabilities from bandit."""
         if self._bandit is None:
-            # Return uniform if no bandit
+            # Bandit not initialized — routing in degraded equal-probability mode
+            logger.warning("ModelRouter: bandit not initialized, using equal-probability routing")
             return {m: 1.0 / len(AVAILABLE_MODELS) for m in AVAILABLE_MODELS}
 
         try:

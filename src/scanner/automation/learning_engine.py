@@ -14,7 +14,7 @@ import json
 import logging
 import re
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -461,7 +461,6 @@ class LearningEngine:
             ))
 
         # By override_type
-        from collections import Counter
         type_results: Dict[str, Dict[str, int]] = {}
         for e in resolved:
             otype = e.get("override_type", "unknown")

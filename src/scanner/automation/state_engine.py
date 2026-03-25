@@ -26,7 +26,6 @@ def _atomic_write(path: Path, data: Any) -> None:
     if _safe_json_write is not None:
         _safe_json_write(path, data)
         return
-    import tempfile
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     try:

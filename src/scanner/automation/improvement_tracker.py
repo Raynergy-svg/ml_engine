@@ -108,7 +108,6 @@ class ImprovementTracker:
         overall_wr = total_wins / total_trades if total_trades else 0
 
         # Best/worst pair (from recent records)
-        pair_pnl: Dict[str, float] = {}
         for r in records:
             for adj in r.get("config_adjustments", []):
                 pass  # adjustments don't have pair info directly

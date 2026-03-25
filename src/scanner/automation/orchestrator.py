@@ -658,7 +658,7 @@ class Orchestrator:
         if self._observation_consumer and self._cycle_count % 5 == 0:
             try:
                 _oc = self._observation_consumer
-                _new_obs = _oc.consume_observations()
+                _oc.consume_observations()
                 _patterns = _oc.detect_patterns()
                 _recommendations = _oc.recommend_adjustments()
                 _alerts = _oc.check_alerts(window_hours=6)

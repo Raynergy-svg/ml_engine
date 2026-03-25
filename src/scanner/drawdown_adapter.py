@@ -140,7 +140,6 @@ class DrawdownAdapter:
             # Check if current tier should be released
             current = self._active_tier
             while current > 0:
-                entry_dd = self._tier_entry_dd.get(current, 0.0)
                 # Tier threshold is the minimum — use whichever is higher
                 tier_threshold = {
                     1: c.tier1_threshold,
