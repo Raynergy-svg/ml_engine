@@ -92,6 +92,7 @@ class LearningEngine:
         # Extract context from the entry
         sl_pips = entry.get("sl_pips", 0) or 0
         tp_pips = entry.get("tp_pips", 0) or 0
+        rr_ratio = round(tp_pips / sl_pips, 2) if sl_pips > 0 else 0.0
         atr_pips = entry.get("atr_pips", 0) or 0
         confidence = entry.get("confidence", 0)
         agents = entry.get("agents") or {}
@@ -128,6 +129,25 @@ class LearningEngine:
                 action=f"Increase atr_sl_multiplier for {pair}",
                 source_trade_id=trade_id,
             ))
+
+        # Rule 1b: R:R ratio analysis
+        if sl_pips > 0 and rr_ratio > 0:
+            if rr_ratio < 1.2 and not trade_won:
+                entries.append(LearningEntry(
+                    date=now,
+                    category="sl_tp",
+                    insight=f"low_rr_ratio_loss for {pair}: R:R={rr_ratio:.2f} (<1.2), lost ${abs(realized_pl):.2f}",
+                    action="Reject trades with R:R < 1.2 — gate is enforced but log for pattern tracking",
+                    source_trade_id=trade_id,
+                ))
+            elif rr_ratio >= 2.0 and trade_won:
+                entries.append(LearningEntry(
+                    date=now,
+                    category="sl_tp",
+                    insight=f"high_rr_ratio_win for {pair}: R:R={rr_ratio:.2f} (>=2.0), won ${realized_pl:.2f}",
+                    action=f"Favour high R:R setups for {pair} — consider widening TP target",
+                    source_trade_id=trade_id,
+                ))
 
         # Rule 2: TP hit too fast (< 15 min)
         if trade_won:
