@@ -24,6 +24,18 @@ wandb/
 mlruns/
 tensorboard/
 
+# Ralph PRD phases (auto-generated, change frequently, may contain strategy details)
+.claude/ralph/prd_phase*.json
+.claude/ralph/prd_review_fixes.json
+.claude/ralph/prd_aura_phase*.json
+.claude/ralph/event_log.jsonl
+.claude/ralph/memory.json
+.claude/ralph/reports/
+.claude/ralph/archive/
+.claude/ralph/watcher.pid
+.claude/ralph/.watcher_state.json
+.claude/ralph/.last-branch
+
 # Local runtime artifacts
 cache/
 output/

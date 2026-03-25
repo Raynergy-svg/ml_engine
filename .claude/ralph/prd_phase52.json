@@ -2,6 +2,7 @@
   "phase": 52,
   "title": "Phase 52: Pipeline Integration & Adaptive Intelligence",
   "created_at": "2026-03-24T21:30:00Z",
+  "completed_at": "2026-03-24T23:45:00Z",
   "goal": "Wire Phase 51 modules (isotonic calibrator, pattern gate, setup quality filter, tranche tracker, walk-forward retrainer) into the live execution pipeline. Add confidence decomposition, adaptive R:R targeting, and drawdown-adaptive behavior. Key insight from research: inverse confidence-win rate at high levels (0.71-0.80 = 16.1%) means confidence scoring itself is the biggest leverage point.",
   "dependencies": [
     "Phase 51: IsotonicCalibrator, TrancheTracker, PatternGate, WalkForwardRetrainer, SetupQualityFilter",
@@ -27,8 +28,8 @@
         "All new module inits use try/except with graceful fallback",
         "At least 15 integration tests"
       ],
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "25 tests for wiring. All 5 Phase 51 modules wired with try/except fallback. 8 call sites verified via grep."
     },
     {
       "id": "US-324",
@@ -44,8 +45,8 @@
         "Wire into _team.py evaluate() after isotonic calibration",
         "At least 10 unit tests"
       ],
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "ConfidenceDecomposer created (~220 lines), wired into _team.py evaluate() after isotonic. 4 call sites in _team.py."
     },
     {
       "id": "US-325",
@@ -60,8 +61,8 @@
         "Track R:R vs outcome to measure if higher targets reduce win rate proportionally",
         "At least 8 unit tests"
       ],
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "AdaptiveRRCalculator created (~165 lines), wired into execution.py pre-exec chain (overrides atr_tp_multiplier, restores after sizing). Outcome recording in sync_closed_trades_rl. 18 tests (12 unit + 5 wiring + 1 lazy import)."
     },
     {
       "id": "US-326",
@@ -77,8 +78,8 @@
         "Recovery: each tier releases when drawdown drops 2% below tier entry",
         "At least 10 unit tests"
       ],
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "DrawdownAdapter created (~235 lines), wired as EARLIEST gate in execute_trade() before spread filter. 4-tier escalation with hysteresis recovery. 14 tests (12 unit + 2 wiring)."
     },
     {
       "id": "US-327",
@@ -90,8 +91,8 @@
         "All new modules importable via lazy imports in __init__.py",
         "Verify live wiring: each module has at least one call site in production code (grep verification)"
       ],
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "57 tests total (all passing). Live wiring verified: all 8 modules have 4-15 call sites each in production code. Lazy imports verified for all new classes. PRD + state.json + learnings.md updated."
     }
   ]
 }

@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import logging
 import json
+import math
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 from src.scanner.results import PairAnalysis
@@ -153,7 +153,6 @@ class ScannerAgentTeam:
         self._bayesian_weights = None
         try:
             from src.scanner.bayesian_agent_weights import (
-                BayesianAgentWeights,
                 create_default_bayesian_weights,
             )
             self._bayesian_weights = create_default_bayesian_weights()
@@ -176,7 +175,6 @@ class ScannerAgentTeam:
         self._expectancy_tracker = None
         try:
             from src.scanner.expectancy_tracker import (
-                ExpectancyTracker,
                 create_default_expectancy_tracker,
             )
             self._expectancy_tracker = create_default_expectancy_tracker()
@@ -188,7 +186,7 @@ class ScannerAgentTeam:
         # Phase 47 (US-294): Multi-Timeframe Confluence
         self._mtf_confluence = None
         try:
-            from src.scanner.mtf_confluence import MultiTimeframeConfluence, create_default_mtf_confluence
+            from src.scanner.mtf_confluence import create_default_mtf_confluence
             self._mtf_confluence = create_default_mtf_confluence()
             logger.info("Phase 47: MTF confluence module initialized")
         except Exception as e:
@@ -197,7 +195,7 @@ class ScannerAgentTeam:
         # Phase 47 (US-295): Ensemble Conflict Resolver
         self._ensemble_conflict = None
         try:
-            from src.scanner.ensemble_conflict import EnsembleConflictResolver, ModelPrediction, create_default_conflict_resolver
+            from src.scanner.ensemble_conflict import create_default_conflict_resolver
             self._ensemble_conflict = create_default_conflict_resolver()
             logger.info("Phase 47: Ensemble conflict resolver initialized")
         except Exception as e:
@@ -473,7 +471,6 @@ class ScannerAgentTeam:
         regime_trades = _safe_float(self._learned_weights.get("_meta", {}).get(f"trades_{regime}", 0), 0)
 
         # Determine base weights for this regime
-        selected_regime = regime
         if regime in self._learned_weights and regime_trades >= min_trades:
             weights = self._learned_weights.get(regime, {})
             if weights and isinstance(weights, dict):
@@ -1166,7 +1163,6 @@ class ScannerAgentTeam:
                 )
 
                 # Apply recomposed confidence (replaces raw)
-                _prev = analysis.weighted_vote_score
                 analysis.weighted_vote_score = _clip01(_decomp.recomposed_confidence)
 
                 if not hasattr(analysis, 'calibration_details'):
