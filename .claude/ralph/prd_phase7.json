@@ -1,0 +1,102 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-intelligence-phase7",
+  "description": "Buddy Phase 7 — Execution Resilience & Operational Hardening. Phase 6 improved trade quality. Phase 7 hardens execution: stale data protection, atomic state writes, API retry/circuit-breaker, order recovery, slippage tracking, and config extraction. DIRECTIVE: NEVER STOP BRAINSTORMING/RESEARCHING AND IMPROVING. DONT ASK FOR EVERY COMMAND, JUST DO. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-043",
+      "title": "Data freshness gate before trade execution",
+      "description": "As a precision system, orders must not execute on stale market data. If analysis is >60s old when execution begins, the trade should be skipped or price refreshed.",
+      "acceptanceCriteria": [
+        "PairAnalysis in results.py gets analysis_timestamp field",
+        "execute_trade() checks (now - analysis_timestamp) < max_data_age_seconds (default 60)",
+        "If data too old, return ExecutionResult(success=False, error='stale data')",
+        "max_data_age_seconds configurable in ScannerConfig",
+        "Log stale-data skips to observations.jsonl",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented in execute_trade() — checks scan_time from analysis_context, skips if age > config.max_data_age_seconds. Wired through engine.py passing scan_time ISO string."
+    },
+    {
+      "id": "US-044",
+      "title": "Atomic JSON writes with file locking",
+      "description": "As a resilient system, all JSON state files must use atomic writes (temp+rename) and file locking to prevent corruption from concurrent access.",
+      "acceptanceCriteria": [
+        "New utility: src/scanner/automation/safe_json.py with safe_json_read() and safe_json_write()",
+        "safe_json_write uses temp file + fsync + os.rename pattern",
+        "safe_json_read with try/except falls back to .bak file on parse failure",
+        "Wired into execution.py trade_journal_rl.json writes",
+        "Wired into agents/_team.py agent_weights.json writes",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "safe_json.py: _FileLock (fcntl), safe_json_read (bak recovery), safe_json_write (temp+fsync+rename), safe_jsonl_append. Wired into execution.py (2 locations) and agents/_team.py."
+    },
+    {
+      "id": "US-045",
+      "title": "OANDA API retry with exponential backoff and circuit breaker",
+      "description": "As an operationally resilient system, transient OANDA API failures should retry with backoff, and persistent failures should trip a circuit breaker to avoid cascading errors.",
+      "acceptanceCriteria": [
+        "New utility: src/scanner/automation/api_retry.py with retry_api_call() decorator",
+        "Exponential backoff: 1s, 3s, 10s (max 3 retries)",
+        "Circuit breaker: if >50% of last 10 calls fail, skip further calls for 60s cooldown",
+        "Auth errors (401/403) fail fast without retry",
+        "Wired into execution.py OANDA API calls (at least fetch_live_nav, monitor_open_trades)",
+        "Circuit breaker state logged to observations.jsonl when tripped",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "api_retry.py: CircuitBreaker class (deque window, configurable threshold/cooldown), retry_api_call with backoff. Wired into fetch_live_nav via _retry_oanda helper."
+    },
+    {
+      "id": "US-046",
+      "title": "Order rejection recovery and fill status tracking",
+      "description": "As a robust execution system, order rejections should attempt recovery (downsize and retry), and fill status should be tracked in journal entries.",
+      "acceptanceCriteria": [
+        "ExecutionResult gets fill_status field: FULL, PARTIAL, REJECTED, RETRIED",
+        "On OANDA order rejection, auto-downsize by 50% and retry once",
+        "Journal entry only created AFTER successful fill (not before)",
+        "If order rejected twice, skip with logged reason",
+        "fill_status persisted in trade journal for pattern analysis",
+        "Syntax validation passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Order loop with configurable max_order_attempts + rejection_downsize_factor. Journal moved after fill. fill_status on ExecutionResult."
+    },
+    {
+      "id": "US-047",
+      "title": "Slippage tracking and execution quality metrics",
+      "description": "As a self-monitoring system, every executed trade should track slippage (fill_price vs analysis_price) and log execution quality metrics for pattern extraction.",
+      "acceptanceCriteria": [
+        "ExecutionResult gets slippage_pips field (fill_price - expected_price)",
+        "Journal entry includes slippage_pips and fill_price",
+        "execution_quality_summary() method returns avg slippage, max slippage, fill rate",
+        "Slippage > 5 pips logged as warning to observations.jsonl",
+        "Syntax validation passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "slippage_pips on ExecutionResult, journal enriched, execution_quality_summary() method, high slippage threshold now configurable via config."
+    },
+    {
+      "id": "US-048",
+      "title": "Extract hardcoded execution params to ScannerConfig",
+      "description": "As a tunable system, critical execution parameters must be in ScannerConfig, not hardcoded in code.",
+      "acceptanceCriteria": [
+        "ScannerConfig gets: tight_max_sl_pips, tight_max_tp_pips, high_prob_tp_bonus_pips",
+        "ScannerConfig gets: rl_weight_boost_on_win, rl_weight_penalty_on_loss",
+        "execution.py reads these from config instead of hardcoded values",
+        "agents/_team.py reads RL weight params from config",
+        "Syntax validation passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "9 params extracted: max_order_attempts, rejection_downsize_factor, high_slippage_alert_pips, fallback_tp_pips, fallback_atr_pips, min/max_lot_size, trailing_stop_breakeven/lock_pct. weight_boost_on_win and weight_penalty_on_loss were already in ScannerConfig from Phase 5."
+    }
+  ]
+}

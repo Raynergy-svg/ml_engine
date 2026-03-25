@@ -1,0 +1,98 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-integration-wiring-phase11",
+  "description": "Buddy Phase 11 — Integration Wiring & Self-Diagnostics. Phases 1-10 built 25 modules. Phase 11 connects them: exit reason patterns feed learning engine, agent health drives selective decay in orchestrator, regime-aware agent toggling, macro stress wired to position sizing, online RL in orchestrator loop, QA+gate health into system diagnostics. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-067",
+      "title": "Exit reason learning loop — extract patterns from exit classifications",
+      "description": "Wire exit_reason data from trade journal into learning_engine. Extract patterns like 'EUR_USD hits SL 70% of trades → widen SL' or 'trailing_stop exits average 2.3x more pnl_pips than tp_hit'. Feed insights into learnings.md.",
+      "acceptanceCriteria": [
+        "learning_engine.py gets extract_exit_reason_patterns() method",
+        "Reads trade_journal_rl.json, groups by exit_reason per pair",
+        "Computes: exit_reason distribution, avg pnl_pips per exit_type, pair-specific exit patterns",
+        "Generates structured learnings from patterns (e.g., 'SL-hit rate > 60% on pair X → consider widening SL')",
+        "Wired into orchestrator.py LEARN phase",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "extract_exit_reason_patterns() added to learning_engine.py with 5 pattern rules: SL-hit rate >60%, TP-hit rate >70%, trailing_stop outperforms TP, high timeout rate, breakeven dominance. Wired as Step 5b in orchestrator LEARN phase."
+    },
+    {
+      "id": "US-068",
+      "title": "Agent health → orchestrator integration — record outcomes and apply decay",
+      "description": "Wire AgentHealthMonitor into orchestrator trade sync. After each closed trade, call record_outcome() with agent verdicts and pair. Selective decay rates flow into weight updates.",
+      "acceptanceCriteria": [
+        "orchestrator.py initializes AgentHealthMonitor",
+        "After sync_closed_trades_rl, calls monitor.record_outcome() for each synced trade",
+        "Passes agent_verdicts and pair to enable per-pair attribution",
+        "Health report included in OrchestrationResult",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "AgentHealthMonitor initialized in _init_modules(). Step 4b calls record_outcome(agent_verdicts, trade_won, pair) for each closed trade. agent_health_report field added to OrchestrationResult."
+    },
+    {
+      "id": "US-069",
+      "title": "Regime-aware agent enabling — skip irrelevant agents by volatility regime",
+      "description": "Add regime-specific agent toggling. In EXTREME regime, disable mean_reversion and session_timing. In LOW regime, disable volatility agent. Reduces noise in agent consensus.",
+      "acceptanceCriteria": [
+        "ScannerConfig gets regime_disabled_agents dict: {regime: [agent_names]}",
+        "_team.py evaluate() skips agents disabled for current regime",
+        "Skipped agents logged but don't count toward vote totals",
+        "Default config preserves current behavior (no agents disabled)",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "regime_disabled_agents added to ScannerConfig with defaults: EXTREME disables mean_reversion+session_timing, LOW disables volatility. _team.py evaluate() filters verdicts post-collection and logs skipped agents. Empty dict preserves backward compatibility."
+    },
+    {
+      "id": "US-070",
+      "title": "Macro stress → orchestrator position sizing integration",
+      "description": "Wire MacroStressDetector into orchestrator scan loop. Update stress signals each cycle from regime and spread data. Pass stress_modifier into analysis_context for execution.",
+      "acceptanceCriteria": [
+        "orchestrator.py initializes MacroStressDetector",
+        "Each SCAN cycle calls macro_stress.update() with regime and spread data",
+        "stress_modifier passed into analysis_context for trades",
+        "Stress state included in OrchestrationResult",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "MacroStressDetector initialized in _init_modules(). Step 2b extracts dominant regime via Counter.most_common, averages spread ratios, calls update(). stress_state dict (score, modifier, regime) added to OrchestrationResult."
+    },
+    {
+      "id": "US-071",
+      "title": "Online RL micro-updates in orchestrator loop",
+      "description": "Wire OnlineWeightUpdater into orchestrator. Call maybe_update() each cycle so agent weights converge faster within sessions without waiting for trade close.",
+      "acceptanceCriteria": [
+        "orchestrator.py initializes OnlineWeightUpdater",
+        "Each cycle calls maybe_update(cycle_count)",
+        "Micro-update results included in OrchestrationResult",
+        "Doesn't conflict with full RL sync (both can run)",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "OnlineWeightUpdater initialized in _init_modules(). Step 2c calls maybe_update(cycle_count) every cycle. Returns List[WeightAdjustment] serialized via asdict into online_rl_update field. Runs independently from full RL sync in Step 4."
+    },
+    {
+      "id": "US-072",
+      "title": "QA pipeline + gate health → system diagnostics report",
+      "description": "Wire QAPipeline and GateHealthTracker into orchestrator. Run health audit periodically (every 10 cycles). Surface system health as structured report in OrchestrationResult.",
+      "acceptanceCriteria": [
+        "orchestrator.py initializes QAPipeline and GateHealthTracker",
+        "Every 10 cycles runs qa_pipeline.run() and gate_health.get_gate_health()",
+        "get_system_health_report() combines QA score + gate health + agent health",
+        "Health warnings logged when score drops below threshold",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Both QAPipeline and GateHealthTracker initialized in _init_modules(). _get_system_health_report() combines QA score (normalized 0-100→0-1), gate degradation fraction, and stale agent ratio into overall_score. Runs every 10 cycles via Step 8b. Warning logged when score < 0.6."
+    }
+  ]
+}

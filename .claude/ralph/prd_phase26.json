@@ -1,0 +1,96 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-observability-integrity-phase26",
+  "description": "Buddy Phase 26 — Observability & State Integrity. Phase 25 activated disabled modules and hardened risk enforcement. Phase 26 adds observability to critical decision points and hardens state management. Theme: operators need visibility into WHY trades are blocked, agents are degrading, weights are oscillating, and thresholds are drifting. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-157",
+      "title": "Portfolio risk violation alerting with observation logging",
+      "description": "Portfolio risk gates silently block trades without observability. Add detailed logging when trades are rejected due to portfolio risk limits.",
+      "acceptanceCriteria": [
+        "In execution.py _check_portfolio_risk_limit() and _check_projected_portfolio_risk(), log to observation_log category='portfolio_risk_block' when rejecting",
+        "Include metadata: projected_risk_pct, current_nav, open_exposure_by_pair, would_be_lots, pair",
+        "Non-blocking — never crash on observation logging failure",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added observation logging at both portfolio risk rejection points in execute_trade(). Logs to category='portfolio_risk_block' with gate type, pair, reason. Non-blocking with try/except."
+    },
+    {
+      "id": "US-158",
+      "title": "Agent degradation early-warning via z-score monitoring",
+      "description": "Agents can degrade from 55% to 35% over 15 trades without any alert. Add rolling z-score monitoring.",
+      "acceptanceCriteria": [
+        "In agent_lifecycle.py, add method check_degradation() computing z-score vs 30-trade baseline",
+        "Flag agent with warning when z-score < -1.5",
+        "Include metadata: agent_name, baseline_rate, current_rate, z_score, trades_since_baseline",
+        "Wire into continuous.py every 5 cycles",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added check_degradation() method using binomial z-score (10-trade recent vs 30-trade baseline). Wired into continuous.py step 3b-ii every 5 cycles. Logs agent_degradation_warning observations with full stats."
+    },
+    {
+      "id": "US-159",
+      "title": "RL weight oscillation damping with EMA smoothing",
+      "description": "Agent weights oscillate rapidly between regimes. Add EMA-based smoothing to weight updates.",
+      "acceptanceCriteria": [
+        "In agents/_team.py update_weights_from_outcome(), apply EMA blending",
+        "Track per-agent weight_update_variance in _meta over 20-trade rolling window",
+        "When variance > 0.05, increase EMA blending for damping",
+        "Log weight_oscillation_detected when variance crosses threshold",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Applied EMA smoothing (0.7/0.3 blend) to both regime and global weight updates. Tracks per-agent weight_history and variance in _meta. When variance > 0.05, increases damping to 0.6/0.4 blend."
+    },
+    {
+      "id": "US-160",
+      "title": "JSON state corruption validation and safe defaults",
+      "description": "safe_json.py recovers from corruption but doesn't validate structure. Add schema validation.",
+      "acceptanceCriteria": [
+        "Add validate_agent_weights() checking for _global dict with float values",
+        "Add validate_trade_journal() checking entries have required fields",
+        "In safe_json_read(), after loading, run validator; if fail, try .bak then defaults",
+        "Log state_corruption_recovered observation",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added validate_agent_weights() and validate_trade_journal() validators. Registered in _VALIDATORS dict keyed by filename. Integrated validation into safe_json_read() — on schema fail, tries .bak, then returns default with logging."
+    },
+    {
+      "id": "US-161",
+      "title": "Gate threshold drift velocity monitoring",
+      "description": "ThresholdOptimizer can drift thresholds without alerting. Add drift velocity tracking.",
+      "acceptanceCriteria": [
+        "Track threshold_change_history per gate",
+        "Compute drift velocity over consecutive changes",
+        "When velocity > 0.01/cycle for 3+ changes, log threshold_drift_alert",
+        "Include metadata: gate_name, velocity, direction, cumulative_delta",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added _check_drift_velocity() method called after every optimize_thresholds(). Tracks per-gate change history (last 20), computes velocity over last 3 changes. Alerts when > 0.01/cycle with observation logging."
+    },
+    {
+      "id": "US-162",
+      "title": "Correlation block enrichment with blocking pair context",
+      "description": "Phase 25 US-152 blocks correlated pairs but logs minimal context. Enrich with blocking pair P/L and duration.",
+      "acceptanceCriteria": [
+        "For each conflicting pair, fetch current P/L and time_open from open trade data",
+        "Add blocking_pair_detail to observation metadata",
+        "Track pair conflict frequency in _correlation_block_counts",
+        "Log enhanced metadata to observation_log",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Enhanced US-152 correlation block with blocking_pair_detail (P/L, units, open_time per conflicting trade). Added _correlation_block_counts dict tracking conflict frequency by pair combination. All data flows to observation_log metadata."
+    }
+  ]
+}

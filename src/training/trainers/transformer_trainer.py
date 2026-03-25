@@ -673,8 +673,19 @@ class TransformerDirectionTrainer(BaseTrainer):
             if self.feature_names
             else [f"feat_{i}" for i in range(x_train_flat.shape[-1])]
         )
-        df_train = pd.DataFrame(x_train_flat, columns=feature_cols)
-        df_train["_target_"] = y_train_flat
+        # Subsample for feature selection to avoid OOM on large datasets
+        max_fs_samples = 50000
+        if len(x_train_flat) > max_fs_samples:
+            rng = np.random.default_rng(42)
+            idx = rng.choice(len(x_train_flat), max_fs_samples, replace=False)
+            fs_x = x_train_flat[idx]
+            fs_y = y_train_flat[idx]
+            logger.info(f"🔍 RF feature selection: subsampled {max_fs_samples}/{len(x_train_flat)} rows")
+        else:
+            fs_x = x_train_flat
+            fs_y = y_train_flat
+        df_train = pd.DataFrame(fs_x, columns=feature_cols)
+        df_train["_target_"] = fs_y
 
         fe = FeatureEngineering()
         _, selected_features = fe.select_features(
@@ -2484,7 +2495,7 @@ class TransformerDirectionTrainer(BaseTrainer):
             "threshold": raw_median,
             "mean": raw_mean,
             "std": max(raw_std, 0.01),
-            "enabled": abs(raw_mean - 0.5) > 0.05,
+            "enabled": abs(raw_mean - 0.5) >= 0.01,
         }
 
         # Calibrated metrics
@@ -2894,7 +2905,9 @@ class TransformerDirectionTrainer(BaseTrainer):
         # Use adaptive threshold instead of shifting probabilities
         calibration = getattr(self, "output_calibration", None)
         threshold = 0.5  # Default threshold
-        if calibration and calibration.get("enabled", False):
+        if calibration and "threshold" in calibration:
+            # Always use saved threshold — the median of validation predictions
+            # is a better decision boundary than a fixed 0.5
             threshold = calibration.get("threshold", 0.5)
 
         direction = 1 if prob_raw > threshold else 0

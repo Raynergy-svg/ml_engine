@@ -1,0 +1,61 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/training-feature-infrastructure-phase39",
+  "description": "Buddy Phase 39 — Training & Feature Infrastructure Hardening. FeatureEngineering (1222 lines, 0 tests) generates 150+ features for the model. walkforward_validation.py (1658 lines, 0 tests) provides CV splitting, trading metrics, and Monte Carlo simulation. callbacks.py contains ReplayBuffer, DriftDetector, TrainingLineage (pure Python, 0 tests). Target: 90+ new tests hardening feature engineering correctness, validation pipeline math, and training infrastructure reliability.",
+  "userStories": [
+    {
+      "id": "US-248",
+      "title": "Unit tests for FeatureEngineering technical indicators",
+      "description": "Test add_technical_indicators: SMA, EMA, MACD, RSI, Bollinger Bands, Stochastic, ATR, ADX, CCI, OBV, MFI, Williams%R, ROC. Verify numerical correctness, NaN handling, edge cases.",
+      "acceptanceCriteria": ["At least 15 unit tests", "Cover: SMA/EMA calculation, RSI range [0.01-99.99], Bollinger Band width, ATR non-negative, MACD signal/hist", "Test edge cases: single row, constant prices, zero volume", "All tests pass"],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-249",
+      "title": "Unit tests for FeatureEngineering statistical, regime, and orchestration",
+      "description": "Test add_statistical_features, add_time_features, add_regime_features, add_lag_features, add_rolling_features, create_features orchestration, normalize_features.",
+      "acceptanceCriteria": ["At least 15 unit tests", "Cover: returns calculation, volatility, z-scores, regime detection, time features, lag/rolling features", "Test create_features end-to-end pipeline", "All tests pass"],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-250",
+      "title": "Unit tests for WalkForwardValidator and CV splitting",
+      "description": "Test WalkForwardValidator.split(), CombinatorialPurgedCV.split(), purged_kfold_split(). These are pure numpy functions critical for preventing look-ahead bias.",
+      "acceptanceCriteria": ["At least 12 unit tests", "Cover: rolling vs expanding mode, gap enforcement, no overlap between train/test, purge gap removal", "Test WalkForwardConfig dataclass serialization", "All tests pass"],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-251",
+      "title": "Unit tests for trading metrics and Monte Carlo simulation",
+      "description": "Test calculate_trading_metrics, calculate_baseline_metrics, apply_transaction_costs, monte_carlo_simulation. All pure numpy computation.",
+      "acceptanceCriteria": ["At least 12 unit tests", "Cover: directional accuracy, Sharpe ratio, max drawdown, transaction cost deduction, MC confidence intervals", "Test with known inputs for deterministic verification", "All tests pass"],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-252",
+      "title": "Unit tests for ReplayBuffer and DriftDetector",
+      "description": "Test ReplayBuffer (reservoir sampling, add/get/save/load) and DriftDetector (baseline setting, performance drift, feature drift, recommendations). Both are pure Python.",
+      "acceptanceCriteria": ["At least 15 unit tests", "Cover: buffer capacity, reservoir sampling fairness, drift thresholds, declining trend detection", "Test save/load round-trip with temp files", "All tests pass"],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-253",
+      "title": "Unit tests for TrainingLineage",
+      "description": "Test TrainingLineage dataclass: serialization, checkpoint ID generation, metric history, drift detection, retrain scheduling, data hash computation.",
+      "acceptanceCriteria": ["At least 10 unit tests", "Cover: to_dict/from_dict round-trip, generate_checkpoint_id uniqueness, should_retrain logic, add_metrics", "All tests pass"],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

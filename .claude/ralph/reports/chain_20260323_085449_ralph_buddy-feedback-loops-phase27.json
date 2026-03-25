@@ -1,0 +1,1562 @@
+{
+  "summary": {
+    "timestamp": "2026-03-23T08:54:49.777711+00:00",
+    "prd_file": ".claude/ralph/prd_phase27.json",
+    "branch": "ralph/buddy-feedback-loops-phase27",
+    "gap_analysis": {
+      "total_gaps": 101,
+      "critical": 0,
+      "by_type": {
+        "module_registration": 63,
+        "integration": 4,
+        "state_persistence": 20,
+        "feedback_loop": 14
+      }
+    },
+    "code_review": {
+      "passed": false,
+      "total_findings": 53,
+      "by_severity": {
+        "medium": 50,
+        "high": 2,
+        "low": 1
+      },
+      "files_reviewed": 6
+    },
+    "overall_passed": false
+  },
+  "gap_analysis": {
+    "prd_file": ".claude/ralph/prd_phase27.json",
+    "branch": "ralph/buddy-feedback-loops-phase27",
+    "timestamp": "2026-03-23T08:54:47.503700+00:00",
+    "total_gaps": 101,
+    "critical": 0,
+    "by_type": {
+      "module_registration": 63,
+      "integration": 4,
+      "state_persistence": 20,
+      "feedback_loop": 14
+    },
+    "modules_scanned": 82,
+    "duration_secs": 1.76,
+    "gaps": [
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "dynamic_sl_tp",
+        "description": "Module 'dynamic_sl_tp' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/dynamic_sl_tp.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('dynamic_sl_tp', scanner.dynamic_sl_tp.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "trade_explainer",
+        "description": "Module 'trade_explainer' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/trade_explainer.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('trade_explainer', scanner.trade_explainer.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "multi_horizon_fusion",
+        "description": "Module 'multi_horizon_fusion' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/multi_horizon_fusion.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('multi_horizon_fusion', scanner.multi_horizon_fusion.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "group_momentum",
+        "description": "Module 'group_momentum' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/group_momentum.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('group_momentum', scanner.group_momentum.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "position_timeout",
+        "description": "Module 'position_timeout' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/position_timeout.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('position_timeout', scanner.position_timeout.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "entropy_sizer",
+        "description": "Module 'entropy_sizer' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/entropy_sizer.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('entropy_sizer', scanner.entropy_sizer.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "retrain_trigger",
+        "description": "Module 'retrain_trigger' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/retrain_trigger.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('retrain_trigger', scanner.retrain_trigger.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "microstructure_regime",
+        "description": "Module 'microstructure_regime' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/microstructure_regime.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('microstructure_regime', scanner.microstructure_regime.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "kelly_portfolio",
+        "description": "Module 'kelly_portfolio' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/kelly_portfolio.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('kelly_portfolio', scanner.kelly_portfolio.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "adaptive_lr",
+        "description": "Module 'adaptive_lr' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/adaptive_lr.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('adaptive_lr', scanner.adaptive_lr.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "confidence_calibrator",
+        "description": "Module 'confidence_calibrator' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/confidence_calibrator.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('confidence_calibrator', scanner.confidence_calibrator.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "memory_manager",
+        "description": "Module 'memory_manager' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/memory_manager.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('memory_manager', scanner.memory_manager.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "trade_outcome_predictor",
+        "description": "Module 'trade_outcome_predictor' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/trade_outcome_predictor.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('trade_outcome_predictor', scanner.trade_outcome_predictor.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "pair_transfer",
+        "description": "Module 'pair_transfer' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/pair_transfer.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('pair_transfer', scanner.pair_transfer.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "threshold_optimizer",
+        "description": "Module 'threshold_optimizer' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/threshold_optimizer.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('threshold_optimizer', scanner.threshold_optimizer.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "pair_model_selector",
+        "description": "Module 'pair_model_selector' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/pair_model_selector.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('pair_model_selector', scanner.pair_model_selector.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "regime_broadcaster",
+        "description": "Module 'regime_broadcaster' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/regime_broadcaster.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('regime_broadcaster', scanner.regime_broadcaster.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "agent_accuracy_matrix",
+        "description": "Module 'agent_accuracy_matrix' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/agent_accuracy_matrix.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('agent_accuracy_matrix', scanner.agent_accuracy_matrix.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "health_registry",
+        "description": "Module 'health_registry' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/health_registry.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('health_registry', scanner.health_registry.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "portfolio_optimizer",
+        "description": "Module 'portfolio_optimizer' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/portfolio_optimizer.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('portfolio_optimizer', scanner.portfolio_optimizer.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "session_snapshot",
+        "description": "Module 'session_snapshot' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/session_snapshot.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('session_snapshot', scanner.session_snapshot.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "alert_manager",
+        "description": "Module 'alert_manager' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/alert_manager.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('alert_manager', scanner.alert_manager.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "dynamic_hedging",
+        "description": "Module 'dynamic_hedging' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/dynamic_hedging.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('dynamic_hedging', scanner.dynamic_hedging.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "dynamic_drawdown",
+        "description": "Module 'dynamic_drawdown' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/dynamic_drawdown.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('dynamic_drawdown', scanner.dynamic_drawdown.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "agent_lifecycle",
+        "description": "Module 'agent_lifecycle' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/agent_lifecycle.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('agent_lifecycle', scanner.agent_lifecycle.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "signal_timing",
+        "description": "Module 'signal_timing' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/signal_timing.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('signal_timing', scanner.signal_timing.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "model_calibration",
+        "description": "Module 'model_calibration' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/model_calibration.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('model_calibration', scanner.model_calibration.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "execution_router",
+        "description": "Module 'execution_router' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/execution_router.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('execution_router', scanner.execution_router.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "execution_quality_optimizer",
+        "description": "Module 'execution_quality_optimizer' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/execution_quality_optimizer.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('execution_quality_optimizer', scanner.execution_quality_optimizer.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "adversarial_trainer",
+        "description": "Module 'adversarial_trainer' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/adversarial_trainer.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('adversarial_trainer', scanner.adversarial_trainer.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "model_manager",
+        "description": "Module 'model_manager' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/model_manager.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('model_manager', scanner.model_manager.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "module_dispatcher",
+        "description": "Module 'module_dispatcher' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/module_dispatcher.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('module_dispatcher', scanner.module_dispatcher.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "regime_reward",
+        "description": "Module 'regime_reward' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/regime_reward.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('regime_reward', scanner.regime_reward.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "training_augmenter",
+        "description": "Module 'training_augmenter' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/training_augmenter.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('training_augmenter', scanner.training_augmenter.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "model_bandit",
+        "description": "Module 'model_bandit' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/model_bandit.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('model_bandit', scanner.model_bandit.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "ensemble_disagreement",
+        "description": "Module 'ensemble_disagreement' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/ensemble_disagreement.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('ensemble_disagreement', scanner.ensemble_disagreement.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "regime_tracker",
+        "description": "Module 'regime_tracker' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/regime_tracker.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('regime_tracker', scanner.regime_tracker.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "observation_consumer",
+        "description": "Module 'observation_consumer' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/observation_consumer.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('observation_consumer', scanner.observation_consumer.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "affinity_portfolio",
+        "description": "Module 'affinity_portfolio' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/affinity_portfolio.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('affinity_portfolio', scanner.affinity_portfolio.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "position_manager",
+        "description": "Module 'position_manager' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/position_manager.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('position_manager', scanner.position_manager.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "smart_execution",
+        "description": "Module 'smart_execution' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/smart_execution.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('smart_execution', scanner.smart_execution.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "accuracy_gate",
+        "description": "Module 'accuracy_gate' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/accuracy_gate.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('accuracy_gate', scanner.accuracy_gate.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "temporal_attention",
+        "description": "Module 'temporal_attention' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/temporal_attention.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('temporal_attention', scanner.temporal_attention.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "orchestrator",
+        "description": "Module 'orchestrator' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/orchestrator.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('orchestrator', scanner.orchestrator.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "dynamic_risk_allocator",
+        "description": "Module 'dynamic_risk_allocator' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/dynamic_risk_allocator.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('dynamic_risk_allocator', scanner.dynamic_risk_allocator.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "lead_lag_detector",
+        "description": "Module 'lead_lag_detector' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/lead_lag_detector.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('lead_lag_detector', scanner.lead_lag_detector.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "continuous",
+        "description": "Module 'continuous' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/continuous.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('continuous', scanner.continuous.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "market_impact",
+        "description": "Module 'market_impact' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/market_impact.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('market_impact', scanner.market_impact.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "pair_affinity",
+        "description": "Module 'pair_affinity' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/pair_affinity.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('pair_affinity', scanner.pair_affinity.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "seasonality",
+        "description": "Module 'seasonality' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/seasonality.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('seasonality', scanner.seasonality.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "feature_attention",
+        "description": "Module 'feature_attention' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/feature_attention.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('feature_attention', scanner.feature_attention.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "hierarchical_risk_parity",
+        "description": "Module 'hierarchical_risk_parity' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/hierarchical_risk_parity.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('hierarchical_risk_parity', scanner.hierarchical_risk_parity.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "execution_quality_tracker",
+        "description": "Module 'execution_quality_tracker' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/execution_quality_tracker.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('execution_quality_tracker', scanner.execution_quality_tracker.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "attention_feedback",
+        "description": "Module 'attention_feedback' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/attention_feedback.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('attention_feedback', scanner.attention_feedback.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "observational_learning",
+        "description": "Module 'observational_learning' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/observational_learning.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('observational_learning', scanner.observational_learning.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "model_router",
+        "description": "Module 'model_router' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/model_router.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('model_router', scanner.model_router.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "causal_filter",
+        "description": "Module 'causal_filter' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/causal_filter.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('causal_filter', scanner.causal_filter.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "module_activation",
+        "description": "Module 'module_activation' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/module_activation.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('module_activation', scanner.module_activation.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "concept_drift",
+        "description": "Module 'concept_drift' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/concept_drift.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('concept_drift', scanner.concept_drift.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "drift_monitor",
+        "description": "Module 'drift_monitor' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/drift_monitor.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('drift_monitor', scanner.drift_monitor.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "crisis_generator",
+        "description": "Module 'crisis_generator' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/crisis_generator.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('crisis_generator', scanner.crisis_generator.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "replay_validator",
+        "description": "Module 'replay_validator' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/replay_validator.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('replay_validator', scanner.replay_validator.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "module_registration",
+        "severity": "medium",
+        "module": "pair_regime_agent_matrix",
+        "description": "Module 'pair_regime_agent_matrix' has a class but is not registered in dispatcher or orchestrator",
+        "file": "src/scanner/automation/pair_regime_agent_matrix.py",
+        "fix": "Register in module_dispatcher.py: self.register_module('pair_regime_agent_matrix', scanner.pair_regime_agent_matrix.run, run_every_n=5)",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "integration",
+        "severity": "high",
+        "module": "health_registry",
+        "description": "PRD references 'health_registry' but it's not wired into orchestrator or continuous loop",
+        "file": "src/scanner/automation/health_registry.py",
+        "fix": "Add to orchestrator.run_cycle() or continuous.py scan loop",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "integration",
+        "severity": "high",
+        "module": "continuous",
+        "description": "PRD references 'continuous' but it's not wired into orchestrator or continuous loop",
+        "file": "src/scanner/automation/continuous.py",
+        "fix": "Add to orchestrator.run_cycle() or continuous.py scan loop",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "integration",
+        "severity": "high",
+        "module": "pair_regime_agent_matrix",
+        "description": "PRD references 'pair_regime_agent_matrix' but it's not wired into orchestrator or continuous loop",
+        "file": "src/scanner/automation/pair_regime_agent_matrix.py",
+        "fix": "Add to orchestrator.run_cycle() or continuous.py scan loop",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "integration",
+        "severity": "high",
+        "module": "orchestrator",
+        "description": "PRD references 'orchestrator' but it's not wired into orchestrator or continuous loop",
+        "file": "src/scanner/automation/orchestrator.py",
+        "fix": "Add to orchestrator.run_cycle() or continuous.py scan loop",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "state_engine",
+        "description": "Module 'state_engine' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/state_engine.py",
+        "fix": "Add to continuous.py graceful shutdown: self.state_engine.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "memory_manager",
+        "description": "Module 'memory_manager' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/memory_manager.py",
+        "fix": "Add to continuous.py graceful shutdown: self.memory_manager.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "pair_transfer",
+        "description": "Module 'pair_transfer' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/pair_transfer.py",
+        "fix": "Add to continuous.py graceful shutdown: self.pair_transfer.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "threshold_optimizer",
+        "description": "Module 'threshold_optimizer' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/threshold_optimizer.py",
+        "fix": "Add to continuous.py graceful shutdown: self.threshold_optimizer.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "regime_broadcaster",
+        "description": "Module 'regime_broadcaster' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/regime_broadcaster.py",
+        "fix": "Add to continuous.py graceful shutdown: self.regime_broadcaster.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "agent_accuracy_matrix",
+        "description": "Module 'agent_accuracy_matrix' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/agent_accuracy_matrix.py",
+        "fix": "Add to continuous.py graceful shutdown: self.agent_accuracy_matrix.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "health_registry",
+        "description": "Module 'health_registry' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/health_registry.py",
+        "fix": "Add to continuous.py graceful shutdown: self.health_registry.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "signal_timing",
+        "description": "Module 'signal_timing' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/signal_timing.py",
+        "fix": "Add to continuous.py graceful shutdown: self.signal_timing.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "execution_router",
+        "description": "Module 'execution_router' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/execution_router.py",
+        "fix": "Add to continuous.py graceful shutdown: self.execution_router.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "execution_quality_optimizer",
+        "description": "Module 'execution_quality_optimizer' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/execution_quality_optimizer.py",
+        "fix": "Add to continuous.py graceful shutdown: self.execution_quality_optimizer.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "training_augmenter",
+        "description": "Module 'training_augmenter' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/training_augmenter.py",
+        "fix": "Add to continuous.py graceful shutdown: self.training_augmenter.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "affinity_portfolio",
+        "description": "Module 'affinity_portfolio' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/affinity_portfolio.py",
+        "fix": "Add to continuous.py graceful shutdown: self.affinity_portfolio.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "position_manager",
+        "description": "Module 'position_manager' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/position_manager.py",
+        "fix": "Add to continuous.py graceful shutdown: self.position_manager.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "temporal_attention",
+        "description": "Module 'temporal_attention' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/temporal_attention.py",
+        "fix": "Add to continuous.py graceful shutdown: self.temporal_attention.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "dynamic_risk_allocator",
+        "description": "Module 'dynamic_risk_allocator' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/dynamic_risk_allocator.py",
+        "fix": "Add to continuous.py graceful shutdown: self.dynamic_risk_allocator.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "execution_quality_tracker",
+        "description": "Module 'execution_quality_tracker' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/execution_quality_tracker.py",
+        "fix": "Add to continuous.py graceful shutdown: self.execution_quality_tracker.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "attention_feedback",
+        "description": "Module 'attention_feedback' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/attention_feedback.py",
+        "fix": "Add to continuous.py graceful shutdown: self.attention_feedback.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "causal_filter",
+        "description": "Module 'causal_filter' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/causal_filter.py",
+        "fix": "Add to continuous.py graceful shutdown: self.causal_filter.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "replay_validator",
+        "description": "Module 'replay_validator' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/replay_validator.py",
+        "fix": "Add to continuous.py graceful shutdown: self.replay_validator.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "state_persistence",
+        "severity": "high",
+        "module": "pair_regime_agent_matrix",
+        "description": "Module 'pair_regime_agent_matrix' has save_state() but isn't called during graceful shutdown",
+        "file": "src/scanner/automation/pair_regime_agent_matrix.py",
+        "fix": "Add to continuous.py graceful shutdown: self.pair_regime_agent_matrix.save_state()",
+        "line": null,
+        "auto_fixable": true
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "trade_explainer",
+        "description": "Module 'trade_explainer' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/trade_explainer.py",
+        "fix": "Wire 'trade_explainer' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "multi_horizon_fusion",
+        "description": "Module 'multi_horizon_fusion' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/multi_horizon_fusion.py",
+        "fix": "Wire 'multi_horizon_fusion' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "microstructure_regime",
+        "description": "Module 'microstructure_regime' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/microstructure_regime.py",
+        "fix": "Wire 'microstructure_regime' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "kelly_portfolio",
+        "description": "Module 'kelly_portfolio' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/kelly_portfolio.py",
+        "fix": "Wire 'kelly_portfolio' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "confidence_calibrator",
+        "description": "Module 'confidence_calibrator' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/confidence_calibrator.py",
+        "fix": "Wire 'confidence_calibrator' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "adversarial_trainer",
+        "description": "Module 'adversarial_trainer' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/adversarial_trainer.py",
+        "fix": "Wire 'adversarial_trainer' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "regime_reward",
+        "description": "Module 'regime_reward' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/regime_reward.py",
+        "fix": "Wire 'regime_reward' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "ensemble_disagreement",
+        "description": "Module 'ensemble_disagreement' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/ensemble_disagreement.py",
+        "fix": "Wire 'ensemble_disagreement' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "lead_lag_detector",
+        "description": "Module 'lead_lag_detector' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/lead_lag_detector.py",
+        "fix": "Wire 'lead_lag_detector' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "seasonality",
+        "description": "Module 'seasonality' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/seasonality.py",
+        "fix": "Wire 'seasonality' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "feature_attention",
+        "description": "Module 'feature_attention' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/feature_attention.py",
+        "fix": "Wire 'feature_attention' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "causal_filter",
+        "description": "Module 'causal_filter' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/causal_filter.py",
+        "fix": "Wire 'causal_filter' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "concept_drift",
+        "description": "Module 'concept_drift' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/concept_drift.py",
+        "fix": "Wire 'concept_drift' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      },
+      {
+        "gap_type": "feedback_loop",
+        "severity": "low",
+        "module": "crisis_generator",
+        "description": "Module 'crisis_generator' writes data but no other module appears to consume it",
+        "file": "src/scanner/automation/crisis_generator.py",
+        "fix": "Wire 'crisis_generator' output into learning_engine or observation_consumer",
+        "line": null,
+        "auto_fixable": false
+      }
+    ],
+    "errors": []
+  },
+  "code_review": {
+    "target_files": [
+      "src/scanner/automation/continuous.py",
+      "src/scanner/automation/continuous.py",
+      "src/scanner/execution.py",
+      "src/scanner/engine.py",
+      "src/scanner/automation/pair_regime_agent_matrix.py",
+      "src/scanner/automation/orchestrator.py"
+    ],
+    "trigger": "prd_complete",
+    "timestamp": "2026-03-23T08:54:49.579808+00:00",
+    "passed": false,
+    "files_reviewed": 6,
+    "total_findings": 53,
+    "by_severity": {
+      "medium": 50,
+      "high": 2,
+      "low": 1
+    },
+    "by_category": {
+      "error_handling": 48,
+      "json_safety": 4,
+      "integration": 1
+    },
+    "duration_secs": 0.2,
+    "findings": [
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 577,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1470,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 288,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1208,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1219,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 961,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 929,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1053,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 577,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1470,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 288,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1208,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1219,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 961,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 929,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1053,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "JSON-001",
+        "severity": "high",
+        "category": "json_safety",
+        "file": "src/scanner/execution.py",
+        "line": 2517,
+        "message": "json.loads() call without try/except \u2014 will crash on corrupt data",
+        "suggestion": "Wrap in try/except json.JSONDecodeError with graceful default"
+      },
+      {
+        "rule": "JSON-001",
+        "severity": "high",
+        "category": "json_safety",
+        "file": "src/scanner/execution.py",
+        "line": 2561,
+        "message": "json.dumps() call without try/except \u2014 will crash on corrupt data",
+        "suggestion": "Wrap in try/except json.JSONDecodeError with graceful default"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/execution.py",
+        "line": null,
+        "message": "Writes to shared file 'trade_journal_rl.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 925,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 1773,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 2037,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 2166,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 457,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 1092,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 1130,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 1677,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 870,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 1199,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 2233,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 1280,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 1314,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/execution.py",
+        "line": 2003,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/engine.py",
+        "line": 2150,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/engine.py",
+        "line": 2863,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/engine.py",
+        "line": 3299,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/engine.py",
+        "line": 1892,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/engine.py",
+        "line": 2548,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/engine.py",
+        "line": 2811,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/engine.py",
+        "line": 3580,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/engine.py",
+        "line": 2531,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/engine.py",
+        "line": 3601,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/pair_regime_agent_matrix.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": null,
+        "message": "Writes to shared file 'config_adjustments.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 1082,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 1146,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 434,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 487,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 669,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 922,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 722,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 1097,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 1126,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      }
+    ],
+    "errors": []
+  }
+}

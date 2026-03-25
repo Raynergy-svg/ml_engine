@@ -1,0 +1,14 @@
+{
+  "a": 0.850368,
+  "b": -0.23747,
+  "calibration_error": 0.3609,
+  "confidence_range": [
+    0.4405,
+    0.8897
+  ],
+  "holdout_win_rate": 0.4381,
+  "is_valid": false,
+  "n_holdout": 105,
+  "n_samples": 416,
+  "train_win_rate": 0.3702
+}

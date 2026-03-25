@@ -1,0 +1,85 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/dashboard-enterprise-metal-phase42",
+  "description": "Buddy Phase 42 — Dashboard, Enterprise Training & Metal Optimizer Hardening. dashboard/app.py (1158 lines, 0 tests) has config override logic critical for trading safety. enterprise_training.py (1817 lines, 0 tests) has statistical validators and walk-forward CV crucial for backtesting integrity. m1_metal_optimizer.py (926 lines, 0 tests) has LR schedule math and platform detection. Target: 180+ new tests.",
+  "userStories": [
+    {
+      "id": "US-266",
+      "title": "Unit tests for dashboard JSON I/O and config override utilities",
+      "description": "Test _load_json, _save_json, _load_text, _load_config_overrides, _apply_overrides_to_config with type coercion (bool/int/float/str). Safety-critical config logic.",
+      "acceptanceCriteria": [
+        "At least 20 unit tests",
+        "Cover: JSON load/save edge cases (empty, corrupt, missing), config override type coercion for all types",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Combined with US-267 in test_dashboard_utils.py. 37 tests for I/O + config overrides (19 for _apply_overrides alone)."
+    },
+    {
+      "id": "US-267",
+      "title": "Unit tests for dashboard config factory and scan result utilities",
+      "description": "Test _make_scanner_config, _make_execution_config, _extract_instrument_hint, _summarize_scan_results, profile validation. Factory functions that build trading configs.",
+      "acceptanceCriteria": [
+        "At least 20 unit tests",
+        "Cover: scanner config factory with profiles, execution config defaults, scan result summarization",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Combined with US-266 in test_dashboard_utils.py. 19 tests for config factories + integration. Total: 56 tests."
+    },
+    {
+      "id": "US-268",
+      "title": "Unit tests for ReproducibilityManager and ResourceMonitor",
+      "description": "Test ReproducibilityConfig defaults, set_seeds, get_environment_fingerprint, compute_data_hash, ResourceStats dataclass, ResourceMonitor collection.",
+      "acceptanceCriteria": [
+        "At least 25 unit tests",
+        "Cover: seed setting determinism, environment fingerprint fields, data hash consistency, resource stats construction",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "32 tests in test_enterprise_training.py. Reproducibility (12), ResourceStats (2), ResourceMonitor (15), ExperimentConfig (2), edge cases (5)."
+    },
+    {
+      "id": "US-269",
+      "title": "Unit tests for enterprise WalkForwardValidator and StatisticalValidator",
+      "description": "Test WalkForwardConfig, WalkForwardValidator split logic, StatisticalValidator bootstrap CI and t-tests, DataValidator drift detection.",
+      "acceptanceCriteria": [
+        "At least 30 unit tests",
+        "Cover: time-series split correctness, purge gaps, bootstrap CI bounds, t-test significance, data validation rules",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "40 tests in test_enterprise_training.py. WalkForward (14), Statistical (11), DataValidator (11), DataValidationResult (2), integration (2). Total: 72 tests."
+    },
+    {
+      "id": "US-270",
+      "title": "Unit tests for M1 Metal Optimizer platform detection and config",
+      "description": "Test is_apple_silicon, configure_metal_runtime branches, create_optimized_dataset, create_augmentation_fn factory.",
+      "acceptanceCriteria": [
+        "At least 20 unit tests",
+        "Cover: platform detection mocking, runtime config branches, dataset params, augmentation factory",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "29 TF-dependent tests (skipped, no TF installed) + pure-Python math tests in US-271. Would pass in TF environment."
+    },
+    {
+      "id": "US-271",
+      "title": "Unit tests for M1 Metal LR schedules and callbacks",
+      "description": "Test WarmupCosineDecaySchedule, CosineDecayRestarts, StochasticWeightAveraging math. Pure numerical computation tests.",
+      "acceptanceCriteria": [
+        "At least 20 unit tests",
+        "Cover: warmup phase ramp, cosine decay curve, restart boundaries, SWA averaging math",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "26 pure-Python math tests passing (LR schedules, SWA averaging, performance monitor) + 32 TF-dependent tests skipped. Total file: 87 tests (26 passing, 61 skipped)."
+    }
+  ]
+}

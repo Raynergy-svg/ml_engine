@@ -1,0 +1,109 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-quality-optimization-phase18",
+  "description": "Buddy Phase 18 — Adaptive Quality & Optimization. Phases 1-17 built 61 automation modules that generate signals, consume them, and close feedback loops. Phase 18 shifts from 'run everything' to 'run smart with calibration'. Focus: execution cost profiling, adaptive gate thresholds, dynamic risk allocation, model confidence calibration, 3-way interaction tracking, and signal timing optimization. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-109",
+      "title": "Execution quality cost profiling by model and regime",
+      "description": "Create an ExecutionQualityOptimizer that tracks execution cost (slippage, fill latency, partial fills) per model+regime combination. Currently execution_quality_tracker (US-097) tracks raw metrics but doesn't segment by model or regime, and doesn't feed cost profiles back to gate tuning. This module builds cost profiles and recommends gate adjustments when execution quality degrades.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/execution_quality_optimizer.py with ExecutionQualityOptimizer class",
+        "record_execution(pair, regime, model, slippage, fill_time, fill_rate) builds cost profiles",
+        "get_cost_profile(regime, model) returns avg_slippage, avg_fill_time, cost_score [0-1]",
+        "recommend_gate_adjustment(regime) returns suggested confidence_threshold delta based on cost",
+        "Config flag: enable_execution_quality_optimizer: bool = False",
+        "Persists cost profiles to trained_data/execution_quality_optimizer_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented execution_quality_optimizer.py with ExecutionQualityOptimizer. Records execution metrics (slippage, fill_time, fill_rate) per pair/regime/model. Cost score [0-1] combines slippage (50%), fill_time (30%), fill_rate (20%). Gate adjustment: high cost (>0.60) → raise threshold, low cost (<0.25) → lower slightly. MAX_THRESHOLD_DELTA=0.05. Rolling window 50. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-110",
+      "title": "Adaptive gate threshold optimizer",
+      "description": "Create a ThresholdOptimizer that auto-tunes gate thresholds (confidence, momentum, R:R) based on rolling win rate vs target. Currently all thresholds are static in config.py. This module tracks win rate per regime and adjusts thresholds up (tighter) when win rate is above target and down (looser) when below, within safety bounds.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/threshold_optimizer.py with ThresholdOptimizer class",
+        "update_outcome(regime, gate_values, won) tracks rolling win rate per regime",
+        "optimize_thresholds(regime) returns adjusted confidence/momentum/rr thresholds",
+        "Safety bounds: confidence [0.40, 0.85], momentum [0.10, 0.60], rr_ratio [1.0, 2.5]",
+        "Config flag: enable_threshold_optimizer: bool = False",
+        "Persists threshold history to trained_data/threshold_optimizer_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented threshold_optimizer.py with ThresholdOptimizer. Records outcomes with gate values per regime. Rolling win rate (window=40, min=15). Target 55% win rate. Above target → tighten (full speed), below → loosen (half speed). Safety bounds enforced: confidence [0.40-0.85], momentum [0.10-0.60], rr_ratio [1.0-2.5]. ADJUSTMENT_LR=0.02. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-111",
+      "title": "Dynamic risk allocation from P/L distribution",
+      "description": "Create a DynamicRiskAllocator that adapts position sizing based on recent P/L distribution and trade duration patterns. Currently position sizing uses static base_risk_pct scaled by regime. This module analyzes rolling P/L to detect hot/cold streaks and adjusts risk allocation: increase during calibrated winning streaks, decrease during drawdowns, with Kelly-inspired but capped sizing.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/dynamic_risk_allocator.py with DynamicRiskAllocator class",
+        "record_trade(pnl_pips, duration_bars, regime) updates rolling P/L distribution",
+        "get_risk_multiplier(regime) returns position size multiplier [0.50, 1.30] based on streak analysis",
+        "Streak detection: 3+ consecutive wins/losses triggers multiplier adjustment",
+        "Config flag: enable_dynamic_risk_allocation: bool = False",
+        "Persists allocation history to trained_data/dynamic_risk_allocator_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented dynamic_risk_allocator.py with DynamicRiskAllocator. Three-factor multiplier: streak analysis (3+ consecutive → adjust), P/L momentum (10-trade window), half-Kelly fraction upper bound. Combined 50/50 streak+momentum, capped by Kelly. Multiplier [0.50-1.30]. Rolling window 30, min 10 trades. Sharpe ratio tracking. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-112",
+      "title": "Model confidence calibration tracker",
+      "description": "Create a ModelCalibrationTracker that measures how well each model's confidence scores predict actual outcomes. Currently models output confidence but nobody checks if 70% confidence actually wins 70% of the time. This module builds calibration curves (Platt scaling inspired) and detects flocking (all models agree but are systematically wrong).",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/model_calibration.py with ModelCalibrationTracker class",
+        "record_prediction(model, predicted_confidence, actual_outcome) builds calibration data",
+        "get_calibration_report(model) returns calibration_error, overconfidence_ratio, reliability_diagram data",
+        "detect_flocking(model_predictions) returns flocking_score when all models agree with high confidence",
+        "Config flag: enable_model_calibration: bool = False",
+        "Persists calibration data to trained_data/model_calibration_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented model_calibration.py with ModelCalibrationTracker. 10-bin reliability diagram (ECE computation). Overconfidence ratio: fraction of bins where predicted > actual. Flocking detection: agreement_ratio >= 0.90 with avg_confidence >= 0.65. Historical flock accuracy tracking with record_flock_outcome(). Rolling window 100 predictions per model. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-113",
+      "title": "Pair-regime-agent interaction matrix",
+      "description": "Create a PairRegimeAgentMatrix that tracks the 3-way interaction between pairs, regimes, and agents. Currently agent_accuracy_matrix (US-100) tracks agent×regime but not the pair dimension. Some agents may excel at EUR_USD in HIGH regime but fail at GBP_JPY in the same regime. This module captures that granularity for targeted agent weighting.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/pair_regime_agent_matrix.py with PairRegimeAgentMatrix class",
+        "record_vote(pair, regime, agent, vote, actual_outcome) updates 3-way accuracy",
+        "get_agent_weight(pair, regime, agent) returns accuracy-based weight multiplier",
+        "get_specialization_report() returns top agent×pair×regime combinations by accuracy",
+        "Config flag: enable_pair_regime_agent_matrix: bool = False",
+        "Persists matrix to trained_data/pair_regime_agent_matrix_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented pair_regime_agent_matrix.py with PairRegimeAgentMatrix. 3-way nested defaultdict for pair×regime×agent cells. Accuracy-based weight multiplier [0.50-1.40]: boost >60% accuracy, penalize <40%. get_specialization_report() returns top/worst performers sorted by accuracy. Min 8 samples per cell. Rolling window 60. Stats cache with invalidation on new votes. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-114",
+      "title": "Signal timing and scan frequency optimizer",
+      "description": "Create a SignalTimingOptimizer that tracks when signals are generated vs when they would have been optimal, and adjusts scan frequency accordingly. Currently the scanner runs on fixed intervals. This module detects whether signals arrive too early (price hasn't moved yet) or too late (move already happened), and recommends scan frequency adjustments per pair/session.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/signal_timing.py with SignalTimingOptimizer class",
+        "record_signal(pair, signal_time, entry_time, peak_time) tracks timing gaps",
+        "get_timing_report(pair) returns avg_signal_to_entry, avg_signal_to_peak, timing_score",
+        "recommend_scan_interval(pair, session) returns optimal scan interval in seconds",
+        "Config flag: enable_signal_timing: bool = False",
+        "Persists timing data to trained_data/signal_timing_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented signal_timing.py with SignalTimingOptimizer. Records signal/entry/peak timestamps. Timing score [0-1] from entry gap (60%) + peak gap (40%) with late penalty. Session detection (TOKYO/LONDON/NEW_YORK/SYDNEY). Scan interval recommendation [60s-900s]: early signals → slow down, poor quality → speed up. Per-pair and per-pair+session tracking. Diagnosis: too_slow/too_early/late_entry/good. Config flag added, wired into engine.py init. py_compile passes."
+    }
+  ]
+}

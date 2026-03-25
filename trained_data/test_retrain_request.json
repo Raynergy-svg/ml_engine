@@ -1,0 +1,35 @@
+{
+  "pairs": [
+    "NZD_USD",
+    "EUR_GBP",
+    "USD_CAD",
+    "GBP_JPY",
+    "GBP_CHF",
+    "USD_JPY",
+    "GBP_AUD",
+    "EUR_CHF",
+    "EUR_JPY",
+    "AUD_JPY",
+    "EUR_USD",
+    "EUR_AUD",
+    "AUD_USD",
+    "USD_CHF",
+    "GBP_USD"
+  ],
+  "reason": "Drift detected: 15 pair(s) below accuracy threshold",
+  "accuracy_snapshot": {
+    "EUR_USD": {
+      "accuracy": 0.4667,
+      "trades": 15
+    },
+    "GBP_USD": {
+      "accuracy": 0.4,
+      "trades": 15
+    },
+    "_global": {
+      "accuracy": 0.4333
+    }
+  },
+  "triggered_at": "2026-03-19T14:21:17.113139Z",
+  "priority": "urgent"
+}

@@ -1,0 +1,80 @@
+{
+  "phase": 49,
+  "created_at": "2026-03-24T20:00:00Z",
+  "completed_at": "2026-03-24T21:30:00Z",
+  "goal": "Wire all 6 Phase 48 standalone modules into the production pipeline using lazy-init + fallback pattern. No new logic — pure integration wiring.",
+  "dependencies": [
+    "Phase 48: spread_filter, economic_calendar, strategy_fitness, pair_blacklist, trade_attribution, walkforward_optimizer"
+  ],
+  "stories": [
+    {
+      "id": "US-306",
+      "title": "Wire pre-execution gates (SpreadFilter + EconomicCalendar + StrategyFitness) into execute_trade()",
+      "acceptance_criteria": [
+        "Lazy-init SpreadFilter, EconomicCalendarFilter, StrategyFitnessDetector in ExecutionManager.__init__()",
+        "SpreadFilter check runs after signal validation, before OANDA init — blocks on REJECT, applies size_multiplier on REDUCE_SIZE",
+        "EconomicCalendarFilter check runs after spread check — blocks on BLACKOUT, applies size_multiplier on REDUCE_SIZE",
+        "StrategyFitnessDetector check runs after calendar check — blocks on SKIP, applies 0.5x on REDUCE_SIZE",
+        "All three use try/except with fallback to allow trade (never crash the hot path)",
+        "Each gate logs its action with Phase 49 prefix for observability",
+        "Size multipliers from all three gates compound multiplicatively"
+      ],
+      "passes": true,
+      "notes": "Pre-execution gate chain wired: SpreadFilter(passed bool) → CalendarFilter(BLACKOUT/REDUCE_SIZE/CLEAR) → FitnessDetector(SKIP/REDUCE_SIZE/NORMAL). Compound multiplier stored in ctx['_phase49_size_multiplier']. Applied before units calculation."
+    },
+    {
+      "id": "US-307",
+      "title": "Wire PairPerformanceTracker into engine scan loop and post-trade feedback",
+      "acceptance_criteria": [
+        "Lazy-init PairPerformanceTracker in ExecutionManager.__init__()",
+        "PairPerformanceTracker.check_pair() called in engine.py _scan_pair() after blocked_pairs check",
+        "Blacklisted pairs return PairAnalysis(direction='HOLD', error='pair_blacklisted')",
+        "PairPerformanceTracker.update_from_trade() called in sync_closed_trades_rl() for each closed trade",
+        "tick_cooldown() called on each scan cycle for cooldown progression",
+        "Graceful fallback if tracker unavailable"
+      ],
+      "passes": true,
+      "notes": "PairPerformanceTracker wired into both engine.py (_scan_pair blacklist check + scan() tick_cooldown) and execution.py (update_from_trade in sync loop + lazy-init in __init__)."
+    },
+    {
+      "id": "US-308",
+      "title": "Wire TradeAttributionEngine into post-trade feedback loop",
+      "acceptance_criteria": [
+        "Lazy-init TradeAttributionEngine in ExecutionManager.__init__()",
+        "attribute_trade() called in sync_closed_trades_rl() for each closed trade with agent verdicts",
+        "Weight recommendations logged but NOT auto-applied (human-in-the-loop)",
+        "Attribution data appended to journal entry outcome for audit trail",
+        "Graceful fallback if engine unavailable"
+      ],
+      "passes": true,
+      "notes": "TradeAttributionEngine wired into sync_closed_trades_rl(). Verdicts use (LONG/SHORT, confidence, weight) tuple format. Attribution summary stored in journal outcome. Weight recs logged only."
+    },
+    {
+      "id": "US-309",
+      "title": "Wire WalkForwardOptimizer into post-trade feedback loop",
+      "acceptance_criteria": [
+        "Lazy-init WalkForwardOptimizer in ExecutionManager.__init__()",
+        "record_outcome() called in sync_closed_trades_rl() for each closed trade",
+        "run_optimization() called conditionally when should_optimize() returns True",
+        "Results written to config_adjustments.json WITHOUT auto-applying",
+        "Optimization results logged with Phase 49 prefix",
+        "Graceful fallback if optimizer unavailable"
+      ],
+      "passes": true,
+      "notes": "WalkForwardOptimizer wired into sync_closed_trades_rl(). TradeOutcome dataclass populated from closed trade data. Conditional run_optimization() with config_adjustments.json output. No auto-apply."
+    },
+    {
+      "id": "US-310",
+      "title": "Update __init__.py lazy exports and write integration tests",
+      "acceptance_criteria": [
+        "All 6 Phase 48 modules added to __init__.py lazy import map",
+        "At least 10 integration tests covering: gate blocking, gate passing, feedback recording, fallback behavior",
+        "Full test suite passes with 0 failures",
+        "State files updated atomically"
+      ],
+      "passes": true,
+      "notes": "11 new lazy imports added to __init__.py. 29 integration tests in test_phase49_wiring.py. 162 total tests passing (133 Phase 48 + 29 Phase 49), 0 failures."
+    }
+  ],
+  "title": "Phase 49: Pipeline Wiring for Phase 48 Modules"
+}

@@ -1,0 +1,733 @@
+{
+  "version": 1,
+  "total_predictions": 60,
+  "predictions": {
+    "TCN": [
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:21:58.969332+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:26:37.250265+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:30:43.981252+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:32:03.017201+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:33:34.883505+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:33:35.928041+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:33:50.185547+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:34:04.233735+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:34:18.738347+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:34:32.623743+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:16.617294+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:32.535202+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:33.667598+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:47.923549+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:58.781855+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:01:10.166373+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:21.457679+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:33.986121+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:45.054359+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:56.432105+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:57.450328+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:08.691849+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:20.487559+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:21.569835+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:22.605558+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:33.900673+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:45.493819+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:46.446051+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:58.700574+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:09:09.837214+00:00"
+      }
+    ],
+    "Ridge": [
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:21:58.969344+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:26:37.250284+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:30:43.981276+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:32:03.017222+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:33:34.883527+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:33:35.928047+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:33:50.185561+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:34:04.233746+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:34:18.738362+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T19:34:32.623761+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:16.617305+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:32.535215+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:33.667605+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:47.923568+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:00:58.781872+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:01:10.166393+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:21.457695+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:33.986132+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:45.054373+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:56.432123+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:07:57.450335+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:08.691863+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:20.487578+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:21.569841+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:22.605565+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:33.900691+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:45.493841+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:46.446058+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:08:58.700583+00:00"
+      },
+      {
+        "confidence": 1.0,
+        "won": false,
+        "timestamp": "2026-03-23T20:09:09.837231+00:00"
+      }
+    ]
+  },
+  "flock_events": [
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 55.971,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 50.9374,
+        "Ridge": 61.0046
+      },
+      "timestamp": "2026-03-23T19:21:58.969370+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 56.2329,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 51.4612,
+        "Ridge": 61.0046
+      },
+      "timestamp": "2026-03-23T19:26:37.250310+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 58.6859,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 56.3672,
+        "Ridge": 61.0046
+      },
+      "timestamp": "2026-03-23T19:30:43.981337+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 58.5446,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 53.9519,
+        "Ridge": 63.1373
+      },
+      "timestamp": "2026-03-23T19:32:03.017257+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 50.9297,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 49.9129,
+        "Ridge": 51.9465
+      },
+      "timestamp": "2026-03-23T19:33:34.883568+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 53.8547,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 55.7277,
+        "Ridge": 51.9817
+      },
+      "timestamp": "2026-03-23T19:33:35.928066+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 53.5028,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 53.9328,
+        "Ridge": 53.0728
+      },
+      "timestamp": "2026-03-23T19:33:50.185595+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 52.1628,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 56.9366,
+        "Ridge": 47.3889
+      },
+      "timestamp": "2026-03-23T19:34:04.233772+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 54.999,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 58.01,
+        "Ridge": 51.9879
+      },
+      "timestamp": "2026-03-23T19:34:18.738406+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 45.6706,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 41.9543,
+        "Ridge": 49.387
+      },
+      "timestamp": "2026-03-23T19:34:32.623800+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 54.2307,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 53.7514,
+        "Ridge": 54.71
+      },
+      "timestamp": "2026-03-23T20:00:16.617334+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 51.5308,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 51.0652,
+        "Ridge": 51.9965
+      },
+      "timestamp": "2026-03-23T20:00:32.535257+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 55.1669,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 58.3661,
+        "Ridge": 51.9677
+      },
+      "timestamp": "2026-03-23T20:00:33.667624+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 47.2522,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 48.2935,
+        "Ridge": 46.2108
+      },
+      "timestamp": "2026-03-23T20:00:47.923625+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 53.8307,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 55.8072,
+        "Ridge": 51.8543
+      },
+      "timestamp": "2026-03-23T20:00:58.781931+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 52.8562,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 54.3442,
+        "Ridge": 51.3682
+      },
+      "timestamp": "2026-03-23T20:01:10.166444+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 51.1581,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 47.6062,
+        "Ridge": 54.71
+      },
+      "timestamp": "2026-03-23T20:07:21.457737+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 49.9171,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 47.8377,
+        "Ridge": 51.9965
+      },
+      "timestamp": "2026-03-23T20:07:33.986172+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 48.3073,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 50.4038,
+        "Ridge": 46.2108
+      },
+      "timestamp": "2026-03-23T20:07:45.054417+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 54.7164,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 57.4652,
+        "Ridge": 51.9677
+      },
+      "timestamp": "2026-03-23T20:07:56.432165+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 54.1751,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 56.4959,
+        "Ridge": 51.8543
+      },
+      "timestamp": "2026-03-23T20:07:57.450353+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 50.8971,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 50.4259,
+        "Ridge": 51.3682
+      },
+      "timestamp": "2026-03-23T20:08:08.691898+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 49.3414,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 50.2522,
+        "Ridge": 48.4305
+      },
+      "timestamp": "2026-03-23T20:08:20.487622+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 57.6357,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 51.9281,
+        "Ridge": 63.3432
+      },
+      "timestamp": "2026-03-23T20:08:21.569858+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 56.3897,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 55.9339,
+        "Ridge": 56.8455
+      },
+      "timestamp": "2026-03-23T20:08:22.605585+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 56.2266,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 54.4787,
+        "Ridge": 57.9745
+      },
+      "timestamp": "2026-03-23T20:08:33.900743+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 53.4059,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 47.642,
+        "Ridge": 59.1698
+      },
+      "timestamp": "2026-03-23T20:08:45.493892+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 51.9446,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 54.2129,
+        "Ridge": 49.6764
+      },
+      "timestamp": "2026-03-23T20:08:46.446074+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 53.1849,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 53.6545,
+        "Ridge": 52.7153
+      },
+      "timestamp": "2026-03-23T20:08:58.700613+00:00"
+    },
+    {
+      "flocking_score": 1.0,
+      "is_flocking": true,
+      "agreement_ratio": 1.0,
+      "avg_confidence": 49.029,
+      "n_models": 2,
+      "n_high_confidence": 2,
+      "historical_flock_accuracy": null,
+      "model_predictions": {
+        "TCN": 49.2756,
+        "Ridge": 48.7825
+      },
+      "timestamp": "2026-03-23T20:09:09.837295+00:00"
+    }
+  ],
+  "last_updated": "2026-03-23T20:44:54.999912+00:00"
+}

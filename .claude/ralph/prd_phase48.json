@@ -1,0 +1,142 @@
+{
+  "completed_at": "2026-03-24T19:13:10.042886+00:00",
+  "created_at": "2026-03-24T14:00:00Z",
+  "dependencies": [
+    "Phase 46: regime_gates, mtf_confluence, session_detector, ensemble_conflict, expectancy_tracker",
+    "Phase 47: pipeline wiring of all Phase 46 modules",
+    "Phase 44: adaptive_position_sizing, bayesian_agent_weights",
+    "Phase 45: ewma_correlation, streak_tracker"
+  ],
+  "goal": "Close the feedback loop: detect when edge disappears, filter bad conditions, attribute outcomes, optimize parameters dynamically. Target win rate improvement from 38% toward 42-45%.",
+  "phase": 48,
+  "research_sources": [
+    "567k backtest study on exit strategies (kjtradingsystems.com)",
+    "PPO auxiliary tasks for FX trading (arxiv 2405.19982)",
+    "SHAP for trade attribution (shap.readthedocs.io)",
+    "Finnhub economic calendar API (finnhub.io)",
+    "Regime-adaptive trading with HMM (quantinsti.com)",
+    "Walk-forward optimization with Optuna (optuna.org)",
+    "Spread-as-ATR-percentage filtering (quantifiedstrategies.com)"
+  ],
+  "stories": [
+    {
+      "acceptance_criteria": [
+        "SpreadFilter class with configurable threshold (default 0.20 = 20% of ATR)",
+        "Fetches current bid/ask from OANDA pricing endpoint",
+        "Calculates normalized_spread = spread_pips / atr_pips",
+        "Returns SpreadCheckResult with pass/fail, spread value, threshold",
+        "Wired into execute_trade() as pre-execution gate",
+        "Graceful fallback: if spread unavailable, allow trade with warning",
+        "At least 8 unit tests covering: pass, fail, edge cases, fallback"
+      ],
+      "description": "Create a spread filter that normalizes current spread as a percentage of ATR. Skip trades when normalized spread exceeds threshold (default 20%). Integrate as a pre-execution gate in execution.py.",
+      "estimated_impact": "2-3% fewer losing trades (avoid high-spread entries)",
+      "id": "US-300",
+      "notes": "SpreadFilter with 29 tests. Normalizes spread/ATR with pair overrides, size_multiplier property, graceful ATR=0 fallback.",
+      "passes": true,
+      "priority": "P0",
+      "title": "Spread-Aware Entry Gate"
+    },
+    {
+      "acceptance_criteria": [
+        "EconomicCalendarFilter class with configurable blackout windows",
+        "Fetches daily calendar from Finnhub API (free tier, 60 calls/min)",
+        "Local JSON cache refreshed every 4 hours (atomic write)",
+        "HIGH impact: 30min blackout before event, 5min after",
+        "MEDIUM impact: 15min blackout, position size reduction 50%",
+        "LOW impact: no action (log only)",
+        "Currency-pair matching (USD events affect all USD pairs)",
+        "Graceful fallback: if API unavailable, allow trades with warning",
+        "At least 10 unit tests covering: blackout detection, currency matching, cache, fallback"
+      ],
+      "description": "Integrate economic calendar data to create blackout periods around high-impact news events. Use Finnhub free API as primary source with local cache fallback. Block new entries 30min before HIGH-impact events, reduce size 50% for MEDIUM-impact within 15min.",
+      "estimated_impact": "3-5% fewer news-driven losses",
+      "id": "US-301",
+      "notes": "EconomicCalendarFilter with 24 tests. HIGH/MEDIUM impact blackout windows, currency-pair matching, atomic cache, dedup, post-event buffer.",
+      "passes": true,
+      "priority": "P0",
+      "title": "Economic Calendar News Filter"
+    },
+    {
+      "acceptance_criteria": [
+        "StrategyFitnessDetector class with rolling 20-trade window",
+        "Metrics: rolling_profit_factor, prediction_correlation, avg_agent_disagreement",
+        "Fitness score: weighted composite (PF 0.4, correlation 0.3, disagreement 0.3)",
+        "Thresholds: fitness < 0.4 = SKIP, 0.4-0.6 = REDUCE_SIZE, > 0.6 = NORMAL",
+        "Per-pair per-regime tracking with atomic JSON persistence",
+        "Minimum 10 trades before evaluation (insufficient data = NORMAL)",
+        "Integrated into pre-execution gate chain",
+        "At least 10 unit tests"
+      ],
+      "description": "Monitor rolling strategy fitness per pair. Calculate rolling profit factor, prediction-outcome correlation, and agent disagreement trend. When fitness drops below threshold, reduce position size or skip pair. Detects when the system's edge has disappeared for a specific pair/regime.",
+      "estimated_impact": "2-4% win rate improvement by avoiding low-fitness conditions",
+      "id": "US-302",
+      "notes": "StrategyFitnessDetector with 20 tests. Rolling fitness score (PF 0.4 + corr 0.3 + disagree 0.3). SKIP/REDUCE_SIZE/NORMAL per pair per regime.",
+      "passes": true,
+      "priority": "P1",
+      "title": "Strategy Fitness Detector"
+    },
+    {
+      "acceptance_criteria": [
+        "PairPerformanceTracker class with rolling 30-day window",
+        "Metrics per pair: sharpe_ratio, win_rate, consecutive_losses, max_drawdown_pct",
+        "Auto-blacklist rules: sharpe < 0.5 OR consec_losses >= 4 OR drawdown > 10%",
+        "Blacklist duration: 2 scan cycles (configurable)",
+        "Minimum 10 trades before blacklisting (prevents noise-driven blacklisting)",
+        "Atomic JSON persistence to trained_data/models/pair_tracker.json",
+        "update_from_trade() called in sync_closed_trades_rl()",
+        "is_pair_blacklisted(pair) called in engine scan loop",
+        "At least 10 unit tests"
+      ],
+      "description": "Track per-pair performance metrics (Sharpe, win rate, consecutive losses, max drawdown) with automatic blacklisting. Pairs with Sharpe < 0.5 or 4+ consecutive losses get temporarily blacklisted. Integrates with pair selection in engine.py scan loop.",
+      "estimated_impact": "1-3% improvement by avoiding persistently unprofitable pairs",
+      "id": "US-303",
+      "notes": "PairPerformanceTracker with 22 tests. Auto-blacklist on sharpe<0.5, consec_losses>=4, drawdown>10%. Cooldown cycle system.",
+      "passes": true,
+      "priority": "P1",
+      "title": "Dynamic Pair Performance Tracker & Blacklisting"
+    },
+    {
+      "acceptance_criteria": [
+        "TradeAttributionEngine class",
+        "For each closed trade: record agent verdicts, weights, and individual scores",
+        "Attribution: compare each agent's signal direction with actual outcome",
+        "Calculate per-agent accuracy_rate, contribution_score, alignment_ratio",
+        "Generate attribution_report per trade (stored in trade journal)",
+        "Aggregate attribution by agent across last 50 trades",
+        "Feed attribution into expectancy_tracker for weight adjustment",
+        "Atomic JSON persistence",
+        "At least 8 unit tests"
+      ],
+      "description": "After each closed trade, attribute the outcome to agent contributions using a lightweight SHAP-inspired approach. Identify which agents drove the decision and whether their individual signals aligned with the outcome. Feeds back into agent weight optimization.",
+      "estimated_impact": "Enables data-driven agent reweighting for 1-2% win rate lift",
+      "id": "US-304",
+      "notes": "TradeAttributionEngine with 18 tests. SHAP-inspired per-agent alignment scoring. Weight recommendations from accuracy_rate. Aggregate performance.",
+      "passes": true,
+      "priority": "P1",
+      "title": "Trade Outcome Attribution Engine"
+    },
+    {
+      "acceptance_criteria": [
+        "WalkForwardOptimizer class with configurable window sizes",
+        "Optimizes: confidence_threshold, momentum_threshold, atr_sl_multiplier, atr_tp_multiplier",
+        "In-sample: grid search on parameter ranges (brute force, small grid)",
+        "Out-of-sample: calculate profit factor and Sharpe on held-out trades",
+        "WFE = OOS_profit_factor / IS_profit_factor (flag if < 0.30)",
+        "Runs every 75 closed trades (60 IS + 15 OOS)",
+        "Writes recommended parameters to config_adjustments.json",
+        "Does NOT auto-apply: logs recommendation, requires manual review",
+        "At least 10 unit tests"
+      ],
+      "description": "Implement anchored walk-forward optimization for gate thresholds (confidence, momentum, risk) and ATR multipliers. Uses rolling 60-trade in-sample window to find optimal parameters, validates on 15-trade out-of-sample window. Calculates Walk-Forward Efficiency (WFE) to detect overfitting.",
+      "estimated_impact": "Prevents parameter staleness, 1-2% sustained edge preservation",
+      "id": "US-305",
+      "notes": "WalkForwardOptimizer with 20 tests. Anchored IS/OOS grid search. WFE overfitting detection. Writes recommendations to config_adjustments.json (no auto-apply).",
+      "passes": true,
+      "priority": "P2",
+      "title": "Walk-Forward Gate Parameter Optimizer"
+    }
+  ],
+  "theme": "Trade Intelligence & Adaptive Filtering",
+  "total_stories": 6
+}

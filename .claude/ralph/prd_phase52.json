@@ -1,0 +1,97 @@
+{
+  "phase": 52,
+  "title": "Phase 52: Pipeline Integration & Adaptive Intelligence",
+  "created_at": "2026-03-24T21:30:00Z",
+  "goal": "Wire Phase 51 modules (isotonic calibrator, pattern gate, setup quality filter, tranche tracker, walk-forward retrainer) into the live execution pipeline. Add confidence decomposition, adaptive R:R targeting, and drawdown-adaptive behavior. Key insight from research: inverse confidence-win rate at high levels (0.71-0.80 = 16.1%) means confidence scoring itself is the biggest leverage point.",
+  "dependencies": [
+    "Phase 51: IsotonicCalibrator, TrancheTracker, PatternGate, WalkForwardRetrainer, SetupQualityFilter",
+    "Phase 49: Pipeline wiring pattern (spread × calendar × fitness compound gates)",
+    "Phase 44: ConfidenceCalibrationSystem in _team.py, AdaptiveExitManager in execution.py",
+    "Phase 50: journal_patterns.json, isotonic model, fitness seeds",
+    "trade_journal_rl.json: 522 trades with outcomes"
+  ],
+  "stories": [
+    {
+      "id": "US-323",
+      "title": "Wire Phase 51 modules into live execution pipeline",
+      "acceptance_criteria": [
+        "Initialize IsotonicCalibrator in _team.py __init__ with fallback",
+        "Wire isotonic calibration after Platt scaling in evaluate() — override Platt if isotonic model valid",
+        "Initialize PatternGate + SetupQualityFilter in execution.py __init__ with fallback",
+        "Wire PatternGate after fitness gate in pre-execution chain — adjust confidence before quality check",
+        "Wire SetupQualityFilter after pattern gate — REJECT if quality_score < 0.35",
+        "Initialize TrancheTracker in execution.py __init__ with fallback",
+        "Wire TrancheTracker after successful TAKE_PARTIAL — register on trade open, move SL on partial close",
+        "Initialize WalkForwardRetrainer in execution.py __init__ with fallback",
+        "Wire WalkForwardRetrainer in sync_closed_trades_rl after walk-forward optimizer — retrain agent weights periodically",
+        "All new module inits use try/except with graceful fallback",
+        "At least 15 integration tests"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-324",
+      "title": "Confidence decomposition into directional/timing/magnitude components",
+      "acceptance_criteria": [
+        "Create src/scanner/confidence_decomposer.py with ConfidenceDecomposer class",
+        "Decompose raw confidence into 3 components: directional_strength (0-1), timing_quality (0-1), magnitude_estimate (0-1)",
+        "directional_strength: agent agreement on direction × trend alignment",
+        "timing_quality: session alignment × MTF confluence signal × duration sweet spot",
+        "magnitude_estimate: ATR percentile × regime-conditional expected move",
+        "Recompose: weighted average (direction 0.45, timing 0.30, magnitude 0.25)",
+        "Apply high-confidence penalty: if recomposed > 0.70 and directional_strength < 0.55, cap at 0.65",
+        "Wire into _team.py evaluate() after isotonic calibration",
+        "At least 10 unit tests"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-325",
+      "title": "Adaptive R:R targeting by regime and confidence",
+      "acceptance_criteria": [
+        "Create src/scanner/adaptive_rr.py with AdaptiveRRCalculator class",
+        "Regime-based R:R targets: LOW(1.5:1), NORMAL(1.8:1), HIGH(2.2:1), EXTREME(2.5:1)",
+        "Confidence-modulated: high confidence (>0.65) tightens R:R by 0.2, low (<0.45) widens by 0.3",
+        "Override atr_tp_multiplier in execution.py based on adaptive R:R recommendation",
+        "Minimum R:R floor of 1.2:1 always enforced (trading rule)",
+        "Log R:R adjustment with regime, confidence, and final target",
+        "Track R:R vs outcome to measure if higher targets reduce win rate proportionally",
+        "At least 8 unit tests"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-326",
+      "title": "Drawdown-adaptive behavior (pair rotation + confidence tightening)",
+      "acceptance_criteria": [
+        "Create src/scanner/drawdown_adapter.py with DrawdownAdapter class",
+        "Monitor rolling drawdown from NAV history",
+        "Tier 1 (dd > 3%): tighten confidence threshold by +0.05",
+        "Tier 2 (dd > 5%): restrict to top-3 performing pairs only + Tier 1",
+        "Tier 3 (dd > 8%): restrict to London session only + Tier 2",
+        "Tier 4 (dd > 12%): halt all new trades until drawdown recovers below 8%",
+        "Wire into execution.py execute_trade() as earliest gate (before spread filter)",
+        "Recovery: each tier releases when drawdown drops 2% below tier entry",
+        "At least 10 unit tests"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-327",
+      "title": "Integration tests and state file updates",
+      "acceptance_criteria": [
+        "At least 20 integration tests across all Phase 52 modules",
+        "Full test suite passes with 0 failures",
+        "State files updated atomically (state.json, learnings.md, prd_phase52.json)",
+        "All new modules importable via lazy imports in __init__.py",
+        "Verify live wiring: each module has at least one call site in production code (grep verification)"
+      ],
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

@@ -8,13 +8,18 @@ that can be combined into a weighted vote.
 
 from __future__ import annotations
 
+import logging
+import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
 from .results import PairAnalysis
+
+logger = logging.getLogger(__name__)
 
 
 def _clip01(value: float) -> float:
@@ -97,48 +102,355 @@ class ScannerAgentTeam:
     }
 
     _WEIGHTS_FILE = "trained_data/models/agent_weights.json"
+    _REGIME_NAMES = ["LOW", "NORMAL", "HIGH", "EXTREME"]
 
     def __init__(self, config: Any):
         self.config = config
-        self._learned_weights: Dict[str, float] = self._load_learned_weights()
+        self._learned_weights: Dict[str, Any] = self._load_learned_weights()
+        self._regime_weights: Dict[str, Dict[str, float]] = {}  # Cache of regime-specific weights
+        self._global_weights: Dict[str, float] = {}  # Cross-regime running average
+        self._regime_trade_counts: Dict[str, int] = {}  # Track trades per regime
+        self._migrate_legacy_weights()
 
     # --- Persistent weight management ---
 
-    def _load_learned_weights(self) -> Dict[str, float]:
-        """Load learned agent weights from disk."""
-        import json
-        from pathlib import Path
+    def _migrate_legacy_weights(self) -> None:
+        """Convert legacy flat weights dict to regime-aware format if needed."""
+        if not self._learned_weights:
+            return
+        # If dict has agent names directly (no regime keys), migrate it
+        if any(k in self._learned_weights for k in self._BASE_WEIGHTS.keys()):
+            try:
+                legacy_weights = dict(self._learned_weights)
+                # Rebuild as regime-aware
+                self._learned_weights = {
+                    "_global": legacy_weights,
+                    "NORMAL": dict(legacy_weights),
+                    "HIGH": dict(legacy_weights),
+                    "EXTREME": dict(legacy_weights),
+                    "_meta": {"min_trades_per_regime": 10},
+                }
+                self._save_learned_weights()
+                logger.info("Migrated agent weights to regime-aware format")
+            except Exception as e:
+                logger.warning(f"Failed to migrate legacy weights: {e}")
+                self._learned_weights = self._init_regime_weights()
 
+    def _load_learned_weights(self) -> Dict[str, Any]:
+        """Load learned agent weights from disk with corruption recovery.
+
+        Handles:
+        - Legacy flat dict format
+        - Regime-aware structure
+        - JSON parse errors (falls back to baseline)
+        - NaN/inf values (resets those agents to baseline)
+        """
         path = Path(self._WEIGHTS_FILE)
         if path.exists():
             try:
                 with open(path) as f:
                     data = json.load(f)
-                return {str(k): float(v) for k, v in data.items()}
-            except Exception:
-                pass
-        return {}
+
+                # Validate regime-aware structure
+                if isinstance(data, dict) and any(regime in data for regime in self._REGIME_NAMES + ["_global", "_meta"]):
+                    # Validate weight values
+                    validated = self._validate_weights(data)
+                    if validated:
+                        return validated
+                # Legacy flat dict
+                elif isinstance(data, dict) and any(k in data for k in self._BASE_WEIGHTS.keys()):
+                    return data
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parse error in agent_weights.json: {e}. Using baseline weights.")
+            except Exception as e:
+                logger.warning(f"Failed to load agent weights: {e}")
+        return self._init_regime_weights()
+
+    def _validate_weights(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Validate all weight values are finite and in acceptable range.
+
+        Args:
+            data: Weights structure to validate
+
+        Returns:
+            Validated data, or None if validation failed (caller will use baseline)
+        """
+        import math
+
+        valid_range = (0.05, 10.0)
+        issues_found = False
+
+        for regime in self._REGIME_NAMES + ["_global"]:
+            if regime not in data or not isinstance(data[regime], dict):
+                continue
+
+            regime_weights = data[regime]
+            for agent_name in list(regime_weights.keys()):
+                val = regime_weights[agent_name]
+
+                # Check for NaN or inf
+                try:
+                    fval = float(val)
+                    if math.isnan(fval) or math.isinf(fval):
+                        logger.warning(f"Invalid value ({val}) for {agent_name} in {regime}. Resetting to baseline.")
+                        regime_weights[agent_name] = self._BASE_WEIGHTS.get(agent_name, 1.0)
+                        issues_found = True
+                    elif not (valid_range[0] <= fval <= valid_range[1]):
+                        logger.warning(f"Out-of-range value ({fval}) for {agent_name} in {regime}. Clamping to valid range.")
+                        regime_weights[agent_name] = max(valid_range[0], min(valid_range[1], fval))
+                        issues_found = True
+                except (ValueError, TypeError):
+                    logger.warning(f"Non-numeric value for {agent_name} in {regime}. Resetting to baseline.")
+                    regime_weights[agent_name] = self._BASE_WEIGHTS.get(agent_name, 1.0)
+                    issues_found = True
+
+        if issues_found:
+            logger.info("Corrupted weights detected and recovered")
+
+        return data
+
+    def _init_regime_weights(self) -> Dict[str, Any]:
+        """Initialize regime-aware weight structure."""
+        return {
+            "_global": dict(self._BASE_WEIGHTS),
+            "NORMAL": dict(self._BASE_WEIGHTS),
+            "HIGH": dict(self._BASE_WEIGHTS),
+            "EXTREME": dict(self._BASE_WEIGHTS),
+            "LOW": dict(self._BASE_WEIGHTS),
+            "_meta": {"min_trades_per_regime": 10},
+        }
 
     def reload_learned_weights(self) -> None:
-        """Reload agent weights from disk (after RL sync or weight decay).
+        """Reload agent weights from disk and apply time-based decay.
 
-        This ensures the team always uses the latest learned weights.
-        Call before scanning if weights may have been updated since __init__.
+        Runs once per session start. Applies:
+        1. Load weights from disk
+        2. Apply time-based decay toward baseline (1% per 24 hours, caps at 50%)
+        3. Apply confidence scaling based on total trade count
+        4. Clear regime cache to force fresh load
+
+        This ensures weights don't persist indefinitely between sessions.
         """
         self._learned_weights = self._load_learned_weights()
+        self._migrate_legacy_weights()
+        self._apply_time_decay()
+        self._apply_confidence_scaling()
+        self._regime_weights = {}  # Clear cache to force fresh load
+
+    def _apply_time_decay(self) -> None:
+        """Apply time-based decay: weights drift 1% toward baseline per 24 hours.
+
+        Formula: decayed = weight + (1.0 - weight) * min(hours_since / 2400, 0.5)
+        - Caps at 50% drift toward baseline
+        - Never fully resets
+        - Logged for transparency
+        """
+        if not self._learned_weights or "_meta" not in self._learned_weights:
+            return
+
+        meta = self._learned_weights.get("_meta", {})
+        last_updated_str = meta.get("last_updated")
+
+        if not last_updated_str:
+            # No timestamp yet, set it now
+            meta["last_updated"] = datetime.now(timezone.utc).isoformat()
+            return
+
+        try:
+            last_updated = datetime.fromisoformat(last_updated_str.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            hours_since = (now - last_updated).total_seconds() / 3600.0
+
+            if hours_since < 0.1:  # Skip if less than 5 minutes ago
+                return
+
+            # Cap drift at 50%
+            decay_factor = min(hours_since / 2400.0, 0.5)
+
+            changed = False
+            for regime in self._REGIME_NAMES + ["_global"]:
+                if regime not in self._learned_weights or not isinstance(self._learned_weights[regime], dict):
+                    continue
+
+                regime_weights = self._learned_weights[regime]
+                for agent_name in list(regime_weights.keys()):
+                    base = self._BASE_WEIGHTS.get(agent_name, 1.0)
+                    current = _safe_float(regime_weights.get(agent_name), base)
+
+                    # Apply time decay
+                    decayed = current + (base - current) * decay_factor
+                    decayed = round(decayed, 4)
+
+                    if abs(decayed - current) > 1e-4:
+                        regime_weights[agent_name] = decayed
+                        changed = True
+
+            if changed:
+                meta["last_updated"] = now.isoformat()
+                self._save_learned_weights()
+                logger.info(f"Applied {hours_since:.0f}h time decay to agent weights (factor: {decay_factor:.2%})")
+
+        except Exception as e:
+            logger.debug(f"Time decay error: {e}")
+
+    def _apply_confidence_scaling(self) -> None:
+        """Scale learned weights by confidence based on trade count.
+
+        Confidence scaling blends baseline and learned weights:
+        - < 10 trades: 70% baseline + 30% learned
+        - 10-50 trades: 30% baseline + 70% learned
+        - > 50 trades: 100% learned weights
+
+        Formula: final = baseline * (1 - confidence) + learned * confidence
+        where confidence = min(total_trades / 50, 1.0)
+
+        This prevents over-fitting to small sample sizes.
+        """
+        if not self._learned_weights or "_meta" not in self._learned_weights:
+            return
+
+        meta = self._learned_weights.get("_meta", {})
+        total_trades = _safe_float(meta.get("total_trades", 0), 0)
+
+        # Calculate confidence score (0.0 to 1.0)
+        confidence = min(total_trades / 50.0, 1.0)
+
+        if confidence >= 1.0:
+            # Mature: use 100% learned weights, no scaling needed
+            return
+
+        changed = False
+        for regime in self._REGIME_NAMES + ["_global"]:
+            if regime not in self._learned_weights or not isinstance(self._learned_weights[regime], dict):
+                continue
+
+            regime_weights = self._learned_weights[regime]
+            for agent_name in list(regime_weights.keys()):
+                base = self._BASE_WEIGHTS.get(agent_name, 1.0)
+                learned = _safe_float(regime_weights.get(agent_name), base)
+
+                # Blend: final = baseline * (1 - confidence) + learned * confidence
+                scaled = base * (1.0 - confidence) + learned * confidence
+                scaled = round(scaled, 4)
+
+                if abs(scaled - learned) > 1e-4:
+                    regime_weights[agent_name] = scaled
+                    changed = True
+
+        if changed:
+            self._save_learned_weights()
+            confidence_pct = int(confidence * 100)
+            logger.info(f"Applied confidence scaling ({confidence_pct}%) based on {int(total_trades)} trades")
+
+    def get_weights_for_regime(self, regime: str) -> Dict[str, float]:
+        """Get agent weights for a specific volatility regime.
+
+        Applies confidence scaling based on trade count at retrieval time.
+        Returns weighted blend of baseline and learned weights if still in
+        low-confidence phase (< 50 trades).
+
+        Args:
+            regime: Volatility regime name ("LOW", "NORMAL", "HIGH", "EXTREME", or regime index as string)
+
+        Returns:
+            Dict of agent name -> weight for this regime (or _global fallback if insufficient data)
+        """
+        # Normalize regime name
+        if regime and regime.isdigit():
+            regime_idx = int(regime)
+            if 0 <= regime_idx < len(self._REGIME_NAMES):
+                regime = self._REGIME_NAMES[regime_idx]
+            else:
+                regime = "NORMAL"
+        regime = str(regime or "NORMAL").upper()
+        if regime not in self._REGIME_NAMES:
+            regime = "NORMAL"
+
+        # Return cached weights if available
+        if regime in self._regime_weights:
+            return dict(self._regime_weights[regime])
+
+        # Ensure learned weights are regime-aware
+        if not isinstance(self._learned_weights, dict) or "_global" not in self._learned_weights:
+            self._learned_weights = self._init_regime_weights()
+
+        # Check if regime has sufficient data
+        min_trades = _safe_float(
+            self._learned_weights.get("_meta", {}).get("min_trades_per_regime", 10),
+            10,
+        )
+        regime_trades = _safe_float(self._learned_weights.get("_meta", {}).get(f"trades_{regime}", 0), 0)
+
+        # Determine base weights for this regime
+        selected_regime = regime
+        if regime in self._learned_weights and regime_trades >= min_trades:
+            weights = self._learned_weights.get(regime, {})
+            if weights and isinstance(weights, dict):
+                selected_weights = dict(weights)
+            else:
+                selected_weights = dict(self._BASE_WEIGHTS)
+        else:
+            # Fall back to global (cross-regime) weights
+            global_weights = self._learned_weights.get("_global", dict(self._BASE_WEIGHTS))
+            if global_weights and isinstance(global_weights, dict):
+                selected_weights = dict(global_weights)
+            else:
+                selected_weights = dict(self._BASE_WEIGHTS)
+
+        # Apply confidence scaling at retrieval time
+        total_trades = _safe_float(self._learned_weights.get("_meta", {}).get("total_trades", 0), 0)
+        confidence = min(total_trades / 50.0, 1.0)
+
+        if confidence < 1.0:
+            # Blend with baseline weights for immature samples
+            scaled_weights = {}
+            for agent_name, learned_val in selected_weights.items():
+                base_val = self._BASE_WEIGHTS.get(agent_name, 1.0)
+                blended = base_val * (1.0 - confidence) + learned_val * confidence
+                scaled_weights[agent_name] = round(blended, 4)
+            self._regime_weights[regime] = scaled_weights
+            return dict(scaled_weights)
+
+        # Mature weights: use learned directly
+        self._regime_weights[regime] = selected_weights
+        return dict(selected_weights)
 
     def _save_learned_weights(self) -> None:
-        """Persist learned agent weights to disk."""
+        """Persist learned agent weights to disk with atomic file locking."""
         import json
         from pathlib import Path
+        import fcntl
+        import tempfile
 
         path = Path(self._WEIGHTS_FILE)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump(self._learned_weights, f, indent=2)
+
+        # Use atomic write with file locking to prevent corruption
+        try:
+            # Write to temp file first
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                dir=path.parent,
+                delete=False,
+                suffix=".tmp",
+            ) as tmp_f:
+                json.dump(self._learned_weights, tmp_f, indent=2, default=str)
+                tmp_path = tmp_f.name
+
+            # Atomic rename
+            tmp_path_obj = Path(tmp_path)
+            tmp_path_obj.replace(path)
+        except Exception as e:
+            logger.warning(f"Failed to save agent weights atomically: {e}")
+            # Fallback to direct write if atomic fails
+            try:
+                with open(path, "w") as f:
+                    json.dump(self._learned_weights, f, indent=2, default=str)
+            except Exception as e2:
+                logger.error(f"Failed to save agent weights: {e2}")
 
     def apply_weight_decay(self, decay_rate: float = 0.02) -> Dict[str, float]:
-        """Decay learned weights toward base weights to prevent overfitting.
+        """Decay learned weights toward base weights across all regimes.
 
         Should be called once per scan cycle (e.g., from ContinuousScanner).
         Each call moves learned weights ``decay_rate`` fraction closer to the
@@ -149,65 +461,235 @@ class ScannerAgentTeam:
             decay_rate: Fraction to move toward base weight per call (0.0–1.0).
 
         Returns:
-            Dict of agent name -> new weight after decay.
+            Dict of agent name -> new weight after decay (global weights).
         """
         if not self._learned_weights:
             return {}
 
         decay_rate = max(0.0, min(1.0, decay_rate))
         changed = False
-        for name in list(self._learned_weights):
-            base = self._BASE_WEIGHTS.get(name, 1.0)
-            current = self._learned_weights[name]
-            if abs(current - base) < 1e-4:
-                # Already at base – remove from learned dict
-                del self._learned_weights[name]
-                changed = True
+
+        # Ensure regime-aware structure
+        if "_global" not in self._learned_weights:
+            self._learned_weights = self._init_regime_weights()
+
+        # Decay all regime weights
+        for regime in self._REGIME_NAMES + ["_global"]:
+            if regime not in self._learned_weights or not isinstance(self._learned_weights[regime], dict):
                 continue
-            new_weight = current + decay_rate * (base - current)
-            new_weight = round(new_weight, 4)
-            self._learned_weights[name] = new_weight
-            changed = True
+
+            regime_weights = self._learned_weights[regime]
+            for name in list(regime_weights.keys()):
+                base = self._BASE_WEIGHTS.get(name, 1.0)
+                current = _safe_float(regime_weights.get(name), 1.0)
+                if abs(current - base) < 1e-4:
+                    # Already at base – remove from learned dict
+                    del regime_weights[name]
+                    changed = True
+                    continue
+                new_weight = current + decay_rate * (base - current)
+                new_weight = round(new_weight, 4)
+                regime_weights[name] = new_weight
+                changed = True
 
         if changed:
             self._save_learned_weights()
-        return dict(self._learned_weights)
+            self._regime_weights = {}  # Clear cache
+
+        return dict(self._learned_weights.get("_global", self._BASE_WEIGHTS))
 
     def update_weights_from_outcome(
         self,
         agent_verdicts: List[Dict[str, Any]],
         trade_won: bool,
+        regime: Optional[str] = None,
     ) -> Dict[str, float]:
         """Update agent weights based on trade outcome (RL feedback).
+
+        Updates both regime-specific weights (if sufficient data) and global running average.
 
         Args:
             agent_verdicts: List of agent verdict dicts from the trade's PairAnalysis
             trade_won: True if trade hit TP, False if hit SL
+            regime: Volatility regime the trade was entered in (e.g., "NORMAL", "HIGH")
 
         Returns:
-            Dict of agent name -> new weight
+            Dict of agent name -> new weight (global)
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         boost = _safe_float(getattr(self.config, "weight_boost_on_win", 0.10), 0.10)
         penalty = _safe_float(getattr(self.config, "weight_penalty_on_loss", 0.15), 0.15)
         min_w = _safe_float(getattr(self.config, "min_agent_weight", 0.1), 0.1)
         max_w = _safe_float(getattr(self.config, "max_agent_weight", 2.0), 2.0)
 
+        # Normalize regime
+        if regime and regime.isdigit():
+            regime_idx = int(regime)
+            if 0 <= regime_idx < len(self._REGIME_NAMES):
+                regime = self._REGIME_NAMES[regime_idx]
+        regime = str(regime or "NORMAL").upper()
+        if regime == "LOW":
+            regime = "NORMAL"
+        if regime not in self._REGIME_NAMES:
+            regime = "NORMAL"
+
+        # Ensure regime-aware structure
+        if "_global" not in self._learned_weights:
+            self._learned_weights = self._init_regime_weights()
+
+        # Update both regime-specific and global weights
         for verdict in agent_verdicts:
             name = str(verdict.get("name", ""))
             if not name:
                 continue
-            current = self._learned_weights.get(name, self._BASE_WEIGHTS.get(name, 1.0))
+
+            # Calculate weight delta
             if verdict.get("passed"):
-                # Agent voted for the trade
                 delta = boost if trade_won else -penalty
             else:
-                # Agent voted against the trade
                 delta = -boost * 0.5 if trade_won else penalty * 0.5
-            new_weight = max(min_w, min(max_w, current + delta))
-            self._learned_weights[name] = round(new_weight, 4)
+
+            # Update regime-specific weight
+            regime_weights = self._learned_weights.get(regime, {})
+            if not regime_weights or not isinstance(regime_weights, dict):
+                regime_weights = dict(self._BASE_WEIGHTS)
+                self._learned_weights[regime] = regime_weights
+
+            current_regime = _safe_float(regime_weights.get(name), self._BASE_WEIGHTS.get(name, 1.0))
+            new_regime_weight = max(min_w, min(max_w, current_regime + delta))
+            regime_weights[name] = round(new_regime_weight, 4)
+
+            # Update global weight (cross-regime running average)
+            global_weights = self._learned_weights.get("_global", {})
+            if not global_weights or not isinstance(global_weights, dict):
+                global_weights = dict(self._BASE_WEIGHTS)
+                self._learned_weights["_global"] = global_weights
+
+            current_global = _safe_float(global_weights.get(name), self._BASE_WEIGHTS.get(name, 1.0))
+            new_global_weight = max(min_w, min(max_w, current_global + delta * 0.75))  # Global decay slightly slower
+            global_weights[name] = round(new_global_weight, 4)
+
+        # Track trade count per regime and total
+        if "_meta" not in self._learned_weights:
+            self._learned_weights["_meta"] = {"min_trades_per_regime": 10}
+        meta = self._learned_weights["_meta"]
+        if not isinstance(meta, dict):
+            meta = {"min_trades_per_regime": 10}
+            self._learned_weights["_meta"] = meta
+
+        trades_key = f"trades_{regime}"
+        meta[trades_key] = _safe_float(meta.get(trades_key, 0), 0) + 1
+
+        # Increment total trade count
+        total_trades = _safe_float(meta.get("total_trades", 0), 0) + 1
+        meta["total_trades"] = int(total_trades)
+
+        # Update timestamp
+        meta["last_updated"] = datetime.now(timezone.utc).isoformat()
 
         self._save_learned_weights()
-        return dict(self._learned_weights)
+        self._regime_weights = {}  # Clear cache
+
+        # Save snapshot every 50 trades
+        if int(total_trades) % 50 == 0:
+            self._save_weight_snapshot(int(total_trades))
+
+        return dict(self._learned_weights.get("_global", self._BASE_WEIGHTS))
+
+    def _save_weight_snapshot(self, trade_count: int) -> None:
+        """Save a snapshot of current weights every 50 trades.
+
+        Snapshots enable rollback to any checkpoint. Keeps last 10 snapshots.
+
+        Args:
+            trade_count: Total trade count at snapshot time
+        """
+        snapshot_dir = Path("trained_data/models/weight_snapshots")
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+        snapshot_path = snapshot_dir / f"{trade_count}.json"
+
+        try:
+            # Save snapshot with metadata
+            snapshot_data = {
+                "trade_count": trade_count,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "weights": dict(self._learned_weights),
+            }
+
+            with open(snapshot_path, "w") as f:
+                json.dump(snapshot_data, f, indent=2, default=str)
+
+            logger.info(f"Saved weight snapshot at {trade_count} trades: {snapshot_path.name}")
+
+            # Clean up old snapshots (keep last 10)
+            snapshots = sorted(snapshot_dir.glob("*.json"), key=lambda p: int(p.stem))
+            if len(snapshots) > 10:
+                for old_snapshot in snapshots[:-10]:
+                    try:
+                        old_snapshot.unlink()
+                        logger.debug(f"Removed old snapshot: {old_snapshot.name}")
+                    except Exception as e:
+                        logger.debug(f"Failed to remove snapshot {old_snapshot.name}: {e}")
+
+        except Exception as e:
+            logger.error(f"Failed to save weight snapshot: {e}")
+
+    def load_weight_snapshot(self, trade_count: int) -> bool:
+        """Load weights from a specific snapshot.
+
+        Enables rollback to a previous checkpoint.
+
+        Args:
+            trade_count: Trade count of the snapshot to load
+
+        Returns:
+            True if successful, False otherwise
+        """
+        snapshot_path = Path("trained_data/models/weight_snapshots") / f"{trade_count}.json"
+
+        if not snapshot_path.exists():
+            logger.warning(f"Snapshot not found: {snapshot_path}")
+            return False
+
+        try:
+            with open(snapshot_path) as f:
+                snapshot_data = json.load(f)
+
+            self._learned_weights = snapshot_data.get("weights", self._init_regime_weights())
+            self._regime_weights = {}  # Clear cache
+            logger.info(f"Loaded weight snapshot from {trade_count} trades")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to load weight snapshot: {e}")
+            return False
+
+    def list_weight_snapshots(self) -> List[Tuple[int, str]]:
+        """List all available weight snapshots.
+
+        Returns:
+            List of (trade_count, timestamp) tuples, sorted by trade count
+        """
+        snapshot_dir = Path("trained_data/models/weight_snapshots")
+        if not snapshot_dir.exists():
+            return []
+
+        snapshots = []
+        for snapshot_path in sorted(snapshot_dir.glob("*.json"), key=lambda p: int(p.stem)):
+            try:
+                with open(snapshot_path) as f:
+                    data = json.load(f)
+                    trade_count = data.get("trade_count", int(snapshot_path.stem))
+                    timestamp = data.get("timestamp", "unknown")
+                    snapshots.append((trade_count, timestamp))
+            except Exception as e:
+                logger.debug(f"Failed to read snapshot {snapshot_path.name}: {e}")
+
+        return snapshots
 
     def evaluate(
         self,
@@ -216,7 +698,7 @@ class ScannerAgentTeam:
         df_feat: pd.DataFrame,
         gate_details: Optional[Dict[str, Any]] = None,
     ) -> PairAnalysis:
-        """Apply specialist agents to a scan result."""
+        """Apply specialist agents to a scan result with regime-aware weights."""
         if analysis.error is not None or analysis.direction not in {"LONG", "SHORT"}:
             return analysis
 
@@ -264,10 +746,15 @@ class ScannerAgentTeam:
         if not verdicts:
             return analysis
 
+        # Apply regime-aware weight adjustments BEFORE voting
+        regime_name = str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").upper()
+        if regime_name == "LOW":
+            regime_name = "NORMAL"
+        verdicts = self._apply_regime_multipliers(verdicts, regime_name)
+
         total_weight = sum(max(v.weight, 0.0) for v in verdicts) or 1.0
         weighted_vote_score = sum(_clip01(v.score) * max(v.weight, 0.0) for v in verdicts) / total_weight
 
-        regime_name = str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").upper()
         regime_thresholds = getattr(self.config, "regime_vote_thresholds", {}) or {}
         weighted_vote_threshold = max(
             _safe_float(getattr(self.config, "weighted_vote_threshold", 0.55), 0.55),
@@ -315,10 +802,77 @@ class ScannerAgentTeam:
         analysis.why_no_trade = list(dict.fromkeys(analysis.why_no_trade))
         return analysis
 
-    def _weight_for(self, name: str) -> float:
-        # Prefer learned weights from RL feedback, fall back to base
+    def _apply_regime_multipliers(
+        self,
+        verdicts: List[AgentVerdict],
+        regime: str,
+    ) -> List[AgentVerdict]:
+        """Apply dynamic weight multipliers based on volatility regime.
+
+        In EXTREME volatility: momentum weight *= 1.3, mean_reversion *= 0.7
+        In HIGH volatility: volatility agent weight *= 1.2
+        In NORMAL: no adjustment (baseline)
+
+        Args:
+            verdicts: List of agent verdicts to adjust
+            regime: Volatility regime ("NORMAL", "HIGH", "EXTREME")
+
+        Returns:
+            List of verdicts with adjusted weights
+        """
+        multipliers: Dict[str, float] = {}
+
+        if regime == "EXTREME":
+            multipliers = {
+                "momentum": 1.3,
+                "mean_reversion": 0.7,
+                "trend": 1.15,
+            }
+        elif regime == "HIGH":
+            multipliers = {
+                "volatility": 1.2,
+                "momentum": 1.1,
+            }
+        # NORMAL regime: no multipliers (baseline)
+
+        if not multipliers:
+            return verdicts
+
+        # Apply multipliers to verdict weights
+        adjusted = []
+        for v in verdicts:
+            if v.name in multipliers:
+                mult = multipliers[v.name]
+                new_weight = round(v.weight * mult, 4)
+                v.weight = new_weight
+            adjusted.append(v)
+
+        return adjusted
+
+    def _weight_for(self, name: str, regime: Optional[str] = None) -> float:
+        """Get weight for an agent, respecting regime if provided.
+
+        Args:
+            name: Agent name
+            regime: Optional volatility regime (if not provided, uses global weights)
+
+        Returns:
+            Weight value for this agent
+        """
+        if regime:
+            regime_weights = self.get_weights_for_regime(regime)
+            return _safe_float(regime_weights.get(name), self._BASE_WEIGHTS.get(name, 1.0))
+
+        # Fall back to global weights (cross-regime running average)
+        if isinstance(self._learned_weights, dict) and "_global" in self._learned_weights:
+            global_weights = self._learned_weights.get("_global", {})
+            if isinstance(global_weights, dict) and name in global_weights:
+                return _safe_float(global_weights.get(name), self._BASE_WEIGHTS.get(name, 1.0))
+
+        # Legacy flat dict support
         if name in self._learned_weights:
             return float(self._learned_weights[name])
+
         return float(self._BASE_WEIGHTS.get(name, 1.0))
 
     def _direction_matches(self, signal_direction: float, expected: str) -> bool:
@@ -611,47 +1165,80 @@ class ScannerAgentTeam:
         )
 
     def _evaluate_news_risk(self, ctx: AgentDecisionContext) -> Optional[AgentVerdict]:
-        try:
-            from market_intelligence import fetch_forex_news
-        except Exception:
-            return None
+        """Evaluate news risk using economic calendar with time-based penalties.
 
+        Applies confidence penalties for upcoming HIGH/MEDIUM impact events:
+          HIGH: -20% within 30min, -10% within 2h
+          MEDIUM: -8% within 30min, -4% within 2h
+        Never blocks the scan on failure — returns neutral verdict instead.
+        """
         try:
-            headlines = fetch_forex_news(ctx.analysis.pair, max_items=4) or []
-        except Exception:
-            headlines = []
+            from src.scanner.agents.news_calendar import NewsCalendarAgent
+            agent = NewsCalendarAgent()
+            pair = str(getattr(ctx.analysis, "pair", "")).upper().replace("/", "_")
+            penalty = agent.get_confidence_penalty(pair)
+            upcoming = agent.get_upcoming_events(pair, hours=2)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug(f"NewsCalendarAgent unavailable: {e}")
+            # FALLBACK: bootstrapping without external data
+            # Use static UTC hour-based check for known high-risk windows
+            now = datetime.now(timezone.utc)
+            hour_utc = now.hour
 
-        if not headlines:
+            # Known recurring high-impact events in UTC:
+            # NFP: Usually Friday 13:30 UTC (last Friday of month)
+            # FOMC: Usually Wednesday 19:00 UTC (6 weeks)
+            # ECB/BOE: Usually Thursday 12-14 UTC
+            high_risk_hours = {13, 14, 19}  # Common event hours
+
+            if hour_utc in high_risk_hours:
+                # Cautious during known event hours, but not blocking
+                return AgentVerdict(
+                    name="news_risk",
+                    score=0.48,
+                    passed=True,
+                    weight=self._weight_for("news_risk"),
+                    reason="possible high-impact event window (no calendar data)",
+                    reason_code="news_bootstrap_caution",
+                    confidence_delta=-0.05,
+                )
+
+            # Default neutral when outside known risk windows
             return AgentVerdict(
                 name="news_risk",
                 score=0.55,
                 passed=True,
                 weight=self._weight_for("news_risk"),
-                reason="no material news headlines",
+                reason="outside major event hours (calendar unavailable)",
+                reason_code="news_bootstrap_neutral",
+                confidence_delta=0.0,
+            )
+
+        if penalty == 0.0:
+            return AgentVerdict(
+                name="news_risk",
+                score=0.60,
+                passed=True,
+                weight=self._weight_for("news_risk"),
+                reason="no high-impact events in window",
                 reason_code="news_clear",
                 confidence_delta=0.0,
             )
 
-        keywords = (
-            "nfp",
-            "payroll",
-            "cpi",
-            "inflation",
-            "fomc",
-            "ecb",
-            "boe",
-            "boj",
-            "rate decision",
-            "central bank",
-            "gdp",
+        # Determine severity from penalty magnitude
+        high_impact = penalty <= -0.15
+        score = 0.30 if high_impact else 0.45
+        block_trade = high_impact  # Only block for very high penalties (-20%)
+
+        next_event = upcoming[0] if upcoming else {}
+        reason = (
+            f"HIGH impact event in {next_event.get('minutes_until', '?')}min "
+            f"({next_event.get('currency', '')} {next_event.get('title', 'event')})"
+            if next_event
+            else f"news risk: {penalty:.0%} confidence penalty"
         )
-        joined = " ".join(str(h).lower() for h in headlines)
-        hit_count = sum(1 for token in keywords if token in joined)
-        block_trade = hit_count >= 2
-        score = 0.35 if block_trade else 0.50
-        reason = "headline risk elevated" if block_trade else "headline flow manageable"
-        reason_code = "news_block" if block_trade else "news_watch"
-        confidence_delta = -0.06 if block_trade else -0.01
+        reason_code = "news_block" if block_trade else "news_caution"
 
         return AgentVerdict(
             name="news_risk",
@@ -660,9 +1247,13 @@ class ScannerAgentTeam:
             weight=self._weight_for("news_risk"),
             reason=reason,
             reason_code=reason_code,
-            confidence_delta=confidence_delta,
+            confidence_delta=float(penalty),
             block_trade=block_trade,
-            metadata={"headline_count": len(headlines)},
+            metadata={
+                "penalty": penalty,
+                "upcoming_events": len(upcoming),
+                "next_event": next_event,
+            },
         )
 
     def _evaluate_multi_timeframe(self, ctx: AgentDecisionContext) -> AgentVerdict:
@@ -670,6 +1261,7 @@ class ScannerAgentTeam:
 
         Aggregates H1 data to approximate higher timeframe trend direction,
         checking if the trade direction aligns across H1, H4, and D1.
+        Uses H1 candle grouping when explicit MTF data is unavailable.
         """
         df = ctx.df_raw
         direction = ctx.analysis.direction
@@ -685,7 +1277,8 @@ class ScannerAgentTeam:
             elif direction == "SHORT" and h1_close < h1_sma20:
                 confluence_count += 1
 
-        # H4 trend: aggregate last 80 H1 candles (20 H4 candles) by groups of 4
+        # H4 trend: FALLBACK: bootstrapping without external data
+        # Aggregate last 80 H1 candles (20 H4 candles) by groups of 4
         if len(df) >= 80:
             h4_closes = df["close"].iloc[-80:].values.reshape(-1, 4).mean(axis=1)
             h4_last = float(h4_closes[-1])
@@ -695,10 +1288,13 @@ class ScannerAgentTeam:
             elif direction == "SHORT" and h4_last < h4_sma:
                 confluence_count += 1
         elif len(df) >= 20:
-            # Not enough data for H4 - treat as neutral agreement
+            # FALLBACK: bootstrapping without external data
+            # Not enough H1 data for proper H4 approximation - treat as neutral agreement
             confluence_count += 1
+            logger.debug("multi_timeframe: insufficient H1 data for H4 approx, treating as neutral")
 
-        # D1 trend: aggregate last 120 H1 candles (5 daily candles) by groups of 24
+        # D1 trend: FALLBACK: bootstrapping without external data
+        # Aggregate last 120+ H1 candles (5 daily candles) by groups of 24
         if len(df) >= 120:
             usable = len(df) - (len(df) % 24)
             if usable >= 120:
@@ -711,9 +1307,13 @@ class ScannerAgentTeam:
                     confluence_count += 1
                 # else: no agreement
             else:
+                # FALLBACK: bootstrapping without external data
                 confluence_count += 1  # Insufficient data, neutral
+                logger.debug("multi_timeframe: insufficient usable H1 data for D1 approx, treating as neutral")
         elif len(df) >= 24:
+            # FALLBACK: bootstrapping without external data
             confluence_count += 1  # Insufficient data, neutral
+            logger.debug("multi_timeframe: insufficient H1 data (<120) for D1 approx, treating as neutral")
 
         # Score based on confluence
         score = 0.30 + confluence_count * 0.20  # 0.30, 0.50, 0.70, 0.90
@@ -907,11 +1507,12 @@ class ScannerAgentTeam:
 
         Identifies recent swing highs/lows as S/R levels and checks if
         the current price is near a level that supports or opposes the trade.
+        Falls back to simple min/max S/R from available candles if no swings found.
         """
         df = ctx.df_raw
         if "close" not in df.columns or "high" not in df.columns or "low" not in df.columns:
             return None
-        if len(df) < 30:
+        if len(df) < 10:
             return None
 
         close = float(df["close"].iloc[-1])
@@ -936,8 +1537,17 @@ class ScannerAgentTeam:
             if lows[i] <= min(lows[i - 2], lows[i - 1], lows[i + 1], lows[i + 2]):
                 support_levels.append(float(lows[i]))
 
+        # FALLBACK: bootstrapping without external data
+        # If no swing pivots found, use simple min/max from recent candles
         if not resistance_levels and not support_levels:
-            return None
+            logger.debug("support_resistance: no swing pivots found, using min/max fallback")
+            # Last 20 candles for recent levels
+            window = min(20, len(highs))
+            resistance_levels = [float(max(highs[-window:]))] if window > 0 else []
+            support_levels = [float(min(lows[-window:]))] if window > 0 else []
+
+            if not resistance_levels or not support_levels:
+                return None
 
         # Find nearest S/R levels
         nearest_resistance = min(resistance_levels, key=lambda r: abs(r - close)) if resistance_levels else close + atr_price * 5
@@ -1005,25 +1615,40 @@ class ScannerAgentTeam:
         :meth:`ExecutionManager._update_pair_performance`) and emits a verdict
         based on the pair's historical win rate and P/L.
 
-        Returns ``None`` when no history exists for the pair (agent not counted).
+        Returns a slightly cautious verdict when no history exists (bootstrap mode).
         """
         import json
         from pathlib import Path
 
         perf_path = Path("trained_data/models/pair_performance.json")
-        if not perf_path.exists():
-            return None
-
-        try:
-            data = json.loads(perf_path.read_text())
-        except Exception:
-            return None
-
         pair = ctx.analysis.pair
-        stats = data.get(pair)
+
+        # Try to load performance data
+        data = {}
+        if perf_path.exists():
+            try:
+                data = json.loads(perf_path.read_text())
+            except Exception as e:
+                logger.debug(f"pair_performance: failed to load data ({e}), using bootstrap verdict")
+
+        stats = data.get(pair) if data else None
         if not stats or stats.get("trades", 0) < 3:
-            # Not enough history — skip this agent
-            return None
+            # FALLBACK: bootstrapping without external data
+            # No history yet — return slightly cautious verdict to incentivize building history
+            logger.debug(f"pair_performance: no history for {pair}, using bootstrap verdict")
+            return AgentVerdict(
+                name="pair_performance",
+                score=0.45,  # Slightly below neutral
+                passed=True,
+                weight=self._weight_for("pair_performance"),
+                reason=f"no trading history for {pair} yet (bootstrap)",
+                reason_code="pair_no_history",
+                confidence_delta=-0.02,
+                metadata={
+                    "trades_history": 0,
+                    "recommendation": "trade_small_to_build_history",
+                },
+            )
 
         win_rate = _safe_float(stats.get("win_rate"), 0.5)
         total_pnl_pips = _safe_float(stats.get("total_pnl_pips"), 0.0)

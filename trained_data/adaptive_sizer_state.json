@@ -1,0 +1,35 @@
+{
+  "config": {
+    "base_risk_pct": 0.05,
+    "component_weights": {
+      "confidence": 0.3,
+      "drawdown": 0.2,
+      "kelly": 0.3,
+      "regime": 0.2
+    },
+    "drawdown_floor": 0.3,
+    "kelly_fraction": 0.33,
+    "kelly_window": 50,
+    "max_acceptable_drawdown": 0.15,
+    "max_risk_per_trade": 0.1,
+    "min_position_units": 1000,
+    "regime_multipliers": {
+      "EXTREME": 0.4,
+      "HIGH": 0.65,
+      "LOW": 1.3,
+      "NORMAL": 1.0
+    },
+    "sigmoid_midpoint": 0.5,
+    "sigmoid_steepness": 4.0
+  },
+  "trade_history": [
+    [
+      100.0,
+      true
+    ],
+    [
+      -50.0,
+      false
+    ]
+  ]
+}

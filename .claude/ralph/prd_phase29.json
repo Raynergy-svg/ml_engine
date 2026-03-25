@@ -1,0 +1,61 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-gap-resolution-phase29",
+  "description": "Buddy Phase 29 — Gap Resolution & Automation. Phase 28 added event-driven PRD agent chain. Phase 29 activates dormant features in smart profile, expands graceful shutdown persistence, extends module dispatcher frequencies, wires observation consumer into orchestrator run_cycle, replaces silent exception swallowing in execution.py with proper logging, and enables 3 critical features by default. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-174",
+      "title": "Enable trade execution and remaining agents in smart profile",
+      "description": "Smart profile should enable execution and all specialist agents for full autonomous operation.",
+      "acceptanceCriteria": ["enable_execution=True in smart profile", "enable_session_timing_agent=True", "enable_support_resistance_agent=True", "enable_execution_quality_optimizer=True", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added enable_execution=True, enable_session_timing_agent=True, enable_support_resistance_agent=True, enable_execution_quality_optimizer=True to smart profile in config.py."
+    },
+    {
+      "id": "US-175",
+      "title": "Expand graceful shutdown to persist all module states",
+      "description": "Only 5 modules persisted state on shutdown. Extend to all stateful modules.",
+      "acceptanceCriteria": ["Add health_registry, agent_accuracy_matrix, pair_regime_agent_matrix, signal_timing, model_calibration, dynamic_risk_allocator, execution_quality_optimizer, drift_monitor, module_dispatcher, replay_validator, module_activation to shutdown list", "Non-blocking save_state calls", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Extended _shutdown_modules list in continuous.py with 11 additional modules. All save_state calls wrapped in try/except for graceful degradation."
+    },
+    {
+      "id": "US-176",
+      "title": "Expand module dispatcher frequency map for all modules",
+      "description": "ModuleDispatcher only covered Phase 16 modules. Extend to all 83 automation modules.",
+      "acceptanceCriteria": ["Add frequency entries for all Phase 17-28 modules", "Add module_map entries in register_all_modules()", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added 20+ module frequencies to DEFAULT_FREQUENCIES and corresponding entries to register_all_modules() module_map."
+    },
+    {
+      "id": "US-177",
+      "title": "Wire observation consumer into orchestrator run_cycle",
+      "description": "ObservationConsumer is wired into continuous.py (Phase 27, US-163) but NOT into orchestrator.run_cycle(). Single-cycle orchestrator usage misses pattern detection entirely.",
+      "acceptanceCriteria": ["Add Step 8d in run_cycle: consume observations, detect patterns, generate recommendations", "Only run every 5 cycles (cycle_count % 5 == 0)", "Include recommendation count in OrchestrationResult", "Log any spike alerts", "Non-blocking", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added Step 8d in run_cycle: consume_observations + detect_patterns every 5 cycles. Populates observation_patterns and observation_recommendations in OrchestrationResult. Logs spike alerts at WARNING level."
+    },
+    {
+      "id": "US-178",
+      "title": "Replace silent exception swallowing in execution.py with diagnostic logging",
+      "description": "15 instances of 'except Exception: pass' in execution.py silently hide failures in correlation checks, observation logging, data freshness validation, and trade flow instrumentation.",
+      "acceptanceCriteria": ["Replace all 'except Exception: pass' with 'except Exception as e: logger.debug(...)' with contextual message", "Add trade_id/pair context where available", "No behavior changes — still non-blocking", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Replaced all 9 remaining 'except Exception: pass' blocks with contextual logger.debug() messages. Covers journal parsing (5 locations), price fetching (2 locations), and execution quality tracking. All tagged with US-178 for traceability."
+    },
+    {
+      "id": "US-179",
+      "title": "Enable confidence calibration, concept drift, and dynamic SL/TP by default",
+      "description": "Three high-confidence features remain disabled by default but are stable and tested in smart profile. Enable them globally to benefit all profiles.",
+      "acceptanceCriteria": ["enable_confidence_calibration default True", "enable_concept_drift_detection default True", "enable_dynamic_sl_tp default True", "Add comment noting Phase 29 activation", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Already implemented by prior session. All three features enabled with Phase 29 (US-179) comments in config.py."
+    }
+  ]
+}

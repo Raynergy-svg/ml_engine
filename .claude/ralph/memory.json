@@ -1,0 +1,217 @@
+{
+  "version": 2,
+  "created": "2026-03-23T06:30:00Z",
+  "description": "Hot-state memory for the PRD improvement loop. Written by Ralph/user as stories complete. Read by scheduled sweep and chain agents.",
+  "current_prd": {
+    "file": ".claude/ralph/prd.json",
+    "phase": "ralph/buddy-gap-resolution-phase11",
+    "total_stories": 30,
+    "passed_stories": 0,
+    "story_status": {
+      "US-001": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair"
+      },
+      "US-002": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Wire save_state() into graceful shutdown for: agent_accuracy_matrix, health_regi"
+      },
+      "US-003": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Wire save_state() into graceful shutdown for: training_augmenter, affinity_portf"
+      },
+      "US-004": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Wire save_state() into graceful shutdown for: execution_quality_tracker, attenti"
+      },
+      "US-005": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: execution, news_risk_agent, multi_timefra"
+      },
+      "US-006": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: support_resistance_agent, trader_readines"
+      },
+      "US-007": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: multi_horizon_fusion, trade_outcome_predi"
+      },
+      "US-008": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: position_timeout, lead_lag_detection, fea"
+      },
+      "US-009": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: adaptive_lr, market_impact, model_bandit,"
+      },
+      "US-010": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: synthetic_crisis, execution_quality_track"
+      },
+      "US-011": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: temporal_attention, live_position_managem"
+      },
+      "US-012": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: training_augmentation, attention_feedback"
+      },
+      "US-013": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: signal_timing, memory_manager, module_act"
+      },
+      "US-014": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Enable config flags for wired modules: dynamic_hedging, observational_learning, "
+      },
+      "US-015": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, mul"
+      },
+      "US-016": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: entropy_sizer, retrain_trigger, mic"
+      },
+      "US-017": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: confidence_calibrator, memory_manag"
+      },
+      "US-018": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: pair_model_selector, regime_broadca"
+      },
+      "US-019": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: session_snapshot, alert_manager, dy"
+      },
+      "US-020": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: signal_timing, model_calibration, e"
+      },
+      "US-021": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: model_manager, module_dispatcher, r"
+      },
+      "US-022": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: ensemble_disagreement, regime_track"
+      },
+      "US-023": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: smart_execution, accuracy_gate, tem"
+      },
+      "US-024": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: lead_lag_detector, continuous, mark"
+      },
+      "US-025": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: feature_attention, hierarchical_ris"
+      },
+      "US-026": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: model_router, causal_filter, module"
+      },
+      "US-027": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Register modules in dispatcher/orchestrator: crisis_generator, replay_validator,"
+      },
+      "US-028": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Connect feedback consumers for: trade_explainer, multi_horizon_fusion, microstru"
+      },
+      "US-029": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Connect feedback consumers for: adversarial_trainer, regime_reward, ensemble_dis"
+      },
+      "US-030": {
+        "passed": false,
+        "completed_at": null,
+        "title": "Connect feedback consumers for: feature_attention, causal_filter, concept_drift,"
+      }
+    },
+    "last_story_completed": null,
+    "last_updated": "2026-03-23T11:42:06.300491+00:00",
+    "all_complete": false
+  },
+  "loop_history": {
+    "total_phases_completed": 29,
+    "total_chain_runs": 3,
+    "total_stories_implemented": 0,
+    "phases": [
+      "phase8",
+      "phase9",
+      "phase10",
+      "phase11",
+      "phase12",
+      "phase13",
+      "phase14",
+      "phase15",
+      "phase16",
+      "phase17",
+      "phase18",
+      "phase19",
+      "phase20",
+      "phase21",
+      "phase22",
+      "phase23",
+      "phase24",
+      "phase25",
+      "phase26",
+      "phase27",
+      "phase28",
+      "phase29"
+    ],
+    "last_chain_result": {
+      "timestamp": "2026-03-23T09:18:04Z",
+      "review_passed": true,
+      "blockers": 0,
+      "gaps_found": 30,
+      "new_prd_generated": true
+    }
+  },
+  "pending_actions": [],
+  "flags": {
+    "ralph_in_progress": false,
+    "review_in_progress": false,
+    "chain_in_progress": false,
+    "manual_override": false
+  },
+  "last_chain_sweep": {
+    "timestamp": "2026-03-23T11:47:05.682004+00:00",
+    "result": "no_action",
+    "stories_passed": 0,
+    "stories_total": 30,
+    "phase": "ralph/buddy-gap-resolution-phase11",
+    "reason": "Stories still in progress (0/30)"
+  }
+}

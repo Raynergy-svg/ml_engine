@@ -1,0 +1,61 @@
+{
+  "project": "Aura_Human_Intelligence_Engine",
+  "branchName": "ralph/aura-integration-hardening-phase1",
+  "description": "Aura Phase 1 — Integration Hardening & Critical Bug Fixes. Code review revealed: (1) trader_readiness_agent disabled in all profiles so Aura's primary output never consumed by Buddy, (2) SQL injection in self_model.py PRAGMA key, (3) no file locking on bridge JSON files allowing corruption under concurrent access, (4) broken R² proxy in tier3.py narrative arc detection, (5) stressor keyword false positives in conversation_processor.py, (6) P-90 workspace needs Aura project setup. Orchestrator wiring for outcome signals, pattern engine, rule promotion, and self-model validation already exists (verified in Steps 10-12 of run_cycle). DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-200",
+      "title": "Enable trader_readiness_agent in smart and aggressive scan profiles",
+      "description": "enable_trader_readiness_agent is False by default (config.py:481). Neither smart nor aggressive profile overrides this to True. Agent #13 (TraderReadiness) exists in _team.py and reads .aura/bridge/readiness_signal.json, but never executes. This means Aura's primary output — the human readiness score — is never consumed by Buddy's agent consensus pipeline.",
+      "acceptanceCriteria": ["Add enable_trader_readiness_agent: True to smart profile in SCAN_PROFILES", "Add enable_trader_readiness_agent: True to aggressive profile in SCAN_PROFILES", "Verify TraderReadiness agent (#13) would be instantiated when profile is applied", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added enable_trader_readiness_agent: True to both smart (after enable_attention_feedback) and aggressive (after enable_agent_trade_promotion) profiles in SCAN_PROFILES dict. Tagged with US-200."
+    },
+    {
+      "id": "US-201",
+      "title": "Fix SQL injection vulnerability in self_model.py PRAGMA key",
+      "description": "Line 129: f\"PRAGMA key = '{self._encryption_key}'\" uses string interpolation to inject the encryption key directly into SQL. An attacker-controlled key (e.g. via environment variable) could execute arbitrary SQL. Must use parameterized approach or at minimum sanitize the key.",
+      "acceptanceCriteria": ["Replace f-string PRAGMA key with safe approach (e.g. conn.execute('PRAGMA key = ?', (key,)) or hex-encode the key)", "If SQLite PRAGMA doesn't support parameterized queries, sanitize by stripping non-alphanumeric chars or hex-encoding", "Add validation that encryption_key contains only safe characters", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Hex-encode the key before interpolation: _safe_key = key.encode('utf-8').hex(), then PRAGMA key = \"x'{_safe_key}'\". This prevents SQL injection because hex output contains only [0-9a-f]. Tagged with US-201."
+    },
+    {
+      "id": "US-202",
+      "title": "Add file locking to bridge JSON read/write operations",
+      "description": "FeedbackBridge in signals.py reads and writes .aura/bridge/readiness_signal.json and outcome_signal.json without file locking. Both Buddy's orchestrator and Aura's CLI can access these files concurrently, risking partial reads or corrupt writes. Apply fcntl-based file locking (consistent with improvement.md rule: 'ALWAYS use file locking when multiple processes may write to shared JSON files').",
+      "acceptanceCriteria": ["Add _locked_write() helper using fcntl.flock(LOCK_EX) for JSON writes", "Add _locked_read() helper using fcntl.flock(LOCK_SH) for JSON reads", "Apply to write_outcome(), write_readiness(), read_readiness(), read_outcome()", "Write uses atomic temp-file + rename pattern for crash safety", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added 3 static helpers: _locked_write (temp-file + atomic rename), _locked_read (fcntl.LOCK_SH), _locked_append (fcntl.LOCK_EX for JSONL). All 5 I/O methods refactored: write_outcome, read_outcome, log_override, get_recent_overrides, read_readiness. Also updated readiness.py _write_signal and read_latest_signal to use FeedbackBridge._locked_write/_locked_read. Tagged with US-202."
+    },
+    {
+      "id": "US-203",
+      "title": "Fix Tier3 broken R² proxy calculation in tier3.py",
+      "description": "Line 695 in tier3.py: r_sq = arc.trend_slope ** 2 / max(arc.trend_slope ** 2 + 0.01, 0.01). This is mathematically wrong — it always returns near 1.0 for any non-trivial slope (slope²/(slope²+0.01) → 1.0 as slope grows). Should compute actual R² from residuals vs total variance, or use correlation coefficient squared.",
+      "acceptanceCriteria": ["Replace broken R² proxy with actual R² = 1 - (SS_res / SS_tot)", "Use the existing _linear_regression helper's residuals for calculation", "Handle edge case where SS_tot ≈ 0 (constant series) → R² = 0.0", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Replaced broken proxy with _linear_regression() call on arc.data_points (x=range indices, y=values). Returns correct R² via ss_xy²/(ss_xx*ss_yy). Also changed confidence formula to use r_sq*0.2 instead of abs(slope)*0.2 — R² is a proper goodness-of-fit metric. Tagged with US-203."
+    },
+    {
+      "id": "US-204",
+      "title": "Fix stressor keyword false positives with word-boundary matching",
+      "description": "STRESSOR_KEYWORDS matching uses substring 'kw in message_lower' which causes false positives — e.g. 'parent' matches inside 'apartment', 'job' matches inside 'jobless', 'quit' matches inside 'quite'. Multi-word keywords in STRESS/FATIGUE/OVERRIDE sets already work correctly via substring matching. The stressor detection needs word-boundary regex to prevent these false positives.",
+      "acceptanceCriteria": ["Replace 'keyword in message_lower' with re.search(r'\\b' + keyword + r'\\b', message_lower) for STRESSOR_KEYWORDS", "Verify multi-word stress/fatigue keywords still match correctly", "Verify single-word stressors no longer match within larger words", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Replaced 'keyword in message_lower' with re.search(r'\\b' + re.escape(keyword) + r'\\b', message_lower) for STRESSOR_KEYWORDS loop. re.escape ensures safe regex. Verified: 'apartment' no longer triggers 'parent' stressor. Tagged with US-204."
+    },
+    {
+      "id": "US-205",
+      "title": "Set up Aura project in P-90 workspace folder",
+      "description": "P-90 folder is the user's designated Aura workspace but is currently empty. Copy the Aura source tree from buddy/Documents/ml_engine/src/aura/ to P-90/ with proper project structure including __init__.py, README placeholder, and .aura/ data directory for bridge signals and pattern storage.",
+      "acceptanceCriteria": ["Copy src/aura/ tree to P-90/src/aura/ preserving directory structure", "Create P-90/.aura/bridge/ and P-90/.aura/patterns/ directories", "Create P-90/pyproject.toml or setup.py with project metadata", "Verify all Python files import correctly with syntax check", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Copied full Aura source to P-90/src/aura/ with all subpackages (bridge, cli, core, patterns, prediction). Created .aura/ data directories (bridge, patterns, validation_reports, models). Created pyproject.toml with project metadata and pytest config. All Python files pass syntax validation. Cleaned up __pycache__ dirs."
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "candles": 25000,
+  "failed": 3,
+  "instrument": "GBP_JPY",
+  "params": {
+    "batch_size": 128,
+    "dropout_rate": 0.236,
+    "l2_reg": 0.000149,
+    "lr": 0.000508,
+    "mixed_precision": true,
+    "patience": 10,
+    "seq_len": 120,
+    "tcn_dilations": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "tcn_kernel_size": 3,
+    "tcn_nb_filters": 256,
+    "top_features": 150
+  },
+  "passed": 5,
+  "results": [
+    {
+      "duration_s": 374.6,
+      "gap": 0,
+      "instrument": "GBP_JPY",
+      "model": "transformer",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 379.2,
+      "error": "TCN labels must be integers 0-3, but found: [0.5].\nLabel distribution: {0.0: 5322, 0.5: 5795, 1.0: 6239}\nFix: Ensure load_volatility_regime_data() is used when training TCN volatility filter.",
+      "instrument": "GBP_JPY",
+      "model": "tcn",
+      "passed": false
+    },
+    {
+      "duration_s": 384.1,
+      "instrument": "GBP_JPY",
+      "model": "lgbm_momentum",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 388.8,
+      "instrument": "GBP_JPY",
+      "model": "lgbm_risk",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 393.0,
+      "instrument": "GBP_JPY",
+      "model": "ridge",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 402.5,
+      "gap": 0,
+      "instrument": "GBP_JPY",
+      "model": "histgb",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 1037.4,
+      "error": "Classification metrics can't handle a mix of continuous and binary targets",
+      "instrument": "GBP_JPY",
+      "model": "transformer_regime",
+      "passed": false
+    },
+    {
+      "duration_s": 1043.3,
+      "error": "Expected 3D input (batch, seq_len, features), got (17290, 16)",
+      "instrument": "GBP_JPY",
+      "model": "tcn_vol_regime",
+      "passed": false
+    }
+  ],
+  "timestamp": "2026-03-24 10:30:10",
+  "total_duration_s": 1043.7
+}

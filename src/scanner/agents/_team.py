@@ -127,6 +127,28 @@ class ScannerAgentTeam:
         except Exception as e:
             logger.debug(f"Confidence calibration init deferred: {e}")
 
+        # Phase 52 (US-323): Isotonic Calibrator — replaces Platt scaling with PAVA-based calibration
+        self._isotonic_calibrator = None
+        try:
+            from src.scanner.isotonic_calibrator import IsotonicCalibrator
+            self._isotonic_calibrator = IsotonicCalibrator()
+            _iso_loaded = self._isotonic_calibrator.load_model()
+            if _iso_loaded:
+                logger.info("Phase 52 (US-323): Isotonic calibrator initialized (model loaded)")
+            else:
+                logger.info("Phase 52 (US-323): Isotonic calibrator initialized (no model — will use fallback)")
+        except Exception as e:
+            logger.debug(f"Phase 52: Isotonic calibrator init deferred: {e}")
+
+        # Phase 52 (US-324): Confidence Decomposer — directional/timing/magnitude breakdown
+        self._confidence_decomposer = None
+        try:
+            from src.scanner.confidence_decomposer import ConfidenceDecomposer
+            self._confidence_decomposer = ConfidenceDecomposer()
+            logger.info("Phase 52 (US-324): Confidence decomposer initialized")
+        except Exception as e:
+            logger.debug(f"Phase 52: Confidence decomposer init deferred: {e}")
+
         # Phase 45 (US-283): Bayesian Agent Weights (Thompson Sampling)
         self._bayesian_weights = None
         try:
@@ -149,6 +171,19 @@ class ScannerAgentTeam:
             logger.info("Phase 45: Bayesian agent weights initialized (Thompson Sampling)")
         except Exception as e:
             logger.debug(f"Phase 45: Bayesian weights init deferred: {e}")
+
+        # Phase 47 (US-297): Expectancy Tracker for per-agent per-regime weight modifiers
+        self._expectancy_tracker = None
+        try:
+            from src.scanner.expectancy_tracker import (
+                ExpectancyTracker,
+                create_default_expectancy_tracker,
+            )
+            self._expectancy_tracker = create_default_expectancy_tracker()
+            self._expectancy_tracker.load_state()
+            logger.info("Phase 47: Expectancy tracker initialized for agent weight modifiers")
+        except Exception as e:
+            logger.debug(f"Phase 47: Expectancy tracker init deferred: {e}")
 
         # Phase 47 (US-294): Multi-Timeframe Confluence
         self._mtf_confluence = None
@@ -976,6 +1011,26 @@ class ScannerAgentTeam:
                 except Exception as _am_err:
                     logger.debug(f"US-155: Accuracy matrix weights skipped: {_am_err}")
 
+        # Phase 47 (US-297): Apply expectancy-based weight modifiers
+        if self._expectancy_tracker is not None:
+            _expectancy_adjustments = []
+            try:
+                for v in verdicts:
+                    _exp_mod = self._expectancy_tracker.get_weight_modifier(v.name, regime_name)
+                    if _exp_mod < 1.0:
+                        _expectancy_adjustments.append(
+                            f"{v.name}={_exp_mod:.2f}x"
+                        )
+                        v.weight = max(v.weight * _exp_mod, 0.0)
+                if _expectancy_adjustments:
+                    logger.info(
+                        "Phase 47 (US-297): Expectancy modifiers for %s/%s: %s",
+                        getattr(analysis, "pair", "?"), regime_name,
+                        ", ".join(_expectancy_adjustments),
+                    )
+            except Exception as _exp_err:
+                logger.debug(f"Phase 47: Expectancy weight modifier failed: {_exp_err}")
+
         # Phase 45 (US-283): Thompson Sampling weight overlay from Bayesian agent weights
         if self._bayesian_weights is not None:
             try:
@@ -1066,6 +1121,73 @@ class ScannerAgentTeam:
                 )
             except Exception as _cal_err:
                 logger.debug(f"Phase 44: Confidence calibration skipped: {_cal_err}")
+
+        # Phase 52 (US-323): Isotonic calibration overlay — overrides Platt if valid model exists
+        if self._isotonic_calibrator is not None:
+            try:
+                _raw_for_isotonic = float(analysis.weighted_vote_score)
+                _isotonic_result = self._isotonic_calibrator.calibrate(_raw_for_isotonic)
+                if _isotonic_result is not None and _isotonic_result != _raw_for_isotonic:
+                    _prev_score = analysis.weighted_vote_score
+                    analysis.weighted_vote_score = _clip01(_isotonic_result)
+                    # Store isotonic metadata
+                    if not hasattr(analysis, 'calibration_details'):
+                        analysis.calibration_details = {}
+                    analysis.calibration_details["isotonic_raw"] = round(_raw_for_isotonic, 4)
+                    analysis.calibration_details["isotonic_calibrated"] = round(_isotonic_result, 4)
+                    analysis.calibration_details["isotonic_applied"] = True
+                    logger.debug(
+                        "Phase 52 (US-323): %s isotonic calibration: %.3f → %.3f",
+                        getattr(analysis, "pair", "?"), _prev_score, analysis.weighted_vote_score,
+                    )
+            except Exception as _iso_err:
+                logger.debug(f"Phase 52: Isotonic calibration skipped: {_iso_err}")
+
+        # Phase 52 (US-324): Confidence decomposition — directional/timing/magnitude breakdown
+        if self._confidence_decomposer is not None:
+            try:
+                _agent_verdict_map = {v.name: v.passed for v in verdicts}
+                _uncertainty = float(getattr(analysis, "uncertainty_score", 0.0) or 0.0)
+                _disagreement = float(getattr(analysis, "model_disagreement", 0.0) or 0.0)
+                _session = str(getattr(analysis, "session_name", "LONDON") or "LONDON").upper()
+                _mtf = str(getattr(analysis, "mtf_signal", "PROCEED") or "PROCEED").upper()
+                _regime = str(getattr(analysis, "volatility_regime", "NORMAL") or "NORMAL").upper()
+                _atr_pct = float(getattr(analysis, "atr_percentile", 0.50) or 0.50)
+
+                _decomp = self._confidence_decomposer.decompose(
+                    raw_confidence=float(analysis.weighted_vote_score),
+                    agent_verdicts=_agent_verdict_map,
+                    uncertainty_score=_uncertainty,
+                    model_disagreement=_disagreement,
+                    session_name=_session,
+                    mtf_signal=_mtf,
+                    regime=_regime,
+                    atr_percentile=_atr_pct,
+                )
+
+                # Apply recomposed confidence (replaces raw)
+                _prev = analysis.weighted_vote_score
+                analysis.weighted_vote_score = _clip01(_decomp.recomposed_confidence)
+
+                if not hasattr(analysis, 'calibration_details'):
+                    analysis.calibration_details = {}
+                analysis.calibration_details["decomposition"] = {
+                    "directional": _decomp.directional_strength,
+                    "timing": _decomp.timing_quality,
+                    "magnitude": _decomp.magnitude_estimate,
+                    "recomposed": _decomp.recomposed_confidence,
+                    "penalty_applied": _decomp.high_conf_penalty_applied,
+                }
+
+                logger.debug(
+                    "Phase 52 (US-324): %s decomposed: dir=%.3f tim=%.3f mag=%.3f → %.3f%s",
+                    getattr(analysis, "pair", "?"),
+                    _decomp.directional_strength, _decomp.timing_quality, _decomp.magnitude_estimate,
+                    _decomp.recomposed_confidence,
+                    " (PENALTY)" if _decomp.high_conf_penalty_applied else "",
+                )
+            except Exception as _decomp_err:
+                logger.debug(f"Phase 52: Confidence decomposition skipped: {_decomp_err}")
 
         analysis.agent_reasons = [v.to_dict() for v in verdicts]
         analysis.agent_reason_codes = list(dict.fromkeys(v.reason_code for v in verdicts if v.reason_code))

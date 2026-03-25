@@ -1,0 +1,86 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-review-suggestions-phase32",
+  "description": "Buddy Phase 32 \u2014 Code Review Suggestions & Robustness. Addresses remaining review suggestions: apply_profile unknown key validation, journal fallback file locking, smart loop error escalation, learning loop journal re-read optimization, learning loop JSON guard. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-192",
+      "title": "Validate apply_profile keys against dataclass fields",
+      "description": "apply_profile uses setattr for all profile dict keys \u2014 typos silently create new attributes. Validate against known fields.",
+      "acceptanceCriteria": [
+        "Only setattr keys that exist as ScannerConfig fields",
+        "Log warning for unknown keys",
+        "Existing behavior preserved for valid keys",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PASS \u2014 apply_profile validates keys against __dataclass_fields__, warns+skips unknown keys"
+    },
+    {
+      "id": "US-193",
+      "title": "Add file locking fallback in _append_journal_entry",
+      "description": "When safe_json_write is unavailable, the fallback uses write_text without file locking. Multiple concurrent processes may corrupt the journal.",
+      "acceptanceCriteria": [
+        "Fallback path uses fcntl file locking if available",
+        "Graceful fallback if fcntl unavailable",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PASS \u2014 fallback uses fcntl.LOCK_EX file locking, graceful fallback if fcntl unavailable"
+    },
+    {
+      "id": "US-194",
+      "title": "Escalate _run_smart_loop outer exception to warning level",
+      "description": "The outer except Exception in _run_smart_loop uses logger.debug \u2014 hides all trading loop errors. Should be logger.warning.",
+      "acceptanceCriteria": [
+        "Change logger.debug to logger.warning for outer smart loop exception",
+        "Include traceback snippet for debugging",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PASS \u2014 outer smart loop exception escalated from debug to warning with exc_info=True"
+    },
+    {
+      "id": "US-195",
+      "title": "Guard _run_learning_loop journal parse and optimize read",
+      "description": "Line 1108: json.loads without try/except. Also reads entire journal every sync \u2014 should only process last N entries.",
+      "acceptanceCriteria": [
+        "Wrap json.loads in try/except with graceful return",
+        "Only process last trades_synced entries instead of all closed trades",
+        "Log warning on parse failure",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "PASS \u2014 journal parse guarded with try/except, only processes last trades_synced entries"
+    },
+    {
+      "id": "US-196",
+      "title": "Add _run_smart_loop missing console reference guard",
+      "description": "Multiple console.print calls in _run_smart_loop reference local console variable which may be None if rich not installed.",
+      "acceptanceCriteria": [
+        "Ensure all console.print calls are guarded with 'if console'",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "NON-ISSUE \u2014 all console.print calls already inside guard blocks, no change needed"
+    },
+    {
+      "id": "US-197",
+      "title": "Mark review_fixes PRD blockers as resolved",
+      "description": "The prd_review_fixes.json has 6 blocker stories that were fixed across Phases 30-31. Update them to passes:true.",
+      "acceptanceCriteria": [
+        "US-001 through US-006 marked as passes:true with notes",
+        "US-007 suggestions addressed where applicable",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "PASS \u2014 all 7 review_fixes stories (US-001 through US-007) marked passes:true with notes"
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-intelligence",
+  "description": "Buddy Adaptive Intelligence — Phase 2 of self-improvement. Builds on the learning loop foundation (Phase 1) to add model versioning, portfolio optimization, regime-aware behavior, and operational monitoring.",
+  "userStories": [
+    {
+      "id": "US-013",
+      "title": "Fix RL feedback loop — agent weights reload on every scan",
+      "description": "As a learning system, agent weights must reload from disk before each scan so trade outcomes actually change future behavior.",
+      "acceptanceCriteria": [
+        "ScannerAgentTeam has reload_learned_weights() method that re-reads agent_weights.json",
+        "Scanner.scan() calls agent_team.reload_learned_weights() at start of each cycle",
+        "End-to-end test: trade win → weight increase → reload → higher weight used in next scan",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "CRITICAL BUG FIX. Weights were saving to disk but Scanner never reloaded them. Fixed 2026-03-18."
+    },
+    {
+      "id": "US-014",
+      "title": "Pre-trade backtest validation gate (soft confidence penalty)",
+      "description": "As a trading system, I need to validate each signal against recent candle history before execution to catch model degradation.",
+      "acceptanceCriteria": [
+        "BacktestGate class at src/scanner/backtest_gate.py with validate() method",
+        "Simulates entry on last 20 candles with given SL/TP, calculates win rate",
+        "If win_rate < 55%: apply -15% confidence penalty (soft gate, never hard-blocks)",
+        "Integrated into engine.py _scan_pair() after specialist agents, before caching",
+        "Thread-safe, < 1ms per pair, graceful degradation on missing data",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Soft gating pattern matches uncertainty agent. Built 2026-03-18."
+    },
+    {
+      "id": "US-015",
+      "title": "Model A/B testing framework with version control",
+      "description": "As a learning system, I need to safely test new model versions against the incumbent before promoting to production.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/model_manager.py with ModelManager class",
+        "ModelManager.register_version(model_path, metadata) stores model with version tag",
+        "ModelManager.shadow_test(candidate_version, n_scans=50) runs candidate in parallel with incumbent, compares accuracy",
+        "Automatic promotion: if candidate beats incumbent by >2% accuracy on 50+ scans, swap models",
+        "Version history logged to trained_data/models/version_history.jsonl",
+        "Rollback: ModelManager.rollback(version_tag) instantly reverts to any previous version",
+        "Integrated into ContinuousScanner: after every 50th scan, check if candidate ready for promotion"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented 2026-03-18. Direction encoding fixed 2026-03-19 (LONG/SHORT/HOLD uniform). Shadow predictions now logged to shadow_predictions.jsonl. score_from_trade_outcome wired into learning loop."
+    },
+    {
+      "id": "US-016",
+      "title": "Regime-aware agent weighting (per-regime RL)",
+      "description": "As a learning system, agent weights should vary by volatility regime so the right experts lead in each market condition.",
+      "acceptanceCriteria": [
+        "Maintain 3 weight sets in agent_weights.json: NORMAL, HIGH, EXTREME",
+        "When trade closes, update ONLY the regime's weight set that was active at entry",
+        "When scanning, load weights for current volatility regime",
+        "Dynamic multipliers: in EXTREME vol, momentum weight *= 1.3, mean_reversion *= 0.7",
+        "Regime change detection triggers weight reload and observation log entry",
+        "Fallback: if regime-specific weights have < 10 trades, use global weights"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Confirmed implemented 2026-03-19. get_weights_for_regime(), _migrate_legacy_weights(), _init_regime_weights() all present in agents.py. agent_weights.json has NORMAL/HIGH/EXTREME/_global structure."
+    },
+    {
+      "id": "US-017",
+      "title": "Dynamic pair rotation with rolling Sharpe",
+      "description": "As a trading system, I should prioritize pairs with best recent performance and deprioritize underperformers.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/portfolio_optimizer.py with PortfolioOptimizer class",
+        "Calculate 50-trade rolling Sharpe ratio per pair",
+        "Rank pairs: top 7 by Sharpe are 'active', bottom pairs are 'observe-only' (scan but don't trade)",
+        "Correlation-based check: if portfolio USD exposure > 40%, pause additional USD pairs",
+        "Pair rotation runs every 10 scan cycles (not every scan — too volatile)",
+        "Log rotation decisions to observations.jsonl"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Implemented: portfolio_optimizer.py (432 lines). Wired into ContinuousScanner._apply_pair_rotation(). Rolling Sharpe, 7-pair cap, 40% USD exposure limit, 10-cycle rotation, ObservationLog integration. Verified 2026-03-22."
+    },
+    {
+      "id": "US-018",
+      "title": "Real-time alert system for operational monitoring",
+      "description": "As an operator, I need alerts when the system crosses risk thresholds so I can intervene before large drawdowns.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/alert_manager.py with AlertManager class",
+        "Alert triggers: drawdown >5%, 3+ consecutive losses, win rate drop >10% (20-trade rolling), agent weight instability (>0.3 change in one cycle)",
+        "Alert channels: log to alerts.jsonl + optional email via existing email infrastructure",
+        "Alert cooldown: same alert type suppressed for 1 hour after firing",
+        "Integrated into ContinuousScanner: check alerts after every trade sync",
+        "Alert state persists across sessions (stored in .claude/alert_state.json)"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Implemented: alert_manager.py with 4 trigger types, JSONL logging, cooldown suppression, file locking, state persistence. Wired into ContinuousScanner. Verified 2026-03-22."
+    }
+  ]
+}

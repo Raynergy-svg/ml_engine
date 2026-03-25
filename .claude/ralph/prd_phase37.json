@@ -1,0 +1,94 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-critical-path-hardening-phase37",
+  "description": "Buddy Phase 37 \u2014 Critical Path Hardening. Trade journal (1329 lines, 0 tests) is financial infrastructure with zero test coverage. Gates evaluator (1631 lines, minimal tests) is the decision backbone. Config validation needs expansion. Target: 60+ new tests hardening the financial-critical paths. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-236",
+      "title": "Unit tests for TradeJournal core operations",
+      "description": "trade_journal.py has 1329 lines and zero tests. Test log_trade, get_statistics, get_recent_trades, _load/_save, clear_journal. All pure-data operations without OANDA dependency.",
+      "acceptanceCriteria": [
+        "At least 12 unit tests",
+        "Tests use temp file for journal path (no OANDA)",
+        "Cover: log_trade, get_statistics, get_recent_trades, _load/_save, clear_journal",
+        "Test JSON serialization roundtrip for TradeEntry",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PASS: 28 tests in test_trade_journal_core.py. Covers TradeEntry, _load/_save, log_trade, get_statistics, get_recent_trades, clear_journal, format_journal_stats, dataclass helpers."
+    },
+    {
+      "id": "US-237",
+      "title": "Unit tests for TradeJournal analytics (SlippageAnalyzer + Kelly)",
+      "description": "SlippageAnalyzer and get_kelly_adjusted_stats are financial calculation paths with zero tests. Test analyze_slippage, _std_dev, _get_lot_bucket, Kelly criterion bounds.",
+      "acceptanceCriteria": [
+        "At least 10 unit tests",
+        "Cover: SlippageAnalyzer.analyze_slippage, _std_dev, _get_lot_bucket, Kelly stats",
+        "Test edge cases: empty journal, single trade, all wins, all losses",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PASS: 25 tests in test_trade_journal_analytics.py. Covers SlippageAnalyzer._std_dev, _get_lot_bucket, analyze_slippage, _generate_recommendations, get_kelly_adjusted_stats."
+    },
+    {
+      "id": "US-238",
+      "title": "Unit tests for GateEvaluator model loading and evaluation",
+      "description": "gates.py GateEvaluator has 37 functions. Test model loading fallbacks, evaluate_confidence, evaluate_momentum, evaluate_risk with mock models.",
+      "acceptanceCriteria": [
+        "At least 12 unit tests",
+        "Cover: load_models fallback paths, evaluate_confidence, evaluate_momentum, evaluate_risk",
+        "Test _predict_with_named_input_if_needed helper",
+        "Mock all model files (no real models needed)",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PASS: 41 tests in test_gate_evaluator_core.py. Covers init, load_models, _prepare_features_input, _extract_momentum_score, evaluate_momentum/confidence/risk, evaluate_volatility_regime, _compute_adx, _predict_with_named_input_if_needed, constants."
+    },
+    {
+      "id": "US-239",
+      "title": "Unit tests for GateEvaluator edge cases and regime detection",
+      "description": "Test evaluate_volatility_regime, _compute_adx, feature preparation, and error paths in gates.py.",
+      "acceptanceCriteria": [
+        "At least 8 unit tests",
+        "Cover: evaluate_volatility_regime, _compute_adx, _prepare_features_input",
+        "Test with malformed/missing data inputs",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "PASS: Included in US-238 file. Edge cases: malformed data, missing columns, insufficient rows, None inputs, empty arrays."
+    },
+    {
+      "id": "US-240",
+      "title": "ScannerConfig validation expansion",
+      "description": "Expand ScannerConfig __post_init__ validation and add tests for config boundary conditions, profile overrides, and safety invariant checks.",
+      "acceptanceCriteria": [
+        "At least 10 unit tests",
+        "Cover: __post_init__ validation, profile loading, safety invariant checks",
+        "Test invalid configs are rejected (negative risk, impossible thresholds)",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "PASS: 44 tests in test_scanner_config_validation.py. Covers __post_init__ clamping (15), path resolution (5), profile normalization (3), get_pip_value (5), trading session status (3), module constants (4), config defaults (5), profile safety invariants (4)."
+    },
+    {
+      "id": "US-241",
+      "title": "Regression test suite for full scan-to-gate pipeline",
+      "description": "End-to-end regression test: Scanner.analyze_pair \u2192 GateEvaluator \u2192 PairAnalysis with mock models. Verifies the full pipeline produces valid gate results.",
+      "acceptanceCriteria": [
+        "At least 5 integration tests",
+        "Mock all model files and OANDA data",
+        "Verify gate pass/fail flags populated correctly",
+        "Verify confidence/momentum/risk scores in valid ranges",
+        "All tests pass"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "PASS: 12 tests in test_scan_to_gate_regression.py. Scanner init, _run_inference pipeline (technical fallback, gate evaluator, gates failed), _scan_pair E2E (blocked, no data, full pipeline, score ranges), PairAnalysis data integrity."
+    }
+  ]
+}

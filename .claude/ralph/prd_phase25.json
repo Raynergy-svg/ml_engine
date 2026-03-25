@@ -1,0 +1,98 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-system-hardening-phase25",
+  "description": "Buddy Phase 25 — System Hardening & Closed-Loop Activation. Phase 24 fixed RL feedback integrity. Phase 25 activates disabled-but-built modules and hardens risk enforcement. Key findings: (1) agent_lifecycle tracks fitness but never applies quarantine to voting weights, (2) real-time correlation enforcement gaps allow double exposure, (3) learning engine consolidation rules exist but no automation, (4) threshold_optimizer built but defaulted to False — never auto-tunes gates, (5) observation_consumer enabled in continuous.py but orchestrator path still disconnected, (6) agent_accuracy_matrix built but defaulted to False — agent per-pair performance never tracked. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-151",
+      "title": "Apply agent lifecycle quarantine to voting weights",
+      "description": "agent_lifecycle.py tracks agent fitness and quarantine status, but quarantined agents still vote at full weight. Wire lifecycle status into ScannerAgentTeam so quarantined agents get 0.3x weight and retired agents get 0x.",
+      "acceptanceCriteria": [
+        "In ScannerAgentTeam.evaluate(), check agent_lifecycle status for each agent before vote",
+        "If agent status is QUARANTINED, multiply its weight by 0.3",
+        "If agent status is RETIRED, skip its vote entirely (weight 0)",
+        "Guard with enable_agent_lifecycle config flag",
+        "Log lifecycle-adjusted weights when applied",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Changed enable_agent_lifecycle default to True in config.py. Enhanced lifecycle modifier logging in _team.py lines 805-823 with US-151 prefix and per-agent modifier detail."
+    },
+    {
+      "id": "US-152",
+      "title": "Real-time correlation enforcement before execution",
+      "description": "Correlation filter runs during scan but execution path can still open correlated positions. Add explicit correlation check in execute_trade() against currently open OANDA positions.",
+      "acceptanceCriteria": [
+        "In execution.py execute_trade(), before placing order, fetch open trades and check correlation",
+        "If new pair has > 0.80 correlation with any open position, block trade with reason",
+        "Log blocked correlated trades to observation_log category='correlation_block'",
+        "Use cached correlation matrix from scanner if available, else compute from recent returns",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added real-time correlation enforcement in execute_trade() after spread check. Uses static _CORR_PAIRS map for 10 high-correlation pair groups. Blocks with ExecutionResult(success=False) and logs to observation_log category='correlation_block'."
+    },
+    {
+      "id": "US-153",
+      "title": "Auto-enable threshold_optimizer in continuous mode",
+      "description": "ThresholdOptimizer (US-133) is built and has journal replay warm-start, but config defaults to False. Enable it by default and wire gate feedback from every scan cycle.",
+      "acceptanceCriteria": [
+        "Change enable_threshold_optimizer config default to True",
+        "In continuous.py, after each scan, feed gate pass/fail + outcome to threshold_optimizer.record_outcome()",
+        "Every 10 cycles, call threshold_optimizer.compute_adjustments() and apply to scanner.config",
+        "Log threshold adjustments with before/after values",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Changed enable_threshold_optimizer default to True. Added step 3c in continuous.py _run_smart_loop() — reads journal entries, extracts gate values, calls _to.update_outcome() per trade. Every 10 cycles calls optimize_thresholds() per regime and saves state."
+    },
+    {
+      "id": "US-154",
+      "title": "Automated learnings consolidation pipeline",
+      "description": "improvement.md defines consolidation rules (archive >30 entries, split >50 lines, prune >100 config entries) but no automation exists. Add consolidation check to orchestrator.",
+      "acceptanceCriteria": [
+        "In orchestrator.py run_cycle(), check learnings.md entry count every 50 cycles",
+        "If > 30 entries, archive entries older than 30 days to learnings_archive.md",
+        "If config_adjustments.json > 100 entries, prune entries older than 30 days",
+        "Log consolidation actions with counts",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added Step 13 in orchestrator.py run_cycle() before return — runs every 50 cycles. Archives learnings older than 30 days to learnings_archive.md if > 30 entries. Prunes config_adjustments.json entries older than 30 days if > 100 entries. Non-blocking with try/except."
+    },
+    {
+      "id": "US-155",
+      "title": "Enable agent_accuracy_matrix for per-pair agent performance",
+      "description": "agent_accuracy_matrix.py exists with track() and get_accuracy() but defaults to False. Enable and wire into RL sync so agent accuracy per pair/regime is tracked from trade outcomes.",
+      "acceptanceCriteria": [
+        "Change enable_agent_accuracy_matrix config default to True",
+        "In execution.py sync_closed_trades_rl(), after RL weight update, call accuracy_matrix.track() for each agent verdict",
+        "In ScannerAgentTeam, if accuracy_matrix available, use per-pair accuracy to boost/penalize agent weights",
+        "Log accuracy matrix updates",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Changed enable_agent_accuracy_matrix default to True. Wired record_verdict() into sync_closed_trades_rl() — records each passing agent's verdict with pair/regime/direction/outcome. Injected _accuracy_matrix from Scanner into ScannerAgentTeam. In evaluate(), calls get_regime_weights() to apply per-pair weight boosts/penalties before voting. Logs adjustments with US-155 prefix."
+    },
+    {
+      "id": "US-156",
+      "title": "Weight decay for stale agents without recent trades",
+      "description": "Agent weights persist indefinitely. An agent that was accurate 100 trades ago keeps full weight even if it hasn't contributed to a winning trade in 50 trades. Add time-based weight decay.",
+      "acceptanceCriteria": [
+        "In ScannerAgentTeam, track last_trade_timestamp per agent in _learned_weights metadata",
+        "Every 50 trades (from _meta.total_trades), apply 0.95x decay to agents with no trades in last 20",
+        "Minimum decayed weight is 0.5 (never fully kill an agent via decay alone)",
+        "Log decay application with agent names and new weights",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added last_trade_per_agent tracking in _meta section of _learned_weights. Records trade count per agent when they pass a verdict. Every 50 total trades, applies 0.95x decay to agents with no trades in last 20, floor of 0.5. Logs decayed agents with US-156 prefix."
+    }
+  ]
+}

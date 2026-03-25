@@ -89,6 +89,35 @@ def __getattr__(name):
         # Automation
         "ContinuousScanner": ("src.scanner.automation", "ContinuousScanner"),
         "IdleMaintenance": ("src.scanner.automation", "IdleMaintenance"),
+        # Phase 48: Trade Intelligence & Adaptive Filtering
+        "SpreadFilter": ("src.scanner.spread_filter", "SpreadFilter"),
+        "SpreadFilterConfig": ("src.scanner.spread_filter", "SpreadFilterConfig"),
+        "SpreadCheckResult": ("src.scanner.spread_filter", "SpreadCheckResult"),
+        "EconomicCalendarFilter": ("src.scanner.economic_calendar", "EconomicCalendarFilter"),
+        "EconomicCalendarConfig": ("src.scanner.economic_calendar", "EconomicCalendarConfig"),
+        "EconomicEvent": ("src.scanner.economic_calendar", "EconomicEvent"),
+        "StrategyFitnessDetector": ("src.scanner.strategy_fitness", "StrategyFitnessDetector"),
+        "PairPerformanceTracker": ("src.scanner.pair_blacklist", "PairPerformanceTracker"),
+        "TradeAttributionEngine": ("src.scanner.trade_attribution", "TradeAttributionEngine"),
+        "WalkForwardOptimizer": ("src.scanner.walkforward_optimizer", "WalkForwardOptimizer"),
+        # Phase 50: Data Activation & Seeding
+        "JournalAnalyzer": ("src.scanner.journal_analyzer", "JournalAnalyzer"),
+        "CalibrationSeeder": ("src.scanner.calibration_seeder", "CalibrationSeeder"),
+        "FitnessSeeder": ("src.scanner.fitness_seeder", "FitnessSeeder"),
+        # Phase 51: Win-Rate Engine
+        "IsotonicCalibrator": ("src.scanner.isotonic_calibrator", "IsotonicCalibrator"),
+        "TrancheTracker": ("src.scanner.tranche_tracker", "TrancheTracker"),
+        "PatternGate": ("src.scanner.pattern_gate", "PatternGate"),
+        "WalkForwardRetrainer": ("src.scanner.walkforward_retrainer", "WalkForwardRetrainer"),
+        "SetupQualityFilter": ("src.scanner.setup_quality", "SetupQualityFilter"),
+        # Phase 52: Pipeline Integration & Adaptive Intelligence
+        "ConfidenceDecomposer": ("src.scanner.confidence_decomposer", "ConfidenceDecomposer"),
+        "AdaptiveRRCalculator": ("src.scanner.adaptive_rr", "AdaptiveRRCalculator"),
+        "AdaptiveRRConfig": ("src.scanner.adaptive_rr", "AdaptiveRRConfig"),
+        "AdaptiveRRResult": ("src.scanner.adaptive_rr", "AdaptiveRRResult"),
+        "DrawdownAdapter": ("src.scanner.drawdown_adapter", "DrawdownAdapter"),
+        "DrawdownAdapterConfig": ("src.scanner.drawdown_adapter", "DrawdownAdapterConfig"),
+        "DrawdownCheckResult": ("src.scanner.drawdown_adapter", "DrawdownCheckResult"),
     }
     if name in _LAZY_MAP:
         module_path, attr_name = _LAZY_MAP[name]
@@ -135,4 +164,33 @@ __all__ = [
     "load_yaml_config",
     "PROJECT_ROOT",
     "DEFAULT_CONFIG_PATH",
+    # Phase 48: Trade Intelligence & Adaptive Filtering
+    "SpreadFilter",
+    "SpreadFilterConfig",
+    "SpreadCheckResult",
+    "EconomicCalendarFilter",
+    "EconomicCalendarConfig",
+    "EconomicEvent",
+    "StrategyFitnessDetector",
+    "PairPerformanceTracker",
+    "TradeAttributionEngine",
+    "WalkForwardOptimizer",
+    # Phase 50: Data Activation & Seeding
+    "JournalAnalyzer",
+    "CalibrationSeeder",
+    "FitnessSeeder",
+    # Phase 51: Win-Rate Engine
+    "IsotonicCalibrator",
+    "TrancheTracker",
+    "PatternGate",
+    "WalkForwardRetrainer",
+    "SetupQualityFilter",
+    # Phase 52: Pipeline Integration & Adaptive Intelligence
+    "ConfidenceDecomposer",
+    "AdaptiveRRCalculator",
+    "AdaptiveRRConfig",
+    "AdaptiveRRResult",
+    "DrawdownAdapter",
+    "DrawdownAdapterConfig",
+    "DrawdownCheckResult",
 ]

@@ -1,0 +1,111 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-execution-metalearning-phase16",
+  "description": "Buddy Phase 16 — Adaptive Execution & Meta-Learning. Closes critical feedback loops: execution quality → agent learning, regime events → all modules, agent accuracy per regime/pair. Adds entropy-based position sizing, pair transfer learning, temporal attention. Based on 2024-2026 research + codebase gap analysis identifying 13 unwired modules. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-097",
+      "title": "Execution quality feedback loop",
+      "description": "Track actual vs expected slippage, fill rates, and execution timing. Feed execution quality metrics back to agent confidence penalties. Agents whose high-confidence signals consistently result in excessive slippage get penalized. Creates the missing execution → learning feedback loop. Based on 2024 TCA research.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/execution_quality_tracker.py with ExecutionQualityTracker class",
+        "track_fill(pair, expected_price, fill_price, slippage_pips, fill_status) logs execution quality",
+        "get_pair_quality(pair, window=50) returns PairQualityStats with avg_slippage, fill_rate, timing_score",
+        "compute_agent_penalty(pair, agent_confidence) returns confidence penalty based on historical execution quality",
+        "Config flag: enable_execution_quality_tracking: bool = False",
+        "Persists quality history to trained_data/execution_quality.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented execution_quality_tracker.py with FillRecord tracking, PairQualityStats (slippage/fill_rate/timing/cost_efficiency), quadratic confidence penalty scaling, worst-pair identification. Wired into engine.py init. Config flag added. py_compile passes."
+    },
+    {
+      "id": "US-098",
+      "title": "Entropy-based position sizing from ensemble signals",
+      "description": "Measure Shannon entropy across the 12-agent ensemble vote distribution. High entropy (disagreement) reduces position size by 30-50%. Low entropy (consensus) allows full sizing. Provides information-theoretic bridge between agent consensus and risk allocation. Based on 2024 entropy portfolio research.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/entropy_sizer.py with EntropyPositionSizer class",
+        "compute_ensemble_entropy(agent_votes) returns Shannon entropy of vote distribution",
+        "get_size_multiplier(entropy, regime) returns position size multiplier [0.3, 1.2]",
+        "Regime-conditioned entropy thresholds (HIGH regime = stricter entropy penalty)",
+        "Config flag: enable_entropy_sizing: bool = False",
+        "Integrated into engine.py: multiply risk_pct by entropy multiplier",
+        "Persists entropy history to trained_data/entropy_sizing_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented entropy_sizer.py with Shannon entropy over FOR/AGAINST/NEUTRAL vote categories. 4 regime-conditioned threshold profiles (LOW=tolerant, EXTREME=strict). Wired into engine.py after market impact — multiplies risk_pct. Config flag added. py_compile passes."
+    },
+    {
+      "id": "US-099",
+      "title": "Regime event broadcast system",
+      "description": "Implement event-driven regime transition broadcasting. When regime_tracker detects a transition, broadcast to all dependent modules (agents, gates, execution, position sizing, hedging). Currently regime is detected but not propagated — modules use stale regime state. Based on event-driven architecture patterns for trading systems.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/regime_broadcaster.py with RegimeBroadcaster class",
+        "register_listener(module_name, callback) registers modules for regime events",
+        "broadcast_transition(old_regime, new_regime, confidence) notifies all listeners",
+        "get_transition_history(n=20) returns recent regime transitions with timestamps",
+        "Listeners receive RegimeEvent dataclass with old/new regime, timestamp, confidence",
+        "Config flag: enable_regime_broadcast: bool = False",
+        "Persists transition log to trained_data/regime_transitions.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented regime_broadcaster.py with RegimeEvent dataclass, register_listener/unregister_listener pattern, broadcast_transition with error-resilient listener notification, transition frequency tracking, history. Config flag added. Wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-100",
+      "title": "Agent accuracy matrix per regime and pair",
+      "description": "Track per-agent directional accuracy sliced by regime and pair. Identify which agents are calibrated for which market conditions. Use the matrix to dynamically weight agents — boost agents with >60% accuracy in current regime/pair, penalize those <45%. Closes the agent → regime-specific learning gap. Based on 2024 multi-agent ensemble calibration research.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/agent_accuracy_matrix.py with AgentAccuracyMatrix class",
+        "record_verdict(agent_name, pair, regime, predicted_direction, actual_outcome) updates matrix",
+        "get_agent_accuracy(agent_name, pair, regime, window=50) returns accuracy and sample count",
+        "get_regime_weights(regime, pair) returns Dict[agent_name, weight_multiplier] based on accuracy",
+        "Config flag: enable_agent_accuracy_matrix: bool = False",
+        "Persists matrix to trained_data/agent_accuracy_matrix.json",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented agent_accuracy_matrix.py with rolling-window accuracy tracking per regime/pair/agent. Weight multipliers: >60% accuracy = up to 1.15x boost, <45% = down to 0.80x penalty. get_best_agents() for top-N selection. Config flag added. Wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-101",
+      "title": "Transfer learning across FX pair families",
+      "description": "Share learned feature representations between correlated FX pairs to accelerate learning on low-data pairs. Group pairs into families (USD-majors, crosses, JPY-pairs) by correlation. Transfer feature importance weights and agent biases from high-data to low-data family members. Based on 2024-2025 multi-task learning for financial time series.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/pair_transfer.py with PairTransferLearning class",
+        "build_pair_families(correlation_matrix, threshold=0.65) groups pairs into families",
+        "transfer_weights(source_pair, target_pair, transfer_ratio=0.3) blends feature weights",
+        "get_transfer_boost(pair, family) returns confidence boost from family knowledge",
+        "Config flag: enable_pair_transfer: bool = False",
+        "Persists family mappings and transfer history to trained_data/pair_transfer.json",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented pair_transfer.py with union-find pair family clustering from correlation matrices. Default families: usd_majors, jpy_pairs, chf_pairs, cad_pairs, crosses. Transfer blends feature weights (ratio=0.30). get_transfer_boost() provides confidence boost from family performance. auto_transfer() for batch low-data pair learning. Config flag added. Wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-102",
+      "title": "Temporal attention for multi-timeframe signal weighting",
+      "description": "Replace hardcoded lookback windows with learned attention weights over the time dimension. A lightweight single-head attention mechanism learns which historical windows (5/20/50/100-bar) matter most for each pair and regime. Dynamically reweights short-term vs long-term signals. Based on 2024-2025 Temporal Fusion Transformer research.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/temporal_attention.py with TemporalAttentionLayer class",
+        "compute_attention(timeframe_signals, regime) returns attention-weighted signal vector",
+        "get_attention_weights() returns current attention distribution over timeframes",
+        "update_from_outcome(trade_result) adjusts attention weights via gradient-free learning",
+        "Config flag: enable_temporal_attention: bool = False",
+        "Persists attention weights to trained_data/temporal_attention.json",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented temporal_attention.py with gradient-free online learning over timeframe logits. Softmax normalization with temperature scaling and MIN_WEIGHT floor. Per-regime attention profiles. update_from_outcome() boosts aligned timeframes on wins, penalizes on losses. Decay toward uniform prevents over-specialization. Config flag added. Wired into engine.py init. py_compile passes."
+    }
+  ]
+}

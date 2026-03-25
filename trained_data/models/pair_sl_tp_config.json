@@ -1,0 +1,14 @@
+{
+  "NZD_USD": {
+    "atr_sl_multiplier": 1.0,
+    "atr_tp_multiplier": 1.5,
+    "last_updated": "2026-03-19T14:00:43.591237+00:00",
+    "sample_size": 11
+  },
+  "EUR_USD": {
+    "atr_sl_multiplier": 1.0,
+    "atr_tp_multiplier": 1.5,
+    "last_updated": "2026-03-19T14:00:43.605135+00:00",
+    "sample_size": 44
+  }
+}

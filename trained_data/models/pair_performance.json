@@ -1,0 +1,24 @@
+{
+  "EUR_USD": {
+    "trades": 2,
+    "wins": 2,
+    "losses": 0,
+    "total_pnl": 40.0,
+    "total_pnl_pips": 40.0,
+    "avg_confidence": 0.75,
+    "best_pnl_pips": 20.0,
+    "worst_pnl_pips": 0.0,
+    "win_rate": 1.0
+  },
+  "USD_JPY": {
+    "trades": 1,
+    "wins": 0,
+    "losses": 1,
+    "total_pnl": -897.91,
+    "total_pnl_pips": -12.5,
+    "avg_confidence": 0.441,
+    "best_pnl_pips": 0.0,
+    "worst_pnl_pips": -12.5,
+    "win_rate": 0.0
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "readiness_score": 41.3,
+  "cognitive_load": "medium",
+  "active_stressors": [
+    "career decision",
+    "relationship stress"
+  ],
+  "override_loss_rate_7d": 0.667,
+  "emotional_state": "stressed",
+  "confidence_trend": "falling",
+  "components": {
+    "emotional_state": 0.3,
+    "cognitive_load": 0.5,
+    "override_discipline": 0.33333333333333337,
+    "stress_level": 0.6,
+    "confidence_trend": 0.4,
+    "engagement": 0.5
+  },
+  "timestamp": "2026-03-22T18:59:14.458078+00:00",
+  "conversation_count_7d": 2
+}

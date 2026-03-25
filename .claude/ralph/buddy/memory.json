@@ -1,0 +1,111 @@
+{
+  "version": 2,
+  "project": "buddy",
+  "created": "2026-03-23T06:30:00Z",
+  "description": "Hot-state memory for Buddy's PRD improvement loop.",
+  "current_prd": {
+    "file": ".claude/ralph/prd_phase47.json",
+    "phase": "ralph/phase47-pipeline-wiring-phase46-modules",
+    "total_stories": 6,
+    "passed_stories": 6,
+    "story_status": {
+      "US-294": {
+        "passed": true,
+        "completed_at": "2026-03-24T13:05:00Z",
+        "title": "Wire MTF Confluence into _evaluate_multi_timeframe()"
+      },
+      "US-295": {
+        "passed": true,
+        "completed_at": "2026-03-24T13:05:00Z",
+        "title": "Wire Ensemble Conflict Resolver into _evaluate_uncertainty()"
+      },
+      "US-296": {
+        "passed": true,
+        "completed_at": "2026-03-24T13:05:00Z",
+        "title": "Wire Session Detector into execution.py and _team.py"
+      },
+      "US-297": {
+        "passed": true,
+        "completed_at": "2026-03-24T13:05:00Z",
+        "title": "Wire Expectancy Tracker into RL Feedback Loop"
+      },
+      "US-298": {
+        "passed": true,
+        "completed_at": "2026-03-24T13:05:00Z",
+        "title": "Wire Regime Gates Position Multiplier into Position Sizing"
+      },
+      "US-299": {
+        "passed": true,
+        "completed_at": "2026-03-24T13:05:00Z",
+        "title": "Integration tests: Phase 47 full wiring verification"
+      }
+    },
+    "last_story_completed": "US-299",
+    "last_updated": "2026-03-24T13:09:10.866189+00:00",
+    "all_complete": true
+  },
+  "loop_history": {
+    "total_phases_completed": 32,
+    "total_chain_runs": 4,
+    "total_stories_implemented": 192,
+    "phases": [
+      "ralph/buddy-adaptive-intelligence-phase3",
+      "ralph/buddy-adaptive-intelligence-phase4",
+      "ralph/buddy-adaptive-intelligence-phase5",
+      "ralph/buddy-adaptive-intelligence-phase6",
+      "ralph/buddy-adaptive-intelligence-phase7",
+      "ralph/buddy-adaptive-intelligence-phase8",
+      "ralph/buddy-adaptive-learning-phase9",
+      "ralph/buddy-execution-intelligence-phase10",
+      "ralph/buddy-integration-wiring-phase11",
+      "ralph/buddy-portfolio-optimization-phase12",
+      "ralph/buddy-signal-intelligence-phase13",
+      "ralph/buddy-meta-signals-phase14",
+      "ralph/buddy-intelligence-scaling-phase15",
+      "ralph/buddy-adaptive-execution-metalearning-phase16",
+      "ralph/buddy-signal-consumption-feedback-phase17",
+      "ralph/buddy-adaptive-quality-optimization-phase18",
+      "ralph/buddy-production-hardening-phase19",
+      "ralph/buddy-adaptive-intelligence",
+      "ralph/buddy-module-wiring-phase20",
+      "ralph/buddy-execution-unblock-phase21",
+      "ralph/buddy-feedback-loops-phase22",
+      "ralph/buddy-trade-execution-phase23",
+      "ralph/buddy-trade-quality-phase24",
+      "ralph/buddy-system-hardening-phase25",
+      "ralph/buddy-observability-integrity-phase26",
+      "ralph/buddy-feedback-loops-phase27",
+      "ralph/buddy-gap-resolution-phase29",
+      "ralph/buddy-system-optimization-phase30",
+      "ralph/buddy-code-review-fixes-phase31",
+      "ralph/buddy-review-suggestions-phase32",
+      "ralph/buddy-gap-closure-phase33",
+      "ralph/buddy-testing-hardening-phase34"
+    ],
+    "last_chain_result": {
+      "timestamp": "2026-03-24T13:09:10.866247+00:00",
+      "review_passed": false,
+      "blockers": 6
+    }
+  },
+  "pending_actions": [],
+  "flags": {
+    "ralph_in_progress": false,
+    "review_in_progress": false,
+    "chain_in_progress": false,
+    "manual_override": false
+  },
+  "last_chain_sweep": {
+    "timestamp": "2026-03-24T13:09:10.866247+00:00",
+    "result": "chain_triggered",
+    "stories_passed": 6,
+    "stories_total": 6,
+    "phase": "ralph/phase47-pipeline-wiring-phase46-modules",
+    "active_prd": "prd_phase47.json",
+    "code_review_verdict": "FAIL",
+    "blockers": 6,
+    "suggestions": 9,
+    "nits": 4,
+    "note": "Phase 47 all 6/6 stories pass. Code review found 6 blockers: (1) math import missing in _team.py, (2) SL hardcoded not ATR-based, (3) risk checks fail open, (4) evaluate_exits wrong price math, (5) accuracy matrix double-counting, (6) HTTP response not validated. Followup PRD generated at prd_review_fixes.json."
+  }
+}

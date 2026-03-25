@@ -1,0 +1,112 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/phase46-entry-filters-mtf-session",
+  "description": "Phase 46 — Entry Signal Filtering, Multi-Timeframe Confluence & Session-Aware Trading. Three converging research streams identified the same core problem: 62% of entries are losing because static gates don't adapt to regime, timeframe misalignment creates false signals, and session-inappropriate trades waste edge. This phase implements: (1) regime-conditional gate thresholds, (2) multi-timeframe Elder-style confluence scoring, (3) session-aware confidence/sizing adjustment, (4) ensemble model conflict resolution, (5) expectancy tracking per agent/regime. Target: 38% → 42-45% win rate.",
+  "userStories": [
+    {
+      "id": "US-288",
+      "title": "Regime-Conditional Entry Gate Thresholds",
+      "description": "Replace static gate thresholds with regime-dependent profiles. In LOW volatility, raise confidence threshold to 0.60 (filter noise). In NORMAL, keep 0.50. In HIGH, raise to 0.55 and require momentum alignment. In EXTREME, raise to 0.65 and reduce position size. The BOCPD regime detector (Phase 43) feeds these gates. New module: src/scanner/regime_gates.py with RegimeGateProfile dataclass and apply_regime_gates() function.",
+      "acceptanceCriteria": [
+        "RegimeGateProfile dataclass with per-regime confidence/momentum/risk thresholds",
+        "4 preset profiles: LOW (cautious), NORMAL (balanced), HIGH (selective), EXTREME (defensive)",
+        "apply_regime_gates(regime_name, base_thresholds) returns adjusted thresholds",
+        "Integration into gates.py evaluate_confidence() and evaluate_momentum()",
+        "Graceful fallback to static thresholds if regime detection unavailable",
+        "Config flag: regime_conditional_gates_enabled (default True)",
+        "At least 20 unit tests covering all regime profiles, edge cases, and fallback"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "48 tests passing. RegimeGateProfile + RegimeGateConfig dataclasses. 4 preset profiles (LOW/NORMAL/HIGH/EXTREME). apply_regime_gates() with graceful fallback. Integration into gates.py evaluate_all_gates() with regime_name parameter."
+    },
+    {
+      "id": "US-289",
+      "title": "Multi-Timeframe Confluence Scoring (Elder Triple Screen Enhanced)",
+      "description": "Enhance the existing multi_timeframe agent to implement proper Elder-style 3-screen analysis. Screen 1 (4H): trend direction via 50/200 SMA slope and ADX. Screen 2 (1H): wave detection via RSI oversold/overbought in trend direction. Screen 3 (15M): entry timing via price action at support/resistance. Confluence score = weighted combination: 4H(0.50) + 1H(0.30) + 15M(0.20). Gate: only proceed if confluence > 0.65 AND direction alignment across all 3 screens.",
+      "acceptanceCriteria": [
+        "MultiTimeframeConfluence class with score_confluence(data_4h, data_1h, data_15m) method",
+        "Screen 1 scores trend strength (SMA slope + ADX) on 4H",
+        "Screen 2 scores wave position (RSI overbought/oversold alignment with Screen 1 direction)",
+        "Screen 3 scores entry quality (price vs EMA20, candle pattern near S/R)",
+        "Weighted confluence: 4H(0.50) + 1H(0.30) + 15M(0.20)",
+        "Direction alignment check: all 3 screens must agree on direction",
+        "Misalignment penalty: -0.25 confidence when screens disagree on direction",
+        "Integration into _evaluate_multi_timeframe() in agents/_team.py",
+        "At least 20 unit tests covering confluence scoring, alignment, penalties"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "57 tests passing. 631-line module with Elder Triple Screen: Screen1 (4H trend SMA+ADX), Screen2 (1H wave RSI), Screen3 (15M entry EMA+candle). Weighted confluence 0.50+0.30+0.20. Direction alignment with -0.25 misalignment penalty. PROCEED/CAUTION/REJECT recommendations."
+    },
+    {
+      "id": "US-290",
+      "title": "Session-Aware Trading Confidence and Position Sizing",
+      "description": "Add session detection and session-specific adjustments to confidence scoring and position sizing. Sessions: Tokyo (23:00-08:00 UTC, low vol, mean-reversion favored), London (08:00-17:00 UTC, high vol, breakout/trend favored), New York (13:00-22:00 UTC, data-driven), London-NY overlap (13:00-17:00 UTC, peak vol). Agents get session-specific confidence modifiers. Position sizing scales by session liquidity.",
+      "acceptanceCriteria": [
+        "SessionDetector class with get_current_session() returning session name and overlap status",
+        "Session confidence modifiers: Tokyo mean-reversion +0.10, Tokyo trend -0.15; London trend +0.10; Overlap momentum +0.10",
+        "Session position sizing multipliers: Tokyo 0.7x, London 1.0x, NY 0.85x, Overlap 0.75x (volatility protection)",
+        "Integration into session_timing agent in _team.py",
+        "Integration into position sizing in execution.py (session multiplier applied after adaptive sizing)",
+        "Config: session_aware_trading_enabled (default True)",
+        "At least 15 unit tests covering all sessions, overlaps, and agent-session interactions"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "60 tests passing. SessionDetector with Tokyo/London/NY/Overlap/Off-hours detection. Midnight-wrapping sessions. Confidence modifiers per strategy (mean_reversion +0.10 Tokyo, trend +0.10 London). Position multipliers: Tokyo 0.70, London 1.00, NY 0.85, Overlap 0.75, Off 0.50."
+    },
+    {
+      "id": "US-291",
+      "title": "Ensemble Model Conflict Resolution",
+      "description": "Enhance the uncertainty agent to detect and penalize directional conflicts between TCN/Ridge/RF models. Currently disagreement > 0.35 applies flat -15% penalty. Upgrade to: (1) detect direction conflict (models disagree on BUY vs SELL, not just score spread), (2) graduated penalty curve (0.30→-8%, 0.40→-20%, 0.50→block), (3) per-model direction extraction and voting.",
+      "acceptanceCriteria": [
+        "EnsembleConflictResolver class with resolve(model_predictions) method",
+        "Direction conflict detection: extract BUY/SELL/HOLD from each model prediction",
+        "Graduated penalty curve: disagreement 0.30→-8%, 0.35→-12%, 0.40→-20%, 0.45→-30%, 0.50+→block",
+        "Integration into _evaluate_uncertainty() in agents/_team.py",
+        "Block trade if 2+ models disagree on direction (one says BUY, another SELL)",
+        "Graceful fallback to flat penalty if conflict resolution fails",
+        "At least 15 unit tests covering direction extraction, penalty curves, blocking"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "71 tests passing. 494-line module. EnsembleConflictResolver with graduated penalty curve (0.30→-8%, 0.35→-12%, 0.40→-20%, 0.45→-30%, 0.50→block). Direction conflict detection (BUY vs SELL). Consensus via majority vote. Graceful fallback to -15% flat penalty."
+    },
+    {
+      "id": "US-292",
+      "title": "Expectancy Tracking Per Agent and Per Regime",
+      "description": "Add expectancy calculation (E = Win% × AvgWin + Loss% × AvgLoss) tracking per agent and per regime to the trade journal and RL feedback loop. This reframes optimization from win rate to risk-adjusted returns. Track which agents and regimes produce positive expectancy, and use this to weight agent votes.",
+      "acceptanceCriteria": [
+        "ExpectancyTracker class with record_trade(agent_name, regime, pnl, won) and get_expectancy(agent, regime) methods",
+        "Rolling 50-trade window per agent per regime",
+        "Expectancy stored in trained_data/expectancy_tracker.json",
+        "Integration into sync_closed_trades_rl: record each agent's expectancy after trade close",
+        "Expectancy-based weight modifier: agents with negative expectancy get -20% weight penalty",
+        "Atomic JSON persistence",
+        "At least 15 unit tests covering recording, calculation, persistence, weight modification"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "33 tests passing. ExpectancyTracker with rolling 50-trade window per agent per regime (13×4=52 combos). E = Win%×AvgWin + Loss%×AvgLoss. Negative expectancy → -20% weight penalty. Atomic JSON persistence. Freshness validation on load."
+    },
+    {
+      "id": "US-293",
+      "title": "Integration tests: Phase 46 entry filtering pipeline",
+      "description": "End-to-end integration tests verifying: regime gates + MTF confluence + session awareness + ensemble conflict + expectancy tracking all work together in the scan→evaluate→gate→execute pipeline.",
+      "acceptanceCriteria": [
+        "At least 15 integration tests",
+        "Test regime gate raises threshold in LOW vol, blocks in EXTREME with low confidence",
+        "Test MTF confluence rejects trade when 4H and 1H disagree on direction",
+        "Test session filter reduces position size during Tokyo, maintains during London",
+        "Test ensemble conflict blocks trade when models disagree on direction",
+        "Test expectancy tracker records and penalizes negative-expectancy agents",
+        "Test full pipeline: regime detection → regime gates → MTF confluence → session filter → ensemble check → execute",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "41 integration tests passing. Full pipeline verification: regime gates + MTF confluence + session filter + ensemble conflict + expectancy tracking. Tests regime stacking, direction misalignment rejection, session sizing, ensemble blocking, and edge cases. 310 total Phase 46 tests, 0 failures."
+    }
+  ]
+}

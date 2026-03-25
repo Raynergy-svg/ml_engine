@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "families": {
+    "usd_majors": [
+      "AUD_USD",
+      "EUR_USD",
+      "GBP_USD",
+      "NZD_USD"
+    ],
+    "jpy_pairs": [
+      "AUD_JPY",
+      "EUR_JPY",
+      "GBP_JPY",
+      "USD_JPY"
+    ],
+    "chf_pairs": [
+      "EUR_CHF",
+      "GBP_CHF",
+      "USD_CHF"
+    ],
+    "cad_pairs": [
+      "EUR_CAD",
+      "GBP_CAD",
+      "USD_CAD"
+    ],
+    "crosses": [
+      "AUD_NZD",
+      "EUR_AUD",
+      "EUR_GBP"
+    ]
+  },
+  "pair_stats": {},
+  "total_transfers": 0,
+  "transfer_log": [],
+  "last_updated": "2026-03-23T20:21:37.721884+00:00"
+}

@@ -1326,7 +1326,8 @@ class Scanner:
                 return normalized_pair
             master = str(group.master_pair).upper().replace("/", "_")
             return master or normalized_pair
-        except Exception:
+        except Exception as e:
+            logger.debug("pair %s: correlation group normalization skipped: %s", pair, e)
             return normalized_pair
 
     def _infer_from_ensemble(
@@ -1993,8 +1994,8 @@ class Scanner:
                                 "new_confidence": round(analysis.confidence, 4),
                             },
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("%s: consensus_penalty observation log write skipped: %s", analysis.pair, e)
             else:
                 # Hard block: consensus below absolute minimum safety threshold
                 analysis.gates_passed = False
@@ -2303,8 +2304,8 @@ class Scanner:
                     if pair in _pair_cfg:
                         _pair_sl_mult = _pair_cfg[pair].get("atr_sl_multiplier", _pair_sl_mult)
                         _pair_tp_mult = _pair_cfg[pair].get("atr_tp_multiplier", _pair_tp_mult)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("%s: pair SL/TP config read failed (using defaults): %s", pair, e)
 
             if atr_pips > 0:
                 sl_pips = max(
@@ -2730,8 +2731,8 @@ class Scanner:
                                 description=f"TCN unavailable, ATR-percentile={_atr_pctile:.2f} → {regime_name}",
                                 metadata={"atr_pctile": _atr_pctile, "regime": regime_name},
                             )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.debug("%s: regime_fallback observation log skipped: %s", pair, e)
                 except Exception as _rf_err:
                     logger.debug(f"{pair}: Regime fallback error: {_rf_err}")
 
@@ -2747,8 +2748,8 @@ class Scanner:
                             pair=pair,
                             data={"default_regime": regime_name, "reason": "atr_fallback_insufficient"},
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug("%s: regime_default observation log skipped: %s", pair, e)
 
             # RegimeBroadcaster: broadcast transition if regime changed for this pair
             if self._regime_broadcaster is not None:
@@ -2927,8 +2928,8 @@ class Scanner:
                                         "confidence_offset": -3,
                                     },
                                 )
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.debug("calibration overconfidence penalty observation log skipped: %s", e)
                             break  # Apply penalty once, not per-model
                     # US-184: Reset offset when overconfidence ratio drops below 0.10
                     if not _oc_applied:
@@ -3108,7 +3109,8 @@ class Scanner:
                                 "regime": _result_regime,
                             },
                         )
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("%s: fast-track observation log skipped: %s", pair, e)
                         pass
 
             # Phase 21 (US-129): Trade block reason logging
@@ -3160,8 +3162,8 @@ class Scanner:
                                 },
                             },
                         )
-                except Exception:
-                    pass  # Non-blocking
+                except Exception as e:
+                    logger.debug("%s: trade_block observation log skipped: %s", pair, e)  # Non-blocking
 
             # Cache result
             self._cached_results[pair] = deepcopy(result)
@@ -3579,7 +3581,8 @@ class Scanner:
                     if existing.get("priority") == "urgent":
                         logger.debug("DriftMonitor: Urgent retrain request already pending, skipping write")
                         return
-                except Exception:
+                except Exception as e:
+                    logger.debug("drift monitor retrain request check failed: %s", e)
                     pass
 
             request_data = {
@@ -3877,7 +3880,8 @@ class Scanner:
                                 correlation=0.7,  # threshold used by filter
                                 reason="Diversification filter removed correlated pair",
                             )
-                except Exception:
+                except Exception as e:
+                    logger.debug("correlation conflict observation log skipped: %s", e)
                     pass
 
             # US-073: HRP portfolio weight optimization (replaces binary filter)
@@ -4202,7 +4206,8 @@ class Scanner:
                             quote_score=gm_result.quote_score,
                             reason=gm_result.reason,
                         )
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("%s: group_momentum block observation log skipped: %s", trade.get('pair','?'), e)
                         pass
                     continue
                 elif gm_result.action == "boost":
@@ -4223,7 +4228,8 @@ class Scanner:
                             quote_score=gm_result.quote_score,
                             reason=gm_result.reason,
                         )
-                    except Exception:
+                    except Exception as e:
+                        logger.debug("%s: group_momentum boost observation log skipped: %s", trade.get('pair','?'), e)
                         pass
                 filtered_trades.append(trade)
             trades = filtered_trades

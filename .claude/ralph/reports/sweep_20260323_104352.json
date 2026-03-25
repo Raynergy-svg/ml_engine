@@ -1,0 +1,65 @@
+{
+  "timestamp": "2026-03-23T10:43:52.873864+00:00",
+  "prds_scanned": 29,
+  "completed_prds": [
+    "prd_phase2.json",
+    "prd_phase3.json",
+    "prd_phase4.json",
+    "prd_phase5.json",
+    "prd_phase6.json",
+    "prd_phase7.json",
+    "prd_phase8.json",
+    "prd_phase9.json",
+    "prd_phase10.json",
+    "prd_phase11.json",
+    "prd_phase12.json",
+    "prd_phase13.json",
+    "prd_phase14.json",
+    "prd_phase15.json",
+    "prd_phase16.json",
+    "prd_phase17.json",
+    "prd_phase18.json",
+    "prd_phase19.json",
+    "prd_phase20.json",
+    "prd_phase21.json",
+    "prd_phase22.json",
+    "prd_phase23.json",
+    "prd_phase24.json",
+    "prd_phase25.json",
+    "prd_phase26.json",
+    "prd_phase27.json",
+    "prd_phase29.json"
+  ],
+  "in_progress_prds": [
+    "prd.json (0/30)",
+    "prd_phase30.json (0/6)"
+  ],
+  "gaps_found": 133,
+  "gaps_by_type": {
+    "module_registration": 63,
+    "config_flag": 47,
+    "state_persistence": 20,
+    "feedback_loop": 3
+  },
+  "gaps_by_severity": {
+    "high": 67,
+    "medium": 63,
+    "low": 3
+  },
+  "new_prd_generated": false,
+  "review_passed": false,
+  "blockers": 6,
+  "blocker_details": [
+    "execution.py: double @staticmethod on _get_current_regime",
+    "execution.py: _determine_exit_reason missing @staticmethod (wrong binding)",
+    "execution.py: _update_pair_performance JSON parse unguarded",
+    "continuous.py: cycle_count NameError in _run_smart_loop",
+    "continuous.py: Path NameError in _spawn_background_retrain",
+    "continuous.py: wrong config type passed to ScannerAgentTeam at shutdown"
+  ],
+  "suggestions": 6,
+  "nits": 4,
+  "followup_prd_generated": true,
+  "followup_prd_path": ".claude/ralph/prd_review_fixes.json",
+  "action_taken": "sweep_complete_review_failed_6_blockers"
+}

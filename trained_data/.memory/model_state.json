@@ -1,1 +1,27 @@
-{}
+{
+  "runtime::online_learning": {
+    "trades_since_retrain": 0,
+    "buffer_size": 500,
+    "retrain_threshold": 50,
+    "last_updated": "2026-03-23T20:44:57.672918+00:00"
+  },
+  "runtime::buddy_runtime": {
+    "selected_llm_provider": "claude",
+    "intelligent_mode_enabled": false,
+    "last_updated": "2026-03-22T18:15:48.302096+00:00",
+    "last_trade_execution_decision": {
+      "timestamp": "2026-03-22T18:15:48.301405+00:00",
+      "instrument": "EUR_USD",
+      "granularity": "H1",
+      "direction": "short",
+      "decision_type": "dry_run_signal",
+      "reason": "All model gates passed and Buddy generated a trade signal",
+      "final_decision": "\u2192 TRADE: SHORT, size=9.06 lots",
+      "size_lots": 9.06,
+      "confidence": 63.36716368527284,
+      "tcn_probability": 0.2181386284530163,
+      "intelligent_review_reason": null,
+      "adaptive_reason": null
+    }
+  }
+}

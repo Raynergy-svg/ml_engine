@@ -1,0 +1,110 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/phase45-production-wiring-ewma-streak",
+  "description": "Phase 45 — Production Wiring, EWMA Correlation & Streak-Aware Sizing. Wire Phase 44 modules (AdaptivePositionSizer, BayesianAgentWeights) into the live trading pipeline, replacing legacy DynamicPositionSizer and flat-file weight updates. Add EWMA correlation engine for dynamic portfolio risk netting. Add streak-aware anti-martingale sizing overlay. Delivered: 1 new module + 5 production wiring edits + 452 tests.",
+  "userStories": [
+    {
+      "id": "US-282",
+      "title": "Wire AdaptivePositionSizer into execution.py production pipeline",
+      "description": "Replace/augment the existing DynamicPositionSizer (init at line 256-276 via create_regime_aware_position_sizer(), called at line 696) with AdaptivePositionSizer from src/scanner/adaptive_position_sizing.py. The new sizer uses fractional Kelly + confidence sigmoid + drawdown recovery + regime multipliers. Must preserve backward compatibility: if AdaptivePositionSizer fails to init or calculate, fall back to DynamicPositionSizer.",
+      "acceptanceCriteria": [
+        "AdaptivePositionSizer lazy-initialized in ExecutionManager.__init__() alongside existing DynamicPositionSizer",
+        "New _calculate_adaptive_position_size() method that delegates to AdaptivePositionSizer.calculate_size()",
+        "Fallback to DynamicPositionSizer.calculate_position_size() if adaptive sizer raises",
+        "Regime name from RegimeDetector result passed to adaptive sizer",
+        "Current drawdown percentage passed from drawdown guardian state",
+        "Position size result logged with strategy breakdown (kelly, confidence, drawdown, regime components)",
+        "At least 15 unit tests covering wiring, fallback, and integration"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "36 tests passing. Added _init_adaptive_position_sizer(), _calculate_adaptive_position_size(), modified calculate_position_size() to try adaptive first. Trade recording + state persistence in sync_closed_trades_rl."
+    },
+    {
+      "id": "US-283",
+      "title": "Wire BayesianAgentWeights into RL feedback loop",
+      "description": "Replace/augment the flat-file agent weight updates in ScannerAgentTeam.update_weights_from_outcome() (called via sync_closed_trades_rl at execution.py line 2344) with BayesianAgentWeights Thompson Sampling from src/scanner/bayesian_agent_weights.py. The new system uses regime-conditional Beta distributions (48 total: 12 agents x 4 regimes) with epsilon-decay exploration. Must preserve backward compatibility.",
+      "acceptanceCriteria": [
+        "BayesianAgentWeights lazy-initialized in ScannerAgentTeam.__init__()",
+        "sample_weights(regime) called in evaluate() to get Thompson-sampled weights before agent voting",
+        "update(agent_scores, outcome, regime) called after trade close in RL feedback path",
+        "Fallback to existing flat weight system if Bayesian module raises",
+        "Epsilon-decay exploration decays over time (0.15 -> 0.02)",
+        "Weight state persisted atomically to trained_data/bayesian_weights.json",
+        "At least 15 unit tests covering sampling, updating, fallback, and persistence"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "21 tests passing. Thompson Sampling weight overlay (70% Bayesian / 30% flat blend) in evaluate(). Bayesian update + atomic persistence in update_weights_from_outcome(). Regime-conditional sampling."
+    },
+    {
+      "id": "US-284",
+      "title": "EWMA Correlation Engine for Dynamic Portfolio Risk",
+      "description": "New src/risk/ewma_correlation.py implementing exponentially-weighted moving average correlation tracking across FX pairs. Formula: Sigma_t = lambda * Sigma_{t-1} + (1-lambda) * r_t * r_t^T, lambda=0.94. Provides: (1) real-time correlation matrix, (2) diversification multiplier per pair vs portfolio, (3) correlation regime detection (RISK_OFF/RISK_ON/NEUTRAL), (4) pair clustering by correlation.",
+      "acceptanceCriteria": [
+        "EWMACorrelationEngine class with update(returns_dict) and get_correlation_matrix() methods",
+        "Configurable lambda (default 0.94), min_observations (default 20)",
+        "diversification_multiplier(pair, portfolio_pairs) returning D = 1/sqrt(1 + avg_corr)",
+        "detect_correlation_regime() returning RISK_OFF (high avg corr > 0.6), RISK_ON (low < 0.3), NEUTRAL",
+        "get_correlated_pairs(pair, threshold=0.7) returning list of correlated pairs",
+        "Atomic JSON persistence for correlation state",
+        "Pure Python + numpy only",
+        "At least 30 unit tests covering all methods and edge cases"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "75 tests passing. 604-line module with EWMA covariance→correlation conversion, diversification multiplier D=1/sqrt(1+avg_corr), correlation regime detection, pair clustering. Thread-safe with RLock. 3 factory functions."
+    },
+    {
+      "id": "US-285",
+      "title": "Wire EWMA Correlation into execution.py correlation filter",
+      "description": "Integrate EWMACorrelationEngine into ExecutionManager to augment the existing CorrelationAnalyzer (Union-Find at line 427-492). The EWMA engine provides dynamic correlation that updates with each scan, vs the static threshold-based Union-Find. Use EWMA diversification multiplier to adjust position size, and correlation regime to modulate portfolio risk limits.",
+      "acceptanceCriteria": [
+        "EWMACorrelationEngine lazy-initialized in ExecutionManager.__init__()",
+        "EWMA correlation updated with latest returns in _check_correlation_exposure()",
+        "Diversification multiplier applied to position size after adaptive sizing",
+        "Correlation regime (RISK_OFF) reduces max portfolio risk from 15% to 10%",
+        "Existing Union-Find CorrelationAnalyzer preserved as hard block, EWMA as soft adjustment",
+        "Graceful fallback if EWMA engine raises (use existing correlation filter only)",
+        "At least 12 unit tests for wiring logic"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "32 tests passing. 6 new methods in ExecutionManager: _init_ewma_correlation, _update_ewma_correlation, _apply_diversification_adjustment, _get_portfolio_risk_limit. RISK_OFF reduces portfolio risk to ~10%. State persistence in sync_closed_trades_rl."
+    },
+    {
+      "id": "US-286",
+      "title": "Streak-Aware Anti-Martingale Sizing Overlay",
+      "description": "Add streak detection and anti-martingale sizing as an overlay on AdaptivePositionSizer. After consecutive wins, gradually increase position (x1.3 per win, cap at 2x). After consecutive losses, decrease (divide by 1.8 per loss, floor at 0.3x). Integrates with the composite sizing as an additional multiplier.",
+      "acceptanceCriteria": [
+        "StreakTracker class tracking consecutive wins/losses with configurable window",
+        "Anti-martingale multiplier: win_mult=1.3, loss_div=1.8, max_boost=2.0, min_floor=0.3",
+        "Integration into AdaptivePositionSizer as optional overlay (enabled by config flag)",
+        "Streak state persisted atomically alongside position sizer state",
+        "Reset streak on regime change (new regime = new streak)",
+        "At least 20 unit tests covering streaks, multipliers, caps, and regime resets"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "46 tests passing. StreakConfig + StreakTracker classes (~180 lines). Anti-martingale: 1.3^wins (cap 2.0) / 1.8^losses (floor 0.3). Integrated into AdaptivePositionSizer.calculate_size() and record_trade(). streak_enabled config flag. Regime-change reset. Full serialization."
+    },
+    {
+      "id": "US-287",
+      "title": "Integration tests: Full Phase 45 pipeline verification",
+      "description": "End-to-end integration tests verifying the complete enhanced pipeline: price data -> RegimeDetector -> Agents + BayesianWeights sampling + ConfidenceCalibration -> AdaptivePositionSizing + StreakAware + EWMA Diversification -> Execution + AdaptiveExitManager -> RL Bayesian update.",
+      "acceptanceCriteria": [
+        "At least 15 integration tests",
+        "Test full pipeline: scan -> regime -> bayesian sample -> calibrate -> adaptive size -> EWMA adjust -> execute -> exit -> bayesian update",
+        "Test fallback chain: adaptive sizer failure -> DynamicPositionSizer",
+        "Test fallback chain: Bayesian weights failure -> flat file weights",
+        "Test fallback chain: EWMA correlation failure -> Union-Find only",
+        "Test streak-aware sizing across win/loss sequences",
+        "Test RISK_OFF correlation regime reduces portfolio risk limit",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "33 integration tests passing. 392 total Phase 45 tests + 60 Phase 44 regression tests = 452 tests, 0 failures. Complete pipeline simulation: 20 trades across regime changes verified."
+    }
+  ]
+}

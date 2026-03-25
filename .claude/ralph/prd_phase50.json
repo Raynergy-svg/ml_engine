@@ -1,0 +1,101 @@
+{
+  "completed_at": "2026-03-24T20:38:27.576498+00:00",
+  "created_at": "2026-03-24T21:45:00Z",
+  "dependencies": [
+    "Phase 48: spread_filter, economic_calendar, strategy_fitness, pair_blacklist, trade_attribution, walkforward_optimizer",
+    "Phase 49: pipeline wiring of all Phase 48 modules",
+    "Phase 43: confidence_calibration, regime_detector, adaptive_exits",
+    "trade_journal_rl.json.bak: 522 trades with outcomes"
+  ],
+  "goal": "Activate the data layer: restore trade journal, seed calibration/fitness modules from 522 historical trades, extract win-rate patterns, and add safety floors. Target: transform static modules into data-driven decision engines.",
+  "phase": 50,
+  "stories": [
+    {
+      "acceptance_criteria": [
+        "Restore trade_journal_rl.json from .bak if empty (atomic copy with validation)",
+        "Create src/scanner/journal_analyzer.py with JournalAnalyzer class",
+        "Extract win rate by: pair, confidence_band (5 bins), duration_band, exit_reason",
+        "Identify top 3 highest-confidence patterns (min 20 observations, p<0.05)",
+        "Generate pattern_report dict with actionable thresholds",
+        "Write report to trained_data/models/journal_patterns.json atomically",
+        "At least 10 unit tests"
+      ],
+      "id": "US-311",
+      "notes": "Journal restored (522 entries). JournalAnalyzer with Z-test significance. Found 5 significant patterns. Report saved to trained_data/models/journal_patterns.json.",
+      "passes": true,
+      "title": "Restore trade journal and build pattern extraction script"
+    },
+    {
+      "acceptance_criteria": [
+        "Create src/scanner/calibration_seeder.py with CalibrationSeeder class",
+        "Extract (entry_confidence, trade_won) pairs from 522 trades",
+        "Fit Platt scaling: P(win|conf) = sigmoid(a*conf + b) via logistic regression",
+        "Validate on 20% holdout: measure calibration error",
+        "Save fitted coefficients to trained_data/models/calibration_params.json",
+        "Wire into confidence_calibration.py as initial state (fallback if no live data)",
+        "At least 8 unit tests"
+      ],
+      "id": "US-312",
+      "notes": "CalibrationSeeder with Platt scaling gradient descent. Fitted a=0.85, b=-0.24 but cal_error=0.36 (invalid). Confidence\u2192win relationship is weak. Params saved for future recalibration.",
+      "passes": true,
+      "title": "Seed confidence calibration from historical trades"
+    },
+    {
+      "acceptance_criteria": [
+        "Create src/scanner/fitness_seeder.py with FitnessSeeder class",
+        "Group 522 trades by pair (13 pairs \u00d7 ~40 trades each)",
+        "Calculate per-pair: rolling_profit_factor, win_rate, avg_pnl_pips",
+        "Populate strategy_fitness state with historical fitness scores per pair",
+        "Write seeded state to trained_data/models/strategy_fitness_state.json",
+        "StrategyFitnessDetector loads seeded state on init if no live state exists",
+        "At least 8 unit tests"
+      ],
+      "id": "US-313",
+      "notes": "FitnessSeeder computed per-pair fitness for 13 pairs. 4 SKIP pairs identified (AUD_JPY, EUR_GBP, EUR_USD, USD_CHF). State saved to trained_data/models/strategy_fitness_state.json.",
+      "passes": true,
+      "title": "Seed strategy fitness from historical journal data"
+    },
+    {
+      "acceptance_criteria": [
+        "Replace hardcoded trail_mult=1.5 in update_trailing_stops() with regime-aware multiplier",
+        "Lookup regime from regime_detector output (LOW=2.0, NORMAL=2.5, HIGH=3.0, EXTREME=4.0)",
+        "Apply confidence scaling: confidence_scale = 0.8 + (confidence * 0.4)",
+        "Final trail_distance = atr * regime_mult * confidence_scale",
+        "Graceful fallback to 1.5x if regime/confidence unavailable",
+        "Log regime and confidence used for trailing stop adjustment",
+        "At least 8 unit tests"
+      ],
+      "id": "US-314",
+      "notes": "Regime-aware trailing: LOW=2.0x, NORMAL=2.5x, HIGH=3.0x, EXTREME=4.0x. Confidence scaling 0.8-1.2x. Graceful fallback to 1.5x default.",
+      "passes": true,
+      "title": "Wire adaptive trailing stop with confidence and regime scaling"
+    },
+    {
+      "acceptance_criteria": [
+        "Add COMPOUND_GATE_FLOOR = 0.10 constant in execution.py",
+        "After compound multiplication, clamp: max(compound, COMPOUND_GATE_FLOOR)",
+        "Log warning when floor is applied (indicates triple-gate reduction)",
+        "Add config field compound_gate_floor to ExecutionConfig with default 0.10",
+        "If all three gates reduce simultaneously, log aggregate warning with details",
+        "At least 5 unit tests"
+      ],
+      "id": "US-315",
+      "notes": "Compound gate floor=0.10 clamped in execution.py. Individual gate multipliers tracked in ctx for diagnostic logging. Zero-compound (blocked trade) bypasses floor.",
+      "passes": true,
+      "title": "Add compound gate floor and gate interaction safety"
+    },
+    {
+      "acceptance_criteria": [
+        "At least 15 integration tests across all Phase 50 modules",
+        "Full test suite passes with 0 failures",
+        "State files updated atomically (state.json, learnings.md, prd_phase50.json)",
+        "Journal restore verified: len(trade_journal_rl.json) == 522"
+      ],
+      "id": "US-316",
+      "notes": "39 tests passing (201 total with P48+P49). Lazy imports for 3 new modules. Journal patterns, calibration params, and fitness state persisted.",
+      "passes": true,
+      "title": "Integration tests and state file updates"
+    }
+  ],
+  "title": "Phase 50: Data Activation \u2014 Journal Mining, Calibration Seeding & Safety Floors"
+}

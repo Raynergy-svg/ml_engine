@@ -1,0 +1,113 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-module-wiring-phase20",
+  "description": "Buddy Phase 20 — Module Wiring & Live Integration. Phases 1-19 built 73 modules, but gap analysis reveals Phase 19's 6 production hardening modules (health_registry, replay_validator, observation_consumer, agent_lifecycle, module_activation, memory_manager) are initialized but NEVER CALLED during scan cycles. Phase 20 focuses entirely on wiring: dispatch calls in the scan loop, pre/post-flight health checks, observation consumption feedback, agent lifecycle weight application, module activation scheduling, and orchestrator integration. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-121",
+      "title": "Health registry pre/post-flight wiring in scan loop",
+      "description": "Wire HealthRegistry into engine.py scan loop so preflight runs before scanning and postflight runs after execution. Abort cycle if health score drops below threshold.",
+      "acceptanceCriteria": [
+        "In engine.py scan() method, call self._health_registry.run_preflight() before main scan logic",
+        "If should_continue_cycle() returns False, log warning and return early from scan",
+        "After execution phase, call self._health_registry.run_postflight()",
+        "Register all existing Phase 19 modules as health-checkable (memory_manager, module_activation, etc.)",
+        "Call health_registry.save_state() at end of cycle",
+        "Guarded by enable_health_registry config flag (existing)",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Already wired in engine.py lines 2640-2657 (preflight) and 2744-2754 (postflight). _register_health_checks() at lines 2800-2830. Verified 2026-03-22."
+    },
+    {
+      "id": "US-122",
+      "title": "Agent lifecycle fitness tracking wired into trade outcomes",
+      "description": "Wire AgentLifecycleManager into the execution feedback loop so agent fitness updates after every trade close, and weight modifiers are applied during vote aggregation.",
+      "acceptanceCriteria": [
+        "After trade close in execution.py or RL sync, call agent_lifecycle.update_fitness(agent_name, won, regime)",
+        "In agents.py vote aggregation, apply agent_lifecycle.get_weight_modifier(agent_name) as multiplier",
+        "Quarantined agents (0.30x) and retired agents (0.0x) reflected in weighted_vote_score",
+        "Log agent status transitions (ACTIVE→QUARANTINED, etc.) to observation_log",
+        "Call agent_lifecycle.save_state() after fitness updates",
+        "Guarded by enable_agent_lifecycle config flag (existing)",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Wired: continuous.py lines 565-600 (update_fitness after RL sync), agents/_team.py lines 805-812 (get_weight_modifier in vote aggregation), engine.py line 509 (lifecycle injection). Added observation_log integration for status transitions 2026-03-22."
+    },
+    {
+      "id": "US-123",
+      "title": "Observation consumer wired into continuous scan loop",
+      "description": "Wire ObservationConsumer into the continuous scanner so observations are periodically consumed, patterns detected, and recommendations surfaced.",
+      "acceptanceCriteria": [
+        "In continuous.py, call observation_consumer.consume_observations() every N cycles (configurable, default 10)",
+        "After consuming, call detect_patterns() and recommend_adjustments()",
+        "Feed recommendations to config_tuner if available (log otherwise)",
+        "Call check_alerts() and log any spike alerts as warnings",
+        "Call observation_consumer.save_state() after processing",
+        "Guarded by enable_observation_consumer config flag (existing)",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Already wired in continuous.py lines 242-285. consume_observations() every 10 cycles, detect_patterns(), recommend_adjustments() fed to ConfigTuner, check_alerts() logged as warnings, save_state() called. Verified 2026-03-22."
+    },
+    {
+      "id": "US-124",
+      "title": "Module activation dispatcher with cycle-based scheduling",
+      "description": "Wire ModuleActivationMap as the central dispatcher that controls which modules run each cycle based on their registered frequency.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/module_dispatcher.py with ModuleDispatcher class",
+        "register_all_modules() auto-registers all enabled Phase 15-19 modules with appropriate frequencies",
+        "dispatch_cycle(cycle_number) calls module_activation.get_modules_to_run() and executes them",
+        "Expensive modules (replay_validator, model_calibration) run every 10-20 cycles",
+        "Lightweight modules (memory_manager, health_registry) run every cycle",
+        "Integrate dispatcher into continuous.py main loop",
+        "Guarded by enable_module_activation config flag (existing)",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "module_dispatcher.py created (274 lines). 24 modules registered with frequencies from 1 (lightweight) to 20 (expensive). Wired into continuous.py lines 409-418. Verified 2026-03-22."
+    },
+    {
+      "id": "US-125",
+      "title": "Replay validator drift detection wired with auto-correction",
+      "description": "Wire ReplayValidator into periodic drift checks that feed results back to threshold_optimizer and config_tuner for auto-correction.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/drift_monitor.py with DriftMonitor class",
+        "run_drift_check(pair, recent_candles) calls replay_validator.replay_scan() + detect_drift()",
+        "If drift detected, generate config adjustment recommendation and feed to config_tuner",
+        "If drift exceeds critical threshold (>20%), log critical alert and reduce position sizing",
+        "Schedule drift checks every 20 cycles via module_dispatcher",
+        "Persist drift monitoring state to trained_data/drift_monitor_log.json",
+        "Guarded by enable_replay_validator config flag (existing)",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "drift_monitor.py created with DriftMonitor class. Wired into continuous.py lines 327-356 (every 20 cycles). Drift severity mild/critical handled. Config adjustments fed to config_tuner. State persisted. Verified 2026-03-22."
+    },
+    {
+      "id": "US-126",
+      "title": "Memory manager wired into watch mode with periodic cleanup",
+      "description": "Wire MemoryManager into the continuous scanner for periodic cache eviction, log rotation, and RSS monitoring with pressure-based throttling.",
+      "acceptanceCriteria": [
+        "In continuous.py, call memory_manager.evict_lru() every cycle",
+        "Call memory_manager.rotate_log() for all log files every 50 cycles",
+        "Call memory_manager.get_memory_report() every 10 cycles and log RSS",
+        "If RSS exceeds WARNING threshold, reduce scan frequency",
+        "If RSS exceeds CRITICAL threshold, trigger emergency cache clear and log alert",
+        "Register all major caches (model_cache, candle_cache, etc.) with memory_manager",
+        "Call memory_manager.save_state() after cleanup cycles",
+        "Guarded by enable_memory_manager config flag (existing)",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Wired in continuous.py lines 373-407. run_cleanup() every cycle (evict+rotate combined). RSS monitoring every 10 cycles with rss_warning/rss_critical boolean checks. Emergency cache clear on critical. Caches registered (cached_candles, feature_snapshots, raw_snapshots, pair_returns). Log files registered (observations.jsonl, trade_journal_rl.json, scan_cycle_log.json). Fixed bug: was checking non-existent 'pressure' field, now uses rss_warning/rss_critical booleans. Verified 2026-03-22."
+    }
+  ]
+}

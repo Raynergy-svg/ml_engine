@@ -185,13 +185,14 @@ class ExecutionManager:
         self._slippage_size_reduction: float = 0.15  # 15% size reduction
 
         # Phase 44 (US-279): Adaptive Exit Manager (Chandelier + partial profit + vol trail + time + confidence decay)
+        self._ohlc_cache: Dict[str, Any] = {}  # pair -> DataFrame with close/high/low columns
         self._adaptive_exit_manager = None
         try:
             from src.scanner.adaptive_exits import create_default_exit_manager
             self._adaptive_exit_manager = create_default_exit_manager()
             logger.info("Phase 44: Adaptive exit manager initialized")
         except Exception as e:
-            logger.debug(f"Adaptive exit manager init deferred: {e}")
+            logger.warning(f"Adaptive exit manager unavailable — exits will use basic SL/TP only: {e}")
 
         # Phase 45 (US-282): Adaptive Position Sizer (Kelly + Sigmoid + Drawdown + Regime)
         self._adaptive_position_sizer = None
@@ -200,12 +201,140 @@ class ExecutionManager:
 
         # Phase 45 (US-285): EWMA Correlation Engine for dynamic diversification
         self._ewma_correlation = None
+        self._ewma_price_cache: Dict[str, float] = {}  # pair -> last seen price
 
         # Phase 47 (US-296): Session Detector for session-aware position sizing
         self._session_detector = None
 
         # Phase 47 (US-297): Expectancy Tracker for per-agent per-regime performance
         self._expectancy_tracker = None
+
+        # DynamicRiskAllocator: P/L distribution-based risk multiplier (injected from engine.py)
+        self._dynamic_risk_allocator = None
+
+        # Position timeout manager: regime-dependent time-decay exits
+        self._position_timeout = None
+        try:
+            from src.scanner.automation.position_timeout import PositionTimeoutManager
+            self._position_timeout = PositionTimeoutManager()
+            logger.info("PositionTimeoutManager initialized")
+        except Exception as e:
+            logger.debug(f"PositionTimeoutManager init deferred: {e}")
+
+        # Phase 49 (US-306): Pre-execution gates from Phase 48 modules
+        self._spread_filter = None
+        try:
+            from src.scanner.spread_filter import create_default_spread_filter
+            self._spread_filter = create_default_spread_filter()
+            logger.info("Phase 49: Spread filter initialized")
+        except Exception as e:
+            logger.debug(f"Phase 49: Spread filter init deferred: {e}")
+
+        self._calendar_filter = None
+        try:
+            from src.scanner.economic_calendar import create_default_calendar_filter
+            self._calendar_filter = create_default_calendar_filter()
+            logger.info("Phase 49: Economic calendar filter initialized")
+        except Exception as e:
+            logger.debug(f"Phase 49: Calendar filter init deferred: {e}")
+
+        self._strategy_fitness = None
+        try:
+            from src.scanner.strategy_fitness import create_default_fitness_detector
+            self._strategy_fitness = create_default_fitness_detector()
+            logger.info("Phase 49: Strategy fitness detector initialized")
+        except Exception as e:
+            logger.debug(f"Phase 49: Strategy fitness init deferred: {e}")
+
+        # Phase 49 (US-307): Pair performance tracker for blacklisting + feedback
+        self._pair_tracker = None
+        try:
+            from src.scanner.pair_blacklist import create_default_pair_tracker
+            self._pair_tracker = create_default_pair_tracker()
+            logger.info("Phase 49: Pair performance tracker initialized")
+        except Exception as e:
+            logger.debug(f"Phase 49: Pair tracker init deferred: {e}")
+
+        # Phase 49 (US-308): Trade attribution engine for SHAP-lite feedback
+        self._attribution_engine = None
+        try:
+            from src.scanner.trade_attribution import create_default_attribution_engine
+            self._attribution_engine = create_default_attribution_engine()
+            logger.info("Phase 49: Trade attribution engine initialized")
+        except Exception as e:
+            logger.debug(f"Phase 49: Attribution engine init deferred: {e}")
+
+        # Regime-aware RL reward shaping (replaces flat PnL reward with regime-conditioned signal)
+        self._regime_reward = None
+        try:
+            from src.scanner.automation.regime_reward import RegimeAwareReward
+            self._regime_reward = RegimeAwareReward()
+            logger.info("Regime-aware RL reward shaping initialized in ExecutionManager")
+        except Exception as e:
+            logger.debug(f"Regime reward init deferred: {e}")
+
+        # Phase 49 (US-309): Walk-forward optimizer for parameter tuning
+        self._walkforward_optimizer = None
+        try:
+            from src.scanner.walkforward_optimizer import create_default_walkforward_optimizer
+            self._walkforward_optimizer = create_default_walkforward_optimizer()
+            logger.info("Phase 49: Walk-forward optimizer initialized")
+        except Exception as e:
+            logger.debug(f"Phase 49: Walk-forward optimizer init deferred: {e}")
+
+        # Phase 52 (US-323): Pattern Gate — journal-mined pattern confidence adjustments
+        self._pattern_gate = None
+        try:
+            from src.scanner.pattern_gate import PatternGate
+            self._pattern_gate = PatternGate()
+            logger.info("Phase 52 (US-323): Pattern gate initialized")
+        except Exception as e:
+            logger.debug(f"Phase 52: Pattern gate init deferred: {e}")
+
+        # Phase 52 (US-323): Setup Quality Filter — composite weak-setup rejection
+        self._setup_quality_filter = None
+        try:
+            from src.scanner.setup_quality import SetupQualityFilter
+            self._setup_quality_filter = SetupQualityFilter()
+            logger.info("Phase 52 (US-323): Setup quality filter initialized")
+        except Exception as e:
+            logger.debug(f"Phase 52: Setup quality filter init deferred: {e}")
+
+        # Phase 52 (US-323): Tranche Tracker — breakeven SL after partial profits
+        self._tranche_tracker = None
+        try:
+            from src.scanner.tranche_tracker import TrancheTracker
+            self._tranche_tracker = TrancheTracker()
+            logger.info("Phase 52 (US-323): Tranche tracker initialized")
+        except Exception as e:
+            logger.debug(f"Phase 52: Tranche tracker init deferred: {e}")
+
+        # Phase 52 (US-323): Walk-Forward Retrainer — periodic agent weight retraining
+        self._walkforward_retrainer = None
+        try:
+            from src.scanner.walkforward_retrainer import WalkForwardRetrainer
+            self._walkforward_retrainer = WalkForwardRetrainer()
+            logger.info("Phase 52 (US-323): Walk-forward retrainer initialized")
+        except Exception as e:
+            logger.debug(f"Phase 52: Walk-forward retrainer init deferred: {e}")
+
+        # Phase 52 (US-325): Adaptive R:R Calculator — regime/confidence-based TP targeting
+        self._adaptive_rr = None
+        try:
+            from src.scanner.adaptive_rr import AdaptiveRRCalculator
+            self._adaptive_rr = AdaptiveRRCalculator()
+            logger.info("Phase 52 (US-325): Adaptive R:R calculator initialized")
+        except Exception as e:
+            logger.debug(f"Phase 52: Adaptive R:R init deferred: {e}")
+
+        # Phase 52 (US-326): Drawdown Adapter — progressive trade restriction under drawdown
+        self._drawdown_adapter = None
+        try:
+            from src.scanner.drawdown_adapter import DrawdownAdapter
+            self._drawdown_adapter = DrawdownAdapter()
+            logger.info("Phase 52 (US-326): Drawdown adapter initialized")
+        except Exception as e:
+            logger.debug(f"Phase 52: Drawdown adapter init deferred: {e}")
 
     def _init_oanda_client(self) -> bool:
         """Initialize OANDA client.
@@ -510,16 +639,18 @@ class ExecutionManager:
         """Check if total open risk across all positions is within limit.
 
         Uses SL distance * position size to estimate risk per trade.
+        Phase 45 (US-285): Uses EWMA correlation regime to dynamically
+        reduce the limit during RISK_OFF conditions.
 
         Returns:
             Tuple of (within_limit, reason)
         """
-        max_risk_pct = self.config.max_open_risk_pct
+        max_risk_pct = self._get_portfolio_risk_limit()
         if max_risk_pct <= 0:
             return True, "risk limit disabled"
 
         try:
-            statuses = self.monitor_open_trades()
+            statuses = self.monitor_open_trades(evaluate_exits=False)
             if not statuses:
                 return True, "no open trades"
 
@@ -568,8 +699,8 @@ class ExecutionManager:
             if not group:
                 return True, "no correlation group"
 
-            # Get open trades
-            statuses = self.monitor_open_trades()
+            # Get open trades (read-only — no exit side effects)
+            statuses = self.monitor_open_trades(evaluate_exits=False)
             if not statuses:
                 return True, "no open trades"
 
@@ -624,13 +755,15 @@ class ExecutionManager:
 
         Unlike _check_portfolio_risk_limit() which only checks existing positions,
         this projects the new trade's risk INTO the total before deciding.
+        Phase 45 (US-285): Uses EWMA correlation regime to dynamically
+        reduce the limit during RISK_OFF conditions.
 
         Returns:
             Tuple of (within_limit, reason, max_safe_lots)
             max_safe_lots is the largest position that fits within the risk budget
             (0.0 if even minimum lot breaches the limit).
         """
-        max_risk_pct = self.config.max_open_risk_pct
+        max_risk_pct = self._get_portfolio_risk_limit()
         if max_risk_pct <= 0:
             return True, "risk limit disabled", lots
 
@@ -638,9 +771,9 @@ class ExecutionManager:
             nav = self.fetch_live_nav() or self.config.account_equity or 100000.0
             max_risk_amount = nav * max_risk_pct
 
-            # Calculate existing risk across open positions
+            # Calculate existing risk across open positions (read-only — no exit side effects)
             existing_risk = 0.0
-            statuses = self.monitor_open_trades()
+            statuses = self.monitor_open_trades(evaluate_exits=False)
             if statuses:
                 for s in statuses:
                     sl_dist = s.get("sl_dist_pips", 0)
@@ -1127,6 +1260,9 @@ class ExecutionManager:
             lots, risk_pct, _strategy_label = _adaptive_result
             logger.debug(f"Phase 45: Using adaptive position sizing {_strategy_label}")
 
+            # DynamicRiskAllocator: P/L distribution multiplier (after adaptive, before regime)
+            lots = self._apply_dynamic_risk_multiplier(lots, _regime_name)
+
             # Phase 47 (US-298): Apply regime position multiplier
             lots = self._apply_regime_position_multiplier(lots, _regime_name)
 
@@ -1140,6 +1276,9 @@ class ExecutionManager:
             equity, sl_pips, pair, confidence
         )
 
+        # DynamicRiskAllocator: P/L distribution multiplier (after base, before regime)
+        lots = self._apply_dynamic_risk_multiplier(lots, _regime_name)
+
         # Phase 47 (US-298): Apply regime position multiplier
         lots = self._apply_regime_position_multiplier(lots, _regime_name)
 
@@ -1147,6 +1286,44 @@ class ExecutionManager:
         lots = self._apply_session_position_multiplier(lots)
 
         return lots, risk_pct, sl_pips, tp_pips, confidence_level
+
+    def set_dynamic_risk_allocator(self, allocator) -> None:
+        """Inject DynamicRiskAllocator instance (called from engine.py).
+
+        Args:
+            allocator: DynamicRiskAllocator instance (or None).
+        """
+        self._dynamic_risk_allocator = allocator
+
+    def _apply_dynamic_risk_multiplier(self, lots: float, regime_name: str) -> float:
+        """Apply DynamicRiskAllocator P/L-distribution multiplier to position size.
+
+        Uses rolling P/L statistics and streak detection to scale risk
+        allocation per regime. Returns multiplier in [0.50, 1.30].
+
+        Args:
+            lots: Base position size in lots
+            regime_name: Current volatility regime (LOW, NORMAL, HIGH, EXTREME)
+
+        Returns:
+            Adjusted position size after applying dynamic risk multiplier
+        """
+        if self._dynamic_risk_allocator is None:
+            return lots
+
+        try:
+            risk_mult = self._dynamic_risk_allocator.get_risk_multiplier(regime_name)
+            if risk_mult == 1.0:
+                return lots
+            adjusted_lots = lots * risk_mult
+            logger.debug(
+                f"DynamicRiskAllocator: Regime {regime_name} applied {risk_mult:.4f}x "
+                f"to position size ({lots:.2f} -> {adjusted_lots:.2f} lots)"
+            )
+            return adjusted_lots
+        except Exception as e:
+            logger.debug(f"DynamicRiskAllocator: multiplier error: {e}, using original lots")
+            return lots
 
     def _apply_regime_position_multiplier(self, lots: float, regime_name: str) -> float:
         """Phase 47 (US-298): Apply regime-based position size multiplier.
@@ -1291,6 +1468,285 @@ class ExecutionManager:
             pair, direction, _ctx_confidence,
             ctx.get("agent_passed"), _ctx_disagreement, _ctx_regime,
         )
+
+        # Phase 45 (US-285): Feed price return into EWMA correlation matrix
+        _prev_price = self._ewma_price_cache.get(pair, 0.0)
+        if _prev_price > 0 and current_price > 0:
+            self._update_ewma_correlation(pair, current_price, _prev_price)
+        self._ewma_price_cache[pair] = current_price
+
+        # ── Phase 52 (US-326): Drawdown Adapter — EARLIEST gate ──
+        # Must run before all other gates to halt/restrict trading under drawdown.
+        if self._drawdown_adapter is not None:
+            try:
+                _peak_nav = getattr(self, "_peak_nav_tracked", 0.0)
+                _current_nav = self.fetch_live_nav() or self.config.account_equity or 10000.0
+                if _peak_nav <= 0:
+                    _peak_nav = _current_nav
+                # Get session name from context
+                _session_name = str(ctx.get("session", ctx.get("trading_session", "LONDON"))).upper()
+                # Get pair win rates from strategy fitness if available
+                _pair_win_rates = {}
+                if self._strategy_fitness is not None:
+                    try:
+                        _regime_for_dd = _ctx_regime or "NORMAL"
+                        for _p in PIP_VALUES:
+                            try:
+                                _pf = self._strategy_fitness.check_fitness(_p, _regime_for_dd)
+                                _wr = getattr(_pf, "win_rate", 0.0) or 0.0
+                                if _wr > 0:
+                                    _pair_win_rates[_p] = _wr
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                _dd_result = self._drawdown_adapter.check(
+                    current_nav=_current_nav,
+                    peak_nav=_peak_nav,
+                    pair=pair,
+                    confidence=confidence,
+                    session_name=_session_name,
+                    pair_win_rates=_pair_win_rates if _pair_win_rates else None,
+                )
+                self._peak_nav_tracked = max(_peak_nav, _current_nav)
+                ctx["_drawdown_pct"] = _dd_result.drawdown_pct
+                ctx["_drawdown_tier"] = _dd_result.active_tier
+
+                if not _dd_result.allowed:
+                    return ExecutionResult(
+                        success=False,
+                        error=_dd_result.reason,
+                    )
+
+                # Apply confidence tightening from Tier 1+
+                if _dd_result.confidence_penalty > 0:
+                    _old_conf_dd = confidence
+                    confidence = _dd_result.adjusted_confidence
+                    logger.info(
+                        "Phase 52 (US-326): %s drawdown tier %d — confidence %.3f → %.3f",
+                        pair, _dd_result.active_tier, _old_conf_dd, confidence,
+                    )
+                    # Re-check minimum confidence after tightening
+                    if confidence < 0.45:
+                        return ExecutionResult(
+                            success=False,
+                            error=f"BLOCKED: confidence {confidence:.3f} < 0.45 after drawdown penalty (tier {_dd_result.active_tier}, dd={_dd_result.drawdown_pct:.1f}%)",
+                        )
+            except Exception as _dd_err:
+                logger.debug(f"Phase 52: Drawdown adapter error: {_dd_err}")
+
+        # ── Phase 49 (US-306): Pre-execution gates from Phase 48 modules ──
+        # Size multiplier compounds across all gates (spread × calendar × fitness)
+        _phase49_size_mult = 1.0
+        ctx["_spread_mult"] = 1.0
+        ctx["_calendar_mult"] = 1.0
+        ctx["_fitness_mult"] = 1.0
+
+        # Gate 1: Spread filter — reject if spread > ATR threshold
+        if self._spread_filter is not None:
+            try:
+                _spread_pips = ctx.get("spread_pips", 0.0)
+                _atr_pips = ctx.get("atr_pips", 0.0) or (atr / PIP_VALUES.get(pair, 0.0001) if atr > 0 else 0.0)
+                if _spread_pips > 0 and _atr_pips > 0:
+                    _spread_result = self._spread_filter.check_spread_from_price(
+                        pair=pair, price=current_price,
+                        spread_pips=_spread_pips, atr_pips=_atr_pips,
+                    )
+                    if not _spread_result.passed:
+                        logger.info(
+                            "Phase 49 (US-306): %s BLOCKED by spread filter — "
+                            "normalized=%.3f threshold=%.3f",
+                            pair, _spread_result.normalized_spread, _spread_result.threshold,
+                        )
+                        return ExecutionResult(
+                            success=False,
+                            error=f"BLOCKED: spread too wide ({_spread_result.normalized_spread:.3f} > {_spread_result.threshold:.3f})",
+                        )
+                    if _spread_result.size_multiplier < 1.0:
+                        _phase49_size_mult *= _spread_result.size_multiplier
+                        ctx["_spread_mult"] = _spread_result.size_multiplier
+                        logger.info(
+                            "Phase 49 (US-306): %s spread REDUCE_SIZE %.2fx (normalized=%.3f)",
+                            pair, _spread_result.size_multiplier, _spread_result.normalized_spread,
+                        )
+            except Exception as _sf_err:
+                logger.debug(f"Phase 49: Spread filter check error: {_sf_err}")
+
+        # Gate 2: Economic calendar — blackout around high-impact events
+        if self._calendar_filter is not None:
+            try:
+                _cal_result = self._calendar_filter.check_pair(pair)
+                if _cal_result.action == "BLACKOUT":
+                    _evt_name = _cal_result.nearest_event.event_name if _cal_result.nearest_event else "unknown"
+                    logger.info(
+                        "Phase 49 (US-306): %s BLOCKED by calendar blackout — %s (%s)",
+                        pair, _cal_result.reason, _evt_name,
+                    )
+                    return ExecutionResult(
+                        success=False,
+                        error=f"BLOCKED: economic calendar blackout ({_evt_name})",
+                    )
+                if _cal_result.action == "REDUCE_SIZE" and _cal_result.size_multiplier < 1.0:
+                    _phase49_size_mult *= _cal_result.size_multiplier
+                    ctx["_calendar_mult"] = _cal_result.size_multiplier
+                    logger.info(
+                        "Phase 49 (US-306): %s calendar REDUCE_SIZE %.2fx — %s",
+                        pair, _cal_result.size_multiplier, _cal_result.reason,
+                    )
+            except Exception as _cf_err:
+                logger.debug(f"Phase 49: Calendar filter check error: {_cf_err}")
+
+        # Gate 3: Strategy fitness — skip if strategy underperforming for this pair/regime
+        if self._strategy_fitness is not None:
+            try:
+                _regime_for_fitness = _ctx_regime or "NORMAL"
+                _fitness_result = self._strategy_fitness.check_fitness(pair, _regime_for_fitness)
+                if _fitness_result.action == "SKIP":
+                    logger.info(
+                        "Phase 49 (US-306): %s BLOCKED by fitness detector — "
+                        "score=%.3f (regime=%s)",
+                        pair, _fitness_result.fitness_score, _regime_for_fitness,
+                    )
+                    return ExecutionResult(
+                        success=False,
+                        error=f"BLOCKED: strategy fitness too low ({_fitness_result.fitness_score:.3f} in {_regime_for_fitness})",
+                    )
+                if _fitness_result.action == "REDUCE_SIZE" and _fitness_result.size_multiplier < 1.0:
+                    _phase49_size_mult *= _fitness_result.size_multiplier
+                    ctx["_fitness_mult"] = _fitness_result.size_multiplier
+                    logger.info(
+                        "Phase 49 (US-306): %s fitness REDUCE_SIZE %.2fx (score=%.3f)",
+                        pair, _fitness_result.size_multiplier, _fitness_result.fitness_score,
+                    )
+            except Exception as _fit_err:
+                logger.debug(f"Phase 49: Fitness check error: {_fit_err}")
+
+        # ── Phase 52 (US-323): Pattern Gate — journal-mined confidence adjustments ──
+        ctx["_pattern_boost"] = 0.0
+        if self._pattern_gate is not None:
+            try:
+                _pg_direction = direction.upper() if isinstance(direction, str) else "LONG"
+                _pg_result = self._pattern_gate.evaluate(
+                    pair=pair,
+                    direction=_pg_direction,
+                    confidence=confidence,
+                )
+                if _pg_result.adjusted_confidence != confidence:
+                    _old_conf = confidence
+                    confidence = _pg_result.adjusted_confidence
+                    ctx["_pattern_boost"] = round(_pg_result.pair_boost + _pg_result.direction_boost, 4)
+                    logger.info(
+                        "Phase 52 (US-323): %s pattern gate adjusted confidence %.3f → %.3f "
+                        "(pair_boost=%.3f, dir_boost=%.3f)",
+                        pair, _old_conf, confidence,
+                        _pg_result.pair_boost, _pg_result.direction_boost,
+                    )
+                if _pg_result.duration_warning:
+                    logger.info(
+                        "Phase 52 (US-323): %s duration warning — %s",
+                        pair, "; ".join(_pg_result.warnings),
+                    )
+            except Exception as _pg_err:
+                logger.debug(f"Phase 52: Pattern gate check error: {_pg_err}")
+
+        # ── Phase 52 (US-323): Setup Quality Filter — reject weak setups ──
+        if self._setup_quality_filter is not None:
+            try:
+                _agents_info = ctx.get("agents", {})
+                _disagreement = float(_agents_info.get("model_disagreement", 0.0))
+                _uncertainty = float(_agents_info.get("uncertainty_score", 0.0))
+                _pair_wr = 0.5  # Default if no fitness data
+                if self._strategy_fitness is not None:
+                    try:
+                        _regime_for_wr = _ctx_regime or "NORMAL"
+                        _fit_check = self._strategy_fitness.check_fitness(pair, _regime_for_wr)
+                        _pair_wr = getattr(_fit_check, "win_rate", 0.5) or 0.5
+                    except Exception:
+                        pass
+
+                _sq_result = self._setup_quality_filter.evaluate(
+                    pair=pair,
+                    confidence=confidence,
+                    agent_disagreement=_disagreement,
+                    uncertainty_score=_uncertainty,
+                    pair_recent_win_rate=_pair_wr,
+                )
+                if not _sq_result.passed:
+                    logger.info(
+                        "Phase 52 (US-323): %s REJECTED by setup quality filter — "
+                        "score=%.3f < %.3f — %s",
+                        pair, _sq_result.quality_score, _sq_result.details.get("threshold", 0.35),
+                        "; ".join(_sq_result.rejection_reasons),
+                    )
+                    return ExecutionResult(
+                        success=False,
+                        error=f"BLOCKED: setup quality too low ({_sq_result.quality_score:.3f}): {'; '.join(_sq_result.rejection_reasons)}",
+                    )
+                ctx["_setup_quality_score"] = _sq_result.quality_score
+                ctx["_setup_quality_dims"] = _sq_result.dimension_scores
+            except Exception as _sq_err:
+                logger.debug(f"Phase 52: Setup quality filter error: {_sq_err}")
+
+        # ── Phase 52 (US-325): Adaptive R:R — override atr_tp_multiplier by regime/confidence ──
+        ctx["_adaptive_rr_applied"] = False
+        if self._adaptive_rr is not None:
+            try:
+                _regime_for_rr = _ctx_regime or "NORMAL"
+                # Get pair recent win rate from fitness detector if available
+                _pair_wr_for_rr = 0.50
+                if self._strategy_fitness is not None:
+                    try:
+                        _fit_for_rr = self._strategy_fitness.check_fitness(pair, _regime_for_rr)
+                        _pair_wr_for_rr = getattr(_fit_for_rr, "win_rate", 0.50) or 0.50
+                    except Exception:
+                        pass
+
+                _rr_result = self._adaptive_rr.calculate(
+                    regime=_regime_for_rr,
+                    confidence=confidence,
+                    atr_sl_multiplier=self.config.atr_sl_multiplier,
+                    pair_recent_win_rate=_pair_wr_for_rr,
+                )
+                _old_tp_mult = self.config.atr_tp_multiplier
+                if abs(_rr_result.tp_multiplier - _old_tp_mult) > 0.001:
+                    self.config.atr_tp_multiplier = _rr_result.tp_multiplier
+                    ctx["_adaptive_rr_applied"] = True
+                    ctx["_adaptive_rr_old_tp_mult"] = _old_tp_mult
+                    ctx["_adaptive_rr_new_tp_mult"] = _rr_result.tp_multiplier
+                    ctx["_adaptive_rr_ratio"] = _rr_result.adjusted_rr
+                    ctx["_adaptive_rr_floor"] = _rr_result.floor_applied
+                    logger.info(
+                        "Phase 52 (US-325): %s adaptive R:R %s → %.2f:1 "
+                        "(tp_mult %.3f → %.3f, conf_adj=%.2f, form_adj=%.2f%s)",
+                        pair, _regime_for_rr, _rr_result.adjusted_rr,
+                        _old_tp_mult, _rr_result.tp_multiplier,
+                        _rr_result.confidence_adj, _rr_result.form_adj,
+                        " FLOOR" if _rr_result.floor_applied else "",
+                    )
+            except Exception as _rr_err:
+                logger.debug(f"Phase 52: Adaptive R:R error: {_rr_err}")
+
+        # Phase 50 (US-315): Apply compound gate floor to prevent near-zero sizing
+        _compound_floor = float(getattr(self.config, "compound_gate_floor", 0.10))
+        if _phase49_size_mult < _compound_floor and _phase49_size_mult > 0:
+            logger.warning(
+                "Phase 50 (US-315): %s compound multiplier %.3f below floor %.3f — "
+                "clamping to floor (spread=%.3f, calendar=%.3f, fitness=%.3f)",
+                pair, _phase49_size_mult, _compound_floor,
+                ctx.get("_spread_mult", 1.0),
+                ctx.get("_calendar_mult", 1.0),
+                ctx.get("_fitness_mult", 1.0),
+            )
+            _phase49_size_mult = _compound_floor
+
+        # Store compound multiplier for later application to position size
+        if _phase49_size_mult < 1.0:
+            logger.info(
+                "Phase 49 (US-306): %s compound size multiplier = %.3f",
+                pair, _phase49_size_mult,
+            )
+        ctx["_phase49_size_multiplier"] = _phase49_size_mult
 
         # Check daily limit
         can_trade, reason = self.can_trade()
@@ -1437,6 +1893,10 @@ class ExecutionManager:
         if lots <= 0:
             return ExecutionResult(success=False, error="Invalid position size")
 
+        # Phase 52 (US-325): Restore original atr_tp_multiplier after sizing
+        if ctx.get("_adaptive_rr_applied"):
+            self.config.atr_tp_multiplier = ctx["_adaptive_rr_old_tp_mult"]
+
         # Minimum risk:reward ratio gate
         # C-7: reject immediately if SL or TP is zero — fail-closed, not fail-open
         min_rr = getattr(self.config, "min_risk_reward_ratio", 1.2)
@@ -1534,7 +1994,7 @@ class ExecutionManager:
 
         # ── Phase 25 (US-152): Real-time correlation enforcement ──────────
         try:
-            open_trades = self.monitor_open_trades()
+            open_trades = self.monitor_open_trades(evaluate_exits=False)
             if open_trades:
                 _CORR_THRESHOLD = 0.80
                 # Known high-correlation pairs (static fallback)
@@ -1622,6 +2082,21 @@ class ExecutionManager:
                     )
             except Exception as _se_err:
                 logger.debug(f"Smart execution planning skipped: {_se_err}")
+
+        # Phase 45 (US-285): Apply EWMA diversification adjustment to position size
+        if lots > 0:
+            lots = self._apply_diversification_adjustment(lots, pair)
+
+        # Phase 49 (US-306): Apply compound size multiplier from spread/calendar/fitness gates
+        _phase49_mult = ctx.get("_phase49_size_multiplier", 1.0)
+        if _phase49_mult < 1.0 and lots > 0:
+            _lots_before = lots
+            lots = round(lots * _phase49_mult, 2)
+            lots = max(lots, self.config.min_lot_size)  # Never go below min
+            logger.info(
+                "Phase 49 (US-306): %s lots adjusted %.4f → %.4f (×%.3f from gates)",
+                pair, _lots_before, lots, _phase49_mult,
+            )
 
         # Calculate SL/TP prices
         pip_value = PIP_VALUES.get(pair, 0.0001)
@@ -1721,6 +2196,23 @@ class ExecutionManager:
                         trade_id=trade_id,
                         analysis_context=analysis_context,
                     )
+
+                    # Phase 52 (US-323): Register trade with tranche tracker for SL management
+                    if self._tranche_tracker is not None:
+                        try:
+                            self._tranche_tracker.register_trade(
+                                trade_id=str(trade_id),
+                                pair=pair,
+                                entry_price=fill_price,
+                                original_sl=sl_price,
+                                direction=direction.upper(),
+                            )
+                            logger.info(
+                                "Phase 52 (US-323): Registered %s #%s with tranche tracker (entry=%.5f, sl=%.5f)",
+                                pair, trade_id, fill_price, sl_price,
+                            )
+                        except Exception as _tt_reg_err:
+                            logger.debug(f"Phase 52: Tranche tracker registration error: {_tt_reg_err}")
 
                     # Log aggressive scaling if applied
                     if regime_scale > 1.0:
@@ -2024,6 +2516,18 @@ class ExecutionManager:
             logger.debug(f"Journal sync failed: {e}")
             return 0
 
+    def set_ohlc_cache(self, ohlc_by_pair: Dict[str, Any]) -> None:
+        """Inject OHLC DataFrames from the Scanner's raw snapshots.
+
+        Called by the scan loop after fetching pair data so that evaluate_exits()
+        can use real price history instead of degraded synthetic arrays.
+
+        Args:
+            ohlc_by_pair: Dict mapping pair name to a DataFrame with at least
+                'close', 'high', 'low' columns.
+        """
+        self._ohlc_cache = ohlc_by_pair
+
     def evaluate_exits(
         self,
         trade_statuses: List[Dict[str, Any]],
@@ -2097,13 +2601,39 @@ class ExecutionManager:
                 # Approximate bars held (assume 15-min bars)
                 bars_held = max(1, time_in_minutes // 15)
 
-                # Build minimal TradeContext with synthetic price arrays
-                # This is a fallback since we don't have full OHLC history
-                # Create 50-bar lookback with synthetic data (current price repeated)
+                # Build TradeContext with price arrays.
+                # Prefer real OHLC data from Scanner._raw_snapshots if available
+                # (set via set_ohlc_cache() from the scan loop). Fall back to
+                # synthetic arrays when real data is unavailable.
                 price_array_size = 50
-                prices_close = np.full(price_array_size, current_price, dtype=np.float64)
-                prices_high = np.full(price_array_size, max(highest_price, current_price), dtype=np.float64)
-                prices_low = np.full(price_array_size, min(lowest_price, current_price), dtype=np.float64)
+                _used_real_ohlc = False
+
+                if self._ohlc_cache and pair in self._ohlc_cache:
+                    try:
+                        _ohlc_df = self._ohlc_cache[pair]
+                        if hasattr(_ohlc_df, "tail") and len(_ohlc_df) >= 10:
+                            _tail = _ohlc_df.tail(price_array_size)
+                            prices_close = _tail["close"].values.astype(np.float64)
+                            prices_high = _tail["high"].values.astype(np.float64)
+                            prices_low = _tail["low"].values.astype(np.float64)
+                            price_array_size = len(prices_close)
+                            _used_real_ohlc = True
+                    except Exception as _ohlc_err:
+                        logger.debug(f"Phase 44: OHLC cache read failed for {pair}: {_ohlc_err}")
+
+                if not _used_real_ohlc:
+                    # TODO: Chandelier exit is degraded without real OHLC — ATR-based
+                    # trailing calculations use flat price arrays which produce no
+                    # meaningful volatility signal. Wire Scanner._raw_snapshots into
+                    # ExecutionManager.set_ohlc_cache() from the scan loop to fix.
+                    logger.debug(
+                        "Phase 44: Using synthetic price arrays for %s — "
+                        "chandelier exit accuracy is degraded without real OHLC data",
+                        pair,
+                    )
+                    prices_close = np.full(price_array_size, current_price, dtype=np.float64)
+                    prices_high = np.full(price_array_size, max(highest_price, current_price), dtype=np.float64)
+                    prices_low = np.full(price_array_size, min(lowest_price, current_price), dtype=np.float64)
 
                 # Set the last price to actual current
                 prices_close[-1] = current_price
@@ -2157,8 +2687,14 @@ class ExecutionManager:
 
         return exit_actions
 
-    def monitor_open_trades(self) -> List[Dict[str, Any]]:
+    def monitor_open_trades(self, evaluate_exits: bool = True) -> List[Dict[str, Any]]:
         """Monitor open trades and return status for each.
+
+        Args:
+            evaluate_exits: If True (default), run adaptive exit evaluation and
+                act on exit signals. Set to False for read-only callers that only
+                need position status (risk checks, correlation checks) to avoid
+                unintended side effects like closing trades.
 
         Returns:
             List of dicts with trade status: pair, direction, entry, current_pl,
@@ -2236,7 +2772,10 @@ class ExecutionManager:
             })
 
         # Phase 44 (US-279): Run adaptive exit evaluation on collected statuses
-        if self._adaptive_exit_manager is not None and statuses:
+        # Only evaluate and act on exits when explicitly requested (default True).
+        # Read-only callers (risk checks, correlation checks) pass evaluate_exits=False
+        # to avoid side effects like closing trades during pre-trade validation.
+        if evaluate_exits and self._adaptive_exit_manager is not None and statuses:
             try:
                 exit_actions = self.evaluate_exits(statuses)
                 for status in statuses:
@@ -2244,10 +2783,241 @@ class ExecutionManager:
                     matching = [a for a in exit_actions if a.get("trade_id") == tid]
                     if matching:
                         status["exit_signal"] = matching[0]
+
+                # Phase 44 fix: Actually act on exit signals (close trades / move stops)
+                if exit_actions:
+                    self._act_on_exit_signals(exit_actions, statuses)
             except Exception as e:
                 logger.warning(f"Phase 44: Adaptive exit evaluation failed: {e}")
 
+        # Position timeout: regime-dependent time-decay exits
+        # Evaluates each open trade against its regime's max holding period
+        # and confidence decay schedule. Adds exit signals for timed-out trades.
+        if evaluate_exits and self._position_timeout is not None and statuses:
+            try:
+                ptm = self._position_timeout
+                ptm.tick()  # Advance bar counter each monitoring cycle
+
+                for status in statuses:
+                    tid = status.get("trade_id", "")
+                    pair = status.get("pair", "")
+
+                    # Auto-register trades not yet tracked by the timeout manager
+                    if tid and tid not in ptm._positions:
+                        regime = getattr(self, "_last_regime_name", "normal")
+                        ptm.register_trade(
+                            trade_id=tid,
+                            regime=regime,
+                            confidence=0.5,
+                            pair=pair,
+                            direction=status.get("direction", ""),
+                        )
+
+                    # Evaluate timeout
+                    pnl_pips = status.get("unrealized_pl", 0.0)
+                    result = ptm.evaluate(tid, pnl_pips=pnl_pips)
+
+                    if result.should_exit:
+                        # Attach timeout exit signal (same shape as adaptive exits)
+                        timeout_signal = {
+                            "trade_id": tid,
+                            "pair": pair,
+                            "action": "EXIT_FULL",
+                            "reason": f"Position timeout: {result.exit_reason}",
+                            "strategy": "position_timeout",
+                            "confidence_decay": result.confidence_decay,
+                            "bars_open": result.bars_open,
+                        }
+                        status["timeout_exit_signal"] = timeout_signal
+                        logger.warning(
+                            "PositionTimeout EXIT: %s (%s) — %s",
+                            tid, pair, result.exit_reason,
+                        )
+
+                # Collect timeout exits and act on them
+                timeout_exits = [
+                    s["timeout_exit_signal"]
+                    for s in statuses
+                    if "timeout_exit_signal" in s
+                ]
+                if timeout_exits:
+                    self._act_on_exit_signals(timeout_exits, statuses)
+
+                # Clean up closed trades from timeout tracker
+                open_ids = {s.get("trade_id") for s in statuses}
+                for tracked_id in list(ptm._positions.keys()):
+                    if tracked_id not in open_ids:
+                        ptm.close_trade(tracked_id)
+
+            except Exception as e:
+                logger.warning(f"PositionTimeout evaluation failed: {e}")
+
         return statuses
+
+    def _act_on_exit_signals(
+        self,
+        exit_actions: List[Dict[str, Any]],
+        statuses: List[Dict[str, Any]],
+    ) -> List[str]:
+        """Phase 44 (US-279): Execute adaptive exit signals on OANDA.
+
+        Processes exit actions produced by evaluate_exits() and actually closes
+        trades, takes partial profit, or tightens stops via the OANDA API.
+
+        Actions handled:
+        - EXIT_FULL: Close the entire trade via close_trade_oanda()
+        - TAKE_PARTIAL: Close a fraction of the position (units * close_fraction)
+        - TIGHTEN_SL: Move stop loss tighter via modify_sl_oanda()
+
+        Args:
+            exit_actions: List of exit action dicts from evaluate_exits().
+            statuses: List of trade status dicts (used to look up units).
+
+        Returns:
+            List of human-readable action messages.
+        """
+        import requests
+        import os
+
+        messages = []
+        # Build a lookup from trade_id -> status for unit info
+        status_by_id = {s.get("trade_id"): s for s in statuses}
+
+        for action in exit_actions:
+            trade_id = action.get("trade_id")
+            pair = action.get("pair", "unknown")
+            action_type = action.get("action", "")
+            reason = action.get("reason", "")
+            strategy = action.get("strategy", "")
+
+            if not trade_id:
+                logger.warning("Phase 44: Exit action missing trade_id, skipping: %s", action)
+                continue
+
+            try:
+                if action_type == "EXIT_FULL":
+                    success = self.close_trade_oanda(str(trade_id))
+                    if success:
+                        msg = (
+                            f"Phase 44 EXIT_FULL: {pair} #{trade_id} closed "
+                            f"({strategy}: {reason})"
+                        )
+                        logger.info(msg)
+                        messages.append(msg)
+                    else:
+                        logger.warning(
+                            "Phase 44: Failed to close trade %s %s (%s)",
+                            pair, trade_id, strategy,
+                        )
+
+                elif action_type == "TAKE_PARTIAL":
+                    close_fraction = action.get("close_fraction", 0.5)
+                    status = status_by_id.get(trade_id, {})
+                    total_units = abs(status.get("units", 0))
+
+                    if total_units <= 0:
+                        logger.warning(
+                            "Phase 44: Cannot take partial profit on %s #%s — no units info",
+                            pair, trade_id,
+                        )
+                        continue
+
+                    close_units = max(1, int(total_units * close_fraction))
+
+                    # OANDA partial close: PUT /trades/{id}/close with {"units": "N"}
+                    token = os.getenv("OANDA_API_TOKEN", "")
+                    acct = os.getenv("OANDA_ACCOUNT_ID", "")
+                    base = "https://api-fxpractice.oanda.com"
+                    headers = {
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type": "application/json",
+                    }
+
+                    resp = self._retry_oanda(
+                        requests.put,
+                        f"{base}/v3/accounts/{acct}/trades/{trade_id}/close",
+                        headers=headers,
+                        json={"units": str(close_units)},
+                        timeout=10,
+                    )
+                    if resp.status_code == 200:
+                        msg = (
+                            f"Phase 44 TAKE_PARTIAL: {pair} #{trade_id} closed "
+                            f"{close_units}/{total_units} units ({close_fraction:.0%}) "
+                            f"({strategy}: {reason})"
+                        )
+                        logger.info(msg)
+                        messages.append(msg)
+
+                        # Phase 52 (US-323): Tranche tracker — move SL after partial close
+                        if self._tranche_tracker is not None:
+                            try:
+                                _metadata = action.get("metadata", {})
+                                _tranche_idx = int(_metadata.get("tranche_index", 0))
+                                _current_r = float(_metadata.get("tranche_config", {}).get("r_target", 1.0))
+                                _sl_adj = self._tranche_tracker.record_tranche_close(
+                                    str(trade_id), tranche_idx=_tranche_idx, r_at_close=_current_r,
+                                )
+                                if _sl_adj.should_move:
+                                    _sl_moved = self.modify_sl_oanda(str(trade_id), _sl_adj.new_sl)
+                                    if _sl_moved:
+                                        logger.info(
+                                            "Phase 52 (US-323): %s #%s SL moved to %.5f (%s)",
+                                            pair, trade_id, _sl_adj.new_sl, _sl_adj.reason,
+                                        )
+                                        messages.append(
+                                            f"Phase 52 TRANCHE_SL: {pair} #{trade_id} "
+                                            f"SL → {_sl_adj.new_sl:.5f} ({_sl_adj.adjustment_type})"
+                                        )
+                                    else:
+                                        logger.warning(
+                                            "Phase 52 (US-323): %s #%s tranche SL move FAILED — keeping existing SL",
+                                            pair, trade_id,
+                                        )
+                            except Exception as _tt_err:
+                                logger.debug(f"Phase 52: Tranche tracker SL move error: {_tt_err}")
+
+                    else:
+                        logger.warning(
+                            "Phase 44: Partial close failed for %s #%s: %s",
+                            pair, trade_id, resp.text,
+                        )
+
+                elif action_type == "TIGHTEN_SL":
+                    new_stop = action.get("new_stop")
+                    if new_stop is not None and new_stop > 0:
+                        success = self.modify_sl_oanda(str(trade_id), float(new_stop))
+                        if success:
+                            msg = (
+                                f"Phase 44 TIGHTEN_SL: {pair} #{trade_id} SL moved to "
+                                f"{new_stop:.5f} ({strategy}: {reason})"
+                            )
+                            logger.info(msg)
+                            messages.append(msg)
+                        else:
+                            logger.warning(
+                                "Phase 44: SL modification failed for %s #%s",
+                                pair, trade_id,
+                            )
+                    else:
+                        logger.debug(
+                            "Phase 44: TIGHTEN_SL for %s #%s has no new_stop price, skipping",
+                            pair, trade_id,
+                        )
+
+                else:
+                    logger.debug(
+                        "Phase 44: Unknown exit action type '%s' for %s #%s",
+                        action_type, pair, trade_id,
+                    )
+
+            except Exception as e:
+                logger.warning(
+                    "Phase 44: Error executing %s on %s #%s: %s",
+                    action_type, pair, trade_id, e,
+                )
+
+        return messages
 
     def _batch_fetch_prices(self, pairs: List[str]) -> Dict[str, float]:
         """Phase 30 (US-180): Fetch mid prices for multiple pairs in a single OANDA call.
@@ -2538,6 +3308,26 @@ class ExecutionManager:
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
         trail_mult = float(getattr(self.config, "trailing_atr_multiplier", 1.5))
+
+        # Phase 50 (US-314): Regime-aware trailing multiplier
+        _regime_trail_mults = {
+            "LOW": 2.0,
+            "NORMAL": 2.5,
+            "HIGH": 3.0,
+            "EXTREME": 4.0,
+        }
+        try:
+            if hasattr(self, "_regime_detector") and self._regime_detector is not None:
+                _current_regime = getattr(self._regime_detector, "current_regime", None)
+                if _current_regime and _current_regime in _regime_trail_mults:
+                    trail_mult = _regime_trail_mults[_current_regime]
+                    logger.debug(
+                        "Phase 50 US-314: Regime-aware trail_mult=%.2f for regime=%s",
+                        trail_mult, _current_regime,
+                    )
+        except Exception as _rt_err:
+            logger.debug("Phase 50 US-314: Regime trail fallback: %s", _rt_err)
+
         statuses = self.monitor_open_trades()
         modifications: List[str] = []
 
@@ -2564,6 +3354,18 @@ class ExecutionManager:
                 atr = getattr(self.config, "fallback_atr_pips", 15.0) * pip_value
 
             trail_distance = atr * trail_mult
+
+            # Phase 50 (US-314): Confidence scaling for trail distance
+            # Higher confidence → looser trail (let winners run)
+            # Lower confidence → tighter trail (protect gains)
+            _trade_conf = status.get("confidence", 0.0)
+            if isinstance(_trade_conf, (int, float)) and _trade_conf > 0:
+                _conf_scale = 0.8 + (_trade_conf * 0.4)  # Range: 0.8-1.2x
+                trail_distance *= _conf_scale
+                logger.debug(
+                    "Phase 50 US-314: Confidence-scaled trail for %s: conf=%.2f, scale=%.2f",
+                    pair, _trade_conf, _conf_scale,
+                )
 
             # Phase 30 (US-180): Use batch-cached price
             mid = _price_cache.get(pair)
@@ -2821,6 +3623,38 @@ class ExecutionManager:
             # Collect agent verdicts for RL feedback (with regime from entry)
             agents = entry.get("agents", {})
             regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
+
+            # Regime-aware reward shaping: compute shaped reward to augment flat PnL signal
+            _shaped_reward = None
+            if self._regime_reward is not None:
+                try:
+                    _max_dd = abs(min(0.0, realized_pl)) / max(abs(realized_pl), 0.01)
+                    _dur_bars = int((duration_minutes or 0) / 5)  # Approx 5-min bars
+                    _entry_conf = float(entry.get("confidence", 0.5))
+                    # Map volatility regime names to reward profile keys
+                    _regime_map = {
+                        "LOW": "normal", "NORMAL": "normal",
+                        "HIGH": "choppy", "EXTREME": "crisis",
+                    }
+                    _reward_regime = _regime_map.get(regime, "normal")
+                    _reward_result = self._regime_reward.compute_reward(
+                        pnl=realized_pl,
+                        max_drawdown=_max_dd,
+                        regime=_reward_regime,
+                        duration_bars=_dur_bars,
+                        entry_confidence=_entry_conf,
+                    )
+                    _shaped_reward = _reward_result.shaped_reward
+                    outcome_data["shaped_reward"] = round(_shaped_reward, 6)
+                    outcome_data["regime_reward_details"] = _reward_result.to_dict()
+                    if _reward_result.is_reward_hack_alert:
+                        logger.warning(
+                            f"RegimeReward hack alert for {tid}: "
+                            f"PnL-reward correlation={_reward_result.pnl_reward_correlation:.3f}"
+                        )
+                except Exception as _rr_err:
+                    logger.debug(f"Regime reward computation skipped for {tid}: {_rr_err}")
+
             if agents.get("agent_reasons"):
                 rl_updates.append({
                     "agent_verdicts": agents["agent_reasons"],
@@ -2829,10 +3663,225 @@ class ExecutionManager:
                     # Phase 24 (US-149): Pass exit_reason for trailing stop differentiation
                     "exit_reason": exit_reason,
                     "pnl": realized_pl,
+                    "shaped_reward": _shaped_reward,
                 })
 
         # Phase 47 (US-297): Record trade outcomes to expectancy tracker for per-agent per-regime learning
         self._record_expectancy_from_trades(pending, closed_trades)
+
+        # ── Phase 49 (US-307/308/309): Feed outcomes to Phase 48 modules ──
+
+        # US-307: Update pair performance tracker for auto-blacklisting
+        if self._pair_tracker is not None and synced > 0:
+            try:
+                _pt_recorded = 0
+                for entry in pending:
+                    tid = str(entry.get("trade_id", ""))
+                    if tid not in closed_trades:
+                        continue
+                    ct = closed_trades[tid]
+                    _pair = entry.get("pair", "")
+                    _realized_pl = float(ct.get("realizedPL", 0))
+                    _won = _realized_pl > 0
+                    self._pair_tracker.update_from_trade(pair=_pair, pnl=_realized_pl, won=_won)
+                    _pt_recorded += 1
+                if _pt_recorded > 0:
+                    self._pair_tracker.save_state()
+                    logger.info("Phase 49 (US-307): Fed %d outcomes to pair tracker", _pt_recorded)
+            except Exception as _pt_err:
+                logger.debug(f"Phase 49: Pair tracker update error: {_pt_err}")
+
+        # US-308: Trade attribution engine — SHAP-lite alignment scoring
+        if self._attribution_engine is not None and synced > 0:
+            try:
+                _attr_recorded = 0
+                for entry in pending:
+                    tid = str(entry.get("trade_id", ""))
+                    if tid not in closed_trades:
+                        continue
+                    ct = closed_trades[tid]
+                    _pair = entry.get("pair", "")
+                    _direction = entry.get("direction", "BUY").upper()
+                    _realized_pl = float(ct.get("realizedPL", 0))
+                    _won = _realized_pl > 0
+                    _outcome_str = "WIN" if _won else "LOSS"
+                    _agents_info = entry.get("agents", {})
+                    _agent_reasons = _agents_info.get("agent_reasons", [])
+
+                    # Build agent_verdicts dict: {name: (verdict, confidence, weight)}
+                    _verdicts = {}
+                    for _ar in _agent_reasons:
+                        _name = _ar.get("name", "")
+                        if _name:
+                            _verdict = "LONG" if _ar.get("passed", False) else "SHORT"
+                            _weight = float(_ar.get("weight", 1.0))
+                            _conf = float(_ar.get("confidence", 0.5))
+                            _verdicts[_name] = (_verdict, _conf, _weight)
+
+                    if _verdicts:
+                        _attribution = self._attribution_engine.attribute_trade(
+                            trade_id=tid,
+                            pair=_pair,
+                            direction=_direction,
+                            outcome=_outcome_str,
+                            pnl=_realized_pl,
+                            agent_verdicts=_verdicts,
+                        )
+                        # Store attribution summary in outcome for audit trail
+                        entry.setdefault("outcome", {})["attribution"] = {
+                            "alignment_ratio": round(_attribution.alignment_ratio, 3),
+                            "aligned": [c.agent_name for c in _attribution.aligned_agents],
+                            "misaligned": [c.agent_name for c in _attribution.misaligned_agents],
+                        }
+                        _attr_recorded += 1
+
+                if _attr_recorded > 0:
+                    self._attribution_engine.save_state()
+                    # Log weight recommendations (but do NOT auto-apply)
+                    _weight_recs = self._attribution_engine.get_weight_recommendations()
+                    _notable = {k: f"{v:.2f}x" for k, v in _weight_recs.items() if abs(v - 1.0) > 0.05}
+                    logger.info(
+                        "Phase 49 (US-308): Attributed %d trades. Weight recs: %s",
+                        _attr_recorded, _notable or "no notable adjustments",
+                    )
+            except Exception as _attr_err:
+                logger.debug(f"Phase 49: Attribution engine error: {_attr_err}")
+
+        # US-309: Walk-forward optimizer — record outcomes and trigger optimization
+        if self._walkforward_optimizer is not None and synced > 0:
+            try:
+                import time as _time_mod
+                _wfo_recorded = 0
+                for entry in pending:
+                    tid = str(entry.get("trade_id", ""))
+                    if tid not in closed_trades:
+                        continue
+                    ct = closed_trades[tid]
+                    _pair = entry.get("pair", "")
+                    _direction = entry.get("direction", "BUY").upper()
+                    _realized_pl = float(ct.get("realizedPL", 0))
+                    _won = _realized_pl > 0
+                    _confidence = float(entry.get("confidence", 0.5))
+                    _momentum = float(entry.get("agents", {}).get("weighted_vote_score", 0.5))
+                    _sl_pips = float(entry.get("sl_pips", 0))
+                    _tp_pips = float(entry.get("tp_pips", 0))
+                    _regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
+                    _entry_ts = entry.get("timestamp", "")
+                    _ts = 0.0
+                    if _entry_ts:
+                        try:
+                            _ts = datetime.fromisoformat(_entry_ts.replace("Z", "+00:00")).timestamp()
+                        except Exception:
+                            _ts = _time_mod.time()
+                    else:
+                        _ts = _time_mod.time()
+
+                    from src.scanner.walkforward_optimizer import TradeOutcome as WFTradeOutcome
+                    self._walkforward_optimizer.record_outcome(WFTradeOutcome(
+                        pair=_pair,
+                        direction=_direction,
+                        pnl=_realized_pl,
+                        confidence=_confidence,
+                        momentum_score=_momentum,
+                        atr_sl_pips=_sl_pips,
+                        atr_tp_pips=_tp_pips,
+                        regime=_regime,
+                        won=_won,
+                        timestamp=_ts,
+                    ))
+                    _wfo_recorded += 1
+
+                if _wfo_recorded > 0:
+                    logger.info("Phase 49 (US-309): Recorded %d outcomes to walk-forward optimizer", _wfo_recorded)
+
+                # Check if optimization should run
+                if self._walkforward_optimizer.should_optimize():
+                    _opt_result = self._walkforward_optimizer.run_optimization()
+                    logger.info(
+                        "Phase 49 (US-309): Walk-forward optimization complete — "
+                        "WFE=%.3f IS_PF=%.2f OOS_PF=%.2f recommendation=%s",
+                        _opt_result.wfe, _opt_result.is_profit_factor,
+                        _opt_result.oos_profit_factor, _opt_result.recommendation,
+                    )
+                    # Save results to config_adjustments.json (NOT auto-applied)
+                    self._walkforward_optimizer.save_state()
+            except Exception as _wfo_err:
+                logger.debug(f"Phase 49: Walk-forward optimizer error: {_wfo_err}")
+
+        # ── Phase 52 (US-323): Walk-Forward Retrainer — periodic agent weight retraining ──
+        # Only run after sufficient new trades (every 20 synced trades as per walk-forward config)
+        if self._walkforward_retrainer is not None and synced >= 5:
+            try:
+                _journal_str = str(journal_path)
+                _wfr_epochs = self._walkforward_retrainer.run(
+                    journal_path=_journal_str,
+                    current_weights_path="trained_data/models/agent_weights.json",
+                    output_path="trained_data/models/walkforward_epochs.json",
+                )
+                if _wfr_epochs:
+                    _n_epochs = len(_wfr_epochs)
+                    _accepted = sum(1 for e in _wfr_epochs if e.accepted)
+                    logger.info(
+                        "Phase 52 (US-323): Walk-forward retrainer: %d epochs, %d accepted",
+                        _n_epochs, _accepted,
+                    )
+                    if _accepted > 0:
+                        _new_weights = self._walkforward_retrainer.get_current_weights()
+                        if _new_weights:
+                            self._walkforward_retrainer.save_weights(
+                                "trained_data/models/agent_weights.json"
+                            )
+                            logger.info(
+                                "Phase 52 (US-323): Retrained agent weights saved — %s",
+                                {k: f"{v:.3f}" for k, v in list(_new_weights.items())[:5]},
+                            )
+            except Exception as _wfr_err:
+                logger.debug(f"Phase 52: Walk-forward retrainer error: {_wfr_err}")
+
+        # ── Phase 52 (US-323): Clean up tranche tracker for closed trades ──
+        if self._tranche_tracker is not None and synced > 0:
+            try:
+                _tt_cleaned = 0
+                for entry in pending:
+                    tid = str(entry.get("trade_id", ""))
+                    if tid in closed_trades:
+                        self._tranche_tracker.remove_trade(tid)
+                        _tt_cleaned += 1
+                if _tt_cleaned > 0:
+                    logger.info("Phase 52 (US-323): Cleaned %d closed trades from tranche tracker", _tt_cleaned)
+            except Exception as _tt_cleanup_err:
+                logger.debug(f"Phase 52: Tranche tracker cleanup error: {_tt_cleanup_err}")
+
+        # ── Phase 52 (US-325): Adaptive R:R outcome recording for learning ──
+        if self._adaptive_rr is not None and synced > 0:
+            try:
+                _rr_recorded = 0
+                for entry in pending:
+                    tid = str(entry.get("trade_id", ""))
+                    if tid in closed_trades:
+                        _sl = float(entry.get("sl_pips", 0))
+                        _tp = float(entry.get("tp_pips", 0))
+                        _regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
+                        _realized = float(closed_trades[tid].get("realizedPL", 0))
+                        _rr_target = _tp / _sl if _sl > 0 else 1.5
+                        _actual_rr = abs(_realized) / _sl if _sl > 0 and _realized != 0 else 0.0
+                        self._adaptive_rr.record_outcome(
+                            rr_target=_rr_target,
+                            actual_rr=_actual_rr,
+                            won=_realized > 0,
+                            regime=str(_regime),
+                        )
+                        _rr_recorded += 1
+                if _rr_recorded > 0:
+                    _rr_stats = self._adaptive_rr.get_stats()
+                    logger.info(
+                        "Phase 52 (US-325): Recorded %d R:R outcomes — "
+                        "avg_target=%.2f avg_actual=%.2f win_rate=%.3f",
+                        _rr_recorded, _rr_stats.get("avg_target_rr", 0),
+                        _rr_stats.get("avg_actual_rr", 0), _rr_stats.get("win_rate", 0),
+                    )
+            except Exception as _rr_rec_err:
+                logger.debug(f"Phase 52: Adaptive R:R recording error: {_rr_rec_err}")
 
         # Write updated journal (atomic)
         try:
@@ -2900,11 +3949,35 @@ class ExecutionManager:
                         if _rl_config is not None:
                             setattr(_rl_config, "weight_penalty_on_loss", _orig_penalty)
 
+                    # Regime-aware reward: modulate boost/penalty based on shaped reward
+                    _shaped = upd.get("shaped_reward")
+                    _orig_boost = getattr(_rl_config, "weight_boost_on_win", 0.10) if _rl_config else 0.10
+                    if _shaped is not None and _rl_config is not None:
+                        try:
+                            # Scale boost/penalty by |shaped_reward| relative to |pnl|
+                            # Difficult regimes (HIGH/EXTREME) with profit get amplified reward
+                            _abs_pnl = abs(float(upd.get("pnl", 0)))
+                            _abs_shaped = abs(_shaped)
+                            if _abs_pnl > 0.001:
+                                _reward_ratio = min(2.0, max(0.3, _abs_shaped / _abs_pnl))
+                            else:
+                                _reward_ratio = 1.0
+                            setattr(_rl_config, "weight_boost_on_win", round(_orig_boost * _reward_ratio, 4))
+                            _current_penalty = getattr(_rl_config, "weight_penalty_on_loss", 0.15)
+                            setattr(_rl_config, "weight_penalty_on_loss", round(_current_penalty * _reward_ratio, 4))
+                        except Exception as _mod_err:
+                            logger.debug(f"Regime reward modulation skipped: {_mod_err}")
+
                     new_weights = agent_team.update_weights_from_outcome(
                         agent_verdicts=upd["agent_verdicts"],
                         trade_won=upd["trade_won"],
                         regime=upd.get("regime", "NORMAL"),
                     )
+
+                    # Restore boost after each trade (penalty restored below or in trailing logic)
+                    if _rl_config is not None:
+                        setattr(_rl_config, "weight_boost_on_win", _orig_boost)
+
                 # Restore original penalty
                 if _rl_config is not None:
                     setattr(_rl_config, "weight_penalty_on_loss", _orig_penalty)
@@ -3088,6 +4161,13 @@ class ExecutionManager:
                 self._ewma_correlation.save_state("trained_data/ewma_correlation_state.json")
             except Exception as _ewma_save_err:
                 logger.debug(f"Phase 45: EWMA state save failed: {_ewma_save_err}")
+
+        # Persist regime reward log after all trades processed
+        if self._regime_reward is not None and synced > 0:
+            try:
+                self._regime_reward.save_log()
+            except Exception as _rr_save_err:
+                logger.debug(f"Regime reward log save failed: {_rr_save_err}")
 
         return {
             "trades_synced": synced,

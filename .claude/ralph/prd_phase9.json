@@ -1,0 +1,109 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-learning-phase9",
+  "description": "Buddy Phase 9 — Adaptive Learning & Feedback Loops. Phase 8 made the bot smarter with intelligence modules. Phase 9 closes feedback loops: agents that underperform get decayed, Markov predictions drive position sizing, config tuner consumes session snapshots, drawdown thresholds adapt to equity curve, observation log captures group signals, and RL replay buffer feeds online weight updates. DIRECTIVE: NEVER STOP BRAINSTORMING/RESEARCHING AND IMPROVING. DONT ASK FOR EVERY COMMAND, JUST DO. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-055",
+      "title": "Agent health monitor with selective stale agent decay",
+      "description": "Track per-agent contribution metrics (win rate, vote alignment, regime accuracy). Agents with consistently low contribution over 20+ trades get accelerated decay. Log all decay events for audit trail.",
+      "acceptanceCriteria": [
+        "New class AgentHealthMonitor in src/scanner/automation/agent_health.py",
+        "Tracks per-agent metrics: trades_contributed, wins, losses, avg_alignment_with_outcome",
+        "Selective decay: agents below 35% win rate over 20+ trades get 2x decay rate",
+        "Decay audit: every decay event logged to trained_data/agent_decay_log.jsonl",
+        "get_agent_health_report() returns per-agent health summary",
+        "Wired into _team.py apply_weight_decay() — uses health data for selective rates",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "AgentHealthMonitor created in agent_health.py with AgentMetrics dataclass, record_outcome(), get_selective_decay_rates(), get_health_report(). Wired into _team.py apply_weight_decay() with lazy import. Stale agents (win rate < 35% over 20+ trades) get 2x decay. Decay events logged to agent_decay_log.jsonl."
+    },
+    {
+      "id": "US-056",
+      "title": "Markov-driven position sizing with regime predictions",
+      "description": "Wire RegimeTransitionTracker predictions into position sizing. When Markov chain predicts HIGH/EXTREME as next state with P > 0.3, proactively reduce position size. When predicting LOW/NORMAL, allow full sizing.",
+      "acceptanceCriteria": [
+        "New method get_predictive_size_modifier() on RegimeTransitionTracker",
+        "Returns float 0.5-1.0 based on forward-looking regime probabilities",
+        "P(HIGH) > 0.3 → 0.85 modifier, P(EXTREME) > 0.3 → 0.70 modifier, compound if both",
+        "Wired into engine.py execute_trades analysis_context as 'predictive_size_modifier'",
+        "execution.py applies predictive_size_modifier to lots before order placement",
+        "Logged in journal entry_record under regime section",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "get_predictive_size_modifier() added to RegimeTransitionTracker. P(HIGH)>0.3 → 0.85x, P(EXTREME)>0.3 → 0.70x, compounds, clamped to min 0.5. Wired into engine.py analysis_context and execution.py applies to lots before order."
+    },
+    {
+      "id": "US-057",
+      "title": "Config tuner session snapshot consumer with auto-rollback",
+      "description": "ConfigTuner reads recent session snapshots to compare performance trends. If win rate dropped >10% after a config change, auto-revert to pre-change values. Enables data-driven parameter evolution.",
+      "acceptanceCriteria": [
+        "ConfigTuner gets new method compare_session_performance()",
+        "Loads last 3 session snapshots via SessionSnapshotManager",
+        "Compares current session win_rate against avg of previous sessions",
+        "If win_rate dropped > 10%: flag config changes since last snapshot as suspect",
+        "Auto-rollback: revert suspect config fields to values from best-performing snapshot",
+        "Rollback events logged to trained_data/config_rollback_log.jsonl",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "compare_session_performance() added to ConfigTuner. Loads 3 recent snapshots, compares win rates, identifies suspect config changes after last snapshot, auto-reverts and logs to config_rollback_log.jsonl."
+    },
+    {
+      "id": "US-058",
+      "title": "Dynamic drawdown thresholds based on equity curve",
+      "description": "Adjust trailing stop lock/breakeven percentages based on current drawdown relative to max allowed. When drawdown is high, lock profits earlier. When performance is strong, allow more room to run.",
+      "acceptanceCriteria": [
+        "New class DynamicDrawdownManager in src/scanner/automation/dynamic_drawdown.py",
+        "Computes drawdown_severity = current_drawdown / max_drawdown_pct (0.0 to 1.0)",
+        "Adjusts breakeven_pct: from 0.50 (normal) to 0.30 (high drawdown severity > 0.6)",
+        "Adjusts lock_pct: from 0.75 (normal) to 0.50 (high drawdown severity > 0.6)",
+        "get_dynamic_thresholds(current_dd, max_dd) returns adjusted breakeven_pct and lock_pct",
+        "Wired into execution.py _manage_trailing_stops to use dynamic thresholds",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "DynamicDrawdownManager with 3 modes: normal, protective (severity>0.6), aggressive (severity<0.3). Interpolated breakeven/lock thresholds. Wired into execution.py _manage_trailing_stops."
+    },
+    {
+      "id": "US-059",
+      "title": "Observation log expansion for group momentum and correlation signals",
+      "description": "Add group_momentum and correlation_conflict observation categories to ObservationLog. Wire GroupMomentumAggregator to log when alignment diverges significantly from trade direction.",
+      "acceptanceCriteria": [
+        "ObservationLog gets new categories: 'group_momentum', 'correlation_conflict'",
+        "log_group_momentum() records currency group scores and alignment per trade",
+        "log_correlation_conflict() records when correlated pairs have conflicting signals",
+        "Wired into engine.py execute_trades — logs after group momentum evaluation",
+        "Observation categories accessible via get_observation_summary()",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Added group_momentum and correlation_conflict categories. log_group_momentum() and log_correlation_conflict() convenience methods. get_observation_summary() for category counts. Wired into engine.py: logs blocks/boosts after group momentum eval, logs correlation conflicts after diversification filter."
+    },
+    {
+      "id": "US-060",
+      "title": "RL replay buffer online weight updater",
+      "description": "Lightweight online consumer that reads recent RL replay buffer entries and incrementally adjusts agent weights without waiting for full retraining cycle. Runs every N scan cycles as a micro-update.",
+      "acceptanceCriteria": [
+        "New class OnlineWeightUpdater in src/scanner/automation/online_rl.py",
+        "Reads last N entries from trade_journal_rl.json (default N=10)",
+        "Computes incremental weight adjustments from recent outcomes: win → +0.02, loss → -0.01 per aligned agent",
+        "Micro-update applied every 5 scan cycles (configurable)",
+        "Weight changes clamped to ±0.1 per micro-update to prevent instability",
+        "Update events logged to trained_data/online_rl_updates.jsonl",
+        "Wired into continuous.py scan loop",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "OnlineWeightUpdater in online_rl.py. Reads last 10 trades from journal, computes per-agent win/loss signals, applies clamped ±0.10 micro-adjustments to _global weights every 5 scan cycles. Audit logged to online_rl_updates.jsonl. Wired into continuous.py scan loop."
+    }
+  ]
+}

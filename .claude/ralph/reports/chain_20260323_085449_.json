@@ -1,0 +1,950 @@
+{
+  "summary": {
+    "timestamp": "2026-03-23T08:54:49.566819+00:00",
+    "prd_file": "unknown",
+    "branch": "",
+    "gap_analysis": {
+      "total_gaps": 0,
+      "critical": 0,
+      "by_type": {}
+    },
+    "code_review": {
+      "passed": false,
+      "total_findings": 93,
+      "by_severity": {
+        "low": 51,
+        "medium": 36,
+        "high": 6
+      },
+      "files_reviewed": 64
+    },
+    "overall_passed": false
+  },
+  "gap_analysis": {},
+  "code_review": {
+    "target_files": [
+      "src/scanner/automation/session_snapshot.py",
+      "src/scanner/automation/agent_accuracy_matrix.py",
+      "src/scanner/automation/affinity_portfolio.py",
+      "src/scanner/automation/pair_regime_agent_matrix.py",
+      "src/scanner/automation/pair_transfer.py",
+      "src/scanner/automation/position_timeout.py",
+      "src/scanner/automation/dynamic_sl_tp.py",
+      "src/scanner/automation/adversarial_trainer.py",
+      "src/scanner/automation/concept_drift.py",
+      "src/scanner/automation/training_augmenter.py",
+      "src/scanner/automation/group_momentum.py",
+      "src/scanner/automation/orchestrator.py",
+      "src/scanner/automation/module_activation.py",
+      "src/scanner/automation/attention_feedback.py",
+      "src/scanner/automation/model_manager.py",
+      "src/scanner/automation/threshold_optimizer.py",
+      "src/scanner/automation/model_calibration.py",
+      "src/scanner/automation/smart_execution.py",
+      "src/scanner/automation/adaptive_lr.py",
+      "src/scanner/automation/agent_lifecycle.py",
+      "src/scanner/automation/confidence_calibrator.py",
+      "src/scanner/automation/accuracy_gate.py",
+      "src/scanner/automation/regime_broadcaster.py",
+      "src/scanner/automation/module_dispatcher.py",
+      "src/scanner/automation/pair_model_selector.py",
+      "src/scanner/automation/execution_quality_tracker.py",
+      "src/scanner/automation/kelly_portfolio.py",
+      "src/scanner/automation/trade_outcome_predictor.py",
+      "src/scanner/automation/dynamic_drawdown.py",
+      "src/scanner/automation/ensemble_disagreement.py",
+      "src/scanner/automation/regime_tracker.py",
+      "src/scanner/automation/model_router.py",
+      "src/scanner/automation/alert_manager.py",
+      "src/scanner/automation/portfolio_optimizer.py",
+      "src/scanner/automation/regime_reward.py",
+      "src/scanner/automation/temporal_attention.py",
+      "src/scanner/automation/execution_quality_optimizer.py",
+      "src/scanner/automation/model_bandit.py",
+      "src/scanner/automation/multi_horizon_fusion.py",
+      "src/scanner/automation/dynamic_risk_allocator.py",
+      "src/scanner/automation/observation_consumer.py",
+      "src/scanner/automation/market_impact.py",
+      "src/scanner/automation/drift_monitor.py",
+      "src/scanner/automation/causal_filter.py",
+      "src/scanner/automation/dynamic_hedging.py",
+      "src/scanner/automation/health_registry.py",
+      "src/scanner/automation/execution_router.py",
+      "src/scanner/automation/feature_attention.py",
+      "src/scanner/automation/lead_lag_detector.py",
+      "src/scanner/automation/replay_validator.py",
+      "src/scanner/automation/continuous.py",
+      "src/scanner/automation/position_manager.py",
+      "src/scanner/automation/observational_learning.py",
+      "src/scanner/automation/seasonality.py",
+      "src/scanner/automation/pair_affinity.py",
+      "src/scanner/automation/state_engine.py",
+      "src/scanner/automation/trade_explainer.py",
+      "src/scanner/automation/retrain_trigger.py",
+      "src/scanner/automation/memory_manager.py",
+      "src/scanner/automation/hierarchical_risk_parity.py",
+      "src/scanner/automation/signal_timing.py",
+      "src/scanner/automation/crisis_generator.py",
+      "src/scanner/automation/entropy_sizer.py",
+      "src/scanner/automation/microstructure_regime.py"
+    ],
+    "trigger": "gap_wirer",
+    "timestamp": "2026-03-23T08:54:49.265518+00:00",
+    "passed": false,
+    "files_reviewed": 64,
+    "total_findings": 93,
+    "by_severity": {
+      "low": 51,
+      "medium": 36,
+      "high": 6
+    },
+    "by_category": {
+      "integration": 51,
+      "json_safety": 12,
+      "error_handling": 26,
+      "trading_domain": 3,
+      "state_mgmt": 1
+    },
+    "duration_secs": 0.3,
+    "findings": [
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/session_snapshot.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/agent_accuracy_matrix.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/affinity_portfolio.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/pair_regime_agent_matrix.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/pair_transfer.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/adversarial_trainer.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/concept_drift.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/training_augmenter.py",
+        "line": null,
+        "message": "Writes to shared file 'trade_journal_rl.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/training_augmenter.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": null,
+        "message": "Writes to shared file 'config_adjustments.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 1082,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 1146,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 434,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 487,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 669,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 922,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 722,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 1097,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/orchestrator.py",
+        "line": 1126,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/module_activation.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/attention_feedback.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/model_manager.py",
+        "line": 693,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/model_manager.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/threshold_optimizer.py",
+        "line": null,
+        "message": "Writes to shared file 'trade_journal_rl.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/threshold_optimizer.py",
+        "line": 253,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/model_calibration.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "TRADE-003",
+        "severity": "high",
+        "category": "trading_domain",
+        "file": "src/scanner/automation/smart_execution.py",
+        "line": null,
+        "message": "Trade close logic without RL weight sync \u2014 outcomes must feed back to agents",
+        "suggestion": "Call agent_team.update_weights_from_outcome() after trade close sync"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/adaptive_lr.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/agent_lifecycle.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/confidence_calibrator.py",
+        "line": null,
+        "message": "Writes to shared file 'trade_journal_rl.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/confidence_calibrator.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/accuracy_gate.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/regime_broadcaster.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/module_dispatcher.py",
+        "line": 225,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/module_dispatcher.py",
+        "line": 175,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/module_dispatcher.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/pair_model_selector.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "TRADE-003",
+        "severity": "high",
+        "category": "trading_domain",
+        "file": "src/scanner/automation/execution_quality_tracker.py",
+        "line": null,
+        "message": "Trade close logic without RL weight sync \u2014 outcomes must feed back to agents",
+        "suggestion": "Call agent_team.update_weights_from_outcome() after trade close sync"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/execution_quality_tracker.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/kelly_portfolio.py",
+        "line": null,
+        "message": "Writes to shared file 'trade_journal_rl.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/kelly_portfolio.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/trade_outcome_predictor.py",
+        "line": null,
+        "message": "Writes to shared file 'trade_journal_rl.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/trade_outcome_predictor.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/ensemble_disagreement.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/regime_tracker.py",
+        "line": 72,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/regime_tracker.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/model_router.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "STATE-001",
+        "severity": "medium",
+        "category": "state_mgmt",
+        "file": "src/scanner/automation/alert_manager.py",
+        "line": null,
+        "message": "Reads state.json without verifying against source-of-truth files",
+        "suggestion": "Cross-check state.json claims with actual file contents or OANDA data"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/alert_manager.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/regime_reward.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/temporal_attention.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/execution_quality_optimizer.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/model_bandit.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/multi_horizon_fusion.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/dynamic_risk_allocator.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/market_impact.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/drift_monitor.py",
+        "line": 205,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/drift_monitor.py",
+        "line": 217,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/drift_monitor.py",
+        "line": 248,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/drift_monitor.py",
+        "line": 260,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/drift_monitor.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/causal_filter.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/health_registry.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "TRADE-002",
+        "severity": "high",
+        "category": "trading_domain",
+        "file": "src/scanner/automation/execution_router.py",
+        "line": null,
+        "message": "execute_trade() found but no R:R ratio check (minimum 1.2:1)",
+        "suggestion": "Add R:R gate: if tp_pips / sl_pips < 1.2: reject trade"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/execution_router.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/feature_attention.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/lead_lag_detector.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/replay_validator.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 577,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1470,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 288,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1208,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1219,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 961,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 929,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "ERR-001",
+        "severity": "medium",
+        "category": "error_handling",
+        "file": "src/scanner/automation/continuous.py",
+        "line": 1053,
+        "message": "Silent exception handler (pass/...) \u2014 errors are swallowed",
+        "suggestion": "At minimum: logger.debug(f'Expected: {e}') or add a comment explaining why"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/position_manager.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/observational_learning.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/seasonality.py",
+        "line": null,
+        "message": "Writes to shared file 'trade_journal_rl.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/seasonality.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/pair_affinity.py",
+        "line": null,
+        "message": "Writes to shared file 'trade_journal_rl.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/pair_affinity.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "JSON-001",
+        "severity": "high",
+        "category": "json_safety",
+        "file": "src/scanner/automation/state_engine.py",
+        "line": 89,
+        "message": "json.dumps() call without try/except \u2014 will crash on corrupt data",
+        "suggestion": "Wrap in try/except json.JSONDecodeError with graceful default"
+      },
+      {
+        "rule": "JSON-001",
+        "severity": "high",
+        "category": "json_safety",
+        "file": "src/scanner/automation/state_engine.py",
+        "line": 170,
+        "message": "json.dumps() call without try/except \u2014 will crash on corrupt data",
+        "suggestion": "Wrap in try/except json.JSONDecodeError with graceful default"
+      },
+      {
+        "rule": "JSON-001",
+        "severity": "high",
+        "category": "json_safety",
+        "file": "src/scanner/automation/state_engine.py",
+        "line": 180,
+        "message": "json.dumps() call without try/except \u2014 will crash on corrupt data",
+        "suggestion": "Wrap in try/except json.JSONDecodeError with graceful default"
+      },
+      {
+        "rule": "JSON-002",
+        "severity": "medium",
+        "category": "json_safety",
+        "file": "src/scanner/automation/state_engine.py",
+        "line": null,
+        "message": "Writes to shared file 'state.json' without file locking",
+        "suggestion": "Use fcntl.flock() or safe_json module for concurrent access"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/state_engine.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/trade_explainer.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/memory_manager.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/signal_timing.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/crisis_generator.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/entropy_sizer.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      },
+      {
+        "rule": "INT-001",
+        "severity": "low",
+        "category": "integration",
+        "file": "src/scanner/automation/microstructure_regime.py",
+        "line": null,
+        "message": "Module writes data but doesn't log to observation_log for visibility",
+        "suggestion": "Add observation_log.log_observation() for key state changes"
+      }
+    ],
+    "errors": []
+  }
+}

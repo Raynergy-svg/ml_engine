@@ -15,8 +15,19 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
-import tensorflow as tf
 import warnings
+
+# TensorFlow is lazy-loaded to allow CLI startup without it installed.
+# Functions that need tf import it locally.
+tf = None  # type: ignore
+
+def _get_tf():
+    """Lazy-load TensorFlow on first use."""
+    global tf
+    if tf is None or tf is False:
+        import tensorflow as _tf
+        tf = _tf
+    return tf
 
 if TYPE_CHECKING:
     from src.training.trainers.config import TrainerConfig
@@ -136,7 +147,7 @@ def _get_numpy_dtype(keras_dtype) -> np.dtype:
 
     # Fallback: try to convert via tf.dtypes
     try:
-        return tf.dtypes.as_dtype(keras_dtype).as_numpy_dtype
+        return _get_tf().dtypes.as_dtype(keras_dtype).as_numpy_dtype
     except Exception:
         # Last resort: default to float32
         logger.warning(f"Could not convert dtype {keras_dtype}, defaulting to float32")
@@ -400,7 +411,7 @@ def _safe_reset_optimizer_state(model) -> None:
         reset_count = 0
         for var in opt_vars:
             try:
-                var.assign(tf.zeros_like(var))
+                var.assign(_get_tf().zeros_like(var))
                 reset_count += 1
             except Exception:
                 pass  # Non-assignable variable (e.g., iteration counter)
@@ -547,7 +558,7 @@ def _safe_set_learning_rate(optimizer, new_lr: float) -> bool:
             optimizer._learning_rate.assign(new_lr)
             return True
         # Fallback: try set_value (works with older Keras)
-        tf.keras.backend.set_value(optimizer.learning_rate, new_lr)
+        _get_tf().keras.backend.set_value(optimizer.learning_rate, new_lr)
         return True
     except (AttributeError, TypeError):
         # Learning rate is likely a schedule - can't be modified directly

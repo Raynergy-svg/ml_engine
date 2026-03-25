@@ -1,0 +1,109 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/phase47-pipeline-wiring-phase46-modules",
+  "description": "Phase 47 \u2014 Production Wiring of Phase 46 Entry Filtering Modules. Wire all 5 Phase 46 standalone modules into the live trading pipeline: (1) MTF confluence into _evaluate_multi_timeframe(), (2) ensemble conflict resolver into _evaluate_uncertainty(), (3) session detector into execution.py and _team.py, (4) expectancy tracker into sync_closed_trades_rl() and agent weight updates, (5) regime gates position multiplier into calculate_position_size(). Plus: adaptive R:R ratio per regime. Target: 38% \u2192 45% win rate.",
+  "userStories": [
+    {
+      "id": "US-294",
+      "title": "Wire MTF Confluence into _evaluate_multi_timeframe()",
+      "description": "Replace the synthetic H4/D1 approximation in _evaluate_multi_timeframe() with the Elder Triple Screen MultiTimeframeConfluence module. Lazy-init MultiTimeframeConfluence in ScannerAgentTeam.__init__(). In _evaluate_multi_timeframe(), call score_confluence() with available data and use confluence_score and direction_aligned to set the agent verdict. Fallback to existing logic if MTF module raises.",
+      "acceptanceCriteria": [
+        "MultiTimeframeConfluence lazy-initialized in ScannerAgentTeam.__init__()",
+        "score_confluence() called in _evaluate_multi_timeframe() with available OHLCV data",
+        "Confluence score mapped to agent verdict (PROCEED\u2192passed, CAUTION\u2192warning, REJECT\u2192failed)",
+        "Direction alignment feeds into verdict details for downstream consumption",
+        "Fallback to existing synthetic logic if MultiTimeframeConfluence raises",
+        "Config flag: mtf_confluence_enabled (default True)",
+        "At least 15 unit tests covering wiring, fallback, and score mapping"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "20 tests passing. MTF Confluence lazy-init in __init__(). score_confluence() wired into _evaluate_multi_timeframe() with PROCEED/CAUTION/REJECT verdict mapping. Fallback to legacy synthetic logic."
+    },
+    {
+      "id": "US-295",
+      "title": "Wire Ensemble Conflict Resolver into _evaluate_uncertainty()",
+      "description": "Replace the manual model disagreement logic in _evaluate_uncertainty() with EnsembleConflictResolver. Extract ModelPrediction objects from the existing model scores, call resolve(), and apply the graduated penalty instead of the flat -15%. Block trade if should_block is True. Fallback to flat penalty if resolver raises.",
+      "acceptanceCriteria": [
+        "EnsembleConflictResolver lazy-initialized in ScannerAgentTeam.__init__()",
+        "ModelPrediction objects created from existing TCN/Ridge/RF scores in _evaluate_uncertainty()",
+        "resolve() result penalty applied to confidence instead of flat -15%",
+        "should_block=True results in agent verdict failed with 'ensemble_direction_conflict' reason",
+        "Fallback to existing flat penalty if conflict resolver raises",
+        "Graduated penalty curve verified in tests (0.30\u2192-8%, 0.40\u2192-20%, 0.50\u2192block)",
+        "At least 15 unit tests covering wiring, penalty application, blocking, and fallback"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "20 tests passing. EnsembleConflictResolver lazy-init in __init__(). ModelPrediction extraction from TCN/Ridge/RF. Graduated penalty in _evaluate_uncertainty(). Direction conflict hard block. Legacy flat penalty fallback."
+    },
+    {
+      "id": "US-296",
+      "title": "Wire Session Detector into execution.py and _team.py",
+      "description": "Initialize SessionDetector in both ExecutionManager and ScannerAgentTeam. In execution.py, apply session position size multiplier in calculate_position_size() after adaptive sizing. In _team.py, apply session confidence modifiers to relevant agent verdicts (session_timing agent uses real session detection). Fallback gracefully if SessionDetector unavailable.",
+      "acceptanceCriteria": [
+        "SessionDetector lazy-initialized in ExecutionManager.__init__() and ScannerAgentTeam.__init__()",
+        "Session position size multiplier applied in calculate_position_size() after adaptive sizing",
+        "Session confidence modifiers applied in evaluate() to relevant agent scores",
+        "Session name logged with every trade execution for audit trail",
+        "Fallback to 1.0x multiplier and 0.0 modifier if SessionDetector raises",
+        "At least 15 unit tests covering wiring in both execution.py and _team.py"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "34 tests passing. SessionDetector lazy-init in ExecutionManager.__init__(). Session position multiplier in calculate_position_size(). Session name logged with trades."
+    },
+    {
+      "id": "US-297",
+      "title": "Wire Expectancy Tracker into RL Feedback Loop",
+      "description": "Initialize ExpectancyTracker in ExecutionManager and ScannerAgentTeam. In sync_closed_trades_rl(), after processing a closed trade, record the outcome in ExpectancyTracker for each agent that participated. In ScannerAgentTeam.evaluate(), apply expectancy-based weight modifiers (negative expectancy agents get -20% weight penalty). Persist expectancy state atomically.",
+      "acceptanceCriteria": [
+        "ExpectancyTracker lazy-initialized in ExecutionManager.__init__()",
+        "record_trade() called for each agent after trade close in sync_closed_trades_rl()",
+        "get_weight_modifier() called in ScannerAgentTeam.evaluate() to adjust agent weights",
+        "Expectancy state persisted atomically alongside other state in sync_closed_trades_rl()",
+        "State loaded on init from trained_data/expectancy_tracker.json",
+        "Fallback to 1.0 modifier if ExpectancyTracker raises",
+        "At least 15 unit tests covering recording, weight modification, persistence, and fallback"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "34 tests passing. ExpectancyTracker lazy-init with state loading. record_trade() for each agent in sync_closed_trades_rl(). Atomic state persistence. Weight modifier integration."
+    },
+    {
+      "id": "US-298",
+      "title": "Wire Regime Gates Position Multiplier into Position Sizing",
+      "description": "The regime gates module provides a position_size_multiplier per regime (LOW=1.3, NORMAL=1.0, HIGH=0.65, EXTREME=0.40). Wire this multiplier into calculate_position_size() in execution.py, applied after adaptive sizing and before session multiplier. This creates a sizing chain: base \u2192 adaptive \u2192 regime \u2192 session \u2192 EWMA diversification.",
+      "acceptanceCriteria": [
+        "Regime position size multiplier extracted from apply_regime_gates() result",
+        "Multiplier applied in calculate_position_size() after adaptive sizing, before session",
+        "Sizing chain documented: base \u2192 adaptive \u2192 regime \u2192 session \u2192 EWMA \u2192 streak",
+        "Fallback to 1.0 multiplier if regime gates unavailable",
+        "Position size breakdown logged with all multiplier components",
+        "At least 10 unit tests covering multiplier application and sizing chain order"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "34 tests passing. Regime position multiplier from get_regime_profile(). Applied after adaptive sizing, before session multiplier. Sizing chain: adaptive \u2192 regime \u2192 session \u2192 EWMA \u2192 streak."
+    },
+    {
+      "id": "US-299",
+      "title": "Integration tests: Phase 47 full wiring verification",
+      "description": "End-to-end integration tests verifying all 5 Phase 46 modules are correctly wired into the production pipeline. Test the complete flow: scan \u2192 regime detect \u2192 regime gates \u2192 MTF confluence \u2192 session filter \u2192 ensemble conflict \u2192 expectancy-weighted agent vote \u2192 regime-sized position \u2192 session-sized position \u2192 execute.",
+      "acceptanceCriteria": [
+        "At least 15 integration tests",
+        "Test MTF confluence verdict flows into agent team evaluation",
+        "Test ensemble conflict blocks trade when models disagree in uncertainty agent",
+        "Test session detector modifies both confidence (in _team.py) and position size (in execution.py)",
+        "Test expectancy tracker records outcomes and modifies agent weights on next evaluation",
+        "Test regime position multiplier creates correct sizing chain",
+        "Test fallback chain: each module failure falls back gracefully without crashing pipeline",
+        "Test full pipeline simulation with mock OANDA: 10+ trades across regime and session changes",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "364 total tests (310 Phase 46 + 54 Phase 47). Full pipeline verification across all integration points. 0 failures."
+    }
+  ]
+}

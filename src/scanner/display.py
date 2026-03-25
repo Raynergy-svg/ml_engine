@@ -153,8 +153,8 @@ class ScannerDisplay:
         return f"{analysis.current_price:.{decimals}f}"
 
     def _format_error(self, error: str) -> Text:
-        """Format error message."""
-        return Text(f"⚠ {error[:30]}", style=self._planner_orange)
+        """Format error message with full context."""
+        return Text(f"⚠ {error[:80]}", style=self._planner_orange)
 
     def _generate_descriptive_note(self, analysis: PairAnalysis) -> str:
         """Generate a descriptive note based on analysis state.
@@ -397,16 +397,18 @@ class ScannerDisplay:
             return table
 
         for analysis in sorted_analyses:
-            # Handle hard errors (no data at all)
-            if analysis.error and analysis.current_price < 0.0001:
+            # Handle errors — show what we know, with actionable context
+            if analysis.error:
+                # Still show direction/confidence if we have partial data
+                has_partial = analysis.current_price > 0.0001 or analysis.confidence > 0.01
                 table.add_row(
                     self._format_pair_label(analysis),
-                    Text("-", style="dim"),
-                    Text("-", style="dim"),
-                    Text("-", style="dim"),
-                    Text("-", style="dim"),
-                    Text("-", style="dim"),
-                    self._format_price(analysis),
+                    self._format_direction(analysis.direction, analysis.confidence) if has_partial else Text("--", style="dim"),
+                    self._format_confidence(analysis.confidence) if has_partial else Text("--", style="dim"),
+                    Text("--", style="dim"),
+                    Text("--", style="dim"),
+                    Text("ERROR", style=f"bold {self._planner_orange}"),
+                    self._format_price(analysis) if has_partial else Text("--", style="dim"),
                     self._format_error(analysis.error),
                 )
                 continue
@@ -573,21 +575,52 @@ class ScannerDisplay:
                 f"({len(agent_ready)} pairs evaluated)[/dim]"
             )
 
-        # Show warnings for common issues
+        # Show diagnostic summary for errors
         error_pairs = [a for a in result.analyses if a.error]
-        no_data = [a for a in error_pairs if "No data" in (a.error or "")]
-        no_models = [a for a in error_pairs if "No models" in (a.error or "")]
+        if error_pairs:
+            self.console.print()
+            self.console.print(
+                f"[bold yellow]⚠ {len(error_pairs)}/{len(result.analyses)} pairs failed[/bold yellow]"
+            )
 
-        if no_data:
-            self.console.print(
-                "[yellow]⚠ Some pairs have no data. Check OANDA credentials "
-                "or place CSV files in market_data/[/yellow]"
-            )
-        if no_models:
-            self.console.print(
-                "[yellow]⚠ Models not loaded. Ensure you're in the correct conda env "
-                "(tf-metal / intel) with tensorflow, xgboost, etc. installed[/yellow]"
-            )
+            # Group errors by category for cleaner output
+            error_groups: Dict[str, List[str]] = {}
+            for a in error_pairs:
+                err = a.error or "Unknown"
+                # Extract error category from the friendly message
+                if "auth" in err.lower() or "token" in err.lower() or "Unauthorized" in err:
+                    key = "AUTH"
+                elif "connection" in err.lower() or "timeout" in err.lower():
+                    key = "NETWORK"
+                elif "No data" in err or "no candles" in err.lower():
+                    key = "NO_DATA"
+                elif "No models" in err or "Missing dependency" in err:
+                    key = "MODELS"
+                elif "shape" in err.lower() or "Type mismatch" in err:
+                    key = "DATA_TYPE"
+                else:
+                    key = "OTHER"
+                error_groups.setdefault(key, []).append(a.pair.replace("_", "/"))
+
+            fixes = {
+                "AUTH": "Check OANDA_API_TOKEN and OANDA_ACCOUNT_ID in .env",
+                "NETWORK": "Check internet connection and OANDA API status",
+                "NO_DATA": "Verify OANDA credentials or place CSV files in market_data/",
+                "MODELS": "Run training first, or check conda env (tf-metal / intel)",
+                "DATA_TYPE": "Model/feature version mismatch — retrain models",
+                "OTHER": "Check logs for details",
+            }
+
+            for category, pairs_list in error_groups.items():
+                pair_str = ", ".join(pairs_list[:5])
+                if len(pairs_list) > 5:
+                    pair_str += f" +{len(pairs_list) - 5} more"
+                self.console.print(
+                    f"  [yellow]{category}[/yellow] [{self._planner_slate}]({pair_str})[/{self._planner_slate}]"
+                )
+                self.console.print(
+                    f"  [dim]  Fix: {fixes.get(category, 'Check logs')}[/dim]"
+                )
 
         # Scan metadata
         self.console.print()

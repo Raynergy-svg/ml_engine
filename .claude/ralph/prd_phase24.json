@@ -1,0 +1,96 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-trade-quality-phase24",
+  "description": "Buddy Phase 24 — Trade Quality & RL Integrity. Phase 23 unlocked trade frequency. Phase 24 ensures trades that execute are PROFITABLE by fixing broken RL feedback loops. Key findings: (1) regime_at_exit always NULL — learning engine blind to volatility shifts, (2) agent_team initialized with config=None during RL sync — weights computed but never saved, (3) position_manager module exists but never called for live trades, (4) slippage logged but never fed back to sizing, (5) trailing stop exits not differentiated in learning, (6) exit reasons not linked to agent accountability. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-145",
+      "title": "Capture regime_at_exit during trade close sync",
+      "description": "regime_at_exit is hardcoded to None in execution.py. Capture current regime when syncing closed trades so the RL system can differentiate outcomes by volatility transition.",
+      "acceptanceCriteria": [
+        "In sync_closed_trades_rl(), derive current regime from ATR percentile or scanner's last known regime",
+        "Store regime_at_exit in journal outcome alongside regime_at_entry",
+        "If regime cannot be determined, fall back to config.volatility_regime_default",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added _get_current_regime() static method to ExecutionManager. Derives regime from scanner._cached_results, then config.volatility_regime_default, then entry fallback. Replaced hardcoded None with self._get_current_regime(scanner, entry). Verified 2026-03-23."
+    },
+    {
+      "id": "US-146",
+      "title": "Fix RL agent weight persistence after trade outcomes",
+      "description": "ScannerAgentTeam is initialized with config=None during RL sync, and save_learned_weights() is never called after weight updates. Weights are computed but lost.",
+      "acceptanceCriteria": [
+        "In execution.py RL sync, initialize ScannerAgentTeam with actual config (load from disk if needed)",
+        "Call agent_team.save_learned_weights() after update_weights_from_outcome() completes",
+        "Verify agent_weights.json is updated with new weights",
+        "Add logging to confirm weight save: pairs, before/after for changed weights",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Fixed ScannerAgentTeam initialization: uses scanner.config, falls back to ScannerConfig(). _save_learned_weights() is already called inside update_weights_from_outcome() at line 607. Added before/after weight change logging with _changed dict. Verified 2026-03-23."
+    },
+    {
+      "id": "US-147",
+      "title": "Wire position_manager into continuous.py for live position monitoring",
+      "description": "position_manager.py exists with win_prob thresholds (HOLD/TIGHTEN_SL/TAKE_PARTIAL/EXIT_EARLY) but is never called. Wire it into the scan loop to actively manage open positions.",
+      "acceptanceCriteria": [
+        "In continuous.py, every 3 scan cycles call position_manager for each open OANDA position",
+        "If position_manager recommends TIGHTEN_SL, update the SL via OANDA API",
+        "If position_manager recommends EXIT_EARLY, close the position via OANDA API",
+        "Log all position management actions to observation_log",
+        "Guard with enable_position_management config flag (default True)",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added step 2c in _run_smart_loop() after trailing stop updates. Every position_management_interval (default 3) cycles, builds PositionContext from monitor_open_trades() statuses, calls LivePositionManager.evaluate_position(). TIGHTEN_SL calls em.modify_sl_oanda(), EXIT_EARLY calls em.close_trade_oanda(). All actions logged to observation_log category='position_management'. Guarded by enable_position_management config flag. Added close_trade_oanda() and modify_sl_oanda() helpers to ExecutionManager. Verified 2026-03-23."
+    },
+    {
+      "id": "US-148",
+      "title": "Slippage tracker with position sizing feedback",
+      "description": "Slippage is logged but never fed back to position sizing. Create rolling slippage tracking per pair and reduce lot size when slippage is consistently high.",
+      "acceptanceCriteria": [
+        "Add _slippage_history dict to ExecutionManager tracking rolling avg slippage per pair (last 20 trades)",
+        "When rolling avg slippage > 2.5 pips for a pair, reduce position size by 15%",
+        "Feed slippage metric into observation_log for pattern detection",
+        "Log slippage adjustment when applied",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added _slippage_history dict, _slippage_window=20, _slippage_threshold_pips=2.5, _slippage_size_reduction=0.15 to ExecutionManager.__init__. After trade fill, records abs(slippage) to rolling window. Before order placement (after portfolio risk check), checks avg slippage and applies 15% lot reduction if > 2.5 pips (min 5 trades). Logs to observation_log category='slippage_feedback'. Verified 2026-03-23."
+    },
+    {
+      "id": "US-149",
+      "title": "Trailing stop exit learning feedback",
+      "description": "Trailing stop exits are recorded but the learning engine doesn't differentiate them from TP/SL hits. Add exit-type-aware weight updates.",
+      "acceptanceCriteria": [
+        "In RL sync weight updates, when exit_reason=trailing_stop AND pnl > 0, use reduced penalty (0.05x instead of 0.15x)",
+        "When exit_reason=trailing_stop AND pnl < 0, this indicates SL was tightened but still hit — normal penalty",
+        "Log exit_reason-aware weight adjustment to observation_log",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added exit_reason and pnl to rl_updates dict. In RL weight update loop, detects trailing stop exits: profitable trailing exits get 0.05 penalty (vs 0.15 default), losing trailing exits get normal penalty. Temporarily overrides config.weight_penalty_on_loss per trade, restores after loop. Added exit_reasons distribution to RL feedback log message. Verified 2026-03-23."
+    },
+    {
+      "id": "US-150",
+      "title": "Exit reason linked to agent accountability in learning extraction",
+      "description": "Learning engine should distinguish agent contributions based on exit type. Agents that recommended a trade which was closed profitably via trailing should get partial credit, not full penalty.",
+      "acceptanceCriteria": [
+        "In learning_engine.analyze_trade(), include exit_reason in pattern extraction",
+        "Create new learning pattern: 'exit_accountability' that maps agent verdicts to exit outcomes",
+        "If agent voted YES and trade exited profitably (any exit reason), log positive pattern",
+        "If agent voted NO but trade was fast-tracked and profitable, log 'agent_conservative_miss' pattern",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added exit_accountability pattern extraction in learning_engine.analyze_trade(). Three sub-patterns: (1) exit_accountability_positive — agent voted YES and trade won, (2) agent_conservative_miss — agent voted NO but fast-tracked trade won, (3) exit_accountability_correct_reject — agent voted NO and trade lost (agent was right). Each pattern includes exit_reason, pair, direction, pnl. Verified 2026-03-23."
+    }
+  ]
+}

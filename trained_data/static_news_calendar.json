@@ -1,0 +1,109 @@
+{
+  "cached_at": "2026-03-19T11:30:00+00:00",
+  "source": "static_fallback",
+  "description": "Fallback economic calendar with known recurring high-impact events. Used when real-time calendar API is unavailable.",
+  "events": [
+    {
+      "timestamp": "2026-03-20T13:30:00+00:00",
+      "currency": "USD",
+      "title": "Non-Farm Payrolls",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-20T13:30:00+00:00",
+      "currency": "USD",
+      "title": "Unemployment Rate",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-20T13:30:00+00:00",
+      "currency": "CAD",
+      "title": "Employment Change",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-18T19:00:00+00:00",
+      "currency": "USD",
+      "title": "FOMC Interest Rate Decision",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-19T12:00:00+00:00",
+      "currency": "EUR",
+      "title": "ECB Interest Rate Decision",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-19T12:00:00+00:00",
+      "currency": "GBP",
+      "title": "Bank of England Interest Rate Decision",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-17T13:00:00+00:00",
+      "currency": "USD",
+      "title": "ADP Employment Change",
+      "impact": "MEDIUM"
+    },
+    {
+      "timestamp": "2026-03-19T13:00:00+00:00",
+      "currency": "USD",
+      "title": "Initial Jobless Claims",
+      "impact": "MEDIUM"
+    },
+    {
+      "timestamp": "2026-03-19T15:00:00+00:00",
+      "currency": "USD",
+      "title": "ISM Manufacturing PMI",
+      "impact": "MEDIUM"
+    },
+    {
+      "timestamp": "2026-03-17T10:00:00+00:00",
+      "currency": "GBP",
+      "title": "UK CPI",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-17T13:00:00+00:00",
+      "currency": "USD",
+      "title": "US CPI",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-17T14:00:00+00:00",
+      "currency": "USD",
+      "title": "Retail Sales",
+      "impact": "MEDIUM"
+    },
+    {
+      "timestamp": "2026-03-25T13:30:00+00:00",
+      "currency": "USD",
+      "title": "Non-Farm Payrolls (next)",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-25T19:00:00+00:00",
+      "currency": "USD",
+      "title": "FOMC Meeting Minutes",
+      "impact": "HIGH"
+    },
+    {
+      "timestamp": "2026-03-24T13:00:00+00:00",
+      "currency": "USD",
+      "title": "Durable Goods Orders",
+      "impact": "MEDIUM"
+    },
+    {
+      "timestamp": "2026-03-26T13:00:00+00:00",
+      "currency": "USD",
+      "title": "Initial Jobless Claims",
+      "impact": "MEDIUM"
+    },
+    {
+      "timestamp": "2026-03-26T15:00:00+00:00",
+      "currency": "USD",
+      "title": "ISM Services PMI",
+      "impact": "MEDIUM"
+    }
+  ]
+}

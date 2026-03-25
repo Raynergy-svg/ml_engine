@@ -1,0 +1,515 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-gap-resolution-phase28",
+  "description": "Auto-generated gap resolution PRD. Source: prd_phase27.json. Detected 148 integration gaps across 4 categories. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster",
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
+      "acceptanceCriteria": [
+        "Add self.state_engine.save_state() to graceful shutdown in continuous.py",
+        "Add self.memory_manager.save_state() to graceful shutdown in continuous.py",
+        "Add self.pair_transfer.save_state() to graceful shutdown in continuous.py",
+        "Add self.threshold_optimizer.save_state() to graceful shutdown in continuous.py",
+        "Add self.regime_broadcaster.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Wire save_state() into graceful shutdown for: agent_accuracy_matrix, health_registry, signal_timing, execution_router, execution_quality_optimizer",
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
+      "acceptanceCriteria": [
+        "Add self.agent_accuracy_matrix.save_state() to graceful shutdown in continuous.py",
+        "Add self.health_registry.save_state() to graceful shutdown in continuous.py",
+        "Add self.signal_timing.save_state() to graceful shutdown in continuous.py",
+        "Add self.execution_router.save_state() to graceful shutdown in continuous.py",
+        "Add self.execution_quality_optimizer.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Wire save_state() into graceful shutdown for: training_augmenter, affinity_portfolio, position_manager, temporal_attention, dynamic_risk_allocator",
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
+      "acceptanceCriteria": [
+        "Add self.training_augmenter.save_state() to graceful shutdown in continuous.py",
+        "Add self.affinity_portfolio.save_state() to graceful shutdown in continuous.py",
+        "Add self.position_manager.save_state() to graceful shutdown in continuous.py",
+        "Add self.temporal_attention.save_state() to graceful shutdown in continuous.py",
+        "Add self.dynamic_risk_allocator.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Wire save_state() into graceful shutdown for: execution_quality_tracker, attention_feedback, causal_filter, replay_validator, pair_regime_agent_matrix",
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
+      "acceptanceCriteria": [
+        "Add self.execution_quality_tracker.save_state() to graceful shutdown in continuous.py",
+        "Add self.attention_feedback.save_state() to graceful shutdown in continuous.py",
+        "Add self.causal_filter.save_state() to graceful shutdown in continuous.py",
+        "Add self.replay_validator.save_state() to graceful shutdown in continuous.py",
+        "Add self.pair_regime_agent_matrix.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Enable config flags for wired modules: execution, news_risk_agent, multi_timeframe_agent, pair_performance_agent, session_timing_agent",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_execution default to True in ScannerConfig",
+        "Change enable_news_risk_agent default to True in ScannerConfig",
+        "Change enable_multi_timeframe_agent default to True in ScannerConfig",
+        "Change enable_pair_performance_agent default to True in ScannerConfig",
+        "Change enable_session_timing_agent default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Enable config flags for wired modules: support_resistance_agent, trader_readiness_agent, graph_attention, confidence_calibration, dynamic_sl_tp",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_support_resistance_agent default to True in ScannerConfig",
+        "Change enable_trader_readiness_agent default to True in ScannerConfig",
+        "Change enable_graph_attention default to True in ScannerConfig",
+        "Change enable_confidence_calibration default to True in ScannerConfig",
+        "Change enable_dynamic_sl_tp default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Enable config flags for wired modules: multi_horizon_fusion, trade_outcome_prediction, concept_drift_detection, kelly_sizing, ensemble_disagreement",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_multi_horizon_fusion default to True in ScannerConfig",
+        "Change enable_trade_outcome_prediction default to True in ScannerConfig",
+        "Change enable_concept_drift_detection default to True in ScannerConfig",
+        "Change enable_kelly_sizing default to True in ScannerConfig",
+        "Change enable_ensemble_disagreement default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Enable config flags for wired modules: position_timeout, lead_lag_detection, feature_attention, adversarial_training, regime_reward",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_position_timeout default to True in ScannerConfig",
+        "Change enable_lead_lag_detection default to True in ScannerConfig",
+        "Change enable_feature_attention default to True in ScannerConfig",
+        "Change enable_adversarial_training default to True in ScannerConfig",
+        "Change enable_regime_reward default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Enable config flags for wired modules: adaptive_lr, market_impact, model_bandit, trade_explainability, causal_filtering",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_adaptive_lr default to True in ScannerConfig",
+        "Change enable_market_impact default to True in ScannerConfig",
+        "Change enable_model_bandit default to True in ScannerConfig",
+        "Change enable_trade_explainability default to True in ScannerConfig",
+        "Change enable_causal_filtering default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Enable config flags for wired modules: synthetic_crisis, execution_quality_tracking, entropy_sizing, regime_broadcast, pair_transfer",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_synthetic_crisis default to True in ScannerConfig",
+        "Change enable_execution_quality_tracking default to True in ScannerConfig",
+        "Change enable_entropy_sizing default to True in ScannerConfig",
+        "Change enable_regime_broadcast default to True in ScannerConfig",
+        "Change enable_pair_transfer default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Enable config flags for wired modules: temporal_attention, live_position_management, affinity_portfolio, execution_routing, model_routing",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_temporal_attention default to True in ScannerConfig",
+        "Change enable_live_position_management default to True in ScannerConfig",
+        "Change enable_affinity_portfolio default to True in ScannerConfig",
+        "Change enable_execution_routing default to True in ScannerConfig",
+        "Change enable_model_routing default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Enable config flags for wired modules: training_augmentation, attention_feedback, execution_quality_optimizer, dynamic_risk_allocation, model_calibration",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_training_augmentation default to True in ScannerConfig",
+        "Change enable_attention_feedback default to True in ScannerConfig",
+        "Change enable_execution_quality_optimizer default to True in ScannerConfig",
+        "Change enable_dynamic_risk_allocation default to True in ScannerConfig",
+        "Change enable_model_calibration default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Enable config flags for wired modules: signal_timing, memory_manager, module_activation, replay_validator, microstructure_regime",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_signal_timing default to True in ScannerConfig",
+        "Change enable_memory_manager default to True in ScannerConfig",
+        "Change enable_module_activation default to True in ScannerConfig",
+        "Change enable_replay_validator default to True in ScannerConfig",
+        "Change enable_microstructure_regime default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Enable config flags for wired modules: dynamic_hedging, observational_learning, smart_execution, llm_trade_analysis, true_ab_testing",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_dynamic_hedging default to True in ScannerConfig",
+        "Change enable_observational_learning default to True in ScannerConfig",
+        "Change enable_smart_execution default to True in ScannerConfig",
+        "Change enable_llm_trade_analysis default to True in ScannerConfig",
+        "Change enable_true_ab_testing default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, multi_horizon_fusion, group_momentum, position_timeout",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'dynamic_sl_tp' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_explainer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'multi_horizon_fusion' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'group_momentum' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'position_timeout' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Register modules in dispatcher/orchestrator: entropy_sizer, retrain_trigger, microstructure_regime, kelly_portfolio, adaptive_lr",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'entropy_sizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'retrain_trigger' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'microstructure_regime' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'kelly_portfolio' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'adaptive_lr' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Register modules in dispatcher/orchestrator: confidence_calibrator, memory_manager, trade_outcome_predictor, pair_transfer, threshold_optimizer",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'confidence_calibrator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'memory_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_outcome_predictor' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_transfer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'threshold_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Register modules in dispatcher/orchestrator: pair_model_selector, regime_broadcaster, agent_accuracy_matrix, health_registry, portfolio_optimizer",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'pair_model_selector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_broadcaster' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'agent_accuracy_matrix' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'health_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'portfolio_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Register modules in dispatcher/orchestrator: session_snapshot, alert_manager, dynamic_hedging, dynamic_drawdown, agent_lifecycle",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'session_snapshot' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'alert_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_hedging' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_drawdown' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'agent_lifecycle' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Register modules in dispatcher/orchestrator: signal_timing, model_calibration, execution_router, execution_quality_optimizer, adversarial_trainer",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'signal_timing' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_calibration' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_router' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_quality_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'adversarial_trainer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Register modules in dispatcher/orchestrator: model_manager, module_dispatcher, regime_reward, training_augmenter, model_bandit",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'model_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'module_dispatcher' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_reward' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'training_augmenter' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_bandit' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Register modules in dispatcher/orchestrator: ensemble_disagreement, regime_tracker, observation_consumer, affinity_portfolio, position_manager",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'ensemble_disagreement' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_tracker' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'observation_consumer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'affinity_portfolio' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'position_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Register modules in dispatcher/orchestrator: smart_execution, accuracy_gate, temporal_attention, orchestrator, dynamic_risk_allocator",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'smart_execution' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'accuracy_gate' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'temporal_attention' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'orchestrator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_risk_allocator' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Register modules in dispatcher/orchestrator: lead_lag_detector, continuous, market_impact, pair_affinity, seasonality",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'lead_lag_detector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'continuous' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'market_impact' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_affinity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'seasonality' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Register modules in dispatcher/orchestrator: feature_attention, hierarchical_risk_parity, execution_quality_tracker, attention_feedback, observational_learning",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'feature_attention' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hierarchical_risk_parity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_quality_tracker' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'attention_feedback' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'observational_learning' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Register modules in dispatcher/orchestrator: model_router, causal_filter, module_activation, concept_drift, drift_monitor",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'model_router' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'causal_filter' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'module_activation' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'concept_drift' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'drift_monitor' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Register modules in dispatcher/orchestrator: crisis_generator, replay_validator, pair_regime_agent_matrix, api_retry",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'crisis_generator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'replay_validator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_regime_agent_matrix' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'api_retry' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Connect feedback consumers for: trade_explainer, multi_horizon_fusion, microstructure_regime, kelly_portfolio, confidence_calibrator",
+      "description": "Modules produce data that nothing consumes \u2014 dead-end outputs that should feed into the learning loop.",
+      "acceptanceCriteria": [
+        "Wire 'trade_explainer' output into observation_consumer or learning_engine",
+        "Wire 'multi_horizon_fusion' output into observation_consumer or learning_engine",
+        "Wire 'microstructure_regime' output into observation_consumer or learning_engine",
+        "Wire 'kelly_portfolio' output into observation_consumer or learning_engine",
+        "Wire 'confidence_calibrator' output into observation_consumer or learning_engine",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "Connect feedback consumers for: adversarial_trainer, regime_reward, ensemble_disagreement, lead_lag_detector, seasonality",
+      "description": "Modules produce data that nothing consumes \u2014 dead-end outputs that should feed into the learning loop.",
+      "acceptanceCriteria": [
+        "Wire 'adversarial_trainer' output into observation_consumer or learning_engine",
+        "Wire 'regime_reward' output into observation_consumer or learning_engine",
+        "Wire 'ensemble_disagreement' output into observation_consumer or learning_engine",
+        "Wire 'lead_lag_detector' output into observation_consumer or learning_engine",
+        "Wire 'seasonality' output into observation_consumer or learning_engine",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "Connect feedback consumers for: feature_attention, causal_filter, concept_drift, crisis_generator",
+      "description": "Modules produce data that nothing consumes \u2014 dead-end outputs that should feed into the learning loop.",
+      "acceptanceCriteria": [
+        "Wire 'feature_attention' output into observation_consumer or learning_engine",
+        "Wire 'causal_filter' output into observation_consumer or learning_engine",
+        "Wire 'concept_drift' output into observation_consumer or learning_engine",
+        "Wire 'crisis_generator' output into observation_consumer or learning_engine",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

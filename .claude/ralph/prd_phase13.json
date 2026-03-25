@@ -1,0 +1,121 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-signal-intelligence-phase13",
+  "description": "Buddy Phase 13 — Signal Intelligence & Adaptive Calibration. Based on 2025-2026 web research: Platt scaling for confidence calibration, regime-conditioned dynamic SL/TP, multi-horizon signal fusion across timeframes, trade outcome prediction from post-entry features, concept drift detection via rolling z-scores, and portfolio-level Kelly criterion with VaR constraints. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-079",
+      "title": "Adaptive confidence calibration via Platt scaling",
+      "description": "Raw model confidence scores are poorly calibrated — a 0.70 prediction doesn't mean 70% actual win rate. Apply Platt scaling (logistic regression on model outputs vs actual outcomes) to transform raw scores into calibrated probabilities. Recalibrate periodically as market conditions shift.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/confidence_calibrator.py with ConfidenceCalibrator class",
+        "fit(raw_scores, actual_outcomes) trains sigmoid calibration using sklearn LogisticRegression",
+        "calibrate(raw_score) returns calibrated probability (0.0-1.0)",
+        "Auto-loads historical trades from trade_journal_rl.json for fitting",
+        "Persists calibration parameters to trained_data/confidence_calibration.json",
+        "Integrated into engine.py: calibrate confidence before gate checks",
+        "Config flag: enable_confidence_calibration: bool = False in ScannerConfig",
+        "Minimum 30 trades required before calibration activates (falls back to raw otherwise)",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "ConfidenceCalibrator created with full Platt scaling pipeline: sklearn LogisticRegression (primary) + manual binning fallback. fit_from_journal() loads trade_journal_rl.json, extracts (confidence, outcome) pairs, fits sigmoid. calibrate() applies sigmoid transform. Auto-refit every 20 new trades. Manual fallback uses binned logit regression. Wired into engine.py after microstructure lift, before Kelly sizing. Config flags added, smart profile enabled."
+    },
+    {
+      "id": "US-080",
+      "title": "Regime-conditioned dynamic SL/TP optimization",
+      "description": "Static ATR multipliers leave money on table in trends and get stopped out too early in volatile regimes. Implement 4 dynamic adaptation rules: (1) trend-widen — widen TP in strong trends, (2) early-tighten — tighten SL if trade moves against within first N bars, (3) vol-relax — widen SL in high-vol to avoid noise stops, (4) trailing — adaptive trailing SL based on regime. Each rule is regime-conditioned and adjusts the base ATR multipliers.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/dynamic_sl_tp.py with DynamicSLTPOptimizer class",
+        "optimize(base_sl_pips, base_tp_pips, regime, trend_strength, atr) returns optimized (sl, tp)",
+        "4 named rules: trend_widen, early_tighten, vol_relax, trailing_adaptive",
+        "Each rule has regime-specific multiplier tables (LOW/NORMAL/HIGH/EXTREME)",
+        "Integrated into engine.py: replace static ATR multipliers with dynamic optimizer output",
+        "Config flags: enable_dynamic_sl_tp: bool = False, sl_tp_aggressiveness: float = 1.0",
+        "Logs every adjustment with rule name, old/new values, and regime",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "DynamicSLTPOptimizer created with 4 rules: trend_widen (TP expansion in strong trends), early_tighten (SL contraction on low confidence), vol_relax (SL widening in high-vol regimes), trailing_adaptive (regime-specific trailing params). Each rule has regime-specific multiplier tables (LOW/NORMAL/HIGH/EXTREME). Aggressiveness parameter scales all rules. R:R 1.2:1 minimum enforced post-optimization. Wired into engine.py after ATR SL/TP computation. Config flags added, smart profile enabled."
+    },
+    {
+      "id": "US-081",
+      "title": "Multi-horizon signal fusion with Bayesian model averaging",
+      "description": "Currently signals come from a single timeframe. Fuse signals across 4 timeframes (1m, 5m, 1h, 4h) using Bayesian model averaging. Each timeframe gets a prior weight that updates based on recent accuracy. Agreement across timeframes produces an A/B/C grade that modifies trade confidence.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/multi_horizon_fusion.py with MultiHorizonFusion class",
+        "add_signal(timeframe, direction, confidence, features) registers per-TF signals",
+        "fuse() returns FusionResult with fused_direction, fused_confidence, agreement_grade (A/B/C)",
+        "Grade A = all 4 agree, Grade B = 3/4 agree, Grade C = 2/4 or less",
+        "Bayesian weights: prior proportional to inverse error rate, updated every 50 trades",
+        "Confidence boost: Grade A +10%, Grade B +0%, Grade C -15%",
+        "Config flag: enable_multi_horizon_fusion: bool = False",
+        "Integrated into engine.py: fuse signals from available timeframes before agent evaluation",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "MultiHorizonFusion created with Bayesian model averaging across M1/M5/H1/H4 timeframes. add_signal() registers per-TF signals, fuse() computes weighted directional consensus with A/B/C agreement grading. Grade A (+10%), B (0%), C (-15%) confidence adjustments. Bayesian weights updated every 50 trades via exponential-decay inverse error rate. Primary M5 signal registered directly, H1/H4 derived from trend strength. Wired into engine.py before SL/TP optimization. Config flags added, smart profile enabled."
+    },
+    {
+      "id": "US-082",
+      "title": "Trade outcome prediction from post-entry features",
+      "description": "Once a trade is open, new information becomes available (MAE, MFE, momentum since entry, distance to SL/TP, time in trade). Train a GradientBoosting classifier on historical trade post-entry features to predict whether an open trade will win or lose. Use predictions to suggest early exits or position adjustments.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/trade_outcome_predictor.py with TradeOutcomePredictor class",
+        "Features: dist_to_sl_pct, dist_to_tp_pct, mae_pips, mfe_pips, bars_in_trade, momentum_since_entry, current_vol_vs_entry_vol",
+        "fit(historical_trades) trains GradientBoostingClassifier from trade_journal_rl.json",
+        "predict(open_trade_features) returns (win_probability, suggested_action)",
+        "Actions: HOLD, TIGHTEN_SL, TAKE_PARTIAL, EXIT_EARLY",
+        "Minimum 50 historical trades required for training",
+        "Persists model params to trained_data/trade_outcome_model.json",
+        "Config flag: enable_trade_outcome_prediction: bool = False",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "TradeOutcomePredictor created with 7 post-entry features (dist_to_sl_pct, dist_to_tp_pct, mae_pips, mfe_pips, bars_in_trade, momentum_since_entry, current_vol_vs_entry_vol). GradientBoosting primary with logistic regression persistence layer. Manual fallback via gradient descent logistic regression. 4 action levels: HOLD (>0.55), TIGHTEN_SL (0.40-0.55), TAKE_PARTIAL (high MFE + declining), EXIT_EARLY (<0.30). Trained from trade_journal_rl.json with 50-trade minimum. Config flags added, smart profile enabled."
+    },
+    {
+      "id": "US-083",
+      "title": "Anomaly detection and concept drift monitoring",
+      "description": "Market regimes shift and model assumptions become stale (concept drift). Implement rolling z-score monitoring on prediction errors, agent disagreement, and microstructure anomalies. When drift is detected, trigger recalibration alerts and reduce confidence until models re-adapt.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/concept_drift.py with ConceptDriftDetector class",
+        "update(prediction_error, agent_disagreement, micro_anomaly_score) tracks rolling stats",
+        "detect() returns DriftResult with drift_detected (bool), severity (LOW/MEDIUM/HIGH), affected_signals list",
+        "Rolling z-score window: 100 observations, drift threshold: z > 2.5",
+        "When drift detected: apply confidence_penalty (0.85 for LOW, 0.70 for MEDIUM, 0.50 for HIGH)",
+        "Persists drift history to trained_data/concept_drift_log.json",
+        "Config flag: enable_concept_drift_detection: bool = False",
+        "Integrated into engine.py scan loop: check drift before trade evaluation",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "ConceptDriftDetector created with rolling z-score on 3 streams: prediction_error, agent_disagreement, micro_anomaly. 100-observation rolling window, z>2.5 threshold. 3 severity levels: LOW (1 stream, 0.85x), MEDIUM (2 streams, 0.70x), HIGH (3 streams, 0.50x). Warmup phase of 20 observations before activation. Baselines auto-initialized from warmup data. Drift history persisted to concept_drift_log.json. Wired into engine.py after calibration, before Kelly sizing. Config flags added, smart profile enabled."
+    },
+    {
+      "id": "US-084",
+      "title": "Portfolio-level Kelly criterion with VaR constraints",
+      "description": "Current position sizing treats each trade independently. Implement portfolio-level Kelly criterion that considers all open positions, their correlations, and overall portfolio risk. Apply Half-Kelly for safety and enforce VaR constraints (max 15% portfolio risk at 95% confidence). Replaces per-trade sizing when portfolio context is available.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/kelly_portfolio.py with KellyPortfolioOptimizer class",
+        "compute_kelly(win_rate, avg_win, avg_loss) returns full Kelly fraction",
+        "compute_half_kelly() returns conservative fraction for production use",
+        "portfolio_optimal_size(new_trade, open_positions, nav) returns risk-budgeted lot size",
+        "VaR constraint: total portfolio risk <= 15% of NAV at 95% confidence",
+        "Correlation-aware: reduces size when new trade correlates with existing positions",
+        "Persists portfolio risk snapshots to trained_data/kelly_portfolio.json",
+        "Config flag: enable_kelly_sizing: bool = False",
+        "Integrated into engine.py: Kelly sizing as final step before execution",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "KellyPortfolioOptimizer created with full pipeline: compute win_rate/avg_win/avg_loss from trade journal, full Kelly f*=(p*b-q)/b, Half-Kelly for production safety. portfolio_optimal_size() integrates VaR constraint (15% NAV max), correlation-aware reduction (static FX correlations, 0.3-1.0 multiplier), confidence scaling. Replaces simple risk_pct logic in engine.py when enabled. Config flags added, smart profile enabled."
+    }
+  ]
+}

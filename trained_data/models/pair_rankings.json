@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-03-19T16:16:44.215350",
+  "rankings": [
+    {
+      "pair": "EUR_USD",
+      "sharpe_ratio": 0.0,
+      "rolling_pnl": 40.0,
+      "trade_count": 2,
+      "win_rate": 1.0,
+      "status": "observe",
+      "reason": "Insufficient history (2/5 min)"
+    }
+  ]
+}

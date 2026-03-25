@@ -1,0 +1,102 @@
+{
+  "timestamp": 1774389728.801231,
+  "version": "1.0.0",
+  "windows": {
+    "execution_quality": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "mean_reversion": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "momentum": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": [
+        {
+          "pnl": 150.0,
+          "timestamp": 1774389728.801034,
+          "won": true
+        }
+      ]
+    },
+    "multi_timeframe": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "news_risk": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "pair_performance": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "risk_sentinel": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "session_timing": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "support_resistance": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "trader_readiness": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "trend": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": [
+        {
+          "pnl": 150.0,
+          "timestamp": 1774389728.8010283,
+          "won": true
+        }
+      ]
+    },
+    "uncertainty": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": []
+    },
+    "volatility": {
+      "EXTREME": [],
+      "HIGH": [],
+      "LOW": [],
+      "NORMAL": [
+        {
+          "pnl": 150.0,
+          "timestamp": 1774389728.8010364,
+          "won": true
+        }
+      ]
+    }
+  }
+}

@@ -1,213 +1,515 @@
 {
   "project": "ML_Engine",
-  "branchName": "ralph/buddy-self-improvement-loop",
-  "description": "Buddy Self-Improvement Loop — Transform Buddy from a static trading bot into a self-improving learning system that captures what works, extracts patterns from trade outcomes, and evolves its own configuration autonomously across sessions",
+  "branchName": "ralph/buddy-gap-resolution-phase11",
+  "description": "Auto-generated gap resolution PRD. Source: prd_phase10.json. Detected 148 integration gaps across 4 categories. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Bootstrap .claude/ learning infrastructure for ML Engine",
-      "description": "As a developer, I need the foundational files for Buddy's self-improvement system so that learnings persist across sessions.",
+      "title": "Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster",
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "acceptanceCriteria": [
-        "Create CLAUDE.md at project root with: project identity (ML Engine FX trading bot), use case (autonomous scan-trade-learn loop), pointer to .claude/learnings.md and .claude/rules/, key architectural decisions (scanner → agents → execution → RL feedback)",
-        "CLAUDE.md is under 100 lines",
-        "Create .claude/learnings.md with header: '# Buddy Trading Learnings' and date-stamped seed entries from known facts: (1) Keras 3 seed param fix, (2) soft uncertainty blocking > hard blocking, (3) ATR-based SL/TP > hardcoded 15/30, (4) position sizing must scale to account size, (5) correlation filter prevents double exposure",
-        "Create .claude/rules/trading.md with imperative rules extracted from codebase: minimum R:R ratio 1.2:1, never skip RL sync after trade closes, always log to trade_journal_rl.json, correlation filter before execution, drawdown guardian every scan cycle",
-        "Create .claude/rules/improvement.md with meta-rules: every trade outcome triggers learning capture, promote patterns that repeat 3+ times to rules, consolidate learnings when >30 entries",
-        ".claude/rules/ total is under 200 lines",
-        "Typecheck passes"
+        "Add self.state_engine.save_state() to graceful shutdown in continuous.py",
+        "Add self.memory_manager.save_state() to graceful shutdown in continuous.py",
+        "Add self.pair_transfer.save_state() to graceful shutdown in continuous.py",
+        "Add self.threshold_optimizer.save_state() to graceful shutdown in continuous.py",
+        "Add self.regime_broadcaster.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 1,
-      "passes": true,
-      "notes": "Foundation story. .claude/ already exists with settings.local.json — add to it, don't overwrite. CLAUDE.md doesn't exist yet."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-002",
-      "title": "Create session state engine for cross-session continuity",
-      "description": "As a trading system, I need to persist my state between sessions so the next session can resume intelligently without re-discovering context.",
+      "title": "Wire save_state() into graceful shutdown for: agent_accuracy_matrix, health_registry, signal_timing, execution_router, execution_quality_optimizer",
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "acceptanceCriteria": [
-        "Create .claude/state.json with schema: { goal, status (ready|in-progress|blocked|done), done (list of completed items), next (singular concrete action), open_questions (list), last_updated (ISO timestamp), portfolio_snapshot: { nav, open_trades, total_pnl, win_rate }, improvement_focus (current area being optimized) }",
-        "Create src/scanner/automation/state_engine.py with StateEngine class",
-        "StateEngine.save_state(goal, status, done, next_action, open_questions, portfolio) writes to .claude/state.json",
-        "StateEngine.load_state() reads .claude/state.json and returns dict (or empty default if missing)",
-        "StateEngine.update_portfolio_snapshot() fetches NAV from OANDA and open trade count, writes to state",
-        "Integrate into ContinuousScanner._run_smart_loop(): after RL sync, call state_engine.update_portfolio_snapshot()",
-        "Typecheck passes"
+        "Add self.agent_accuracy_matrix.save_state() to graceful shutdown in continuous.py",
+        "Add self.health_registry.save_state() to graceful shutdown in continuous.py",
+        "Add self.signal_timing.save_state() to graceful shutdown in continuous.py",
+        "Add self.execution_router.save_state() to graceful shutdown in continuous.py",
+        "Add self.execution_quality_optimizer.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 2,
-      "passes": true,
-      "notes": "State file enables session continuity. ContinuousScanner already has _run_smart_loop() at src/scanner/automation/continuous.py:257."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-003",
-      "title": "Build trade outcome analyzer for automatic learning extraction",
-      "description": "As a learning system, I need to automatically analyze every closed trade and extract actionable patterns into learnings.md.",
+      "title": "Wire save_state() into graceful shutdown for: training_augmenter, affinity_portfolio, position_manager, temporal_attention, dynamic_risk_allocator",
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "acceptanceCriteria": [
-        "Create src/scanner/automation/learning_engine.py with LearningEngine class",
-        "LearningEngine.analyze_trade(trade_journal_entry: dict) examines a closed trade and returns list of LearningEntry(date, category, insight, action, source_trade_id)",
-        "Categories: 'sizing', 'entry_timing', 'sl_tp', 'agent_accuracy', 'regime', 'pair_behavior'",
-        "Analysis rules: (1) if SL hit and pnl_pips > 2x atr_pips → 'sl_too_tight for {pair}', (2) if TP hit in <15min → 'tp_could_be_wider for {pair}', (3) if trade lost and uncertainty_score > 0.45 → 'uncertainty_was_warning for {pair}', (4) if trade won and weighted_vote_score > 0.7 → 'high_consensus_works', (5) if model_disagreement > 0.3 and trade lost → 'disagreement_predicted_loss'",
-        "LearningEngine.append_to_learnings(entries: list[LearningEntry]) appends formatted entries to .claude/learnings.md with date prefix",
-        "Integrate into ExecutionManager.sync_closed_trades_rl(): after syncing each trade, call learning_engine.analyze_trade(entry) and append results",
-        "Typecheck passes"
+        "Add self.training_augmenter.save_state() to graceful shutdown in continuous.py",
+        "Add self.affinity_portfolio.save_state() to graceful shutdown in continuous.py",
+        "Add self.position_manager.save_state() to graceful shutdown in continuous.py",
+        "Add self.temporal_attention.save_state() to graceful shutdown in continuous.py",
+        "Add self.dynamic_risk_allocator.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 3,
-      "passes": true,
-      "notes": "sync_closed_trades_rl() is at src/scanner/execution.py. Each journal entry has full context: gates, agents, regime, outcome."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-004",
-      "title": "Implement rule promotion from learnings (pattern → rule)",
-      "description": "As a learning system, I need to automatically promote repeated patterns into active trading rules.",
+      "title": "Wire save_state() into graceful shutdown for: execution_quality_tracker, attention_feedback, causal_filter, replay_validator, pair_regime_agent_matrix",
+      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
       "acceptanceCriteria": [
-        "Add LearningEngine.check_promotions() method that reads .claude/learnings.md and counts category occurrences",
-        "When a category has 3+ entries with same pattern (e.g., 'sl_too_tight for EUR_USD' appears 3 times), auto-promote to .claude/rules/trading.md",
-        "Promoted rule format: '- [{date}] {category}: {actionable_rule} (promoted from {count} observations)'",
-        "After promotion, mark source learnings as '[PROMOTED]' in learnings.md",
-        "Add LearningEngine.consolidate() method: when learnings.md exceeds 30 entries, group by theme, archive promoted/old entries to .claude/learnings-archive.md, keep only active learnings",
-        "Call check_promotions() at end of each sync_closed_trades_rl() cycle",
-        "Typecheck passes"
+        "Add self.execution_quality_tracker.save_state() to graceful shutdown in continuous.py",
+        "Add self.attention_feedback.save_state() to graceful shutdown in continuous.py",
+        "Add self.causal_filter.save_state() to graceful shutdown in continuous.py",
+        "Add self.replay_validator.save_state() to graceful shutdown in continuous.py",
+        "Add self.pair_regime_agent_matrix.save_state() to graceful shutdown in continuous.py",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 4,
-      "passes": true,
-      "notes": "This is the evolution mechanism. Patterns that repeat become rules that actively gate or adjust trading behavior."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-005",
-      "title": "Create adaptive config tuner that reads rules and adjusts scanner config",
-      "description": "As a learning system, I need promoted rules to actually change my behavior, not just be documentation.",
+      "title": "Enable config flags for wired modules: execution, news_risk_agent, multi_timeframe_agent, pair_performance_agent, session_timing_agent",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "acceptanceCriteria": [
-        "Create src/scanner/automation/config_tuner.py with ConfigTuner class",
-        "ConfigTuner.load_rules() parses .claude/rules/trading.md and extracts actionable rules",
-        "ConfigTuner.apply_to_config(scanner_config: ScannerConfig) reads rules and adjusts config fields: (1) 'sl_too_tight for {pair}' → increase atr_sl_multiplier by 0.1 for that pair, (2) 'tp_could_be_wider for {pair}' → increase atr_tp_multiplier by 0.1, (3) 'uncertainty_was_warning' → lower max_uncertainty_score by 0.02, (4) 'high_consensus_works' → lower weighted_vote_threshold by 0.01, (5) 'disagreement_predicted_loss' → lower max_model_disagreement by 0.02",
-        "ConfigTuner tracks adjustments in .claude/config_adjustments.json with timestamp and reason",
-        "Each adjustment is bounded: atr_sl_multiplier max 2.0, atr_tp_multiplier max 3.0, max_uncertainty_score min 0.30, weighted_vote_threshold min 0.45, max_model_disagreement min 0.20",
-        "Integrate into ContinuousScanner: before each scan, call config_tuner.apply_to_config(self.scanner.config)",
-        "Typecheck passes"
+        "Change enable_execution default to True in ScannerConfig",
+        "Change enable_news_risk_agent default to True in ScannerConfig",
+        "Change enable_multi_timeframe_agent default to True in ScannerConfig",
+        "Change enable_pair_performance_agent default to True in ScannerConfig",
+        "Change enable_session_timing_agent default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 5,
-      "passes": true,
-      "notes": "This closes the loop: trade outcome → learning → rule → config change → better trades. Bounds prevent runaway tuning."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-006",
-      "title": "Add per-pair adaptive SL/TP multipliers based on historical outcomes",
-      "description": "As a trading system, I need SL/TP multipliers to adapt per pair based on what actually works, not use one-size-fits-all values.",
+      "title": "Enable config flags for wired modules: support_resistance_agent, trader_readiness_agent, graph_attention, confidence_calibration, dynamic_sl_tp",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "acceptanceCriteria": [
-        "Create trained_data/models/pair_sl_tp_config.json schema: { pair: { atr_sl_multiplier, atr_tp_multiplier, last_updated, sample_size } }",
-        "Add LearningEngine.update_pair_sl_tp(trade_entry: dict) method: after each closed trade, calculate optimal SL/TP based on actual price movement vs ATR",
-        "If trade hit TP early (within 30% of estimated time), suggest wider TP (multiplier += 0.05)",
-        "If trade hit SL and reversed to profit within 2x ATR, suggest wider SL (multiplier += 0.05)",
-        "If trade hit SL and continued against, SL was correct (no change)",
-        "Scanner engine.py _scan_pair() reads pair_sl_tp_config.json and overrides global atr_sl_multiplier / atr_tp_multiplier for that specific pair",
-        "Typecheck passes"
+        "Change enable_support_resistance_agent default to True in ScannerConfig",
+        "Change enable_trader_readiness_agent default to True in ScannerConfig",
+        "Change enable_graph_attention default to True in ScannerConfig",
+        "Change enable_confidence_calibration default to True in ScannerConfig",
+        "Change enable_dynamic_sl_tp default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 6,
-      "passes": true,
-      "notes": "Per-pair tuning is critical. EUR_USD 13.6 ATR behaves differently from USD_JPY 27.3 ATR. The scan phase calculates SL/TP in engine.py around line 1397."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-007",
-      "title": "Add session improvement summary and metrics tracking",
-      "description": "As a learning system, I need to track my improvement over time so I can measure whether learnings are working.",
+      "title": "Enable config flags for wired modules: multi_horizon_fusion, trade_outcome_prediction, concept_drift_detection, kelly_sizing, ensemble_disagreement",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "acceptanceCriteria": [
-        "Create src/scanner/automation/improvement_tracker.py with ImprovementTracker class",
-        "ImprovementTracker.record_session(trades: list, learnings_added: int, rules_promoted: int, config_adjustments: list) appends to trained_data/improvement_log.jsonl",
-        "Each record includes: date, session_trades (count, wins, losses, net_pnl), win_rate, avg_pips, learnings_added, rules_promoted, config_adjustments, agent_weights_snapshot",
-        "ImprovementTracker.get_trend(window=10) returns rolling metrics over last N sessions: win_rate_trend (improving/declining/stable), avg_pnl_trend, learning_velocity (learnings per session)",
-        "ImprovementTracker.generate_report() returns formatted string with: total trades, overall win rate, best/worst pair, most promoted rule category, improvement trend direction",
-        "Integrate into ContinuousScanner: after _run_smart_loop(), if any trades were synced, call improvement_tracker.record_session()",
-        "Typecheck passes"
+        "Change enable_multi_horizon_fusion default to True in ScannerConfig",
+        "Change enable_trade_outcome_prediction default to True in ScannerConfig",
+        "Change enable_concept_drift_detection default to True in ScannerConfig",
+        "Change enable_kelly_sizing default to True in ScannerConfig",
+        "Change enable_ensemble_disagreement default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 7,
-      "passes": true,
-      "notes": "This is the meta-learning dashboard. Without metrics, we can't know if the learning system itself is improving."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-008",
-      "title": "Add observation logging for interesting market patterns",
-      "description": "As a learning system, I need to capture interesting observations during scans even when no trade is taken, building a knowledge base for future pattern matching.",
+      "title": "Enable config flags for wired modules: position_timeout, lead_lag_detection, feature_attention, adversarial_training, regime_reward",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "acceptanceCriteria": [
-        "Create src/scanner/automation/observation_log.py with ObservationLog class",
-        "ObservationLog.log_observation(pair, category, description, metadata) appends to trained_data/observations.jsonl",
-        "Categories: 'regime_change' (vol regime shifted), 'unusual_spread' (ATR > 2x normal), 'agent_disagreement' (agents split 50/50), 'near_miss' (confidence 1-2% below threshold), 'correlation_break' (correlated pairs diverging)",
-        "In Scanner._scan_pair(): after analysis, detect and log observations: (1) if volatility_regime != pair's historical mode → log regime_change, (2) if agent_votes == agent_total/2 → log agent_disagreement, (3) if confidence within 2% of min_confidence → log near_miss",
-        "ObservationLog.get_recent(pair=None, category=None, limit=20) queries recent observations",
-        "Typecheck passes"
+        "Change enable_position_timeout default to True in ScannerConfig",
+        "Change enable_lead_lag_detection default to True in ScannerConfig",
+        "Change enable_feature_attention default to True in ScannerConfig",
+        "Change enable_adversarial_training default to True in ScannerConfig",
+        "Change enable_regime_reward default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 8,
-      "passes": true,
-      "notes": "Observations build context even from non-trades. This data can later feed into a more sophisticated meta-learner."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-009",
-      "title": "Wire self-refine into post-trade analysis for LLM-based insight extraction",
-      "description": "As a learning system, I want to use LLM reasoning to analyze losing trades and suggest improvements beyond simple rule-based analysis.",
+      "title": "Enable config flags for wired modules: adaptive_lr, market_impact, model_bandit, trade_explainability, causal_filtering",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "acceptanceCriteria": [
-        "In src/scanner/automation/learning_engine.py, add LearningEngine.deep_analyze_loss(trade_entry: dict, pair_history: list) method",
-        "deep_analyze_loss() constructs a prompt with: trade context (entry, SL, TP, confidence, agents, regime), pair's recent history from pair_performance.json, and asks: 'What pattern caused this loss? What config change would prevent it?'",
-        "Use the existing self_refine.py buddy_self_improve() function to process the prompt with iterative refinement",
-        "Parse LLM response into structured LearningEntry objects and append to learnings.md",
-        "Only trigger deep_analyze_loss() for trades losing > $100 (to avoid wasting LLM calls on small losses)",
-        "Add config flag: enable_llm_trade_analysis: bool = False in ScannerConfig, enabled in smart profile",
-        "Typecheck passes"
+        "Change enable_adaptive_lr default to True in ScannerConfig",
+        "Change enable_market_impact default to True in ScannerConfig",
+        "Change enable_model_bandit default to True in ScannerConfig",
+        "Change enable_trade_explainability default to True in ScannerConfig",
+        "Change enable_causal_filtering default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 9,
-      "passes": true,
-      "notes": "self_refine.py exists at project root. This wires LLM reasoning into the learning loop for qualitative insights."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-010",
-      "title": "Add learnings consolidation and anti-proliferation guard",
-      "description": "As a learning system, I need to prevent my knowledge files from growing unbounded and ensure rules stay focused.",
+      "title": "Enable config flags for wired modules: synthetic_crisis, execution_quality_tracking, entropy_sizing, regime_broadcast, pair_transfer",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "acceptanceCriteria": [
-        "Add LearningEngine.audit() method that checks: (1) learnings.md line count > 30 → trigger consolidation, (2) rules/trading.md line count > 50 → flag for split, (3) config_adjustments.json entry count > 100 → archive old adjustments",
-        "Consolidation groups learnings by category, removes duplicates, archives to .claude/learnings-archive.md",
-        "If rules/trading.md exceeds 50 lines, split into rules/trading-entry.md (entry rules) and rules/trading-risk.md (risk management rules)",
-        "Add anti-proliferation check: before creating any new file in .claude/, verify it doesn't duplicate existing content",
-        "Call audit() once per 10 scan cycles (track cycle count in state.json)",
-        "Typecheck passes"
+        "Change enable_synthetic_crisis default to True in ScannerConfig",
+        "Change enable_execution_quality_tracking default to True in ScannerConfig",
+        "Change enable_entropy_sizing default to True in ScannerConfig",
+        "Change enable_regime_broadcast default to True in ScannerConfig",
+        "Change enable_pair_transfer default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 10,
-      "passes": true,
-      "notes": "Context discipline. Files must stay concise or they become noise. Archive aggressively."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-011",
-      "title": "Create buddy_learn CLI command for manual learning triggers",
-      "description": "As a developer, I want a CLI command to manually trigger learning analysis, view current learnings, and force rule promotion.",
+      "title": "Enable config flags for wired modules: temporal_attention, live_position_management, affinity_portfolio, execution_routing, model_routing",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "acceptanceCriteria": [
-        "Add 'learn' subcommand to CLI that accepts: buddy_scanner.py learn [--analyze] [--promote] [--consolidate] [--report] [--status]",
-        "--analyze: run trade outcome analysis on all unanalyzed journal entries",
-        "--promote: run promotion check and promote qualifying patterns to rules",
-        "--consolidate: run learnings consolidation",
-        "--report: print improvement tracker report (total trades, win rate, trends)",
-        "--status: print current state from .claude/state.json and recent learnings",
-        "Default (no flag): run --analyze then --promote then --report",
-        "Typecheck passes"
+        "Change enable_temporal_attention default to True in ScannerConfig",
+        "Change enable_live_position_management default to True in ScannerConfig",
+        "Change enable_affinity_portfolio default to True in ScannerConfig",
+        "Change enable_execution_routing default to True in ScannerConfig",
+        "Change enable_model_routing default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 11,
-      "passes": true,
-      "notes": "buddy_scanner.py already has CLI with scan/watch/trade subcommands. Add 'learn' alongside."
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-012",
-      "title": "Integrate full learning loop into ContinuousScanner watch mode",
-      "description": "As a trading system, the entire learning loop should run automatically in watch mode: scan → trade → monitor → close → learn → adapt → scan.",
+      "title": "Enable config flags for wired modules: training_augmentation, attention_feedback, execution_quality_optimizer, dynamic_risk_allocation, model_calibration",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
       "acceptanceCriteria": [
-        "In ContinuousScanner._run_smart_loop(): after RL sync (step 3) and weight decay (step 4), add step 5: learning engine analysis",
-        "Step 5a: for each newly synced trade, call learning_engine.analyze_trade(entry)",
-        "Step 5b: call learning_engine.check_promotions()",
-        "Step 5c: call config_tuner.apply_to_config(self.scanner.config) to apply any new rules",
-        "Step 5d: call improvement_tracker.record_session() if trades were synced",
-        "Step 5e: call state_engine.update_portfolio_snapshot()",
-        "Step 5f: every 10th cycle, call learning_engine.audit()",
-        "Log learning loop activity to console: 'Learning: {n} insights captured, {m} rules promoted'",
-        "Respect existing error handling: wrap in try/except, log errors, don't crash the scan loop",
-        "Typecheck passes"
+        "Change enable_training_augmentation default to True in ScannerConfig",
+        "Change enable_attention_feedback default to True in ScannerConfig",
+        "Change enable_execution_quality_optimizer default to True in ScannerConfig",
+        "Change enable_dynamic_risk_allocation default to True in ScannerConfig",
+        "Change enable_model_calibration default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
       ],
       "priority": 12,
-      "passes": true,
-      "notes": "This is the integration story. All components from US-002 through US-010 get wired into the continuous loop here."
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Enable config flags for wired modules: signal_timing, memory_manager, module_activation, replay_validator, microstructure_regime",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_signal_timing default to True in ScannerConfig",
+        "Change enable_memory_manager default to True in ScannerConfig",
+        "Change enable_module_activation default to True in ScannerConfig",
+        "Change enable_replay_validator default to True in ScannerConfig",
+        "Change enable_microstructure_regime default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Enable config flags for wired modules: dynamic_hedging, observational_learning, smart_execution, llm_trade_analysis, true_ab_testing",
+      "description": "Modules are wired into the loop but their config flags default to False, so they never activate.",
+      "acceptanceCriteria": [
+        "Change enable_dynamic_hedging default to True in ScannerConfig",
+        "Change enable_observational_learning default to True in ScannerConfig",
+        "Change enable_smart_execution default to True in ScannerConfig",
+        "Change enable_llm_trade_analysis default to True in ScannerConfig",
+        "Change enable_true_ab_testing default to True in ScannerConfig",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, multi_horizon_fusion, group_momentum, position_timeout",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'dynamic_sl_tp' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_explainer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'multi_horizon_fusion' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'group_momentum' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'position_timeout' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Register modules in dispatcher/orchestrator: entropy_sizer, retrain_trigger, microstructure_regime, kelly_portfolio, adaptive_lr",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'entropy_sizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'retrain_trigger' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'microstructure_regime' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'kelly_portfolio' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'adaptive_lr' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Register modules in dispatcher/orchestrator: confidence_calibrator, memory_manager, trade_outcome_predictor, pair_transfer, threshold_optimizer",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'confidence_calibrator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'memory_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'trade_outcome_predictor' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_transfer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'threshold_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Register modules in dispatcher/orchestrator: pair_model_selector, regime_broadcaster, agent_accuracy_matrix, health_registry, portfolio_optimizer",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'pair_model_selector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_broadcaster' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'agent_accuracy_matrix' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'health_registry' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'portfolio_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Register modules in dispatcher/orchestrator: session_snapshot, alert_manager, dynamic_hedging, dynamic_drawdown, agent_lifecycle",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'session_snapshot' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'alert_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_hedging' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_drawdown' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'agent_lifecycle' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Register modules in dispatcher/orchestrator: signal_timing, model_calibration, execution_router, execution_quality_optimizer, adversarial_trainer",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'signal_timing' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_calibration' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_router' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_quality_optimizer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'adversarial_trainer' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Register modules in dispatcher/orchestrator: model_manager, module_dispatcher, regime_reward, training_augmenter, model_bandit",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'model_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'module_dispatcher' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_reward' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'training_augmenter' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'model_bandit' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Register modules in dispatcher/orchestrator: ensemble_disagreement, regime_tracker, observation_consumer, affinity_portfolio, position_manager",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'ensemble_disagreement' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'regime_tracker' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'observation_consumer' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'affinity_portfolio' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'position_manager' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Register modules in dispatcher/orchestrator: smart_execution, accuracy_gate, temporal_attention, orchestrator, dynamic_risk_allocator",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'smart_execution' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'accuracy_gate' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'temporal_attention' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'orchestrator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'dynamic_risk_allocator' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Register modules in dispatcher/orchestrator: lead_lag_detector, continuous, market_impact, pair_affinity, seasonality",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'lead_lag_detector' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'continuous' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'market_impact' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_affinity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'seasonality' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Register modules in dispatcher/orchestrator: feature_attention, hierarchical_risk_parity, execution_quality_tracker, attention_feedback, observational_learning",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'feature_attention' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'hierarchical_risk_parity' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'execution_quality_tracker' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'attention_feedback' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'observational_learning' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Register modules in dispatcher/orchestrator: model_router, causal_filter, module_activation, concept_drift, drift_monitor",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'model_router' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'causal_filter' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'module_activation' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'concept_drift' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'drift_monitor' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Register modules in dispatcher/orchestrator: crisis_generator, replay_validator, pair_regime_agent_matrix, api_retry",
+      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
+      "acceptanceCriteria": [
+        "Register 'crisis_generator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'replay_validator' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'pair_regime_agent_matrix' in module_dispatcher or orchestrator._init_modules()",
+        "Register 'api_retry' in module_dispatcher or orchestrator._init_modules()",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Connect feedback consumers for: trade_explainer, multi_horizon_fusion, microstructure_regime, kelly_portfolio, confidence_calibrator",
+      "description": "Modules produce data that nothing consumes \u2014 dead-end outputs that should feed into the learning loop.",
+      "acceptanceCriteria": [
+        "Wire 'trade_explainer' output into observation_consumer or learning_engine",
+        "Wire 'multi_horizon_fusion' output into observation_consumer or learning_engine",
+        "Wire 'microstructure_regime' output into observation_consumer or learning_engine",
+        "Wire 'kelly_portfolio' output into observation_consumer or learning_engine",
+        "Wire 'confidence_calibrator' output into observation_consumer or learning_engine",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "Connect feedback consumers for: adversarial_trainer, regime_reward, ensemble_disagreement, lead_lag_detector, seasonality",
+      "description": "Modules produce data that nothing consumes \u2014 dead-end outputs that should feed into the learning loop.",
+      "acceptanceCriteria": [
+        "Wire 'adversarial_trainer' output into observation_consumer or learning_engine",
+        "Wire 'regime_reward' output into observation_consumer or learning_engine",
+        "Wire 'ensemble_disagreement' output into observation_consumer or learning_engine",
+        "Wire 'lead_lag_detector' output into observation_consumer or learning_engine",
+        "Wire 'seasonality' output into observation_consumer or learning_engine",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "Connect feedback consumers for: feature_attention, causal_filter, concept_drift, crisis_generator",
+      "description": "Modules produce data that nothing consumes \u2014 dead-end outputs that should feed into the learning loop.",
+      "acceptanceCriteria": [
+        "Wire 'feature_attention' output into observation_consumer or learning_engine",
+        "Wire 'causal_filter' output into observation_consumer or learning_engine",
+        "Wire 'concept_drift' output into observation_consumer or learning_engine",
+        "Wire 'crisis_generator' output into observation_consumer or learning_engine",
+        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "Syntax validation passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
     }
   ]
 }

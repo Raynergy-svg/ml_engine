@@ -1,0 +1,5 @@
+
+{"train_acc": 0, "val_acc": 0, "instrument": "EUR_GBP", "model": "lgbm_momentum", "duration_s": 20.1, "passed": true}
+{"train_acc": 0, "val_acc": 0, "instrument": "EUR_GBP", "model": "lgbm_risk", "duration_s": 12.9, "passed": true}
+{"train_acc": 0, "val_acc": 0, "instrument": "EUR_GBP", "model": "ridge", "duration_s": 12.8, "passed": true}
+{"train_acc": 0, "val_acc": 0, "gap": 0, "instrument": "EUR_GBP", "model": "histgb", "duration_s": 12.6, "passed": true}

@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-03-23T11:13:54.689216+00:00",
+  "sweep_type": "scheduled_prd_chain_sweep",
+  "prds_scanned": 1,
+  "completed_prds": 0,
+  "gaps_found": 0,
+  "new_prd_generated": false,
+  "review_passed": null,
+  "blockers": 0,
+  "action_taken": "EXIT \u2014 PRD stories still in progress (0/30 passed). Chain not triggered.",
+  "exit_reason": "prd_not_complete",
+  "memory_summary": "PRD 0/30 (ralph/buddy-gap-resolution-phase11) | Phases: 29 | Chains: 3",
+  "prd_status": {
+    "phase": "ralph/buddy-gap-resolution-phase11",
+    "total_stories": 30,
+    "passed_stories": 0,
+    "all_complete": false,
+    "last_story_completed": null
+  },
+  "flags_at_entry": {
+    "ralph_in_progress": false,
+    "review_in_progress": false,
+    "chain_in_progress": false,
+    "manual_override": false
+  }
+}

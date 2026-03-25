@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-03-23T10:57:03.635893+00:00",
+  "prds_scanned": 30,
+  "completed_prds": [
+    "prd_phase2.json",
+    "prd_phase3.json",
+    "prd_phase4.json",
+    "prd_phase5.json",
+    "prd_phase6.json",
+    "prd_phase7.json",
+    "prd_phase8.json",
+    "prd_phase9.json",
+    "prd_phase10.json",
+    "prd_phase11.json",
+    "prd_phase12.json",
+    "prd_phase13.json",
+    "prd_phase14.json",
+    "prd_phase15.json",
+    "prd_phase16.json",
+    "prd_phase17.json",
+    "prd_phase18.json",
+    "prd_phase19.json",
+    "prd_phase20.json",
+    "prd_phase21.json",
+    "prd_phase22.json",
+    "prd_phase23.json",
+    "prd_phase24.json",
+    "prd_phase25.json",
+    "prd_phase26.json",
+    "prd_phase27.json",
+    "prd_phase29.json",
+    "prd_phase30.json"
+  ],
+  "in_progress_prds": [
+    "prd.json",
+    "prd_review_fixes.json"
+  ],
+  "gaps_found": 133,
+  "gaps_by_type": {
+    "module_registration": 63,
+    "config_flag": 47,
+    "state_persistence": 20,
+    "feedback_loop": 3
+  },
+  "new_prd_generated": false,
+  "review_passed": false,
+  "review_method": "ast_static_fallback",
+  "blockers": 2,
+  "blocker_summary": [
+    "execution.py:2095-2096: Double @staticmethod on _get_current_regime",
+    "execution.py:2126: _determine_exit_reason defined without self or @staticmethod"
+  ],
+  "suggestions": 0,
+  "nits": 0,
+  "previous_blockers_resolved": 0,
+  "action": "sweep_complete_2_blockers_persist_from_last_sweep"
+}

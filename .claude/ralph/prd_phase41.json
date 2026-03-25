@@ -1,0 +1,85 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/learning-rl-retrainer-phase41",
+  "description": "Buddy Phase 41 \u2014 Learning Engine, RL Gating & Retrainer Hardening. learning_engine.py (994 lines, 0 tests) drives the self-improvement loop. gate_threshold_env.py (958 lines, 0 tests) is the RL gate tuning system. meta_labeler_retrainer.py (1009 lines, 0 tests) handles meta-labeler retraining. Target: 90+ new tests.",
+  "userStories": [
+    {
+      "id": "US-260",
+      "title": "Unit tests for LearningEngine analyze_trade",
+      "description": "Test LearningEntry dataclass, analyze_trade() with win/loss/edge cases, analyze_override(), analyze_overrides_batch(). Pure computation methods.",
+      "acceptanceCriteria": [
+        "At least 15 unit tests",
+        "Cover: LearningEntry construction, analyze_trade win/loss patterns, override analysis, batch aggregation",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-261",
+      "title": "Unit tests for LearningEngine file operations",
+      "description": "Test append_to_learnings, check_promotions, consolidate, audit, update_pair_sl_tp. All use temp directories for isolation.",
+      "acceptanceCriteria": [
+        "At least 12 unit tests",
+        "Cover: append creates file, promotion with 3+ occurrences, consolidation archives promoted, SL/TP config update",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-262",
+      "title": "Unit tests for GateRLConfig and gate logic",
+      "description": "Test GateRLConfig dataclass defaults, extract_observation_space_from_model, infer_config_from_model. Test gate threshold scaling math.",
+      "acceptanceCriteria": [
+        "At least 10 unit tests",
+        "Cover: config defaults, delta ranges, observation space extraction from mock zip",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-263",
+      "title": "Unit tests for GateThresholdEnv reward and trade simulation",
+      "description": "Test _scale_action, _check_gates, _simulate_trade, _calculate_reward. Mock gym.Env base class to test math independently.",
+      "acceptanceCriteria": [
+        "At least 10 unit tests",
+        "Cover: action scaling, gate pass/fail logic, PnL simulation with costs, reward shaping",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-264",
+      "title": "Unit tests for MetaLabelerRetrainer core",
+      "description": "Test MetaLabelerTrainingConfig, TradeSample, simulate_trades_from_model, prepare_training_data. Pure computation methods.",
+      "acceptanceCriteria": [
+        "At least 12 unit tests",
+        "Cover: config defaults, TradeSample construction, simulation determinism, feature preparation shape",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-265",
+      "title": "Unit tests for MetaLabelerRetrainer training pipeline",
+      "description": "Test train_ridge, train_random_forest, fit ensemble, predict_meta_confidence. Uses sklearn (no xgboost required).",
+      "acceptanceCriteria": [
+        "At least 10 unit tests",
+        "Cover: Ridge training returns metrics, RF training returns metrics, ensemble prediction shape, save/load round-trip",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

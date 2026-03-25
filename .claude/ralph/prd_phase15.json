@@ -1,0 +1,115 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-intelligence-scaling-phase15",
+  "description": "Buddy Phase 15 — Intelligence Scaling & Explainability. Based on 2024-2026 web research: adaptive RL learning rate scheduling, market impact position sizing, bandit-based online model selection, SHAP-based trade filtering, causal signal filtering, synthetic crisis event generation. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-091",
+      "title": "Adaptive learning rate scheduling for online RL",
+      "description": "Replace fixed RL learning rate with adaptive cosine-annealing + warmup schedule. Warmup phase (first 20 trades) ramps LR from 0.001 to target. Cosine decay phase follows. Plateau detection triggers mini-restart. Tracks LR vs convergence speed correlation. Based on 2025 meta-RL research.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/adaptive_lr.py with AdaptiveLRScheduler class",
+        "get_lr(trade_idx, loss_history) returns current learning rate",
+        "3 phases: warmup (linear ramp), cosine_decay, plateau_restart",
+        "detect_plateau(loss_window) identifies convergence stalls",
+        "Integrated into online_rl.py: replace fixed learning_rate with scheduled LR",
+        "Config flag: enable_adaptive_lr: bool = False",
+        "Persists LR history to trained_data/adaptive_lr_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented adaptive_lr.py with 3-phase scheduling (warmup/cosine_decay/plateau_restart). Wired into online_rl.py. Config flag added. py_compile passes."
+    },
+    {
+      "id": "US-092",
+      "title": "Market impact model for position sizing",
+      "description": "Estimate and incorporate slippage/market impact into position sizing using simplified Almgren-Chriss model. Compute permanent + temporary impact from trade size, spread, and volume. Reduce position size when estimated slippage exceeds threshold. Regime-aware impact coefficients. Based on 2024 Almgren-Chriss extensions.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/market_impact.py with MarketImpactModel class",
+        "estimate_impact(size_lots, spread_pips, daily_volume, regime) returns ImpactResult with permanent, temporary, total impact",
+        "adjust_position_size(base_size, impact) returns reduced size if slippage > max_slippage_pips",
+        "Regime-aware coefficients: normal/high/extreme volatility scaling",
+        "Config flag: enable_market_impact: bool = False",
+        "Persists impact history to trained_data/market_impact_log.json",
+        "Integrated into engine.py: adjust risk_pct based on estimated impact",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented market_impact.py with Almgren-Chriss model. 4 regime profiles (LOW/NORMAL/HIGH/EXTREME). Wired into engine.py after Kelly sizing — reduces risk_pct when slippage > 1.5 pips. Config flag added. py_compile passes."
+    },
+    {
+      "id": "US-093",
+      "title": "Bandit-based online model selection (EXP3)",
+      "description": "Dynamically select which ensemble member to trust using EXP3 multi-armed bandit algorithm. Each model (TCN/Ridge/RF) is an arm. Reward = recent trade P/L contribution. Explore-exploit balance adapts to concept drift. Replaces static ensemble weighting for per-scan model routing. Based on 2024 OMS-MAB research.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/model_bandit.py with ModelBanditSelector class",
+        "select_model(context_features) returns selected model name and exploration flag",
+        "update_reward(model_name, realized_pnl) updates arm statistics",
+        "EXP3 algorithm with configurable exploration rate (gamma=0.1)",
+        "get_model_weights() returns current arm probabilities",
+        "Config flag: enable_model_bandit: bool = False",
+        "Persists arm statistics to trained_data/model_bandit.json",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented model_bandit.py with full EXP3 algorithm. Importance-weighted reward updates, tanh-squashed P/L normalization, gamma decay (0.999). Weight normalization prevents drift. Wired into engine.py init. Config flag added. py_compile passes."
+    },
+    {
+      "id": "US-094",
+      "title": "SHAP-based trade explainability and filtering",
+      "description": "Compute SHAP feature attributions for each trade candidate. Flag trades where top contributing features contradict expected market logic (e.g., buying on bearish features). Trades with low explainability score receive confidence penalty. Provides audit trail for every trade decision. Based on 2024-2025 XAI in finance research.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/trade_explainer.py with TradeExplainer class",
+        "explain_trade(features, confidence, direction) returns ExplainabilityResult with SHAP values and explanation score",
+        "check_consistency(shap_values, direction) validates feature-direction alignment",
+        "get_confidence_penalty(explanation_score) returns 0.0-0.15 penalty for inconsistent explanations",
+        "Config flag: enable_trade_explainability: bool = False",
+        "Persists explanations to trained_data/trade_explanations.json",
+        "Integrated into engine.py: apply penalty before final confidence",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented trade_explainer.py with permutation-based attributions, 10-feature directional consistency checks, entropy-based feature spread, and linear confidence penalty (max 0.15). Wired into engine.py before Kelly sizing. Config flag added. py_compile passes."
+    },
+    {
+      "id": "US-095",
+      "title": "Causal signal filtering via Granger causality",
+      "description": "Compute pairwise Granger causality between FX feature streams and price movements. Build causal graph per regime. Filter trades where signal direction contradicts discovered causal structure. Alert when causal structure breaks (regime change indicator). Based on 2024 CD-NOTS and SDCI research.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/causal_filter.py with CausalSignalFilter class",
+        "compute_granger(feature_series, price_returns, max_lag=5) returns (is_causal, p_value, optimal_lag)",
+        "build_causal_graph(feature_dict, price_returns) returns CausalGraph with significant edges",
+        "filter_signal(direction, features, causal_graph) returns consistency score (0-1)",
+        "Config flag: enable_causal_filtering: bool = False",
+        "Persists causal graph to trained_data/causal_graph.json",
+        "Integrated into engine.py: confidence penalty for causally inconsistent signals",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented causal_filter.py with OLS-based Granger F-test, multi-lag optimization, causal graph building per regime, signal consistency scoring. F-distribution p-value approximation avoids scipy dependency. Wired into engine.py init. Config flag added. py_compile passes."
+    },
+    {
+      "id": "US-096",
+      "title": "Synthetic crisis event generator for RL training",
+      "description": "Generate synthetic rare market events (flash crashes, central bank surprises, correlation breaks) using perturbation-based augmentation of historical data. Feed synthetic scenarios into RL training loop to improve drawdown resilience. Track synthetic vs real performance gap. Based on 2024 HTGAN and SMOGAN research.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/crisis_generator.py with CrisisEventGenerator class",
+        "generate_flash_crash(base_candles, severity) returns perturbed OHLCV data",
+        "generate_correlation_break(pair_data_dict, target_pairs) returns decorrelated scenario",
+        "generate_volatility_spike(base_candles, spike_magnitude) returns vol-shocked data",
+        "replay_scenario(scenario, trading_rules) returns simulated P/L",
+        "Config flag: enable_synthetic_crisis: bool = False",
+        "Persists generated scenarios to trained_data/synthetic_scenarios.json",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented crisis_generator.py with 3 event types: flash_crash (5-15% drop with recovery), volatility_spike (ATR expansion with sinusoidal ramp), correlation_break (inverted returns on paired data). Includes replay_scenario() for P/L simulation and batch generation. Config flag added. py_compile passes."
+    }
+  ]
+}

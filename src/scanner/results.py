@@ -144,13 +144,22 @@ class PairAnalysis:
 
     @property
     def is_tradeable(self) -> bool:
-        """Check if this pair has a valid trade signal."""
+        """Check if this pair has a valid trade signal.
+
+        Safety invariants enforced here (last line of defense before execute_trades):
+        - agent_passed must be True (agents voted YES)
+        - model_disagreement must be <= 0.30 (trading rule)
+        - volatility_regime must not be UNKNOWN
+        """
         return (
             self.gates_passed
             and self.direction in {"LONG", "SHORT"}
             and self.error is None
             and not self.blocked_by_circuit_breaker
             and bool(self.execution_quality_passed)
+            and self.agent_passed
+            and self.model_disagreement <= 0.30
+            and self.volatility_regime.upper() != "UNKNOWN"
         )
 
     @property

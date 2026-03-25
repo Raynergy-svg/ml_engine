@@ -2,148 +2,385 @@
   "EUR_USD": {
     "trades": [
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:26:53.695891Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:20.770206Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:28:06.836363Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:20.796354Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:33:44.157131Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:20.834170Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:33:44.174413Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:20.874120Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:33:56.393251Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:47.902766Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:33:56.407322Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:47.914686Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:33:58.350443Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:47.940255Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:33:58.361861Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:47.945999Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:35:29.357965Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:56.034741Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.75,
-        "timestamp": "2026-03-19T03:35:29.370632Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:56.046745Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:56.073594Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:56.079501Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:53:55.150526Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:53:55.166087Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:53:55.198526Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:53:55.205360Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T00:24:30.406716Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T14:32:08.760879Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T14:32:08.802991Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T14:32:08.850464Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T14:32:08.866879Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T22:01:58.097820Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T22:01:58.118209Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T22:01:58.161494Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T22:01:58.173918Z"
       }
     ],
     "accuracy": 1.0,
-    "total": 10,
-    "wins": 10
+    "total": 25,
+    "wins": 25,
+    "rolling_total": 20,
+    "rolling_wins": 20
   },
   "GBP_USD": {
     "trades": [
       {
-        "direction": "LONG",
+        "direction": "SELL",
         "outcome": false,
-        "confidence": 0.7,
-        "timestamp": "2026-03-19T03:26:59.416427Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:20.772804Z"
       },
       {
-        "direction": "LONG",
+        "direction": "SELL",
         "outcome": false,
-        "confidence": 0.7,
-        "timestamp": "2026-03-19T03:26:59.417807Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:47.905074Z"
       },
       {
-        "direction": "LONG",
+        "direction": "SELL",
         "outcome": false,
-        "confidence": 0.7,
-        "timestamp": "2026-03-19T03:26:59.419117Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:56.036741Z"
       },
       {
-        "direction": "SHORT",
+        "direction": "SELL",
         "outcome": false,
-        "confidence": 0.55,
-        "timestamp": "2026-03-19T03:33:44.154973Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:53:55.154683Z"
       },
       {
-        "direction": "SHORT",
+        "direction": "SELL",
         "outcome": false,
-        "confidence": 0.55,
-        "timestamp": "2026-03-19T03:33:56.391068Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T14:32:08.774101Z"
       },
       {
-        "direction": "SHORT",
+        "direction": "SELL",
         "outcome": false,
-        "confidence": 0.55,
-        "timestamp": "2026-03-19T03:33:58.348567Z"
-      },
-      {
-        "direction": "SHORT",
-        "outcome": false,
-        "confidence": 0.55,
-        "timestamp": "2026-03-19T03:35:29.355342Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T22:01:58.102485Z"
       }
     ],
     "accuracy": 0.0,
-    "total": 7,
-    "wins": 0
+    "total": 6,
+    "wins": 0,
+    "rolling_total": 6,
+    "rolling_wins": 0
   },
   "USD_JPY": {
     "trades": [
       {
-        "direction": "LONG",
-        "outcome": true,
-        "confidence": 0.6,
-        "timestamp": "2026-03-19T03:33:44.158470Z"
+        "direction": "BUY",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:20.774171Z"
       },
       {
-        "direction": "LONG",
-        "outcome": true,
-        "confidence": 0.6,
-        "timestamp": "2026-03-19T03:33:56.394579Z"
+        "direction": "BUY",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:47.907384Z"
       },
       {
-        "direction": "LONG",
-        "outcome": true,
-        "confidence": 0.6,
-        "timestamp": "2026-03-19T03:33:58.351712Z"
+        "direction": "BUY",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:56.039154Z"
       },
       {
-        "direction": "LONG",
+        "direction": "BUY",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:53:55.157171Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T14:32:08.781588Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T22:01:58.106128Z"
+      }
+    ],
+    "accuracy": 0.0,
+    "total": 6,
+    "wins": 0,
+    "rolling_total": 6,
+    "rolling_wins": 0
+  },
+  "EUR_GBP": {
+    "trades": [
+      {
+        "direction": "BUY",
         "outcome": true,
-        "confidence": 0.6,
-        "timestamp": "2026-03-19T03:35:29.359389Z"
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:20.775777Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:47.909053Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:56.041114Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:53:55.159518Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T14:32:08.789996Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T22:01:58.109196Z"
       }
     ],
     "accuracy": 1.0,
-    "total": 4,
-    "wins": 4
+    "total": 6,
+    "wins": 6,
+    "rolling_total": 6,
+    "rolling_wins": 6
+  },
+  "AUD_USD": {
+    "trades": [
+      {
+        "direction": "SELL",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:20.791988Z"
+      },
+      {
+        "direction": "SELL",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:47.911073Z"
+      },
+      {
+        "direction": "SELL",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:56.043074Z"
+      },
+      {
+        "direction": "SELL",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:53:55.161876Z"
+      },
+      {
+        "direction": "SELL",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T14:32:08.795692Z"
+      },
+      {
+        "direction": "SELL",
+        "outcome": false,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T22:01:58.111984Z"
+      }
+    ],
+    "accuracy": 0.0,
+    "total": 6,
+    "wins": 0,
+    "rolling_total": 6,
+    "rolling_wins": 0
+  },
+  "NZD_USD": {
+    "trades": [
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:20.794413Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:47.912803Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:47:56.044992Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-23T20:53:55.163648Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T14:32:08.799571Z"
+      },
+      {
+        "direction": "BUY",
+        "outcome": true,
+        "confidence": 0.65,
+        "timestamp": "2026-03-24T22:01:58.114669Z"
+      }
+    ],
+    "accuracy": 1.0,
+    "total": 6,
+    "wins": 6,
+    "rolling_total": 6,
+    "rolling_wins": 6
   }
 }

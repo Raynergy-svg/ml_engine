@@ -10,31 +10,22 @@
     <style>
         /* ── Design System ──────────────────────────────────────────── */
         :root {
-            /* Surfaces — warm dark, not pure black */
             --bg-primary: #1a1a1e;
             --bg-secondary: #222226;
             --bg-elevated: #2a2a2f;
             --bg-hover: #32323a;
             --bg-input: #1e1e22;
-
-            /* Borders */
             --border-subtle: rgba(255,255,255,0.06);
             --border-default: rgba(255,255,255,0.10);
             --border-strong: rgba(255,255,255,0.16);
-
-            /* Text */
             --text-primary: #f0f0f2;
             --text-secondary: #a0a0a8;
             --text-tertiary: #6b6b74;
             --text-inverse: #1a1a1e;
-
-            /* Accent — Anthropic warm coral / terracotta */
             --accent: #d4715e;
             --accent-hover: #c0624f;
             --accent-subtle: rgba(212,113,94,0.12);
             --accent-muted: rgba(212,113,94,0.20);
-
-            /* Semantic */
             --success: #4ade80;
             --success-subtle: rgba(74,222,128,0.10);
             --danger: #f87171;
@@ -43,41 +34,20 @@
             --warning-subtle: rgba(251,191,36,0.10);
             --info: #60a5fa;
             --info-subtle: rgba(96,165,250,0.10);
-
-            /* Typography */
             --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-
-            /* Spacing */
-            --space-1: 4px;
-            --space-2: 8px;
-            --space-3: 12px;
-            --space-4: 16px;
-            --space-5: 20px;
-            --space-6: 24px;
-            --space-8: 32px;
-            --space-10: 40px;
-            --space-12: 48px;
-
-            /* Radii */
-            --radius-sm: 6px;
-            --radius-md: 10px;
-            --radius-lg: 14px;
-            --radius-xl: 20px;
-
-            /* Shadows */
+            --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+            --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px;
+            --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 20px;
             --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
             --shadow-md: 0 4px 12px rgba(0,0,0,0.25);
             --shadow-lg: 0 8px 24px rgba(0,0,0,0.3);
             --shadow-glow: 0 0 0 1px var(--border-subtle), 0 4px 16px rgba(0,0,0,0.2);
-
-            /* Transitions */
             --transition-fast: 120ms ease;
             --transition-base: 200ms ease;
             --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        /* ── Reset & Base ───────────────────────────────────────────── */
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
         body {
@@ -89,7 +59,6 @@
             min-height: 100vh;
         }
 
-        /* ── Header ─────────────────────────────────────────────────── */
         .header {
             background: var(--bg-secondary);
             border-bottom: 1px solid var(--border-subtle);
@@ -102,560 +71,234 @@
             top: 0;
             z-index: 100;
         }
-        .header-logo {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-        }
+        .header-logo { display: flex; align-items: center; gap: var(--space-3); }
         .header-logo .logo-mark {
-            width: 32px;
-            height: 32px;
+            width: 32px; height: 32px;
             background: linear-gradient(135deg, var(--accent), #e8956e);
             border-radius: var(--radius-sm);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 16px;
-            color: var(--text-inverse);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 16px; color: var(--text-inverse);
             box-shadow: 0 2px 8px rgba(212,113,94,0.3);
         }
-        .header h1 {
-            font-size: 16px;
-            font-weight: 600;
-            letter-spacing: -0.3px;
-        }
+        .header h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.3px; }
         .header .status {
-            font-size: 12px;
-            color: var(--text-tertiary);
-            margin-left: auto;
-            font-family: var(--font-mono);
-            font-weight: 400;
+            font-size: 12px; color: var(--text-tertiary); margin-left: auto;
+            font-family: var(--font-mono); font-weight: 400;
+            display: flex; align-items: center; gap: var(--space-3);
         }
         .header .live-dot {
-            display: inline-block;
-            width: 6px;
-            height: 6px;
-            background: var(--success);
-            border-radius: 50%;
-            margin-right: var(--space-2);
+            display: inline-block; width: 6px; height: 6px;
+            background: var(--success); border-radius: 50%; margin-right: var(--space-2);
             animation: pulse 2s ease-in-out infinite;
             box-shadow: 0 0 6px rgba(74,222,128,0.4);
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
+        .watch-indicator {
+            padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;
         }
+        .watch-indicator.running { background: var(--success-subtle); color: var(--success); }
+        .watch-indicator.stopped { background: rgba(255,255,255,0.06); color: var(--text-tertiary); }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-        /* ── Navigation Tabs ────────────────────────────────────────── */
         .tabs {
-            display: flex;
-            gap: var(--space-1);
-            background: var(--bg-secondary);
-            border-bottom: 1px solid var(--border-subtle);
-            padding: 0 var(--space-8);
+            display: flex; gap: var(--space-1);
+            background: var(--bg-secondary); border-bottom: 1px solid var(--border-subtle);
+            padding: 0 var(--space-8); overflow-x: auto;
         }
         .tab {
-            padding: var(--space-3) var(--space-5);
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            color: var(--text-tertiary);
-            font-size: 13px;
-            font-weight: 500;
-            transition: all var(--transition-base);
-            position: relative;
-            user-select: none;
+            padding: var(--space-3) var(--space-5); cursor: pointer;
+            border-bottom: 2px solid transparent; color: var(--text-tertiary);
+            font-size: 13px; font-weight: 500; transition: all var(--transition-base);
+            position: relative; user-select: none; white-space: nowrap;
         }
-        .tab:hover {
-            color: var(--text-secondary);
-            background: var(--bg-hover);
-            border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-        }
-        .tab.active {
-            color: var(--text-primary);
-            border-bottom-color: var(--accent);
-        }
+        .tab:hover { color: var(--text-secondary); background: var(--bg-hover); border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+        .tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
 
-        /* ── Content Layout ─────────────────────────────────────────── */
-        .content {
-            padding: var(--space-6) var(--space-8);
-            max-width: 1440px;
-            margin: 0 auto;
-        }
+        .content { padding: var(--space-6) var(--space-8); max-width: 1440px; margin: 0 auto; }
         .panel { display: none; }
-        .panel.active {
-            display: block;
-            animation: fadeIn 0.3s ease;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(4px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+        .panel.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* ── Cards ──────────────────────────────────────────────────── */
         .card {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-lg);
-            padding: var(--space-6);
-            margin-bottom: var(--space-5);
-            box-shadow: var(--shadow-glow);
-            transition: border-color var(--transition-base);
+            background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg); padding: var(--space-6); margin-bottom: var(--space-5);
+            box-shadow: var(--shadow-glow); transition: border-color var(--transition-base);
         }
-        .card:hover {
-            border-color: var(--border-default);
-        }
-        .card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: var(--space-5);
-        }
-        .card h3 {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .card-subtitle {
-            font-size: 12px;
-            color: var(--text-tertiary);
-            margin-top: var(--space-1);
-        }
+        .card:hover { border-color: var(--border-default); }
+        .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-5); }
+        .card h3 { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+        .card-subtitle { font-size: 12px; color: var(--text-tertiary); margin-top: var(--space-1); }
 
-        /* ── Grid Layouts ───────────────────────────────────────────── */
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: var(--space-4);
-        }
-        .grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: var(--space-5);
-        }
-        @media (max-width: 768px) {
-            .grid-2 { grid-template-columns: 1fr; }
-        }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+        .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-4); }
+        @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
 
-        /* ── Stat Cards ─────────────────────────────────────────────── */
         .stat-card {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            padding: var(--space-5);
-            text-align: center;
+            background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md); padding: var(--space-5); text-align: center;
             transition: all var(--transition-base);
         }
-        .stat-card:hover {
-            border-color: var(--border-default);
-            transform: translateY(-1px);
-            box-shadow: var(--shadow-md);
-        }
-        .stat-card .value {
-            font-size: 28px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            line-height: 1.2;
-        }
-        .stat-card .label {
-            font-size: 11px;
-            font-weight: 500;
-            color: var(--text-tertiary);
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-top: var(--space-2);
-        }
+        .stat-card:hover { border-color: var(--border-default); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+        .stat-card .value { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; line-height: 1.2; }
+        .stat-card .label { font-size: 11px; font-weight: 500; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; margin-top: var(--space-2); }
 
-        /* ── Tables ─────────────────────────────────────────────────── */
-        .table-container {
-            overflow-x: auto;
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-subtle);
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        thead {
-            background: var(--bg-elevated);
-        }
-        th {
-            text-align: left;
-            padding: var(--space-3) var(--space-4);
-            color: var(--text-tertiary);
-            font-weight: 500;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            border-bottom: 1px solid var(--border-subtle);
-            white-space: nowrap;
-        }
-        td {
-            padding: var(--space-3) var(--space-4);
-            border-bottom: 1px solid var(--border-subtle);
-            transition: background var(--transition-fast);
-        }
-        tr:last-child td {
-            border-bottom: none;
-        }
-        tbody tr:hover td {
-            background: var(--bg-hover);
-        }
+        .table-container { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        thead { background: var(--bg-elevated); }
+        th { text-align: left; padding: var(--space-3) var(--space-4); color: var(--text-tertiary); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border-subtle); white-space: nowrap; }
+        td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); transition: background var(--transition-fast); }
+        tr:last-child td { border-bottom: none; }
+        tbody tr:hover td { background: var(--bg-hover); }
         .pass { color: var(--success); }
         .fail { color: var(--danger); }
 
-        /* ── Badges ─────────────────────────────────────────────────── */
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 10px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.3px;
-        }
+        .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.3px; }
         .badge-green { background: var(--success-subtle); color: var(--success); }
         .badge-red { background: var(--danger-subtle); color: var(--danger); }
         .badge-yellow { background: var(--warning-subtle); color: var(--warning); }
         .badge-blue { background: var(--info-subtle); color: var(--info); }
-        .badge-neutral {
-            background: rgba(255,255,255,0.06);
-            color: var(--text-secondary);
-        }
+        .badge-neutral { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
 
-        /* ── Buttons ────────────────────────────────────────────────── */
         .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: var(--space-2);
-            padding: var(--space-2) var(--space-4);
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            font-weight: 500;
-            font-family: var(--font-sans);
-            cursor: pointer;
-            border: 1px solid transparent;
-            transition: all var(--transition-base);
-            line-height: 1.5;
+            display: inline-flex; align-items: center; gap: var(--space-2);
+            padding: var(--space-2) var(--space-4); border-radius: var(--radius-sm);
+            font-size: 13px; font-weight: 500; font-family: var(--font-sans);
+            cursor: pointer; border: 1px solid transparent; transition: all var(--transition-base); line-height: 1.5;
         }
-        .btn-primary {
-            background: var(--accent);
-            color: white;
-            border-color: var(--accent);
-            box-shadow: 0 1px 3px rgba(212,113,94,0.3);
-        }
-        .btn-primary:hover {
-            background: var(--accent-hover);
-            border-color: var(--accent-hover);
-            box-shadow: 0 2px 8px rgba(212,113,94,0.4);
-            transform: translateY(-1px);
-        }
+        .btn-primary { background: var(--accent); color: white; border-color: var(--accent); box-shadow: 0 1px 3px rgba(212,113,94,0.3); }
+        .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); box-shadow: 0 2px 8px rgba(212,113,94,0.4); transform: translateY(-1px); }
         .btn-primary:active { transform: translateY(0); }
-        .btn-secondary {
-            background: var(--bg-elevated);
-            color: var(--text-secondary);
-            border-color: var(--border-default);
-        }
-        .btn-secondary:hover {
-            background: var(--bg-hover);
-            color: var(--text-primary);
-            border-color: var(--border-strong);
-        }
-        .btn-danger {
-            background: var(--danger-subtle);
-            color: var(--danger);
-            border-color: rgba(248,113,113,0.2);
-        }
-        .btn-danger:hover {
-            background: rgba(248,113,113,0.18);
-            border-color: rgba(248,113,113,0.3);
-        }
-        .btn-ghost {
-            background: transparent;
-            color: var(--text-secondary);
-            border-color: transparent;
-        }
-        .btn-ghost:hover {
-            background: var(--bg-hover);
-            color: var(--text-primary);
-        }
-        .btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            pointer-events: none;
-        }
+        .btn-secondary { background: var(--bg-elevated); color: var(--text-secondary); border-color: var(--border-default); }
+        .btn-secondary:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-strong); }
+        .btn-danger { background: var(--danger-subtle); color: var(--danger); border-color: rgba(248,113,113,0.2); }
+        .btn-danger:hover { background: rgba(248,113,113,0.18); border-color: rgba(248,113,113,0.3); }
+        .btn-success { background: var(--success-subtle); color: var(--success); border-color: rgba(74,222,128,0.2); }
+        .btn-success:hover { background: rgba(74,222,128,0.18); border-color: rgba(74,222,128,0.3); }
+        .btn-ghost { background: transparent; color: var(--text-secondary); border-color: transparent; }
+        .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+        .btn-sm { padding: 2px 8px; font-size: 11px; }
 
-        /* ── Form Controls ──────────────────────────────────────────── */
         select, input[type="text"], input[type="number"] {
-            background: var(--bg-input);
-            color: var(--text-primary);
-            border: 1px solid var(--border-default);
-            padding: var(--space-2) var(--space-3);
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            font-family: var(--font-sans);
-            transition: all var(--transition-base);
-            outline: none;
+            background: var(--bg-input); color: var(--text-primary);
+            border: 1px solid var(--border-default); padding: var(--space-2) var(--space-3);
+            border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font-sans);
+            transition: all var(--transition-base); outline: none;
         }
-        select:focus, input:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-subtle);
-        }
-        select:hover, input:hover {
-            border-color: var(--border-strong);
-        }
-        .form-row {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-            flex-wrap: wrap;
-        }
-        .form-row label {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            min-width: auto;
-        }
-        .form-group {
-            display: flex;
-            flex-direction: column;
-            gap: var(--space-1);
-        }
-        .form-group label {
-            font-size: 11px;
-            font-weight: 500;
-            color: var(--text-tertiary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+        select:focus, input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-subtle); }
+        select:hover, input:hover { border-color: var(--border-strong); }
+        .form-row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+        .form-row label { font-size: 13px; font-weight: 500; color: var(--text-secondary); min-width: auto; }
+        .form-group { display: flex; flex-direction: column; gap: var(--space-1); }
+        .form-group label { font-size: 11px; font-weight: 500; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
 
-        /* ── Toggle Switch ──────────────────────────────────────────── */
         .toggle { position: relative; width: 36px; min-width: 36px; max-width: 36px; height: 20px; flex-shrink: 0; display: inline-block; }
         .toggle input { opacity: 0; width: 0; height: 0; }
-        .toggle .slider {
-            position: absolute; inset: 0;
-            background: var(--bg-hover);
-            border: 1px solid var(--border-default);
-            border-radius: 20px;
-            cursor: pointer;
-            transition: all var(--transition-base);
-        }
-        .toggle .slider::before {
-            content: '';
-            position: absolute;
-            height: 14px; width: 14px;
-            left: 2px; bottom: 2px;
-            background: var(--text-secondary);
-            border-radius: 50%;
-            transition: all var(--transition-base);
-        }
-        .toggle input:checked + .slider {
-            background: var(--accent);
-            border-color: var(--accent);
-        }
-        .toggle input:checked + .slider::before {
-            transform: translateX(16px);
-            background: white;
-        }
+        .toggle .slider { position: absolute; inset: 0; background: var(--bg-hover); border: 1px solid var(--border-default); border-radius: 20px; cursor: pointer; transition: all var(--transition-base); }
+        .toggle .slider::before { content: ''; position: absolute; height: 14px; width: 14px; left: 2px; bottom: 2px; background: var(--text-secondary); border-radius: 50%; transition: all var(--transition-base); }
+        .toggle input:checked + .slider { background: var(--accent); border-color: var(--accent); }
+        .toggle input:checked + .slider::before { transform: translateX(16px); background: white; }
 
-        /* ── Code / Pre ─────────────────────────────────────────────── */
         pre {
-            background: var(--bg-primary);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            padding: var(--space-4);
-            font-family: var(--font-mono);
-            font-size: 12px;
-            line-height: 1.6;
-            overflow-x: auto;
-            max-height: 400px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            color: var(--text-secondary);
+            background: var(--bg-primary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md); padding: var(--space-4);
+            font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+            overflow-x: auto; max-height: 400px; overflow-y: auto; white-space: pre-wrap; color: var(--text-secondary);
         }
         pre::-webkit-scrollbar { width: 6px; height: 6px; }
         pre::-webkit-scrollbar-track { background: transparent; }
         pre::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
 
-        /* ── Agent Reason List ───────────────────────────────────────── */
         .reason-list { list-style: none; }
-        .reason-list li {
-            padding: 2px 0;
-            font-size: 12px;
-            display: flex;
-            align-items: center;
-            gap: var(--space-2);
-        }
-        .reason-list li::before {
-            content: '';
-            display: inline-block;
-            width: 5px; height: 5px;
-            border-radius: 50%;
-            flex-shrink: 0;
-        }
+        .reason-list li { padding: 2px 0; font-size: 12px; display: flex; align-items: center; gap: var(--space-2); }
+        .reason-list li::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
         .reason-list li.pass::before { background: var(--success); box-shadow: 0 0 4px rgba(74,222,128,0.3); }
         .reason-list li.fail::before { background: var(--danger); box-shadow: 0 0 4px rgba(248,113,113,0.3); }
 
-        /* ── Spinner ────────────────────────────────────────────────── */
-        .spinner {
-            display: inline-block;
-            width: 14px; height: 14px;
-            border: 2px solid var(--border-default);
-            border-top: 2px solid var(--accent);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
+        .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border-default); border-top: 2px solid var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ── Empty State ────────────────────────────────────────────── */
-        .empty-state {
-            text-align: center;
-            padding: var(--space-10) var(--space-6);
-            color: var(--text-tertiary);
-        }
-        .empty-state .empty-icon {
-            font-size: 32px;
-            margin-bottom: var(--space-3);
-            opacity: 0.4;
-        }
-        .empty-state p {
-            font-size: 13px;
-            max-width: 280px;
-            margin: 0 auto;
-            line-height: 1.6;
-        }
+        .empty-state { text-align: center; padding: var(--space-10) var(--space-6); color: var(--text-tertiary); }
+        .empty-state .empty-icon { font-size: 32px; margin-bottom: var(--space-3); opacity: 0.4; }
+        .empty-state p { font-size: 13px; max-width: 280px; margin: 0 auto; line-height: 1.6; }
 
-        /* ── Section Divider ────────────────────────────────────────── */
-        .section-label {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-tertiary);
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            margin-bottom: var(--space-4);
-            margin-top: var(--space-2);
-        }
-
-        /* ── Scan Control Row (custom) ──────────────────────────────── */
-        .scan-control {
-            display: flex;
-            align-items: flex-end;
-            gap: var(--space-5);
-            flex-wrap: wrap;
-        }
-        .scan-control .form-group select {
-            min-width: 140px;
-        }
+        .scan-control { display: flex; align-items: flex-end; gap: var(--space-5); flex-wrap: wrap; }
+        .scan-control .form-group select { min-width: 140px; }
         .scan-control .btn { align-self: flex-end; padding: var(--space-2) var(--space-6); }
 
-        /* ── Progress bar (scan status) ─────────────────────────────── */
-        .scan-progress {
-            background: var(--bg-elevated);
-            border-radius: var(--radius-md);
-            padding: var(--space-4);
-            border: 1px solid var(--border-subtle);
-        }
-        .progress-bar {
-            width: 100%;
-            height: 4px;
-            background: var(--bg-primary);
-            border-radius: 2px;
-            overflow: hidden;
-            margin-top: var(--space-3);
-        }
-        .progress-bar-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--accent), #e8956e);
-            border-radius: 2px;
-            transition: width var(--transition-slow);
-            animation: shimmer 2s ease-in-out infinite;
-        }
-        @keyframes shimmer {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-        }
+        .scan-progress { background: var(--bg-elevated); border-radius: var(--radius-md); padding: var(--space-4); border: 1px solid var(--border-subtle); }
+        .progress-bar { width: 100%; height: 4px; background: var(--bg-primary); border-radius: 2px; overflow: hidden; margin-top: var(--space-3); }
+        .progress-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #e8956e); border-radius: 2px; transition: width var(--transition-slow); animation: shimmer 2s ease-in-out infinite; }
+        @keyframes shimmer { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 
-        /* ── Scrollbar global ───────────────────────────────────────── */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
-        /* ── Responsive ─────────────────────────────────────────────── */
         @media (max-width: 768px) {
             .content { padding: var(--space-4); }
             .header { padding: var(--space-3) var(--space-4); }
-            .tabs { padding: 0 var(--space-4); overflow-x: auto; }
+            .tabs { padding: 0 var(--space-4); }
             .scan-control { flex-direction: column; align-items: stretch; }
         }
 
-        /* ── Config panel ───────────────────────────────────────────── */
-        .config-row {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-            padding: var(--space-3) 0;
-            border-bottom: 1px solid var(--border-subtle);
-        }
+        .config-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-subtle); }
         .config-row:last-child { border-bottom: none; }
-        .config-row > label:first-child {
-            min-width: 200px;
-            font-size: 13px;
-            color: var(--text-secondary);
-            font-family: var(--font-mono);
-            font-weight: 400;
-        }
-        .config-row > label.toggle {
-            min-width: 36px;
-        }
+        .config-row > label:first-child { min-width: 200px; font-size: 13px; color: var(--text-secondary); font-family: var(--font-mono); font-weight: 400; }
+        .config-row > label.toggle { min-width: 36px; }
 
-        /* ── Agent weight bar ───────────────────────────────────────── */
-        .weight-bar {
-            width: 60px;
-            height: 4px;
-            background: var(--bg-primary);
-            border-radius: 2px;
-            overflow: hidden;
-            display: inline-block;
-            vertical-align: middle;
-            margin-left: var(--space-2);
-        }
-        .weight-bar-fill {
-            height: 100%;
-            background: var(--accent);
-            border-radius: 2px;
-            transition: width var(--transition-slow);
-        }
+        .weight-bar { width: 60px; height: 4px; background: var(--bg-primary); border-radius: 2px; overflow: hidden; display: inline-block; vertical-align: middle; margin-left: var(--space-2); }
+        .weight-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width var(--transition-slow); }
 
-        /* ── Button group ───────────────────────────────────────────── */
-        .btn-group {
-            display: flex;
-            gap: var(--space-2);
-            margin-top: var(--space-4);
+        .btn-group { display: flex; gap: var(--space-2); margin-top: var(--space-4); flex-wrap: wrap; }
+
+        .section-label { font-size: 11px; font-weight: 600; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: var(--space-4); margin-top: var(--space-2); }
+
+        .model-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3); }
+        .model-card {
+            background: var(--bg-elevated); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md); padding: var(--space-4); text-align: center;
+            cursor: pointer; transition: all var(--transition-base);
         }
+        .model-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .model-card.training { border-color: var(--warning); animation: pulse 1.5s infinite; }
+        .model-card .model-name { font-size: 13px; font-weight: 600; margin-bottom: var(--space-1); }
+        .model-card .model-info { font-size: 11px; color: var(--text-tertiary); }
+
+        .toast {
+            position: fixed; bottom: 24px; right: 24px;
+            padding: var(--space-3) var(--space-5); border-radius: var(--radius-md);
+            font-size: 13px; font-weight: 500; z-index: 1000;
+            box-shadow: var(--shadow-lg); transition: all var(--transition-base);
+            opacity: 0; transform: translateY(10px); pointer-events: none;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+        .toast.success { background: #1a2e1a; color: var(--success); border: 1px solid rgba(74,222,128,0.2); }
+        .toast.error { background: #2e1a1a; color: var(--danger); border: 1px solid rgba(248,113,113,0.2); }
+        .toast.info { background: #1a1a2e; color: var(--info); border: 1px solid rgba(96,165,250,0.2); }
     </style>
 </head>
 <body>
-    <!-- ── Header ────────────────────────────────────────────────── -->
     <div class="header">
         <div class="header-logo">
             <div class="logo-mark">B</div>
             <h1>Buddy</h1>
         </div>
         <span class="status">
+            <span id="watch-badge" class="watch-indicator stopped">WATCH OFF</span>
             <span class="live-dot"></span>
             <span id="clock"></span>
         </span>
     </div>
 
-    <!-- ── Navigation ────────────────────────────────────────────── -->
     <div class="tabs">
         <div class="tab active" data-panel="scanner">Scanner</div>
-        <div class="tab" data-panel="agents">Agents</div>
+        <div class="tab" data-panel="account">Account</div>
         <div class="tab" data-panel="trades">Trades</div>
+        <div class="tab" data-panel="agents">Agents</div>
+        <div class="tab" data-panel="training">Training</div>
+        <div class="tab" data-panel="watch">Watch Mode</div>
         <div class="tab" data-panel="config">Config</div>
         <div class="tab" data-panel="learning">Learning</div>
         <div class="tab" data-panel="qa">QA</div>
@@ -664,9 +307,8 @@
     </div>
 
     <div class="content">
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- SCANNER PANEL                                          -->
-        <!-- ═══════════════════════════════════════════════════════ -->
+
+        <!-- ═══════════ SCANNER PANEL ═══════════ -->
         <div class="panel active" id="panel-scanner">
             <div class="card">
                 <div class="card-header">
@@ -694,13 +336,21 @@
                             <option value="D">D</option>
                         </select>
                     </div>
+                    <div class="form-group" style="display:flex;align-items:center;gap:8px">
+                        <label class="toggle" style="margin:0"><input type="checkbox" id="scan-auto-exec" checked><span class="slider"></span></label>
+                        <label for="scan-auto-exec" style="cursor:pointer;font-size:13px;color:var(--text-secondary)">Auto-Execute</label>
+                    </div>
                     <button class="btn btn-primary" id="btn-scan" onclick="runScan(false)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                        Run Scan
+                        Scan &amp; Execute
                     </button>
-                    <button class="btn btn-secondary" id="btn-force-scan" onclick="runScan(true)" title="Bypass session hours and missing-model warnings">
+                    <button class="btn btn-secondary" id="btn-force-scan" onclick="runScan(true)" title="Bypass session hours filter">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-                        Force
+                        Force Scan
+                    </button>
+                    <button class="btn btn-secondary" onclick="runOrchestrate()" title="Full scan+trade+learn+tune cycle">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Orchestrate
                     </button>
                 </div>
             </div>
@@ -721,11 +371,11 @@
                             <tr>
                                 <th>Pair</th><th>Direction</th><th>Confidence</th>
                                 <th>Vote Score</th><th>ATR</th><th>Regime</th>
-                                <th>Gates</th><th>Agents</th>
+                                <th>Gates</th><th>Agents</th><th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="scan-results-body">
-                            <tr><td colspan="8">
+                            <tr><td colspan="9">
                                 <div class="empty-state">
                                     <div class="empty-icon">&#x25CE;</div>
                                     <p>No scan results yet. Configure and run a scan to analyze currency pairs.</p>
@@ -739,35 +389,132 @@
             <div class="card">
                 <div class="card-header"><h3>Portfolio State</h3></div>
                 <div class="grid" id="portfolio-stats">
-                    <div class="stat-card">
-                        <div class="value" id="stat-nav">--</div>
-                        <div class="label">NAV</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="value" id="stat-trades">--</div>
-                        <div class="label">Session Trades</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="value" id="stat-winrate">--</div>
-                        <div class="label">Win Rate</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="value" id="stat-pnl">--</div>
-                        <div class="label">Realized P/L</div>
-                    </div>
+                    <div class="stat-card"><div class="value" id="stat-nav">--</div><div class="label">NAV</div></div>
+                    <div class="stat-card"><div class="value" id="stat-trades">--</div><div class="label">Session Trades</div></div>
+                    <div class="stat-card"><div class="value" id="stat-winrate">--</div><div class="label">Win Rate</div></div>
+                    <div class="stat-card"><div class="value" id="stat-pnl">--</div><div class="label">Realized P/L</div></div>
                 </div>
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- AGENTS PANEL                                           -->
-        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ═══════════ ACCOUNT PANEL ═══════════ -->
+        <div class="panel" id="panel-account">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3>OANDA Account</h3>
+                        <p class="card-subtitle">Live account status from OANDA Practice API</p>
+                    </div>
+                    <button class="btn btn-secondary" onclick="loadAccount()">Refresh</button>
+                </div>
+                <div class="grid" id="account-stats">
+                    <div class="stat-card"><div class="value" id="acct-nav">--</div><div class="label">NAV</div></div>
+                    <div class="stat-card"><div class="value" id="acct-balance">--</div><div class="label">Balance</div></div>
+                    <div class="stat-card"><div class="value" id="acct-unrealized">--</div><div class="label">Unrealized P/L</div></div>
+                    <div class="stat-card"><div class="value" id="acct-realized">--</div><div class="label">Total Realized P/L</div></div>
+                    <div class="stat-card"><div class="value" id="acct-margin-used">--</div><div class="label">Margin Used</div></div>
+                    <div class="stat-card"><div class="value" id="acct-margin-avail">--</div><div class="label">Margin Available</div></div>
+                    <div class="stat-card"><div class="value" id="acct-open-trades">--</div><div class="label">Open Trades</div></div>
+                    <div class="stat-card"><div class="value" id="acct-trades-today">--</div><div class="label">Trades Today</div></div>
+                    <div class="stat-card"><div class="value" id="acct-trades-remaining">--</div><div class="label">Remaining</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ TRADES PANEL ═══════════ -->
+        <div class="panel" id="panel-trades">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3>Open Trades</h3>
+                        <p class="card-subtitle">Active positions with real-time P/L. Close or modify SL/TP.</p>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-secondary" onclick="loadOpenTrades()">Refresh</button>
+                        <button class="btn btn-danger" onclick="closeAllTrades()">Close All</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead><tr>
+                            <th>ID</th><th>Pair</th><th>Direction</th><th>Units</th>
+                            <th>P/L</th><th>SL Dist</th><th>TP Dist</th><th>Duration</th><th>Actions</th>
+                        </tr></thead>
+                        <tbody id="open-trades-body">
+                            <tr><td colspan="9"><div class="empty-state"><p>Click Refresh to load open positions</p></div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3>Manual Trade Execution</h3>
+                        <p class="card-subtitle">Execute a trade manually. All gates and risk rules still apply server-side.</p>
+                    </div>
+                </div>
+                <div class="form-row" style="gap:var(--space-4);flex-wrap:wrap">
+                    <div class="form-group">
+                        <label>Pair</label>
+                        <select id="exec-pair" style="min-width:120px">
+                            <option value="EUR_USD">EUR/USD</option><option value="GBP_USD">GBP/USD</option>
+                            <option value="USD_JPY">USD/JPY</option><option value="USD_CHF">USD/CHF</option>
+                            <option value="AUD_USD">AUD/USD</option><option value="NZD_USD">NZD/USD</option>
+                            <option value="USD_CAD">USD/CAD</option><option value="EUR_GBP">EUR/GBP</option>
+                            <option value="EUR_JPY">EUR/JPY</option><option value="GBP_JPY">GBP/JPY</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Direction</label>
+                        <select id="exec-direction"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select>
+                    </div>
+                    <div class="form-group">
+                        <label>Price</label>
+                        <input type="number" id="exec-price" step="0.00001" placeholder="1.08500" style="width:120px">
+                    </div>
+                    <div class="form-group">
+                        <label>ATR</label>
+                        <input type="number" id="exec-atr" step="0.0001" placeholder="0.0060" style="width:100px">
+                    </div>
+                    <div class="form-group">
+                        <label>Confidence</label>
+                        <input type="number" id="exec-conf" step="0.01" value="0.65" style="width:80px">
+                    </div>
+                    <div class="form-group">
+                        <label>SL Pips (opt)</label>
+                        <input type="number" id="exec-sl" step="0.1" placeholder="auto" style="width:80px">
+                    </div>
+                    <div class="form-group">
+                        <label>TP Pips (opt)</label>
+                        <input type="number" id="exec-tp" step="0.1" placeholder="auto" style="width:80px">
+                    </div>
+                    <button class="btn btn-primary" onclick="executeManualTrade()" style="align-self:flex-end">Execute Trade</button>
+                </div>
+                <div id="exec-result" style="margin-top:var(--space-4);display:none"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div><h3>Trade Journal</h3><p class="card-subtitle">Last 50 trade outcomes for RL learning</p></div>
+                    <button class="btn btn-secondary" onclick="loadJournal()">Load Journal</button>
+                </div>
+                <div class="table-container" style="max-height:400px;overflow-y:auto">
+                    <table>
+                        <thead><tr><th>Pair</th><th>Direction</th><th>P/L Pips</th><th>Result</th><th>Confidence</th></tr></thead>
+                        <tbody id="journal-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ AGENTS PANEL ═══════════ -->
         <div class="panel" id="panel-agents">
             <div class="card">
                 <div class="card-header">
                     <div>
                         <h3>Agent Configuration</h3>
-                        <p class="card-subtitle">12-agent specialist team with RL weight learning. Toggle agents and monitor learned weights.</p>
+                        <p class="card-subtitle">12-agent specialist team with RL weight learning</p>
                     </div>
                 </div>
                 <div class="table-container">
@@ -783,65 +530,160 @@
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- TRADES PANEL                                           -->
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <div class="panel" id="panel-trades">
+        <!-- ═══════════ TRAINING PANEL ═══════════ -->
+        <div class="panel" id="panel-training">
             <div class="card">
                 <div class="card-header">
                     <div>
-                        <h3>Open Trades</h3>
-                        <p class="card-subtitle">Active positions with real-time P/L from OANDA</p>
+                        <h3>Model Training</h3>
+                        <p class="card-subtitle">Train ensemble models individually or all at once</p>
                     </div>
-                    <button class="btn btn-secondary" onclick="loadOpenTrades()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                        Refresh
-                    </button>
+                    <button class="btn btn-secondary" onclick="loadTrainingStatus()">Refresh Status</button>
                 </div>
-                <div class="table-container">
-                    <table>
-                        <thead><tr><th>Pair</th><th>Direction</th><th>P/L</th><th>SL Dist</th><th>TP Dist</th><th>Duration</th></tr></thead>
-                        <tbody id="open-trades-body">
-                            <tr><td colspan="6">
-                                <div class="empty-state"><p>Click Refresh to load open positions</p></div>
-                            </td></tr>
-                        </tbody>
-                    </table>
+                <div id="training-status-bar" style="margin-bottom:var(--space-5);display:none">
+                    <div class="scan-progress">
+                        <div id="training-status-text" style="font-size:13px;color:var(--text-secondary)">Training...</div>
+                        <div class="progress-bar"><div class="progress-bar-fill" style="width:50%"></div></div>
+                    </div>
+                </div>
+                <p class="section-label">Train All Models</p>
+                <div class="form-row" style="margin-bottom:var(--space-5)">
+                    <label class="toggle"><input type="checkbox" id="train-warm-start"><span class="slider"></span></label>
+                    <span style="font-size:13px;color:var(--text-secondary)">Warm start (continue from existing weights)</span>
+                    <label class="toggle"><input type="checkbox" id="train-histgb" checked><span class="slider"></span></label>
+                    <span style="font-size:13px;color:var(--text-secondary)">Include HistGB</span>
+                    <button class="btn btn-primary" id="btn-train-all" onclick="trainAll()">Train All Models</button>
+                </div>
+
+                <p class="section-label">Train Individual Model</p>
+                <div class="model-grid" id="model-grid">
+                    <div class="model-card" onclick="trainSingle('transformer')">
+                        <div class="model-name">Transformer</div>
+                        <div class="model-info">Direction predictor</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('tcn')">
+                        <div class="model-name">TCN</div>
+                        <div class="model-info">Direction predictor</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('xgboost')">
+                        <div class="model-name">XGBoost</div>
+                        <div class="model-info">Momentum scorer</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('rf')">
+                        <div class="model-name">Random Forest</div>
+                        <div class="model-info">Drawdown predictor</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('ridge')">
+                        <div class="model-name">Ridge</div>
+                        <div class="model-info">Confidence scorer</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('histgb')">
+                        <div class="model-name">HistGB</div>
+                        <div class="model-info">Direction (hybrid vote)</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('lightgbm_regime')">
+                        <div class="model-name">LightGBM Regime</div>
+                        <div class="model-info">Regime classifier</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('lightgbm_momentum')">
+                        <div class="model-name">LightGBM Momentum</div>
+                        <div class="model-info">Momentum predictor</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('lightgbm_risk')">
+                        <div class="model-name">LightGBM Risk</div>
+                        <div class="model-info">Risk predictor</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('transformer_regime')">
+                        <div class="model-name">Transformer Regime</div>
+                        <div class="model-info">3-class regime</div>
+                    </div>
+                    <div class="model-card" onclick="trainSingle('joint')">
+                        <div class="model-name">Joint Multi-Pair</div>
+                        <div class="model-info">All pairs, all models</div>
+                    </div>
                 </div>
             </div>
 
             <div class="card">
                 <div class="card-header">
-                    <div>
-                        <h3>Trade Journal</h3>
-                        <p class="card-subtitle">Last 50 trade outcomes for RL learning</p>
-                    </div>
-                    <button class="btn btn-secondary" onclick="loadJournal()">Load Journal</button>
+                    <div><h3>Trained Models</h3><p class="card-subtitle">Model files on disk</p></div>
+                    <button class="btn btn-secondary" onclick="loadModelList()">Refresh</button>
                 </div>
-                <div class="table-container" style="max-height:400px;overflow-y:auto">
+                <div class="table-container" style="max-height:300px;overflow-y:auto">
                     <table>
-                        <thead><tr><th>Pair</th><th>Direction</th><th>P/L Pips</th><th>Result</th><th>Confidence</th></tr></thead>
-                        <tbody id="journal-body"></tbody>
+                        <thead><tr><th>Model</th><th>Directory</th><th>Size</th><th>Modified</th></tr></thead>
+                        <tbody id="models-body">
+                            <tr><td colspan="4"><div class="empty-state"><p>Click Refresh to list models</p></div></td></tr>
+                        </tbody>
                     </table>
                 </div>
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- CONFIG PANEL                                           -->
-        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ═══════════ WATCH MODE PANEL ═══════════ -->
+        <div class="panel" id="panel-watch">
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <h3>Continuous Scanning (Watch Mode)</h3>
+                        <p class="card-subtitle">Automated scanning loop with optional auto-execution</p>
+                    </div>
+                </div>
+                <div class="grid" style="margin-bottom:var(--space-5)">
+                    <div class="stat-card">
+                        <div class="value" id="watch-status-indicator" style="font-size:20px">STOPPED</div>
+                        <div class="label">Status</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="watch-scan-count">0</div>
+                        <div class="label">Scans Completed</div>
+                    </div>
+                </div>
+                <div class="form-row" style="gap:var(--space-4);flex-wrap:wrap;margin-bottom:var(--space-5)">
+                    <div class="form-group">
+                        <label>Profile</label>
+                        <select id="watch-profile">
+                            <option value="smart" selected>Smart</option>
+                            <option value="balanced">Balanced</option>
+                            <option value="conservative">Conservative</option>
+                            <option value="aggressive">Aggressive</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Granularity</label>
+                        <select id="watch-granularity">
+                            <option value="H1" selected>H1</option>
+                            <option value="M15">M15</option>
+                            <option value="H4">H4</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Interval (min)</label>
+                        <input type="number" id="watch-interval" value="5" min="1" max="60" style="width:80px">
+                    </div>
+                    <div class="form-group" style="flex-direction:row;align-items:center;gap:8px">
+                        <label class="toggle"><input type="checkbox" id="watch-auto-exec"><span class="slider"></span></label>
+                        <span style="font-size:13px;color:var(--text-secondary)">Auto-execute</span>
+                    </div>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-success" id="btn-watch-start" onclick="startWatch()">Start Watch Mode</button>
+                    <button class="btn btn-danger" id="btn-watch-stop" onclick="stopWatch()" disabled>Stop</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ CONFIG PANEL ═══════════ -->
         <div class="panel" id="panel-config">
             <div class="card">
                 <div class="card-header">
                     <div>
                         <h3>Scanner Configuration</h3>
-                        <p class="card-subtitle">Runtime parameters controlling scan behavior, gates, and risk thresholds</p>
+                        <p class="card-subtitle">Runtime parameters — changes apply to next scan, watch mode, and trade execution</p>
                     </div>
                     <div style="display:flex;gap:8px">
-                        <button class="btn btn-secondary" onclick="loadConfig()">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                            Reload
-                        </button>
+                        <button class="btn btn-danger" onclick="resetConfig()">Reset Defaults</button>
+                        <button class="btn btn-secondary" onclick="loadConfig()">Reload</button>
                         <button class="btn btn-primary" id="btn-save-config" onclick="saveConfig()">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                             Save
@@ -852,56 +694,28 @@
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- LEARNING PANEL                                         -->
-        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ═══════════ LEARNING PANEL ═══════════ -->
         <div class="panel" id="panel-learning">
             <div class="grid-2">
-                <div class="card">
-                    <div class="card-header"><h3>Learnings</h3></div>
-                    <pre id="learnings-content">Loading...</pre>
-                </div>
-                <div class="card">
-                    <div class="card-header"><h3>Trading Rules</h3></div>
-                    <pre id="rules-content">Loading...</pre>
-                </div>
+                <div class="card"><div class="card-header"><h3>Learnings</h3></div><pre id="learnings-content">Loading...</pre></div>
+                <div class="card"><div class="card-header"><h3>Trading Rules</h3></div><pre id="rules-content">Loading...</pre></div>
             </div>
-            <div class="card">
-                <div class="card-header"><h3>Session State</h3></div>
-                <pre id="state-content">Loading...</pre>
-            </div>
+            <div class="card"><div class="card-header"><h3>Session State</h3></div><pre id="state-content">Loading...</pre></div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- QA PANEL                                               -->
-        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ═══════════ QA PANEL ═══════════ -->
         <div class="panel" id="panel-qa">
             <div class="card">
                 <div class="card-header">
-                    <div>
-                        <h3>Quality Assurance Audit</h3>
-                        <p class="card-subtitle">Automated system health checks across config, agents, journal, and rules</p>
-                    </div>
+                    <div><h3>Quality Assurance Audit</h3><p class="card-subtitle">Automated system health checks</p></div>
                     <button class="btn btn-primary" onclick="runQAAudit()">Run Audit</button>
                 </div>
                 <div id="qa-summary" style="display:none">
                     <div class="grid" style="margin-bottom:var(--space-5)">
-                        <div class="stat-card" id="qa-score-card">
-                            <div class="value" id="qa-score">--</div>
-                            <div class="label">Health Score</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="value fail" id="qa-critical">0</div>
-                            <div class="label">Critical</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="value" style="color:var(--warning)" id="qa-warnings">0</div>
-                            <div class="label">Warnings</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="value" style="color:var(--info)" id="qa-info">0</div>
-                            <div class="label">Info</div>
-                        </div>
+                        <div class="stat-card"><div class="value" id="qa-score">--</div><div class="label">Health Score</div></div>
+                        <div class="stat-card"><div class="value fail" id="qa-critical">0</div><div class="label">Critical</div></div>
+                        <div class="stat-card"><div class="value" style="color:var(--warning)" id="qa-warnings">0</div><div class="label">Warnings</div></div>
+                        <div class="stat-card"><div class="value" style="color:var(--info)" id="qa-info">0</div><div class="label">Info</div></div>
                     </div>
                 </div>
                 <div class="table-container">
@@ -913,13 +727,9 @@
                     </table>
                 </div>
             </div>
-
             <div class="card">
                 <div class="card-header">
-                    <div>
-                        <h3>Brutal Code Review</h3>
-                        <p class="card-subtitle">Reviews last scan results for questionable decisions and missed opportunities</p>
-                    </div>
+                    <div><h3>Brutal Code Review</h3><p class="card-subtitle">Reviews last scan results for questionable decisions</p></div>
                     <button class="btn btn-secondary" onclick="runCodeReview()">Review Last Scan</button>
                 </div>
                 <div id="review-grade" style="display:none;margin-bottom:var(--space-4)">
@@ -937,48 +747,33 @@
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- SYSTEM PANEL                                           -->
-        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ═══════════ SYSTEM PANEL ═══════════ -->
         <div class="panel" id="panel-system">
             <div class="card">
                 <div class="card-header">
-                    <div>
-                        <h3>System Status</h3>
-                        <p class="card-subtitle">Automation module availability and session info</p>
-                    </div>
+                    <div><h3>System Status</h3><p class="card-subtitle">Automation module availability and session info</p></div>
                     <button class="btn btn-secondary" onclick="loadSystemStatus()">Refresh</button>
                 </div>
                 <div class="grid" id="module-status" style="margin-bottom:var(--space-5)"></div>
                 <div id="session-info"></div>
             </div>
-
             <div class="card">
                 <div class="card-header">
-                    <div>
-                        <h3>Improvement Trend</h3>
-                        <p class="card-subtitle">Win rate, P/L, and learning velocity across sessions</p>
-                    </div>
+                    <div><h3>Improvement Trend</h3><p class="card-subtitle">Win rate, P/L, and learning velocity across sessions</p></div>
                 </div>
                 <div class="grid" id="trend-stats"></div>
             </div>
-
             <div class="card">
                 <div class="card-header"><h3>Improvement Report</h3></div>
                 <pre id="improvement-report">Click Refresh above to load...</pre>
             </div>
         </div>
 
-        <!-- ═══════════════════════════════════════════════════════ -->
-        <!-- PRD PANEL                                              -->
-        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ═══════════ PRD PANEL ═══════════ -->
         <div class="panel" id="panel-prd">
             <div class="card">
                 <div class="card-header">
-                    <div>
-                        <h3>Self-Improvement Loop</h3>
-                        <p class="card-subtitle">12-story PRD tracking autonomous system evolution</p>
-                    </div>
+                    <div><h3>Self-Improvement Loop</h3><p class="card-subtitle">12-story PRD tracking autonomous system evolution</p></div>
                 </div>
                 <div class="table-container">
                     <table>
@@ -990,78 +785,174 @@
         </div>
     </div>
 
-<!-- ════════════════════════════════════════════════════════════════ -->
-<!-- JAVASCRIPT                                                      -->
-<!-- ════════════════════════════════════════════════════════════════ -->
+    <!-- Toast notification -->
+    <div id="toast" class="toast"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- JAVASCRIPT                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
 <script>
+// ── Utilities ─────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+function showToast(msg, type = 'info') {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + type + ' show';
+    setTimeout(() => t.classList.remove('show'), 3500);
+}
+function fmtMoney(v) { return (v >= 0 ? '$' : '-$') + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}); }
+
 // ── Tab switching ─────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
     tab.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         tab.classList.add('active');
-        document.getElementById('panel-' + tab.dataset.panel).classList.add('active');
+        $('panel-' + tab.dataset.panel).classList.add('active');
     });
 });
 
 // ── Clock ─────────────────────────────────────────────────────────
 function updateClock() {
-    const now = new Date();
-    document.getElementById('clock').textContent =
-        now.toUTCString().replace('GMT', 'UTC');
+    $('clock').textContent = new Date().toUTCString().replace('GMT', 'UTC');
 }
 setInterval(updateClock, 1000);
 updateClock();
 
+// ── Watch status badge (polls) ────────────────────────────────────
+async function pollWatchStatus() {
+    try {
+        const res = await fetch('/api/watch/status');
+        const data = await res.json();
+        const badge = $('watch-badge');
+        if (data.running) {
+            badge.textContent = 'WATCH ACTIVE (' + data.scan_count + ' scans)';
+            badge.className = 'watch-indicator running';
+            $('watch-status-indicator').textContent = 'RUNNING';
+            $('watch-status-indicator').style.color = 'var(--success)';
+            $('watch-scan-count').textContent = data.scan_count;
+            $('btn-watch-start').disabled = true;
+            $('btn-watch-stop').disabled = false;
+        } else {
+            badge.textContent = 'WATCH OFF';
+            badge.className = 'watch-indicator stopped';
+            $('watch-status-indicator').textContent = 'STOPPED';
+            $('watch-status-indicator').style.color = 'var(--text-tertiary)';
+            $('btn-watch-start').disabled = false;
+            $('btn-watch-stop').disabled = true;
+        }
+    } catch(e) {}
+}
+setInterval(pollWatchStatus, 5000);
+
 // ── Scanner ───────────────────────────────────────────────────────
+let _lastScanResults = [];
+
 async function runScan(force = false) {
-    const btn = document.getElementById('btn-scan');
-    const forceBtn = document.getElementById('btn-force-scan');
-    btn.disabled = true;
-    forceBtn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Scanning...';
+    const btn = $('btn-scan');
+    const forceBtn = $('btn-force-scan');
+    const autoExec = $('scan-auto-exec').checked;
+    btn.disabled = true; forceBtn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> ' + (autoExec ? 'Scanning & Executing...' : 'Scanning...');
+    $('scan-status').style.display = 'block';
+    $('scan-status-content').textContent = autoExec
+        ? 'Scanning markets... will auto-execute if setups pass gates'
+        : 'Scanning markets...';
 
-    const statusEl = document.getElementById('scan-status');
-    statusEl.style.display = 'block';
+    const profile = $('scan-profile').value;
+    const granularity = $('scan-granularity').value;
+    const scanBtnLabel = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Scan &amp; Execute';
 
-    const profile = document.getElementById('scan-profile').value;
-    const granularity = document.getElementById('scan-granularity').value;
+    try {
+        await fetch('/api/scan', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({profile, granularity, force, auto_execute: autoExec})
+        });
+    } catch(e) {
+        showToast('Failed to start scan: ' + e.message, 'error');
+        btn.disabled = false; forceBtn.disabled = false;
+        btn.innerHTML = scanBtnLabel;
+        $('scan-status').style.display = 'none';
+        return;
+    }
 
-    await fetch('/api/scan', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({profile, granularity, force})
-    });
-
-    // Poll for results
     let progress = 10;
     const poll = setInterval(async () => {
-        progress = Math.min(progress + 8, 90);
-        const fill = statusEl.querySelector('.progress-bar-fill');
+        progress = Math.min(progress + 5, 90);
+        const fill = $('scan-status').querySelector('.progress-bar-fill');
         if (fill) fill.style.width = progress + '%';
 
-        const res = await fetch('/api/scan/results');
-        const data = await res.json();
-        if (!data.running) {
-            clearInterval(poll);
-            if (fill) fill.style.width = '100%';
-            setTimeout(() => { statusEl.style.display = 'none'; }, 600);
-            btn.disabled = false;
-            forceBtn.disabled = false;
-            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Scan`;
-            renderScanResults(data.results);
-        }
+        try {
+            const res = await fetch('/api/scan/results');
+            const data = await res.json();
+            if (!data.running) {
+                clearInterval(poll);
+                if (fill) fill.style.width = '100%';
+                setTimeout(() => $('scan-status').style.display = 'none', 600);
+                btn.disabled = false; forceBtn.disabled = false;
+                btn.innerHTML = scanBtnLabel;
+                _lastScanResults = data.results || [];
+                renderScanResults(_lastScanResults);
+
+                // Summary toast
+                const executed = _lastScanResults.filter(r => r.executed);
+                const tradeable = _lastScanResults.filter(r => r.gates_passed && r.is_tradeable);
+                if (executed.length > 0) {
+                    showToast('Scan complete: ' + executed.length + ' trade(s) executed', 'success');
+                    loadOpenTrades();
+                    loadAccount();
+                } else if (tradeable.length > 0) {
+                    showToast('Scan complete: ' + tradeable.length + ' tradeable setup(s) found', 'info');
+                } else {
+                    showToast('Scan complete: no tradeable setups', 'info');
+                }
+            }
+        } catch(e) {}
     }, 2000);
 }
 
-function renderScanResults(results) {
-    const tbody = document.getElementById('scan-results-body');
-    if (!results || results.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p>No setups found in this scan</p></div></td></tr>';
+async function runOrchestrate() {
+    const profile = $('scan-profile').value;
+    const granularity = $('scan-granularity').value;
+    $('scan-status').style.display = 'block';
+    $('scan-status-content').textContent = 'Running orchestration cycle (scan + trade + learn + tune)...';
+
+    try {
+        await fetch('/api/orchestrate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({profile, granularity})
+        });
+    } catch(e) {
+        showToast('Failed to start orchestration: ' + e.message, 'error');
+        $('scan-status').style.display = 'none';
         return;
     }
-    tbody.innerHTML = results.map(r => {
-        if (r.error && !r.pair) return `<tr><td colspan="8" class="fail">${r.error}</td></tr>`;
+
+    const poll = setInterval(async () => {
+        try {
+            const res = await fetch('/api/scan/results');
+            const data = await res.json();
+            if (!data.running) {
+                clearInterval(poll);
+                $('scan-status').style.display = 'none';
+                _lastScanResults = data.results || [];
+                renderScanResults(_lastScanResults);
+                showToast('Orchestration cycle complete', 'success');
+            }
+        } catch(e) {}
+    }, 3000);
+}
+
+function renderScanResults(results) {
+    const tbody = $('scan-results-body');
+    if (!results || results.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><p>No setups found in this scan</p></div></td></tr>';
+        return;
+    }
+    tbody.innerHTML = results.map((r, idx) => {
+        if (r.error && !r.pair) return '<tr><td colspan="9" class="fail">' + r.error + '</td></tr>';
         const gates = r.gates_passed
             ? '<span class="badge badge-green">PASS</span>'
             : '<span class="badge badge-red">FAIL</span>';
@@ -1069,120 +960,460 @@ function renderScanResults(results) {
             ? '<span class="badge badge-green">LONG</span>'
             : r.direction === 'SHORT' ? '<span class="badge badge-red">SHORT</span>' : '<span class="badge badge-neutral">' + (r.direction || '--') + '</span>';
         const reasons = (r.agent_reasons || []).map(a =>
-            `<li class="${a.passed ? 'pass' : 'fail'}">${a.name}: ${a.reason}</li>`
+            '<li class="' + (a.passed ? 'pass' : 'fail') + '">' + a.name + ': ' + a.reason + '</li>'
         ).join('');
-        return `<tr>
-            <td><strong>${r.pair}</strong></td>
-            <td>${dir}</td>
-            <td>${(r.confidence * 100).toFixed(1)}%</td>
-            <td>${(r.weighted_vote_score * 100).toFixed(1)}%</td>
-            <td><span style="font-family:var(--font-mono)">${r.atr_pips}p</span></td>
-            <td><span class="badge badge-blue">${r.volatility_regime}</span></td>
-            <td>${gates}</td>
-            <td><ul class="reason-list">${reasons}</ul></td>
-        </tr>`;
+
+        // Action column: show execution result OR execute button
+        let actionCol = '';
+        if (r.executed && r.exec_result) {
+            const er = r.exec_result;
+            actionCol = '<span class="badge badge-green">FILLED</span>' +
+                '<div style="font-size:11px;font-family:var(--font-mono);margin-top:3px">' +
+                'ID: ' + (er.trade_id || '--') + '<br>' +
+                (er.lots || 0) + ' lots @ ' + (er.fill_price || '--') +
+                '</div>';
+        } else if (r.exec_result && r.exec_result.error) {
+            actionCol = '<span class="badge badge-red">REJECTED</span>' +
+                '<div style="font-size:11px;color:var(--danger);margin-top:3px">' +
+                (r.exec_result.error || '').substring(0, 60) + '</div>';
+        } else if ((r.gates_passed || r.is_tradeable) && r.current_price > 0 && r.direction !== 'HOLD') {
+            actionCol = '<button class="btn btn-sm btn-success" onclick="executeScanTrade(' + idx + ')">Execute</button>';
+        } else if (r.error) {
+            actionCol = '<span style="font-size:11px;color:var(--text-tertiary)">' + (r.error || '').substring(0, 50) + '</span>';
+        }
+
+        return '<tr' + (r.executed ? ' style="background:rgba(52,211,153,0.06)"' : '') + '>' +
+            '<td><strong>' + r.pair + '</strong></td>' +
+            '<td>' + dir + '</td>' +
+            '<td>' + (r.confidence * 100).toFixed(1) + '%</td>' +
+            '<td>' + (r.weighted_vote_score * 100).toFixed(1) + '%</td>' +
+            '<td><span style="font-family:var(--font-mono)">' + r.atr_pips + 'p</span></td>' +
+            '<td><span class="badge badge-blue">' + r.volatility_regime + '</span></td>' +
+            '<td>' + gates + '</td>' +
+            '<td><ul class="reason-list">' + reasons + '</ul></td>' +
+            '<td>' + actionCol + '</td>' +
+        '</tr>';
     }).join('');
 }
 
-// ── Agents ────────────────────────────────────────────────────────
-async function loadAgents() {
-    const res = await fetch('/api/agents');
-    const agents = await res.json();
-    const tbody = document.getElementById('agents-body');
-    tbody.innerHTML = agents.map(a => {
-        const pct = Math.min(a.effective_weight * 100, 100);
-        return `<tr>
-            <td><strong>${a.name}</strong></td>
-            <td>${a.enabled !== null ? (a.enabled
-                ? '<span class="badge badge-green">Active</span>'
-                : '<span class="badge badge-red">Off</span>')
-                : '<span class="badge badge-neutral">N/A</span>'}</td>
-            <td><span style="font-family:var(--font-mono)">${a.base_weight.toFixed(2)}</span></td>
-            <td><span style="font-family:var(--font-mono)">${a.learned_weight !== null ? a.learned_weight.toFixed(4) : '--'}</span></td>
-            <td>
-                <span style="font-family:var(--font-mono)">${a.effective_weight.toFixed(4)}</span>
-                <span class="weight-bar"><span class="weight-bar-fill" style="width:${pct}%"></span></span>
-            </td>
-        </tr>`;
-    }).join('');
+async function executeScanTrade(idx) {
+    const r = _lastScanResults[idx];
+    if (!r) return;
+    if (!confirm('Execute ' + r.direction + ' on ' + r.pair + '?')) return;
+
+    try {
+        const res = await fetch('/api/trades/execute', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                pair: r.pair,
+                direction: r.direction,
+                confidence: r.confidence,
+                current_price: r.current_price,
+                atr: r.atr,
+                sl_pips: r.sl_pips || null,
+                tp_pips: r.tp_pips || null,
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Trade executed: ' + r.pair + ' ' + r.direction + ' (ID: ' + data.trade_id + ')', 'success');
+        } else {
+            showToast('Execution failed: ' + (data.error || 'unknown'), 'error');
+        }
+    } catch(e) {
+        showToast('Error: ' + e.message, 'error');
+    }
 }
 
-async function saveAgentWeights() { alert('Weight editing UI coming soon'); }
-async function resetAgentWeights() {
-    if (!confirm('Reset all learned weights to baseline?')) return;
-    await fetch('/api/agents/reset-weights', {method: 'POST'});
-    loadAgents();
+// ── Account ───────────────────────────────────────────────────────
+async function loadAccount() {
+    try {
+        const res = await fetch('/api/account');
+        const d = await res.json();
+        if (d.error && !d.nav) {
+            showToast('Account error: ' + d.error, 'error');
+            return;
+        }
+        $('acct-nav').textContent = fmtMoney(d.nav || 0);
+        $('acct-balance').textContent = fmtMoney(d.balance || 0);
+
+        const upl = d.unrealized_pl || 0;
+        $('acct-unrealized').textContent = fmtMoney(upl);
+        $('acct-unrealized').className = 'value ' + (upl >= 0 ? 'pass' : 'fail');
+
+        const rpl = d.realized_pl || 0;
+        $('acct-realized').textContent = fmtMoney(rpl);
+        $('acct-realized').className = 'value ' + (rpl >= 0 ? 'pass' : 'fail');
+
+        $('acct-margin-used').textContent = fmtMoney(d.margin_used || 0);
+        $('acct-margin-avail').textContent = fmtMoney(d.margin_available || 0);
+        $('acct-open-trades').textContent = d.open_trade_count || 0;
+        $('acct-trades-today').textContent = d.trades_today || 0;
+        $('acct-trades-remaining').textContent = d.trades_remaining || 0;
+    } catch(e) {
+        showToast('Failed to load account: ' + e.message, 'error');
+    }
 }
 
 // ── Trades ────────────────────────────────────────────────────────
 async function loadOpenTrades() {
-    const res = await fetch('/api/trades/open');
-    const trades = await res.json();
-    const tbody = document.getElementById('open-trades-body');
-    if (trades.error) {
-        tbody.innerHTML = `<tr><td colspan="6" class="fail">${trades.error}</td></tr>`;
-        return;
+    try {
+        const res = await fetch('/api/trades/open');
+        const trades = await res.json();
+        const tbody = $('open-trades-body');
+        if (trades.error) {
+            tbody.innerHTML = '<tr><td colspan="9" class="fail">' + trades.error + '</td></tr>';
+            return;
+        }
+        if (!trades.length) {
+            tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><p>No open positions</p></div></td></tr>';
+            return;
+        }
+        tbody.innerHTML = trades.map(t => {
+            const plColor = t.unrealized_pl >= 0 ? 'pass' : 'fail';
+            return '<tr>' +
+                '<td style="font-family:var(--font-mono);font-size:11px">' + t.trade_id + '</td>' +
+                '<td><strong>' + t.pair + '</strong></td>' +
+                '<td><span class="badge ' + (t.direction === 'LONG' ? 'badge-green' : 'badge-red') + '">' + t.direction + '</span></td>' +
+                '<td style="font-family:var(--font-mono)">' + Math.abs(t.units).toLocaleString() + '</td>' +
+                '<td class="' + plColor + '" style="font-family:var(--font-mono);font-weight:600">' + fmtMoney(t.unrealized_pl) + '</td>' +
+                '<td style="font-family:var(--font-mono)">' + t.sl_dist_pips.toFixed(0) + 'p</td>' +
+                '<td style="font-family:var(--font-mono)">' + t.tp_dist_pips.toFixed(0) + 'p</td>' +
+                '<td>' + t.time_in_minutes + 'm</td>' +
+                '<td>' +
+                    '<button class="btn btn-sm btn-danger" onclick="closeTrade(\'' + t.trade_id + '\')">Close</button> ' +
+                    '<button class="btn btn-sm btn-secondary" onclick="promptModifyTrade(\'' + t.trade_id + '\',' + t.sl_price + ',' + t.tp_price + ')">Modify</button>' +
+                '</td>' +
+            '</tr>';
+        }).join('');
+    } catch(e) {
+        $('open-trades-body').innerHTML = '<tr><td colspan="9" class="fail">Failed to load trades: ' + e.message + '</td></tr>';
     }
-    if (!trades.length) {
-        tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><p>No open positions</p></div></td></tr>';
-        return;
+}
+
+async function closeTrade(tradeId) {
+    if (!confirm('Close trade ' + tradeId + '?')) return;
+    try {
+        const res = await fetch('/api/trades/close', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({trade_id: tradeId})
+        });
+        const data = await res.json();
+        if (data.error) {
+            showToast('Close failed: ' + data.error, 'error');
+        } else {
+            showToast('Trade ' + tradeId + ' closed', 'success');
+            loadOpenTrades();
+        }
+    } catch(e) {
+        showToast('Error: ' + e.message, 'error');
     }
-    tbody.innerHTML = trades.map(t => {
-        const plColor = t.unrealized_pl >= 0 ? 'pass' : 'fail';
-        return `<tr>
-            <td><strong>${t.pair}</strong></td>
-            <td><span class="badge ${t.direction === 'LONG' ? 'badge-green' : 'badge-red'}">${t.direction}</span></td>
-            <td class="${plColor}" style="font-family:var(--font-mono);font-weight:600">$${t.unrealized_pl.toFixed(2)}</td>
-            <td style="font-family:var(--font-mono)">${t.sl_dist_pips.toFixed(0)}p</td>
-            <td style="font-family:var(--font-mono)">${t.tp_dist_pips.toFixed(0)}p</td>
-            <td>${t.time_in_minutes}m</td>
-        </tr>`;
-    }).join('');
+}
+
+async function closeAllTrades() {
+    if (!confirm('Close ALL open trades? This cannot be undone.')) return;
+    try {
+        const res = await fetch('/api/trades/close-all', {method: 'POST'});
+        const data = await res.json();
+        showToast('Closed ' + (data.closed || []).length + ' trades', 'success');
+        loadOpenTrades();
+    } catch(e) {
+        showToast('Error: ' + e.message, 'error');
+    }
+}
+
+function promptModifyTrade(tradeId, currentSl, currentTp) {
+    const newSl = prompt('New SL price (current: ' + currentSl + '):', currentSl || '');
+    const newTp = prompt('New TP price (current: ' + currentTp + '):', currentTp || '');
+
+    if (!newSl && !newTp) return;
+
+    fetch('/api/trades/modify', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            trade_id: tradeId,
+            sl_price: newSl ? parseFloat(newSl) : null,
+            tp_price: newTp ? parseFloat(newTp) : null,
+        })
+    }).then(r => r.json()).then(data => {
+        if (data.error) showToast('Modify failed: ' + data.error, 'error');
+        else { showToast('Trade ' + tradeId + ' modified', 'success'); loadOpenTrades(); }
+    }).catch(e => showToast('Error: ' + e.message, 'error'));
+}
+
+async function executeManualTrade() {
+    const pair = $('exec-pair').value;
+    const direction = $('exec-direction').value;
+    const price = parseFloat($('exec-price').value);
+    const atr = parseFloat($('exec-atr').value);
+    const conf = parseFloat($('exec-conf').value);
+    const sl = $('exec-sl').value ? parseFloat($('exec-sl').value) : null;
+    const tp = $('exec-tp').value ? parseFloat($('exec-tp').value) : null;
+
+    if (!price || price <= 0) { showToast('Enter a valid price', 'error'); return; }
+    if (!atr || atr <= 0) { showToast('Enter a valid ATR', 'error'); return; }
+
+    if (!confirm('Execute ' + direction + ' ' + pair + ' @ ' + price + '?')) return;
+
+    const resultDiv = $('exec-result');
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<span class="spinner"></span> Executing...';
+
+    try {
+        const res = await fetch('/api/trades/execute', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({pair, direction, confidence: conf, current_price: price, atr, sl_pips: sl, tp_pips: tp})
+        });
+        const data = await res.json();
+        if (data.success) {
+            resultDiv.innerHTML = '<span class="pass" style="font-weight:600">Trade executed!</span> ' +
+                'ID: ' + data.trade_id + ' | Fill: ' + data.fill_price + ' | ' +
+                data.lots + ' lots | SL: ' + data.sl_pips + 'p | TP: ' + data.tp_pips + 'p | Regime: ' + data.regime_name;
+            showToast('Trade executed: ' + pair + ' ' + direction, 'success');
+        } else {
+            resultDiv.innerHTML = '<span class="fail" style="font-weight:600">Failed:</span> ' + (data.error || 'Unknown error');
+            showToast('Execution failed', 'error');
+        }
+    } catch(e) {
+        resultDiv.innerHTML = '<span class="fail">Error: ' + e.message + '</span>';
+    }
 }
 
 async function loadJournal() {
-    const res = await fetch('/api/trades/journal');
-    const trades = await res.json();
-    const tbody = document.getElementById('journal-body');
-    if (!trades.length) {
-        tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>No journal entries yet</p></div></td></tr>';
-        return;
+    try {
+        const res = await fetch('/api/trades/journal');
+        const trades = await res.json();
+        const tbody = $('journal-body');
+        if (!trades.length) {
+            tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>No journal entries yet</p></div></td></tr>';
+            return;
+        }
+        tbody.innerHTML = trades.slice().reverse().map(t => {
+            const outcome = t.outcome || {};
+            const pnlPips = outcome.pnl_pips || t.pnl_pips || 0;
+            const won = outcome.trade_won || pnlPips > 0;
+            const realPl = outcome.realized_pl || 0;
+            return '<tr>' +
+                '<td><strong>' + (t.pair || '--') + '</strong></td>' +
+                '<td>' + (t.direction || '--') + '</td>' +
+                '<td class="' + (won ? 'pass' : 'fail') + '" style="font-family:var(--font-mono);font-weight:600">' + pnlPips.toFixed(1) + 'p</td>' +
+                '<td>' + (won ? '<span class="badge badge-green">WIN</span>' : '<span class="badge badge-red">LOSS</span>') +
+                    (realPl ? '<div style="font-size:11px;font-family:var(--font-mono)" class="' + (realPl >= 0 ? 'pass' : 'fail') + '">' + fmtMoney(realPl) + '</div>' : '') + '</td>' +
+                '<td style="font-family:var(--font-mono)">' + ((t.confidence || 0) * 100).toFixed(0) + '%</td>' +
+            '</tr>';
+        }).join('');
+    } catch(e) {
+        $('journal-body').innerHTML = '<tr><td colspan="5" class="fail">Failed to load journal</td></tr>';
     }
-    tbody.innerHTML = trades.slice().reverse().map(t => {
-        const won = (t.pnl_pips || 0) > 0;
-        return `<tr>
-            <td><strong>${t.pair || '--'}</strong></td>
-            <td>${t.direction || '--'}</td>
-            <td class="${won ? 'pass' : 'fail'}" style="font-family:var(--font-mono);font-weight:600">${(t.pnl_pips || 0).toFixed(1)}</td>
-            <td>${won ? '<span class="badge badge-green">WIN</span>' : '<span class="badge badge-red">LOSS</span>'}</td>
-            <td style="font-family:var(--font-mono)">${((t.confidence || 0) * 100).toFixed(0)}%</td>
-        </tr>`;
-    }).join('');
+}
+
+// ── Agents ────────────────────────────────────────────────────────
+async function loadAgents() {
+    try {
+        const res = await fetch('/api/agents');
+        const agents = await res.json();
+        if (agents.error) return;
+        $('agents-body').innerHTML = agents.map(a => {
+            const pct = Math.min(a.effective_weight * 100, 100);
+            return '<tr>' +
+                '<td><strong>' + a.name + '</strong></td>' +
+                '<td>' + (a.enabled !== null ? (a.enabled
+                    ? '<span class="badge badge-green">Active</span>'
+                    : '<span class="badge badge-red">Off</span>')
+                    : '<span class="badge badge-neutral">N/A</span>') + '</td>' +
+                '<td><span style="font-family:var(--font-mono)">' + a.base_weight.toFixed(2) + '</span></td>' +
+                '<td><span style="font-family:var(--font-mono)">' + (a.learned_weight !== null ? a.learned_weight.toFixed(4) : '--') + '</span></td>' +
+                '<td><span style="font-family:var(--font-mono)">' + a.effective_weight.toFixed(4) + '</span>' +
+                    '<span class="weight-bar"><span class="weight-bar-fill" style="width:' + pct + '%"></span></span></td>' +
+            '</tr>';
+        }).join('');
+    } catch(e) {}
+}
+
+async function saveAgentWeights() { showToast('Weight editing UI coming soon', 'info'); }
+async function resetAgentWeights() {
+    if (!confirm('Reset all learned weights to baseline?')) return;
+    try {
+        await fetch('/api/agents/reset-weights', {method: 'POST'});
+        loadAgents();
+        showToast('Agent weights reset', 'success');
+    } catch(e) {
+        showToast('Failed to reset weights: ' + e.message, 'error');
+    }
+}
+
+// ── Training ──────────────────────────────────────────────────────
+async function trainAll() {
+    $('btn-train-all').disabled = true;
+    $('btn-train-all').innerHTML = '<span class="spinner"></span> Starting...';
+    const warm = $('train-warm-start').checked;
+    const histgb = $('train-histgb').checked;
+
+    try {
+        await fetch('/api/training/train-all', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({warm_start: warm, train_histgb: histgb})
+        });
+        showToast('Training started (all models)', 'info');
+        pollTrainingStatus();
+    } catch(e) {
+        showToast('Failed to start training', 'error');
+        $('btn-train-all').disabled = false;
+        $('btn-train-all').textContent = 'Train All Models';
+    }
+}
+
+async function trainSingle(model) {
+    if (!confirm('Train ' + model + '? This may take several minutes.')) return;
+    try {
+        await fetch('/api/training/train-single', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({model})
+        });
+        showToast('Training ' + model + ' started', 'info');
+        pollTrainingStatus();
+    } catch(e) {
+        showToast('Failed to start training', 'error');
+    }
+}
+
+let _trainingPoll = null;
+function pollTrainingStatus() {
+    $('training-status-bar').style.display = 'block';
+    if (_trainingPoll) clearInterval(_trainingPoll);
+    _trainingPoll = setInterval(async () => {
+        try {
+            const res = await fetch('/api/training/status');
+            const data = await res.json();
+            $('training-status-text').textContent = 'Status: ' + data.status + (data.model ? ' (' + data.model + ')' : '') + (data.progress ? ' — ' + data.progress : '');
+
+            if (data.status === 'completed') {
+                clearInterval(_trainingPoll);
+                _trainingPoll = null;
+                $('training-status-bar').style.display = 'none';
+                $('btn-train-all').disabled = false;
+                $('btn-train-all').textContent = 'Train All Models';
+                showToast('Training complete: ' + (data.trained || [data.model]).join(', '), 'success');
+            } else if (data.status === 'error') {
+                clearInterval(_trainingPoll);
+                _trainingPoll = null;
+                $('training-status-text').textContent = 'ERROR: ' + (data.error || 'Unknown');
+                $('training-status-text').style.color = 'var(--danger)';
+                $('btn-train-all').disabled = false;
+                $('btn-train-all').textContent = 'Train All Models';
+                showToast('Training failed: ' + (data.error || '').substring(0, 80), 'error');
+            }
+        } catch(e) {}
+    }, 3000);
+}
+
+async function loadTrainingStatus() {
+    try {
+        const res = await fetch('/api/training/status');
+        const data = await res.json();
+        if (data.status === 'running') {
+            pollTrainingStatus();
+        } else {
+            $('training-status-text').textContent = 'Status: ' + data.status + (data.model ? ' (' + data.model + ')' : '');
+        }
+    } catch(e) {}
+}
+
+async function loadModelList() {
+    try {
+        const res = await fetch('/api/training/models');
+        const models = await res.json();
+        const tbody = $('models-body');
+        if (!models.length) {
+            tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>No model files found</p></div></td></tr>';
+            return;
+        }
+        tbody.innerHTML = models.map(m => {
+            const d = new Date(m.modified * 1000);
+            return '<tr>' +
+                '<td><strong>' + m.name + '</strong></td>' +
+                '<td><span class="badge ' + (m.directory === 'joint' ? 'badge-blue' : 'badge-neutral') + '">' + m.directory + '</span></td>' +
+                '<td style="font-family:var(--font-mono)">' + m.size_kb + ' KB</td>' +
+                '<td style="font-family:var(--font-mono);font-size:12px">' + d.toLocaleString() + '</td>' +
+            '</tr>';
+        }).join('');
+    } catch(e) {}
+}
+
+// ── Watch Mode ────────────────────────────────────────────────────
+async function startWatch() {
+    const profile = $('watch-profile').value;
+    const granularity = $('watch-granularity').value;
+    const interval = parseInt($('watch-interval').value);
+    const autoExec = $('watch-auto-exec').checked;
+
+    if (autoExec && !confirm('Auto-execute is ON. Trades will be placed automatically. Continue?')) return;
+
+    try {
+        const res = await fetch('/api/watch/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({profile, granularity, interval_minutes: interval, auto_execute: autoExec})
+        });
+        const data = await res.json();
+        if (data.status === 'started') {
+            showToast('Watch mode started (every ' + interval + 'min)', 'success');
+            $('btn-watch-start').disabled = true;
+            $('btn-watch-stop').disabled = false;
+        } else {
+            showToast('Watch: ' + data.status, 'info');
+        }
+    } catch(e) {
+        showToast('Failed to start watch: ' + e.message, 'error');
+    }
+}
+
+async function stopWatch() {
+    try {
+        await fetch('/api/watch/stop', {method: 'POST'});
+        showToast('Watch mode stopping...', 'info');
+        $('btn-watch-start').disabled = false;
+        $('btn-watch-stop').disabled = true;
+    } catch(e) {
+        showToast('Failed to stop watch: ' + e.message, 'error');
+    }
 }
 
 // ── Config ────────────────────────────────────────────────────────
 async function loadConfig() {
-    const res = await fetch('/api/config');
-    const config = await res.json();
-    const container = document.getElementById('config-fields');
+    let config;
+    try {
+        const res = await fetch('/api/config');
+        config = await res.json();
+    } catch(e) {
+        showToast('Failed to load config: ' + e.message, 'error');
+        return;
+    }
+    const container = $('config-fields');
     const rows = Object.entries(config).map(([key, val]) => {
         let input;
         if (typeof val === 'boolean') {
-            input = `<label class="toggle"><input type="checkbox" ${val ? 'checked' : ''} data-key="${key}"><span class="slider"></span></label>`;
+            input = '<label class="toggle"><input type="checkbox" ' + (val ? 'checked' : '') + ' data-key="' + key + '"><span class="slider"></span></label>';
         } else if (typeof val === 'number') {
-            input = `<input type="number" value="${val}" step="0.01" data-key="${key}" style="width:120px">`;
+            input = '<input type="number" value="' + val + '" step="0.01" data-key="' + key + '" style="width:120px">';
         } else if (typeof val === 'string') {
-            input = `<input type="text" value="${val}" data-key="${key}" style="width:200px">`;
+            input = '<input type="text" value="' + val + '" data-key="' + key + '" style="width:200px">';
         } else {
-            input = `<span style="color:var(--text-tertiary);font-family:var(--font-mono);font-size:12px">${JSON.stringify(val).substring(0, 80)}</span>`;
+            input = '<span style="color:var(--text-tertiary);font-family:var(--font-mono);font-size:12px">' + JSON.stringify(val).substring(0, 80) + '</span>';
         }
-        return `<div class="config-row"><label>${key}</label>${input}</div>`;
+        return '<div class="config-row"><label>' + key + '</label>' + input + '</div>';
     }).join('');
     container.innerHTML = rows;
 }
 
 async function saveConfig() {
-    const btn = document.getElementById('btn-save-config');
+    const btn = $('btn-save-config');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Saving...';
 
@@ -1201,203 +1432,193 @@ async function saveConfig() {
             body: JSON.stringify(overrides)
         });
         const data = await res.json();
-        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Saved ${data.fields} fields`;
+        btn.innerHTML = 'Saved ' + data.fields + ' fields';
+        showToast('Config saved — applies to next scan/trade', 'success');
         setTimeout(() => {
             btn.disabled = false;
-            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save`;
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save';
         }, 2000);
-    } catch (e) {
+    } catch(e) {
         btn.disabled = false;
-        btn.innerHTML = '✕ Error';
+        btn.innerHTML = 'Error';
+        showToast('Config save failed', 'error');
+    }
+}
+
+async function resetConfig() {
+    if (!confirm('Reset all config overrides to defaults?')) return;
+    try {
+        await fetch('/api/config', {method: 'DELETE'});
+        loadConfig();
+        showToast('Config reset to defaults', 'success');
+    } catch(e) {
+        showToast('Failed to reset config: ' + e.message, 'error');
     }
 }
 
 // ── Learning ──────────────────────────────────────────────────────
 async function loadLearning() {
-    const [learnings, rules, state] = await Promise.all([
-        fetch('/api/learnings').then(r => r.json()),
-        fetch('/api/rules').then(r => r.json()),
-        fetch('/api/state').then(r => r.json()),
-    ]);
-    document.getElementById('learnings-content').textContent = learnings.content || '(empty)';
-    document.getElementById('rules-content').textContent = rules.content || '(empty)';
-    document.getElementById('state-content').textContent = JSON.stringify(state, null, 2);
+    try {
+        const [learnings, rules, state] = await Promise.all([
+            fetch('/api/learnings').then(r => r.json()),
+            fetch('/api/rules').then(r => r.json()),
+            fetch('/api/state').then(r => r.json()),
+        ]);
+        $('learnings-content').textContent = learnings.content || '(empty)';
+        $('rules-content').textContent = rules.content || '(empty)';
+        $('state-content').textContent = JSON.stringify(state, null, 2);
 
-    // Update portfolio stats
-    if (state.portfolio_snapshot) {
-        const s = state.portfolio_snapshot;
-        document.getElementById('stat-nav').textContent = '$' + (s.nav || 0).toLocaleString();
-        document.getElementById('stat-trades').textContent = s.session_trades || 0;
-        document.getElementById('stat-winrate').textContent = ((s.win_rate || 0) * 100).toFixed(0) + '%';
-        const pnl = s.total_realized_pnl || 0;
-        const el = document.getElementById('stat-pnl');
-        el.textContent = (pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toFixed(2);
-        el.className = 'value ' + (pnl >= 0 ? 'pass' : 'fail');
+        if (state.portfolio_snapshot) {
+            const s = state.portfolio_snapshot;
+            $('stat-nav').textContent = '$' + (s.nav || 0).toLocaleString();
+            $('stat-trades').textContent = s.session_trades || 0;
+            $('stat-winrate').textContent = ((s.win_rate || 0) * 100).toFixed(0) + '%';
+            const pnl = s.total_realized_pnl || 0;
+            const el = $('stat-pnl');
+            el.textContent = fmtMoney(pnl);
+            el.className = 'value ' + (pnl >= 0 ? 'pass' : 'fail');
+        }
+    } catch(e) {
+        showToast('Failed to load learning data', 'error');
     }
 }
 
 // ── PRD ───────────────────────────────────────────────────────────
 async function loadPRD() {
-    const res = await fetch('/api/prd');
-    const prd = await res.json();
-    const tbody = document.getElementById('prd-body');
-    if (!prd.userStories) {
-        tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>No PRD loaded</p></div></td></tr>';
-        return;
+    try {
+        const res = await fetch('/api/prd');
+        const prd = await res.json();
+        const tbody = $('prd-body');
+        if (!prd.userStories) {
+            tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>No PRD loaded</p></div></td></tr>';
+            return;
+        }
+        tbody.innerHTML = prd.userStories.map(s =>
+            '<tr><td style="font-family:var(--font-mono)">' + s.id + '</td>' +
+            '<td>' + s.title + '</td>' +
+            '<td><span class="badge ' + (s.priority === 'P0' ? 'badge-red' : s.priority === 'P1' ? 'badge-yellow' : 'badge-blue') + '">' + s.priority + '</span></td>' +
+            '<td>' + (s.passes ? '<span class="badge badge-green">Done</span>' : '<span class="badge badge-yellow">Todo</span>') + '</td></tr>'
+        ).join('');
+    } catch(e) {
+        $('prd-body').innerHTML = '<tr><td colspan="4" class="fail">Failed to load PRD</td></tr>';
     }
-    tbody.innerHTML = prd.userStories.map(s => `<tr>
-        <td style="font-family:var(--font-mono)">${s.id}</td>
-        <td>${s.title}</td>
-        <td><span class="badge ${s.priority === 'P0' ? 'badge-red' : s.priority === 'P1' ? 'badge-yellow' : 'badge-blue'}">${s.priority}</span></td>
-        <td>${s.passes
-            ? '<span class="badge badge-green">Done</span>'
-            : '<span class="badge badge-yellow">Todo</span>'}</td>
-    </tr>`).join('');
 }
 
 // ── QA Pipeline ───────────────────────────────────────────────────
 async function runQAAudit() {
-    const res = await fetch('/api/qa/audit');
-    const data = await res.json();
-
-    if (data.error) {
-        document.getElementById('qa-findings-body').innerHTML =
-            `<tr><td colspan="4" class="fail">${data.error}</td></tr>`;
+    let data;
+    try {
+        const res = await fetch('/api/qa/audit');
+        data = await res.json();
+    } catch(e) {
+        $('qa-findings-body').innerHTML = '<tr><td colspan="4" class="fail">Audit failed: ' + e.message + '</td></tr>';
         return;
     }
-
-    // Show summary
-    document.getElementById('qa-summary').style.display = 'block';
-    const scoreEl = document.getElementById('qa-score');
+    if (data.error) {
+        $('qa-findings-body').innerHTML = '<tr><td colspan="4" class="fail">' + data.error + '</td></tr>';
+        return;
+    }
+    $('qa-summary').style.display = 'block';
+    const scoreEl = $('qa-score');
     scoreEl.textContent = data.score.toFixed(0);
     scoreEl.className = 'value ' + (data.score >= 80 ? 'pass' : data.score >= 50 ? '' : 'fail');
-    document.getElementById('qa-critical').textContent = data.critical;
-    document.getElementById('qa-warnings').textContent = data.warnings;
-    document.getElementById('qa-info').textContent = data.info;
+    $('qa-critical').textContent = data.critical;
+    $('qa-warnings').textContent = data.warnings;
+    $('qa-info').textContent = data.info;
 
-    // Render findings
-    const tbody = document.getElementById('qa-findings-body');
+    const tbody = $('qa-findings-body');
     if (!data.findings || data.findings.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>No findings</p></div></td></tr>';
         return;
     }
     tbody.innerHTML = data.findings.map(f => {
-        const sevBadge = f.severity === 'critical' ? 'badge-red'
-            : f.severity === 'warning' ? 'badge-yellow' : 'badge-blue';
-        return `<tr>
-            <td><span class="badge ${sevBadge}">${f.severity.toUpperCase()}</span></td>
-            <td><span class="badge badge-neutral">${f.category}</span></td>
-            <td>${f.message}</td>
-            <td style="color:var(--text-tertiary);font-size:12px">${f.fix_suggestion || '--'}</td>
-        </tr>`;
+        const sevBadge = f.severity === 'critical' ? 'badge-red' : f.severity === 'warning' ? 'badge-yellow' : 'badge-blue';
+        return '<tr><td><span class="badge ' + sevBadge + '">' + f.severity.toUpperCase() + '</span></td>' +
+            '<td><span class="badge badge-neutral">' + f.category + '</span></td>' +
+            '<td>' + f.message + '</td>' +
+            '<td style="color:var(--text-tertiary);font-size:12px">' + (f.fix_suggestion || '--') + '</td></tr>';
     }).join('');
 }
 
 async function runCodeReview() {
-    const res = await fetch('/api/qa/review');
-    const data = await res.json();
-
-    if (data.error) {
-        document.getElementById('review-body').innerHTML =
-            `<tr><td colspan="4" class="fail">${data.error}</td></tr>`;
+    let data;
+    try {
+        const res = await fetch('/api/qa/review');
+        data = await res.json();
+    } catch(e) {
+        $('review-body').innerHTML = '<tr><td colspan="4" class="fail">Review failed: ' + e.message + '</td></tr>';
         return;
     }
-
-    // Show grade
-    const gradeEl = document.getElementById('review-grade');
-    gradeEl.style.display = 'block';
-    const letter = document.getElementById('review-grade-letter');
+    if (data.error) {
+        $('review-body').innerHTML = '<tr><td colspan="4" class="fail">' + data.error + '</td></tr>';
+        return;
+    }
+    $('review-grade').style.display = 'block';
+    const letter = $('review-grade-letter');
     letter.textContent = data.grade;
     letter.className = data.grade === 'A' ? 'pass' : data.grade === 'F' ? 'fail' : '';
-    document.getElementById('review-grade-summary').textContent =
-        `${data.total_findings} findings \u2022 ${data.critical} critical \u2022 ${data.warnings} warnings`;
+    $('review-grade-summary').textContent = data.total_findings + ' findings \u2022 ' + data.critical + ' critical \u2022 ' + data.warnings + ' warnings';
 
-    // Render reviews
-    const tbody = document.getElementById('review-body');
+    const tbody = $('review-body');
     if (!data.reviews || data.reviews.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>No findings \u2014 clean scan</p></div></td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state"><p>No findings</p></div></td></tr>';
         return;
     }
     tbody.innerHTML = data.reviews.map(r => {
-        const sevBadge = r.severity === 'critical' ? 'badge-red'
-            : r.severity === 'warning' ? 'badge-yellow' : 'badge-blue';
-        return `<tr>
-            <td><span class="badge badge-neutral">${r.type}</span></td>
-            <td><span class="badge ${sevBadge}">${r.severity}</span></td>
-            <td>${r.pair || '--'}</td>
-            <td>${r.message}</td>
-        </tr>`;
+        const sevBadge = r.severity === 'critical' ? 'badge-red' : r.severity === 'warning' ? 'badge-yellow' : 'badge-blue';
+        return '<tr><td><span class="badge badge-neutral">' + r.type + '</span></td>' +
+            '<td><span class="badge ' + sevBadge + '">' + r.severity + '</span></td>' +
+            '<td>' + (r.pair || '--') + '</td>' +
+            '<td>' + r.message + '</td></tr>';
     }).join('');
 }
 
 // ── System Status ─────────────────────────────────────────────────
 async function loadSystemStatus() {
-    // System status
     try {
         const res = await fetch('/api/system-status');
         const data = await res.json();
 
         if (data.modules) {
-            const container = document.getElementById('module-status');
-            container.innerHTML = Object.entries(data.modules).map(([name, active]) => `
-                <div class="stat-card">
-                    <div class="value" style="font-size:20px">${active
-                        ? '<span class="pass">\u2713</span>'
-                        : '<span class="fail">\u2717</span>'}</div>
-                    <div class="label">${name.replace(/_/g, ' ')}</div>
-                </div>
-            `).join('');
+            $('module-status').innerHTML = Object.entries(data.modules).map(([name, active]) =>
+                '<div class="stat-card"><div class="value" style="font-size:20px">' + (active
+                    ? '<span class="pass">\u2713</span>'
+                    : '<span class="fail">\u2717</span>') + '</div>' +
+                '<div class="label">' + name.replace(/_/g, ' ') + '</div></div>'
+            ).join('');
         }
 
         if (data.session) {
-            document.getElementById('session-info').innerHTML = `
-                <div style="font-size:13px;color:var(--text-secondary)">
-                    Session started: <span style="font-family:var(--font-mono)">${data.session.started || '--'}</span>
-                    \u2022 Cycles: <span style="font-family:var(--font-mono)">${data.session.cycles_completed || 0}</span>
-                    \u2022 Auto-execute: <span class="badge ${data.session.auto_execute ? 'badge-green' : 'badge-neutral'}">${data.session.auto_execute ? 'ON' : 'OFF'}</span>
-                </div>
-            `;
+            $('session-info').innerHTML =
+                '<div style="font-size:13px;color:var(--text-secondary)">' +
+                'Session started: <span style="font-family:var(--font-mono)">' + (data.session.started || '--') + '</span>' +
+                ' \u2022 Cycles: <span style="font-family:var(--font-mono)">' + (data.session.cycles_completed || 0) + '</span>' +
+                ' \u2022 Auto-execute: <span class="badge ' + (data.session.auto_execute ? 'badge-green' : 'badge-neutral') + '">' + (data.session.auto_execute ? 'ON' : 'OFF') + '</span>' +
+                '</div>';
         }
     } catch(e) {
-        document.getElementById('module-status').innerHTML = '<div class="empty-state"><p>System status unavailable</p></div>';
+        $('module-status').innerHTML = '<div class="empty-state"><p>System status unavailable</p></div>';
     }
 
-    // Improvement trend
     try {
         const tRes = await fetch('/api/improvement-trend');
         const trend = await tRes.json();
-        const container = document.getElementById('trend-stats');
-
         if (trend.sessions_analyzed !== undefined) {
             const trendBadge = (t) => t === 'improving' ? 'badge-green' : t === 'declining' ? 'badge-red' : 'badge-neutral';
-            container.innerHTML = `
-                <div class="stat-card">
-                    <div class="value">${trend.sessions_analyzed}</div>
-                    <div class="label">Sessions</div>
-                </div>
-                <div class="stat-card">
-                    <div class="value">${(trend.recent_win_rate * 100).toFixed(0)}%</div>
-                    <div class="label">Win Rate <span class="badge ${trendBadge(trend.win_rate_trend)}">${trend.win_rate_trend}</span></div>
-                </div>
-                <div class="stat-card">
-                    <div class="value">$${trend.recent_pnl.toFixed(0)}</div>
-                    <div class="label">Recent P/L <span class="badge ${trendBadge(trend.pnl_trend)}">${trend.pnl_trend}</span></div>
-                </div>
-                <div class="stat-card">
-                    <div class="value">${trend.learning_velocity}</div>
-                    <div class="label">Learnings/Session</div>
-                </div>
-            `;
+            $('trend-stats').innerHTML =
+                '<div class="stat-card"><div class="value">' + trend.sessions_analyzed + '</div><div class="label">Sessions</div></div>' +
+                '<div class="stat-card"><div class="value">' + (trend.recent_win_rate * 100).toFixed(0) + '%</div><div class="label">Win Rate <span class="badge ' + trendBadge(trend.win_rate_trend) + '">' + trend.win_rate_trend + '</span></div></div>' +
+                '<div class="stat-card"><div class="value">' + fmtMoney(trend.recent_pnl) + '</div><div class="label">Recent P/L <span class="badge ' + trendBadge(trend.pnl_trend) + '">' + trend.pnl_trend + '</span></div></div>' +
+                '<div class="stat-card"><div class="value">' + trend.learning_velocity + '</div><div class="label">Learnings/Session</div></div>';
         }
     } catch(e) {
-        document.getElementById('trend-stats').innerHTML = '<div class="empty-state"><p>No trend data yet</p></div>';
+        $('trend-stats').innerHTML = '<div class="empty-state"><p>No trend data yet</p></div>';
     }
 
-    // Improvement report
     try {
         const rRes = await fetch('/api/improvement-report');
         const rData = await rRes.json();
-        document.getElementById('improvement-report').textContent = rData.report || 'No report available';
+        $('improvement-report').textContent = rData.report || 'No report available';
     } catch(e) {}
 }
 
@@ -1406,6 +1627,7 @@ loadAgents();
 loadLearning();
 loadPRD();
 loadConfig();
+pollWatchStatus();
 </script>
 </body>
 </html>

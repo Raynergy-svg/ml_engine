@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-03-23T11:52:01.279455+00:00",
+  "project": "buddy",
+  "memory_summary": {
+    "phase": "ralph/buddy-gap-resolution-phase11",
+    "total_stories": 30,
+    "passed_stories": 0,
+    "all_complete": false,
+    "total_phases_completed": 29,
+    "total_chain_runs": 3
+  },
+  "action_taken": "no_complete_prds",
+  "reason": "0/30 stories passed \u2014 PRD not complete, chain not triggered",
+  "story_categories": {
+    "save_state_wiring": {
+      "stories": [
+        "US-001",
+        "US-002",
+        "US-003",
+        "US-004"
+      ],
+      "passed": 0,
+      "total": 4
+    },
+    "config_flags": {
+      "stories": [
+        "US-005-US-005",
+        "US-005-US-006",
+        "US-005-US-007",
+        "US-005-US-008",
+        "US-005-US-009",
+        "US-005-US-010",
+        "US-005-US-011",
+        "US-005-US-012",
+        "US-005-US-013",
+        "US-005-US-014"
+      ],
+      "passed": 0,
+      "total": 10
+    },
+    "dispatcher_registration": {
+      "stories": [
+        "US-015",
+        "US-016",
+        "US-017",
+        "US-018",
+        "US-019",
+        "US-020",
+        "US-021",
+        "US-022",
+        "US-023",
+        "US-024",
+        "US-025",
+        "US-026",
+        "US-027"
+      ],
+      "passed": 0,
+      "total": 13
+    },
+    "feedback_consumers": {
+      "stories": [
+        "US-028",
+        "US-029",
+        "US-030"
+      ],
+      "passed": 0,
+      "total": 3
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "timestamp": "2026-03-23T11:09:15.791153+00:00",
+  "sweep_id": "sweep_20260323_110915",
+  "trigger": "scheduled_task",
+  "result": "exit_stories_in_progress",
+  "prds_scanned": 1,
+  "completed_prds": 0,
+  "gaps_found": 0,
+  "new_prd_generated": false,
+  "review_passed": null,
+  "blockers": null,
+  "action_taken": "No action \u2014 PRD has 0/30 stories passing. Stories still in progress. Exiting per protocol.",
+  "prd_progress": {
+    "file": ".claude/ralph/prd.json",
+    "phase": "ralph/buddy-gap-resolution-phase11",
+    "passed_stories": 0,
+    "total_stories": 30,
+    "all_complete": false
+  },
+  "memory_summary": "PRD 0/30 (ralph/buddy-gap-resolution-phase11) | Phases: 29 | Chains: 3",
+  "flags_at_sweep": {
+    "chain_in_progress": false,
+    "ralph_in_progress": false,
+    "review_in_progress": false
+  }
+}

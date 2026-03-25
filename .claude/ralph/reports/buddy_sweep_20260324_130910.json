@@ -1,0 +1,38 @@
+{
+  "action_taken": "chain_triggered",
+  "active_prd": "prd_phase47.json",
+  "code_review": {
+    "blockers": [
+      "math import missing in _team.py (crash on enable_graph_attention)",
+      "SL hardcoded not ATR-based (trading rule violation)",
+      "Risk checks fail open on exception (financial safety)",
+      "evaluate_exits wrong current price formula (incorrect exit signals)",
+      "accuracy matrix double-counting all entries on every sync (corrupts learning)",
+      "HTTP response not validated before .json() (silent data corruption)"
+    ],
+    "files_reviewed": [
+      "src/scanner/execution.py",
+      "src/scanner/agents/_team.py"
+    ],
+    "followup_prd": "prd_review_fixes.json",
+    "nits_count": 4,
+    "ran": true,
+    "suggestions_count": 9,
+    "verdict": "FAIL"
+  },
+  "gap_detection": {
+    "gaps_found": "multiple medium-severity module_registration gaps (pre-existing unregistered modules)",
+    "no_critical_gaps": true,
+    "ran": true
+  },
+  "memory_summary": {
+    "current_phase": "phase47",
+    "total_chain_runs": 4,
+    "total_phases_completed": 32
+  },
+  "phase": "ralph/phase47-pipeline-wiring-phase46-modules",
+  "project": "buddy",
+  "stories_passed": 6,
+  "stories_total": 6,
+  "timestamp": "2026-03-24T13:09:10.866247+00:00"
+}

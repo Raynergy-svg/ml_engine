@@ -1,0 +1,110 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-intelligence-phase3",
+  "description": "Buddy Phase 3 \u2014 True Model Intelligence. Adds real A/B model inference, per-pair model switching, scheduled self-retraining, and session-persistent RL memory. Builds on Phase 2's 10-module automation pipeline.",
+  "userStories": [
+    {
+      "id": "US-019",
+      "title": "True candidate model inference for A/B shadow testing",
+      "description": "As a learning system, ModelManager shadow tests must compare REAL predictions from both incumbent and candidate models, not just re-score the incumbent.",
+      "acceptanceCriteria": [
+        "ModelManager loads candidate .keras model separately (lazy, on first shadow test)",
+        "During each scan, both incumbent AND candidate run inference on the same features",
+        "Shadow results log both predictions + actual outcome to shadow_predictions.jsonl",
+        "Candidate model loading wrapped in try/except \u2014 if candidate fails, fall back to incumbent-only mode",
+        "Memory-safe: candidate model unloaded if shadow testing is paused/disabled",
+        "Config toggle: enable_true_ab_testing: bool in ScannerConfig (default False, enable in smart profile)",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. CandidateModelLoader added to model_manager.py. Lazy loads buddy_tf_candidate.keras. enable_true_ab_testing config toggle. Falls back to incumbent-only on failure."
+    },
+    {
+      "id": "US-020",
+      "title": "Per-pair model selection with automatic switching",
+      "description": "As a trading system, each pair should use whichever model version (joint or per-pair fine-tuned) has better accuracy for that specific pair.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/pair_model_selector.py with PairModelSelector class",
+        "Maintains accuracy registry: { pair: { joint_accuracy, per_pair_accuracy, active_model, sample_size } }",
+        "For each pair, track prediction accuracy of both joint and per-pair model over rolling 30 trades",
+        "If per-pair accuracy > joint accuracy by 2%+ on 30+ trades, switch that pair to per-pair model",
+        "If per-pair model degrades below joint, auto-switch back",
+        "Selector integrated into Scanner: before inference, select model for current pair",
+        "Model selection logged to trained_data/models/pair_model_selections.jsonl",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. pair_model_selector.py with PairModelSelector class. Rolling EMA accuracy tracking. execute_switch() auto-switches + logs to pair_model_selections.jsonl. Wired into continuous.py step 5j."
+    },
+    {
+      "id": "US-021",
+      "title": "Scheduled self-retraining trigger based on drift detection",
+      "description": "As a self-improving system, I should automatically trigger retraining when model accuracy drifts below acceptable thresholds.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/retrain_trigger.py with RetrainTrigger class",
+        "Monitor rolling 50-trade accuracy per pair. If < 52% (barely above random), flag for retrain",
+        "Monitor rolling 50-trade accuracy across all pairs. If < 53%, flag full retrain",
+        "When retrain triggered: write retrain_request.json with { pairs_to_retrain, reason, accuracy_snapshot }",
+        "scheduled_retrain.py checks for retrain_request.json on each run and prioritizes flagged pairs",
+        "Cooldown: don't re-trigger retrain within 24 hours of last retrain",
+        "Log trigger decisions to observations.jsonl with category 'retrain_trigger'",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. retrain_trigger.py with RetrainTrigger class. Wired into continuous.py step 5i. Writes retrain_request.json. 24h cooldown."
+    },
+    {
+      "id": "US-022",
+      "title": "Multi-session RL weight persistence with decay and recovery",
+      "description": "As a learning system, RL agent weights should persist meaningfully across sessions with proper decay to prevent overfitting to old data.",
+      "acceptanceCriteria": [
+        "agent_weights.json stores per-regime weights + metadata: { regime: { agent: weight, _meta: { last_trade_id, trade_count, last_updated } } }",
+        "On session start: load weights, apply time-based decay (weights drift 1% toward baseline per 24h since last update)",
+        "On session end: save weights with metadata update",
+        "Weight confidence: new weights (< 10 trades) blended 70/30 with baseline, mature weights (> 50 trades) used at full strength",
+        "Recovery: if agent_weights.json is corrupted, reset to baseline with log entry",
+        "Weight snapshots saved to trained_data/models/weight_snapshots/ every 50 trades for rollback",
+        "Syntax validation passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. agents.py has _apply_time_decay(), apply_weight_decay(), _save_weight_snapshot(), load_weight_snapshot(). weight_snapshots/50.json confirmed created. Confidence blending present."
+    },
+    {
+      "id": "US-023",
+      "title": "News risk agent integration with economic calendar",
+      "description": "As a trading system, I need to be aware of high-impact economic events and adjust confidence or skip trading during volatile news windows.",
+      "acceptanceCriteria": [
+        "Create src/scanner/agents/news_calendar.py with NewsCalendarAgent class",
+        "Fetch weekly economic calendar from free API (forexfactory or similar, or use static JSON)",
+        "Classify events: HIGH impact (NFP, FOMC, ECB), MEDIUM (CPI, PMI), LOW (minor)",
+        "During scan: if HIGH impact event within 30 minutes for a pair's currency, apply -20% confidence penalty",
+        "During scan: if HIGH impact event within 2 hours, apply -10% confidence penalty",
+        "Post-event: no penalty after event passes (don't miss post-news momentum trades)",
+        "Cache calendar locally (refresh daily), never block scan on API failure",
+        "Syntax validation passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. src/scanner/agents/news_calendar.py. EconomicEvent classification (HIGH/MEDIUM/LOW). Time-based penalties: HIGH -20%/<30min, -10%/<2h. Daily cache. Seed events fallback. Wired into _evaluate_news_risk in agents.py replacing stub."
+    },
+    {
+      "id": "US-024",
+      "title": "Comprehensive pre-deployment validation suite",
+      "description": "As an operator, I need a single command that validates the entire system is ready for live trading before starting watch mode.",
+      "acceptanceCriteria": [
+        "Create scripts/validate_deployment.py that checks ALL of: (1) All 10+ automation modules import, (2) OANDA API connectivity (practice account), (3) Model files exist and load, (4) agent_weights.json valid, (5) pair_accuracy.json valid (not contaminated), (6) .claude/state.json valid, (7) trade_journal_rl.json valid or doesn't exist, (8) Config profiles all valid, (9) blocked_pairs list correct, (10) Environment variables present",
+        "Output: GREEN (all pass), YELLOW (warnings but can proceed), RED (must fix before trading)",
+        "Each check reports: status, details, fix suggestion if failed",
+        "Can run via: python scripts/validate_deployment.py",
+        "Syntax validation passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. scripts/validate_deployment.py \u2014 49 checks across 11 categories. GREEN/YELLOW/RED exit codes."
+    }
+  ]
+}

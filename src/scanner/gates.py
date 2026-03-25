@@ -60,6 +60,14 @@ except ImportError:
     compute_normalized_features = None
     get_normalized_feature_names = None
 
+# Import regime-conditional gates for adaptive thresholds
+try:
+    from src.scanner.regime_gates import apply_regime_gates
+    REGIME_GATES_AVAILABLE = True
+except ImportError:
+    REGIME_GATES_AVAILABLE = False
+    apply_regime_gates = None
+
 logger = logging.getLogger(__name__)
 
 # Joint model directory constant
@@ -1523,8 +1531,10 @@ class GateEvaluator:
         min_transformer_prob: float = 0.60,
         min_meta_confidence: float = 0.52,  # Updated from 0.55 to align with META_LABELER_THRESHOLD
         instrument: Optional[str] = None,
+        regime_name: Optional[str] = None,
+        regime_conditional_gates_enabled: bool = True,
     ) -> Dict[str, Any]:
-        """Evaluate all trading gates including advanced gates.
+        """Evaluate all trading gates including regime-conditional gates.
 
         Args:
             features: DataFrame with engineered features
@@ -1534,13 +1544,50 @@ class GateEvaluator:
             min_transformer_prob: Minimum Transformer probability threshold
             min_meta_confidence: Minimum meta-labeler confidence threshold
             instrument: Optional instrument name (e.g. 'EUR_USD') for one-hot encoding
+            regime_name: Volatility regime (LOW, NORMAL, HIGH, EXTREME) or None
+            regime_conditional_gates_enabled: If True, adapt thresholds to regime
 
         Returns:
             Dict with comprehensive gate results including:
             - Basic gates: momentum, confidence, risk
             - Advanced gates: transformer, meta_labeler
+            - Regime info if applicable
             - Combined pass status
         """
+        # Apply regime-conditional gates if enabled and regime available
+        adjusted_thresholds = {
+            "confidence_threshold": min_confidence,
+            "momentum_threshold": min_momentum,
+            "risk_threshold": max_drawdown_pct,
+        }
+
+        position_size_multiplier = 1.0
+        require_momentum_alignment = False
+
+        if regime_conditional_gates_enabled and REGIME_GATES_AVAILABLE and regime_name:
+            try:
+                regime_adjusted = apply_regime_gates(regime_name, adjusted_thresholds)
+                adjusted_thresholds = {
+                    "confidence_threshold": regime_adjusted.get("confidence_threshold", min_confidence),
+                    "momentum_threshold": regime_adjusted.get("momentum_threshold", min_momentum),
+                    "risk_threshold": regime_adjusted.get("risk_threshold", max_drawdown_pct),
+                }
+                position_size_multiplier = regime_adjusted.get("position_size_multiplier", 1.0)
+                require_momentum_alignment = regime_adjusted.get("require_momentum_alignment", False)
+                logger.debug(f"Applied regime gates for '{regime_name}'")
+            except Exception as e:
+                logger.warning(f"Failed to apply regime gates: {e}, using static thresholds")
+                adjusted_thresholds = {
+                    "confidence_threshold": min_confidence,
+                    "momentum_threshold": min_momentum,
+                    "risk_threshold": max_drawdown_pct,
+                }
+
+        # Extract adjusted thresholds
+        min_confidence = adjusted_thresholds["confidence_threshold"]
+        min_momentum = adjusted_thresholds["momentum_threshold"]
+        max_drawdown_pct = adjusted_thresholds["risk_threshold"]
+
         # Evaluate basic gates
         momentum, acceleration = self.evaluate_momentum(features)
         confidence = self.evaluate_confidence(features, instrument=instrument)
@@ -1548,6 +1595,12 @@ class GateEvaluator:
 
         # Check basic thresholds
         momentum_passed = momentum >= min_momentum or acceleration
+
+        # If require_momentum_alignment is True (HIGH/EXTREME), momentum must align
+        # with direction preference (e.g., > 0.5 for LONG bias)
+        if require_momentum_alignment:
+            momentum_passed = momentum_passed and (momentum > 0.5)
+
         confidence_passed = confidence >= min_confidence
         risk_passed = drawdown <= max_drawdown_pct
 
@@ -1595,6 +1648,11 @@ class GateEvaluator:
             "transformer_passed": transformer_passed,
             "meta_confidence": meta_confidence,
             "meta_passed": meta_passed,
+            # Regime conditional gates
+            "regime_name": regime_name,
+            "regime_conditional_enabled": regime_conditional_gates_enabled,
+            "position_size_multiplier": position_size_multiplier,
+            "require_momentum_alignment": require_momentum_alignment,
             # Combined
             "basic_passed": basic_passed,
             "all_passed": all_passed,

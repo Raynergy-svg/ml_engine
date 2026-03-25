@@ -1,0 +1,61 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-feedback-loops-phase27",
+  "description": "Buddy Phase 27 — Feedback Loop Completion. Phase 26 added observability to decision points. Phase 27 closes feedback loops: activates observation consumer, health registry, execution efficiency tracking, P/L attribution, fast-track A/B logging, and override detection. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-163",
+      "title": "Enable observation consumer as active feedback loop",
+      "description": "ObservationConsumer is built with 5 auto-adjustment patterns but defaults to False. Enable and wire into continuous loop.",
+      "acceptanceCriteria": ["Change enable_observation_consumer default to True", "Wire into continuous.py every 10 cycles", "Consumer generates recommendations", "Log consumer alerts", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Changed default to True. Added step 3d in continuous.py — consumes observations, detects patterns, recommends adjustments, and logs alerts every 10 cycles."
+    },
+    {
+      "id": "US-164",
+      "title": "Activate health registry for composite system health scoring",
+      "description": "HealthRegistry module is built but disabled. Enable and wire into orchestrator status report.",
+      "acceptanceCriteria": ["Change enable_health_registry default to True", "Include health scores in get_system_status()", "Alert on health_score < 0.70", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Changed default to True. Added health_registry block to orchestrator get_system_status() with system score and per-module scores. Logs health_degradation observation when score < 0.70."
+    },
+    {
+      "id": "US-165",
+      "title": "Per-pair execution efficiency tracking with slippage trending",
+      "description": "Slippage is tracked per pair but not trended or alerted.",
+      "acceptanceCriteria": ["Log high_slippage observation when reduction triggers", "Include metadata: pair, avg_slippage, threshold, sample_count, reduction", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added observation logging in execution.py when US-148 slippage reduction triggers. Logs to category='high_slippage' with full metadata including pair, avg slippage, threshold, sample count."
+    },
+    {
+      "id": "US-166",
+      "title": "Fast-track execution A/B logging for threshold feedback",
+      "description": "Fast-track executions bypass soft gate failures but lack outcome tracking.",
+      "acceptanceCriteria": ["Tag fast-track trades in analysis context", "Track fasttrack_wins and total in execution manager", "Log A/B stats periodically", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added result.fasttrack=True flag in engine.py fast-track path. Included in analysis_context for journal. Added _fasttrack_stats A/B tracker in sync_closed_trades_rl() — logs win rate every 5 fast-track trades."
+    },
+    {
+      "id": "US-167",
+      "title": "Enable pair_regime_agent_matrix for cross-pair P/L attribution",
+      "description": "pair_regime_agent_matrix.py tracks 3-way interactions but is disabled.",
+      "acceptanceCriteria": ["Change default to True", "Feed outcomes to matrix from sync_closed_trades_rl()", "Matrix tracks per-agent win rate by pair×regime", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Changed default to True. Added US-167 block in sync_closed_trades_rl() feeding agent verdicts with outcomes to _pram.record_vote(). Saves state after recording."
+    },
+    {
+      "id": "US-168",
+      "title": "Wire manual trade override detection to orchestrator",
+      "description": "orchestrator.py line 677 has TODO for manual trade detection.",
+      "acceptanceCriteria": ["Detect manual trades by comparing OANDA trades vs journal entries", "Log override_detected observation", "Pass to aura bridge when available", "Non-blocking", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added override detection before OutcomeSignal creation. Compares open OANDA trade IDs against journal. Unmatched trades = manual overrides. Logs to observation_log and passes to bridge via override_events parameter."
+    }
+  ]
+}

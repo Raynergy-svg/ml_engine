@@ -1,0 +1,61 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-system-optimization-phase30",
+  "description": "Buddy Phase 30 — System Optimization. Phase 29 closed gap resolution. Phase 30 addresses performance, reliability, and code quality: batch OANDA pricing to eliminate N+1 API calls, wrap missing OANDA calls in retry logic, add observation log rotation, deduplicate observation logging imports, consume model calibration outputs for dynamic threshold adjustment, and bring aggressive profile to feature parity with smart. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-180",
+      "title": "Batch OANDA pricing in drawdown guardian and trailing SL",
+      "description": "apply_drawdown_guardian() and apply_trailing_stops() each make N sequential pricing API calls — 1 per open trade. Batch into a single multi-instrument request.",
+      "acceptanceCriteria": ["Create _batch_fetch_prices(pairs) helper that calls OANDA pricing endpoint with instruments=comma-joined pairs", "apply_drawdown_guardian uses batch prices dict instead of per-trade fetch", "apply_trailing_stops uses same batch approach", "Fall back to individual fetch if batch fails", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Added _batch_fetch_prices() helper using single OANDA pricing endpoint with comma-joined instruments. Refactored apply_drawdown_guardian and update_trailing_stops to use batch price cache. Fallback to individual fetches on batch failure."
+    },
+    {
+      "id": "US-181",
+      "title": "Wrap direct OANDA calls in retry logic",
+      "description": "Several OANDA API calls bypass _retry_oanda() — fetch_trades_today, get_pricing, and monitor_open_trades use direct requests without backoff.",
+      "acceptanceCriteria": ["Wrap fetch_trades_today in _retry_oanda", "Wrap get_pricing in _retry_oanda", "Wrap monitor_open_trades API call in _retry_oanda", "No behavior change on success path", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Wrapped all direct OANDA API calls in _retry_oanda: fetch_trades_today, monitor_open_trades, drawdown guardian SL modification, close_trade_oanda, modify_sl_oanda, trailing SL modification, and sync_closed_trades_rl closed trades fetch. 7 calls total wrapped."
+    },
+    {
+      "id": "US-182",
+      "title": "Add observation log rotation with size limit",
+      "description": "observations.jsonl grows unbounded. Add rotation when file exceeds 100KB.",
+      "acceptanceCriteria": ["Check file size before each write", "When > 100KB, rotate to observations.YYYY-MM-DD.jsonl", "Start fresh observations.jsonl", "Keep max 7 rotated files (delete oldest)", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented _maybe_rotate() in ObservationLog. Checks file size before each write via log_observation(). Rotates to timestamped .jsonl files, prunes to 7 max rotated files. _LOG_MAX_BYTES=100KB."
+    },
+    {
+      "id": "US-183",
+      "title": "Deduplicate observation logging in execution.py",
+      "description": "ObservationLog is imported and instantiated 9 times in execution.py. Create a shared instance.",
+      "acceptanceCriteria": ["Add _observer: Optional[ObservationLog] = None to ExecutionManager.__init__", "Lazy-init on first use via _get_observer() helper", "Replace all 9 inline import+instantiate blocks with self._get_observer().log()", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added self._observer=None in __init__, _get_observer() lazy-init helper. All inline imports replaced with self._get_observer() calls. Fixed infinite recursion bug in _get_observer (was calling self instead of importing). Last remaining inline import at line 2074 removed."
+    },
+    {
+      "id": "US-184",
+      "title": "Consume model calibration ECE scores for dynamic confidence adjustment",
+      "description": "ModelCalibrationTracker produces per-model ECE and overconfidence_ratio but nothing consumes them to adjust thresholds.",
+      "acceptanceCriteria": ["After calibration check in engine.py, read calibration_report", "If overconfidence_ratio > 0.15, log observation with metadata", "Apply -3pt confidence offset when overconfidence detected", "Reset offset when ratio drops below 0.10", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "After calibration check in engine.py scan loop, reads get_calibration_report per model. When overconfidence_ratio > 0.15: applies -3pt confidence offset, logs overconfidence_detected observation with model/ratio/ece metadata. When all models < 0.10: logs debug clear message."
+    },
+    {
+      "id": "US-185",
+      "title": "Add RL features and soft uncertainty to aggressive profile",
+      "description": "Aggressive profile is missing use_rl_sizer, use_rl_gates, soft_uncertainty_blocking, and enable_agent_trade_promotion.",
+      "acceptanceCriteria": ["Add use_rl_sizer=True to aggressive profile", "Add use_rl_gates=True", "Add soft_uncertainty_blocking=True", "Add enable_agent_trade_promotion=True", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "All four features added to aggressive profile in config.py: use_rl_sizer=True, use_rl_gates=True, soft_uncertainty_blocking=True, enable_agent_trade_promotion=True."
+    }
+  ]
+}

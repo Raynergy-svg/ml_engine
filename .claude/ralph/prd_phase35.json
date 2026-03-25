@@ -1,0 +1,88 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-consolidation-phase35",
+  "description": "Buddy Phase 35 \u2014 Knowledge Consolidation & Maintenance. learnings.md has 228 entries (threshold: 30). state.json has 17 phase detail blocks. Per improvement rules: archive old entries, promote repeated patterns to rules, clean state. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-224",
+      "title": "Archive learnings.md entries from Phases 4-27 to learnings-archive.md",
+      "description": "learnings.md has 228 entries (7.6x over 30 threshold). Archive Phases 4-27 to .claude/learnings-archive.md, keep only Phases 28+ active.",
+      "acceptanceCriteria": [
+        "Create .claude/learnings-archive.md with Phases 4-27 entries",
+        "learnings.md retains only Phases 28+ and recent findings",
+        "Entry count drops below 80",
+        "Archive includes datestamp header"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PASS \u2014 Archived 173 entries (Phases 4-27) to learnings-archive.md. Active entries reduced from 228 to 55."
+    },
+    {
+      "id": "US-225",
+      "title": "Promote repeated patterns from learnings to rules",
+      "description": "Improvement rules say 3+ observations get promoted. Check learnings for repeated themes: JSON safety, file locking, silent exceptions, config validation, test coverage gaps.",
+      "acceptanceCriteria": [
+        "Identify patterns observed 3+ times",
+        "Add promoted rules to rules/trading.md or rules/improvement.md",
+        "Mark source learnings as [PROMOTED]",
+        "At least 2 new rules promoted"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PASS \u2014 Promoted 6 patterns to rules/improvement.md: JSON Safety (31 obs), Retry Robustness (27), State Persistence (8), Test Coverage (8), Config Validation (6), Silent Exception (4). Promotion log added to learnings.md."
+    },
+    {
+      "id": "US-226",
+      "title": "Archive state.json phase details older than Phase 28",
+      "description": "state.json has 17 phase_details blocks making it 259 lines. Archive Phases 18-27 details to .claude/state-archive.json.",
+      "acceptanceCriteria": [
+        "Create .claude/state-archive.json with old phase details",
+        "Remove phase details older than Phase 28 from state.json",
+        "state.json shrinks by 30%+",
+        "done list preserved intact"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "PASS \u2014 Archived 10 phase detail blocks (Phases 18-27 + Aura Phase 1) to state-archive.json. state.json reduced from 282 to ~160 lines."
+    },
+    {
+      "id": "US-227",
+      "title": "Add Phase 33-34 module changes to automation_modules list",
+      "description": "Phase 33 added modules to shutdown and dispatcher. Verify automation_modules in state.json is current.",
+      "acceptanceCriteria": [
+        "All modules from Phases 30-34 present in automation_modules",
+        "No duplicate entries",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "PASS \u2014 Added 8 missing modules from Phases 29-32. Total now 90 automation modules."
+    },
+    {
+      "id": "US-228",
+      "title": "Verify all config flags have matching dataclass fields",
+      "description": "Phase 33 added 53+ flags to aggressive and 11 to conservative profiles. Verify every flag in SCAN_PROFILES has a matching field in ScannerConfig dataclass.",
+      "acceptanceCriteria": [
+        "Script checks all profile keys against __dataclass_fields__",
+        "No unmatched keys found (or false-positive keys like 'blocked_pairs' excluded)",
+        "Report generated"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "PASS \u2014 All 93 profile keys have matching dataclass fields. 19 enable_ flags use defaults (core agents, expected). Zero orphans."
+    },
+    {
+      "id": "US-229",
+      "title": "Run full test suite and fix any regressions from Phases 33-34",
+      "description": "55 new tests added in Phases 33-34. Run the full suite to catch regressions.",
+      "acceptanceCriteria": [
+        "All new tests pass (test_scanner_config.py + test_execution_core.py)",
+        "No regressions in existing tests (or documented known failures)",
+        "Results logged"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "PASS \u2014 55/55 Phase 33-34 tests pass. 951 total passing. 34 pre-existing failures (older phases, not regressions)."
+    }
+  ]
+}

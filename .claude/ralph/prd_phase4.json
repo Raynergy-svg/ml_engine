@@ -1,0 +1,113 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-intelligence-phase4",
+  "description": "Buddy Phase 4 \u2014 Production Hardening & Intelligence Deepening. Fixes critical EUR_USD model failure, adds walk-forward backtesting, real multi-timeframe data, automated retraining pipeline, and adaptive risk scaling. DIRECTIVE: NEVER STOP BRAINSTORMING/RESEARCHING AND IMPROVING. DONT ASK FOR EVERY COMMAND, JUST DO. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-025",
+      "title": "Automated pair retraining on accuracy drift (EUR_USD critical fix)",
+      "description": "As a self-improving system, when AccuracyGate blocks a pair for sustained poor accuracy, the system should automatically queue and execute retraining for that pair.",
+      "acceptanceCriteria": [
+        "RetrainTrigger detects EUR_USD at 0% rolling accuracy and writes retrain_request.json",
+        "scheduled_retrain.py reads retrain_request.json and prioritizes flagged pairs",
+        "After retraining, AccuracyGate rolling window resets for the retrained pair",
+        "Retrain uses latest OANDA data (not cached stale data)",
+        "Post-retrain validation: new model must score >52% on hold-out set before replacing incumbent",
+        "If retrain fails or worsens accuracy, keep old model and log failure to observations.jsonl",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. Three pieces: (1) reset_accuracy_gate_for_pairs() clears rolling window post-retrain, (2) validate_holdout_accuracy() checks >52% on hold-out before promoting, (3) _spawn_background_retrain() in ContinuousScanner runs retrain as subprocess without blocking scan loop."
+    },
+    {
+      "id": "US-026",
+      "title": "Walk-forward backtesting framework for model validation",
+      "description": "As a trading system, I need walk-forward validation to ensure models generalize across time periods, not just on a single train/test split.",
+      "acceptanceCriteria": [
+        "Create src/scanner/analysis/walk_forward.py with WalkForwardValidator class",
+        "Splits data into N rolling windows: train on window K, test on window K+1",
+        "Default: 5 folds, 60-day train, 20-day test, 10-day step",
+        "Reports per-fold accuracy, Sharpe, max drawdown, and aggregate statistics",
+        "Integrated into scheduled_retrain.py: after training, run walk-forward before deployment",
+        "Model only promoted if walk-forward accuracy > 53% across all folds",
+        "Results logged to trained_data/models/walk_forward_results.json",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. src/scanner/analysis/walk_forward.py. WalkForwardValidator with rolling N folds. FoldResult tracks accuracy/Sharpe/drawdown per fold. Rejects random predictors (50.3% < 53%). Persists to walk_forward_results.json."
+    },
+    {
+      "id": "US-027",
+      "title": "Real multi-timeframe data fetching (H4/D1 from OANDA)",
+      "description": "As a trading system, multi-timeframe analysis should use real H4 and D1 candle data, not synthetic approximations from H1.",
+      "acceptanceCriteria": [
+        "Modify _evaluate_multi_timeframe in agents/_team.py to fetch real H4 and D1 data from OANDA",
+        "Cache H4/D1 data per pair per scan cycle (avoid redundant API calls)",
+        "Cache expires after 4 hours for H4, 24 hours for D1",
+        "Graceful fallback: if OANDA fetch fails, use existing H1 synthesis (don't block scan)",
+        "Multi-timeframe agent calculates real trend alignment across H1/H4/D1",
+        "Add multi_timeframe_data_source field to agent verdict metadata (real vs synthetic)",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. _evaluate_multi_timeframe in agents/_team.py now fetches real H4 (4h cache) and D1 (24h cache) from OANDA via get_candles(). Falls back to H1 synthesis on failure. metadata.multi_timeframe_data_source tracks real vs synthetic."
+    },
+    {
+      "id": "US-028",
+      "title": "Adaptive risk scaling based on recent performance",
+      "description": "As a risk management system, position sizing should scale down after losses and scale up after confirmed winning streaks.",
+      "acceptanceCriteria": [
+        "Create src/risk/adaptive_scaler.py with AdaptiveRiskScaler class",
+        "After 3 consecutive losses: reduce position size by 30% (drawdown protection)",
+        "After 5 consecutive wins with consistent accuracy: increase size by 15% (up to base max)",
+        "Scale factor stored in state and persists across sessions",
+        "Scale factor decays toward 1.0 (baseline) over 48 hours if no trades",
+        "Integrated into position_sizing.py: multiply base risk by scale factor",
+        "Log all scale changes to observations.jsonl with category 'risk_scaling'",
+        "Syntax validation passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. src/risk/adaptive_scaler.py. 3 losses=0.70x, 5 losses=0.50x floor. Win streak recovery. 48h time decay toward baseline. Persists state. Wired into position_sizing.py + continuous.py learning loop."
+    },
+    {
+      "id": "US-029",
+      "title": "Feature importance analysis and pruning per pair",
+      "description": "As a learning system, I should know which features matter most for each pair and prune noisy features to improve model accuracy.",
+      "acceptanceCriteria": [
+        "Create src/training/feature_analysis.py with FeatureAnalyzer class",
+        "Uses permutation importance on trained models to rank features per pair",
+        "Identifies features with importance < 0.01 (noise) and importance > 0.1 (critical)",
+        "Generates trained_data/models/feature_importance.json with per-pair rankings",
+        "Optional: prune bottom 10% features during next retrain cycle",
+        "Integrated into scheduled_retrain.py: run feature analysis after each retrain",
+        "Log top 5 and bottom 5 features per pair to learnings.md",
+        "Syntax validation passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. src/training/feature_analysis.py. Permutation importance with n_repeats=5. Correctly identifies signal vs noise features. Persists to feature_importance.json. get_prune_list() returns noise features for retraining."
+    },
+    {
+      "id": "US-030",
+      "title": "Trade correlation and clustering analysis",
+      "description": "As a learning system, I should detect when multiple trades cluster in the same conditions and avoid repeated exposure to the same market setup.",
+      "acceptanceCriteria": [
+        "Create src/scanner/analysis/trade_clustering.py with TradeClusterAnalyzer class",
+        "Clusters recent trades by regime, session, direction, and confidence band",
+        "Detects when 3+ trades share the same cluster profile within 24 hours",
+        "Applies -10% confidence penalty for trades matching an active losing cluster",
+        "Applies +5% confidence boost for trades matching an active winning cluster",
+        "Cluster analysis runs during scan, stored in memory (not persisted \u2014 lightweight)",
+        "Log cluster detections to observations.jsonl with category 'trade_cluster'",
+        "Syntax validation passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Implemented 2026-03-19. src/scanner/analysis/trade_clustering.py. Clusters by (pair, direction, regime, session, conf_band). 3+ losses in cluster = -10% penalty. 3+ wins = +5% boost. Wired into engine.py after backtest gate. Prunes entries > 24h."
+    }
+  ]
+}

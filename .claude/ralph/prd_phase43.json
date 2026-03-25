@@ -1,0 +1,74 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/phase43-regime-exits-calibration",
+  "description": "Phase 43 — Research-Backed Capability Upgrades: Market Regime Detector, Adaptive Exit Strategy Manager, Enhanced Confidence Calibration. These are ACTUAL FEATURE IMPROVEMENTS (not test-only) based on web research across 6 axes: regime detection (BOCPD, HMM, Hurst), exit strategies (Chandelier, partial profit, volatility-adjusted trailing), confidence calibration (ensemble disagreement, Platt scaling, regime-aware), portfolio risk (DCC-GARCH, correlation netting), adaptive sizing (Kelly, streak-aware), and Bayesian consensus. Delivered: 3 new production modules (~91KB source) + 175 tests.",
+  "userStories": [
+    {
+      "id": "US-272",
+      "title": "Market Regime Detector module with BOCPD + Hurst/ADX hybrid",
+      "description": "New src/scanner/regime_detector.py implementing: (1) Bayesian Online Changepoint Detection for real-time regime shift alerts, (2) Hurst exponent for trending vs mean-reverting classification, (3) ADX for trend strength confirmation, (4) Volatility regime clustering via ATR percentile bands, (5) Ensemble consensus across all signals. Produces RegimeDetectionResult dataclass with regime_index, confidence, changepoint_probability, hurst, adx, and next_regime_probs.",
+      "acceptanceCriteria": [
+        "RegimeDetector class with update() and get_regime() methods",
+        "BOCPD implementation with configurable hazard_rate and threshold",
+        "Hurst exponent calculation with configurable window (50-200 bars)",
+        "ADX trend strength classification",
+        "Ensemble consensus producing regime_index 0-3 with confidence score",
+        "All pure-Python (no TF dependency), works with numpy/scipy only",
+        "At least 30 unit tests covering all components"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "43 tests passing. 794-line module with 5 algorithms: BOCPD (Adams & MacKay), Hurst R/S analysis, ADX, ATR percentile clustering, ensemble consensus. Outputs RegimeDetectionResult with strategy_hint and risk_multiplier."
+    },
+    {
+      "id": "US-273",
+      "title": "Adaptive Exit Strategy Manager with Chandelier + Partial Profit + Time Decay",
+      "description": "New src/scanner/adaptive_exits.py implementing: (1) Chandelier Exit (ATR-based trailing stop from highest high), (2) Partial profit taking (scale-out at 1R/1.5R/2R), (3) Volatility-adjusted trailing stop (regime-dependent multipliers), (4) Time-based exit backstop (regime-dependent holding period limits), (5) Confidence-decay exit trigger. Produces ExitAction dataclass with action type, reason, and parameters.",
+      "acceptanceCriteria": [
+        "AdaptiveExitManager class with evaluate_exit() method",
+        "Chandelier Exit with configurable period and ATR multiplier",
+        "Partial profit scale-out with configurable tranche ratios and R-levels",
+        "Volatility-adjusted trailing stop with regime-dependent multipliers",
+        "Time-based exit with regime-dependent holding period limits",
+        "Confidence-decay trigger using calibrated confidence threshold",
+        "At least 30 unit tests covering all exit strategies"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "80 tests passing. 5 exit strategies with priority merging (confidence_decay > time > chandelier > vol_trail > partial). Stateless evaluation via TradeContext. 3 factory functions (default/conservative/aggressive)."
+    },
+    {
+      "id": "US-274",
+      "title": "Enhanced Confidence Calibration with regime-awareness and ensemble disagreement",
+      "description": "New src/scanner/confidence_calibration.py implementing: (1) Ensemble disagreement metric from 12 agent scores, (2) Regime-aware Platt scaling (separate calibration curves per regime), (3) Confidence time-decay with regime-dependent rates, (4) Agent agreement quality score, (5) Meta-confidence (confidence in the calibration itself). Produces CalibratedConfidence dataclass.",
+      "acceptanceCriteria": [
+        "ConfidenceCalibrationSystem class with calibrate() method",
+        "Ensemble disagreement calculation from agent verdict scores",
+        "Regime-aware Platt scaling with per-regime sigmoid parameters",
+        "Confidence time-decay with configurable per-regime decay rates",
+        "Agent agreement quality metric (std of agent scores)",
+        "Meta-confidence score based on calibration sample size and recency",
+        "At least 30 unit tests covering all calibration components"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "31 tests passing. 881-line module with 5-layer calibration: ensemble disagreement (4-level: LOW/MODERATE/HIGH/CRITICAL), regime-aware Platt scaling, time-decay, agent agreement, meta-confidence. Atomic JSON persistence."
+    },
+    {
+      "id": "US-275",
+      "title": "Integration tests: Regime → Exits → Calibration pipeline",
+      "description": "Integration tests verifying the full pipeline: RegimeDetector output feeds into AdaptiveExitManager and ConfidenceCalibrationSystem. Tests verify data flow, edge cases (regime transitions mid-trade, confidence decay to exit threshold), and consistency of outputs.",
+      "acceptanceCriteria": [
+        "At least 10 integration tests",
+        "Test regime transition triggers exit strategy adaptation",
+        "Test confidence decay triggers early exit",
+        "Test partial profit taking with regime-dependent R-levels",
+        "Test full pipeline from price data → regime → calibrated confidence → exit decision",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "21 integration tests passing. Covers regime-to-exit pipeline, confidence-to-exit pipeline, full pipeline (trending/mean-reverting/high-vol markets), regime transitions mid-trade, edge cases (empty data, agent disagreement, flat markets)."
+    }
+  ]
+}

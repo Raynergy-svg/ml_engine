@@ -564,6 +564,7 @@ _DISPATCH_TABLE: dict[str, Any] = {
     "find-candles": _handle_find_candles,
     "transfer": _handle_transfer,
     "learn": handle_learn,
+    "status": lambda args: __import__("scripts.buddy_status", fromlist=["main"]).main(),
 }
 
 

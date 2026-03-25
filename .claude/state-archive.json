@@ -1,0 +1,85 @@
+{
+  "archived_on": "2026-03-23",
+  "reason": "US-226 Phase 35 — archive phase details older than Phase 28",
+  "phase18_details": {
+    "US-109": "Execution quality optimizer — cost profiles per model+regime, gate adjustment recommendations",
+    "US-110": "Threshold optimizer — rolling win rate vs 55% target, adaptive thresholds with safety bounds",
+    "US-111": "Dynamic risk allocator — streak detection, P/L momentum, half-Kelly cap, multiplier [0.50-1.30]",
+    "US-112": "Model calibration tracker — 10-bin ECE, overconfidence ratio, flocking detection",
+    "US-113": "Pair-regime-agent matrix — 3-way interaction tracking, accuracy-based weight [0.50-1.40]",
+    "US-114": "Signal timing optimizer — session-aware scan interval [60s-900s] recommendation"
+  },
+  "phase19_details": {
+    "US-115": "Memory manager — LRU cache eviction, log rotation, RSS monitoring, pressure scoring",
+    "US-116": "Module activation map — cycle-based dispatch, dependency sort, orphan detection",
+    "US-117": "Agent lifecycle — 4-status (active/quarantined/candidate/retired), fitness tracking, auto-transitions",
+    "US-118": "Health registry — preflight/postflight checks, weighted health score, graceful degradation",
+    "US-119": "Observation consumer — pattern detection at 3 levels, 5 recommendation mappings, spike alerting",
+    "US-120": "Replay validator — historical backtest, drift detection (10% threshold), A/B config comparison"
+  },
+  "phase20_details": {
+    "US-121": "Health registry preflight/postflight wired into engine.py scan loop — abort on low health score",
+    "US-122": "Agent lifecycle fitness tracking wired into RL sync + vote weight modifiers in _team.py",
+    "US-123": "Observation consumer wired into continuous.py — consume every 10 cycles, feed to config_tuner",
+    "US-124": "Module dispatcher — central cycle-based scheduler for 24 modules with frequency control",
+    "US-125": "Drift monitor — ReplayValidator auto-correction: mild→tighten thresholds, critical→60% sizing",
+    "US-126": "Memory manager wired into continuous.py — LRU eviction, log rotation, RSS monitoring per cycle"
+  },
+  "phase21_details": {
+    "US-127": "ThresholdOptimizer feedback loop — enabled in smart profile, optimize_thresholds() in scan, re-qualifies blocked pairs",
+    "US-128": "ATR-based regime fallback — ATR percentile classification when TCN returns UNKNOWN",
+    "US-129": "Trade block reason logging — logs which gate failed with actual vs threshold values",
+    "US-130": "Regime-specific consensus thresholds — LOW:0.50, NORMAL:0.33, HIGH:0.25, EXTREME:0.20",
+    "US-131": "Config adjuster — central config adjustment manager with rate-limiting and persistence",
+    "US-132": "Extreme regime execution policy — 50% size multiplier + 5pt confidence offset instead of blocking"
+  },
+  "phase22_details": {
+    "US-133": "ThresholdOptimizer save_state wired after update_outcome — persists learning across sessions",
+    "US-134": "4 Phase 18 analytics modules enabled in smart profile — DynamicRiskAllocator, ModelCalibration, PairRegimeAgentMatrix, SignalTiming",
+    "US-135": "Execution.py reads analysis.risk_pct for regime-scaled position sizing — EXTREME regime 50% flows through",
+    "US-136": "ThresholdOptimizer journal replay warm-start — replays trade_journal_rl.json on init if 0 outcomes",
+    "US-137": "ConfigAdjuster wired into orchestrator run_cycle — applies pending adjustments and persists state",
+    "US-138": "Graceful shutdown persists all module states — config_adjuster, threshold_optimizer, agent_lifecycle, observation_consumer, memory_manager"
+  },
+  "phase23_details": {
+    "US-139": "Soft consensus gate — penalty (0.85x confidence) instead of hard block, 0.10 absolute minimum safety",
+    "US-140": "NORMAL regime default when UNKNOWN persists — downstream finds 0.33 consensus threshold",
+    "US-141": "Sub-inference opposite penalty 0.50x (was 0.20x) — configurable via config",
+    "US-142": "Execution fast-track — high agent_score + confidence + risk_passed overrides consensus block at 0.75x risk",
+    "US-143": "Observation consumer immediate gate adjustments — real-time threshold tweaks before next scan",
+    "US-144": "Execution summary dashboard — pipeline view: total→directional→gates→agents→tradeable per cycle"
+  },
+  "phase24_details": {
+    "US-145": "regime_at_exit captured during trade close sync — RL system differentiates outcomes by volatility transition",
+    "US-146": "RL agent weight persistence fixed — ScannerAgentTeam uses real config, weights saved after update",
+    "US-147": "position_manager wired into continuous.py — TIGHTEN_SL and EXIT_EARLY via OANDA API every 3 cycles",
+    "US-148": "Slippage tracker with sizing feedback — rolling avg per pair, 15% reduction when >2.5 pips",
+    "US-149": "Trailing stop exit learning — profitable trailing exits get 0.05 penalty vs 0.15 default",
+    "US-150": "Exit reason agent accountability — positive/conservative_miss/correct_reject patterns extracted"
+  },
+  "phase25_details": "Not tracked in state.json — see learnings-archive.md",
+  "phase26_details": {
+    "US-157": "Portfolio risk block observation logging — logs to observation_log when risk limits reject trades",
+    "US-158": "Agent degradation z-score detection — binomial z-score of recent vs baseline, alert at z < -1.5",
+    "US-159": "EMA weight damping — 0.7/0.3 blend for updates, increases to 0.6/0.4 when per-agent variance > 0.05",
+    "US-160": "JSON schema validators — agent_weights.json (_global dict check) and trade_journal_rl.json (required fields)",
+    "US-161": "Threshold drift velocity monitoring — per-gate change history, alerts when velocity > 0.01/cycle for 3+ consecutive",
+    "US-162": "Enhanced correlation block logging — blocking_pair_detail, _correlation_block_counts per pair"
+  },
+  "phase27_details": {
+    "US-163": "Observation consumer enabled as active feedback loop — default True, wired every 10 cycles in continuous.py",
+    "US-164": "Health registry activated — default True, composite scores in get_system_status(), alert on < 0.70",
+    "US-165": "Per-pair slippage trending — logs high_slippage observation with metadata when reduction triggers",
+    "US-166": "Fast-track A/B logging — tags fast-track trades, tracks separate win/loss stats every 5 trades",
+    "US-167": "Pair regime agent matrix enabled — default True, fed from sync_closed_trades_rl() outcomes",
+    "US-168": "Manual override detection — compares OANDA trade IDs vs journal, logs override_detected observation"
+  },
+  "aura_phase1_details": {
+    "US-200": "enable_trader_readiness_agent: True added to smart and aggressive SCAN_PROFILES",
+    "US-201": "SQL injection in self_model.py PRAGMA key — hex-encoded key prevents injection",
+    "US-202": "File locking: _locked_write (atomic), _locked_read (LOCK_SH), _locked_append (LOCK_EX) — applied to all 5 bridge I/O methods + readiness.py",
+    "US-203": "Tier3 R² proxy replaced with _linear_regression(data_points) — correct goodness-of-fit",
+    "US-204": "Stressor keyword matching uses re.search(word-boundary) — no more false positives from substrings",
+    "US-205": "P-90/src/aura/ — full source tree, .aura/ data dirs, pyproject.toml, all syntax-validated"
+  }
+}

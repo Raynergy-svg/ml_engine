@@ -16,6 +16,12 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+# Ensure project root is on sys.path so `src` is importable when this script
+# runs as a subprocess from scripts/ rather than the project root.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 import numpy as np
 
 # Rich for beautiful output

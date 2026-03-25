@@ -1,0 +1,124 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-review-fixes",
+  "description": "Auto-generated from code review findings. 7 blockers, 10 suggestions. Source: prd_phase47.json. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Fix blocker in unknown: ## \ud83d\udd34 BLOCKERS",
+      "description": "Code review found a blocker: ## \ud83d\udd34 BLOCKERS",
+      "acceptanceCriteria": [
+        "Fix the issue in unknown",
+        "Verify the fix doesn't break existing tests",
+        "Non-blocking \u2014 wrap in try/except if fixing near critical path",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Auto-generated from code review of .claude/ralph/prd_phase47.json"
+    },
+    {
+      "id": "US-002",
+      "title": "Fix blocker in _team.py: GraphAttentionConsensus._softmax_attention: **`math` not imported at module level**",
+      "description": "Code review found a blocker: **`math` not imported at module level**",
+      "acceptanceCriteria": [
+        "Fix the issue in _team.py: GraphAttentionConsensus._softmax_attention",
+        "Verify the fix doesn't break existing tests",
+        "Non-blocking \u2014 wrap in try/except if fixing near critical path",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Auto-generated from code review of .claude/ralph/prd_phase47.json"
+    },
+    {
+      "id": "US-003",
+      "title": "Fix blocker in execution.py: calculate_position_size, calculate_regime_aware_position_size: **SL is hardcoded, not ATR-based \u2014 trading rule violation**",
+      "description": "Code review found a blocker: **SL is hardcoded, not ATR-based \u2014 trading rule violation**",
+      "acceptanceCriteria": [
+        "Fix the issue in execution.py: calculate_position_size, calculate_regime_aware_position_size",
+        "Verify the fix doesn't break existing tests",
+        "Non-blocking \u2014 wrap in try/except if fixing near critical path",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Auto-generated from code review of .claude/ralph/prd_phase47.json"
+    },
+    {
+      "id": "US-004",
+      "title": "Fix blocker in execution.py: _check_portfolio_risk_limit, _check_correlation_exposure, _check_projected_portfolio_risk: **All safety checks return `True` (PASS) on exception**",
+      "description": "Code review found a blocker: **All safety checks return `True` (PASS) on exception**",
+      "acceptanceCriteria": [
+        "Fix the issue in execution.py: _check_portfolio_risk_limit, _check_correlation_exposure, _check_projected_portfolio_risk",
+        "Verify the fix doesn't break existing tests",
+        "Non-blocking \u2014 wrap in try/except if fixing near critical path",
+        "Syntax validation passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Auto-generated from code review of .claude/ralph/prd_phase47.json"
+    },
+    {
+      "id": "US-005",
+      "title": "Fix blocker in execution.py: evaluate_exits: **Current price estimation is mathematically wrong**",
+      "description": "Code review found a blocker: **Current price estimation is mathematically wrong**",
+      "acceptanceCriteria": [
+        "Fix the issue in execution.py: evaluate_exits",
+        "Verify the fix doesn't break existing tests",
+        "Non-blocking \u2014 wrap in try/except if fixing near critical path",
+        "Syntax validation passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Auto-generated from code review of .claude/ralph/prd_phase47.json"
+    },
+    {
+      "id": "US-006",
+      "title": "Fix blocker in execution.py: sync_closed_trades_rl ~line: accuracy matrix block: **Accuracy matrix records ALL closed entries on every sync c",
+      "description": "Code review found a blocker: **Accuracy matrix records ALL closed entries on every sync call \u2014 double-counting**",
+      "acceptanceCriteria": [
+        "Fix the issue in execution.py: sync_closed_trades_rl ~line: accuracy matrix block",
+        "Verify the fix doesn't break existing tests",
+        "Non-blocking \u2014 wrap in try/except if fixing near critical path",
+        "Syntax validation passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Auto-generated from code review of .claude/ralph/prd_phase47.json"
+    },
+    {
+      "id": "US-007",
+      "title": "Fix blocker in execution.py: monitor_open_trades, _batch_fetch_prices, apply_drawdown_guardian, update_trailing_stops: **HTTP response not validated before `.json()` call**",
+      "description": "Code review found a blocker: **HTTP response not validated before `.json()` call**",
+      "acceptanceCriteria": [
+        "Fix the issue in execution.py: monitor_open_trades, _batch_fetch_prices, apply_drawdown_guardian, update_trailing_stops",
+        "Verify the fix doesn't break existing tests",
+        "Non-blocking \u2014 wrap in try/except if fixing near critical path",
+        "Syntax validation passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Auto-generated from code review of .claude/ralph/prd_phase47.json"
+    },
+    {
+      "id": "US-008",
+      "title": "Address code review suggestions",
+      "description": "Code review found 10 suggestions to improve code quality.",
+      "acceptanceCriteria": [
+        "## \ud83d\udfe1 SUGGESTIONS",
+        "**OANDA base URL hardcoded in 6+ methods**",
+        "**NAV fetched 3 times per execute_trade call**",
+        "**`_correlation_block_counts`, `_open_trade_pairs`, `_fasttrack_stats` not initialized in `__init__`**",
+        "**Non-atomic write to pair_performance.json**",
+        "**Fallback path bypasses retry logic**",
+        "**Disk read on every agent evaluation**",
+        "**Stale signal file not detected**",
+        "Syntax validation passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

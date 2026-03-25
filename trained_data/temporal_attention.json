@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "timeframes": [
+    5,
+    20,
+    50,
+    100
+  ],
+  "logits": {},
+  "update_count": 0,
+  "update_log": [],
+  "last_updated": "2026-03-23T20:29:39.967206+00:00"
+}

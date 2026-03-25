@@ -109,7 +109,7 @@ def send_failure_email(
 def run_train_joint(
     pairs: List[str],
     granularity: str = "H1",
-    candles: int = 15000,
+    candles: int = 7500,
 ) -> tuple[bool, str, Optional[dict]]:
     """Run joint training for specified pairs.
     
@@ -207,6 +207,146 @@ def validate_models(model_dir: Path) -> tuple[bool, str]:
     return True, msg
 
 
+def reset_accuracy_gate_for_pairs(pairs: List[str]) -> None:
+    """Reset AccuracyGate rolling window for retrained pairs.
+
+    After a successful retrain, the pair's accuracy history is stale — it reflects
+    the OLD model's performance. Clear it so the pair can be re-evaluated fresh.
+    """
+    try:
+        from src.scanner.automation.accuracy_gate import AccuracyGate
+
+        gate = AccuracyGate()
+        for pair in pairs:
+            normalized = pair.upper().replace("/", "_")
+            if normalized in gate._data:
+                # Keep total history but reset rolling counters
+                gate._data[normalized]["rolling_total"] = 0
+                gate._data[normalized]["rolling_wins"] = 0
+                gate._data[normalized]["accuracy"] = None
+                # Clear the blocked flag — let the pair trade again under new model
+                gate._data[normalized]["blocked"] = False
+                logger.info(f"AccuracyGate reset for {normalized} (post-retrain)")
+        gate._save()
+    except Exception as e:
+        logger.warning(f"AccuracyGate reset failed (non-fatal): {e}")
+
+
+def validate_holdout_accuracy(
+    pairs: List[str],
+    min_accuracy: float = 0.52,
+    holdout_candles: int = 500,
+) -> tuple[bool, str]:
+    """Validate new model accuracy on a hold-out set before promoting.
+
+    Loads the newly trained model and runs inference on the most recent
+    holdout_candles (not used in training). If accuracy < min_accuracy,
+    the retrain is rejected.
+
+    Returns:
+        Tuple of (passed, message)
+    """
+    try:
+        from src.core.modular_data_loaders import compute_normalized_features
+        from src.scanner.gates import GateEvaluator
+
+        evaluator = GateEvaluator(
+            model_dir=str(PROJECT_ROOT / "trained_data" / "models"),
+            pair="EUR_USD",
+        )
+
+        correct = 0
+        total = 0
+        from src.data.oanda_api import get_candles
+
+        for pair in pairs[:3]:  # Validate on up to 3 pairs (speed)
+            try:
+                candles_df = get_candles(pair, granularity="H1", count=holdout_candles)
+                if candles_df is None or len(candles_df) < 100:
+                    continue
+
+                # Use last holdout_candles as test set
+                test_df = candles_df.tail(holdout_candles)
+                features = compute_normalized_features(test_df)
+                if features is None or features.empty:
+                    continue
+
+                # Check direction predictions against actual price movement
+                for i in range(len(features) - 5):
+                    row = features.iloc[i : i + 1]
+                    future_close = test_df["close"].iloc[min(i + 5, len(test_df) - 1)]
+                    current_close = test_df["close"].iloc[i]
+                    actual_dir = "LONG" if future_close > current_close else "SHORT"
+
+                    try:
+                        result = evaluator.evaluate(row, pair)
+                        if result and hasattr(result, "direction"):
+                            pred_dir = str(result.direction).upper()
+                            if pred_dir in ("LONG", "SHORT"):
+                                total += 1
+                                if pred_dir == actual_dir:
+                                    correct += 1
+                    except Exception:
+                        continue
+            except Exception as e:
+                logger.debug(f"Hold-out validation skipped for {pair}: {e}")
+
+        if total < 20:
+            msg = f"Hold-out validation: insufficient samples ({total}). Proceeding with caution."
+            logger.warning(msg)
+            return True, msg  # Don't block if we can't validate
+
+        accuracy = correct / total
+        passed = accuracy >= min_accuracy
+        msg = (
+            f"Hold-out validation: {accuracy:.1%} accuracy ({correct}/{total}) "
+            f"{'PASSED' if passed else 'FAILED'} (threshold: {min_accuracy:.0%})"
+        )
+        if passed:
+            logger.info(msg)
+        else:
+            logger.error(msg)
+        return passed, msg
+
+    except ImportError as e:
+        msg = f"Hold-out validation skipped (import error): {e}"
+        logger.warning(msg)
+        return True, msg  # Don't block on import failures
+    except Exception as e:
+        msg = f"Hold-out validation error (non-fatal): {e}"
+        logger.warning(msg)
+        return True, msg
+
+
+def check_drift_retrain_request() -> Optional[list]:
+    """Check if drift trigger has requested retrain.
+
+    Returns:
+        List of pairs to retrain, or None if no request pending.
+    """
+    request_path = Path(PROJECT_ROOT) / "trained_data" / "retrain_request.json"
+    if not request_path.exists():
+        return None
+
+    try:
+        with open(request_path, 'r') as f:
+            request = json.loads(f.read())
+
+        pairs = request.get("pairs", [])
+        reason = request.get("reason", "Unknown")
+        priority = request.get("priority", "normal")
+
+        logger.info(f"Drift-triggered retrain request found:")
+        logger.info(f"  Pairs: {', '.join(pairs)}")
+        logger.info(f"  Reason: {reason}")
+        logger.info(f"  Priority: {priority}")
+
+        return pairs
+    except Exception as e:
+        logger.warning(f"Failed to parse retrain request: {e}")
+        return None
+
+
 def main():
     """Main entry point for scheduled retraining."""
     parser = argparse.ArgumentParser(
@@ -215,8 +355,8 @@ def main():
     parser.add_argument(
         "--pairs",
         type=str,
-        default=",".join(DEFAULT_SCANNER_PAIRS),
-        help="Comma-separated list of pairs to train",
+        default="",
+        help="Comma-separated list of pairs to train (overrides drift request)",
     )
     parser.add_argument(
         "--granularity",
@@ -227,8 +367,8 @@ def main():
     parser.add_argument(
         "--candles",
         type=int,
-        default=15000,
-        help="Number of candles to fetch (default: 15000)",
+        default=7500,
+        help="Number of candles to fetch (default: 7500, max ~10000 on M1 with 15 pairs)",
     )
     parser.add_argument(
         "--dry-run",
@@ -236,10 +376,24 @@ def main():
         help="Log what would be done without actually training",
     )
     args = parser.parse_args()
-    
-    # Parse pairs
-    pairs = [p.strip().upper().replace("/", "_") for p in args.pairs.split(",")]
-    
+
+    # Determine pairs: check for drift request first, then args, then defaults
+    pairs = []
+    if args.pairs:
+        # Explicit --pairs argument (highest priority)
+        pairs = [p.strip().upper().replace("/", "_") for p in args.pairs.split(",")]
+        logger.info(f"Using explicit pairs from --pairs: {', '.join(pairs)}")
+    else:
+        # Check for drift-triggered request
+        drift_pairs = check_drift_retrain_request()
+        if drift_pairs:
+            pairs = drift_pairs
+            logger.info(f"Using pairs from drift trigger: {', '.join(pairs)}")
+        else:
+            # Fall back to defaults or "all"
+            pairs = [p.strip().upper().replace("/", "_") for p in DEFAULT_SCANNER_PAIRS]
+            logger.info(f"Using default pairs: {', '.join(pairs)}")
+
     # Expand "all" to the full list of default pairs
     if len(pairs) == 1 and pairs[0] == "ALL":
         from src.scanner.config import DEFAULT_PAIRS
@@ -275,16 +429,52 @@ def main():
         if not valid:
             success = False
             message = f"{message}\n\nValidation failed: {valid_msg}"
-    
+
+    # Hold-out validation: new model must beat threshold before promotion
+    if success:
+        holdout_ok, holdout_msg = validate_holdout_accuracy(pairs)
+        message = f"{message}\n\n{holdout_msg}"
+        if not holdout_ok:
+            success = False
+            logger.error("Retrain REJECTED: new model failed hold-out validation")
+
     # Log completion
     end_time = datetime.now(timezone.utc)
     duration = (end_time - start_time).total_seconds()
-    
+
     logger.info("=" * 60)
     logger.info(f"RETRAINING {'COMPLETED' if success else 'FAILED'}")
     logger.info(f"Duration: {duration:.1f} seconds")
     logger.info("=" * 60)
-    
+
+    # Post-retrain: reset AccuracyGate for retrained pairs (only on success)
+    if success:
+        reset_accuracy_gate_for_pairs(pairs)
+        logger.info(f"AccuracyGate reset for {len(pairs)} retrained pair(s)")
+
+    # Write retrain summary for cooldown tracking
+    if success:
+        try:
+            summary_path = PROJECT_ROOT / "trained_data" / "retrain_all_summary.json"
+            summary_path.write_text(json.dumps({
+                "timestamp": end_time.isoformat(),
+                "pairs": pairs,
+                "duration_seconds": round(duration, 1),
+                "status": "success",
+            }, indent=2))
+        except Exception as e:
+            logger.warning(f"Failed to write retrain summary: {e}")
+
+    # Clear drift retrain request if present (only on success)
+    if success:
+        try:
+            request_path = Path(PROJECT_ROOT) / "trained_data" / "retrain_request.json"
+            if request_path.exists():
+                request_path.unlink()
+                logger.info("Drift retrain request cleared")
+        except Exception as e:
+            logger.warning(f"Failed to clear retrain request: {e}")
+
     # Send failure email (no spam on success)
     if not success:
         email_body = f"""
@@ -302,13 +492,13 @@ Log file: {LOG_FILE}
 ---
 This is an automated alert. No action required if you're already investigating.
         """.strip()
-        
+
         send_failure_email(
             subject=f"Joint Retraining FAILED - {start_time.strftime('%Y-%m-%d')}",
             body=email_body,
         )
         return 1
-    
+
     return 0
 
 

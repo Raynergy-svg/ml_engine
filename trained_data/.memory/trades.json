@@ -1,1 +1,205 @@
-[]
+[
+  {
+    "timestamp": "2026-03-23T19:30:50.144149+00:00",
+    "instrument": "AUD_JPY",
+    "direction": "short",
+    "confidence": 0.7556490990321918,
+    "trade_id": "957",
+    "pnl": null,
+    "pnl_pips": null,
+    "entry": 111.054,
+    "exit": null,
+    "lots": 0.44,
+    "sl": 111.42399999999999,
+    "tp": 110.474,
+    "prediction": null,
+    "model": "scanner",
+    "account_balance": 101682.9261,
+    "metadata": {
+      "agent_passed": true,
+      "agent_promoted": true,
+      "agent_reasons": [
+        {
+          "block_trade": false,
+          "confidence_delta": 0.0,
+          "metadata": "{}",
+          "name": "trend",
+          "passed": true,
+          "reason": "trend neutral (ADX 61)",
+          "reason_code": "trend_neutral",
+          "score": 0.72,
+          "weight": 1.3225
+        },
+        {
+          "block_trade": false,
+          "confidence_delta": 0.03,
+          "metadata": "{}",
+          "name": "volatility",
+          "passed": true,
+          "reason": "volatility supportive (extreme, 42.4 pips)",
+          "reason_code": "volatility_support",
+          "score": 0.9759962406015037,
+          "weight": 1.0
+        },
+        {
+          "block_trade": false,
+          "confidence_delta": 0.02,
+          "metadata": "{}",
+          "name": "risk_sentinel",
+          "passed": true,
+          "reason": "risk acceptable (0.41% drawdown)",
+          "reason_code": "risk_ok",
+          "score": 1.0,
+          "weight": 1.25
+        },
+        {
+          "block_trade": false,
+          "confidence_delta": 0.02,
+          "metadata": "{'uncertainty_score': 0.0, 'confidence_variance': 0.5799321432943205, 'model_disagreement': 0.0}",
+          "name": "uncertainty",
+          "passed": true,
+          "reason": "uncertainty contained (0.00)",
+          "reason_code": "uncertainty_ok",
+          "score": 1.0,
+          "weight": 1.1
+        },
+        {
+          "block_trade": false,
+          "confidence_delta": 0.02,
+          "metadata": "{'execution_quality_score': 0.5110245557253201, 'execution_quality_passed': True, 'spread_pips': 1.6969267441075324, 'est_slippage_pips': 1.2993665579688263, 'liquidity_score': ...",
+          "name": "execution_quality",
+          "passed": true,
+          "reason": "execution quality solid (liq 0.40)",
+          "reason_code": "execution_ok",
+          "score": 0.5110245557253201,
+          "weight": 1.05
+        }
+      ],
+      "agent_total": 3,
+      "agent_votes": 3,
+      "atr_pips": 42.42316860268831,
+      "confidence_passed": true,
+      "drawdown": 0.004084023680538774,
+      "fasttrack": false,
+      "gate_summary": "3/3",
+      "group_momentum": {
+        "action": "allow",
+        "alignment": -0.0,
+        "base_score": 0.0,
+        "position_modifier": 1.0,
+        "quote_score": 0.0
+      },
+      "macro_stress_modifier": 1.0,
+      "model_disagreement": 0.0,
+      "momentum": 0.805742517880667,
+      "momentum_passed": true,
+      "overall_score": 0.7205831996536528,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 1.2,
+        "tp_mult": 2.8
+      },
+      "regime_risk_modifier": 1.0,
+      "ridge_confidence": 61.004577823977606,
+      "risk_passed": true,
+      "risk_pct": 0.025,
+      "scan_time": "2026-03-23T19:30:43.976531+00:00",
+      "seasonality_modifier": 1.0,
+      "_truncated_keys": 5
+    }
+  },
+  {
+    "timestamp": "2026-03-20T13:40:50.827751+00:00",
+    "instrument": "USD_JPY",
+    "direction": "short",
+    "confidence": 0.4405351723213246,
+    "trade_id": "931",
+    "pnl": null,
+    "pnl_pips": null,
+    "entry": 158.819,
+    "exit": null,
+    "lots": 11.36,
+    "sl": 158.94076365687886,
+    "tp": 158.2987272385352,
+    "prediction": null,
+    "model": "scanner",
+    "account_balance": 102580.8403,
+    "metadata": {
+      "agent_passed": false,
+      "agent_promoted": false,
+      "agent_reasons": [
+        {
+          "block_trade": false,
+          "confidence_delta": 0.0,
+          "metadata": "{}",
+          "name": "trend",
+          "passed": false,
+          "reason": "trend neutral (ADX 1)",
+          "reason_code": "trend_neutral",
+          "score": 0.48,
+          "weight": 1.15
+        },
+        {
+          "block_trade": false,
+          "confidence_delta": 0.02,
+          "metadata": "{}",
+          "name": "mean_reversion",
+          "passed": true,
+          "reason": "mean reversion supports short (RSI 67.2)",
+          "reason_code": "mean_reversion_support",
+          "score": 0.7150363258951667,
+          "weight": 0.9
+        },
+        {
+          "block_trade": false,
+          "confidence_delta": 0.03,
+          "metadata": "{}",
+          "name": "volatility",
+          "passed": true,
+          "reason": "volatility supportive (unknown, 20.1 pips)",
+          "reason_code": "volatility_support",
+          "score": 0.8325,
+          "weight": 1.0
+        },
+        {
+          "block_trade": false,
+          "confidence_delta": 0.02,
+          "metadata": "{}",
+          "name": "risk_sentinel",
+          "passed": true,
+          "reason": "risk acceptable (1.39% drawdown)",
+          "reason_code": "risk_ok",
+          "score": 0.8887675665757594,
+          "weight": 1.25
+        },
+        {
+          "block_trade": false,
+          "confidence_delta": 0.02,
+          "metadata": "{'uncertainty_score': 0.30768795929906917, 'confidence_variance': 0.18973996608255772, 'model_disagreement': 0.5}",
+          "name": "uncertainty",
+          "passed": true,
+          "reason": "uncertainty contained (0.31)",
+          "reason_code": "uncertainty_ok",
+          "score": 0.6923120407009309,
+          "weight": 1.1
+        }
+      ],
+      "agent_total": 3,
+      "agent_votes": 1,
+      "atr_pips": 20.06363807323928,
+      "confidence_passed": true,
+      "drawdown": 0.013873946005454434,
+      "gate_summary": "3/3",
+      "model_disagreement": 0.5,
+      "momentum": 0.0,
+      "momentum_passed": true,
+      "overall_score": 0.3449285046254583,
+      "ridge_confidence": 0.5820520067834885,
+      "risk_passed": true,
+      "tcn_confidence": 0.0,
+      "uncertainty_score": 0.30768795929906917,
+      "volatility_regime": "UNKNOWN",
+      "weighted_vote_score": 0.6840935233800768
+    }
+  }
+]

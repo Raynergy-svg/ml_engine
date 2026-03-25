@@ -230,7 +230,7 @@ if __name__ == "__main__":
         # Write stats to file
         stats_path = Path(args.output) / "stats.json"
         with open(stats_path, "w") as f:
-            json.dump(stats, f)
+            json.dump(stats, f, default=lambda x: float(x) if hasattr(x, '__float__') else str(x))
         print(f"  [subprocess] Stats written to {stats_path}")
         sys.exit(0)
     except Exception as e:

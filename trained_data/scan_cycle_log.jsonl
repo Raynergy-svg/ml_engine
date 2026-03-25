@@ -1,0 +1,34 @@
+{"timestamp": "2026-03-19T15:21:01.619408", "scan_number": 1, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.7037, "model_type": "ensemble"}
+{"timestamp": "2026-03-19T15:27:20.100517", "scan_number": 2, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.7032, "model_type": "ensemble"}
+{"timestamp": "2026-03-19T15:33:41.406711", "scan_number": 3, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.7032, "model_type": "ensemble"}
+{"timestamp": "2026-03-19T15:40:01.743152", "scan_number": 4, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.7055, "model_type": "ensemble"}
+{"timestamp": "2026-03-19T15:46:17.788692", "scan_number": 5, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.7046, "model_type": "ensemble"}
+{"timestamp": "2026-03-19T15:52:35.330196", "scan_number": 6, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.704, "model_type": "ensemble"}
+{"timestamp": "2026-03-19T15:58:54.504323", "scan_number": 7, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.7028, "model_type": "ensemble"}
+{"timestamp": "2026-03-19T16:05:16.113683", "scan_number": 8, "pairs_scanned": 7, "tradeable_count": 2, "tradeable_pairs": ["AUD_USD", "NZD_USD"], "auto_execute": true, "top_score": 0.7045, "model_type": "ensemble"}
+{"timestamp": "2026-03-19T16:11:37.533769", "scan_number": 9, "pairs_scanned": 7, "tradeable_count": 2, "tradeable_pairs": ["AUD_USD", "NZD_USD"], "auto_execute": true, "top_score": 0.7252, "model_type": "ensemble"}
+{"timestamp": "2026-03-19T23:00:39.377575", "scan_number": 1, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.0, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T15:34:38.538875", "scan_number": 1, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4896, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T15:39:49.609650", "scan_number": 2, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4896, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T15:44:55.798836", "scan_number": 3, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4896, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T15:50:01.120498", "scan_number": 4, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4896, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T15:55:08.607055", "scan_number": 5, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4896, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:01:11.358548", "scan_number": 6, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:06:17.381253", "scan_number": 7, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:09:10.407226", "scan_number": 1, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:11:22.966481", "scan_number": 8, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:14:16.680904", "scan_number": 2, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:16:29.286888", "scan_number": 9, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:19:24.051627", "scan_number": 3, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:21:34.860702", "scan_number": 10, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:24:31.023679", "scan_number": 4, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:27:28.023815", "scan_number": 11, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:29:37.044094", "scan_number": 5, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:32:34.043015", "scan_number": 12, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:34:43.902828", "scan_number": 6, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:37:39.529451", "scan_number": 13, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:39:48.029459", "scan_number": 1, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4902, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:39:49.184177", "scan_number": 7, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:42:45.820649", "scan_number": 14, "pairs_scanned": 7, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:44:55.088288", "scan_number": 2, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4902, "model_type": "ensemble"}
+{"timestamp": "2026-03-23T16:44:55.428483", "scan_number": 8, "pairs_scanned": 14, "tradeable_count": 0, "tradeable_pairs": [], "auto_execute": true, "top_score": 0.4914, "model_type": "ensemble"}

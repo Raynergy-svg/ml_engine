@@ -1,0 +1,100 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-intelligence-phase6",
+  "description": "Buddy Phase 6 — Execution Intelligence & Portfolio Protection. Phase 5 hardened safety gates. Phase 6 improves trade *quality*: trailing stops to lock in profits, correlation enforcement to prevent hidden exposure, per-profile consensus tuning, RL feedback reconnection, code cleanup, and learnings consolidation. DIRECTIVE: NEVER STOP BRAINSTORMING/RESEARCHING AND IMPROVING. DONT ASK FOR EVERY COMMAND, JUST DO. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-037",
+      "title": "Per-profile agent consensus thresholds",
+      "description": "As a configurable system, each scan profile should enforce its own minimum agent consensus ratio. Conservative needs stricter consensus than aggressive.",
+      "acceptanceCriteria": [
+        "SCAN_PROFILES in config.py includes min_agent_consensus_ratio per profile",
+        "conservative=0.42 (5/12), balanced=0.33 (4/12), aggressive=0.25 (3/12), smart=0.33 (4/12)",
+        "Engine reads the per-profile value from config, not just the global default",
+        "Syntax validation passes",
+        "Status dashboard shows active consensus threshold"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Per-profile min_agent_consensus_ratio added to all 4 SCAN_PROFILES in config.py. Engine reads from profile config."
+    },
+    {
+      "id": "US-038",
+      "title": "ATR-based trailing stop loss for open positions",
+      "description": "As a profit-protecting system, open trades should have trailing stops that lock in gains. Currently positions ride through full adverse swings with no dynamic SL adjustment.",
+      "acceptanceCriteria": [
+        "New method in execution.py: update_trailing_stops() adjusts SL toward profit",
+        "Trail distance = ATR * trailing_atr_multiplier (default 1.5x)",
+        "Only moves SL in profitable direction (never widens)",
+        "Integrates with OANDA trade modify API to update SL on server",
+        "Logs every trailing SL adjustment to observations.jsonl",
+        "Configurable via ScannerConfig: enable_trailing_stop, trailing_atr_multiplier",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "update_trailing_stops() added to execution.py. ATR * 1.5 trail distance. Only moves SL toward profit (LONG: up, SHORT: down). OANDA PUT modify API. Logged to observations.jsonl. Wired into continuous.py monitoring loop between drawdown guardian and RL sync."
+    },
+    {
+      "id": "US-039",
+      "title": "Enforce correlation filter before trade execution",
+      "description": "As a portfolio protector, the DiversificationFilter must actively block trades on correlated pairs when exposure limit is reached. Currently the filter exists but is not wired into execution.",
+      "acceptanceCriteria": [
+        "execution.py checks correlation exposure BEFORE placing any order",
+        "If pair is correlated (>0.7) with an already-open position AND max_correlated_exposure reached, skip trade",
+        "Log blocked trades with reason: 'correlated pair X already open'",
+        "max_correlated_exposure configurable (default 2)",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "_check_correlation_exposure() added to execution.py. Uses correlation_group_config to check group membership. Counts open trades in same group. Blocks if >= max_correlated_exposure (default 2). Logs to observations.jsonl category='correlation_block'. Called in execute_trade() before OANDA init."
+    },
+    {
+      "id": "US-040",
+      "title": "RL trade outcome sync to agent weight learning",
+      "description": "As a self-improving system, every closed trade must feed back into RL reward signals. Currently agent weights update but the RL sizer/gates/exits models never receive live trade outcomes.",
+      "acceptanceCriteria": [
+        "New method: _sync_trade_outcome_to_rl(trade_result) in execution.py",
+        "Appends (state, action, reward) tuples to RL replay buffer file",
+        "Reward = normalized P/L relative to risk taken (pnl / sl_pips)",
+        "Called automatically after every trade close detection",
+        "RL buffer persists to trained_data/rl_replay_buffer.jsonl",
+        "Syntax validation passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "_sync_trade_outcome_to_rl() added. State includes pair, direction, confidence, atr, regime, consensus, uncertainty. Action includes lots, sl_pips, tp_pips. Reward = pnl_pips / sl_pips. Appends JSONL to trained_data/rl_replay_buffer.jsonl. Called automatically in sync_closed_trades_rl() after each trade match."
+    },
+    {
+      "id": "US-041",
+      "title": "Remove orphan agents.py and consolidate learnings",
+      "description": "As a maintainable codebase, dead code must be removed and learnings must be consolidated per improvement rules (archive when >30 entries).",
+      "acceptanceCriteria": [
+        "src/scanner/agents.py (orphan 1690-line file) removed — all functionality lives in agents/_team.py",
+        "No import breaks after removal (verify with test_no_tf_boot.py)",
+        "learnings.md consolidated: entries older than Phase 4 archived to learnings-archive.md",
+        "Active learnings.md has only Phase 4+ entries (under 30 entries)",
+        "Syntax validation passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "agents.py renamed to .orphan_backup (non-destructive). All imports verified working via test_no_tf_boot.py (5/5 pass). learnings.md consolidated: pre-Phase-4 entries (Model Accuracy, Phase 2, Phase 3, Reality Audit) archived to learnings-archive.md. Active file has ~25 entries (Phase 4+)."
+    },
+    {
+      "id": "US-042",
+      "title": "Trade outcome enrichment and journal quality",
+      "description": "As a learning system, the trade journal must capture richer outcome data for RL and pattern extraction. Currently entries lack exit data, duration, and regime context.",
+      "acceptanceCriteria": [
+        "Trade journal entries include: exit_price, exit_time, duration_minutes, regime_at_entry, regime_at_exit",
+        "Closed trade detection populates these fields from OANDA trade history",
+        "Journal entries with missing P/L get backfilled from OANDA realized P/L",
+        "Summary stats method: win_rate_by_pair(), avg_duration(), avg_rr_ratio()",
+        "Syntax validation passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "outcome_data enriched with exit_price, exit_time, duration_minutes, regime_at_entry, regime_at_exit. Duration calculated from entry timestamp to OANDA closeTime. Three summary stats methods added to ExecutionManager: win_rate_by_pair(), avg_duration(pair=None), avg_rr_ratio(pair=None). All syntax validated."
+    }
+  ]
+}

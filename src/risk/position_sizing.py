@@ -162,6 +162,20 @@ class DynamicPositionSizer:
             account_equity, stop_loss_pips, instrument
         )
 
+        # Apply adaptive risk scaling (drawdown protection / streak boost)
+        try:
+            from src.risk.adaptive_scaler import AdaptiveRiskScaler
+            scaler = AdaptiveRiskScaler()
+            scale_factor = scaler.get_scale_factor()
+            if scale_factor != 1.0:
+                base_position_size = int(base_position_size * scale_factor)
+                logger.debug(
+                    f"Adaptive risk scale: {scale_factor:.2f}x → "
+                    f"base_position={base_position_size}"
+                )
+        except Exception:
+            pass  # Graceful fallback: use unscaled position
+
         # Determine confidence score to use
         if calibrated_confidence is not None:
             confidence_score = calibrated_confidence.calibrated_confidence

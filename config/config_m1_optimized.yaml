@@ -237,11 +237,11 @@ kernel_regularizer: 0.002
 # ----- OVERFIT PREVENTION -----
 # Controls the OverfitPreventionCallback that monitors train-val gap
 overfit_prevention:
-  overfit_threshold: 0.08       # 8% train-val gap triggers warning
-  critical_threshold: 0.15      # 15% gap triggers LR reduction
-  severe_threshold: 0.25        # 25% gap triggers early stop
-  max_acceptable_gap: 0.12      # Won't save checkpoint if gap > 12%
-  patience_epochs: 3            # Consecutive overfit epochs before intervention
+  overfit_threshold: 0.04       # 4% train-val gap triggers warning (tightened from 8%)
+  critical_threshold: 0.08      # 8% gap triggers LR reduction (tightened from 15%)
+  severe_threshold: 0.15        # 15% gap triggers early stop (tightened from 25%)
+  max_acceptable_gap: 0.06      # Won't save checkpoint if gap > 6% (tightened from 12%)
+  patience_epochs: 2            # Consecutive overfit epochs before intervention (tightened from 3)
   auto_adjust_dropout: true     # Dynamically increase dropout on overfitting
   auto_reduce_lr: true          # Dynamically reduce LR on overfitting
   max_dropout_increase: 0.3     # Cap on dropout increase

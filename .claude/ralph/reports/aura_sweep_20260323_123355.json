@@ -1,0 +1,60 @@
+{
+  "timestamp": "2026-03-23T12:33:55.305471+00:00",
+  "project": "aura",
+  "session": "cool-awesome-darwin",
+  "active_prd": "prd_aura_phase2.json",
+  "prd_phase": "ralph/aura-hardening-phase2",
+  "memory_summary": "PRD 6/6 (ralph/aura-hardening-phase2) | Phases: 1 | Chains: 1",
+  "gap_detection": {
+    "modules_scanned": 83,
+    "aura_specific_gaps": 0,
+    "total_gaps_in_automation": 134,
+    "critical_gaps": 0,
+    "high_gaps": 67,
+    "medium_gaps": 64,
+    "note": "All 134 gaps are Buddy automation modules (state persistence), none Aura-specific. GapWirer did not generate a new PRD because Buddy's prd.json has 0/30 stories in progress."
+  },
+  "code_review": {
+    "verdict": "FAIL",
+    "review_method": "static (Claude CLI unavailable \u2014 fallback per task spec)",
+    "files_reviewed": [
+      "src/aura/bridge/rules_engine.py",
+      "src/aura/patterns/engine.py",
+      "src/aura/prediction/readiness_v2.py",
+      "src/aura/prediction/override_predictor.py",
+      "src/aura/cli/companion.py"
+    ],
+    "blockers": [
+      {
+        "story": "US-211",
+        "severity": "blocker",
+        "finding": "tests/test_aura_readiness.py, tests/test_aura_conversation.py, tests/test_aura_bridge.py not found anywhere in repo. PRD records passes=true and '59/59 pass' but files are absent on disk. Acceptance criteria explicitly requires these files in tests/."
+      }
+    ],
+    "suggestions": [
+      {
+        "story": "US-207",
+        "severity": "suggestion",
+        "finding": "Tier cascade uses disk-reload (_reload_tier_patterns) between tiers rather than in-memory propagation. T2 sees T1's saved patterns but not newly-detected in-memory findings from this cycle. Acceptable for now but worth revisiting for real-time cascade accuracy."
+      }
+    ],
+    "nits": [
+      {
+        "story": "US-208",
+        "finding": "OOD blending formula (result*0.6 + 0.5*0.4) is sound. Hardcoded 0.6/0.4 weights could be config-driven in future."
+      }
+    ],
+    "passing_checks": {
+      "US-206": "PASS \u2014 is_expired() correctly fails-safe on empty/malformed expires_at, syntax OK",
+      "US-207": "PASS \u2014 _reload_tier_patterns() wired into run_all(), syntax OK, all tiers importable",
+      "US-208": "PASS \u2014 OOD detection in both readiness_v2 and override_predictor, blends toward 0.5, syntax OK",
+      "US-209": "PASS \u2014 post-onboarding validation present (line 283-291), warns user, logs warning, sets readiness to 50",
+      "US-210": "PASS \u2014 _OP_ORDER precedence + _CLAMP_RANGES implemented, logs when clamping, syntax OK",
+      "US-211": "FAIL \u2014 test files absent from tests/"
+    }
+  },
+  "action_taken": "chain_triggered",
+  "next_action": "Create missing test files for US-211: tests/test_aura_readiness.py, tests/test_aura_conversation.py, tests/test_aura_bridge.py",
+  "all_prds_complete": true,
+  "note": "Both prd_aura_phase1 and prd_aura_phase2 show all stories passed. However, US-211 test files are missing on disk \u2014 the stories passed flag appears to have been set without actual file creation. A follow-up micro-fix is needed."
+}

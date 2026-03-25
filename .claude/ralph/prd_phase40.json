@@ -1,0 +1,85 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/scaling-data-meta-hardening-phase40",
+  "description": "Buddy Phase 40 \u2014 Scaling, Data Pipeline & Meta-Labeling Hardening. aggressive_scaling.py (1115 lines, 0 tests) is the Kelly-criterion position sizing engine. data_preparation.py (1165 lines, 0 tests) handles augmentation and data prep. buddy_training_helpers.py (1783 lines, 0 tests) provides data loading/filtering utilities. meta_labeling.py (1167 lines, 0 tests) implements the meta-labeling confidence filter. Target: 90+ new tests.",
+  "userStories": [
+    {
+      "id": "US-254",
+      "title": "Unit tests for KellyCalculator and position sizing",
+      "description": "Test KellyCalculator.calculate_kelly_fraction(), calculate_position_size(). Test Kelly formula math, phase multipliers, slippage adjustment, sample size scaling, leverage limits.",
+      "acceptanceCriteria": [
+        "At least 15 unit tests",
+        "Cover: Kelly formula correctness, all 4 phases, JPY pair handling, zero/edge inputs",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Combined with US-259 in test_aggressive_scaling.py. Kelly formula, position sizing, phase multipliers. 101 total tests."
+    },
+    {
+      "id": "US-255",
+      "title": "Unit tests for AggressiveScaling risk management and execution",
+      "description": "Test SmartOrderExecutor, IntradayCompounder, AggressiveRiskManager, AggressiveScalingEngine orchestration, factory functions.",
+      "acceptanceCriteria": [
+        "At least 15 unit tests",
+        "Cover: order splitting, slippage estimation, compounding, streak adjustments, daily drawdown, factory engines",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "SmartOrderExecutor, IntradayCompounder, AggressiveRiskManager, factory functions. In test_aggressive_scaling.py."
+    },
+    {
+      "id": "US-256",
+      "title": "Unit tests for data augmentation and preparation utilities",
+      "description": "Test augment_time_series, augment_time_series_batch, PreparedData, ScalerState. Pure numpy functions.",
+      "acceptanceCriteria": [
+        "At least 12 unit tests",
+        "Cover: jittering/scaling augmentation, PreparedData.validate(), ScalerState transform/inverse round-trip",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "24 tests in test_data_prep_helpers.py. Augmentation, PreparedData, ScalerState."
+    },
+    {
+      "id": "US-257",
+      "title": "Unit tests for training helper utilities",
+      "description": "Test _require_ohlcv_columns, _apply_min_volume_filter, _apply_spread_filter, _normalize_pair_dataframe, _combine_pair_dataframes, _get_available_features, _compute_direction_targets.",
+      "acceptanceCriteria": [
+        "At least 12 unit tests",
+        "Cover: OHLCV validation, volume/spread filtering, direction target computation, feature selection",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "24 tests in test_data_prep_helpers.py. OHLCV validation, volume/spread filtering, direction targets."
+    },
+    {
+      "id": "US-258",
+      "title": "Unit tests for MetaLabeler core computation",
+      "description": "Test MetaLabelingConfig defaults, generate_meta_labels(), get_position_size(), feature alignment logic.",
+      "acceptanceCriteria": [
+        "At least 12 unit tests",
+        "Cover: config defaults, meta-label generation, position sizing bounds, feature alignment padding/truncation",
+        "All tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "38 tests in test_meta_labeling_core.py. Config defaults, generate_meta_labels, get_position_size, feature alignment."
+    },
+    {
+      "id": "US-259",
+      "title": "Unit tests for AggressiveScaling config dataclasses",
+      "description": "Test all config dataclasses: TradingStats, KellyConfig, ExecutionConfig, CompoundingConfig, DrawdownConfig, AggressiveScalingConfig. Test TradingStats.update_from_trades and properties.",
+      "acceptanceCriteria": [
+        "At least 10 unit tests",
+        "Cover: defaults, risk_reward_ratio property, update_from_trades, factory function configs",
+        "All tests pass"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Combined with US-254 in test_aggressive_scaling.py. All config dataclasses, TradingStats properties."
+    }
+  ]
+}

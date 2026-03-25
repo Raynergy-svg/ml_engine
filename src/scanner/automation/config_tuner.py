@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 RULES_PATH = Path(".claude/rules/trading.md")
 ADJUSTMENTS_PATH = Path(".claude/config_adjustments.json")
 APPLIED_RULES_PATH = Path(".claude/config_applied_rules.json")
+ROLLBACK_LOG_PATH = Path("trained_data/config_rollback_log.jsonl")
 
 # Bounds to prevent runaway tuning
 # Every field that can be adjusted must have explicit min/max bounds
@@ -159,6 +160,130 @@ class ConfigTuner:
                 return {"field": "max_model_disagreement", "old": old, "new": new, "rule": rule}
 
         return None
+
+    def compare_session_performance(
+        self, current_win_rate: float, current_trade_count: int, config: "ScannerConfig"
+    ) -> List[Dict[str, Any]]:
+        """Compare current session performance against recent snapshots.
+
+        If win rate dropped > 10% compared to historical average, identifies
+        recent config changes as suspects and rolls them back.
+
+        Args:
+            current_win_rate: Current session's win rate (0.0 to 1.0)
+            current_trade_count: Number of trades in current session
+            config: Current ScannerConfig to potentially rollback
+
+        Returns:
+            List of rollback actions taken (empty if none)
+        """
+        if current_trade_count < 5:
+            return []  # Not enough data to evaluate
+
+        # Load recent session snapshots
+        try:
+            from src.scanner.automation.session_snapshot import SessionSnapshotManager
+            snapshot_mgr = SessionSnapshotManager()
+            snapshots = snapshot_mgr.load_recent_snapshots(n=3)
+        except Exception as e:
+            logger.debug(f"Cannot load session snapshots for comparison: {e}")
+            return []
+
+        if not snapshots:
+            return []
+
+        # Calculate historical average win rate
+        historical_rates = [s.win_rate for s in snapshots if s.win_rate > 0]
+        if not historical_rates:
+            return []
+
+        avg_historical = sum(historical_rates) / len(historical_rates)
+        delta = current_win_rate - avg_historical
+
+        if delta >= -0.10:
+            # No significant drop
+            logger.debug(
+                f"Session performance OK: current={current_win_rate:.1%} vs "
+                f"historical={avg_historical:.1%} (delta={delta:+.1%})"
+            )
+            return []
+
+        logger.warning(
+            f"Session performance DROP: current={current_win_rate:.1%} vs "
+            f"historical={avg_historical:.1%} (delta={delta:+.1%}). "
+            f"Checking for suspect config changes..."
+        )
+
+        # Find recent config adjustments that might be causing the drop
+        rollbacks: List[Dict[str, Any]] = []
+        if not self.adjustments_path.exists():
+            return rollbacks
+
+        try:
+            adjustments = json.loads(self.adjustments_path.read_text())
+        except Exception:
+            return rollbacks
+
+        if not adjustments:
+            return rollbacks
+
+        # Get the last snapshot's timestamp to find adjustments made after it
+        last_snapshot_ts = snapshots[0].timestamp if snapshots else ""
+
+        # Find suspect adjustments (made after last good snapshot)
+        suspects = [
+            adj for adj in adjustments
+            if adj.get("timestamp", "") > last_snapshot_ts
+        ]
+
+        if not suspects:
+            return rollbacks
+
+        # Roll back suspect config changes
+        for adj in suspects:
+            field = adj.get("field", "")
+            old_val = adj.get("old")
+            if field and old_val is not None and hasattr(config, field):
+                current_val = getattr(config, field)
+                setattr(config, field, old_val)
+                rollback = {
+                    "field": field,
+                    "rolled_back_from": current_val,
+                    "rolled_back_to": old_val,
+                    "reason": f"Win rate dropped {delta:+.1%} (current={current_win_rate:.1%} vs avg={avg_historical:.1%})",
+                    "suspect_adjustment": adj,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                rollbacks.append(rollback)
+                logger.warning(
+                    f"ROLLBACK: {field} {current_val} → {old_val} "
+                    f"(suspect change caused {delta:+.1%} win rate drop)"
+                )
+
+                # Remove the rule hash from applied rules so it can be re-evaluated
+                rule_hash = hashlib.md5(adj.get("rule", "").encode()).hexdigest()
+                self._applied_rules.discard(rule_hash)
+
+        if rollbacks:
+            self._save_applied_rules()
+            self._log_rollbacks(rollbacks)
+
+        return rollbacks
+
+    def _log_rollbacks(self, rollbacks: List[Dict[str, Any]]) -> None:
+        """Log rollback events to trained_data/config_rollback_log.jsonl."""
+        try:
+            from src.scanner.automation.safe_json import safe_jsonl_append
+            for rb in rollbacks:
+                safe_jsonl_append(ROLLBACK_LOG_PATH, rb)
+        except ImportError:
+            try:
+                ROLLBACK_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+                with open(ROLLBACK_LOG_PATH, "a", encoding="utf-8") as f:
+                    for rb in rollbacks:
+                        f.write(json.dumps(rb, default=str) + "\n")
+            except Exception as e:
+                logger.debug(f"Failed to log rollback: {e}")
 
     def _log_adjustments(self, adjustments: List[Dict[str, Any]]) -> None:
         """Persist adjustments to .claude/config_adjustments.json with file locking."""

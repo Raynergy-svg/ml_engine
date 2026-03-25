@@ -1,0 +1,58 @@
+{
+  "TEST_PAIR": {
+    "pair": "TEST_PAIR",
+    "n_folds": 3,
+    "fold_results": [
+      {
+        "fold": 0,
+        "train_start": "2025-01-01 00:00:00",
+        "train_end": "2025-01-30 23:00:00",
+        "test_start": "2025-01-31 00:00:00",
+        "test_end": "2025-02-09 23:00:00",
+        "train_samples": 720,
+        "test_samples": 240,
+        "accuracy": 0.5106,
+        "sharpe": 4.4429,
+        "max_drawdown": -0.000942,
+        "wins": 24,
+        "losses": 23
+      },
+      {
+        "fold": 1,
+        "train_start": "2025-01-11 00:00:00",
+        "train_end": "2025-02-09 23:00:00",
+        "test_start": "2025-02-10 00:00:00",
+        "test_end": "2025-02-19 23:00:00",
+        "train_samples": 720,
+        "test_samples": 240,
+        "accuracy": 0.4043,
+        "sharpe": -28.8574,
+        "max_drawdown": -0.003126,
+        "wins": 19,
+        "losses": 28
+      },
+      {
+        "fold": 2,
+        "train_start": "2025-01-21 00:00:00",
+        "train_end": "2025-02-19 23:00:00",
+        "test_start": "2025-02-20 00:00:00",
+        "test_end": "2025-03-01 23:00:00",
+        "train_samples": 720,
+        "test_samples": 240,
+        "accuracy": 0.5957,
+        "sharpe": 16.8659,
+        "max_drawdown": -0.00045,
+        "wins": 28,
+        "losses": 19
+      }
+    ],
+    "mean_accuracy": 0.5035,
+    "std_accuracy": 0.0783,
+    "min_accuracy": 0.4043,
+    "mean_sharpe": -2.5162,
+    "mean_max_drawdown": -0.0015,
+    "passed": false,
+    "pass_threshold": 0.53,
+    "timestamp": "2026-03-19T21:38:51.576426+00:00"
+  }
+}

@@ -1,0 +1,732 @@
+{
+  "candles_per_pair": 25000,
+  "completed_at": "2026-03-24T08:00:02.249473",
+  "granularity": "H1",
+  "masters": [
+    "GBP_JPY",
+    "EUR_GBP",
+    "AUD_USD",
+    "USD_CAD",
+    "AUD_NZD"
+  ],
+  "max_acceptable_gap": 0.06,
+  "results": [
+    {
+      "duration_s": 1.9,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_direction",
+      "pair": "GBP_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "tcn_direction",
+      "pair": "GBP_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 5.0,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_momentum",
+      "pair": "GBP_JPY",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.7,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_risk",
+      "pair": "GBP_JPY",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.6,
+      "error": null,
+      "gap": 0,
+      "model": "ridge_confidence",
+      "pair": "GBP_JPY",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "histgb_direction",
+      "pair": "GBP_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "'TCNVolatilityRegimeTrainer' object has no attribute 'prepare_data'",
+      "gap": 0.0,
+      "model": "tcn_volatility_regime",
+      "pair": "GBP_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_regime",
+      "pair": "GBP_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "Can't instantiate abstract class RegimeLGBMTrainer with abstract method train",
+      "gap": 0.0,
+      "model": "regime_lgbm_ensemble",
+      "pair": "GBP_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "No transformer model",
+      "gap": 0.0,
+      "model": "confidence_calibrator",
+      "pair": "GBP_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_direction",
+      "pair": "EUR_GBP",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "tcn_direction",
+      "pair": "EUR_GBP",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 4.7,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_momentum",
+      "pair": "EUR_GBP",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.7,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_risk",
+      "pair": "EUR_GBP",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.5,
+      "error": null,
+      "gap": 0,
+      "model": "ridge_confidence",
+      "pair": "EUR_GBP",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "histgb_direction",
+      "pair": "EUR_GBP",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "'TCNVolatilityRegimeTrainer' object has no attribute 'prepare_data'",
+      "gap": 0.0,
+      "model": "tcn_volatility_regime",
+      "pair": "EUR_GBP",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_regime",
+      "pair": "EUR_GBP",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "Can't instantiate abstract class RegimeLGBMTrainer with abstract method train",
+      "gap": 0.0,
+      "model": "regime_lgbm_ensemble",
+      "pair": "EUR_GBP",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "No transformer model",
+      "gap": 0.0,
+      "model": "confidence_calibrator",
+      "pair": "EUR_GBP",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_direction",
+      "pair": "AUD_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "tcn_direction",
+      "pair": "AUD_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 4.7,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_momentum",
+      "pair": "AUD_USD",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.7,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_risk",
+      "pair": "AUD_USD",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.5,
+      "error": null,
+      "gap": 0,
+      "model": "ridge_confidence",
+      "pair": "AUD_USD",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "histgb_direction",
+      "pair": "AUD_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "'TCNVolatilityRegimeTrainer' object has no attribute 'prepare_data'",
+      "gap": 0.0,
+      "model": "tcn_volatility_regime",
+      "pair": "AUD_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_regime",
+      "pair": "AUD_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "Can't instantiate abstract class RegimeLGBMTrainer with abstract method train",
+      "gap": 0.0,
+      "model": "regime_lgbm_ensemble",
+      "pair": "AUD_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "No transformer model",
+      "gap": 0.0,
+      "model": "confidence_calibrator",
+      "pair": "AUD_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_direction",
+      "pair": "USD_CAD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "tcn_direction",
+      "pair": "USD_CAD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 4.7,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_momentum",
+      "pair": "USD_CAD",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.7,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_risk",
+      "pair": "USD_CAD",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.6,
+      "error": null,
+      "gap": 0,
+      "model": "ridge_confidence",
+      "pair": "USD_CAD",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "histgb_direction",
+      "pair": "USD_CAD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "'TCNVolatilityRegimeTrainer' object has no attribute 'prepare_data'",
+      "gap": 0.0,
+      "model": "tcn_volatility_regime",
+      "pair": "USD_CAD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_regime",
+      "pair": "USD_CAD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "Can't instantiate abstract class RegimeLGBMTrainer with abstract method train",
+      "gap": 0.0,
+      "model": "regime_lgbm_ensemble",
+      "pair": "USD_CAD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "No transformer model",
+      "gap": 0.0,
+      "model": "confidence_calibrator",
+      "pair": "USD_CAD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_direction",
+      "pair": "AUD_NZD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "tcn_direction",
+      "pair": "AUD_NZD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 4.7,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_momentum",
+      "pair": "AUD_NZD",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.7,
+      "error": null,
+      "gap": 0,
+      "model": "lgbm_risk",
+      "pair": "AUD_NZD",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 4.5,
+      "error": null,
+      "gap": 0,
+      "model": "ridge_confidence",
+      "pair": "AUD_NZD",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "local variable 'dir_data' referenced before assignment",
+      "gap": 0.0,
+      "model": "histgb_direction",
+      "pair": "AUD_NZD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "'TCNVolatilityRegimeTrainer' object has no attribute 'prepare_data'",
+      "gap": 0.0,
+      "model": "tcn_volatility_regime",
+      "pair": "AUD_NZD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transformer_regime",
+      "pair": "AUD_NZD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "Can't instantiate abstract class RegimeLGBMTrainer with abstract method train",
+      "gap": 0.0,
+      "model": "regime_lgbm_ensemble",
+      "pair": "AUD_NZD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "No transformer model",
+      "gap": 0.0,
+      "model": "confidence_calibrator",
+      "pair": "AUD_NZD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 123.0,
+      "error": "'JointMultiPairTrainer' object has no attribute 'train_all'",
+      "gap": 0.0,
+      "model": "joint_multi_pair",
+      "pair": "JOINT",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 12.4,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_GBP_JPY",
+      "pair": "EUR_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.8,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_GBP_JPY",
+      "pair": "AUD_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.6,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_GBP_JPY",
+      "pair": "NZD_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.9,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_GBP_JPY",
+      "pair": "USD_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.4,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_EUR_GBP",
+      "pair": "EUR_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.8,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_EUR_GBP",
+      "pair": "EUR_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.6,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_EUR_GBP",
+      "pair": "EUR_AUD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.6,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_EUR_GBP",
+      "pair": "GBP_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.6,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_EUR_GBP",
+      "pair": "GBP_AUD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.7,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_AUD_USD",
+      "pair": "NZD_USD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.5,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_AUD_USD",
+      "pair": "AUD_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.5,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_AUD_USD",
+      "pair": "NZD_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 11.1,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_USD_CAD",
+      "pair": "USD_JPY",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.8,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_USD_CAD",
+      "pair": "USD_CHF",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.7,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_AUD_NZD",
+      "pair": "GBP_AUD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 10.9,
+      "error": "load_direction_data() got an unexpected keyword argument 'seq_len'",
+      "gap": 0.0,
+      "model": "transfer_from_AUD_NZD",
+      "pair": "EUR_AUD",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.8,
+      "error": "[Errno 32] Broken pipe",
+      "gap": 0.0,
+      "model": "rl_position_sizer",
+      "pair": "ALL",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "GateThresholdRL.train() got an unexpected keyword argument 'total_timesteps'",
+      "gap": 0.0,
+      "model": "rl_gate_thresholds",
+      "pair": "ALL",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "OptimalExitRL.train() got an unexpected keyword argument 'total_timesteps'",
+      "gap": 0.0,
+      "model": "rl_optimal_exits",
+      "pair": "ALL",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    },
+    {
+      "duration_s": 0.0,
+      "error": "'MetaLabelerRetrainer' object has no attribute 'retrain'",
+      "gap": 0.0,
+      "model": "meta_labeler",
+      "pair": "ALL",
+      "passed": false,
+      "train_acc": 0.0,
+      "val_acc": 0.0
+    }
+  ],
+  "summary": {
+    "errors": 56,
+    "failed": 0,
+    "passed": 0,
+    "total_models": 71
+  },
+  "total_time_seconds": 454.5240111351013
+}

@@ -1,0 +1,61 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-code-review-fixes-phase31",
+  "description": "Buddy Phase 31 — Code Review Fixes & Hardening. Addresses 6 blockers and top suggestions from Ralph code review sweep. Fixes: cycle_count NameError in continuous.py, wrong config type passed to ScannerAgentTeam, unguarded JSON parse in _update_pair_performance, silent except:pass blocks in observation logging, Path import guard in _spawn_background_retrain, cached fetch_live_nav to avoid 4x redundant API calls. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-186",
+      "title": "Fix cycle_count NameError in continuous.py _run_smart_loop",
+      "description": "cycle_count is used at lines 948 and 1033 in _run_smart_loop but is never defined. This causes a NameError at runtime when agent degradation or observation consumer code paths are reached.",
+      "acceptanceCriteria": ["Define cycle_count from self._scan_count or a local counter in _run_smart_loop", "cycle_count % 5 and % 10 checks work correctly", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Replaced cycle_count with self._scan_count at both locations (lines 948 and 1033). Tagged with US-186."
+    },
+    {
+      "id": "US-187",
+      "title": "Fix ScannerAgentTeam wrong config type in continuous.py",
+      "description": "At lines 579 and 1073, ScannerAgentTeam(self.config) passes ContinuousConfig instead of ScannerConfig. Should use self.scanner.config.",
+      "acceptanceCriteria": ["Replace self.config with self.scanner.config for ScannerAgentTeam construction", "Both session snapshot save and weight decay use correct config", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Both ScannerAgentTeam(self.config) calls replaced with ScannerAgentTeam(self.scanner.config). Tagged with US-187."
+    },
+    {
+      "id": "US-188",
+      "title": "Guard _update_pair_performance JSON parse in execution.py",
+      "description": "Line 2603: json.loads(journal_path.read_text()) has no try/except. Corrupted JSON crashes the RL sync path.",
+      "acceptanceCriteria": ["Wrap JSON parse in try/except with graceful return", "Log warning on parse failure", "Use safe_json_read if available", "Syntax validation passes"],
+      "priority": 1,
+      "passes": true,
+      "notes": "Wrapped json.loads in try/except(json.JSONDecodeError, OSError) with logger.warning and return. Added isinstance(entries, list) guard."
+    },
+    {
+      "id": "US-189",
+      "title": "Replace silent except:pass blocks in continuous.py observation logging",
+      "description": "Multiple except Exception: pass blocks in continuous.py around observation logging hide real errors. Replace with logger.debug diagnostics.",
+      "acceptanceCriteria": ["Find all bare except:pass blocks in continuous.py", "Replace with logger.debug with contextual message", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Replaced 2 remaining bare except:pass blocks: dashboard formatting (line 288) and agent lifecycle observation (line 941). All others were already fixed with logging by prior sessions."
+    },
+    {
+      "id": "US-190",
+      "title": "Ensure Path import in _spawn_background_retrain",
+      "description": "_spawn_background_retrain at line 1375 uses Path() but relies on a local import that may be fragile. Ensure robust import.",
+      "acceptanceCriteria": ["Verify Path is imported before use in _spawn_background_retrain", "Add from pathlib import Path if missing", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Local import 'from pathlib import Path' already added at line 1366 with US-190 tag."
+    },
+    {
+      "id": "US-191",
+      "title": "Cache fetch_live_nav in execute_trade to avoid redundant API calls",
+      "description": "execute_trade calls fetch_live_nav() up to 4 times per invocation. Cache the result for the duration of the method.",
+      "acceptanceCriteria": ["Single fetch_live_nav call at start of execute_trade", "Reuse cached NAV value throughout", "No behavior change on success path", "Syntax validation passes"],
+      "priority": 2,
+      "passes": true,
+      "notes": "Single _cached_nav = self.fetch_live_nav() at line 954, reused at 3 position sizing locations (lines 990, 1000, 1020). Tagged with US-191."
+    }
+  ]
+}

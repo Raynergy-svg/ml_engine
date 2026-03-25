@@ -1,0 +1,103 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-execution-intelligence-phase10",
+  "description": "Buddy Phase 10 \u2014 Execution Intelligence & Causal Learning. Phase 9 closed feedback loops. Phase 10 adds causal learning (exit reason extraction), portfolio optimization (pair affinity), model health tracking (gate degradation), time seasonality, per-agent attribution, and macro risk filtering. DIRECTIVE: NEVER STOP BRAINSTORMING/RESEARCHING AND IMPROVING. DONT ASK FOR EVERY COMMAND, JUST DO. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-061",
+      "title": "Exit reason extraction and journal enrichment",
+      "description": "Systematically record WHY trades exited (TP-hit, SL-hit, trailing-stop, timeout, manual). Enrich journal entries with exit_reason field. Enables causal RL: distinguish 'good rule bad luck' from 'bad rule good luck'.",
+      "acceptanceCriteria": [
+        "execution.py adds exit_reason field to journal close records",
+        "Exit reasons: tp_hit, sl_hit, trailing_stop, breakeven_stop, timeout, manual_close",
+        "Detect exit reason by comparing close_price to SL/TP levels",
+        "online_rl.py can segment weight updates by exit reason",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Exit reason detection added to sync_closed_trades_rl via _determine_exit_reason. Classifies: tp_hit, sl_hit, trailing_stop, breakeven_stop, timeout, manual_close. Compares close_price to SL/TP with 2-pip tolerance. exit_reason field added to outcome_data."
+    },
+    {
+      "id": "US-062",
+      "title": "Trade pair affinity matrix for portfolio optimization",
+      "description": "Build historical co-occurrence matrix tracking which pairs win/lose together. Use affinity scores to recommend optimal pair combinations and avoid negatively-correlated pair sets.",
+      "acceptanceCriteria": [
+        "New class PairAffinityTracker in src/scanner/automation/pair_affinity.py",
+        "Computes co-win rate, co-loss rate for all pair combinations from journal",
+        "Persists 27x27 affinity matrix to trained_data/models/pair_affinity_matrix.json",
+        "get_affinity_score(pair_a, pair_b) returns float -1 to 1",
+        "portfolio_optimizer.py uses affinity to recommend pair sets",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "PairAffinityTracker created in pair_affinity.py. Builds 27x27 co-occurrence matrix from overlapping trades. get_affinity_score() returns -1 to 1. get_best_companions() returns top diversification pairs. Persists to pair_affinity_matrix.json."
+    },
+    {
+      "id": "US-063",
+      "title": "Gate model degradation detector with fallback heuristics",
+      "description": "Track per-gate model accuracy during live inference. When gate accuracy drops below 50% over rolling window, substitute with simple heuristic fallback to prevent silent degradation.",
+      "acceptanceCriteria": [
+        "GateEvaluator tracks per-gate rolling accuracy (last 50 predictions)",
+        "Persists gate accuracy to trained_data/models/gate_accuracy.json",
+        "When gate accuracy < 50% over 50+ samples: switch to heuristic fallback",
+        "Fallback heuristics defined per gate type",
+        "Gate health logged to observation_log (gate_degradation category)",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "GateHealthTracker in gate_health.py. Rolling 50-prediction window per gate. Degradation detected when accuracy < 50%. Fallback heuristics defined per gate type. Logs gate_degradation to observation_log."
+    },
+    {
+      "id": "US-064",
+      "title": "Hour-of-day seasonality extraction and confidence adjustment",
+      "description": "Analyze per-pair hour-of-day win rates from journal. Apply confidence multiplier to adjust position sizing based on historically profitable/unprofitable hours per pair.",
+      "acceptanceCriteria": [
+        "New class SeasonalityTracker in src/scanner/automation/seasonality.py",
+        "Extracts hour-of-day win rate per pair from trade_journal_rl.json",
+        "Persists to trained_data/models/hour_seasonality.json",
+        "get_hour_modifier(pair, hour) returns float 0.7-1.3",
+        "Wired into engine.py _scan_pair to adjust confidence by hour",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "SeasonalityTracker in seasonality.py. Per-pair hour-of-day win rate extraction from journal. get_hour_modifier() returns 0.70-1.30. Wired into engine.py analysis_context as seasonality_modifier. Persists to hour_seasonality.json."
+    },
+    {
+      "id": "US-065",
+      "title": "Per-agent contribution attribution with pair-specific tracking",
+      "description": "Decompose wins/losses by agent contribution. Track per-pair per-agent win rate to identify domain-specific agent strengths and weaknesses.",
+      "acceptanceCriteria": [
+        "AgentHealthMonitor extended with per-pair metrics tracking",
+        "record_outcome() now accepts pair parameter for pair-specific attribution",
+        "get_pair_agent_matrix() returns {pair: {agent: {win_rate, trades}}}",
+        "Agents with <30% win rate on specific pair get pair-specific decay",
+        "Attribution data logged to trained_data/agent_attribution.json",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "AgentHealthMonitor extended with per-pair metrics via _pair_metrics. record_outcome() accepts pair parameter. get_pair_agent_matrix() returns pair-specific win rates. get_pair_specific_decay_rates() gives 3x decay for agents with <30% win rate on specific pairs. save_attribution() persists to agent_attribution.json."
+    },
+    {
+      "id": "US-066",
+      "title": "Derived macro stress indicator for position sizing",
+      "description": "Compute a macro stress score from FX-derived signals (DXY proxy via USD pairs, volatility regime persistence, spread widening trend). Apply macro_stress_modifier to position sizing during detected stress periods.",
+      "acceptanceCriteria": [
+        "New class MacroStressDetector in src/scanner/automation/macro_stress.py",
+        "Computes stress_score from: average USD pair volatility, regime persistence in HIGH/EXTREME, spread widening trend",
+        "No external API required \u2014 derived from existing OANDA data",
+        "get_stress_modifier() returns 0.5-1.0 (stress \u2192 reduce sizing)",
+        "Wired into engine.py execute_trades analysis_context",
+        "Stress events logged to observation_log (macro_stress category)",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "MacroStressDetector in macro_stress.py. Composite score from USD volatility, regime persistence, spread widening. get_stress_modifier() returns 0.50-1.0. Wired into engine.py analysis_context and execution.py lot sizing. Logs macro_stress to observation_log."
+    }
+  ]
+}

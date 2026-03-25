@@ -1,0 +1,106 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-intelligence-phase5",
+  "description": "Buddy Phase 5 — Critical Risk Controls & Operational Resilience. Live trading exposed position sizing breach (135% risk on single trade), weak agent consensus (1/3) still executing, and degraded ensemble without TF. Phase 5 hardens the system so it cannot self-harm even when models are missing. DIRECTIVE: NEVER STOP BRAINSTORMING/RESEARCHING AND IMPROVING. DONT ASK FOR EVERY COMMAND, JUST DO. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-031",
+      "title": "Fix position sizing pre-execution risk budget check",
+      "description": "As a risk management system, I must calculate projected portfolio risk BEFORE sending any order to OANDA, not after. The current system filled an 11.36 lot trade that consumed 135% of NAV risk budget.",
+      "acceptanceCriteria": [
+        "execution.py checks projected_risk = (existing_risk + new_trade_risk) BEFORE placing order",
+        "If projected_risk > max_portfolio_risk (15%), reduce lot size to fit within budget",
+        "If minimum viable lot (0.01) still exceeds budget, skip trade entirely with logged reason",
+        "Position sizing uses actual NAV from OANDA account, not cached value",
+        "Add unit test verifying: 11.36 lots on $102K NAV at ATR SL correctly rejected or downsized",
+        "Log every risk-adjusted sizing decision to observations.jsonl",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "_check_projected_portfolio_risk() added to execution.py. Projects new trade risk before order. Downsizes or skips if over 15% NAV budget."
+    },
+    {
+      "id": "US-032",
+      "title": "Agent consensus minimum gate (block trades with <3/12 agents)",
+      "description": "As a trading system, executing trades with only 1/3 agent consensus is reckless. Add a hard minimum agent consensus gate.",
+      "acceptanceCriteria": [
+        "New gate in engine.py: min_agent_consensus (default 0.25 = 3/12 agents)",
+        "Trades with agent_votes/agent_total < min_agent_consensus are blocked",
+        "Gate logged in why_no_trade with clear reason: 'agent consensus too low (1/12 < 3/12)'",
+        "Configurable per profile (smart=0.25, conservative=0.33, aggressive=0.17)",
+        "Works alongside existing weighted_vote_score check",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "min_agent_consensus_ratio added to ScannerConfig (default 0.25). Hard gate in _apply_agent_consensus() blocks trades below threshold."
+    },
+    {
+      "id": "US-033",
+      "title": "Graceful degraded-model ensemble with confidence penalty",
+      "description": "As a self-aware system, when TF/XGBoost models are unavailable, the ensemble should still function but apply a confidence penalty reflecting reduced prediction quality.",
+      "acceptanceCriteria": [
+        "engine.py detects which models are loaded at startup (TF, XGB, Ridge, RF, LightGBM)",
+        "If less than 3 model types available, apply degraded_ensemble_penalty to confidence",
+        "Penalty formula: confidence *= (available_models / expected_models) e.g. 2/5 = 0.4x",
+        "Log degraded state to observations.jsonl at startup with list of missing models",
+        "state.json tracks ensemble_health: {available: ['ridge','rf'], missing: ['tf','xgb','lgbm']}",
+        "Degraded ensemble still trades but with appropriately lowered confidence",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "_assess_ensemble_health() checks 5 model slots (tcn, histgb, regime_model, xgb, ridge). Penalty applied in _run_inference(). Logged to observations.jsonl."
+    },
+    {
+      "id": "US-034",
+      "title": "Harden all import chains with lazy loading audit",
+      "description": "As an operational system, the CLI must boot without tensorflow, xgboost, lightgbm, or catboost installed. All heavy ML imports must be lazy.",
+      "acceptanceCriteria": [
+        "Audit all __init__.py files in src/ for eager imports of tensorflow, xgboost, lightgbm, catboost",
+        "Convert any remaining eager imports to lazy (using __getattr__ pattern)",
+        "python main.py --help succeeds without tensorflow installed",
+        "python main.py scan --profile smart succeeds without tensorflow",
+        "Add smoke test: scripts/test_no_tf_boot.py that mocks tensorflow as missing and verifies CLI boot",
+        "Syntax validation passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "All __init__.py files clean. scripts/test_no_tf_boot.py blocks TF/XGB/LightGBM/CatBoost and verifies 5 import chains pass."
+    },
+    {
+      "id": "US-035",
+      "title": "Validator regression test and self-healing",
+      "description": "As a deployment system, the validator should test itself and auto-fix data issues it can safely repair (like missing agent weights or journal fields).",
+      "acceptanceCriteria": [
+        "validate_deployment.py --self-test runs validator against known-good and known-bad fixtures",
+        "Validator correctly maps pip package names to Python import names (sklearn, yaml, dotenv)",
+        "Validator understands regime-aware agent_weights.json format (not just flat dict)",
+        "Optional --auto-fix flag: auto-populates missing agent weights from _BASE_WEIGHTS baseline",
+        "Optional --auto-fix flag: computes missing sl_pips/tp_pips from price data in journal",
+        "Syntax validation passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "--self-test runs 5 fixture tests (known-good, missing agents, import map, auto-fix weights, auto-fix journal). --auto-fix safely repairs agent weights and journal fields."
+    },
+    {
+      "id": "US-036",
+      "title": "Live performance metrics and system health summary",
+      "description": "As an operator, I need a quick summary of system health, model status, and trading performance available from the CLI.",
+      "acceptanceCriteria": [
+        "python main.py status prints: NAV, open trades, win rate, model health, agent weights status",
+        "Shows ensemble status (which models loaded, which missing)",
+        "Shows last 5 trades with P/L and R:R",
+        "Shows active risk scaler state (normal/reduced/floor)",
+        "Shows blocked pairs and why",
+        "Output uses rich formatting (tables/panels)",
+        "Syntax validation passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "scripts/buddy_status.py with ANSI-formatted panels. Shows live OANDA NAV, open trades, recent trades, ensemble health, agent weights, risk scaler, blocked pairs. Wired into main.py dispatch."
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-signal-consumption-feedback-phase17",
+  "description": "Buddy Phase 17 — Signal Consumption & Feedback Loop Closure. Phases 1-16 built 55 automation modules that generate rich signals. Phase 17 wires orphaned modules into active decision pipelines: trade outcome prediction → position management, pair affinity → portfolio sizing, smart execution → order slicing, model bandit → pair routing, synthetic augmentation → retrain robustness, temporal attention → feedback loops. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-103",
+      "title": "Trade outcome prediction → live position management",
+      "description": "Wire trade_outcome_predictor (US-082) into execution monitoring loop. Currently the predictor exists (460 lines, GradientBoosting) but is never called for live positions. Integrate predictions (HOLD/TIGHTEN_SL/TAKE_PARTIAL/EXIT_EARLY) into trailing stop management so open trades adapt mid-flight. Creates the missing prediction → action feedback loop.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/position_manager.py with LivePositionManager class",
+        "evaluate_position(trade_context) computes 7 post-entry features and calls trade_outcome_predictor",
+        "Returns action recommendation: HOLD, TIGHTEN_SL, TAKE_PARTIAL, EXIT_EARLY with confidence",
+        "tighten_sl() moves SL closer by configurable ratio (default 50% of distance to entry)",
+        "Config flag: enable_live_position_management: bool = False",
+        "Persists position management decisions to trained_data/position_management_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented position_manager.py with LivePositionManager. Computes 7 post-entry features (dist_to_sl/tp_pct, mae/mfe_pips, bars_in_trade, momentum, vol_ratio). Routes win_prob to HOLD/TIGHTEN_SL/TAKE_PARTIAL/EXIT_EARLY actions. Circuit breaker (5 max actions/trade), cooldown (5 bars), min_bars guard. Lazy-loads trade_outcome_predictor. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-104",
+      "title": "Pair affinity scoring for portfolio sizing",
+      "description": "Wire pair_affinity (US-062) data into portfolio position sizing. Pair affinity matrix is generated but never consumed — trades are blocked by hard correlation threshold instead of continuously weighted. Create a continuous affinity-weighted position multiplier that replaces binary correlation blocking with nuanced sizing.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/affinity_portfolio.py with AffinityPortfolioSizer class",
+        "get_affinity_multiplier(pair, open_positions) returns position size multiplier [0.5, 1.2]",
+        "Uses pair_affinity_matrix.json data to compute portfolio-level affinity score",
+        "Negative affinity (likely to lose together) reduces size, positive allows full size",
+        "Config flag: enable_affinity_portfolio: bool = False",
+        "Persists affinity sizing decisions to trained_data/affinity_portfolio_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented affinity_portfolio.py with AffinityPortfolioSizer. Loads pair_affinity_matrix.json (co-occurrence data). Computes avg+max affinity vs open positions. Continuous multiplier [0.50, 1.20] replaces binary correlation blocking. Conservative approach: 60% avg + 40% max affinity. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-105",
+      "title": "Smart execution order slicing integration",
+      "description": "Wire smart_execution (US-075) into the trade execution pipeline. SmartExecutionEngine exists (473 lines, VWAP/TWAP strategies) but execute_trade() always sends full position immediately. Create an execution router that splits large orders into slices and feeds slippage back to execution_quality_tracker.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/execution_router.py with ExecutionRouter class",
+        "route_execution(pair, lot_size, regime) decides single-shot vs sliced execution",
+        "plan_slices(lot_size, strategy, pair) returns list of (slice_size, delay_ms) tuples",
+        "Feeds per-slice slippage back to execution_quality_tracker",
+        "Config flag: enable_execution_routing: bool = False",
+        "Persists routing decisions to trained_data/execution_routing_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implemented execution_router.py with ExecutionRouter. Regime-conditioned lot thresholds (LOW=0.10, EXTREME=0.03). TWAP slicing with adaptive reduction (0.80x) when slippage exceeds 1.5 pips. Per-pair historical slippage tracking for slice planning. record_slice_result() feeds back to execution_quality_tracker. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-106",
+      "title": "Model bandit routing for pair-specific ensemble selection",
+      "description": "Activate model_bandit (US-093) routing in the inference pipeline. Currently all 3 models (TCN/Ridge/RF) always run and average. Route to the best-performing model per pair/regime using bandit selection, with 1 fallback. Reduces compute by ~33% and improves signal quality by focusing on the calibrated model.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/model_router.py with ModelRouter class",
+        "select_models(pair, regime) returns primary + fallback model using bandit probabilities",
+        "blend_predictions(primary_pred, fallback_pred, primary_weight) returns blended confidence",
+        "record_outcome(pair, regime, selected_model, pnl_pips) feeds back to bandit",
+        "Config flag: enable_model_routing: bool = False",
+        "Persists routing decisions to trained_data/model_routing_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented model_router.py with ModelRouter. Lazy-loads model_bandit for arm probabilities. Selects primary (70%) + fallback (30%) models per pair/regime. Falls back to ALL_MODELS when bandit confidence < 0.40. record_outcome() feeds tanh-squashed PnL reward back to bandit. Model selection counts tracked for observability. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-107",
+      "title": "Synthetic data augmentation for retrain robustness",
+      "description": "Wire observational_learning (US-078) synthetic agents into the retrain pipeline. Synthetic scenarios are generated but never injected into training data. Create an augmentation layer that blends synthetic examples (15-20% ratio) into retrain datasets to improve model robustness on rare regimes.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/training_augmenter.py with TrainingAugmenter class",
+        "generate_augmented_dataset(real_trades, pair, regime) returns blended dataset",
+        "Configurable synthetic_ratio (default 0.20) controls blend percentage",
+        "Tracks augmentation statistics (n_synthetic, regime_distribution, ratio)",
+        "Config flag: enable_training_augmentation: bool = False",
+        "Persists augmentation stats to trained_data/augmentation_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Implemented training_augmenter.py with TrainingAugmenter. 5 scenario templates (momentum_chase, mean_reversion, risk_averse, crisis_adaptive, breakout_hunter). Regime-balanced generation prioritizes underrepresented regimes (60% chance). Synthetic weight 0.50 (half of real). Configurable synthetic_ratio (default 0.20). Augmentation stats tracking. Config flag added, wired into engine.py init. py_compile passes."
+    },
+    {
+      "id": "US-108",
+      "title": "Temporal attention agent consensus feedback loop",
+      "description": "Create bidirectional feedback between agent consensus quality and temporal attention weights. After agent votes are collected, compute per-timeframe agreement quality. Feed this back to temporal_attention logit updates so the system learns which timeframes produce the most consistent agent consensus.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/attention_feedback.py with AttentionFeedbackLoop class",
+        "compute_timeframe_quality(agent_votes, timeframe_signals) returns per-TF agreement score",
+        "update_attention(quality_scores, regime) adjusts temporal attention logits",
+        "Tracks quality scores over time to detect temporal attention convergence",
+        "Config flag: enable_attention_feedback: bool = False",
+        "Persists feedback history to trained_data/attention_feedback_log.json",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "Implemented attention_feedback.py with AttentionFeedbackLoop. Computes per-timeframe agreement quality from agent votes + timeframe signals. Consensus-weighted alignment scoring. Feeds quality to temporal_attention logits (LR=0.03). Convergence detection via rolling window std < 0.05. Lazy-loads temporal_attention. Config flag added, wired into engine.py init. py_compile passes."
+    }
+  ]
+}

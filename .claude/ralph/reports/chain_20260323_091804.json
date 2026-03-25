@@ -1,0 +1,37 @@
+{
+  "summary": {
+    "timestamp": "2026-03-23T09:18:04.613045+00:00",
+    "review_passed": true,
+    "blockers": 0,
+    "suggestions": 6,
+    "followup_generated": false,
+    "followup_ralph_spawned": false,
+    "files_reviewed": [
+      "src/scanner/automation/continuous.py"
+    ],
+    "agent_spawned": true
+  },
+  "review_detail": {
+    "trigger": "chain_post_ralph",
+    "files_reviewed": [
+      "src/scanner/automation/continuous.py"
+    ],
+    "blockers": 0,
+    "suggestions": 6,
+    "nits": 0,
+    "passed": true,
+    "followup_prd": null,
+    "agent_spawned": true,
+    "duration_secs": 5.08,
+    "error": null,
+    "blocker_details": [],
+    "suggestion_details": [
+      "\ud83d\udfe1 SUGGESTION: [src/scanner/automation/continuous.py:1570] Verify json.loads() is wrapped in try/except",
+      "\ud83d\udfe1 SUGGESTION: [src/scanner/automation/continuous.py:1096] Verify json.loads() is wrapped in try/except",
+      "\ud83d\udfe1 SUGGESTION: [src/scanner/automation/continuous.py:1284] Verify json.loads() is wrapped in try/except",
+      "\ud83d\udfe1 SUGGESTION: [src/scanner/automation/continuous.py:1168] Verify json.loads() is wrapped in try/except",
+      "\ud83d\udfe1 SUGGESTION: [src/scanner/automation/continuous.py:1198] Verify json.loads() is wrapped in try/except",
+      "\ud83d\udfe1 SUGGESTION: [src/scanner/automation/continuous.py:1207] Verify json.loads() is wrapped in try/except"
+    ]
+  }
+}

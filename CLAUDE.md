@@ -31,13 +31,15 @@ Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py
 - Config: `.claude/config_adjustments.json` — adaptive parameter tuning
 
 ## Key Files
-- `buddy_scanner.py` — CLI entry point (scan/watch/trade/learn)
-- `src/scanner/engine.py` — Core scanner with model ensemble
-- `src/scanner/agents.py` — 12-agent specialist team with RL weight learning
-- `src/scanner/execution.py` — OANDA trade execution + RL sync
+- `main.py` — CLI entry point (argparse: --dry-run, --watch, --execute, --pairs, etc.)
+- `buddy_scanner.py` — BuddyScanner shim class (library, not CLI)
+- `src/scanner/engine.py` — Core Scanner class with model ensemble
+- `src/scanner/agents/` — ScannerAgentTeam (12 agents) with RL weight learning
+- `src/scanner/execution.py` — ExecutionManager: OANDA trade execution + RL sync
 - `src/scanner/config.py` — ScannerConfig with agent toggles and thresholds
 - `src/scanner/automation/continuous.py` — Watch mode loop
-- `src/risk/position_sizing.py` — Regime-aware position sizer
+- `src/scanner/automation/orchestrator.py` — Orchestrator: run_cycle(), get_system_status()
+- `src/risk/position_sizing.py` — DynamicPositionSizer + factory functions (create_regime_aware_position_sizer, etc.)
 - `trained_data/trade_journal_rl.json` — Trade outcomes for RL
 - `trained_data/models/agent_weights.json` — Learned agent weights
 

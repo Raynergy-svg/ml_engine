@@ -5,7 +5,7 @@ This package contains:
 - base: Abstract base class for all trainers (BaseTrainer)
 - config: Configuration classes (TrainerConfig, OverfitPreventionConfig)
 - display: Training display utilities (TrainingDisplay)
-- callbacks: Training callbacks for advanced features
+- callbacks: Training callbacks for advanced features (lazy-loaded, requires TensorFlow)
 - utils: Utility functions and constants
 - exceptions: Custom exception classes (WeightMismatchError, CheckpointValidationError)
 - tcn_trainer: TCN trainer for current volatility regime classification
@@ -17,42 +17,23 @@ This package contains:
 - joint_trainer: Joint multi-pair training with contrastive learning
 - migration: Model migration utilities for version compatibility
 - train_all: Main training orchestration function
+
+NOTE: Heavy-dependency submodules (TF callbacks, TF trainers, XGBoost, LightGBM)
+are lazy-imported to allow the CLI to boot without TensorFlow installed.
+Per improvement.md rule: "ALWAYS use lazy imports in package __init__.py
+when submodules have heavy dependencies."
 """
 
+import importlib as _importlib
+from typing import TYPE_CHECKING
+
+# ── Always-available (no heavy deps) ────────────────────────────────────
 from src.training.trainers.base import BaseTrainer
 from src.training.trainers.config import TrainerConfig, OverfitPreventionConfig
 from src.training.trainers.display import TrainingDisplay
 from src.training.trainers.exceptions import (
     WeightMismatchError,
     CheckpointValidationError,
-)
-from src.training.trainers.tcn_trainer import TCNTrainer
-from src.training.trainers.tcn_volatility_trainer import TCNVolatilityRegimeTrainer
-from src.training.trainers.transformer_trainer import TransformerDirectionTrainer
-from src.training.trainers.transformer_regime_trainer import TransformerRegimeTrainer
-from src.training.trainers.xgboost_trainer import XGBoostTrainer
-from src.training.trainers.random_forest_trainer import RandomForestTrainer
-from src.training.trainers.ridge_trainer import RidgeTrainer
-from src.training.trainers.lightgbm_trainers import (
-    RegimeLGBMTrainer,
-    LightGBMMomentumTrainer,
-    LightGBMRiskTrainer,
-)
-from src.training.trainers.histgb_trainer import HistGradientBoostingDirectionTrainer
-from src.training.trainers.joint_trainer import JointMultiPairTrainer
-from src.training.trainers.callbacks import (
-    EMACallback,
-    EWCPenalty,
-    EWCLoss,
-    OverfitPreventionCallback,
-    EWCTrainingCallback,
-    QuietProgressCallback,
-    GradualUnfreezeCallback,
-    RichEpochCallback,
-    AutoAdjustCallback,
-    ReplayBuffer,
-    DriftDetector,
-    TrainingLineage,
 )
 from src.training.trainers.utils import (
     # Constants
@@ -93,11 +74,91 @@ from src.training.trainers.utils import (
     _create_lgbm_regressor,
     _create_lgbm_classifier,
 )
-from src.training.trainers.migration import (
-    migrate_xgboost_model,
-    migrate_all_models,
-)
-from src.training.trainers.train_all import train_all_modular
+# migration and train_all are lazy-loaded (they pull in TF-dependent models)
+
+# ── Lazy imports for heavy-dependency modules ────────────────────────────
+# These are only resolved on first attribute access, keeping CLI startup fast.
+
+# Map of attribute name -> (module_path, attribute_name_in_module)
+_LAZY_IMPORTS = {
+    # TF-dependent trainers
+    "TCNTrainer": ("src.training.trainers.tcn_trainer", "TCNTrainer"),
+    "TCNVolatilityRegimeTrainer": ("src.training.trainers.tcn_volatility_trainer", "TCNVolatilityRegimeTrainer"),
+    "TransformerDirectionTrainer": ("src.training.trainers.transformer_trainer", "TransformerDirectionTrainer"),
+    "TransformerRegimeTrainer": ("src.training.trainers.transformer_regime_trainer", "TransformerRegimeTrainer"),
+    "JointMultiPairTrainer": ("src.training.trainers.joint_trainer", "JointMultiPairTrainer"),
+    # XGBoost-dependent
+    "XGBoostTrainer": ("src.training.trainers.xgboost_trainer", "XGBoostTrainer"),
+    # scikit-learn dependent
+    "RandomForestTrainer": ("src.training.trainers.random_forest_trainer", "RandomForestTrainer"),
+    "RidgeTrainer": ("src.training.trainers.ridge_trainer", "RidgeTrainer"),
+    "HistGradientBoostingDirectionTrainer": ("src.training.trainers.histgb_trainer", "HistGradientBoostingDirectionTrainer"),
+    # LightGBM-dependent
+    "RegimeLGBMTrainer": ("src.training.trainers.lightgbm_trainers", "RegimeLGBMTrainer"),
+    "LightGBMMomentumTrainer": ("src.training.trainers.lightgbm_trainers", "LightGBMMomentumTrainer"),
+    "LightGBMRiskTrainer": ("src.training.trainers.lightgbm_trainers", "LightGBMRiskTrainer"),
+    # TF callbacks (requires tensorflow)
+    "EMACallback": ("src.training.trainers.callbacks", "EMACallback"),
+    "EWCPenalty": ("src.training.trainers.callbacks", "EWCPenalty"),
+    "EWCLoss": ("src.training.trainers.callbacks", "EWCLoss"),
+    "OverfitPreventionCallback": ("src.training.trainers.callbacks", "OverfitPreventionCallback"),
+    "EWCTrainingCallback": ("src.training.trainers.callbacks", "EWCTrainingCallback"),
+    "QuietProgressCallback": ("src.training.trainers.callbacks", "QuietProgressCallback"),
+    "GradualUnfreezeCallback": ("src.training.trainers.callbacks", "GradualUnfreezeCallback"),
+    "RichEpochCallback": ("src.training.trainers.callbacks", "RichEpochCallback"),
+    "AutoAdjustCallback": ("src.training.trainers.callbacks", "AutoAdjustCallback"),
+    "ReplayBuffer": ("src.training.trainers.callbacks", "ReplayBuffer"),
+    "DriftDetector": ("src.training.trainers.callbacks", "DriftDetector"),
+    "TrainingLineage": ("src.training.trainers.callbacks", "TrainingLineage"),
+    # Migration (depends on xgboost_model -> TF model_builders)
+    "migrate_xgboost_model": ("src.training.trainers.migration", "migrate_xgboost_model"),
+    "migrate_all_models": ("src.training.trainers.migration", "migrate_all_models"),
+    # Training orchestration (depends on TF trainers)
+    "train_all_modular": ("src.training.trainers.train_all", "train_all_modular"),
+}
+
+
+def __getattr__(name: str):
+    if name in _LAZY_IMPORTS:
+        module_path, attr_name = _LAZY_IMPORTS[name]
+        module = _importlib.import_module(module_path)
+        value = getattr(module, attr_name)
+        # Cache in module namespace so __getattr__ isn't called again
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# ── TYPE_CHECKING block for IDE support ──────────────────────────────────
+if TYPE_CHECKING:
+    from src.training.trainers.tcn_trainer import TCNTrainer
+    from src.training.trainers.tcn_volatility_trainer import TCNVolatilityRegimeTrainer
+    from src.training.trainers.transformer_trainer import TransformerDirectionTrainer
+    from src.training.trainers.transformer_regime_trainer import TransformerRegimeTrainer
+    from src.training.trainers.xgboost_trainer import XGBoostTrainer
+    from src.training.trainers.random_forest_trainer import RandomForestTrainer
+    from src.training.trainers.ridge_trainer import RidgeTrainer
+    from src.training.trainers.lightgbm_trainers import (
+        RegimeLGBMTrainer,
+        LightGBMMomentumTrainer,
+        LightGBMRiskTrainer,
+    )
+    from src.training.trainers.histgb_trainer import HistGradientBoostingDirectionTrainer
+    from src.training.trainers.joint_trainer import JointMultiPairTrainer
+    from src.training.trainers.callbacks import (
+        EMACallback,
+        EWCPenalty,
+        EWCLoss,
+        OverfitPreventionCallback,
+        EWCTrainingCallback,
+        QuietProgressCallback,
+        GradualUnfreezeCallback,
+        RichEpochCallback,
+        AutoAdjustCallback,
+        ReplayBuffer,
+        DriftDetector,
+        TrainingLineage,
+    )
 
 __all__ = [
     # Base class
@@ -110,7 +171,7 @@ __all__ = [
     # Exceptions
     "WeightMismatchError",
     "CheckpointValidationError",
-    # Trainers
+    # Trainers (lazy)
     "TCNTrainer",
     "TCNVolatilityRegimeTrainer",
     "TransformerDirectionTrainer",
@@ -118,14 +179,14 @@ __all__ = [
     "XGBoostTrainer",
     "RandomForestTrainer",
     "RidgeTrainer",
-    # LightGBM Trainers
+    # LightGBM Trainers (lazy)
     "RegimeLGBMTrainer",
     "LightGBMMomentumTrainer",
     "LightGBMRiskTrainer",
-    # Other Trainers
+    # Other Trainers (lazy)
     "HistGradientBoostingDirectionTrainer",
     "JointMultiPairTrainer",
-    # Callbacks
+    # Callbacks (lazy)
     "EMACallback",
     "EWCPenalty",
     "EWCLoss",

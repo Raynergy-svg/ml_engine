@@ -1,0 +1,94 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-feedback-loops-phase22",
+  "description": "Buddy Phase 22 — Feedback Loop Completion. Phase 21 built mechanisms (ThresholdOptimizer, ConfigAdjuster, extreme regime policy) but left integration gaps: optimizer state not persisted after trade outcomes, execution.py ignores regime risk_pct multiplier, 4 Phase 18 analytics modules disabled, orchestrator missing config_adjuster. Phase 22 closes every feedback loop so the system actually learns and adapts across sessions. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-133",
+      "title": "ThresholdOptimizer save_state after trade outcome recording",
+      "description": "Wire save_state() calls after update_outcome() in the trade outcome feedback path so threshold learning persists across sessions.",
+      "acceptanceCriteria": [
+        "In engine.py record_trade_outcome_phase18(), call self._threshold_optimizer.save_state() after update_outcome()",
+        "Save only if optimizer is not None and has recorded at least 1 outcome",
+        "Guarded by try/except to prevent trade outcome recording from failing",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Already handled by _save_phase18_state() at engine.py line 3108 which calls save_state() on threshold_optimizer after outcome recording. Guarded by try/except. Verified 2026-03-22."
+    },
+    {
+      "id": "US-134",
+      "title": "Enable Phase 18 analytics modules in smart profile",
+      "description": "Enable the 4 disabled Phase 18 modules (DynamicRiskAllocator, ModelCalibrationTracker, PairRegimeAgentMatrix, SignalTimingOptimizer) so trade outcomes feed complete analytics.",
+      "acceptanceCriteria": [
+        "Set enable_dynamic_risk_allocation=True in smart profile",
+        "Set enable_model_calibration=True in smart profile",
+        "Set enable_pair_regime_agent_matrix=True in smart profile",
+        "Set enable_signal_timing=True in smart profile",
+        "Verify each module's init in engine.py is properly guarded",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "All 4 Phase 18 modules enabled in config.py smart profile: enable_dynamic_risk_allocation=True, enable_model_calibration=True, enable_pair_regime_agent_matrix=True, enable_signal_timing=True. Each module init in engine.py is guarded by try/except. Verified 2026-03-22."
+    },
+    {
+      "id": "US-135",
+      "title": "Execution.py reads analysis.risk_pct for regime-scaled position sizing",
+      "description": "Ensure ExecutionManager uses the regime-adjusted risk_pct from PairAnalysis instead of hardcoded config.risk_per_trade_pct.",
+      "acceptanceCriteria": [
+        "In execution.py position sizing, prefer analysis.risk_pct over config.risk_per_trade_pct when available",
+        "Fallback to config.risk_per_trade_pct if analysis.risk_pct is None or 0",
+        "Log when regime-adjusted risk_pct is applied vs default",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Two-part fix: (1) execution.py already had the risk_pct override code reading from analysis_context. (2) Added 'risk_pct': a.risk_pct to the analysis_context dict builder in engine.py line ~3443 so PairAnalysis.risk_pct (modified by EXTREME regime policy) flows through to execution. Falls back to config.risk_per_trade_pct when None/0. Verified 2026-03-22."
+    },
+    {
+      "id": "US-136",
+      "title": "ThresholdOptimizer journal replay for warm-start",
+      "description": "Add replay_from_journal() method to ThresholdOptimizer so it can warm-start from historical trade data when initialized with empty state.",
+      "acceptanceCriteria": [
+        "Add ThresholdOptimizer.replay_from_journal(journal_path) method",
+        "Reads trade_journal_rl.json entries, extracts regime + gate values + won",
+        "Calls update_outcome() for each historical trade",
+        "Call replay on init if optimizer has 0 outcomes and journal exists",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added replay_from_journal() method (~70 lines) to ThresholdOptimizer. Reads trade_journal_rl.json, extracts regime from entry.regime.volatility_regime, confidence from entry.confidence, R:R from SL/TP distances, momentum from gates.momentum_passed. Calls update_outcome() for each trade. Wired in engine.py init: replays journal if _total_outcomes==0. Guarded by try/except. Verified 2026-03-22."
+    },
+    {
+      "id": "US-137",
+      "title": "Orchestrator config_adjuster integration in run_cycle",
+      "description": "Wire ConfigAdjuster into the orchestrator so run_cycle() applies pending adjustments and persists state alongside learnings.",
+      "acceptanceCriteria": [
+        "In orchestrator run_cycle(), after scanner completes, apply config_adjuster adjustments",
+        "Persist config_adjuster state in get_system_status()",
+        "Add config_adjuster to modules dict for observability",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "ConfigAdjuster initialized in orchestrator._init_modules(). Step 8c in run_cycle() applies pending adjustments via apply_adjustments(scanner.config, cycle_count) and calls save_state(). Added to modules dict in get_system_status(). State (pending/history_count) exposed in status output. Verified 2026-03-22."
+    },
+    {
+      "id": "US-138",
+      "title": "Continuous.py graceful shutdown persists all module states",
+      "description": "Before the scan loop exits (signal handler, keyboard interrupt), save all module states including ConfigAdjuster, ThresholdOptimizer, and AgentLifecycle.",
+      "acceptanceCriteria": [
+        "In continuous.py signal handler or finally block, call save_state on all phase modules",
+        "Include: config_adjuster, threshold_optimizer, agent_lifecycle, observation_consumer, memory_manager",
+        "Guarded by try/except per module so one failure doesn't block others",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "Added shutdown persistence block after while loop exits in continuous.py. Iterates over 5 modules (config_adjuster, threshold_optimizer, agent_lifecycle, observation_consumer, memory_manager), checks scanner attrs first then self attrs, calls save_state() on each. Each module wrapped in individual try/except so one failure doesn't block others. Verified 2026-03-22."
+    }
+  ]
+}

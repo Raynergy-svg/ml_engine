@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "total_adjustments": 0,
+  "history": [],
+  "pending": {
+    "optimized_confidence_threshold": {
+      "source": "threshold_optimizer",
+      "value": 0.55,
+      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "cycle_proposed": 0
+    },
+    "optimized_momentum_threshold": {
+      "source": "threshold_optimizer",
+      "value": 0.3,
+      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "cycle_proposed": 0
+    },
+    "optimized_rr_ratio_threshold": {
+      "source": "threshold_optimizer",
+      "value": 1.2,
+      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "cycle_proposed": 0
+    }
+  },
+  "last_applied": {},
+  "last_updated": "2026-03-23T20:21:37.722640+00:00"
+}

@@ -650,6 +650,7 @@ class ModularEnsembleInference:
         self.instrument = instrument  # Store for pair-specific loading
 
         self.tcn = None  # Direction model (legacy)
+        self._direction_threshold = 0.5  # Calibrated threshold (updated on model load)
         self.histgb = None  # HistGB baseline for hybrid voting
         self.regime_model = None  # Regime classifier (new)
         self.xgb = None
@@ -1575,6 +1576,13 @@ class ModularEnsembleInference:
                 self.tcn.load(str(transformer_path))
                 direction_loaded = True
                 logger.info(f"✓ Transformer direction model loaded from {transformer_path}")
+                # Cache calibrated direction threshold for use in MC Dropout and ensemble paths
+                _tcn_cal = getattr(self.tcn, "output_calibration", None)
+                if isinstance(_tcn_cal, dict) and "threshold" in _tcn_cal:
+                    self._direction_threshold = float(_tcn_cal["threshold"])
+                    logger.info(f"📐 Direction threshold (calibrated): {self._direction_threshold:.4f}")
+                else:
+                    self._direction_threshold = 0.5
                 self._log_model_trained_at(transformer_path, "Transformer direction", category="direction")
 
                 # === Log training state from lineage (v2) ===
@@ -2598,10 +2606,11 @@ class ModularEnsembleInference:
             mean_prob = float(np.mean(predictions))
             std_prob = float(np.std(predictions))
 
-            # Direction from mean probability
-            direction = 1 if mean_prob > 0.5 else 0
+            # Direction from mean probability using calibrated threshold
+            _dt = getattr(self, '_direction_threshold', 0.5)
+            direction = 1 if mean_prob > _dt else 0
 
-            logger.debug(f"🎲 MC Dropout (n={n_samples}): mean={mean_prob:.3f}, std={std_prob:.3f}")
+            logger.debug(f"🎲 MC Dropout (n={n_samples}): mean={mean_prob:.3f}, std={std_prob:.3f}, threshold={_dt:.4f}")
 
             return mean_prob, std_prob, direction
 
@@ -3999,8 +4008,9 @@ class ModularEnsembleInference:
                                 tcn_only_probability * tcn_weight
                             )
 
-                            # Direction from ensemble probability
-                            ensemble_direction = 1 if ensemble_probability > 0.5 else 0
+                            # Direction from ensemble probability using calibrated threshold
+                            _dt = getattr(self, '_direction_threshold', 0.5)
+                            ensemble_direction = 1 if ensemble_probability > _dt else 0
 
                             # Check agreement
                             models_agree_ensemble = (tcn_direction == tcn_only_direction)

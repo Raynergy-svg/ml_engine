@@ -1,0 +1,91 @@
+{
+  "goal": "autonomous_orchestration",
+  "status": "scanning",
+  "done": [
+    "cycle_1_180653",
+    "phase36_test_coverage_expansion",
+    "phase37_critical_path_hardening",
+    "phase38_execution_data_pipeline_hardening"
+  ],
+  "next": "next_scan_cycle",
+  "open_questions": [],
+  "last_updated": "2026-03-23T20:06:20.209676+00:00",
+  "portfolio_snapshot": {
+    "nav": 101679.0187,
+    "open_trades": 1,
+    "total_realized_pnl": 2000.5544,
+    "session_trades": 521,
+    "session_wins": 200,
+    "session_losses": 321,
+    "win_rate": 0.38
+  },
+  "improvement_focus": "phase39_tbd",
+  "phase38_details": {
+    "theme": "Execution & Data Pipeline Hardening",
+    "stories": "US-242 through US-247",
+    "stories_completed": 6,
+    "stories_total": 6,
+    "new_tests": 91,
+    "test_files": [
+      "tests/test_execution_manager_core.py (45 tests)",
+      "tests/test_execution_journal.py (15 tests)",
+      "tests/test_data_loaders_core.py (31 tests)"
+    ],
+    "modules_covered": [
+      "src/scanner/execution.py (2867 lines)",
+      "src/core/modular_data_loaders.py (3842 lines)"
+    ],
+    "key_discoveries": [
+      "Local imports (Path, TradeJournal) require os.chdir or source-module patching",
+      "classify_market_regime returns (regimes, confidence) tuple not single Series",
+      "temporal_split takes n_samples:int not DataFrame",
+      "VolatilityRegimeConfig uses lookback_bars not atr_period"
+    ],
+    "completed_at": "2026-03-23T19:45:00Z"
+  },
+  "phase36_details": {
+    "theme": "Test Coverage Expansion for Core Modules",
+    "stories": "US-230 through US-235",
+    "stories_completed": 6,
+    "stories_total": 6,
+    "new_tests": 101,
+    "test_files": [
+      "tests/test_agent_team_core.py (22 tests)",
+      "tests/test_continuous_scanner.py (17 tests)",
+      "tests/test_module_dispatcher.py (16 tests)",
+      "tests/test_orchestrator_core.py (13 tests)",
+      "tests/test_position_sizing_core.py (23 tests)",
+      "tests/test_scan_pipeline_smoke.py (10 tests)"
+    ],
+    "modules_covered": [
+      "src/scanner/agents/_team.py",
+      "src/scanner/automation/continuous.py",
+      "src/scanner/automation/module_dispatcher.py",
+      "src/scanner/automation/orchestrator.py",
+      "src/risk/position_sizing.py"
+    ],
+    "completed_at": "2026-03-23T18:17:23.827199+00:00"
+  },
+  "phase37_details": {
+    "theme": "Critical Path Hardening",
+    "stories": "US-236 through US-241",
+    "stories_completed": 6,
+    "stories_total": 6,
+    "new_tests": 150,
+    "test_files": [
+      "tests/test_trade_journal_core.py (28 tests)",
+      "tests/test_trade_journal_analytics.py (25 tests)",
+      "tests/test_gate_evaluator_core.py (41 tests)",
+      "tests/test_scanner_config_validation.py (44 tests)",
+      "tests/test_scan_to_gate_regression.py (12 tests)"
+    ],
+    "modules_covered": [
+      "src/utils/trade_journal.py (1329 lines)",
+      "src/scanner/gates.py (1631 lines)",
+      "src/scanner/config.py (1081 lines)",
+      "src/scanner/engine.py (scan-to-gate pipeline)"
+    ],
+    "completed_at": "2026-03-23T18:31:00.014803+00:00"
+  },
+  "scan_cycle_count": 7
+}

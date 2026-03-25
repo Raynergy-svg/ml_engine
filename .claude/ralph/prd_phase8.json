@@ -1,0 +1,107 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-adaptive-intelligence-phase8",
+  "description": "Buddy Phase 8 — Advanced Intelligence & Self-Tuning. Phase 7 hardened execution. Phase 8 makes the bot SMARTER: regime-aware ATR tuning, cross-session learning, automated model promotion, spread-aware timing, and cross-pair signal aggregation. DIRECTIVE: NEVER STOP BRAINSTORMING/RESEARCHING AND IMPROVING. DONT ASK FOR EVERY COMMAND, JUST DO. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-049",
+      "title": "Regime transition tracker with Markov chain probabilities",
+      "description": "Track volatility regime transitions as a Markov chain to predict likely next regime. Uses observed transition frequencies (LOW→NORMAL→HIGH→EXTREME) to compute forward-looking regime probabilities for proactive risk adjustment.",
+      "acceptanceCriteria": [
+        "New class RegimeTransitionTracker in src/scanner/automation/regime_tracker.py",
+        "Maintains transition count matrix (4x4) persisted to trained_data/regime_transitions.json",
+        "update(current_regime) called each scan cycle, updates transition counts",
+        "predict_next() returns probability distribution over 4 regimes based on current state",
+        "get_regime_risk_modifier() returns position size modifier: 1.0 normal, 0.85 if P(EXTREME|current) > 0.3",
+        "Wired into engine.py scan loop — updates per cycle, modifier passed to execution",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "RegimeTransitionTracker with 4x4 Markov matrix, persists every 5 updates via safe_json, wired into engine.py scan loop with Counter.most_common for dominant regime. Risk modifier 0.85 when P(EXTREME) >= 0.30."
+    },
+    {
+      "id": "US-050",
+      "title": "Adaptive ATR multipliers by regime state",
+      "description": "Dynamically adjust SL/TP ATR multipliers based on detected volatility regime. LOW regime uses tighter stops, HIGH/EXTREME regime widens TP to capture larger moves. Replaces static multipliers with regime-lookup table.",
+      "acceptanceCriteria": [
+        "ScannerConfig gets regime_atr_multipliers: dict mapping regime → {sl_mult, tp_mult}",
+        "Default: LOW(0.8, 1.2), NORMAL(1.0, 1.5), HIGH(1.1, 2.0), EXTREME(1.2, 2.8)",
+        "engine.py passes regime-specific multipliers to execution instead of static config values",
+        "execution.py _calculate_base_tp_pips and SL calc use regime multipliers when available",
+        "Trade journal logs which regime multiplier was applied per trade",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "regime_atr_multipliers dict added to ScannerConfig with 4 regime defaults. engine.py _scan_pair applies regime-specific sl_mult/tp_mult before per-pair overrides. Journal logs regime_atr_multipliers in regime section."
+    },
+    {
+      "id": "US-051",
+      "title": "Cross-session learning persistence with session snapshots",
+      "description": "Write a session summary snapshot on scan completion: agent weights, accuracy per pair, regime distribution, win rate. Enable ConfigTuner to compare across sessions and recommend parameter adjustments.",
+      "acceptanceCriteria": [
+        "SessionSnapshot dataclass with: timestamp, agent_weights, pair_accuracies, regime_counts, trade_count, win_rate, avg_rr",
+        "save_session_snapshot() writes to trained_data/session_snapshots/{timestamp}.json",
+        "load_recent_snapshots(n=5) loads last N snapshots for comparison",
+        "Cross-session weight blending: new_weight = 0.7 * current + 0.3 * avg(last 5 sessions)",
+        "Wired into continuous.py — snapshot saved when watch loop exits cleanly",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "SessionSnapshotManager with save/load/blend. EMA blending (0.7 current + 0.3 historical avg). Wired into continuous.py watch loop exit with agent weights and pair accuracies from agent_weight_path."
+    },
+    {
+      "id": "US-052",
+      "title": "Automated A/B model promotion with statistical significance",
+      "description": "Formalize shadow test promotion with Fisher exact test. Auto-promote candidate model when it outperforms incumbent by >5% accuracy with p < 0.05 over 50+ shadow predictions.",
+      "acceptanceCriteria": [
+        "New method ModelManager.check_promotion_readiness() returns PromotionResult dataclass",
+        "PromotionResult: incumbent_acc, candidate_acc, p_value, sample_size, should_promote, reason",
+        "Fisher exact test (scipy.stats) or fallback chi-squared for significance",
+        "Promotion criteria: delta > 0.05 AND p < 0.05 AND sample_size >= 50",
+        "Auto-promotion: rename candidate → incumbent, log to trained_data/model_version_history.jsonl",
+        "Rollback guard: if promoted model drops >5% accuracy in next 20 trades, auto-revert",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "check_promotion_with_significance() with Fisher exact test (scipy), chi-squared fallback, and normal approximation last resort. auto_promote_if_ready() logs to version_history.jsonl with timestamps."
+    },
+    {
+      "id": "US-053",
+      "title": "Spread-aware execution timing gate",
+      "description": "Check current bid-ask spread before order placement. If spread exceeds pair-specific threshold, delay or skip execution. Reduces slippage from wide-spread entries during low-liquidity periods.",
+      "acceptanceCriteria": [
+        "New method _check_spread_conditions() in ExecutionManager",
+        "Fetches current bid/ask from OANDA pricing API (with retry)",
+        "Spread threshold: configurable max_spread_pips per pair (default 3.0 from config)",
+        "If spread > threshold: return ExecutionResult(success=False, error='spread too wide')",
+        "Log spread at entry to journal: spread_pips field in entry_record",
+        "Wired into execute_trade() BEFORE order placement, AFTER all other gates",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "_check_spread_conditions() fetches OANDA pricing, computes spread in pips, blocks if > max_spread_pips. Wired before SL/TP price calc. spread_pips injected into ctx and logged in journal entry_record."
+    },
+    {
+      "id": "US-054",
+      "title": "Cross-pair signal aggregation with group momentum",
+      "description": "Aggregate directional signals across correlated currency groups (USD, JPY, EUR, etc.) to compute group momentum. Block trades when individual signal conflicts with group direction. Boost position when aligned.",
+      "acceptanceCriteria": [
+        "New class GroupMomentumAggregator in src/scanner/automation/group_momentum.py",
+        "Maps each pair to currency groups (e.g., EUR_USD → EUR group + USD group)",
+        "compute_group_momentum(scan_results) returns per-group directional score (-1 to +1)",
+        "Trade filter: skip if pair confidence > 0.55 but group momentum < -0.2 (conflicting)",
+        "Trade boost: if group momentum > 0.5 aligned with direction, +5% position size",
+        "Group momentum logged per trade in journal and observations.jsonl",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "GroupMomentumAggregator with 27 pair→currency mappings. compute_group_momentum averages confidence-weighted direction signals per currency. evaluate_trade returns block/boost/allow with alignment score. Wired into engine.py execute_trades as pre-filter. group_momentum dict logged in journal entry_record. Functional test: EUR bullish pattern correctly boosts LONG and blocks SHORT."
+    }
+  ]
+}

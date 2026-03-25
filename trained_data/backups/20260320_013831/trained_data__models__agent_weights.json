@@ -1,0 +1,63 @@
+{
+  "_global": {
+    "trend": 1.15,
+    "mean_reversion": 0.9,
+    "volatility": 1.0,
+    "risk_sentinel": 1.25,
+    "uncertainty": 1.1,
+    "execution_quality": 1.05,
+    "news_risk": 0.95,
+    "multi_timeframe": 1.1,
+    "pair_performance": 0.85,
+    "momentum": 1.05,
+    "session_timing": 0.8,
+    "support_resistance": 1.0
+  },
+  "NORMAL": {
+    "trend": 1.15,
+    "mean_reversion": 0.9,
+    "volatility": 1.0,
+    "risk_sentinel": 1.25,
+    "uncertainty": 1.1,
+    "execution_quality": 1.05,
+    "news_risk": 0.95,
+    "multi_timeframe": 1.1,
+    "pair_performance": 0.85,
+    "momentum": 1.05,
+    "session_timing": 0.8,
+    "support_resistance": 1.0
+  },
+  "HIGH": {
+    "trend": 1.15,
+    "mean_reversion": 0.9,
+    "volatility": 1.0,
+    "risk_sentinel": 1.25,
+    "uncertainty": 1.1,
+    "execution_quality": 1.05,
+    "news_risk": 0.95,
+    "multi_timeframe": 1.1,
+    "pair_performance": 0.85,
+    "momentum": 1.05,
+    "session_timing": 0.8,
+    "support_resistance": 1.0
+  },
+  "EXTREME": {
+    "trend": 1.15,
+    "mean_reversion": 0.9,
+    "volatility": 1.0,
+    "risk_sentinel": 1.25,
+    "uncertainty": 1.1,
+    "execution_quality": 1.05,
+    "news_risk": 0.95,
+    "multi_timeframe": 1.1,
+    "pair_performance": 0.85,
+    "momentum": 1.05,
+    "session_timing": 0.8,
+    "support_resistance": 1.0
+  },
+  "_meta": {
+    "min_trades_per_regime": 10,
+    "initialized_from": "baseline",
+    "last_updated": "2026-03-19T22:38:34.005157+00:00"
+  }
+}

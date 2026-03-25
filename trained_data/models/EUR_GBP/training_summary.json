@@ -1,0 +1,95 @@
+{
+  "candles": 25000,
+  "failed": 2,
+  "instrument": "EUR_GBP",
+  "params": {
+    "batch_size": 128,
+    "dropout_rate": 0.363,
+    "l2_reg": 9.8e-05,
+    "lr": 0.000415,
+    "mixed_precision": false,
+    "patience": 25,
+    "seq_len": 90,
+    "tcn_dilations": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "tcn_kernel_size": 5,
+    "tcn_nb_filters": 256,
+    "top_features": 150
+  },
+  "passed": 6,
+  "results": [
+    {
+      "duration_s": 545.8,
+      "gap": 0,
+      "instrument": "EUR_GBP",
+      "model": "transformer",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 964.4,
+      "gap": 0,
+      "instrument": "EUR_GBP",
+      "model": "tcn",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 971.0,
+      "instrument": "EUR_GBP",
+      "model": "lgbm_momentum",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 976.7,
+      "instrument": "EUR_GBP",
+      "model": "lgbm_risk",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 981.7,
+      "instrument": "EUR_GBP",
+      "model": "ridge",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 990.6,
+      "gap": 0,
+      "instrument": "EUR_GBP",
+      "model": "histgb",
+      "passed": true,
+      "train_acc": 0,
+      "val_acc": 0
+    },
+    {
+      "duration_s": 1510.2,
+      "error": "Classification metrics can't handle a mix of continuous and binary targets",
+      "instrument": "EUR_GBP",
+      "model": "transformer_regime",
+      "passed": false
+    },
+    {
+      "duration_s": 1515.8,
+      "error": "Expected 3D input (batch, seq_len, features), got (17290, 16)",
+      "instrument": "EUR_GBP",
+      "model": "tcn_vol_regime",
+      "passed": false
+    }
+  ],
+  "timestamp": "2026-03-24 10:55:33",
+  "total_duration_s": 1516.2
+}

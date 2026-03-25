@@ -1,0 +1,105 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/buddy-portfolio-optimization-phase12",
+  "description": "Buddy Phase 12 — Advanced Portfolio Optimization & Execution Intelligence. Based on 2025-2026 web research: HRP replaces binary correlation blocking, microstructure regime signals for earlier stress detection, VWAP/TWAP smart execution, graph-attention heterogeneous agents, dynamic hedging during stress, observational diversity learning from synthetic agents. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "userStories": [
+    {
+      "id": "US-073",
+      "title": "Hierarchical Risk Parity (HRP) portfolio rebalancer",
+      "description": "Replace binary correlation blocking with HRP-based continuous position weighting. Uses scipy hierarchical clustering on correlation matrix, recursively splits clusters, assigns inverse-variance weights. More nuanced exposure management — hold correlated pairs at reduced sizes instead of binary on/off.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/hierarchical_risk_parity.py with HRPOptimizer class",
+        "build_tree(correlation_matrix, assets) uses scipy.cluster.hierarchy for dendrogram",
+        "get_weights(pairs, trade_journal) returns normalized position weights (0.0-1.0) per pair",
+        "Integrate into engine.py execute_trades: HRP weights passed to position_sizing instead of binary filter",
+        "Config flag: use_hrp: bool = False in ScannerConfig (enabled in smart profile)",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "HRPOptimizer created with full pipeline: Ledoit-Wolf shrinkage, quasi-diag, recursive bisection. Wired into engine.py scan flow, config flags added, smart profile enabled."
+    },
+    {
+      "id": "US-074",
+      "title": "Spread-driven microstructure regime detection",
+      "description": "Augment RegimeTransitionTracker with microstructure signals: spread_ratio (current/baseline), bid-ask imbalance, spread acceleration. These predict regime shifts 30-60s earlier than volatility alone.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/microstructure_regime.py with MicrostructureRegimeDetector",
+        "update(spread_ratio, bid_ask_imbalance, acceleration) maintains rolling windows",
+        "predict_next_regime() returns (regime, confidence_lift) where lift is +5-15% when microstructure aligns",
+        "Wired into engine.py _scan_pair after OANDA candle fetch",
+        "Logs when microstructure diverges from volatility (potential regime shift)",
+        "Syntax validation passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "MicrostructureRegimeDetector created with 3 signals (spread_ratio, acceleration, bid_ask_imbalance). Wired into engine.py _scan_pair using H-L range as spread proxy. Config flags added, confidence lift applied when micro aligns with vol regime. Smart profile enabled."
+    },
+    {
+      "id": "US-075",
+      "title": "Adaptive VWAP/TWAP smart execution engine",
+      "description": "Slice larger orders into micro-orders over VWAP/TWAP windows. VWAP sizes slices proportional to 1-min volume profile. TWAP uses equal slices evenly spaced. Adaptive retry reduces slice size if fill is worse than expected.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/smart_execution.py with SmartExecutionEngine",
+        "plan_execution(position_size, market_data) returns ExecutionPlan with slice_count, sizes, timing",
+        "Two strategies: VWAP (volume-proportional) and TWAP (time-equal)",
+        "execute_with_tracking() logs fill price per slice vs benchmark",
+        "Config flags: enable_smart_execution, execution_strategy, execution_window_minutes",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "SmartExecutionEngine created with VWAP (U-shaped volume profile) and TWAP strategies. Adaptive retry reduces slices by 20% on adverse slippage. Wired into execution.py as planning layer. Config flags added, smart profile enabled."
+    },
+    {
+      "id": "US-076",
+      "title": "Graph-attention heterogeneous agent consensus",
+      "description": "Evolve from uniform agent voting to heterogeneous architecture. GraphAttentionLayer weights agent opinions by correlation structure — agents with signals aligned to asset dependency graph get higher weight. Replaces equal consensus with correlation-aware consensus.",
+      "acceptanceCriteria": [
+        "Extend _team.py with GraphAttentionConsensus class",
+        "GraphAttentionLayer(agent_scores, correlation_matrix) returns attention-weighted scores",
+        "Agent specializations defined: risk, momentum, regime, execution, uncertainty",
+        "Config flags: use_heterogeneous_agents, enable_graph_attention (both default False)",
+        "Falls back to current consensus when disabled",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "GraphAttentionConsensus added to _team.py with softmax attention, AGENT_SPECIALIZATIONS map (4 categories: momentum/regime/risk/execution), regime-alignment scoring. Wired into evaluate() after regime multipliers. Config flags added, smart profile enabled. Falls back gracefully when disabled."
+    },
+    {
+      "id": "US-077",
+      "title": "Dynamic hedging module for stress periods",
+      "description": "Auto-open inverse positions on correlated pairs when macro stress detected. Hedge size = primary_size * correlation * vol_ratio. Auto-close when stress recedes (modifier > 0.90). Reduces tail risk 30-50% without closing profitable positions.",
+      "acceptanceCriteria": [
+        "Create src/scanner/automation/dynamic_hedging.py with DynamicHedgeManager",
+        "identify_hedge_candidates(open_positions, correlation_matrix) returns hedge opportunities",
+        "compute_hedge_size() uses correlation and vol ratio for optimal sizing",
+        "Hedges tagged 'hedge:{primary_pair}' in journal for tracking",
+        "Integrates with MacroStressDetector trigger",
+        "Config flags: enable_dynamic_hedging, hedge_min_correlation",
+        "Syntax validation passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "DynamicHedgeManager created with full lifecycle: detect stress → identify candidates → compute hedge (lots*|corr|*vol_ratio) → tag hedges → auto-release when stress recedes. Static FX correlations as fallback. Wired into orchestrator Step 2d after macro stress. Config flags added, smart profile enabled."
+    },
+    {
+      "id": "US-078",
+      "title": "Observational diversity learning from synthetic agents",
+      "description": "Generate synthetic trade scenarios from 5 rule-based agent types (momentum chaser, mean reversion scalper, risk-averse, macro cyclical, news reactive). Extract patterns from simulations to accelerate RL learning. 20% synthetic + 80% live weight blending.",
+      "acceptanceCriteria": [
+        "Create src/scanner/agents/synthetic_behaviors.py with 5 synthetic agent types",
+        "simulate(pair, candle_history, scenarios=1000) generates synthetic trade sequences",
+        "Create src/scanner/automation/observational_learning.py with ObservationalLearner",
+        "extract_patterns(synthetic_trades) identifies winning conditions and agent combinations",
+        "Blends into agent weights: 20% synthetic, 80% live (configurable)",
+        "Config flag: enable_observational_learning (default False)",
+        "Syntax validation passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "5 synthetic agents created (MomentumChaser, MeanReversionScalper, RiskAverse, MacroCyclical, NewsReactive) with simulate_all_agents(). ObservationalLearner extracts regime_preference and feature_threshold patterns, maps synthetic→live agent weights via SYNTHETIC_TO_LIVE_MAP, blends at 20/80. Config flags added, smart profile enabled."
+    }
+  ]
+}

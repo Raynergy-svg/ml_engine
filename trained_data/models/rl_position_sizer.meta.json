@@ -1,0 +1,30 @@
+{
+  "trained_at": "2026-03-23T16:03:15.775750",
+  "timesteps": 50000,
+  "training_time_seconds": 33.585806131362915,
+  "training_samples": 9995,
+  "stats": {
+    "total_timesteps": 50000,
+    "final_equity": 9994.259428628377,
+    "total_trades": 42426,
+    "win_rate": 0.4738839390939518,
+    "model_path": "trained_data/models/rl_position_sizer.zip",
+    "scaler_path": "trained_data/models/rl_scaler.pkl"
+  },
+  "config": {
+    "total_timesteps": 50000,
+    "learning_rate": 0.0003,
+    "n_steps": 256,
+    "batch_size": 32,
+    "n_epochs": 5,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "sequence_length": 60,
+    "max_drawdown_pct": 0.1,
+    "max_position_pct": 0.1,
+    "min_position_pct": 0.01,
+    "daily_loss_limit_pct": 0.03,
+    "use_extended_obs": false,
+    "use_learned_reward": false
+  }
+}

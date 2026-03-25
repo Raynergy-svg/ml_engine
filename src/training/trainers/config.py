@@ -223,7 +223,7 @@ class TrainerConfig:
 
     # Feature selection settings
     use_feature_selection: bool = True  # Enable RF importance-based feature selection
-    feature_selection_method: str = "random_forest"  # 'random_forest' or 'f_test'
+    feature_selection_method: str = "f_test"  # 'f_test' (fast, O(n)) or 'random_forest' (OOM-prone on large datasets)
     top_k_features: int = 50  # Number of top features to select
 
     # === HYBRID SFT-RL TRAINING SETTINGS (NEW - 2026) ===
