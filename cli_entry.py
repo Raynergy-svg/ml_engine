@@ -34,7 +34,16 @@ def main() -> None:
 
     repo_root = Path(__file__).resolve().parent
     script = repo_root / "main.py"
-    runpy.run_path(str(script), run_name="__main__")
+    if not script.exists():
+        print(f"ERROR: Entry script not found: {script}", file=sys.stderr)
+        sys.exit(1)
+    try:
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit:
+        raise
+    except Exception as e:
+        print(f"ERROR: Buddy failed to start: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 __all__ = ["main"]
