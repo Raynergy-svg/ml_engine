@@ -81,6 +81,10 @@ class Scanner:
         self._volatility_filter: Optional[VolatilityFilter] = None
         self._diversification_filter: Optional[DiversificationFilter] = None
 
+        # EWMA correlation engine — fed from scan loop so ALL pairs contribute
+        self._ewma_engine = None
+        self._ewma_prev_prices: Dict[str, float] = {}
+
         # Incremental caching
         self._last_scan_times: Dict[str, float] = {}
         self._last_prices: Dict[str, float] = {}
@@ -89,8 +93,12 @@ class Scanner:
         self._pair_returns: Dict[str, pd.Series] = {}
         self._feature_snapshots: Dict[str, pd.DataFrame] = {}
         self._raw_snapshots: Dict[str, pd.DataFrame] = {}
+        self._scan_cycle_count: int = 0
         self._ensemble_lock = threading.Lock()
         self._agent_team = ScannerAgentTeam(self.config)
+
+        # Per-pair previous regime cache (for RegimeBroadcaster transition detection)
+        self._pair_last_regime: Dict[str, str] = {}
 
         # Regime transition tracker (Phase 8: Markov chain)
         self._regime_tracker = None
@@ -545,6 +553,15 @@ class Scanner:
                 logger.info("Drift monitor initialized")
             except Exception as e:
                 logger.debug(f"Drift monitor init deferred: {e}")
+
+        # Phase 49 (US-307): Pair performance tracker for auto-blacklisting in scan loop
+        self._pair_tracker = None
+        try:
+            from src.scanner.pair_blacklist import create_default_pair_tracker
+            self._pair_tracker = create_default_pair_tracker()
+            logger.info("Phase 49: Pair performance tracker initialized in Scanner")
+        except Exception as e:
+            logger.debug(f"Phase 49: Pair tracker init deferred: {e}")
 
         # Phase 20 (US-122): Inject agent lifecycle into agent team for weight modifiers
         if self._agent_lifecycle is not None:
@@ -1584,6 +1601,41 @@ class Scanner:
         if result[0] is not None:
             direction, confidence, tcn_conf, ridge_conf, gates_passed, volatility_regime, details = result
 
+            # US-106: Model router — bandit-based per-pair model weighting
+            if self._model_router is not None:
+                try:
+                    _regime_name = str(
+                        (details or {}).get("volatility_regime_name", "NORMAL")
+                    ).upper()
+                    _selection = self._model_router.select_models(pair, _regime_name)
+                    details = details or {}
+                    details["model_routing"] = _selection.to_dict()
+                    if _selection.strategy == "ROUTED" and tcn_conf > 0 and ridge_conf > 0:
+                        _model_conf_map = {
+                            "TCN": tcn_conf,
+                            "Ridge": ridge_conf,
+                            "RF": ridge_conf,
+                        }
+                        _primary_conf = _model_conf_map.get(_selection.primary_model)
+                        _fallback_conf = _model_conf_map.get(_selection.fallback_model)
+                        if _primary_conf is not None and _fallback_conf is not None:
+                            _routed_conf = self._model_router.blend_predictions(
+                                _primary_conf, _fallback_conf,
+                            )
+                            _pre_route_conf = confidence
+                            confidence = confidence * 0.70 + _routed_conf * 0.30
+                            confidence = min(max(confidence, 0.0), 1.0)
+                            details["model_routing"]["routed_confidence"] = round(_routed_conf, 4)
+                            details["model_routing"]["pre_route_confidence"] = round(_pre_route_conf, 4)
+                            details["model_routing"]["post_route_confidence"] = round(confidence, 4)
+                            logger.debug(
+                                "%s: ModelRouter %s conf %.3f (ensemble=%.3f, routed=%.3f)",
+                                pair, _selection.primary_model, confidence,
+                                _pre_route_conf, _routed_conf,
+                            )
+                except Exception as _route_err:
+                    logger.debug(f"{pair}: ModelRouter error (fallback to ensemble): {_route_err}")
+
             # US-033: Apply degraded ensemble confidence penalty
             health = self._ensemble_health
             if health.get("degraded", False):
@@ -2096,6 +2148,24 @@ class Scanner:
                     error=f"Pair blocked: {pair} is in blocked_pairs list",
                 )
 
+            # Phase 49 (US-307): Check pair performance blacklist
+            if self._pair_tracker is not None:
+                try:
+                    _bl_result = self._pair_tracker.check_pair(pair)
+                    if _bl_result.is_blacklisted:
+                        logger.info(
+                            "Phase 49 (US-307): Skipping %s — blacklisted (%s)",
+                            pair, _bl_result.reason,
+                        )
+                        return PairAnalysis(
+                            pair=pair,
+                            direction="HOLD",
+                            confidence=0.0,
+                            error=f"Pair blacklisted: {_bl_result.reason}",
+                        )
+                except Exception as _bl_err:
+                    logger.debug(f"Phase 49: Pair blacklist check error for {pair}: {_bl_err}")
+
             # Check session timing
             session_status = self.config.get_trading_session_status()
             if not session_status["session_allowed"]:
@@ -2252,6 +2322,51 @@ class Scanner:
                 sl_pips = self.config.sl_pips
                 tp_pips = self.config.tp_pips
 
+            # CausalSignalFilter: penalize confidence if signal contradicts causal structure
+            if self._causal_filter is not None and direction != "HOLD":
+                try:
+                    # Build lightweight feature dict from metrics already computed
+                    _causal_features: Dict[str, float] = {
+                        "trend_strength": metrics.get("trend_strength", 0.5),
+                        "volatility_percentile": metrics.get("volatility_percentile", 0.5),
+                        "entry_score": metrics.get("entry_score", 0.5),
+                        "atr_pips": min(1.0, atr_pips / 50.0),
+                    }
+                    if "rsi" in df_feat.columns:
+                        _causal_features["rsi"] = float(df_feat["rsi"].iloc[-1])
+                    if "momentum" in df_feat.columns:
+                        _causal_features["momentum"] = float(df_feat["momentum"].iloc[-1])
+
+                    # Derive regime locally (regime_name not yet resolved at this point)
+                    _causal_regime = "NORMAL"
+                    if isinstance(volatility_regime, int) and 0 <= volatility_regime <= 3:
+                        _causal_regime = ["LOW", "NORMAL", "HIGH", "EXTREME"][volatility_regime]
+                    elif isinstance(volatility_regime, str) and volatility_regime in {"LOW", "NORMAL", "HIGH", "EXTREME"}:
+                        _causal_regime = volatility_regime
+
+                    _causal_score = self._causal_filter.filter_signal(
+                        direction=direction,
+                        features=_causal_features,
+                        regime=_causal_regime,
+                    )
+                    # Apply confidence penalty for low causal consistency
+                    if _causal_score < 0.5:
+                        _causal_penalty = (0.5 - _causal_score) * 0.15  # Max ~7.5% penalty
+                        _old_conf_causal = confidence
+                        confidence = max(0.0, confidence - _causal_penalty)
+                        logger.info(
+                            f"{pair}: Causal filter [{_causal_regime}] "
+                            f"consistency={_causal_score:.2f} — "
+                            f"conf {_old_conf_causal:.3f}->{confidence:.3f} "
+                            f"(penalty={_causal_penalty:.4f})"
+                        )
+                    elif _causal_score < 1.0:
+                        logger.debug(
+                            f"{pair}: Causal filter consistency={_causal_score:.2f} (no penalty)"
+                        )
+                except Exception as _causal_err:
+                    logger.debug(f"{pair}: Causal filter skipped: {_causal_err}")
+
             # US-085: Ensemble disagreement as meta-signal
             if self._ensemble_disagreement is not None and direction != "HOLD":
                 try:
@@ -2276,7 +2391,8 @@ class Scanner:
             # US-087: Cross-pair lead-lag signal boost
             if self._lead_lag_detector is not None and direction != "HOLD":
                 try:
-                    _lag_signals = self._lead_lag_detector.get_lagging_signals(
+                    # Record this pair as a leader so lagging pairs can boost later
+                    self._lead_lag_detector.get_lagging_signals(
                         leader_pair=pair,
                         leader_direction=direction,
                         leader_confidence=confidence,
@@ -2634,6 +2750,25 @@ class Scanner:
                     except Exception:
                         pass
 
+            # RegimeBroadcaster: broadcast transition if regime changed for this pair
+            if self._regime_broadcaster is not None:
+                try:
+                    _prev_regime_for_pair = self._pair_last_regime.get(pair, "NORMAL")
+                    if regime_name != _prev_regime_for_pair:
+                        _rb_confidence = (
+                            _regime_result.confidence if _regime_result is not None else 0.5
+                        )
+                        self._regime_broadcaster.broadcast_transition(
+                            old_regime=_prev_regime_for_pair,
+                            new_regime=regime_name,
+                            confidence=_rb_confidence,
+                            source="scan_pipeline",
+                            metadata={"pair": pair},
+                        )
+                    self._pair_last_regime[pair] = regime_name
+                except Exception as _rb_err:
+                    logger.debug(f"{pair}: RegimeBroadcaster error: {_rb_err}")
+
             # Compute recent drawdown from close prices (lookback ~100 bars)
             _drawdown_val = 0.02  # Sensible default fallback
             if "close" in df_raw.columns and len(df_raw) >= 20:
@@ -2693,6 +2828,44 @@ class Scanner:
                 df_feat=df_feat,
                 gate_details=gate_details,
             )
+
+            # Attention feedback: compute timeframe quality from agent votes and feed to temporal attention
+            if self._attention_feedback is not None and direction != "HOLD":
+                try:
+                    _agent_votes_for_attn = {}
+                    for _ar in (result.agent_reasons or []):
+                        _aname = _ar.get("name", "")
+                        if _aname:
+                            _avote = "BUY" if _ar.get("passed", False) else "SELL"
+                            if direction == "SHORT":
+                                _avote = "SELL" if _ar.get("passed", False) else "BUY"
+                            _agent_votes_for_attn[_aname] = _avote
+
+                    # Build timeframe signals from available metrics
+                    _ts = metrics.get("trend_strength", 0.5)
+                    _mom = metrics.get("momentum", 0.5)
+                    _dir_sign = 1.0 if direction == "LONG" else -1.0
+                    _tf_signals = {
+                        5: {"direction": _dir_sign * _ts, "strength": _ts},
+                        60: {"direction": _dir_sign * _ts * 0.8, "strength": _ts * 0.9},
+                        240: {"direction": _dir_sign * _mom * 0.7, "strength": _mom * 0.85},
+                    }
+
+                    _quality_scores = self._attention_feedback.compute_timeframe_quality(
+                        agent_votes=_agent_votes_for_attn,
+                        timeframe_signals=_tf_signals,
+                    )
+                    if _quality_scores:
+                        self._attention_feedback.update_attention(
+                            quality_scores=_quality_scores,
+                            regime=regime_name if regime_name != "UNKNOWN" else "NORMAL",
+                        )
+                        logger.debug(
+                            f"{pair}: Attention feedback [{regime_name}] "
+                            f"quality={_quality_scores}"
+                        )
+                except Exception as _attn_fb_err:
+                    logger.debug(f"{pair}: Attention feedback skipped: {_attn_fb_err}")
 
             # Phase 18: Model calibration — record predictions and check flocking
             if self._model_calibration is not None and direction != "HOLD":
@@ -3048,6 +3221,15 @@ class Scanner:
         # CRITICAL: Reload agent weights at start of each scan to apply RL updates
         self._agent_team.reload_learned_weights()
 
+        # Phase 49 (US-307): Tick cooldown on pair blacklist each scan cycle
+        if self._pair_tracker is not None:
+            try:
+                _removed = self._pair_tracker.tick_cooldown()
+                if _removed:
+                    logger.info("Phase 49 (US-307): Pair blacklist cooldown expired for: %s", _removed)
+            except Exception as _tc_err:
+                logger.debug(f"Phase 49: Pair tracker tick_cooldown error: {_tc_err}")
+
         # Phase 20 (US-121): Health registry pre-flight check
         if self._health_registry is not None:
             try:
@@ -3160,6 +3342,14 @@ class Scanner:
                 logger.debug(f"Health postflight error: {hr_err}")
         self._save_phase19_state()
 
+        # Phase 20 (US-125): Run drift monitor every 20 scan cycles
+        self._scan_cycle_count += 1
+        self._run_drift_check_cycle(analyses)
+
+        # Feed ALL pairs' prices into EWMA correlation engine so the
+        # correlation matrix reflects the full universe, not just traded pairs.
+        self._feed_ewma_from_scan(analyses)
+
         # Build scan result
         model_type = "technical"
         if bool(getattr(self, "_ensemble_loaded", False)):
@@ -3173,6 +3363,93 @@ class Scanner:
             granularity=self.config.granularity,
         )
 
+    # ── EWMA correlation: scan-loop feeder ──────────────────────────
+
+    def _init_ewma_engine(self) -> None:
+        """Lazily initialize the scanner-owned EWMA correlation engine."""
+        if self._ewma_engine is not None:
+            return
+        try:
+            from src.risk.ewma_correlation import create_default_ewma_engine
+
+            _pairs = list(self.config.pairs or self.config.default_pairs)
+            self._ewma_engine = create_default_ewma_engine(pairs=_pairs)
+
+            # Load persisted state so we continue from where we left off
+            import os
+            _state_path = "trained_data/ewma_correlation_state.json"
+            if os.path.exists(_state_path):
+                try:
+                    self._ewma_engine.load_state(_state_path)
+                    logger.info("EWMA: Loaded persisted correlation state into scanner engine")
+                except Exception as e:
+                    logger.warning(f"EWMA: Could not load persisted state: {e}")
+
+            logger.info("EWMA: Scanner correlation engine initialized (%d pairs)", len(_pairs))
+        except Exception as e:
+            logger.debug(f"EWMA: Engine init failed (non-blocking): {e}")
+
+    def _feed_ewma_from_scan(self, analyses: list) -> None:
+        """Feed ALL scanned pairs' log returns into the EWMA correlation engine.
+
+        Computes log returns from consecutive scan cycles using cached previous
+        prices, then batch-updates the EWMA engine with a single returns dict.
+
+        Args:
+            analyses: List of PairAnalysis results from this scan cycle.
+        """
+        if not analyses:
+            return
+
+        self._init_ewma_engine()
+        if self._ewma_engine is None:
+            return
+
+        try:
+            import numpy as np
+
+            returns_dict: Dict[str, float] = {}
+            new_price_cache: Dict[str, float] = {}
+
+            for a in analyses:
+                price = getattr(a, "current_price", 0.0)
+                if not price or price <= 0:
+                    continue
+
+                new_price_cache[a.pair] = price
+                prev_price = self._ewma_prev_prices.get(a.pair, 0.0)
+
+                if prev_price > 0:
+                    log_ret = float(np.log(price / prev_price))
+                    # Sanity: skip absurd returns (>10% per scan cycle)
+                    if abs(log_ret) < 0.10:
+                        returns_dict[a.pair] = log_ret
+
+            # Update previous price cache for next cycle
+            self._ewma_prev_prices.update(new_price_cache)
+
+            if returns_dict:
+                state = self._ewma_engine.update(returns_dict)
+                logger.info(
+                    "EWMA: Fed %d/%d pairs (obs=%d, avg_corr=%.3f, regime=%s)",
+                    len(returns_dict),
+                    len(analyses),
+                    state.observation_count,
+                    state.avg_correlation,
+                    state.regime,
+                )
+
+                # Persist so ExecutionManager picks up the warmed matrix
+                try:
+                    self._ewma_engine.save_state("trained_data/ewma_correlation_state.json")
+                except Exception as e:
+                    logger.debug(f"EWMA: State persistence failed: {e}")
+            else:
+                logger.debug("EWMA: No returns to feed (first cycle or all prices unchanged)")
+
+        except Exception as e:
+            logger.warning(f"EWMA: Scan-loop feed failed (non-blocking): {e}")
+
     def _save_phase18_state(self) -> None:
         """Persist Phase 18 module state after scan cycles."""
         for module in (
@@ -3182,6 +3459,9 @@ class Scanner:
             self._model_calibration,
             self._pair_regime_agent_matrix,
             self._signal_timing,
+            self._model_router,
+            self._model_bandit,
+            self._attention_feedback,
         ):
             if module is not None:
                 try:
@@ -3197,12 +3477,138 @@ class Scanner:
             self._agent_lifecycle,
             self._observation_consumer,
             self._replay_validator,
+            self._regime_broadcaster,
+            self._causal_filter,
         ):
             if module is not None:
                 try:
                     module.save_state()
                 except Exception as e:
                     logger.debug(f"Phase 19 save_state error: {e}")
+
+    # ── Drift monitor: scan-loop integration ────────────────────────
+
+    _DRIFT_CHECK_INTERVAL = 20  # Run drift check every N scan cycles
+
+    def _run_drift_check_cycle(self, analyses: list) -> None:
+        """Run DriftMonitor on scanned pairs at periodic intervals.
+
+        Converts cached raw OHLCV DataFrames into candle dicts that
+        DriftMonitor.run_drift_check() expects, checks each pair for
+        feature/concept drift, and logs results.  On critical drift,
+        writes a retrain request file that scheduled_retrain.py can
+        pick up.
+
+        Args:
+            analyses: List of PairAnalysis results from this scan cycle.
+        """
+        if self._drift_monitor is None:
+            return
+        if self._scan_cycle_count % self._DRIFT_CHECK_INTERVAL != 0:
+            return
+        if not analyses:
+            return
+
+        drift_pairs_flagged: list = []
+
+        for analysis in analyses:
+            pair = analysis.pair
+            df_raw = self._raw_snapshots.get(pair)
+            if df_raw is None or df_raw.empty:
+                continue
+
+            try:
+                # Convert DataFrame rows to list-of-dicts for replay
+                candle_cols = [c for c in ("time", "open", "high", "low", "close", "volume") if c in df_raw.columns]
+                historical_candles = df_raw[candle_cols].tail(200).to_dict(orient="records")
+
+                report = self._drift_monitor.run_drift_check(
+                    pair=pair,
+                    historical_candles=historical_candles,
+                )
+
+                if report.get("severity") == "critical":
+                    logger.warning(
+                        "DriftMonitor: CRITICAL drift on %s (score=%.3f) — "
+                        "retrain recommended, sizing reduced",
+                        pair, report.get("drift_score", 0.0),
+                    )
+                    drift_pairs_flagged.append(pair)
+                elif report.get("severity") == "mild":
+                    logger.warning(
+                        "DriftMonitor: Mild drift on %s (score=%.3f)",
+                        pair, report.get("drift_score", 0.0),
+                    )
+                    drift_pairs_flagged.append(pair)
+
+            except Exception as e:
+                logger.debug("DriftMonitor: Check failed for %s (non-blocking): %s", pair, e)
+
+        # Bridge to RetrainTrigger: write retrain request if critical drift found
+        if drift_pairs_flagged:
+            self._write_drift_retrain_request(drift_pairs_flagged)
+
+        # Persist drift monitor state
+        try:
+            self._drift_monitor.save_state()
+        except Exception as e:
+            logger.debug("DriftMonitor: save_state failed: %s", e)
+
+    def _write_drift_retrain_request(self, pairs: list) -> None:
+        """Write a retrain request file when DriftMonitor flags pairs.
+
+        This bridges DriftMonitor output into the same retrain_request.json
+        that RetrainTrigger and scheduled_retrain.py already consume.
+
+        Args:
+            pairs: List of pair codes flagged for drift.
+        """
+        try:
+            import fcntl
+            import json as _json_local
+            import os as _os_local
+            from pathlib import Path
+
+            request_path = Path("trained_data/retrain_request.json")
+            request_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Check if a request already exists (don't overwrite higher-priority)
+            if request_path.exists():
+                try:
+                    existing = _json_local.loads(request_path.read_text())
+                    if existing.get("priority") == "urgent":
+                        logger.debug("DriftMonitor: Urgent retrain request already pending, skipping write")
+                        return
+                except Exception:
+                    pass
+
+            request_data = {
+                "pairs": pairs,
+                "reason": f"DriftMonitor: {len(pairs)} pair(s) showing feature/concept drift",
+                "accuracy_snapshot": {
+                    p: {"drift_severity": self._drift_monitor.get_size_multiplier(p)}
+                    for p in pairs
+                },
+                "triggered_at": datetime.now(timezone.utc).isoformat(),
+                "priority": "normal",
+                "source": "drift_monitor",
+            }
+
+            with open(request_path, "w") as f:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    _json_local.dump(request_data, f, indent=2, sort_keys=True)
+                    f.flush()
+                    _os_local.fsync(f.fileno())
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+            logger.info(
+                "DriftMonitor: Retrain request written for %d pair(s): %s",
+                len(pairs), ", ".join(pairs),
+            )
+        except Exception as e:
+            logger.debug("DriftMonitor: Failed to write retrain request: %s", e)
 
     def _register_health_checks(self) -> None:
         """Register Phase 19 modules with health registry (US-121).
@@ -3328,6 +3734,49 @@ class Scanner:
             except Exception as e:
                 logger.debug(f"SignalTimingOptimizer outcome error: {e}")
 
+        # US-106: Model router + bandit reward update from trade outcome
+        if self._model_router is not None:
+            try:
+                self._model_router.record_outcome(pair, regime, model, pnl_pips)
+            except Exception as e:
+                logger.debug(f"ModelRouter outcome error: {e}")
+
+        if self._model_bandit is not None:
+            try:
+                self._model_bandit.update_reward(model, pnl_pips)
+            except Exception as e:
+                logger.debug(f"ModelBandit outcome error: {e}")
+
+        # Attention feedback: reinforce timeframe quality based on trade outcome
+        if self._attention_feedback is not None and agent_verdicts:
+            try:
+                # Build agent votes from verdicts
+                _attn_votes = {}
+                for _v in agent_verdicts:
+                    if isinstance(_v, dict):
+                        _aname = _v.get("name", _v.get("agent", ""))
+                        if _aname:
+                            _attn_votes[_aname] = "BUY" if _v.get("passed", False) else "SELL"
+
+                # Outcome-weighted quality: winning trades reinforce current attention,
+                # losing trades produce anti-reinforcement via inverted quality
+                _outcome_mult = 1.0 if trade_won else -0.5
+                _quality_override = {
+                    5: max(0.0, min(1.0, 0.5 + _outcome_mult * 0.3)),
+                    60: max(0.0, min(1.0, 0.5 + _outcome_mult * 0.2)),
+                    240: max(0.0, min(1.0, 0.5 + _outcome_mult * 0.15)),
+                }
+                self._attention_feedback.update_attention(
+                    quality_scores=_quality_override,
+                    regime=regime,
+                )
+                logger.debug(
+                    f"Attention feedback outcome: {pair} regime={regime} "
+                    f"won={trade_won} quality={_quality_override}"
+                )
+            except Exception as _attn_out_err:
+                logger.debug(f"Attention feedback outcome error: {_attn_out_err}")
+
         # Persist after recording outcomes
         self._save_phase18_state()
 
@@ -3406,6 +3855,11 @@ class Scanner:
                     result.analyses,
                     returns_data=self._pair_returns,
                     apply_position_reduction=True,
+                )
+                logger.debug(
+                    "Diversification filter: %d → %d tradeable pairs",
+                    len(pre_filter_pairs),
+                    len(result.analyses),
                 )
                 # US-059: Log correlation conflicts to observation log
                 try:
@@ -3567,6 +4021,9 @@ class Scanner:
                 config=exec_config,
                 oanda_client=self._oanda,
             )
+            # Inject DynamicRiskAllocator so position sizing uses P/L distribution
+            if self._dynamic_risk_allocator is not None:
+                self._executor.set_dynamic_risk_allocator(self._dynamic_risk_allocator)
             return True
         except Exception as e:
             logger.error(f"Failed to initialize executor: {e}")
