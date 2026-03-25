@@ -427,9 +427,7 @@ class ExecutionManager:
         try:
             from pathlib import Path
             from src.scanner.adaptive_position_sizing import (
-                AdaptivePositionSizer,
                 create_default_position_sizer as create_default_adaptive_sizer,
-                create_conservative_position_sizer as create_conservative_adaptive_sizer,
                 create_aggressive_position_sizer as create_aggressive_adaptive_sizer,
             )
             if self.config.aggressive_mode:
@@ -456,7 +454,6 @@ class ExecutionManager:
             return
         try:
             from src.risk.ewma_correlation import (
-                EWMACorrelationEngine,
                 create_default_ewma_engine,
             )
             # Get tracked pairs from config
@@ -523,7 +520,6 @@ class ExecutionManager:
             return
         try:
             from src.scanner.expectancy_tracker import (
-                ExpectancyTracker,
                 create_default_expectancy_tracker,
             )
             self._expectancy_tracker = create_default_expectancy_tracker()
@@ -2737,7 +2733,6 @@ class ExecutionManager:
             tp_price = float(t.get("takeProfitOrder", {}).get("price", 0))
 
             # Calculate distances in pips
-            current_price = entry  # Approximate; exact would need live price
             if sl_price > 0:
                 sl_dist_pips = abs(entry - sl_price) / pip_value
             else:
