@@ -17,7 +17,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import json
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 try:
     from zoneinfo import ZoneInfo
@@ -280,8 +283,12 @@ def load_state(cfg: Dict[str, Any], policy: FxPolicy, *, now: Optional[datetime]
         return FxDailyState(date=date_str)
 
     try:
-        payload = json.loads(path.read_text())
-    except Exception:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        logger.warning("fx_guardrails: corrupted state file %s: %s — resetting", path, e)
+        return FxDailyState(date=date_str)
+    except Exception as e:
+        logger.error("fx_guardrails: failed to load state %s: %s", path, e)
         return FxDailyState(date=date_str)
 
     st = FxDailyState(date=str(payload.get("date") or date_str))
