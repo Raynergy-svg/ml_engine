@@ -24,6 +24,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
+try:
+    from src.scanner.automation.safe_json import safe_json_write
+    _HAS_SAFE_JSON = True
+except ImportError:
+    _HAS_SAFE_JSON = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -247,7 +253,23 @@ class RecursiveLearner:
         self.learnings_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             data = [e.to_dict() for e in self._learnings]
-            self.learnings_path.write_text(json.dumps(data, indent=2, default=str))
+            if _HAS_SAFE_JSON:
+                success = safe_json_write(self.learnings_path, data)
+                if not success:
+                    logger.error(f"safe_json_write failed for learnings: {self.learnings_path}")
+            else:
+                import os, tempfile
+                json_str = json.dumps(data, indent=2, default=str)
+                fd, tmp = tempfile.mkstemp(dir=str(self.learnings_path.parent))
+                try:
+                    os.write(fd, json_str.encode("utf-8"))
+                    os.fsync(fd); os.close(fd); fd = -1
+                    os.rename(tmp, str(self.learnings_path))
+                except Exception:
+                    if fd >= 0: os.close(fd)
+                    try: os.unlink(tmp)
+                    except OSError: pass
+                    raise
         except Exception as e:
             logger.error(f"Failed to persist learnings: {e}")
 
@@ -255,6 +277,22 @@ class RecursiveLearner:
         self.rules_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             data = [r.to_dict() for r in self._rules]
-            self.rules_path.write_text(json.dumps(data, indent=2, default=str))
+            if _HAS_SAFE_JSON:
+                success = safe_json_write(self.rules_path, data)
+                if not success:
+                    logger.error(f"safe_json_write failed for rules: {self.rules_path}")
+            else:
+                import os, tempfile
+                json_str = json.dumps(data, indent=2, default=str)
+                fd, tmp = tempfile.mkstemp(dir=str(self.rules_path.parent))
+                try:
+                    os.write(fd, json_str.encode("utf-8"))
+                    os.fsync(fd); os.close(fd); fd = -1
+                    os.rename(tmp, str(self.rules_path))
+                except Exception:
+                    if fd >= 0: os.close(fd)
+                    try: os.unlink(tmp)
+                    except OSError: pass
+                    raise
         except Exception as e:
             logger.error(f"Failed to persist rules: {e}")
