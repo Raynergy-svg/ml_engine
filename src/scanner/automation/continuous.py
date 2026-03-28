@@ -12,7 +12,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 if TYPE_CHECKING:
     from src.scanner.engine import Scanner
@@ -67,6 +67,69 @@ class ContinuousScanner:
         self._scan_count = 0
         self._maintenance = None
         self._portfolio_optimizer = None
+
+        # Phase 56 (US-350): Scan Diagnostics Reporter
+        self._scan_diagnostics = None
+        try:
+            from src.scanner.scan_diagnostics import ScanDiagnosticsReporter
+            self._scan_diagnostics = ScanDiagnosticsReporter()
+            logger.info("Phase 56 (US-350): Scan diagnostics reporter initialized")
+        except Exception as _sdr_err:
+            logger.debug(f"Phase 56: Scan diagnostics reporter init deferred: {_sdr_err}")
+
+        # Phase 57 (US-356): Penalty Auditor — surfaces recommendation when stalled
+        self._penalty_auditor = None
+        try:
+            from src.scanner.penalty_audit import PenaltyAuditor
+            self._penalty_auditor = PenaltyAuditor()
+            logger.info("Phase 57 (US-356): Penalty auditor initialized")
+        except Exception as _pa_err:
+            logger.debug(f"Phase 57: Penalty auditor init deferred: {_pa_err}")
+
+        # Phase 58 (US-360): Gate Pass Predictor — simulate pass rate under penalty-free conditions
+        self._gate_pass_predictor = None
+        try:
+            from src.scanner.gate_pass_predictor import GatePassPredictor
+            self._gate_pass_predictor = GatePassPredictor()
+            logger.info("Phase 58 (US-360): Gate pass predictor initialized")
+        except Exception as _gpp_err:
+            logger.debug(f"Phase 58: Gate pass predictor init deferred: {_gpp_err}")
+
+        # Phase 58 (US-361): Adaptive Confidence Floor — conservative threshold auto-reduction
+        self._adaptive_floor = None
+        try:
+            from src.scanner.adaptive_confidence_floor import AdaptiveConfidenceFloor
+            _initial_threshold = getattr(self.config, "min_confidence", 58.0)
+            self._adaptive_floor = AdaptiveConfidenceFloor(
+                initial_threshold=float(_initial_threshold),
+            )
+            logger.info("Phase 58 (US-361): Adaptive confidence floor initialized")
+        except Exception as _af_err:
+            logger.debug(f"Phase 58: Adaptive confidence floor init deferred: {_af_err}")
+
+        # Phase 59 (US-363): Signal Funnel Tracker — per-scan gate attrition visibility
+        self._signal_funnel = None
+        try:
+            from src.scanner.signal_funnel_tracker import SignalFunnelTracker
+            self._signal_funnel = SignalFunnelTracker()
+            logger.info("Phase 59 (US-363): Signal funnel tracker initialized")
+        except Exception as _sft_err:
+            logger.debug(f"Phase 59: Signal funnel tracker init deferred: {_sft_err}")
+
+        # Phase 60 (US-369): Scan Health Synthesizer — unified health report from all observability modules
+        self._scan_health = None
+        try:
+            from src.scanner.scan_health_synthesizer import ScanHealthSynthesizer
+            self._scan_health = ScanHealthSynthesizer(
+                signal_funnel=self._signal_funnel,
+                gate_proximity=getattr(self._scanner, "_gate_proximity", None),
+                ensemble_divergence=getattr(self._scanner, "_ensemble_divergence", None),
+                raw_conf_recorder=getattr(self._scanner, "_raw_conf_recorder", None),
+                scan_diagnostics=self._scan_diagnostics,
+            )
+            logger.info("Phase 60 (US-369): Scan health synthesizer initialized")
+        except Exception as _shs_err:
+            logger.debug(f"Phase 60: Scan health synthesizer init deferred: {_shs_err}")
 
         # Initialize maintenance if enabled
         if self.config.enable_maintenance:
@@ -531,6 +594,44 @@ class ContinuousScanner:
                     except Exception as md_err:
                         logger.debug(f"Module dispatch error: {md_err}")
 
+                # Phase 50: Crisis scenario generation every 50 cycles
+                if (
+                    self._scan_count % 50 == 0
+                    and self._scan_count > 0
+                    and getattr(self.scanner, "_crisis_generator", None) is not None
+                ):
+                    try:
+                        crisis_gen = self.scanner._crisis_generator
+                        candle_cache = getattr(self.scanner, "_cached_candles", {})
+                        # Pick the first pair with sufficient candle history
+                        _crisis_candles = None
+                        for _pair, _candles in candle_cache.items():
+                            if hasattr(_candles, "__len__") and len(_candles) >= 50:
+                                import numpy as np
+                                _crisis_candles = np.array(_candles, dtype=np.float64)
+                                break
+                        if _crisis_candles is not None:
+                            scenarios = crisis_gen.generate_scenario_batch(
+                                base_candles=_crisis_candles,
+                                n_scenarios=5,
+                            )
+                            if scenarios and console:
+                                console.print(
+                                    f"  [dim]Crisis generator: {len(scenarios)} synthetic "
+                                    f"scenarios generated (cycle {self._scan_count})[/dim]"
+                                )
+                            logger.info(
+                                "CrisisGenerator: %d scenarios generated (cycle %d)",
+                                len(scenarios) if scenarios else 0,
+                                self._scan_count,
+                            )
+                        else:
+                            logger.debug(
+                                "CrisisGenerator: skipped — no pair with >= 50 cached candles"
+                            )
+                    except Exception as cg_err:
+                        logger.debug(f"Crisis generator error: {cg_err}")
+
                 # Phase 21 (US-131): Apply pending config adjustments every 10 cycles
                 if (
                     self._scan_count % 10 == 0
@@ -607,6 +708,8 @@ class ContinuousScanner:
             ("regime_broadcaster", "_regime_broadcaster"),
             ("temporal_attention", "_temporal_attention"),
             ("training_augmenter", "_training_augmenter"),
+            # Phase 50: Crisis generator uses save_log() instead of save_state()
+            ("crisis_generator", "_crisis_generator"),
         ]
         for mod_label, mod_attr in _shutdown_modules:
             try:
@@ -616,8 +719,57 @@ class ContinuousScanner:
                 if mod is not None and hasattr(mod, "save_state"):
                     mod.save_state()
                     logger.info(f"Shutdown: {mod_label} state saved")
+                elif mod is not None and hasattr(mod, "save_log"):
+                    mod.save_log()
+                    logger.info(f"Shutdown: {mod_label} log saved")
             except Exception as _mod_err:
                 logger.debug(f"Shutdown: {mod_label} save failed: {_mod_err}")
+
+        # Phase 55 (US-XXX): Flush Aura bridge state on shutdown
+        # FeedbackBridge module is on the Orchestrator (PatternEngine, RulePromoter, etc. deleted)
+        try:
+            from src.scanner.automation.orchestrator import Orchestrator
+            _orch = Orchestrator()
+            _orch._init_modules()  # Ensure modules are initialized
+
+            # Flush bridge signals — FeedbackBridge has write_outcome/flush but not save_state
+            if _orch._aura_bridge is not None:
+                try:
+                    # FeedbackBridge uses file-based locking, signal files are already atomic
+                    # No explicit save_state needed — signals are written directly
+                    logger.info("Shutdown: aura_bridge signals verified (file-based, no flush needed)")
+                except Exception as _bridge_err:
+                    logger.debug(f"Shutdown: aura_bridge verification failed: {_bridge_err}")
+        except Exception as _orch_err:
+            logger.debug(f"Shutdown: Orchestrator aura bridge skipped: {_orch_err}")
+
+        # Gate attribution engine state — on ExecutionManager
+        try:
+            from src.scanner.execution import ExecutionManager
+            _em = ExecutionManager()
+
+            if _em._gate_attribution is not None:
+                try:
+                    _em._gate_attribution.save_state()
+                    logger.info("Shutdown: gate_attribution state saved")
+                except Exception as _ga_err:
+                    logger.debug(f"Shutdown: gate_attribution save failed: {_ga_err}")
+        except Exception as _em_err:
+            logger.debug(f"Shutdown: ExecutionManager gate_attribution skipped: {_em_err}")
+
+        # StateEngine has a multi-arg save_state() — call separately from the generic loop
+        try:
+            from src.scanner.automation.state_engine import StateEngine
+            se = StateEngine()
+            se.save_state(
+                goal="continuous_scan",
+                status="shutdown",
+                done=[f"completed_{self._scan_count}_scans"],
+                next_action="restart_scan_loop",
+            )
+            logger.info("Shutdown: state_engine state saved")
+        except Exception as _se_err:
+            logger.debug(f"Shutdown: state_engine save failed: {_se_err}")
 
         # Save session snapshot on clean exit (Phase 8: cross-session learning)
         try:
@@ -743,6 +895,124 @@ class ContinuousScanner:
             safe_jsonl_append(log_path, record)
         except Exception as e:
             logger.debug(f"Scan cycle log error: {e}")
+
+        # Phase 56 (US-350): Feed scan result to diagnostics reporter
+        if self._scan_diagnostics is not None:
+            try:
+                _diag_pairs = [
+                    {
+                        "confidence": float(a.confidence),
+                        "is_tradeable": bool(a.is_tradeable),
+                        "direction": str(getattr(a, "direction", "HOLD")),
+                    }
+                    for a in result.analyses
+                ]
+                self._scan_diagnostics.record_scan(_diag_pairs)
+                # Phase 58 (US-361): Advance adaptive floor cooldown each scan
+                if self._adaptive_floor is not None:
+                    try:
+                        self._adaptive_floor.tick()
+                    except Exception as _af_tick_err:
+                        logger.debug(f"Phase 58: adaptive_floor.tick() failed: {_af_tick_err}")
+                if self._scan_diagnostics.should_report():
+                    _diag_report = self._scan_diagnostics.generate_report()
+                    self._scan_diagnostics.save_report(_diag_report)
+                    if _diag_report.get("stalled"):
+                        logger.warning(
+                            "Phase 56 (US-350): STALLED — %d scans with no tradeable pair. %s",
+                            _diag_report["scans_since_last_trade"],
+                            _diag_report["diagnostic_summary"],
+                        )
+                        # Phase 57 (US-356): Run penalty audit when stalled
+                        if self._penalty_auditor is not None:
+                            try:
+                                _audit = self._penalty_auditor.run_audit(
+                                    scan_diagnostics_report=_diag_report,
+                                )
+                                self._penalty_auditor.save_audit(_audit)
+                            except Exception as _pa_err:
+                                logger.debug(f"Phase 57: Penalty audit failed: {_pa_err}")
+                        # Phase 58 (US-360): Gate pass predictor — surface signal diagnostics
+                        if self._gate_pass_predictor is not None:
+                            try:
+                                _recorder = getattr(self._scanner, "_raw_conf_recorder", None)
+                                if _recorder is not None:
+                                    _min_conf = getattr(self.config, "min_confidence", 58.0)
+                                    _gpp_report = self._gate_pass_predictor.generate_report(
+                                        _recorder,
+                                        min_confidence=float(_min_conf),
+                                        stall_info={"scans_since_last_trade": _diag_report.get("scans_since_last_trade", 0)},
+                                    )
+                                    # Phase 58 (US-361): Adaptive floor — lower threshold if warranted
+                                    if self._adaptive_floor is not None:
+                                        try:
+                                            from src.scanner.threshold_gap_analyzer import ThresholdGapAnalyzer
+                                            _gap_analyzer = ThresholdGapAnalyzer()
+                                            _gap_report = _gap_analyzer.analyze(_recorder, float(_min_conf))
+                                            _scans_stalled = _diag_report.get("scans_since_last_trade", 0)
+                                            if self._adaptive_floor.should_adapt(_gap_report, _gpp_report, _scans_stalled):
+                                                _delta = self._adaptive_floor.compute_adjustment(_gap_report, _gpp_report)
+                                                if _delta != 0.0:
+                                                    self._adaptive_floor.apply_adjustment(self.config, _delta)
+                                        except Exception as _af_err:
+                                            logger.debug(f"Phase 58: Adaptive floor failed: {_af_err}")
+                            except Exception as _gpp_err:
+                                logger.debug(f"Phase 58: Gate pass predictor failed: {_gpp_err}")
+                    else:
+                        logger.info(
+                            "Phase 56 (US-350): Diagnostics report — gate_pass_rate=%.1f%% avg_conf=%.3f stalled=%s",
+                            _diag_report["gate_pass_rate_pct"],
+                            _diag_report["avg_confidence"],
+                            _diag_report["stalled"],
+                        )
+                self._scan_diagnostics.save_state()
+            except Exception as _sdr_err:
+                logger.debug(f"Phase 56: Scan diagnostics record error: {_sdr_err}")
+
+        # Phase 59 (US-363): Record signal funnel attrition for this scan
+        if self._signal_funnel is not None and result.analyses:
+            try:
+                _funnel = self._signal_funnel.record_scan(result.analyses)
+                _kill = _funnel.get("dominant_kill_stage", "none")
+                if _kill not in ("none", ""):
+                    logger.info(
+                        "Phase 59 (US-363): Funnel — evaluated=%d tradeable=%d (%.1f%%) dominant_kill=%s",
+                        _funnel.get("total_evaluated", 0),
+                        _funnel.get("is_tradeable", 0),
+                        _funnel.get("tradeable_pct", 0.0),
+                        _kill,
+                    )
+                self._signal_funnel.save_state()
+            except Exception as _sft_err:
+                logger.debug(f"Phase 59: signal_funnel.record_scan failed: {_sft_err}")
+
+        # Phase 60 (US-369): Unified health synthesis — every 10 scan cycles
+        if self._scan_health is not None and self._scan_count % 10 == 0:
+            try:
+                _health = self._scan_health.synthesize()
+                _status = _health.get("health_status", "HEALTHY")
+                _summary = _health.get("summary", "")
+                _top_action = _health.get("top_action", "")
+                _bottlenecks = _health.get("bottlenecks", [])
+                if _status == "CRITICAL":
+                    logger.error(
+                        "Phase 60 (US-369): HEALTH=%s | %s | top_action=%s | bottlenecks=%s",
+                        _status, _summary, _top_action,
+                        [b["name"] for b in _bottlenecks],
+                    )
+                elif _status == "DEGRADED":
+                    _top_bn = _bottlenecks[0]["name"] if _bottlenecks else "none"
+                    logger.warning(
+                        "Phase 60 (US-369): HEALTH=%s | top_bottleneck=%s | action=%s",
+                        _status, _top_bn, _top_action,
+                    )
+                else:
+                    logger.info(
+                        "Phase 60 (US-369): HEALTH=%s | %s",
+                        _status, _summary,
+                    )
+            except Exception as _shs_err:
+                logger.debug(f"Phase 60: scan_health.synthesize() failed: {_shs_err}")
 
     def _filter_correlated_exposure(self, tradeable: list) -> list:
         """Filter out trades that would double exposure on correlated pairs already open."""

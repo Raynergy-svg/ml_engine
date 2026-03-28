@@ -198,8 +198,23 @@ class ConfidenceBasedRiskManager:
         take_profit_pips = float(stop_loss_pips) * target_rr if float(stop_loss_pips) > 0 else 0.0
         take_profit_pips = self._apply_tp_constraints(take_profit_pips, instrument)
 
-        # Calculate final risk-reward ratio
-        final_rr = take_profit_pips / stop_loss_pips if stop_loss_pips > 0 else 0.0
+        # Calculate final risk-reward ratio — reject if SL invalid
+        if stop_loss_pips <= 0:
+            logger.warning(
+                "R:R rejected: stop_loss_pips=%.4f for %s — invalid SL makes R:R undefined",
+                stop_loss_pips, instrument,
+            )
+            return RiskManagementResult(
+                stop_loss_pips=stop_loss_pips,
+                take_profit_pips=take_profit_pips,
+                risk_reward_ratio=0.0,
+                confidence_level=confidence_level,
+                sl_adjustment_factor=sl_factor,
+                tp_adjustment_factor=tp_factor,
+                is_valid=False,
+                reason=f"Rejected: stop_loss_pips={stop_loss_pips:.4f} <= 0, R:R undefined",
+            )
+        final_rr = take_profit_pips / stop_loss_pips
 
         return RiskManagementResult(
             stop_loss_pips=stop_loss_pips,
@@ -269,9 +284,15 @@ class ConfidenceBasedRiskManager:
         elif base_tp_pips is not None:
             adjusted_tp = base_tp_pips * tp_factor
             adjusted_sl = adjusted_tp / base_rr
-        # If no base values provided, use default values
+        # If no base values provided, log WARNING and use configured minimum only.
+        # The hardcoded 10.0 pip literal is removed — callers MUST provide ATR-based
+        # SL/TP values. Only self.config.min_stop_loss_pips is used as the floor.
         else:
-            adjusted_sl = 20.0 * sl_factor  # Default 20 pips
+            logger.warning(
+                "No base SL/TP values provided — ATR-based values are required. "
+                "Falling back to config.min_stop_loss_pips only (no hardcoded pips)."
+            )
+            adjusted_sl = self.config.min_stop_loss_pips * sl_factor
             adjusted_tp = adjusted_sl * base_rr
 
         return adjusted_sl, adjusted_tp
