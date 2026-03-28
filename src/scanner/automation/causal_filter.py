@@ -297,6 +297,40 @@ class CausalSignalFilter:
             },
         }
 
+    def query_counterfactual(
+        self,
+        trade_context: Dict[str, Any],
+        scenario_name: Optional[str] = None,
+    ) -> Optional[List[Any]]:
+        """Run counterfactual analysis using the live causal graph.
+
+        Args:
+            trade_context: Dict with keys: pair, features, regime, outcome
+            scenario_name: Specific scenario to test. If None, runs all 5 standard scenarios.
+
+        Returns:
+            List of CounterfactualResult dicts, or None if analysis unavailable (non-blocking).
+        """
+        try:
+            from src.scanner.automation.causal_counterfactual import (
+                CounterfactualEngine,
+            )
+
+            engine = CounterfactualEngine(causal_graph_path=self.persistence_path.parent / "causal_graph.json")
+
+            if scenario_name:
+                # Custom scenario — not yet supported, run standard instead
+                logger.debug(f"Custom scenario '{scenario_name}' not yet implemented, using standard scenarios")
+                results = engine.batch_analyze(trade_context)
+            else:
+                results = engine.batch_analyze(trade_context)
+
+            return [r.to_dict() for r in results]
+
+        except Exception as e:
+            logger.debug(f"Counterfactual analysis unavailable: {e}")
+            return None
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

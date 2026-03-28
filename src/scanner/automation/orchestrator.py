@@ -662,9 +662,6 @@ class Orchestrator:
                 if step.critical:
                     raise
 
-        # Extract closed_trades from dispatch results for further processing
-        closed_trades = self._dispatch_results.get("closed_trades", [])
-
         # ── OBSERVATION LOG (Old Step 2, kept inline for initial compatibility)
         if scan_result and self._observer:
             try:

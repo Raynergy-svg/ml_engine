@@ -343,17 +343,37 @@ class OnlineWeightUpdater:
                         "trade_count": adj.trade_count,
                     })
             except ImportError:
-                with open(self.log_path, "a", encoding="utf-8") as f:
-                    for adj in adjustments:
-                        f.write(json.dumps({
-                            "timestamp": now,
-                            "agent": adj.agent,
-                            "old_weight": adj.old_weight,
-                            "new_weight": adj.new_weight,
-                            "delta": adj.delta,
-                            "reason": adj.reason,
-                            "trade_count": adj.trade_count,
-                        }, default=str) + "\n")
+                # Fallback when safe_json unavailable: acquire fcntl lock to prevent
+                # concurrent JSONL corruption (L-1 fix — unlocked append was a race).
+                lock_path = str(self.log_path) + ".lock"
+                _lock_fd = None
+                try:
+                    import fcntl as _fcntl
+                    import os as _os
+                    _lock_fd = _os.open(lock_path, _os.O_CREAT | _os.O_RDWR)
+                    _fcntl.flock(_lock_fd, _fcntl.LOCK_EX)
+                except Exception:
+                    pass  # best-effort; proceed without lock on fcntl-unavailable systems
+                try:
+                    with open(self.log_path, "a", encoding="utf-8") as f:
+                        for adj in adjustments:
+                            f.write(json.dumps({
+                                "timestamp": now,
+                                "agent": adj.agent,
+                                "old_weight": adj.old_weight,
+                                "new_weight": adj.new_weight,
+                                "delta": adj.delta,
+                                "reason": adj.reason,
+                                "trade_count": adj.trade_count,
+                            }, default=str) + "\n")
+                finally:
+                    if _lock_fd is not None:
+                        try:
+                            import fcntl as _fcntl2, os as _os2
+                            _fcntl2.flock(_lock_fd, _fcntl2.LOCK_UN)
+                            _os2.close(_lock_fd)
+                        except Exception:
+                            pass
 
         except Exception as e:
             logger.debug("Online RL: failed to log updates: %s", e)
