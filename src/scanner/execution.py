@@ -186,6 +186,7 @@ class ExecutionManager:
 
         # Phase 44 (US-279): Adaptive Exit Manager (Chandelier + partial profit + vol trail + time + confidence decay)
         self._ohlc_cache: Dict[str, Any] = {}  # pair -> DataFrame with close/high/low columns
+        self._ohlc_cache_timestamp: Optional[float] = None  # Phase 55: freshness tracking
         self._adaptive_exit_manager = None
         try:
             from src.scanner.adaptive_exits import create_default_exit_manager
@@ -335,6 +336,89 @@ class ExecutionManager:
             logger.info("Phase 52 (US-326): Drawdown adapter initialized")
         except Exception as e:
             logger.debug(f"Phase 52: Drawdown adapter init deferred: {e}")
+
+        # Phase 53 (US-328): Gate Attribution Engine — track gate decisions for effectiveness analysis
+        self._gate_attribution = None
+        try:
+            from src.scanner.gate_attribution import GateAttributionEngine
+            self._gate_attribution = GateAttributionEngine()
+            logger.info("Phase 53 (US-328): Gate attribution engine initialized")
+        except Exception as e:
+            logger.debug(f"Phase 53: Gate attribution init deferred: {e}")
+
+        # Phase 53 (US-330): Signal Freshness Guard — recompute RSI/ADX at execution
+        self._signal_freshness = None
+        try:
+            from src.scanner.signal_freshness import SignalFreshnessGuard
+            self._signal_freshness = SignalFreshnessGuard()
+            logger.info("Phase 53 (US-330): Signal freshness guard initialized")
+        except Exception as e:
+            logger.debug(f"Phase 53: Signal freshness init deferred: {e}")
+
+        # Phase 53 (US-329): Pair-Specific Bayesian Weights — per-pair agent tuning
+        self._pair_bayesian_weights = None
+        try:
+            from src.scanner.pair_bayesian_weights import PairSpecificBayesianWeights
+            self._pair_bayesian_weights = PairSpecificBayesianWeights()
+            logger.info("Phase 53 (US-329): Pair-specific Bayesian weights initialized")
+        except Exception as e:
+            logger.debug(f"Phase 53: Pair Bayesian weights init deferred: {e}")
+
+        # Phase 53 (US-332): WFE Stability Monitor — pause retraining on WFE decline
+        self._wfe_monitor = None
+        try:
+            from src.scanner.wfe_monitor import WFEStabilityMonitor
+            self._wfe_monitor = WFEStabilityMonitor()
+            logger.info("Phase 53 (US-332): WFE stability monitor initialized")
+        except Exception as e:
+            logger.debug(f"Phase 53: WFE monitor init deferred: {e}")
+
+        # Phase 54 (US-334): Dynamic Gate Threshold Optimizer — auto-tune gate thresholds
+        self._gate_threshold_optimizer = None
+        try:
+            from src.scanner.gate_threshold_optimizer import GateThresholdOptimizer
+            self._gate_threshold_optimizer = GateThresholdOptimizer()
+            logger.info("Phase 54 (US-334): Gate threshold optimizer initialized")
+        except Exception as e:
+            logger.debug(f"Phase 54: Gate threshold optimizer init deferred: {e}")
+
+        # Phase 54 (US-335): Feature Drift Detector — KS test + Page-Hinkley
+        self._feature_drift_detector = None
+        try:
+            from src.scanner.feature_drift import FeatureDriftDetector
+            self._feature_drift_detector = FeatureDriftDetector()
+            logger.info("Phase 54 (US-335): Feature drift detector initialized")
+        except Exception as e:
+            logger.debug(f"Phase 54: Feature drift detector init deferred: {e}")
+
+        # Phase 54 (US-336): Trade Cluster Analyzer — identify high/low win clusters
+        self._trade_cluster_analyzer = None
+        try:
+            from src.scanner.trade_clusters import TradeClusterAnalyzer
+            self._trade_cluster_analyzer = TradeClusterAnalyzer()
+            logger.info("Phase 54 (US-336): Trade cluster analyzer initialized")
+        except Exception as e:
+            logger.debug(f"Phase 54: Trade cluster analyzer init deferred: {e}")
+
+        # Phase 54 (US-337): Cluster Confidence Gate — boost/penalize based on cluster match
+        self._cluster_gate = None
+        try:
+            from src.scanner.cluster_gate import ClusterConfidenceGate
+            self._cluster_gate = ClusterConfidenceGate(
+                cluster_analyzer=self._trade_cluster_analyzer
+            )
+            logger.info("Phase 54 (US-337): Cluster confidence gate initialized")
+        except Exception as e:
+            logger.debug(f"Phase 54: Cluster gate init deferred: {e}")
+
+        # Phase 54 (US-338): Regime Confidence Scorer — scale sizing by regime certainty
+        self._regime_confidence_scorer = None
+        try:
+            from src.scanner.regime_confidence import RegimeConfidenceScorer
+            self._regime_confidence_scorer = RegimeConfidenceScorer()
+            logger.info("Phase 54 (US-338): Regime confidence scorer initialized")
+        except Exception as e:
+            logger.debug(f"Phase 54: Regime confidence scorer init deferred: {e}")
 
     def _init_oanda_client(self) -> bool:
         """Initialize OANDA client.
@@ -1510,10 +1594,29 @@ class ExecutionManager:
                 ctx["_drawdown_tier"] = _dd_result.active_tier
 
                 if not _dd_result.allowed:
+                    # Phase 53 (US-328): Record gate rejection
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "drawdown_adapter", rejected=True,
+                                reason=_dd_result.reason, confidence=confidence, pair=pair,
+                            )
+                        except Exception:
+                            pass
                     return ExecutionResult(
                         success=False,
                         error=_dd_result.reason,
                     )
+                else:
+                    # Phase 53 (US-328): Record gate pass
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "drawdown_adapter", rejected=False,
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception:
+                            pass
 
                 # Apply confidence tightening from Tier 1+
                 if _dd_result.confidence_penalty > 0:
@@ -1531,6 +1634,64 @@ class ExecutionManager:
                         )
             except Exception as _dd_err:
                 logger.debug(f"Phase 52: Drawdown adapter error: {_dd_err}")
+
+        # ── Phase 53 (US-330): Signal Freshness Guard — recompute RSI/ADX ──
+        if self._signal_freshness is not None:
+            try:
+                _scan_rsi = float(ctx.get("rsi", ctx.get("rsi_14", 0.0)))
+                _scan_adx = float(ctx.get("adx", ctx.get("adx_14", 0.0)))
+                _recent_closes = ctx.get("recent_closes", ctx.get("close_prices", None))
+                _recent_highs = ctx.get("recent_highs", ctx.get("high_prices", None))
+                _recent_lows = ctx.get("recent_lows", ctx.get("low_prices", None))
+
+                if _scan_rsi > 0 or _scan_adx > 0:
+                    _fresh_result = self._signal_freshness.check(
+                        pair=pair,
+                        scan_rsi=_scan_rsi,
+                        scan_adx=_scan_adx,
+                        current_prices=_recent_closes,
+                        current_highs=_recent_highs,
+                        current_lows=_recent_lows,
+                        confidence=confidence,
+                    )
+                    ctx["_signal_stale"] = _fresh_result.stale
+                    ctx["_staleness_rate"] = _fresh_result.staleness_rate
+
+                    if _fresh_result.stale:
+                        confidence = _fresh_result.adjusted_confidence
+                        # Record stale gate decision
+                        if self._gate_attribution is not None:
+                            try:
+                                if _fresh_result.rejected:
+                                    self._gate_attribution.record_decision(
+                                        "staleness_guard", rejected=True,
+                                        reason=_fresh_result.reason,
+                                        confidence=_fresh_result.adjusted_confidence, pair=pair,
+                                    )
+                                else:
+                                    self._gate_attribution.record_decision(
+                                        "staleness_guard", rejected=False,
+                                        confidence=confidence, pair=pair,
+                                    )
+                            except Exception:
+                                pass
+                        if _fresh_result.rejected:
+                            return ExecutionResult(
+                                success=False,
+                                error=_fresh_result.reason,
+                            )
+                    else:
+                        # Record fresh pass
+                        if self._gate_attribution is not None:
+                            try:
+                                self._gate_attribution.record_decision(
+                                    "staleness_guard", rejected=False,
+                                    confidence=confidence, pair=pair,
+                                )
+                            except Exception:
+                                pass
+            except Exception as _sf_err:
+                logger.debug(f"Phase 53: Signal freshness check error: {_sf_err}")
 
         # ── Phase 49 (US-306): Pre-execution gates from Phase 48 modules ──
         # Size multiplier compounds across all gates (spread × calendar × fitness)
@@ -1555,10 +1716,30 @@ class ExecutionManager:
                             "normalized=%.3f threshold=%.3f",
                             pair, _spread_result.normalized_spread, _spread_result.threshold,
                         )
+                        # Phase 53 (US-328): Record gate rejection
+                        if self._gate_attribution is not None:
+                            try:
+                                self._gate_attribution.record_decision(
+                                    "spread_filter", rejected=True,
+                                    reason=f"spread {_spread_result.normalized_spread:.3f} > {_spread_result.threshold:.3f}",
+                                    confidence=confidence, pair=pair,
+                                )
+                            except Exception:
+                                pass
                         return ExecutionResult(
                             success=False,
                             error=f"BLOCKED: spread too wide ({_spread_result.normalized_spread:.3f} > {_spread_result.threshold:.3f})",
                         )
+                    else:
+                        # Phase 53 (US-328): Record gate pass
+                        if self._gate_attribution is not None:
+                            try:
+                                self._gate_attribution.record_decision(
+                                    "spread_filter", rejected=False,
+                                    confidence=confidence, pair=pair,
+                                )
+                            except Exception:
+                                pass
                     if _spread_result.size_multiplier < 1.0:
                         _phase49_size_mult *= _spread_result.size_multiplier
                         ctx["_spread_mult"] = _spread_result.size_multiplier
@@ -1579,10 +1760,30 @@ class ExecutionManager:
                         "Phase 49 (US-306): %s BLOCKED by calendar blackout — %s (%s)",
                         pair, _cal_result.reason, _evt_name,
                     )
+                    # Phase 53 (US-328): Record gate rejection
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "calendar_filter", rejected=True,
+                                reason=f"blackout: {_evt_name}",
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception:
+                            pass
                     return ExecutionResult(
                         success=False,
                         error=f"BLOCKED: economic calendar blackout ({_evt_name})",
                     )
+                else:
+                    # Phase 53 (US-328): Record gate pass
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "calendar_filter", rejected=False,
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception:
+                            pass
                 if _cal_result.action == "REDUCE_SIZE" and _cal_result.size_multiplier < 1.0:
                     _phase49_size_mult *= _cal_result.size_multiplier
                     ctx["_calendar_mult"] = _cal_result.size_multiplier
@@ -1604,10 +1805,30 @@ class ExecutionManager:
                         "score=%.3f (regime=%s)",
                         pair, _fitness_result.fitness_score, _regime_for_fitness,
                     )
+                    # Phase 53 (US-328): Record gate rejection
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "fitness_detector", rejected=True,
+                                reason=f"fitness {_fitness_result.fitness_score:.3f} in {_regime_for_fitness}",
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception:
+                            pass
                     return ExecutionResult(
                         success=False,
                         error=f"BLOCKED: strategy fitness too low ({_fitness_result.fitness_score:.3f} in {_regime_for_fitness})",
                     )
+                else:
+                    # Phase 53 (US-328): Record gate pass
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "fitness_detector", rejected=False,
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception:
+                            pass
                 if _fitness_result.action == "REDUCE_SIZE" and _fitness_result.size_multiplier < 1.0:
                     _phase49_size_mult *= _fitness_result.size_multiplier
                     ctx["_fitness_mult"] = _fitness_result.size_multiplier
@@ -1675,10 +1896,30 @@ class ExecutionManager:
                         pair, _sq_result.quality_score, _sq_result.details.get("threshold", 0.35),
                         "; ".join(_sq_result.rejection_reasons),
                     )
+                    # Phase 53 (US-328): Record gate rejection
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "setup_quality", rejected=True,
+                                reason=f"quality {_sq_result.quality_score:.3f}: {'; '.join(_sq_result.rejection_reasons)}",
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception:
+                            pass
                     return ExecutionResult(
                         success=False,
                         error=f"BLOCKED: setup quality too low ({_sq_result.quality_score:.3f}): {'; '.join(_sq_result.rejection_reasons)}",
                     )
+                else:
+                    # Phase 53 (US-328): Record gate pass
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "setup_quality", rejected=False,
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception:
+                            pass
                 ctx["_setup_quality_score"] = _sq_result.quality_score
                 ctx["_setup_quality_dims"] = _sq_result.dimension_scores
             except Exception as _sq_err:
@@ -2385,9 +2626,16 @@ class ExecutionManager:
         entries: List[Dict[str, Any]] = []
         if journal_path.exists():
             try:
-                entries = json.loads(journal_path.read_text())
-            except Exception as e:
-                logger.debug("US-178: Journal read failed in _log_trade: %s", e)
+                from src.scanner.automation.safe_json import safe_json_read
+                entries = safe_json_read(journal_path, default=[])
+            except ImportError:
+                try:
+                    entries = json.loads(journal_path.read_text())
+                except Exception as e:
+                    logger.debug("US-178: Journal read failed in _log_trade: %s", e)
+                    entries = []
+            if not isinstance(entries, list):
+                logger.warning("Trade journal corrupted (not a list), resetting: %s", type(entries))
                 entries = []
 
         ctx = analysis_context or {}
@@ -2442,15 +2690,20 @@ class ExecutionManager:
             from src.scanner.automation.safe_json import safe_json_write
             safe_json_write(journal_path, entries)
         except ImportError:
-            # Phase 32 (US-193): Fallback with file locking
-            _data = json.dumps(entries, indent=2, default=str)
+            # Phase 32 (US-193): Fallback with atomic temp+rename pattern
+            _data = json.dumps(entries, indent=2, sort_keys=True, default=str)
+            import tempfile
             try:
-                import fcntl
-                with open(journal_path, "w") as _f:
-                    fcntl.flock(_f, fcntl.LOCK_EX)
+                tmp_fd, tmp_path = tempfile.mkstemp(
+                    dir=str(journal_path.parent), suffix=".tmp"
+                )
+                with os.fdopen(tmp_fd, "w") as _f:
                     _f.write(_data)
-                    fcntl.flock(_f, fcntl.LOCK_UN)
-            except (ImportError, OSError):
+                    _f.flush()
+                    os.fsync(_f.fileno())
+                os.rename(tmp_path, str(journal_path))
+            except OSError as _e:
+                logger.warning("Atomic journal write failed, direct write fallback: %s", _e)
                 journal_path.write_text(_data)
         logger.debug(f"Journal entry appended for trade #{trade_id}")
 
@@ -2522,7 +2775,14 @@ class ExecutionManager:
             ohlc_by_pair: Dict mapping pair name to a DataFrame with at least
                 'close', 'high', 'low' columns.
         """
+        import time as _time
         self._ohlc_cache = ohlc_by_pair
+        self._ohlc_cache_timestamp = _time.time()
+        logger.debug(
+            "Phase 55 (US-340): OHLC cache updated — %d pairs, %s",
+            len(ohlc_by_pair),
+            ", ".join(sorted(ohlc_by_pair.keys())[:5]) + ("..." if len(ohlc_by_pair) > 5 else ""),
+        )
 
     def evaluate_exits(
         self,
@@ -2601,6 +2861,16 @@ class ExecutionManager:
                 # Prefer real OHLC data from Scanner._raw_snapshots if available
                 # (set via set_ohlc_cache() from the scan loop). Fall back to
                 # synthetic arrays when real data is unavailable.
+                # Phase 55 (US-340): Check cache freshness — warn if stale
+                import time as _time
+                if self._ohlc_cache_timestamp is not None:
+                    _cache_age = _time.time() - self._ohlc_cache_timestamp
+                    if _cache_age > 600:  # > 10 minutes (2 scan cycles)
+                        logger.warning(
+                            "Phase 55 (US-340): OHLC cache is %.0fs stale for %s — "
+                            "Chandelier exit may use outdated data",
+                            _cache_age, pair,
+                        )
                 price_array_size = 50
                 _used_real_ohlc = False
 
@@ -2618,10 +2888,9 @@ class ExecutionManager:
                         logger.debug(f"Phase 44: OHLC cache read failed for {pair}: {_ohlc_err}")
 
                 if not _used_real_ohlc:
-                    # TODO: Chandelier exit is degraded without real OHLC — ATR-based
-                    # trailing calculations use flat price arrays which produce no
-                    # meaningful volatility signal. Wire Scanner._raw_snapshots into
-                    # ExecutionManager.set_ohlc_cache() from the scan loop to fix.
+                    # Phase 55 (US-340): OHLC cache wiring completed — this fallback
+                    # should only trigger on first scan cycle before snapshots are
+                    # available, or if a pair has no cached data.
                     logger.debug(
                         "Phase 44: Using synthetic price arrays for %s — "
                         "chandelier exit accuracy is degraded without real OHLC data",
@@ -3742,6 +4011,66 @@ class ExecutionManager:
             except Exception as _attr_err:
                 logger.debug(f"Phase 49: Attribution engine error: {_attr_err}")
 
+        # ── Phase 54 (US-334): Gate Threshold Optimizer — auto-tune gates after attribution ──
+        if self._gate_threshold_optimizer is not None and self._attribution_engine is not None and synced > 0:
+            try:
+                _gate_report = self._attribution_engine.generate_report()
+                if _gate_report:
+                    _gate_recs = self._gate_threshold_optimizer.compute_recommendations(_gate_report)
+                    if _gate_recs:
+                        _applied = self._gate_threshold_optimizer.apply_recommendations(_gate_recs)
+                        if _applied:
+                            self._gate_threshold_optimizer.save_state()
+                            logger.info(
+                                "Phase 54 (US-334): Applied %d gate threshold adjustments: %s",
+                                len(_applied),
+                                {r.gate_name: f"{r.current_threshold:.4f}→{r.recommended_threshold:.4f}" for r in _applied},
+                            )
+                    else:
+                        logger.debug("Phase 54 (US-334): No gate threshold adjustments recommended")
+            except Exception as _gto_err:
+                logger.debug(f"Phase 54: Gate threshold optimizer error: {_gto_err}")
+
+        # ── Phase 54 (US-335): Feature Drift Detector — record outcomes and check periodically ──
+        if self._feature_drift_detector is not None and synced > 0:
+            try:
+                for entry in pending:
+                    tid = str(entry.get("trade_id", ""))
+                    if tid in closed_trades:
+                        _won = float(closed_trades[tid].get("realizedPL", 0)) > 0
+                        self._feature_drift_detector.record_trade(won=_won)
+
+                if self._feature_drift_detector.should_check():
+                    # Split journal into recent vs baseline
+                    _all_with_outcomes = [e for e in entries if e.get("outcome") is not None]
+                    _recent_n = min(self._feature_drift_detector.config.recent_window, len(_all_with_outcomes))
+                    _baseline_n = min(self._feature_drift_detector.config.baseline_window, len(_all_with_outcomes) - _recent_n)
+                    if _recent_n >= 50 and _baseline_n >= 50:
+                        _recent = _all_with_outcomes[-_recent_n:]
+                        _baseline = _all_with_outcomes[-(_recent_n + _baseline_n):-_recent_n]
+                        _drift_result = self._feature_drift_detector.check_drift(_recent, _baseline)
+                        self._feature_drift_detector.save_state()
+                        if _drift_result.drift_detected:
+                            logger.warning(
+                                "Phase 54 (US-335): Drift detected — %s",
+                                _drift_result.reason,
+                            )
+            except Exception as _drift_err:
+                logger.debug(f"Phase 54: Feature drift detector error: {_drift_err}")
+
+        # ── Phase 54 (US-336): Trade Cluster Analyzer — recluster when interval reached ──
+        if self._trade_cluster_analyzer is not None and synced > 0:
+            try:
+                for _ in range(synced):
+                    self._trade_cluster_analyzer.record_trade()
+                if self._trade_cluster_analyzer.should_recluster():
+                    _all_with_outcomes = [e for e in entries if e.get("outcome") is not None]
+                    if len(_all_with_outcomes) >= 50:
+                        self._trade_cluster_analyzer.fit(_all_with_outcomes)
+                        self._trade_cluster_analyzer.save_state()
+            except Exception as _cluster_err:
+                logger.debug(f"Phase 54: Trade cluster analyzer error: {_cluster_err}")
+
         # US-309: Walk-forward optimizer — record outcomes and trigger optimization
         if self._walkforward_optimizer is not None and synced > 0:
             try:
@@ -3816,20 +4145,54 @@ class ExecutionManager:
                 if _wfr_epochs:
                     _n_epochs = len(_wfr_epochs)
                     _accepted = sum(1 for e in _wfr_epochs if e.accepted)
+                    # Compute latest WFE for monitoring
+                    _latest_wfe = _wfr_epochs[-1].wfe if _wfr_epochs else 0.0
                     logger.info(
-                        "Phase 52 (US-323): Walk-forward retrainer: %d epochs, %d accepted",
-                        _n_epochs, _accepted,
+                        "Phase 52 (US-323): Walk-forward retrainer: %d epochs, %d accepted, latest WFE=%.4f",
+                        _n_epochs, _accepted, _latest_wfe,
                     )
-                    if _accepted > 0:
+
+                    # Phase 53 (US-332): Record WFE and check stability before applying weights
+                    _wfe_allow_retrain = True
+                    if self._wfe_monitor is not None:
+                        try:
+                            _wfe_state = self._wfe_monitor.record_wfe(
+                                wfe=_latest_wfe,
+                                epoch_count=_n_epochs,
+                                accepted_count=_accepted,
+                            )
+                            _wfe_allow_retrain = self._wfe_monitor.should_retrain()
+                            if not _wfe_allow_retrain:
+                                logger.warning(
+                                    "Phase 53 (US-332): WFE monitor state=%s — "
+                                    "retraining PAUSED, using frozen weights",
+                                    _wfe_state,
+                                )
+                            self._wfe_monitor.save_state()
+                        except Exception as _wfe_err:
+                            logger.debug(f"Phase 53: WFE monitor error: {_wfe_err}")
+
+                    if _accepted > 0 and _wfe_allow_retrain:
                         _new_weights = self._walkforward_retrainer.get_current_weights()
                         if _new_weights:
                             self._walkforward_retrainer.save_weights(
                                 "trained_data/models/agent_weights.json"
                             )
+                            # Freeze these as last known good weights
+                            if self._wfe_monitor is not None:
+                                try:
+                                    self._wfe_monitor.freeze_weights(_new_weights)
+                                except Exception:
+                                    pass
                             logger.info(
                                 "Phase 52 (US-323): Retrained agent weights saved — %s",
                                 {k: f"{v:.3f}" for k, v in list(_new_weights.items())[:5]},
                             )
+                    elif _accepted > 0 and not _wfe_allow_retrain:
+                        logger.info(
+                            "Phase 53 (US-332): %d accepted epochs skipped — WFE unstable",
+                            _accepted,
+                        )
             except Exception as _wfr_err:
                 logger.debug(f"Phase 52: Walk-forward retrainer error: {_wfr_err}")
 
@@ -3996,6 +4359,38 @@ class ExecutionManager:
             except Exception as e:
                 logger.warning(f"RL weight update failed: {e}")
 
+        # Phase 53 (US-329): Update pair-specific Bayesian weights
+        if self._pair_bayesian_weights is not None and rl_updates:
+            try:
+                _pair_updates = 0
+                for upd in rl_updates:
+                    _pair = upd.get("pair", "")
+                    _verdicts = upd.get("agent_verdicts", {})
+                    _won = upd.get("trade_won", False)
+                    if _pair and _verdicts:
+                        # Convert verdicts to scores dict {agent: score}
+                        _scores = {}
+                        for agent_name, verdict in _verdicts.items():
+                            if isinstance(verdict, dict):
+                                _scores[agent_name] = float(verdict.get("score", 0.5))
+                            elif isinstance(verdict, (int, float)):
+                                _scores[agent_name] = float(verdict)
+                        if _scores:
+                            self._pair_bayesian_weights.update(
+                                pair=_pair,
+                                agent_scores=_scores,
+                                outcome="win" if _won else "loss",
+                            )
+                            _pair_updates += 1
+                if _pair_updates > 0:
+                    self._pair_bayesian_weights.save_state()
+                    logger.info(
+                        "Phase 53 (US-329): Updated pair-specific weights for %d trades",
+                        _pair_updates,
+                    )
+            except Exception as _pw_err:
+                logger.debug(f"Phase 53: Pair weight update error: {_pw_err}")
+
         # Phase 25 (US-155): Record agent verdicts to accuracy matrix for per-pair tracking
         if scanner is not None and synced > 0:
             _acc_matrix = getattr(scanner, "_agent_accuracy_matrix", None)
@@ -4157,6 +4552,13 @@ class ExecutionManager:
             except Exception as _ewma_save_err:
                 logger.debug(f"Phase 45: EWMA state save failed: {_ewma_save_err}")
 
+        # Phase 53 (US-328): Persist gate attribution state
+        if self._gate_attribution is not None:
+            try:
+                self._gate_attribution.save_state()
+            except Exception as _ga_save_err:
+                logger.debug(f"Phase 53: Gate attribution state save failed: {_ga_save_err}")
+
         # Persist regime reward log after all trades processed
         if self._regime_reward is not None and synced > 0:
             try:
@@ -4288,9 +4690,13 @@ class ExecutionManager:
                 "trade_won": outcome.get("trade_won", False),
             }
 
-            # Append to JSONL buffer (atomic write)
-            with open(buffer_path, "a") as f:
-                f.write(json.dumps(record, default=str) + "\n")
+            # Phase 55 (US-341): Atomic JSONL append with file locking
+            try:
+                from src.scanner.safe_io import safe_jsonl_append
+                safe_jsonl_append(buffer_path, record)
+            except ImportError:
+                with open(buffer_path, "a") as f:
+                    f.write(json.dumps(record, default=str) + "\n")
 
             logger.debug(f"RL replay: {entry.get('pair')} reward={reward:.3f}")
 
@@ -4361,10 +4767,15 @@ class ExecutionManager:
             s["worst_pnl_pips"] = round(s["worst_pnl_pips"], 1)
 
         perf_path.parent.mkdir(parents=True, exist_ok=True)
-        # M-4: atomic write — prevents pair performance data corruption on crash
-        _perf_tmp = perf_path.with_suffix(".tmp")
-        _perf_tmp.write_text(json.dumps(dict(stats), indent=2), encoding="utf-8")
-        import os as _os; _os.replace(str(_perf_tmp), str(perf_path))
+        # Phase 55 (US-341): Atomic write with locking via safe_io
+        try:
+            from src.scanner.safe_io import safe_json_write
+            safe_json_write(perf_path, dict(stats))
+        except ImportError:
+            # M-4: Fallback atomic write
+            _perf_tmp = perf_path.with_suffix(".tmp")
+            _perf_tmp.write_text(json.dumps(dict(stats), indent=2), encoding="utf-8")
+            import os as _os; _os.replace(str(_perf_tmp), str(perf_path))
 
     def get_pair_performance(self, pair: Optional[str] = None) -> Dict[str, Any]:
         """Read per-pair performance stats.
