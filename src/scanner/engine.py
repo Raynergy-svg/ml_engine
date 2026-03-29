@@ -97,6 +97,9 @@ class Scanner:
         self._ensemble_lock = threading.Lock()
         self._agent_team = ScannerAgentTeam(self.config)
 
+        # Shared observation logger for feedback hooks (lazy-init)
+        self._feedback_observer = None
+
         # Per-pair previous regime cache (for RegimeBroadcaster transition detection)
         self._pair_last_regime: Dict[str, str] = {}
 
@@ -115,6 +118,50 @@ class Scanner:
             self._group_momentum = GroupMomentumAggregator()
         except Exception as e:
             logger.debug(f"Group momentum aggregator init deferred: {e}")
+
+        # Tier 6: meta-learning (optional)
+        self._meta_learner: Optional[Any] = None
+        if getattr(self.config, 'enable_meta_learning', False):
+            try:
+                from src.recursive_intelligence.meta_learner import MetaLearner
+                self._meta_learner = MetaLearner(enabled=True)
+                logger.info("Meta-learner initialized (Tier 6)")
+            except Exception as e:
+                logger.warning("Meta-learner init failed: %s — continuing without it", e)
+
+        # Tier 6: Differentiable ensemble weighting (learned regime→model weights)
+        self._ensemble_weighter: Optional[Any] = None
+        if getattr(self.config, 'enable_meta_learning', False):
+            try:
+                from src.recursive_intelligence.ensemble_weighting import EnsembleWeighter, WeighterConfig
+                self._ensemble_weighter = EnsembleWeighter(
+                    config=WeighterConfig(n_models=4, n_context=2)
+                )
+                logger.info("Ensemble weighter initialized (Tier 6)")
+            except Exception as e:
+                logger.warning("Ensemble weighter init failed: %s — continuing without it", e)
+
+        # Tier 6 Phase 1: MAML Ridge prototype (shadow mode)
+        self._maml_ridge: Optional[Any] = None
+        self._maml_benchmark: Optional[Any] = None
+        if getattr(self.config, 'enable_meta_learning', False):
+            try:
+                from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
+                self._maml_ridge = MAMLRidge(config=MAMLConfig(shadow_mode=True))
+                logger.info("MAML Ridge prototype initialized (shadow mode)")
+            except Exception as e:
+                logger.debug("MAML Ridge init skipped: %s", e)
+
+            # Tier 6 Phase 2: Benchmarking infrastructure
+            try:
+                from src.recursive_intelligence.maml_benchmark import MAMLBenchmark
+                self._maml_benchmark = MAMLBenchmark()
+                # Connect benchmark to MAML Ridge for meta-train event recording
+                if self._maml_ridge is not None:
+                    self._maml_ridge._benchmark = self._maml_benchmark
+                logger.info("MAML Benchmark initialized (Phase 2)")
+            except Exception as e:
+                logger.debug("MAML Benchmark init skipped: %s", e)
 
         # Macro stress detector (Phase 10: derived stress indicator)
         self._macro_stress = None
@@ -460,6 +507,168 @@ class Scanner:
                 logger.debug(f"Causal filter init deferred: {e}")
 
         # Trade explainer (Phase 15: SHAP-based explainability and consistency filtering)
+        # Phase 57 (US-352): Confidence Penalty Ceiling — hard floor on stacked penalties
+        self._penalty_ceiling = None
+        try:
+            from src.scanner.confidence_penalty_ceiling import ConfidencePenaltyCeiling
+            self._penalty_ceiling = ConfidencePenaltyCeiling()
+            logger.info("Phase 57 (US-352): Confidence penalty ceiling initialized")
+        except Exception as _cpc_err:
+            logger.debug(f"Phase 57: Confidence penalty ceiling init deferred: {_cpc_err}")
+
+        # Phase 57 (US-353): Calibration Guard — suppress overconfidence penalty when data insufficient
+        self._calibration_guard = None
+        try:
+            from src.scanner.calibration_guard import CalibrationGuard
+            self._calibration_guard = CalibrationGuard()
+            logger.info("Phase 57 (US-353): Calibration guard initialized")
+        except Exception as _cg_err:
+            logger.debug(f"Phase 57: Calibration guard init deferred: {_cg_err}")
+
+        # Phase 57 (US-354): Stall Recovery Manager — suspend penalties during stall recovery
+        self._stall_recovery = None
+        try:
+            from src.scanner.stall_recovery import StallRecoveryManager
+            self._stall_recovery = StallRecoveryManager()
+            logger.info("Phase 57 (US-354): Stall recovery manager initialized")
+        except Exception as _sr_err:
+            logger.debug(f"Phase 57: Stall recovery manager init deferred: {_sr_err}")
+
+        # Phase 57 (US-355): Drift Proxy Guard — prevent circular drift detection
+        self._drift_proxy_guard = None
+        try:
+            from src.scanner.drift_proxy_guard import DriftProxyGuard
+            self._drift_proxy_guard = DriftProxyGuard()
+            logger.info("Phase 57 (US-355): Drift proxy guard initialized")
+        except Exception as _dpg_err:
+            logger.debug(f"Phase 57: Drift proxy guard init deferred: {_dpg_err}")
+
+        # Phase 58 (US-358): Raw Confidence Recorder — pre-penalty signal distribution
+        self._raw_conf_recorder = None
+        try:
+            from src.scanner.raw_confidence_recorder import RawConfidenceRecorder
+            self._raw_conf_recorder = RawConfidenceRecorder()
+            logger.info("Phase 58 (US-358): Raw confidence recorder initialized")
+        except Exception as _rcr_err:
+            logger.debug(f"Phase 58: Raw confidence recorder init deferred: {_rcr_err}")
+
+        # Phase 59 (US-364): Gate Proximity Reporter — near-miss confidence rejects
+        self._gate_proximity = None
+        try:
+            from src.scanner.gate_proximity_reporter import GateProximityReporter
+            self._gate_proximity = GateProximityReporter()
+            logger.info("Phase 59 (US-364): Gate proximity reporter initialized")
+        except Exception as _gpr_err:
+            logger.debug(f"Phase 59: Gate proximity reporter init deferred: {_gpr_err}")
+
+        # Phase 59 (US-365): Ensemble Divergence Monitor — TCN vs Ridge disagreement
+        self._ensemble_divergence = None
+        try:
+            from src.scanner.ensemble_divergence_monitor import EnsembleDivergenceMonitor
+            self._ensemble_divergence = EnsembleDivergenceMonitor()
+            logger.info("Phase 59 (US-365): Ensemble divergence monitor initialized")
+        except Exception as _edm_err:
+            logger.debug(f"Phase 59: Ensemble divergence monitor init deferred: {_edm_err}")
+
+        # Phase 61 (US-371): Momentum Score Recorder — raw XGBoost momentum distribution
+        self._momentum_recorder = None
+        try:
+            from src.scanner.momentum_score_recorder import MomentumScoreRecorder
+            self._momentum_recorder = MomentumScoreRecorder()
+            logger.info("Phase 61 (US-371): Momentum score recorder initialized")
+        except Exception as _msr_err:
+            logger.debug(f"Phase 61: Momentum score recorder init deferred: {_msr_err}")
+
+        # Phase 62 (US-375): Adaptive Momentum Floor — auto-reduce min_momentum on NEAR_THRESHOLD
+        self._adaptive_momentum_floor = None
+        try:
+            from src.scanner.adaptive_momentum_floor import AdaptiveMomentumFloor
+            self._adaptive_momentum_floor = AdaptiveMomentumFloor()
+            logger.info("Phase 62 (US-375): Adaptive momentum floor initialized")
+        except Exception as _amf_err:
+            logger.debug(f"Phase 62: Adaptive momentum floor init deferred: {_amf_err}")
+
+        # Phase 63 (US-378): RiskRejectRecorder — rolling buffer of rf_drawdown_pct per pair
+        self._risk_recorder = None
+        try:
+            from src.scanner.risk_reject_recorder import RiskRejectRecorder
+            self._risk_recorder = RiskRejectRecorder()
+            logger.info("Phase 63 (US-378): Risk reject recorder initialized")
+        except Exception as _rrr_err:
+            logger.debug(f"Phase 63: Risk reject recorder init deferred: {_rrr_err}")
+
+        # Phase 64 (US-382): AdaptiveDrawdownCeiling — auto-raise max_drawdown_pct on NEAR_THRESHOLD
+        self._adaptive_drawdown_ceiling = None
+        try:
+            from src.scanner.adaptive_drawdown_ceiling import AdaptiveDrawdownCeiling
+            self._adaptive_drawdown_ceiling = AdaptiveDrawdownCeiling()
+            logger.info("Phase 64 (US-382): Adaptive drawdown ceiling initialized")
+        except Exception as _adc_err:
+            logger.debug(f"Phase 64: Adaptive drawdown ceiling init deferred: {_adc_err}")
+
+        # Phase 66 (US-388): VoteScoreRecorder — weighted_vote_score distribution
+        self._vote_recorder = None
+        try:
+            from src.scanner.vote_score_recorder import VoteScoreRecorder
+            self._vote_recorder = VoteScoreRecorder()
+            logger.info("Phase 66 (US-388): Vote score recorder initialized")
+        except Exception as _vsr_err:
+            logger.debug(f"Phase 66: Vote score recorder init deferred: {_vsr_err}")
+
+        # Phase 66 (US-390): AdaptiveVoteThreshold — auto-reduce weighted_vote_threshold on NEAR_THRESHOLD
+        self._adaptive_vote_threshold = None
+        try:
+            from src.scanner.adaptive_vote_threshold import AdaptiveVoteThreshold
+            self._adaptive_vote_threshold = AdaptiveVoteThreshold()
+            logger.info("Phase 66 (US-390): Adaptive vote threshold initialized")
+        except Exception as _avt_err:
+            logger.debug(f"Phase 66: Adaptive vote threshold init deferred: {_avt_err}")
+
+        # Phase 67 (US-391): SubInferenceRecorder — consensus ratio distribution
+        self._sub_inference_recorder = None
+        try:
+            from src.scanner.sub_inference_recorder import SubInferenceRecorder
+            self._sub_inference_recorder = SubInferenceRecorder()
+            logger.info("Phase 67 (US-391): Sub-inference recorder initialized")
+        except Exception as _sir_err:
+            logger.debug(f"Phase 67: Sub-inference recorder init deferred: {_sir_err}")
+
+        # Phase 67 (US-393): AdaptiveSubInferenceThreshold — auto-reduce sub_inference_vote_threshold
+        self._adaptive_sub_inference_threshold = None
+        try:
+            from src.scanner.adaptive_sub_inference_threshold import AdaptiveSubInferenceThreshold
+            self._adaptive_sub_inference_threshold = AdaptiveSubInferenceThreshold()
+            logger.info("Phase 67 (US-393): Adaptive sub-inference threshold initialized")
+        except Exception as _asit_err:
+            logger.debug(f"Phase 67: Adaptive sub-inference threshold init deferred: {_asit_err}")
+
+        # Phase 56 (US-348): Virtual Trade Logger — capture rejected setups for offline RL
+        self._virtual_trade_logger = None
+        try:
+            from src.scanner.virtual_trade_logger import VirtualTradeLogger
+            self._virtual_trade_logger = VirtualTradeLogger()
+            logger.info("Phase 56 (US-348): Virtual trade logger initialized")
+        except Exception as _vtl_err:
+            logger.debug(f"Phase 56: Virtual trade logger init deferred: {_vtl_err}")
+
+        # Phase 56 (US-347): Confidence Penalty Monitor — detect stacked penalties
+        self._confidence_penalty_monitor = None
+        try:
+            from src.scanner.confidence_penalty_monitor import ConfidencePenaltyMonitor
+            self._confidence_penalty_monitor = ConfidencePenaltyMonitor()
+            logger.info("Phase 56 (US-347): Confidence penalty monitor initialized")
+        except Exception as _cpm_err:
+            logger.debug(f"Phase 56: Confidence penalty monitor init deferred: {_cpm_err}")
+
+        # Phase 56 (US-346): Gate Rejection Tracker — surface execution bottleneck
+        self._gate_rejection_tracker = None
+        try:
+            from src.scanner.gate_rejection_tracker import GateRejectionTracker
+            self._gate_rejection_tracker = GateRejectionTracker()
+            logger.info("Phase 56 (US-346): Gate rejection tracker initialized")
+        except Exception as _grt_err:
+            logger.debug(f"Phase 56: Gate rejection tracker init deferred: {_grt_err}")
+
         self._trade_explainer = None
         if getattr(self.config, "enable_trade_explainability", False):
             try:
@@ -554,6 +763,182 @@ class Scanner:
             except Exception as e:
                 logger.debug(f"Drift monitor init deferred: {e}")
 
+        # Adaptive LR scheduler (US-091: cosine-annealing + warmup for RL learning rate)
+        self._adaptive_lr = None
+        if getattr(self.config, "enable_adaptive_lr", False):
+            try:
+                from src.scanner.automation.adaptive_lr import AdaptiveLRScheduler
+                self._adaptive_lr = AdaptiveLRScheduler()
+                logger.info("Adaptive LR scheduler initialized")
+            except Exception as e:
+                logger.debug(f"Adaptive LR scheduler init deferred: {e}")
+
+        # Adversarial trainer (US-089: adversarial robustness training for ensemble models)
+        # TODO: Wire adversarial_trainer feedback hook — module is initialized but has no
+        # call site in the scan loop. Needs a call site (e.g. periodic adversarial test
+        # after ensemble inference) before feedback can be logged. Another agent is handling init.
+        self._adversarial_trainer = None
+        if getattr(self.config, "enable_adversarial_training", False):
+            try:
+                from src.scanner.automation.adversarial_trainer import AdversarialTrainer
+                self._adversarial_trainer = AdversarialTrainer()
+                logger.info("Adversarial trainer initialized")
+            except Exception as e:
+                logger.debug(f"Adversarial trainer init deferred: {e}")
+
+        # crisis_generator: initialized at line ~718, dispatched via module_dispatcher
+        # (save_log every 50 cycles) + explicit generate_scenario_batch call in continuous.py
+
+        # Dynamic hedging (US-077: auto-open inverse positions during macro stress)
+        self._dynamic_hedging = None
+        if getattr(self.config, "enable_dynamic_hedging", False):
+            try:
+                from src.scanner.automation.dynamic_hedging import DynamicHedgeManager
+                self._dynamic_hedging = DynamicHedgeManager()
+                logger.info("Dynamic hedge manager initialized")
+            except Exception as e:
+                logger.debug(f"Dynamic hedge manager init deferred: {e}")
+
+        # Trade outcome predictor (US-082: predict open trade win/loss from post-entry features)
+        self._trade_outcome_predictor = None
+        if getattr(self.config, "enable_trade_outcome_prediction", False):
+            try:
+                from src.scanner.automation.trade_outcome_predictor import TradeOutcomePredictor
+                self._trade_outcome_predictor = TradeOutcomePredictor()
+                logger.info("Trade outcome predictor initialized")
+            except Exception as e:
+                logger.debug(f"Trade outcome predictor init deferred: {e}")
+
+        # Phase 50: Retrain trigger (accuracy drift -> retrain request)
+        self._retrain_trigger = None
+        try:
+            from src.scanner.automation.retrain_trigger import RetrainTrigger
+            self._retrain_trigger = RetrainTrigger()
+            logger.info("Retrain trigger initialized")
+        except Exception as e:
+            logger.debug(f"Retrain trigger init deferred: {e}")
+
+        # Phase 50: Pair model selector (per-pair best model selection)
+        self._pair_model_selector = None
+        try:
+            from src.scanner.automation.pair_model_selector import PairModelSelector
+            self._pair_model_selector = PairModelSelector()
+            logger.info("Pair model selector initialized")
+        except Exception as e:
+            logger.debug(f"Pair model selector init deferred: {e}")
+
+        # Phase 50: Portfolio optimizer (pair ranking by rolling Sharpe)
+        self._portfolio_optimizer = None
+        try:
+            from src.scanner.automation.portfolio_optimizer import PortfolioOptimizer
+            self._portfolio_optimizer = PortfolioOptimizer()
+            logger.info("Portfolio optimizer initialized")
+        except Exception as e:
+            logger.debug(f"Portfolio optimizer init deferred: {e}")
+
+        # Phase 50: Session snapshot manager (cross-session state blending)
+        self._session_snapshot = None
+        try:
+            from src.scanner.automation.session_snapshot import SessionSnapshotManager
+            self._session_snapshot = SessionSnapshotManager()
+            logger.info("Session snapshot manager initialized")
+        except Exception as e:
+            logger.debug(f"Session snapshot init deferred: {e}")
+
+        # Phase 50: Alert manager (drawdown, loss streak, weight instability alerts)
+        self._alert_manager = None
+        try:
+            from src.scanner.automation.alert_manager import AlertManager
+            self._alert_manager = AlertManager()
+            logger.info("Alert manager initialized")
+        except Exception as e:
+            logger.debug(f"Alert manager init deferred: {e}")
+
+        # Phase 50: Dynamic drawdown manager (equity-curve-adaptive trailing stops)
+        self._dynamic_drawdown = None
+        try:
+            from src.scanner.automation.dynamic_drawdown import DynamicDrawdownManager
+            self._dynamic_drawdown = DynamicDrawdownManager()
+            logger.info("Dynamic drawdown manager initialized")
+        except Exception as e:
+            logger.debug(f"Dynamic drawdown init deferred: {e}")
+
+        # Phase 50: Smart execution engine (VWAP/TWAP order slicing)
+        self._smart_execution = None
+        if getattr(self.config, "enable_smart_execution", False):
+            try:
+                from src.scanner.automation.smart_execution import SmartExecutionEngine
+                self._smart_execution = SmartExecutionEngine()
+                logger.info("Smart execution engine initialized")
+            except Exception as e:
+                logger.debug(f"Smart execution init deferred: {e}")
+
+        # Phase 50: Accuracy gate (per-pair accuracy tracking and auto-blocking)
+        self._accuracy_gate = None
+        try:
+            from src.scanner.automation.accuracy_gate import AccuracyGate
+            self._accuracy_gate = AccuracyGate()
+            logger.info("Accuracy gate initialized")
+        except Exception as e:
+            logger.debug(f"Accuracy gate init deferred: {e}")
+
+        # Phase 50: Pair affinity tracker (co-occurrence outcome tracking)
+        self._pair_affinity = None
+        try:
+            from src.scanner.automation.pair_affinity import PairAffinityTracker
+            self._pair_affinity = PairAffinityTracker()
+            logger.info("Pair affinity tracker initialized")
+        except Exception as e:
+            logger.debug(f"Pair affinity init deferred: {e}")
+
+        # Phase 50: HRP optimizer (hierarchical risk parity portfolio weights)
+        self._hrp_optimizer = None
+        try:
+            from src.scanner.automation.hierarchical_risk_parity import HRPOptimizer
+            self._hrp_optimizer = HRPOptimizer()
+            logger.info("HRP optimizer initialized")
+        except Exception as e:
+            logger.debug(f"HRP optimizer init deferred: {e}")
+
+        # Phase 50: Observational learner (synthetic trade pattern extraction)
+        self._observational_learner = None
+        if getattr(self.config, "enable_observational_learning", False):
+            try:
+                from src.scanner.automation.observational_learning import ObservationalLearner
+                self._observational_learner = ObservationalLearner()
+                logger.info("Observational learner initialized")
+            except Exception as e:
+                logger.debug(f"Observational learner init deferred: {e}")
+
+        # Phase 50: Model manager (version tracking, shadow testing, safe promotion)
+        self._model_manager = None
+        try:
+            from src.scanner.automation.model_manager import ModelManager
+            self._model_manager = ModelManager()
+            logger.info("Model manager initialized")
+        except Exception as e:
+            logger.debug(f"Model manager init deferred: {e}")
+
+        # Phase 50: Crisis event generator (synthetic crisis scenarios for RL)
+        self._crisis_generator = None
+        if getattr(self.config, "enable_synthetic_crisis", False):
+            try:
+                from src.scanner.automation.crisis_generator import CrisisEventGenerator
+                self._crisis_generator = CrisisEventGenerator()
+                logger.info("Crisis event generator initialized")
+            except Exception as e:
+                logger.debug(f"Crisis generator init deferred: {e}")
+
+        # Phase 50: API retry circuit breaker (failure rate tracking and cooldown)
+        self._api_retry = None
+        if getattr(self.config, "enable_circuit_breakers", True):
+            try:
+                from src.scanner.automation.api_retry import CircuitBreaker
+                self._api_retry = CircuitBreaker(name="oanda_api")
+                logger.info("API retry circuit breaker initialized")
+            except Exception as e:
+                logger.debug(f"API retry circuit breaker init deferred: {e}")
+
         # Phase 49 (US-307): Pair performance tracker for auto-blacklisting in scan loop
         self._pair_tracker = None
         try:
@@ -576,6 +961,20 @@ class Scanner:
 
         # Load config
         self._load_yaml_config()
+
+    def _get_feedback_observer(self):
+        """Shared observation logger for module feedback hooks (lazy-init).
+
+        Mirrors ExecutionManager._get_observer() pattern. All 13 dead-end
+        module outputs route through this to feed the observation consumer.
+        """
+        if self._feedback_observer is None:
+            try:
+                from .automation.observation_log import ObservationLog
+                self._feedback_observer = ObservationLog()
+            except ImportError:
+                pass
+        return self._feedback_observer
 
     def _load_yaml_config(self) -> None:
         """Load YAML configuration and update settings."""
@@ -746,7 +1145,11 @@ class Scanner:
                         self.config.aggressive_min_meta_confidence,
                     )
                 )
+                # Preserve CLI overrides (e.g. --force disables session filter)
+                # before apply_profile re-applies profile defaults.
+                _prev_session_filter = self.config.enable_session_filter
                 self.config.apply_profile(self.config.profile)
+                self.config.enable_session_filter = _prev_session_filter
 
                 logger.debug(f"Loaded config from {self.config.config_path}")
 
@@ -922,6 +1325,17 @@ class Scanner:
             # scanner needs to know the loaded state *now* to decide
             # whether to fall back to the gate evaluator.
             self._modular_ensemble.load_models()
+
+            # Tier 6: Inject ensemble weighter into inference module
+            if self._ensemble_weighter is not None:
+                self._modular_ensemble._ensemble_weighter = self._ensemble_weighter
+
+            # Tier 6 Phase 1: Inject MAML Ridge shadow into inference module
+            if self._maml_ridge is not None:
+                self._modular_ensemble._maml_ridge = self._maml_ridge
+            # Tier 6 Phase 2: Inject benchmark into inference module
+            if self._maml_benchmark is not None:
+                self._modular_ensemble._maml_benchmark = self._maml_benchmark
 
             # Check if at least the main direction model loaded
             self._ensemble_loaded = (
@@ -1274,7 +1688,7 @@ class Scanner:
             return df.ffill().bfill().fillna(0)
 
         try:
-            # _feature_engineer is now compute_normalized_features function
+            # _feature_engineer is compute_normalized_features — matches training pipeline
             df_feat = self._feature_engineer(df.copy())
             df_feat = df_feat.replace([np.inf, -np.inf], np.nan)
             df_feat = df_feat.ffill().bfill().fillna(0.0)
@@ -1413,6 +1827,19 @@ class Scanner:
 
             tcn_conf = float(abs(float(signal.tcn_probability) - 0.5) * 200.0)
             ridge_conf = float(signal.ridge_confidence or 0.0)
+
+            # Phase 59 (US-365): Record TCN vs Ridge ensemble divergence
+            if self._ensemble_divergence is not None:
+                try:
+                    self._ensemble_divergence.record(
+                        pair=pair,
+                        tcn_confidence=tcn_conf,
+                        ridge_confidence=ridge_conf,
+                        scan_id=str(getattr(self, "_scan_cycle", 0)),
+                    )
+                except Exception as _edm_err:
+                    logger.debug(f"Phase 59: ensemble_divergence.record failed: {_edm_err}")
+
             raw_conf = float(signal.confidence or 0.0)
             confidence = raw_conf / 100.0 if raw_conf > 1.0 else raw_conf
             confidence = min(max(confidence, 0.0), 1.0)
@@ -1420,6 +1847,37 @@ class Scanner:
             gates_passed = signal.trade
             signal_meta = signal.metadata if isinstance(signal.metadata, dict) else {}
             score_meta = signal_meta.get("scores") if isinstance(signal_meta.get("scores"), dict) else {}
+
+            # Phase 61 (US-371): Record raw XGBoost momentum score
+            if self._momentum_recorder is not None:
+                try:
+                    self._momentum_recorder.record(
+                        pair=pair,
+                        momentum_score=float(signal.xgb_momentum),
+                        momentum_passed=bool(signal.momentum_gate_passed),
+                        scan_id=str(getattr(self, "_scan_cycle", 0)),
+                    )
+                except Exception as _msr_err:
+                    logger.debug(f"Phase 61: momentum_recorder.record failed: {_msr_err}")
+
+            # Phase 63 (US-378): Record rf_drawdown_pct and rf_streak_prob at risk gate site
+            if self._risk_recorder is not None:
+                try:
+                    _rf_drawdown_pct = (
+                        float(signal.rf_drawdown_pips) / 10000.0
+                        if signal.rf_drawdown_pips
+                        else 0.0
+                    )
+                    self._risk_recorder.record(
+                        pair=pair,
+                        rf_drawdown_pct=_rf_drawdown_pct,
+                        rf_streak_prob=float(signal.rf_streak_prob),
+                        risk_passed=bool(signal.risk_gate_passed),
+                        max_drawdown_pct=float(self.config.max_drawdown_pct),
+                        scan_id=str(getattr(self, "_scan_cycle", 0)),
+                    )
+                except Exception as _rrr_err:
+                    logger.debug(f"Phase 63: _risk_recorder.record( failed: {_rrr_err}")
 
             details = {
                 "tcn_probability": float(signal.tcn_probability),
@@ -1438,6 +1896,14 @@ class Scanner:
                 "reason_codes": signal_meta.get("reason_codes", []),
                 "core_score": score_meta.get("core_score"),
                 "final_score": score_meta.get("final_score"),
+                "scores": {
+                    "direction_score": score_meta.get("direction_score"),
+                    "confidence_score": score_meta.get("confidence_score"),
+                    "momentum_score": score_meta.get("momentum_score"),
+                    "risk_score": score_meta.get("risk_score"),
+                    "used_learned_weights": score_meta.get("used_learned_weights", False),
+                    "ensemble_weights": score_meta.get("ensemble_weights"),
+                },
                 "model_source_pair": model_source_pair,
             }
             return (
@@ -1934,6 +2400,19 @@ class Scanner:
         analysis.agent_score = agent_score
         analysis.agent_passed = agent_passed
 
+        # Phase 67 (US-391): Record sub-inference consensus ratio
+        if self._sub_inference_recorder is not None:
+            try:
+                self._sub_inference_recorder.record(
+                    pair=analysis.pair,
+                    votes=votes,
+                    total=total,
+                    agent_passed=agent_passed,
+                    scan_id=str(getattr(self, "_scan_cycle", 0)),
+                )
+            except Exception as _sir_err:
+                logger.debug(f"Phase 67: _sub_inference_recorder.record() failed: {_sir_err}")
+
         # Redo confidence logic: blend base confidence with consensus quality.
         # Phase 29 (US-179): Configurable blend weights from ScannerConfig.
         base_conf = min(max(float(analysis.confidence), 0.0), 1.0)
@@ -2059,6 +2538,18 @@ class Scanner:
             analysis.gates_passed = True
             analysis.agent_promoted = True
 
+        # Phase 66 (US-388): Record weighted_vote_score at agent consensus site
+        if self._vote_recorder is not None:
+            try:
+                self._vote_recorder.record(
+                    pair=analysis.pair,
+                    vote_score=float(getattr(analysis, "weighted_vote_score", 0.0)),
+                    agent_passed=bool(getattr(analysis, "agent_passed", True)),
+                    scan_id=str(getattr(self, "_scan_cycle", 0)),
+                )
+            except Exception as _vsr_err:
+                logger.debug(f"Phase 66: _vote_recorder.record() failed: {_vsr_err}")
+
         return analysis
 
     def _run_sub_inference_pass(
@@ -2119,6 +2610,22 @@ class Scanner:
     ) -> PairAnalysis:
         """Apply the scanner specialist-agent layer to one analysis."""
         try:
+            # Tier 6: Inject meta-learner overrides before agent evaluation
+            if self._meta_learner is not None:
+                try:
+                    _regime = str(getattr(analysis, "volatility_regime", "NORMAL") or "NORMAL").upper()
+                    if _regime == "LOW":
+                        _regime = "NORMAL"
+                    _overrides: Dict[str, Dict[str, float]] = {}
+                    for _agent_name in self._agent_team._BASE_WEIGHTS:
+                        _ov = self._meta_learner.get_active_overrides(_agent_name, _regime)
+                        if _ov:
+                            _overrides[_agent_name] = _ov
+                    if _overrides:
+                        self._agent_team.apply_meta_overrides(_overrides)
+                except Exception as _ml_err:
+                    logger.debug("Tier 6: Meta override injection failed: %s", _ml_err)
+
             return self._agent_team.evaluate(
                 analysis=analysis,
                 df_raw=df_raw,
@@ -2365,6 +2872,23 @@ class Scanner:
                         logger.debug(
                             f"{pair}: Causal filter consistency={_causal_score:.2f} (no penalty)"
                         )
+                    # Feedback hook: log causal filter output to observation pipeline
+                    try:
+                        _obs = self._get_feedback_observer()
+                        if _obs is not None:
+                            _obs.log_observation(
+                                pair=pair,
+                                category="causal_filter",
+                                description=f"Causal consistency={_causal_score:.2f} regime={_causal_regime}",
+                                metadata={
+                                    "causal_score": round(_causal_score, 4),
+                                    "regime": _causal_regime,
+                                    "penalty_applied": _causal_score < 0.5,
+                                    "direction": direction,
+                                },
+                            )
+                    except Exception:
+                        pass
                 except Exception as _causal_err:
                     logger.debug(f"{pair}: Causal filter skipped: {_causal_err}")
 
@@ -2386,6 +2910,23 @@ class Scanner:
                             f"(var={_dis_result.prediction_variance:.4f}, "
                             f"regime_shift={_dis_result.is_regime_shift_signal})"
                         )
+                    # Feedback hook: log ensemble disagreement to observation pipeline
+                    try:
+                        _obs = self._get_feedback_observer()
+                        if _obs is not None:
+                            _obs.log_observation(
+                                pair=pair,
+                                category="ensemble_disagreement",
+                                description=f"Disagreement mult={_dis_result.confidence_multiplier:.2f} var={_dis_result.prediction_variance:.4f}",
+                                metadata={
+                                    "confidence_multiplier": round(_dis_result.confidence_multiplier, 4),
+                                    "prediction_variance": round(_dis_result.prediction_variance, 4),
+                                    "is_regime_shift_signal": _dis_result.is_regime_shift_signal,
+                                    "direction": direction,
+                                },
+                            )
+                    except Exception:
+                        pass
                 except Exception as _dis_err:
                     logger.debug(f"{pair}: Ensemble disagreement skipped: {_dis_err}")
 
@@ -2416,6 +2957,27 @@ class Scanner:
                                 f"(lag={_best_leader.optimal_lag}, corr={_best_leader.correlation:.2f}) "
                                 f"conf {_old_conf_ll:.3f}→{confidence:.3f}"
                             )
+                    # Feedback hook: log lead-lag relationships to observation pipeline
+                    try:
+                        _obs = self._get_feedback_observer()
+                        if _obs is not None:
+                            _ll_meta = {
+                                "direction": direction,
+                                "leaders_found": len(_leaders) if _leaders else 0,
+                            }
+                            if _leaders:
+                                _ll_meta["best_leader"] = _best_leader.leader
+                                _ll_meta["best_lag"] = _best_leader.optimal_lag
+                                _ll_meta["best_correlation"] = round(_best_leader.correlation, 4)
+                                _ll_meta["best_confidence"] = round(_best_leader.confidence, 4)
+                            _obs.log_observation(
+                                pair=pair,
+                                category="lead_lag_signal",
+                                description=f"Lead-lag: {len(_leaders) if _leaders else 0} leaders detected",
+                                metadata=_ll_meta,
+                            )
+                    except Exception:
+                        pass
                 except Exception as _ll_err:
                     logger.debug(f"{pair}: Lead-lag check skipped: {_ll_err}")
 
@@ -2447,6 +3009,25 @@ class Scanner:
                                 f"{pair}: Attention [{regime_name}] dominant={_attention_result.dominant_feature} "
                                 f"conf {_old_conf_attn:.3f}→{confidence:.3f} (delta={_attn_delta:+.4f})"
                             )
+                    # Feedback hook: log feature attention regime priorities to observation pipeline
+                    try:
+                        _obs = self._get_feedback_observer()
+                        if _obs is not None:
+                            _obs.log_observation(
+                                pair=pair,
+                                category="feature_attention",
+                                description=f"Attention dominant={_attention_result.dominant_feature} regime={regime_name}",
+                                metadata={
+                                    "dominant_feature": _attention_result.dominant_feature,
+                                    "regime": regime_name,
+                                    "attention_weights": {
+                                        k: round(v, 4) for k, v in _attention_result.weighted_features.items()
+                                    },
+                                    "direction": direction,
+                                },
+                            )
+                    except Exception:
+                        pass
                 except Exception as _attn_err:
                     logger.debug(f"{pair}: Feature attention skipped: {_attn_err}")
 
@@ -2480,6 +3061,22 @@ class Scanner:
                             f"conf {_old_conf_f:.3f}→{confidence:.3f} "
                             f"(adj={_fusion.confidence_adjustment:+.2f})"
                         )
+                    # Feedback hook: log multi-horizon fusion to observation pipeline
+                    try:
+                        _obs = self._get_feedback_observer()
+                        if _obs is not None:
+                            _obs.log_observation(
+                                pair=pair,
+                                category="multi_horizon_fusion",
+                                description=f"Fusion grade={_fusion_grade} adj={_fusion.confidence_adjustment:+.3f}",
+                                metadata={
+                                    "agreement_grade": _fusion_grade,
+                                    "confidence_adjustment": round(_fusion.confidence_adjustment, 4),
+                                    "direction": direction,
+                                },
+                            )
+                    except Exception:
+                        pass
                 except Exception as _fuse_err:
                     logger.debug(f"{pair}: Multi-horizon fusion skipped: {_fuse_err}")
 
@@ -2533,6 +3130,23 @@ class Scanner:
                     f"micro_regime={_micro_signals.predicted_regime}, "
                     f"score={_micro_signals.microstructure_score:.3f}"
                 )
+                # Feedback hook: log microstructure regime detection to observation pipeline
+                try:
+                    _obs = self._get_feedback_observer()
+                    if _obs is not None:
+                        _obs.log_observation(
+                            pair=pair,
+                            category="microstructure_regime",
+                            description=f"Micro regime={_micro_signals.predicted_regime} score={_micro_signals.microstructure_score:.3f}",
+                            metadata={
+                                "predicted_regime": _micro_signals.predicted_regime,
+                                "microstructure_score": round(_micro_signals.microstructure_score, 4),
+                                "confidence_lift": round(_micro_signals.confidence_lift, 4),
+                                "direction": direction,
+                            },
+                        )
+                except Exception:
+                    pass
 
             # US-079: Adaptive confidence calibration (Platt scaling)
             if self._confidence_calibrator is not None and direction != "HOLD":
@@ -2548,15 +3162,48 @@ class Scanner:
                     # Check if refit needed
                     if self._confidence_calibrator.should_refit():
                         self._confidence_calibrator.fit_from_journal()
+                    # Feedback hook: log confidence calibration to observation pipeline
+                    try:
+                        _obs = self._get_feedback_observer()
+                        if _obs is not None:
+                            _obs.log_observation(
+                                pair=pair,
+                                category="confidence_calibration",
+                                description=f"Platt calibration is_calibrated={_cal_result.is_calibrated} reason={_cal_result.reason}",
+                                metadata={
+                                    "is_calibrated": _cal_result.is_calibrated,
+                                    "calibrated_score": round(_cal_result.calibrated_score, 4),
+                                    "reason": _cal_result.reason,
+                                    "direction": direction,
+                                },
+                            )
+                    except Exception:
+                        pass
                 except Exception as _cal_err:
                     logger.debug(f"{pair}: Calibration skipped: {_cal_err}")
 
             # US-083: Concept drift detection — update and apply penalty
             if self._concept_drift is not None:
                 try:
-                    # Feed observation: prediction error proxy, agent disagreement proxy
-                    _pred_err = abs(confidence - 0.5)  # Distance from uncertainty
-                    _agent_dis = 1.0 - confidence  # Proxy for disagreement
+                    # Phase 57 (US-354): Skip concept drift penalty during stall recovery
+                    _drift_recovery_suspended = (
+                        self._stall_recovery is not None
+                        and self._stall_recovery.penalties_suspended()
+                    )
+                    # Phase 57 (US-355): Use pre-penalty confidence for drift proxies (break circular ref)
+                    _pre_penalty_conf_norm = confidence / 100.0  # Convert to 0-1 for DriftProxyGuard
+                    if self._drift_proxy_guard is not None:
+                        _drift_proxies = self._drift_proxy_guard.compute_proxies(
+                            pre_penalty_confidence=_pre_penalty_conf_norm,
+                            post_penalty_confidence=_pre_penalty_conf_norm,  # same at this point
+                            pair=pair,
+                        )
+                        _pred_err = _drift_proxies.prediction_error
+                        _agent_dis = _drift_proxies.agent_disagreement
+                    else:
+                        # Feed observation: prediction error proxy, agent disagreement proxy
+                        _pred_err = abs(confidence - 0.5)  # Distance from uncertainty
+                        _agent_dis = 1.0 - confidence  # Proxy for disagreement
                     _micro_score = (
                         _micro_signals.microstructure_score
                         if _micro_signals is not None else 0.0
@@ -2567,15 +3214,39 @@ class Scanner:
                         micro_anomaly_score=_micro_score,
                     )
                     _drift = self._concept_drift.detect()
-                    if _drift.drift_detected and _drift.confidence_penalty < 1.0:
+                    if _drift.drift_detected and _drift.confidence_penalty < 1.0 and not _drift_recovery_suspended:
                         _old_conf_d = confidence
-                        confidence = confidence * _drift.confidence_penalty
+                        # Phase 57 (US-352): Apply ceiling before multiplier
+                        _safe_drift_mult = _drift.confidence_penalty
+                        if self._penalty_ceiling is not None:
+                            _ceil_drift = self._penalty_ceiling.check_multiplier(
+                                confidence, _drift.confidence_penalty, pair=pair, source="concept_drift"
+                            )
+                            _safe_drift_mult = _ceil_drift.applied_penalty
+                        confidence = confidence * _safe_drift_mult
                         logger.warning(
                             f"{pair}: Concept drift [{_drift.severity}] "
                             f"conf {_old_conf_d:.3f}→{confidence:.3f} "
                             f"(penalty={_drift.confidence_penalty:.2f}, "
                             f"streams={_drift.drifting_streams})"
                         )
+                    # Feedback hook: log concept drift detection to observation pipeline
+                    try:
+                        _obs = self._get_feedback_observer()
+                        if _obs is not None:
+                            _obs.log_observation(
+                                pair=pair,
+                                category="concept_drift",
+                                description=f"Drift detected={_drift.drift_detected} severity={_drift.severity}",
+                                metadata={
+                                    "drift_detected": _drift.drift_detected,
+                                    "severity": _drift.severity,
+                                    "confidence_penalty": round(_drift.confidence_penalty, 4),
+                                    "drifting_streams": _drift.drifting_streams,
+                                },
+                            )
+                    except Exception:
+                        pass
                 except Exception as _drift_err:
                     logger.debug(f"{pair}: Drift detection skipped: {_drift_err}")
 
@@ -2610,8 +3281,72 @@ class Scanner:
                                 f"(score={_explain_result.explainability_score:.2f}, "
                                 f"contradictions={len(_explain_result.contradictions)})"
                             )
+                        # Feedback hook: log trade explainer output to observation pipeline
+                        try:
+                            _obs = self._get_feedback_observer()
+                            if _obs is not None:
+                                _obs.log_observation(
+                                    pair=pair,
+                                    category="trade_explainer",
+                                    description=f"Explainability score={_explain_result.explainability_score:.2f} penalty={_explain_result.confidence_penalty:.4f}",
+                                    metadata={
+                                        "explainability_score": round(_explain_result.explainability_score, 4),
+                                        "confidence_penalty": round(_explain_result.confidence_penalty, 4),
+                                        "contradictions_count": len(_explain_result.contradictions),
+                                        "direction": direction,
+                                    },
+                                )
+                        except Exception:
+                            pass
                 except Exception as _explain_err:
                     logger.debug(f"{pair}: Explainability skipped: {_explain_err}")
+
+            # US-089: Adversarial robustness — penalize confidence when ensemble robustness is low
+            if self._adversarial_trainer is not None and direction != "HOLD":
+                try:
+                    _adv_score = self._adversarial_trainer.get_latest_score()
+                    if _adv_score is not None and _adv_score.robustness_ratio > 0:
+                        # Penalize confidence when robustness ratio drops below 0.7
+                        # (model struggles with adversarial scenarios)
+                        if _adv_score.robustness_ratio < 0.7:
+                            _adv_penalty = (0.7 - _adv_score.robustness_ratio) * 0.15  # Max ~10.5% penalty
+                            _old_conf_adv = confidence
+                            confidence = max(0.0, confidence - _adv_penalty)
+                            logger.info(
+                                f"{pair}: Adversarial robustness penalty: "
+                                f"conf {_old_conf_adv:.3f}->{confidence:.3f} "
+                                f"(ratio={_adv_score.robustness_ratio:.3f}, "
+                                f"clean={_adv_score.clean_accuracy:.3f}, "
+                                f"adv={_adv_score.adversarial_accuracy:.3f})"
+                            )
+                        else:
+                            logger.debug(
+                                f"{pair}: Adversarial robustness OK "
+                                f"(ratio={_adv_score.robustness_ratio:.3f})"
+                            )
+                    # Feedback hook: log adversarial robustness to observation pipeline
+                    try:
+                        _obs = self._get_feedback_observer()
+                        if _obs is not None:
+                            _obs.log_observation(
+                                pair=pair,
+                                category="adversarial_robustness",
+                                description=(
+                                    f"Robustness ratio={_adv_score.robustness_ratio:.3f}"
+                                    if _adv_score is not None else "No score available"
+                                ),
+                                metadata={
+                                    "robustness_ratio": round(_adv_score.robustness_ratio, 4) if _adv_score else 0.0,
+                                    "clean_accuracy": round(_adv_score.clean_accuracy, 4) if _adv_score else 0.0,
+                                    "adversarial_accuracy": round(_adv_score.adversarial_accuracy, 4) if _adv_score else 0.0,
+                                    "scenario_scores": _adv_score.scenario_scores if _adv_score else {},
+                                    "direction": direction,
+                                },
+                            )
+                    except Exception:
+                        pass
+                except Exception as _adv_err:
+                    logger.debug(f"{pair}: Adversarial robustness check skipped: {_adv_err}")
 
             # US-084: Portfolio-level Kelly criterion sizing
             risk_pct = self.config.risk_per_trade_pct
@@ -2632,6 +3367,23 @@ class Scanner:
                             f"(half_k={_kelly_result.half_kelly_fraction:.4f}, "
                             f"corr={_kelly_result.correlation_reduction:.2f})"
                         )
+                    # Feedback hook: log Kelly portfolio sizing to observation pipeline
+                    try:
+                        _obs = self._get_feedback_observer()
+                        if _obs is not None:
+                            _obs.log_observation(
+                                pair=pair,
+                                category="kelly_portfolio",
+                                description=f"Kelly risk={_kelly_result.recommended_risk_pct:.4f} half_k={_kelly_result.half_kelly_fraction:.4f}",
+                                metadata={
+                                    "recommended_risk_pct": round(_kelly_result.recommended_risk_pct, 6),
+                                    "half_kelly_fraction": round(_kelly_result.half_kelly_fraction, 6),
+                                    "correlation_reduction": round(_kelly_result.correlation_reduction, 4),
+                                    "direction": direction,
+                                },
+                            )
+                    except Exception:
+                        pass
                 except Exception as _kelly_err:
                     logger.debug(f"{pair}: Kelly sizing fallback: {_kelly_err}")
                     # Fallback to simple sizing
@@ -2823,6 +3575,14 @@ class Scanner:
                 if gate_details else str(pair).upper().replace("/", "_"),
                 error=error_msg,
             )
+            # Tier 6: Stash ensemble component scores for downstream feedback
+            if gate_details:
+                _scores_dict = gate_details.get("scores", {})
+                if isinstance(_scores_dict, dict):
+                    result._ensemble_scores = _scores_dict
+                result._core_score = gate_details.get("core_score")
+                result._final_score = gate_details.get("final_score")
+
             result = self._apply_specialist_agents(
                 analysis=result,
                 df_raw=df_raw,
@@ -2900,14 +3660,41 @@ class Scanner:
                                     f"{pair}: Flocking detected (agreement={_flock['agreement_ratio']:.2f}) "
                                     f"— no penalty (accuracy={_flock_acc})"
                                 )
+                    # Phase 58 (US-358): Record raw pre-penalty confidence
+                    if self._raw_conf_recorder is not None:
+                        try:
+                            self._raw_conf_recorder.record(
+                                pair=pair,
+                                raw_confidence=confidence,
+                                scan_id=str(getattr(self, "_scan_cycle", 0)),
+                            )
+                        except Exception as _rcr_err:
+                            logger.debug(f"Phase 58: raw_conf_recorder.record failed: {_rcr_err}")
+
                     # Phase 30 (US-184): Consume calibration ECE for dynamic confidence adj
                     _oc_applied = False
+                    # Phase 57 (US-354): Skip overconfidence penalty during stall recovery
+                    _oc_recovery_suspended = (
+                        self._stall_recovery is not None
+                        and self._stall_recovery.penalties_suspended()
+                    )
                     for _model_name in ("TCN", "Ridge"):
                         _cal_report = self._model_calibration.get_calibration_report(_model_name)
                         _oc_ratio = _cal_report.get("overconfidence_ratio")
-                        if _oc_ratio is not None and _oc_ratio > 0.15:
+                        # Phase 57 (US-353): Calibration guard — check data sufficiency
+                        _guard_ok = True
+                        if self._calibration_guard is not None:
+                            _guard_ok = self._calibration_guard.should_apply_penalty(_cal_report)
+                        if _oc_ratio is not None and _oc_ratio > 0.15 and _guard_ok and not _oc_recovery_suspended:
                             _old_conf_oc = confidence
-                            confidence = max(confidence - 3.0, 0.0)
+                            # Phase 57 (US-352): Apply ceiling before subtraction
+                            _raw_sub = 3.0
+                            if self._penalty_ceiling is not None:
+                                _ceil_result = self._penalty_ceiling.check_subtraction(
+                                    confidence, _raw_sub, pair=pair, source="overconfidence"
+                                )
+                                _raw_sub = _ceil_result.applied_penalty
+                            confidence = max(confidence - _raw_sub, 0.0)
                             result.confidence = confidence
                             _oc_applied = True
                             logger.info(
@@ -3162,8 +3949,94 @@ class Scanner:
                                 },
                             },
                         )
+
+                        # Phase 56 (US-346): Record gate rejections to tracker for bottleneck analysis
+                        if self._gate_rejection_tracker is not None:
+                            try:
+                                for _block_reason in _block_reasons:
+                                    # Extract gate name from reason string prefix
+                                    _gate_name = _block_reason.split("=")[0].strip().split(" ")[0]
+                                    self._gate_rejection_tracker.record_rejection(
+                                        pair=pair,
+                                        gate_name=_gate_name,
+                                        reason=_block_reason,
+                                        confidence=float(result.confidence),
+                                    )
+                            except Exception as _grt_rec_err:
+                                logger.debug(
+                                    "%s: Phase 56 gate rejection record failed: %s",
+                                    pair, _grt_rec_err,
+                                )
                 except Exception as e:
                     logger.debug("%s: trade_block observation log skipped: %s", pair, e)  # Non-blocking
+
+            # Phase 56 (US-347): Record penalty sources to confidence penalty monitor
+            if self._confidence_penalty_monitor is not None and result.direction != "HOLD":
+                try:
+                    _cpm_penalties: dict = {}
+                    # Overconfidence: -3pt on 0-100 scale = 0.03 on 0-1 scale
+                    if hasattr(result, "_overconfidence_applied") and result._overconfidence_applied:
+                        _cpm_penalties["overconfidence"] = 0.03
+                    # Concept drift multiplier < 1.0 implies a penalty was applied
+                    _drift_mult = getattr(result, "_drift_penalty_mult", None)
+                    if _drift_mult is not None and float(_drift_mult) < 1.0:
+                        _cpm_penalties["concept_drift"] = round(1.0 - float(_drift_mult), 4)
+                    # Disagreement tracker penalty (negative float)
+                    _dt_penalty = getattr(result, "_disagreement_penalty", None)
+                    if _dt_penalty is not None and float(_dt_penalty) < 0.0:
+                        _cpm_penalties["disagreement"] = abs(float(_dt_penalty))
+                    # Explainability penalty
+                    _exp_penalty = getattr(result, "_explainability_penalty", None)
+                    if _exp_penalty is not None and float(_exp_penalty) > 0.0:
+                        _cpm_penalties["explainability"] = float(_exp_penalty)
+                    if _cpm_penalties:
+                        self._confidence_penalty_monitor.record_penalties(pair, _cpm_penalties)
+                except Exception as _cpm_err:
+                    logger.debug(
+                        "%s: Phase 56 confidence penalty monitor record failed: %s",
+                        pair, _cpm_err,
+                    )
+
+            # Phase 56 (US-348): Log rejected-but-promising setups as virtual trades
+            if (
+                self._virtual_trade_logger is not None
+                and not result.is_tradeable
+                and result.direction in {"LONG", "SHORT"}
+                and result.confidence >= self._virtual_trade_logger.min_confidence
+            ):
+                try:
+                    # Build gate failure list from result
+                    _vtl_failures = []
+                    if not result.confidence_passed:
+                        _vtl_failures.append(f"confidence={result.confidence:.3f} < min={self.config.min_confidence}")
+                    if not result.momentum_passed:
+                        _vtl_failures.append(f"momentum={result.momentum:.3f}")
+                    if not result.risk_passed:
+                        _vtl_failures.append(f"risk_passed=False")
+                    if not result.volatility_gate_passed:
+                        _vtl_failures.append(f"volatility_gate_passed=False")
+                    if not getattr(result, "agent_passed", True):
+                        _vtl_failures.append("agent_passed=False")
+
+                    # Build agent scores from result metadata
+                    _vtl_agents = {}
+                    _agents_info = getattr(result, "agents", {}) or {}
+                    for _ar in (_agents_info.get("agent_reasons") or []):
+                        _name = _ar.get("name", "")
+                        _score = float(_ar.get("score", _ar.get("confidence", 0.0)))
+                        if _name:
+                            _vtl_agents[_name] = _score
+
+                    self._virtual_trade_logger.log_virtual_trade(
+                        pair=pair,
+                        direction=result.direction,
+                        confidence=float(result.confidence),
+                        gate_failures=_vtl_failures,
+                        features={},
+                        agent_scores=_vtl_agents,
+                    )
+                except Exception as _vtl_err:
+                    logger.debug("%s: Phase 56 virtual trade log failed: %s", pair, _vtl_err)
 
             # Cache result
             self._cached_results[pair] = deepcopy(result)
@@ -3347,6 +4220,9 @@ class Scanner:
         # Phase 20 (US-125): Run drift monitor every 20 scan cycles
         self._scan_cycle_count += 1
         self._run_drift_check_cycle(analyses)
+
+        # US-089: Periodic adversarial robustness check every 10 scan cycles
+        self._run_adversarial_robustness_check(analyses)
 
         # Feed ALL pairs' prices into EWMA correlation engine so the
         # correlation matrix reflects the full universe, not just traded pairs.
@@ -3555,6 +4431,129 @@ class Scanner:
             self._drift_monitor.save_state()
         except Exception as e:
             logger.debug("DriftMonitor: save_state failed: %s", e)
+
+    # ── Adversarial robustness: periodic scan-loop check ─────────────
+
+    _ADVERSARIAL_CHECK_INTERVAL = 10  # Run adversarial check every N scan cycles
+
+    def _run_adversarial_robustness_check(self, analyses: list) -> None:
+        """Run adversarial robustness evaluation on cached feature data periodically.
+
+        Uses feature snapshots accumulated during the scan cycle to generate
+        adversarial perturbations and measure ensemble robustness. Results are
+        persisted and consumed per-pair in _scan_pair() via get_latest_score().
+
+        Args:
+            analyses: List of PairAnalysis results from this scan cycle.
+        """
+        if self._adversarial_trainer is None:
+            return
+        if self._scan_cycle_count % self._ADVERSARIAL_CHECK_INTERVAL != 0:
+            return
+        if not analyses:
+            return
+
+        try:
+            import numpy as np
+
+            # Build feature matrix from cached feature snapshots
+            X_parts = []
+            for analysis in analyses:
+                df_feat = self._feature_snapshots.get(analysis.pair)
+                if df_feat is None or df_feat.empty:
+                    continue
+                # Use numeric columns only, take last row as representative sample
+                numeric_cols = df_feat.select_dtypes(include=[np.number]).columns
+                if len(numeric_cols) == 0:
+                    continue
+                row = df_feat[numeric_cols].iloc[-1:].values
+                if not np.isfinite(row).all():
+                    row = np.nan_to_num(row, nan=0.0, posinf=0.0, neginf=0.0)
+                X_parts.append(row)
+
+            if len(X_parts) < 3:
+                logger.debug("AdversarialTrainer: Not enough feature data (%d pairs), skipping", len(X_parts))
+                return
+
+            X_clean = np.vstack(X_parts)
+            # Generate synthetic binary labels from confidence (above/below median)
+            y_clean = np.array([
+                1 if (a.confidence or 0.0) >= 0.5 else 0
+                for a in analyses[:len(X_parts)]
+            ])
+
+            # Generate adversarial perturbations
+            adv_batches = self._adversarial_trainer.generate_adversarial(
+                X_clean, y_clean,
+            )
+
+            # If the modular ensemble exposes a predict-compatible sub-model, evaluate robustness
+            _model = None
+            if hasattr(self._modular_ensemble, 'ridge') and self._modular_ensemble.ridge is not None:
+                _model = self._modular_ensemble.ridge
+            elif hasattr(self._modular_ensemble, 'histgb') and self._modular_ensemble.histgb is not None:
+                _model = self._modular_ensemble.histgb
+
+            if _model is not None and len(adv_batches) > 0:
+                # Stack all adversarial data
+                adv_X_list = [b.X for b in adv_batches.values() if b.n_samples > 0]
+                if adv_X_list:
+                    X_adv = np.vstack(adv_X_list)
+                    _score = self._adversarial_trainer.compute_robustness_score(
+                        model=_model,
+                        X_clean=X_clean,
+                        X_adversarial=X_adv,
+                        y=y_clean,
+                    )
+                    # Persist so per-pair lookups get fresh data
+                    self._adversarial_trainer._history.append({
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "score": _score.to_dict(),
+                    })
+                    self._adversarial_trainer.save_scores()
+                    logger.info(
+                        "AdversarialTrainer: Periodic check — "
+                        "clean=%.3f, adv=%.3f, ratio=%.3f (%d pairs)",
+                        _score.clean_accuracy,
+                        _score.adversarial_accuracy,
+                        _score.robustness_ratio,
+                        len(X_parts),
+                    )
+            else:
+                # No sklearn-compatible sub-model available; just generate & persist
+                # so the perturbation stats are available for future training runs
+                total_adv = sum(b.n_samples for b in adv_batches.values())
+                logger.info(
+                    "AdversarialTrainer: Generated %d adversarial samples "
+                    "(no sub-model available for robustness eval)",
+                    total_adv,
+                )
+
+            # Feedback hook: log periodic adversarial check to observation pipeline
+            try:
+                _obs = self._get_feedback_observer()
+                if _obs is not None:
+                    _latest = self._adversarial_trainer.get_latest_score()
+                    _obs.log_observation(
+                        pair="PORTFOLIO",
+                        category="adversarial_robustness_check",
+                        description=(
+                            f"Periodic adversarial check: ratio={_latest.robustness_ratio:.3f}"
+                            if _latest else "Adversarial check completed (no score)"
+                        ),
+                        metadata={
+                            "robustness_ratio": round(_latest.robustness_ratio, 4) if _latest else 0.0,
+                            "clean_accuracy": round(_latest.clean_accuracy, 4) if _latest else 0.0,
+                            "adversarial_accuracy": round(_latest.adversarial_accuracy, 4) if _latest else 0.0,
+                            "n_pairs_evaluated": len(X_parts),
+                            "cycle_count": self._scan_cycle_count,
+                        },
+                    )
+            except Exception:
+                pass
+
+        except Exception as _adv_check_err:
+            logger.debug("AdversarialTrainer: Periodic check failed (non-blocking): %s", _adv_check_err)
 
     def _write_drift_retrain_request(self, pairs: list) -> None:
         """Write a retrain request file when DriftMonitor flags pairs.
@@ -3918,6 +4917,253 @@ class Scanner:
                     analysis.training_reason = global_drift.retrain_reason
                     analysis.model_drift_score = global_drift.drift_amount
 
+        # Phase 59 (US-364): Record gate proximity for confidence rejects
+        if self._gate_proximity is not None and result.analyses:
+            try:
+                self._gate_proximity.record_scan(
+                    result.analyses,
+                    min_confidence=float(self.config.min_confidence),
+                )
+            except Exception as _gpr_err:
+                logger.debug(f"Phase 59: gate_proximity.record_scan failed: {_gpr_err}")
+
+        # Phase 61 (US-373): Persist momentum scores + periodic gap analysis
+        if self._momentum_recorder is not None:
+            try:
+                self._momentum_recorder.save_state()
+            except Exception as _msr_save_err:
+                logger.debug(f"Phase 61: momentum_recorder.save_state failed: {_msr_save_err}")
+            if self._scan_cycle_count % 50 == 0:
+                try:
+                    from src.scanner.momentum_gap_analyzer import analyze as _mga_analyze
+                    _mga_result = _mga_analyze(
+                        self._momentum_recorder,
+                        float(self.config.min_momentum),
+                    )
+                    _mga_cls = _mga_result.get("classification", "INSUFFICIENT_DATA")
+                    if _mga_cls == "NEAR_THRESHOLD":
+                        logger.warning(
+                            "Phase 61 (US-373): Momentum gap NEAR_THRESHOLD — "
+                            "near_miss_rate=%.1f%% | %s",
+                            _mga_result.get("near_miss_rate_pct", 0.0),
+                            _mga_result.get("recommendation", ""),
+                        )
+                    else:
+                        logger.info(
+                            "Phase 61 (US-373): Momentum gap analysis — "
+                            "classification=%s gap_p50=%.3f pass_rate=%.2f",
+                            _mga_cls,
+                            _mga_result.get("gap_at_p50", 0.0),
+                            _mga_result.get("pass_rate", 0.0),
+                        )
+
+                    # Phase 62 (US-376): Adaptive momentum floor — may reduce min_momentum
+                    if self._adaptive_momentum_floor is not None:
+                        try:
+                            _new_momentum = self._adaptive_momentum_floor.tick(
+                                _mga_cls, float(self.config.min_momentum)
+                            )
+                            if _new_momentum is not None:
+                                _old_momentum = float(self.config.min_momentum)
+                                self.config.min_momentum = _new_momentum
+                                _amf_status = self._adaptive_momentum_floor.get_status()
+                                logger.info(
+                                    "Phase 62 (US-376): AdaptiveMomentumFloor — "
+                                    "min_momentum reduced %.4f → %.4f "
+                                    "(adaptation %d/%d)",
+                                    _old_momentum, _new_momentum,
+                                    _amf_status.get("adaptation_count", 0),
+                                    _amf_status.get("max_adaptations", 5),
+                                )
+                        except Exception as _amf_tick_err:
+                            logger.debug(f"Phase 62: adaptive_momentum_floor.tick() failed: {_amf_tick_err}")
+                except Exception as _mga_err:
+                    logger.debug(f"Phase 61: MomentumGapAnalyzer.analyze() failed: {_mga_err}")
+
+        # Phase 62 (US-376): Persist adaptive momentum floor state
+        if self._adaptive_momentum_floor is not None:
+            try:
+                self._adaptive_momentum_floor.save_state()
+            except Exception as _amf_save_err:
+                logger.debug(f"Phase 62: adaptive_momentum_floor.save_state failed: {_amf_save_err}")
+
+        # Phase 63 (US-378 + US-379): Persist risk recorder + periodic gap analysis
+        if self._risk_recorder is not None:
+            try:
+                self._risk_recorder.save_state()
+            except Exception as _rrr_save_err:
+                logger.debug(f"Phase 63: _risk_recorder.save_state failed: {_rrr_save_err}")
+
+        # Phase 64 (US-383): Persist adaptive drawdown ceiling state
+        if self._adaptive_drawdown_ceiling is not None:
+            try:
+                self._adaptive_drawdown_ceiling.save_state()
+            except Exception as _adc_save_err:
+                logger.debug(f"Phase 64: adaptive_drawdown_ceiling.save_state failed: {_adc_save_err}")
+            if self._scan_cycle_count % 50 == 0:
+                try:
+                    from src.scanner.risk_gate_analyzer import analyze as _rga_analyze
+                    _rga_result = _rga_analyze(
+                        self._risk_recorder,
+                        float(self.config.max_drawdown_pct),
+                    )
+                    _rga_cls = _rga_result.get("classification", "INSUFFICIENT_DATA")
+                    if _rga_cls == "NEAR_THRESHOLD":
+                        logger.warning(
+                            "Phase 63 (US-379): Risk gate NEAR_THRESHOLD — "
+                            "near_miss_rate=%.1f%% drawdown_kill=%.1f%% | %s",
+                            _rga_result.get("near_miss_rate_pct", 0.0),
+                            _rga_result.get("drawdown_kill_pct", 0.0),
+                            _rga_result.get("recommendation", ""),
+                        )
+                    else:
+                        logger.info(
+                            "Phase 63 (US-379): Risk gate analysis — "
+                            "classification=%s gap_p50=%.5f pass_rate=%.2f",
+                            _rga_cls,
+                            _rga_result.get("gap_at_p50", 0.0),
+                            _rga_result.get("pass_rate", 0.0),
+                        )
+                    # Phase 64 (US-383): Adaptive drawdown ceiling
+                    if self._adaptive_drawdown_ceiling is not None:
+                        try:
+                            _new_max_drawdown = self._adaptive_drawdown_ceiling.tick(
+                                _rga_cls, float(self.config.max_drawdown_pct)
+                            )
+                            if _new_max_drawdown is not None:
+                                _old_max_drawdown = float(self.config.max_drawdown_pct)
+                                self.config.max_drawdown_pct = _new_max_drawdown
+                                _adc_status = self._adaptive_drawdown_ceiling.get_status()
+                                logger.info(
+                                    "Phase 64 (US-383): AdaptiveDrawdownCeiling — "
+                                    "max_drawdown_pct raised %.4f → %.4f (adaptation %d/%d)",
+                                    _old_max_drawdown, _new_max_drawdown,
+                                    _adc_status.get("adaptation_count", 0),
+                                    _adc_status.get("max_adaptations", 3),
+                                )
+                        except Exception as _adc_tick_err:
+                            logger.debug(f"Phase 64: adaptive_drawdown_ceiling.tick() failed: {_adc_tick_err}")
+                except Exception as _rga_err:
+                    logger.debug(f"Phase 63: RiskGateAnalyzer.analyze() failed: {_rga_err}")
+
+        # Phase 66 (US-388 + US-389): Persist vote recorder + periodic gap analysis
+        if self._vote_recorder is not None:
+            try:
+                self._vote_recorder.save_state()
+            except Exception as _vsr_save_err:
+                logger.debug(f"Phase 66: _vote_recorder.save_state failed: {_vsr_save_err}")
+            if self._scan_cycle_count % 50 == 0:
+                try:
+                    from src.scanner.vote_gap_analyzer import analyze as _vga_analyze
+                    _vga_result = _vga_analyze(
+                        self._vote_recorder,
+                        float(self.config.weighted_vote_threshold),
+                    )
+                    _vga_cls = _vga_result.get("classification", "INSUFFICIENT_DATA")
+                    if _vga_cls == "NEAR_THRESHOLD":
+                        logger.warning(
+                            "Phase 66 (US-389): Agent consensus NEAR_THRESHOLD — "
+                            "near_miss_rate=%.1f%% vote_pass_rate=%.2f | %s",
+                            _vga_result.get("near_miss_rate_pct", 0.0),
+                            _vga_result.get("pass_rate", 0.0),
+                            _vga_result.get("recommendation", ""),
+                        )
+                    else:
+                        logger.info(
+                            "Phase 66 (US-389): Vote gap analysis — "
+                            "classification=%s gap_p50=%.5f pass_rate=%.2f",
+                            _vga_cls,
+                            _vga_result.get("gap_at_p50", 0.0),
+                            _vga_result.get("pass_rate", 0.0),
+                        )
+                    # Phase 66 (US-390): Adaptive vote threshold
+                    if self._adaptive_vote_threshold is not None:
+                        try:
+                            _new_vote_thresh = self._adaptive_vote_threshold.tick(
+                                _vga_cls, float(self.config.weighted_vote_threshold)
+                            )
+                            if _new_vote_thresh is not None:
+                                _old_vote_thresh = float(self.config.weighted_vote_threshold)
+                                self.config.weighted_vote_threshold = _new_vote_thresh
+                                _avt_status = self._adaptive_vote_threshold.get_status()
+                                logger.info(
+                                    "Phase 66 (US-390): AdaptiveVoteThreshold — "
+                                    "weighted_vote_threshold reduced %.4f → %.4f (adaptation %d/%d)",
+                                    _old_vote_thresh, _new_vote_thresh,
+                                    _avt_status.get("adaptation_count", 0),
+                                    _avt_status.get("max_adaptations", 5),
+                                )
+                        except Exception as _avt_tick_err:
+                            logger.debug(f"Phase 66: adaptive_vote_threshold.tick() failed: {_avt_tick_err}")
+                except Exception as _vga_err:
+                    logger.debug(f"Phase 66: VoteGapAnalyzer.analyze() failed: {_vga_err}")
+
+        # Phase 66 (US-390): Persist adaptive vote threshold state
+        if self._adaptive_vote_threshold is not None:
+            try:
+                self._adaptive_vote_threshold.save_state()
+            except Exception as _avt_save_err:
+                logger.debug(f"Phase 66: adaptive_vote_threshold.save_state failed: {_avt_save_err}")
+
+        # Phase 67 (US-391 + US-392): Persist sub-inference recorder + periodic gap analysis
+        if self._sub_inference_recorder is not None:
+            try:
+                self._sub_inference_recorder.save_state()
+            except Exception as _sir_save_err:
+                logger.debug(f"Phase 67: _sub_inference_recorder.save_state failed: {_sir_save_err}")
+            if self._scan_cycle_count % 50 == 0:
+                try:
+                    from src.scanner.sub_inference_gap_analyzer import analyze as _siga_analyze
+                    _siga_result = _siga_analyze(
+                        self._sub_inference_recorder,
+                        float(self.config.sub_inference_vote_threshold),
+                    )
+                    _siga_cls = _siga_result.get("classification", "INSUFFICIENT_DATA")
+                    if _siga_cls == "NEAR_THRESHOLD":
+                        logger.warning(
+                            "Phase 67 (US-392): Sub-inference NEAR_THRESHOLD — "
+                            "near_miss_rate=%.1f%% pass_rate=%.2f | %s",
+                            _siga_result.get("near_miss_rate_pct", 0.0),
+                            _siga_result.get("pass_rate", 0.0),
+                            _siga_result.get("recommendation", ""),
+                        )
+                    else:
+                        logger.info(
+                            "Phase 67 (US-392): Sub-inference gap analysis — "
+                            "classification=%s gap_p50=%.5f pass_rate=%.2f",
+                            _siga_cls,
+                            _siga_result.get("gap_at_p50", 0.0),
+                            _siga_result.get("pass_rate", 0.0),
+                        )
+                    # Phase 67 (US-393): Adaptive sub-inference threshold
+                    if self._adaptive_sub_inference_threshold is not None:
+                        try:
+                            _new_si_thresh = self._adaptive_sub_inference_threshold.tick(
+                                _siga_cls, float(self.config.sub_inference_vote_threshold)
+                            )
+                            if _new_si_thresh is not None:
+                                _old_si_thresh = float(self.config.sub_inference_vote_threshold)
+                                self.config.sub_inference_vote_threshold = _new_si_thresh
+                                _asit_status = self._adaptive_sub_inference_threshold.get_status()
+                                logger.info(
+                                    "Phase 67 (US-393): AdaptiveSubInferenceThreshold — "
+                                    "sub_inference_vote_threshold reduced %.4f → %.4f (adaptation %d/%d)",
+                                    _old_si_thresh, _new_si_thresh,
+                                    _asit_status.get("adaptation_count", 0),
+                                    _asit_status.get("max_adaptations", 3),
+                                )
+                        except Exception as _asit_tick_err:
+                            logger.debug(f"Phase 67: adaptive_sub_inference_threshold.tick() failed: {_asit_tick_err}")
+                except Exception as _siga_err:
+                    logger.debug(f"Phase 67: SubInferenceGapAnalyzer.analyze() failed: {_siga_err}")
+
+        # Phase 67 (US-393): Persist adaptive sub-inference threshold state
+        if self._adaptive_sub_inference_threshold is not None:
+            try:
+                self._adaptive_sub_inference_threshold.save_state()
+            except Exception as _asit_save_err:
+                logger.debug(f"Phase 67: adaptive_sub_inference_threshold.save_state failed: {_asit_save_err}")
+
         return result
 
     def scan_incremental(
@@ -4028,6 +5274,14 @@ class Scanner:
             # Inject DynamicRiskAllocator so position sizing uses P/L distribution
             if self._dynamic_risk_allocator is not None:
                 self._executor.set_dynamic_risk_allocator(self._dynamic_risk_allocator)
+            # Phase 55 (US-340): Push OHLC cache to ExecutionManager so
+            # Chandelier exits have real price data instead of synthetic arrays.
+            if self._raw_snapshots:
+                self._executor.set_ohlc_cache(self._raw_snapshots)
+                logger.info(
+                    "Phase 55 (US-340): Pushed %d pair OHLC snapshots to ExecutionManager",
+                    len(self._raw_snapshots),
+                )
             return True
         except Exception as e:
             logger.error(f"Failed to initialize executor: {e}")
@@ -4137,6 +5391,9 @@ class Scanner:
                     "momentum": a.momentum,
                     "drawdown": a.drawdown,
                     "overall_score": a.overall_score,
+                    "scores": getattr(a, "_ensemble_scores", {}),
+                    "core_score": getattr(a, "_core_score", None),
+                    "final_score": getattr(a, "_final_score", None),
                     "scan_time": a.scan_time.isoformat() if a.scan_time else None,
                     "regime_risk_modifier": (
                         self._regime_tracker.get_regime_risk_modifier()
@@ -4168,10 +5425,38 @@ class Scanner:
                     ),
                     # Phase 22 (US-135): Pass regime-adjusted risk_pct to execution
                     "risk_pct": a.risk_pct,
+                    # Tier 6 Phase 2: Store real Ridge features for MAML training
+                    "ridge_features": (
+                        a.metadata.get("ridge_features")
+                        if isinstance(getattr(a, "metadata", None), dict)
+                        else None
+                    ),
                 },
             }
             for a in tradeable
         ]
+
+        # Feedback hook: log seasonality modifiers for tradeable setups to observation pipeline
+        if self._seasonality is not None:
+            try:
+                _obs = self._get_feedback_observer()
+                if _obs is not None:
+                    _hour = datetime.now(timezone.utc).hour
+                    for a in tradeable:
+                        _season_mod = self._seasonality.get_hour_modifier(a.pair, _hour)
+                        if _season_mod != 1.0:
+                            _obs.log_observation(
+                                pair=a.pair,
+                                category="seasonality",
+                                description=f"Seasonality modifier={_season_mod:.3f} hour={_hour}",
+                                metadata={
+                                    "modifier": round(_season_mod, 4),
+                                    "hour_utc": _hour,
+                                    "direction": a.direction,
+                                },
+                            )
+            except Exception:
+                pass
 
         # ── GROUP MOMENTUM FILTER (US-054) ────────────────────────────────
         group_scores = getattr(self, "_last_group_momentum", {})
@@ -4233,6 +5518,11 @@ class Scanner:
                         pass
                 filtered_trades.append(trade)
             trades = filtered_trades
+
+        # Phase 55 (US-340): Refresh OHLC cache before execution so
+        # evaluate_exits() in monitor_open_trades() has latest price data
+        if self._raw_snapshots and self._executor is not None:
+            self._executor.set_ohlc_cache(self._raw_snapshots)
 
         return self._executor.execute_trades(trades)
 

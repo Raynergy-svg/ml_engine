@@ -19,6 +19,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
+# Lazy import for episodic memory (suppression gate)
+try:
+    from src.scanner.automation.episodic_memory import EpisodicMemory
+    _EPISODIC_MEMORY_AVAILABLE = True
+except ImportError:
+    _EPISODIC_MEMORY_AVAILABLE = False
+
 # Pip values for position sizing
 PIP_VALUES = {
     "EUR_USD": 0.0001, "GBP_USD": 0.0001, "USD_JPY": 0.01,
@@ -391,6 +398,33 @@ class ExecutionManager:
         except Exception as e:
             logger.debug(f"Phase 54: Feature drift detector init deferred: {e}")
 
+        # Phase 55 (US-344): Feature Health Monitor — PSI per feature with importance downweighting
+        # Phase 56 (US-349): ExecutionQualityTracker — TCA fill feedback loop
+        self._exec_quality_tracker = None
+        try:
+            from src.scanner.automation.execution_quality_tracker import ExecutionQualityTracker
+            self._exec_quality_tracker = ExecutionQualityTracker()
+            logger.info("Phase 56 (US-349): Execution quality tracker initialized")
+        except Exception as _eqt_err:
+            logger.debug(f"Phase 56: Execution quality tracker init deferred: {_eqt_err}")
+
+        # Tier 6 (US-400): AuraQueryGate — Pre-trade co-cognition from Aura
+        self._aura_gate = None
+        try:
+            from src.aura.bridge.query_gate import AuraQueryGate
+            self._aura_gate = AuraQueryGate(timeout_sec=25.0)
+            logger.info("Tier 6 (US-400): Aura co-cognition query gate initialized")
+        except Exception as _aura_err:
+            logger.debug(f"Tier 6: Aura gate init deferred: {_aura_err}")
+
+        self._feature_health_monitor = None
+        try:
+            from src.scanner.feature_health import FeatureHealthMonitor
+            self._feature_health_monitor = FeatureHealthMonitor()
+            logger.info("Phase 55 (US-344): Feature health monitor initialized")
+        except Exception as e:
+            logger.debug(f"Phase 55: Feature health monitor init deferred: {e}")
+
         # Phase 54 (US-336): Trade Cluster Analyzer — identify high/low win clusters
         self._trade_cluster_analyzer = None
         try:
@@ -419,6 +453,24 @@ class ExecutionManager:
             logger.info("Phase 54 (US-338): Regime confidence scorer initialized")
         except Exception as e:
             logger.debug(f"Phase 54: Regime confidence scorer init deferred: {e}")
+
+        # Phase 50 (US-310): Pre-execution filter chain for extensible gate management
+        self._filter_chain = None
+        try:
+            from src.scanner.execution_filters import FilterChain
+            self._filter_chain = FilterChain()
+            logger.info("Phase 50 (US-310): Execution filter chain initialized")
+        except Exception as e:
+            logger.debug(f"Phase 50: Execution filter chain init deferred: {e}")
+
+        # Episodic suppression gate — blocks setups with repeated historical losses
+        self._episodic_memory: Optional[Any] = None
+        if _EPISODIC_MEMORY_AVAILABLE and getattr(self.config, 'enable_episodic_memory', True):
+            try:
+                self._episodic_memory = EpisodicMemory(max_episodes=getattr(self.config, 'episodic_memory_max_episodes', 500))
+                logger.info("EpisodicMemory suppression gate active in ExecutionManager")
+            except Exception as e:
+                logger.warning(f"EpisodicMemory init failed in ExecutionManager: {e}")
 
     def _init_oanda_client(self) -> bool:
         """Initialize OANDA client.
@@ -1576,10 +1628,10 @@ class ExecutionManager:
                                 _wr = getattr(_pf, "win_rate", 0.0) or 0.0
                                 if _wr > 0:
                                     _pair_win_rates[_p] = _wr
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
+                            except Exception as _exc:
+                                logger.debug("H-4: Silent exception in check_fitness: %s", _exc)
+                    except Exception as _exc:
+                        logger.debug("H-4: Silent exception in debug: %s", _exc)
 
                 _dd_result = self._drawdown_adapter.check(
                     current_nav=_current_nav,
@@ -1601,8 +1653,8 @@ class ExecutionManager:
                                 "drawdown_adapter", rejected=True,
                                 reason=_dd_result.reason, confidence=confidence, pair=pair,
                             )
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            logger.debug("H-4: Silent exception in gate_attribution: %s", _exc)
                     return ExecutionResult(
                         success=False,
                         error=_dd_result.reason,
@@ -1615,8 +1667,8 @@ class ExecutionManager:
                                 "drawdown_adapter", rejected=False,
                                 confidence=confidence, pair=pair,
                             )
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            logger.debug("H-4: Silent exception in gate_attribution: %s", _exc)
 
                 # Apply confidence tightening from Tier 1+
                 if _dd_result.confidence_penalty > 0:
@@ -1673,8 +1725,8 @@ class ExecutionManager:
                                         "staleness_guard", rejected=False,
                                         confidence=confidence, pair=pair,
                                     )
-                            except Exception:
-                                pass
+                            except Exception as _exc:
+                                logger.debug("H-4: Silent exception in gate_attribution: %s", _exc)
                         if _fresh_result.rejected:
                             return ExecutionResult(
                                 success=False,
@@ -1688,8 +1740,8 @@ class ExecutionManager:
                                     "staleness_guard", rejected=False,
                                     confidence=confidence, pair=pair,
                                 )
-                            except Exception:
-                                pass
+                            except Exception as _exc:
+                                logger.debug("H-4: Silent exception in gate_attribution: %s", _exc)
             except Exception as _sf_err:
                 logger.debug(f"Phase 53: Signal freshness check error: {_sf_err}")
 
@@ -1699,6 +1751,52 @@ class ExecutionManager:
         ctx["_spread_mult"] = 1.0
         ctx["_calendar_mult"] = 1.0
         ctx["_fitness_mult"] = 1.0
+
+        # ── Episodic Suppression Gate (Earliest Gate) ──
+        # Block setups with repeated historical losses before any other gate
+        if self._episodic_memory is not None:
+            try:
+                _regime = ctx.get("regime", ctx.get("volatility_regime", "unknown"))
+                if isinstance(_regime, int):
+                    _regime_map = {0: "NORMAL", 1: "TRENDING", 2: "RANGING", 3: "VOLATILE"}
+                    _regime = _regime_map.get(_regime, "unknown")
+                else:
+                    _regime = str(_regime).upper() if _regime else "unknown"
+                _session = ctx.get("session", ctx.get("trading_session", "unknown"))
+                _session = str(_session).upper() if _session else "unknown"
+                _news_risk = float(ctx.get("news_risk_score", 0.0))
+                _uncertainty = float(ctx.get("uncertainty_score", 0.0))
+
+                _suppressed = self._episodic_memory.get_suppression_signal(
+                    pair=pair,
+                    direction=direction,
+                    regime=_regime,
+                    session=_session,
+                    news_risk_score=_news_risk,
+                    uncertainty_score=_uncertainty,
+                )
+                if _suppressed:
+                    logger.warning(
+                        f"[EPISODIC BLOCK] {pair} {direction} suppressed (regime={_regime}, session={_session}) — "
+                        f"repeated losing pattern detected in episodic memory"
+                    )
+                    # Phase 53 (US-328): Record gate rejection
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "episodic_suppression", rejected=True,
+                                reason="Pattern loss rate >= 70% with 3+ similar episodes",
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception as _exc:
+                            logger.debug("H-4: Silent exception in gate_attribution: %s", _exc)
+                    return ExecutionResult(
+                        success=False,
+                        error=f"EPISODIC_SUPPRESSION: {pair} {direction} blocked by episodic memory"
+                    )
+            except Exception as _em_err:
+                logger.debug(f"Episodic suppression check failed (fail-open): {_em_err}")
+                # Fail-open: any error allows trade to proceed
 
         # Gate 1: Spread filter — reject if spread > ATR threshold
         if self._spread_filter is not None:
@@ -1724,8 +1822,8 @@ class ExecutionManager:
                                     reason=f"spread {_spread_result.normalized_spread:.3f} > {_spread_result.threshold:.3f}",
                                     confidence=confidence, pair=pair,
                                 )
-                            except Exception:
-                                pass
+                            except Exception as _exc:
+                                logger.debug("H-4: Silent exception in unknown: %s", _exc)
                         return ExecutionResult(
                             success=False,
                             error=f"BLOCKED: spread too wide ({_spread_result.normalized_spread:.3f} > {_spread_result.threshold:.3f})",
@@ -1738,8 +1836,8 @@ class ExecutionManager:
                                     "spread_filter", rejected=False,
                                     confidence=confidence, pair=pair,
                                 )
-                            except Exception:
-                                pass
+                            except Exception as _exc:
+                                logger.debug("H-4: Silent exception in gate_attribution: %s", _exc)
                     if _spread_result.size_multiplier < 1.0:
                         _phase49_size_mult *= _spread_result.size_multiplier
                         ctx["_spread_mult"] = _spread_result.size_multiplier
@@ -1768,8 +1866,8 @@ class ExecutionManager:
                                 reason=f"blackout: {_evt_name}",
                                 confidence=confidence, pair=pair,
                             )
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            logger.debug("H-4: Silent exception in unknown: %s", _exc)
                     return ExecutionResult(
                         success=False,
                         error=f"BLOCKED: economic calendar blackout ({_evt_name})",
@@ -1782,8 +1880,8 @@ class ExecutionManager:
                                 "calendar_filter", rejected=False,
                                 confidence=confidence, pair=pair,
                             )
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            logger.debug("H-4: Silent exception in gate_attribution: %s", _exc)
                 if _cal_result.action == "REDUCE_SIZE" and _cal_result.size_multiplier < 1.0:
                     _phase49_size_mult *= _cal_result.size_multiplier
                     ctx["_calendar_mult"] = _cal_result.size_multiplier
@@ -1813,8 +1911,8 @@ class ExecutionManager:
                                 reason=f"fitness {_fitness_result.fitness_score:.3f} in {_regime_for_fitness}",
                                 confidence=confidence, pair=pair,
                             )
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            logger.debug("H-4: Silent exception in unknown: %s", _exc)
                     return ExecutionResult(
                         success=False,
                         error=f"BLOCKED: strategy fitness too low ({_fitness_result.fitness_score:.3f} in {_regime_for_fitness})",
@@ -1827,8 +1925,8 @@ class ExecutionManager:
                                 "fitness_detector", rejected=False,
                                 confidence=confidence, pair=pair,
                             )
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            logger.debug("H-4: Silent exception in gate_attribution: %s", _exc)
                 if _fitness_result.action == "REDUCE_SIZE" and _fitness_result.size_multiplier < 1.0:
                     _phase49_size_mult *= _fitness_result.size_multiplier
                     ctx["_fitness_mult"] = _fitness_result.size_multiplier
@@ -1838,6 +1936,42 @@ class ExecutionManager:
                     )
             except Exception as _fit_err:
                 logger.debug(f"Phase 49: Fitness check error: {_fit_err}")
+
+        # Gate 4: Pair blacklist — block pairs that have been auto-blacklisted by PairPerformanceTracker
+        # _pair_tracker.update_from_trade() accumulates outcomes after close;
+        # _pair_tracker.check_pair() enforces the blacklist here before entry.
+        if self._pair_tracker is not None:
+            try:
+                _bl_result = self._pair_tracker.check_pair(pair)
+                if _bl_result.is_blacklisted:
+                    logger.info(
+                        "Phase 49 (US-307): %s BLOCKED by pair blacklist — %s (cooldown=%d cycles)",
+                        pair, _bl_result.reason, _bl_result.cooldown_remaining,
+                    )
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "pair_blacklist", rejected=True,
+                                reason=_bl_result.reason,
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception as _exc:
+                            logger.debug("Phase 49: gate_attribution record error: %s", _exc)
+                    return ExecutionResult(
+                        success=False,
+                        error=f"BLOCKED: pair blacklisted ({_bl_result.reason})",
+                    )
+                else:
+                    if self._gate_attribution is not None:
+                        try:
+                            self._gate_attribution.record_decision(
+                                "pair_blacklist", rejected=False,
+                                confidence=confidence, pair=pair,
+                            )
+                        except Exception as _exc:
+                            logger.debug("Phase 49: gate_attribution record error: %s", _exc)
+            except Exception as _bl_err:
+                logger.debug(f"Phase 49: Pair blacklist check error: {_bl_err}")
 
         # ── Phase 52 (US-323): Pattern Gate — journal-mined confidence adjustments ──
         ctx["_pattern_boost"] = 0.0
@@ -1879,8 +2013,8 @@ class ExecutionManager:
                         _regime_for_wr = _ctx_regime or "NORMAL"
                         _fit_check = self._strategy_fitness.check_fitness(pair, _regime_for_wr)
                         _pair_wr = getattr(_fit_check, "win_rate", 0.5) or 0.5
-                    except Exception:
-                        pass
+                    except Exception as _exc:
+                        logger.debug("H-4: Silent exception in check_fitness: %s", _exc)
 
                 _sq_result = self._setup_quality_filter.evaluate(
                     pair=pair,
@@ -1904,8 +2038,8 @@ class ExecutionManager:
                                 reason=f"quality {_sq_result.quality_score:.3f}: {'; '.join(_sq_result.rejection_reasons)}",
                                 confidence=confidence, pair=pair,
                             )
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            logger.debug("H-4: Silent exception in unknown: %s", _exc)
                     return ExecutionResult(
                         success=False,
                         error=f"BLOCKED: setup quality too low ({_sq_result.quality_score:.3f}): {'; '.join(_sq_result.rejection_reasons)}",
@@ -1918,8 +2052,8 @@ class ExecutionManager:
                                 "setup_quality", rejected=False,
                                 confidence=confidence, pair=pair,
                             )
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            logger.debug("H-4: Silent exception in gate_attribution: %s", _exc)
                 ctx["_setup_quality_score"] = _sq_result.quality_score
                 ctx["_setup_quality_dims"] = _sq_result.dimension_scores
             except Exception as _sq_err:
@@ -1936,8 +2070,8 @@ class ExecutionManager:
                     try:
                         _fit_for_rr = self._strategy_fitness.check_fitness(pair, _regime_for_rr)
                         _pair_wr_for_rr = getattr(_fit_for_rr, "win_rate", 0.50) or 0.50
-                    except Exception:
-                        pass
+                    except Exception as _exc:
+                        logger.debug("H-4: Silent exception in check_fitness: %s", _exc)
 
                 _rr_result = self._adaptive_rr.calculate(
                     regime=_regime_for_rr,
@@ -2347,6 +2481,57 @@ class ExecutionManager:
             tp_price = current_price - (tp_pips * pip_value)
             units = -round(lots * 100_000)  # M-10: round instead of int() to prevent truncation bias
 
+        # ── Tier 6 (US-400): Aura Co-Cognition Query Gate ──
+        # Pre-trade gate querying Aura about trader readiness before high-risk trades.
+        # Non-blocking by design: if Aura is offline or slow (>25s), we proceed.
+        if self._aura_gate is not None:
+            try:
+                # Build trade context for Aura query
+                _aura_ctx = {
+                    "pair": pair,
+                    "direction": direction.upper(),
+                    "confidence": confidence,
+                    "weighted_vote_score": float(ctx.get("weighted_vote_score", 0.65)),
+                    "portfolio_risk_pct": float(ctx.get("portfolio_risk_pct", 0.05)),
+                    "drawdown_today_pct": float(ctx.get("_drawdown_pct", 0.0)),
+                    "regime": str(ctx.get("volatility_regime", "NORMAL")).upper(),
+                    "rr_ratio": round(tp_pips / sl_pips, 2) if sl_pips > 0 else 0.0,
+                }
+                _aura_result = self._aura_gate.evaluate(_aura_ctx)
+
+                if _aura_result.get("hard_veto"):
+                    logger.warning(
+                        "Tier 6 (US-400): AURA HARD VETO on %s %s: %s",
+                        pair, direction, _aura_result.get("message", "unknown")
+                    )
+                    return ExecutionResult(
+                        success=False,
+                        error=f"AURA HARD VETO: {_aura_result.get('message', 'unknown')}",
+                    )
+                elif _aura_result.get("confidence_modifier", 0.0) != 0.0:
+                    _old_conf_aura = confidence
+                    _modifier = _aura_result["confidence_modifier"]
+                    confidence = max(0.0, min(1.0, confidence + _modifier))
+                    if not _aura_result.get("proceed"):
+                        logger.info(
+                            "Tier 6 (US-400): Aura caution on %s — confidence %.3f → %.3f (modifier %.3f)",
+                            pair, _old_conf_aura, confidence, _modifier,
+                        )
+                    # Re-check minimum confidence after adjustment
+                    if confidence < 0.45:
+                        return ExecutionResult(
+                            success=False,
+                            error=f"BLOCKED: confidence {confidence:.3f} < 0.45 after Aura adjustment",
+                        )
+                elif _aura_result.get("response_received"):
+                    logger.info(
+                        "Tier 6 (US-400): Aura clears %s %s (readiness=%.2f)",
+                        pair, direction, _aura_result.get("readiness_score", 0.0),
+                    )
+            except Exception as _aura_err:
+                logger.debug(f"Tier 6: Aura gate evaluation error: {_aura_err}")
+                # Non-blocking — errors don't prevent execution
+
         try:
             # Attempt order with rejection recovery (downsize by 50% on rejection)
             fill_status = "UNKNOWN"
@@ -2433,6 +2618,33 @@ class ExecutionManager:
                         trade_id=trade_id,
                         analysis_context=analysis_context,
                     )
+
+                    # Phase 56 (US-349): TCA fill feedback — record fill metrics to ExecutionQualityTracker
+                    if self._exec_quality_tracker is not None:
+                        try:
+                            import time as _time_mod
+                            _fill_pip_value = PIP_VALUES.get(pair, 0.0001)
+                            _fill_slippage_abs = abs(slippage) if slippage is not None else 0.0
+                            _fill_status_str = "filled" if fill_status == "FULL" else (
+                                "partial" if fill_status == "RETRIED" else "rejected"
+                            )
+                            self._exec_quality_tracker.track_fill(
+                                pair=pair,
+                                expected_price=float(current_price),
+                                fill_price=float(fill_price),
+                                slippage_pips=float(_fill_slippage_abs),
+                                fill_status=_fill_status_str,
+                                execution_ms=0.0,  # Timing data not available at this point
+                                regime=str(analysis_context.get("volatility_regime", "NORMAL"))
+                                if analysis_context else "NORMAL",
+                            )
+                            self._exec_quality_tracker.save_state()
+                            logger.debug(
+                                "Phase 56 (US-349): TCA recorded — %s fill=%.5f expected=%.5f slip=%.1fpips",
+                                pair, fill_price, current_price, _fill_slippage_abs,
+                            )
+                        except Exception as _eqt_fill_err:
+                            logger.debug(f"Phase 56: ExecutionQualityTracker track_fill error: {_eqt_fill_err}")
 
                     # Phase 52 (US-323): Register trade with tranche tracker for SL management
                     if self._tranche_tracker is not None:
@@ -2637,10 +2849,59 @@ class ExecutionManager:
             if not isinstance(entries, list):
                 logger.warning("Trade journal corrupted (not a list), resetting: %s", type(entries))
                 entries = []
+            else:
+                # H-5: Schema validation — filter out malformed entries
+                _required_keys = {"pair", "direction", "timestamp"}
+                _valid = []
+                for _entry in entries:
+                    if isinstance(_entry, dict) and _required_keys.issubset(_entry.keys()):
+                        _valid.append(_entry)
+                    else:
+                        logger.warning("H-5: Skipping malformed journal entry: %s", type(_entry))
+                if len(_valid) < len(entries):
+                    logger.warning("H-5: Filtered %d malformed entries from journal", len(entries) - len(_valid))
+                entries = _valid
 
         ctx = analysis_context or {}
+
+        # Record setup to episodic memory for pattern suppression
+        _episode_id = ""
+        if self._episodic_memory is not None:
+            try:
+                _regime = ctx.get("volatility_regime", "unknown")
+                if isinstance(_regime, int):
+                    _regime_map = {0: "NORMAL", 1: "TRENDING", 2: "RANGING", 3: "VOLATILE"}
+                    _regime = _regime_map.get(_regime, "unknown")
+                else:
+                    _regime = str(_regime).upper() if _regime else "unknown"
+                _session = ctx.get("session", ctx.get("trading_session", "unknown"))
+                _session = str(_session).upper() if _session else "unknown"
+                _news_risk = float(ctx.get("news_risk_score", 0.0))
+                _uncertainty = float(ctx.get("uncertainty_score", 0.0))
+                _atr_norm = float(ctx.get("atr_normalized", 0.0))
+                _spread = float(ctx.get("spread_pips", 0.0))
+                _rr_ratio = float(ctx.get("rr_ratio", 0.0))
+
+                _episode_id = self._episodic_memory.record_setup(
+                    pair=pair,
+                    direction=direction,
+                    regime=_regime,
+                    session=_session,
+                    news_risk_score=_news_risk,
+                    uncertainty_score=_uncertainty,
+                    atr_normalized=_atr_norm,
+                    spread_pips=_spread,
+                    confidence=confidence,
+                    weighted_vote_score=float(ctx.get("weighted_vote_score", 0.0)),
+                    rr_ratio=_rr_ratio,
+                )
+                logger.debug(f"Episodic memory: Recorded setup {_episode_id} for {pair} {direction}")
+            except Exception as _em_err:
+                logger.debug(f"Episodic memory record_setup error: {_em_err}")
+
         entry_record = {
             "trade_id": trade_id,
+            "episode_id": _episode_id,  # Store episode_id for later outcome recording
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "pair": pair,
             "direction": direction,
@@ -2673,6 +2934,13 @@ class ExecutionManager:
             },
             "spread_pips": ctx.get("spread_pips"),
             "group_momentum": ctx.get("group_momentum"),
+            "gate_details": {
+                "scores": ctx.get("scores", {}),
+                "core_score": ctx.get("core_score"),
+                "final_score": ctx.get("final_score"),
+            },
+            # Tier 6 Phase 2: Real Ridge features for MAML training (replaces proxy)
+            "ridge_features": ctx.get("ridge_features"),
             "outcome": None,  # Filled by sync_closed_trades_rl
             "fill_price": entry,  # Actual fill price from OANDA
             "expected_price": ctx.get("current_price", entry),
@@ -3884,6 +4152,160 @@ class ExecutionManager:
             except Exception as rl_err:
                 logger.debug(f"RL replay buffer error for {tid}: {rl_err}")
 
+            # Record trade outcome to episodic memory for pattern suppression learning
+            if self._episodic_memory is not None:
+                try:
+                    _episode_id = entry.get("episode_id", "")
+                    if _episode_id:
+                        _outcome_str = "WIN" if trade_won else "LOSS"
+                        _success = self._episodic_memory.record_outcome(
+                            episode_id=_episode_id,
+                            outcome=_outcome_str,
+                            pnl_pips=float(pnl_pips),
+                        )
+                        if _success:
+                            logger.debug(
+                                f"Episodic memory: Recorded {_outcome_str} ({pnl_pips:.1f} pips) for episode {_episode_id}"
+                            )
+                        else:
+                            logger.debug(f"Episodic memory: Episode {_episode_id} not found for outcome recording")
+                    else:
+                        logger.debug(f"Trade {tid} has no episode_id for episodic memory recording")
+                except Exception as _em_err:
+                    logger.debug(f"Episodic memory record_outcome error for {tid}: {_em_err}")
+
+            # ── Tier 6: Meta-learner hyperparameter adaptation ──
+            if scanner is not None and getattr(scanner, '_meta_learner', None) is not None:
+                try:
+                    _ml_agents_info = entry.get("agents", {})
+                    _ml_agent_reasons = _ml_agents_info.get("agent_reasons", [])
+                    _ml_agent_scores: Dict[str, float] = {}
+                    _ml_agent_weights: Dict[str, float] = {}
+                    for _ar in _ml_agent_reasons:
+                        _name = _ar.get("name", "")
+                        if _name:
+                            _ml_agent_scores[_name] = float(_ar.get("score", 0.5))
+                            _ml_agent_weights[_name] = float(_ar.get("weight", 1.0))
+
+                    if _ml_agent_scores:
+                        _ml_regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
+                        _ml_notional = abs(entry_price * float(ct.get("initialUnits", 1)))
+                        _ml_pnl_pct = realized_pl / max(_ml_notional, 1.0)
+                        _ml_trade_result = {
+                            "pnl_pct": _ml_pnl_pct,
+                            "outcome": "win" if trade_won else "loss",
+                        }
+                        scanner._meta_learner.on_trade_close(
+                            pair=entry.get("pair", ""),
+                            regime=_ml_regime,
+                            trade_result=_ml_trade_result,
+                            agent_scores=_ml_agent_scores,
+                            agent_weights=_ml_agent_weights,
+                        )
+                        logger.info(
+                            "Tier 6: Meta-learner updated for %s/%s (pnl_pct=%.4f, agents=%d)",
+                            entry.get("pair", ""), _ml_regime, _ml_pnl_pct, len(_ml_agent_scores),
+                        )
+                except Exception as _ml_err:
+                    logger.debug("Tier 6: Meta-learner on_trade_close error: %s", _ml_err)
+
+            # Tier 6: Record outcome to EnsembleWeighter for learned model weights
+            if scanner is not None and getattr(scanner, '_ensemble_weighter', None) is not None:
+                try:
+                    _ew_gate = entry.get("gate_details", {})
+                    _ew_scores = _ew_gate.get("scores", {})
+                    _ew_dir = float(_ew_scores.get("direction_score", 0.5))
+                    _ew_conf = float(_ew_scores.get("confidence_score", 0.5))
+                    _ew_mom = float(_ew_scores.get("momentum_score", 0.5))
+                    _ew_risk = float(_ew_scores.get("risk_score", 0.5))
+                    _ew_regime = entry.get("regime", {})
+                    _ew_vol_id = {"LOW": 0, "NORMAL": 1, "HIGH": 2, "EXTREME": 3}.get(
+                        str(_ew_regime.get("volatility_regime", "NORMAL")), 1
+                    )
+                    _ew_vol_conf = float(_ew_regime.get("volatility_regime_confidence", 0.5))
+                    # Normalize outcome: direction-adjusted pnl_pips as proxy for model accuracy
+                    _ew_outcome = pnl_pips / 100.0  # Scale pips to approximate 0-centered outcome
+                    scanner._ensemble_weighter.record(
+                        context_features=[_ew_vol_id / 3.0, _ew_vol_conf],
+                        model_predictions=[_ew_dir, _ew_conf, _ew_mom, _ew_risk],
+                        realized_outcome=_ew_outcome,
+                    )
+                    logger.debug(
+                        "Tier 6: EnsembleWeighter recorded outcome for %s (pnl_pips=%.1f)",
+                        entry.get("pair", ""), pnl_pips,
+                    )
+                except Exception as _ew_err:
+                    logger.debug("Tier 6: EnsembleWeighter record error: %s", _ew_err)
+
+            # Tier 6 Phase 1: MAML Ridge outcome recording
+            if scanner is not None and getattr(scanner, '_maml_ridge', None) is not None:
+                try:
+                    _maml_regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
+                    if isinstance(_maml_regime, int):
+                        _maml_regime = {0: "LOW", 1: "NORMAL", 2: "HIGH", 3: "EXTREME"}.get(_maml_regime, "NORMAL")
+                    # Target confidence: map outcome to 0-100 scale
+                    # Wins with good R:R → high confidence was correct → target near ridge_conf
+                    # Losses → confidence was wrong → target = 100 - ridge_conf
+                    _maml_ridge_conf = float(entry.get("regime", {}).get("ridge_confidence",
+                                             entry.get("agents", {}).get("ridge_confidence", 50)))
+                    if trade_won:
+                        _maml_target = min(100.0, _maml_ridge_conf + abs(pnl_pips) * 0.5)
+                    else:
+                        _maml_target = max(0.0, _maml_ridge_conf - abs(pnl_pips) * 0.5)
+                    _maml_target = max(0.0, min(100.0, _maml_target))
+
+                    # Tier 6 Phase 2: Use real Ridge features if available, else proxy
+                    import numpy as np
+                    _stored_ridge_features = entry.get("ridge_features")
+                    if _stored_ridge_features is not None and len(_stored_ridge_features) >= 14:
+                        # Real 14D Ridge features from prediction time
+                        _maml_features = np.array(_stored_ridge_features[:14], dtype=np.float32)
+                    else:
+                        # Fallback: proxy from gate_details (Phase 1 legacy)
+                        _maml_gate = entry.get("gate_details", {})
+                        _maml_scores = _maml_gate.get("scores", {})
+                        _maml_features = np.array([
+                            float(_maml_scores.get("direction_score", 0.5)),
+                            float(_maml_scores.get("confidence_score", 0.5)),
+                            float(_maml_scores.get("momentum_score", 0.5)),
+                            float(_maml_scores.get("risk_score", 0.5)),
+                        ] + [0.0] * 10, dtype=np.float32) if _maml_scores else None
+                    if _maml_features is not None:
+                        scanner._maml_ridge.record_outcome(
+                            features=_maml_features,
+                            regime=str(_maml_regime),
+                            target_confidence=_maml_target,
+                        )
+                        _feat_source = "real_ridge" if _stored_ridge_features is not None else "proxy"
+                        logger.debug(
+                            "Tier 6 MAML: Recorded outcome for %s regime=%s target=%.1f features=%s",
+                            entry.get("pair", ""), _maml_regime, _maml_target, _feat_source,
+                        )
+
+                        # Tier 6 Phase 2: Record outcome in benchmark
+                        _maml_bench = getattr(scanner, '_maml_benchmark', None)
+                        if _maml_bench is not None:
+                            try:
+                                # Get MAML's prediction at trade time from entry metadata
+                                _maml_shadow = entry.get("maml_shadow", {})
+                                _bench_maml_conf = float(_maml_shadow.get("maml_confidence", _maml_target))
+                                _maml_bench.record_outcome(
+                                    trade_id=entry.get("oanda_trade_id", entry.get("pair", "unknown")),
+                                    regime=str(_maml_regime),
+                                    maml_confidence=_bench_maml_conf,
+                                    ridge_confidence=_maml_ridge_conf,
+                                    realized_confidence=_maml_target,
+                                    pnl_pips=float(pnl_pips),
+                                    won=bool(trade_won),
+                                    exit_reason=str(outcome_data.get("exit_reason", "")),
+                                    duration_minutes=outcome_data.get("duration_minutes"),
+                                    regime_at_exit=str(outcome_data.get("regime_at_exit", "")),
+                                )
+                            except Exception as _bench_err:
+                                logger.debug("Tier 6 Benchmark: record error: %s", _bench_err)
+                except Exception as _maml_err:
+                    logger.debug("Tier 6 MAML: outcome record error: %s", _maml_err)
+
             # Collect agent verdicts for RL feedback (with regime from entry)
             agents = entry.get("agents", {})
             regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
@@ -4001,13 +4423,37 @@ class ExecutionManager:
 
                 if _attr_recorded > 0:
                     self._attribution_engine.save_state()
-                    # Log weight recommendations (but do NOT auto-apply)
+                    # Phase 50 (US-308-ext): Pipe attribution weight recommendations to gate threshold optimizer
                     _weight_recs = self._attribution_engine.get_weight_recommendations()
                     _notable = {k: f"{v:.2f}x" for k, v in _weight_recs.items() if abs(v - 1.0) > 0.05}
                     logger.info(
                         "Phase 49 (US-308): Attributed %d trades. Weight recs: %s",
                         _attr_recorded, _notable or "no notable adjustments",
                     )
+
+                    # Phase 50 (US-308-ext): Feed attribution feedback to gate threshold optimizer
+                    if self._gate_threshold_optimizer is not None and _weight_recs:
+                        try:
+                            for _agent_name, _weight_delta in _weight_recs.items():
+                                # Submit agent weight delta as feedback
+                                # Interpret weight_delta > 1.0 as "increase confidence in this agent"
+                                # and weight_delta < 1.0 as "decrease confidence"
+                                self._gate_threshold_optimizer.record_agent_feedback(
+                                    agent_name=_agent_name,
+                                    weight_delta=_weight_delta,
+                                    source="trade_attribution",
+                                )
+                            logger.info(
+                                "Phase 50 (US-308-ext): %d attribution weight recommendations piped to gate threshold optimizer",
+                                len(_weight_recs),
+                            )
+                        except AttributeError:
+                            # If gate_threshold_optimizer doesn't have record_agent_feedback, skip silently
+                            logger.debug(
+                                "Phase 50: gate_threshold_optimizer missing record_agent_feedback method, skipping"
+                            )
+                        except Exception as _atf_err:
+                            logger.debug(f"Phase 50 (US-308-ext): Attribution feedback pipe error: {_atf_err}")
             except Exception as _attr_err:
                 logger.debug(f"Phase 49: Attribution engine error: {_attr_err}")
 
@@ -4057,6 +4503,37 @@ class ExecutionManager:
                             )
             except Exception as _drift_err:
                 logger.debug(f"Phase 54: Feature drift detector error: {_drift_err}")
+
+        # ── Phase 55 (US-344): Feature Health Monitor — PSI per feature, every 50 trades ──
+        if self._feature_health_monitor is not None and synced > 0:
+            try:
+                for _ in range(synced):
+                    self._feature_health_monitor.record_trade()
+                if self._feature_health_monitor.should_check():
+                    _all_with_outcomes = [e for e in entries if e.get("outcome") is not None]
+                    _recent_n = min(self._feature_health_monitor.recent_window, len(_all_with_outcomes))
+                    _baseline_n = min(
+                        self._feature_health_monitor.baseline_window,
+                        len(_all_with_outcomes) - _recent_n,
+                    )
+                    if _recent_n >= 50 and _baseline_n >= 50:
+                        _fh_recent = _all_with_outcomes[-_recent_n:]
+                        _fh_baseline = _all_with_outcomes[-(_recent_n + _baseline_n):-_recent_n]
+                        _fh_result = self._feature_health_monitor.check_health(
+                            recent_trades=_fh_recent,
+                            baseline_trades=_fh_baseline,
+                            wfe_monitor=getattr(self, "_wfe_monitor", None),
+                        )
+                        self._feature_health_monitor.save_state()
+                        if _fh_result.alert_triggered:
+                            logger.warning(
+                                "Phase 55 (US-344): Feature health alert — "
+                                "score=%.3f, drifted=%s",
+                                _fh_result.feature_health_score,
+                                _fh_result.significant_drift_features,
+                            )
+            except Exception as _fh_err:
+                logger.debug(f"Phase 55: Feature health monitor error: {_fh_err}")
 
         # ── Phase 54 (US-336): Trade Cluster Analyzer — recluster when interval reached ──
         if self._trade_cluster_analyzer is not None and synced > 0:
@@ -4182,8 +4659,8 @@ class ExecutionManager:
                             if self._wfe_monitor is not None:
                                 try:
                                     self._wfe_monitor.freeze_weights(_new_weights)
-                                except Exception:
-                                    pass
+                                except Exception as _exc:
+                                    logger.debug("H-4: Silent exception in unknown: %s", _exc)
                             logger.info(
                                 "Phase 52 (US-323): Retrained agent weights saved — %s",
                                 {k: f"{v:.3f}" for k, v in list(_new_weights.items())[:5]},

@@ -4150,6 +4150,41 @@ class ModularEnsembleInference:
             ridge_error = str(e)
             logger.warning(f"Ridge prediction failed: {e}")
 
+        # Tier 6 Phase 1: MAML Ridge shadow prediction
+        _maml_shadow_result = None
+        _maml_ridge = getattr(self, '_maml_ridge', None)
+        if _maml_ridge is not None and ridge_error is None:
+            try:
+                _vol_regime_name = "NORMAL"
+                if volatility_regime is not None:
+                    _vr_map = {0: "LOW", 1: "NORMAL", 2: "HIGH", 3: "EXTREME"}
+                    _vol_regime_name = _vr_map.get(int(volatility_regime), "NORMAL")
+                _maml_shadow_result = _maml_ridge.predict_shadow(
+                    features=ridge_features,
+                    regime=_vol_regime_name,
+                    ridge_confidence=ridge_confidence,
+                )
+                logger.debug(
+                    "MAML shadow: ridge=%.1f maml=%.1f diff=%.1f regime=%s",
+                    ridge_confidence,
+                    _maml_shadow_result["maml_confidence"],
+                    _maml_shadow_result["diff"],
+                    _vol_regime_name,
+                )
+                # Tier 6 Phase 2: Record prediction in benchmark
+                _maml_bench = getattr(self, '_maml_benchmark', None)
+                if _maml_bench is not None:
+                    try:
+                        _maml_bench.record_prediction(
+                            regime=_vol_regime_name,
+                            maml_confidence=_maml_shadow_result["maml_confidence"],
+                            ridge_confidence=ridge_confidence,
+                        )
+                    except Exception:
+                        pass  # Benchmark recording is non-critical
+            except Exception as _maml_err:
+                logger.debug("MAML shadow prediction failed: %s", _maml_err)
+
         xgb_error = None
         try:
             if self.xgb is None:
@@ -4500,11 +4535,39 @@ class ModularEnsembleInference:
         streak_score = 1.0 - min(1.0, float(rf_streak_prob) / max(float(self.config.max_streak_prob), 1e-6))
         risk_score = max(0.0, min(1.0, 0.5 * (dd_score + streak_score)))
 
-        w_dir = float(self.config.core_score_w_direction)
-        w_conf = float(self.config.core_score_w_confidence)
-        w_mom = float(self.config.core_score_w_momentum)
-        w_risk = float(self.config.core_score_w_risk)
-        w_sum = w_dir + w_conf + w_mom + w_risk
+        # Tier 6: Differentiable ensemble weighting (learned regime→weights mapping)
+        _ensemble_weighter = getattr(self, '_ensemble_weighter', None)
+        _used_learned_weights = False
+        if _ensemble_weighter is not None:
+            try:
+                _vol_regime_id = float(volatility_regime if volatility_regime is not None else 1)
+                _vol_regime_conf = float(volatility_regime_confidence)
+                _context = [
+                    _vol_regime_id / 3.0,     # Normalize regime to 0-1
+                    _vol_regime_conf,          # Already 0-1
+                ]
+                _model_preds = [dir_score, conf_score, mom_score, risk_score]
+                _learned_w = _ensemble_weighter.get_weights(_context, _model_preds)
+                if _learned_w is not None and len(_learned_w) == 4:
+                    import numpy as _np
+                    if not _np.allclose(_learned_w, _np.ones(4) / 4):
+                        # Learned weights available — use them
+                        w_dir, w_conf, w_mom, w_risk = float(_learned_w[0]), float(_learned_w[1]), float(_learned_w[2]), float(_learned_w[3])
+                        w_sum = w_dir + w_conf + w_mom + w_risk
+                        _used_learned_weights = True
+                        logger.debug(
+                            "Tier 6: Learned ensemble weights: dir=%.3f conf=%.3f mom=%.3f risk=%.3f",
+                            w_dir, w_conf, w_mom, w_risk,
+                        )
+            except Exception as _ew_err:
+                logger.debug("Tier 6: EnsembleWeighter prediction failed: %s", _ew_err)
+
+        if not _used_learned_weights:
+            w_dir = float(self.config.core_score_w_direction)
+            w_conf = float(self.config.core_score_w_confidence)
+            w_mom = float(self.config.core_score_w_momentum)
+            w_risk = float(self.config.core_score_w_risk)
+            w_sum = w_dir + w_conf + w_mom + w_risk
         if w_sum <= 0.0:
             w_dir, w_conf, w_mom, w_risk, w_sum = 0.35, 0.30, 0.20, 0.15, 1.0
 
@@ -4715,7 +4778,16 @@ class ModularEnsembleInference:
                     'momentum_score': float(mom_score),
                     'risk_score': float(risk_score),
                     'threshold': float(self.config.final_score_threshold),
+                    'used_learned_weights': _used_learned_weights,
+                    'ensemble_weights': {
+                        'direction': float(w_dir),
+                        'confidence': float(w_conf),
+                        'momentum': float(w_mom),
+                        'risk': float(w_risk),
+                    },
                 },
+                'maml_shadow': _maml_shadow_result,
+                'ridge_features': ridge_features.tolist() if ridge_error is None and ridge_features is not None else None,
                 'gate_observability': {
                     'current': gate_results,
                     'pass_rates': gate_pass_rates,
