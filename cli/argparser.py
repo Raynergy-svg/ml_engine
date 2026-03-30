@@ -948,12 +948,8 @@ def _add_wandb_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _add_multi_pair_arguments(parser: argparse.ArgumentParser) -> None:
     """Add multi-pair training arguments."""
-    parser.add_argument(
-        "--instruments",
-        type=str,
-        default="EUR_USD,GBP_USD,USD_JPY",
-        help="For train-joint: comma-separated instruments to train on (e.g., EUR_USD,GBP_USD or 'all' for all default pairs)",
-    )
+    # Note: --instruments is already defined in the main argument group (line ~467).
+    # Do NOT re-add it here — it would conflict with the existing definition.
     parser.add_argument(
         "--multi-pair",
         action="store_true",

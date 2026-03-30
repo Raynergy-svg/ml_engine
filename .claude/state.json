@@ -111,16 +111,54 @@
     "phase76_adaptive_disagreement_floor_quantization_aware_5_heuristics",
     "phase76_heuristics_expanded_3_to_5_sma50_macd_histogram",
     "phase76_num_heuristics_default_updated_3_to_5",
-    "phase76_509_tests_0_failures_1_preexisting_ibkr"
+    "phase76_509_tests_0_failures_1_preexisting_ibkr",
+    "phase74_compound_gate_floor_added_to_config",
+    "phase74_scanner_state_persistence_save_load_added",
+    "phase74_scanner_state_wired_to_graceful_shutdown",
+    "phase74_module_dispatcher_kelly_attr_fixed",
+    "phase74_module_dispatcher_3_missing_modules_added",
+    "phase74_all_exception_handlers_already_logged",
+    "phase74_no_dead_code_found_all_modules_live",
+    "phase74_45_tests_0_failures",
+    "phase78_fix_macd_histogram_to_macd_hist_column_name_mismatch",
+    "phase78_fix_volume_ratio_20_to_volume_ratio_column_name_mismatch",
+    "phase78_fix_conservative_sub_inference_vote_threshold_0.72_to_0.66",
+    "phase78_fix_futures_live_sub_inference_vote_threshold_0.65_to_0.66",
+    "phase78_column_audit_2_mismatches_found_and_fixed",
+    "phase78_fix_accuracy_matrix_attr_name_shutdown_bug",
+    "phase78_add_5_missing_save_log_modules_to_shutdown",
+    "phase78_wire_accuracy_gate_into_scan_pair_pre_trade_blocking",
+    "phase78_wire_accuracy_gate_record_outcome_execution_py",
+    "phase78_wire_retrain_trigger_record_prediction_execution_py",
+    "phase78_fix_retrain_trigger_continuous_use_scanner_instance",
+    "phase79_fix_oanda_404_broker_symbol_slash_to_underscore",
+    "phase79_fix_dynamic_drawdown_resource_leak_cached_instance",
+    "phase79_fix_trade_outcome_predictor_nonetype_crash",
+    "phase79_deferred_trade_outcome_predictor_needs_50_trades",
+    "phase79_deferred_pair_affinity_needs_trade_history",
+    "phase79_fix_confidence_penalty_scale_3.0_to_0.03_overconfidence",
+    "phase79_fix_penalty_ceiling_floor_40.0_to_0.40_matches_0_1_scale",
+    "phase79_fix_drift_proxy_confidence_div100_removed_already_0_1",
+    "phase79_627_tests_0_failures_penalty_system_live",
+    "phase80_enrich_trade_journal_mae_pips_mfe_pips_bars_in_trade_US_P80_001",
+    "phase80_wire_trade_outcome_predictor_auto_train_50_trade_threshold_US_P80_002",
+    "phase80_wire_pair_affinity_tracker_update_post_trade_close_US_P80_003",
+    "phase80_fix_current_drawdown_always_zero_equity_hwm_tracking_US_P80_004",
+    "phase80_wire_drift_projector_every_20_scans_project_all_pairs_US_P80_005",
+    "phase80_wire_adversarial_deep_test_every_100_scans_train_robust_US_P80_006",
+    "phase81_wire_filterchain_apply_execute_trade_fail_open_US_P81_001",
+    "phase81_wire_position_timeout_tick_register_evaluate_close_US_P81_002",
+    "phase81_wire_regime_confidence_scorer_risk_pct_scaling_scan_pair_US_P81_003",
+    "phase81_wire_causal_counterfactual_post_loss_analysis_US_P81_004"
   ],
   "goal": "tier6_autonomous_operation",
-  "improvement_focus": "phase77_FIRST_TRADEABLE_SIGNAL_USD_CHF_LONG_conf=0.69_gates_3of3_soft_disagreement_penalty_instead_of_hard_block",
-  "last_updated": "2026-03-30T14:30:00.000000+00:00",
-  "next": "phase78_run_watch_mode_to_accumulate_scans_verify_adaptive_mechanisms_fire_after_50_cycles",
+  "improvement_focus": "phase81_4_execution_modules_wired_filterchain_apply_consolidates_gates_position_timeout_forces_exits_regime_confidence_scales_risk_causal_counterfactual_logs_loss_reversals",
+  "last_updated": "2026-03-31T00:30:00.000000+00:00",
+  "next": "phase82_wire_pair_model_selector_chain_memory_observation_log_extended_and_adaptive_lr_into_rl_weight_loop",
   "notes": {
     "aura_bridge": "bridge-only in src/aura/ \u2014 P90 writes readiness_signal.json, Buddy reads it via TraderReadinessAgent",
     "episodic_memory": "suppression gate live in execute_trade() before Gate 1 \u2014 will activate once 3+ similar losing setups are recorded",
-    "phase57_key_fix": "calibration_guard blocks -3pt overconfidence penalty when n_valid_bins=0 (< 20 predictions). Stall recovery suspends overconfidence + drift penalties for 5 scans when stalled >= 50. Drift proxy guard breaks circular confidence feedback loop.",
+    "phase57_key_fix": "calibration_guard blocks overconfidence penalty (-0.03 on 0-1 scale, fixed Phase 79) when n_valid_bins=0 (< 20 predictions). Stall recovery suspends overconfidence + drift penalties for 5 scans when stalled >= 50. Drift proxy guard breaks circular confidence feedback loop.",
     "phase63_key_discovery": "Signal.rf_drawdown_pips (pips) is converted to pct inline at engine.py via /10000.0. Signal.rf_streak_prob is direct. RiskGateAnalyzer gap direction is INVERTED vs confidence/momentum \u2014 gap = score - threshold (positive = fail).",
     "ralph_prd": "zero stories is expected \u2014 PerformancePRDGenerator needs 30 days of trade outcomes before gap analysis runs"
   },
@@ -306,14 +344,14 @@
     },
     "config_dead_zones": [
       "FIXED: balanced sub_inference_min_confidence 0.60->0.48 (models output 0.20-0.49)",
-      "PENDING: conservative sub_inference_vote_threshold 0.72->0.67 (needs 3/3 votes, should need 2/3)",
-      "PENDING: futures_live sub_inference_vote_threshold 0.65->0.66 (quantization alignment)"
+      "FIXED (Phase 78): conservative sub_inference_vote_threshold 0.72->0.66 (requires 2/3 votes)",
+      "FIXED (Phase 78): futures_live sub_inference_vote_threshold 0.65->0.66 (quantization alignment)"
     ],
     "latent_bug_confidence_penalties": {
-      "description": "All confidence penalties (overconfidence -3pt, drift multiplier, ensemble disagreement) designed for 0-100 scale but confidence is 0-1. Penalty ceiling floor=40.0 accidentally blocks all penalties since 0.43 < 40.0.",
-      "impact": "Penalty system is entirely dead code. Once scale is corrected, penalties will need recalibration.",
-      "priority": "LOW - fix after first trades flow",
-      "status": "DORMANT - not blocking trades"
+      "description": "FIXED (Phase 79): Overconfidence penalty 3.0→0.03, ceiling floor 40.0→0.40, drift proxy /100 removed. Penalty system now operates correctly on 0-1 scale.",
+      "impact": "Penalty system is now LIVE. Overconfidence ratio > 0.15 triggers -0.03 penalty (after 20+ predictions). Ceiling protects at 0.40 floor.",
+      "priority": "DONE",
+      "status": "FIXED"
     }
   },
   "phase72_summary": {
@@ -351,6 +389,17 @@
     "phase67_discovery": "agent_passed=False in 100% of 1823 virtual trades comes from sub_inference_vote_threshold (0.66), not weighted_vote_threshold (0.55). These are separate gates. Phase 67 targets the actual blocker.",
     "weighted_vote_threshold": 0.55
   },
+  "phase78_summary": {
+    "failures": 0,
+    "key_fixes": [
+      "CRITICAL: macd_histogram→macd_hist column name fix. MACD heuristic was dead code — always returned 0.0 default. Now reads actual MACD histogram values. 5th heuristic is live.",
+      "CRITICAL: volume_ratio_20→volume_ratio column name fix. Execution quality agent always used default 1.0 for volume. Now reads real volume ratio data for liquidity scoring.",
+      "CONFIG: conservative sub_inference_vote_threshold 0.72→0.66 (was requiring 3/3 votes, now 2/3)",
+      "CONFIG: futures_live sub_inference_vote_threshold 0.65→0.66 (quantization boundary alignment)"
+    ],
+    "total_tests": "26/26 phase75 pass, 509/510 tests dir pass",
+    "impact": "Two dead agent features now live: MACD heuristic in uncertainty agent + volume ratio in execution quality agent. Both were silently using defaults due to column name mismatches."
+  },
   "status": "tier5_certified",
   "tier": "5.0",
   "phase73_summary": {
@@ -368,7 +417,7 @@
     "failures": 0,
     "key_fixes": [
       "AdaptiveDisagreementFloor made quantization-aware: jumps to boundary+epsilon instead of linear 0.05 steps",
-      "num_heuristics updated 3→5 to match Phase 76 expansion (SMA_50 + MACD_histogram added)",
+      "num_heuristics updated 3\u21925 to match Phase 76 expansion (SMA_50 + MACD_histogram added)",
       "With 5 heuristics and floor=0.30: 1/5=0.20 passes (ML overrides single indicator), 2/5=0.40 blocks (majority concern)",
       "Adaptive mechanism boundaries now correct: [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]"
     ],

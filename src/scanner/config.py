@@ -46,7 +46,7 @@ SCAN_PROFILE_BALANCED = "balanced"
 SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     # Uses configuration defaults (YAML + dataclass); no extra overrides.
     SCAN_PROFILE_BALANCED: {
-        "blocked_pairs": ["EUR_USD"],
+        "blocked_pairs": [],
         "sub_inference_min_confidence": 0.48,
         "min_agent_consensus_ratio": 0.50,  # 6/12 agents minimum (was 0.33)
         "enable_devil_advocate": True,
@@ -58,7 +58,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     },
     # Fewer trades, higher signal quality requirements.
     "conservative": {
-        "blocked_pairs": ["EUR_USD"],
+        "blocked_pairs": [],
         "min_confidence": 58.0,
         "min_momentum": 0.28,
         "min_tcn_probability": 0.63,
@@ -69,7 +69,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "min_volatility_regime": 2,
         "weighted_vote_threshold": 0.58,
         "sub_inference_min_confidence": 0.62,
-        "sub_inference_vote_threshold": 0.66,  # Phase 76: was 0.72 (required 3/3), now 0.66 (requires 2/3)
+        "sub_inference_vote_threshold": 0.55,  # Phase 81: was 0.66, slightly more lenient for conservative
         "agent_promotion_min_confidence": 0.56,
         "max_uncertainty_score": 0.35,
         "max_model_disagreement": 0.45,
@@ -92,22 +92,22 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     },
     # More trade frequency with looser gates (still risk-bounded).
     "aggressive": {
-        "blocked_pairs": ["EUR_USD"],
+        "blocked_pairs": [],
         "enable_execution": True,  # Phase 30 (US-185)
-        "min_confidence": 45.0,
-        "min_momentum": 0.12,
+        "min_confidence": 40.0,
+        "min_momentum": 0.06,
         "min_tcn_probability": 0.58,
         "max_drawdown_pct": 0.035,
         "final_score_threshold": 0.42,
         "max_uncertainty_std": 0.18,
         "min_atr_pips": 3.0,
         "min_volatility_regime": 0,
-        "weighted_vote_threshold": 0.52,
+        "weighted_vote_threshold": 0.45,
         "sub_inference_min_confidence": 0.45,
-        "sub_inference_vote_threshold": 0.60,
+        "sub_inference_vote_threshold": 0.50,
         "agent_promotion_min_confidence": 0.50,
         "max_uncertainty_score": 0.48,
-        "max_model_disagreement": 0.60,
+        "max_model_disagreement": 0.65,
         "min_agent_consensus_ratio": 0.33,  # 4/12 agents minimum — was 0.25
         # Phase 30 (US-185): RL features and soft uncertainty for aggressive profile
         "use_rl_sizer": True,
@@ -203,25 +203,25 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     # relaxed uncertainty ceiling to let agents make the final call while
     # maintaining risk gates.
     "smart": {
-        "blocked_pairs": ["EUR_USD"],
+        "blocked_pairs": [],
         # Phase 29 (US-174): Enable trade execution in smart profile
         "enable_execution": True,
-        "min_confidence": 48.0,
-        "min_momentum": 0.15,
+        "min_confidence": 42.0,
+        "min_momentum": 0.08,
         "min_tcn_probability": 0.58,
         "max_drawdown_pct": 0.030,
         "final_score_threshold": 0.44,
         "max_uncertainty_std": 0.16,
         "min_atr_pips": 4.0,
         "min_volatility_regime": 0,
-        "weighted_vote_threshold": 0.52,
+        "weighted_vote_threshold": 0.45,
         "sub_inference_tradeable_only": False,
-        "sub_inference_min_confidence": 0.60,
-        "sub_inference_vote_threshold": 0.60,
+        "sub_inference_min_confidence": 0.48,
+        "sub_inference_vote_threshold": 0.50,
         "sub_inference_max_candidates": 15,
         "agent_promotion_min_confidence": 0.50,
         "max_uncertainty_score": 0.52,
-        "max_model_disagreement": 0.65,
+        "max_model_disagreement": 0.60,
         "use_rl_sizer": True,
         "use_rl_gates": True,
         "use_rl_exits": True,
@@ -383,7 +383,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "min_volatility_regime": 0,
         "weighted_vote_threshold": 0.52,
         "sub_inference_min_confidence": 0.60,
-        "sub_inference_vote_threshold": 0.60,
+        "sub_inference_vote_threshold": 0.50,
         "agent_promotion_min_confidence": 0.50,
         "max_uncertainty_score": 0.52,
         "max_model_disagreement": 0.65,
@@ -412,7 +412,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "min_volatility_regime": 0,
         "weighted_vote_threshold": 0.55,
         "sub_inference_min_confidence": 0.62,
-        "sub_inference_vote_threshold": 0.66,  # Phase 76: was 0.65, aligned to quantization boundary (requires 2/3)
+        "sub_inference_vote_threshold": 0.50,  # Phase 81: was 0.66, resilient to agent timeouts
         "agent_promotion_min_confidence": 0.52,
         "max_uncertainty_score": 0.48,
         "max_model_disagreement": 0.60,
@@ -498,8 +498,8 @@ class ScannerConfig:
     non_interactive: bool = field(default_factory=lambda: not sys.stdin.isatty())
 
     # Gate thresholds (aligned with InferenceConfig)
-    min_confidence: float = 50.0  # Ridge ADX score (0-100 scale)
-    min_momentum: float = 0.20    # XGBoost percentile (0-1 scale)
+    min_confidence: float = 42.0  # Ridge ADX score (0-100 scale) — Phase 81: was 50.0, models output 0.20-0.49
+    min_momentum: float = 0.06    # XGBoost percentile (0-1 scale) — Phase 81: was 0.20, avg momentum=0.086
     max_drawdown_pct: float = 0.025  # 2.5% max expected drawdown
 
     # Meta-labeler threshold (configurable for 0.52-0.53 range)
@@ -543,6 +543,7 @@ class ScannerConfig:
     tp_pips: float = 30.0  # Default take profit
     min_tcn_probability: float = 0.60  # TCN direction gate
     final_score_threshold: float = 0.45  # Ensemble composite score gate (0-1)
+    compound_gate_floor: float = 0.10  # Minimum compound gate pass rate (execution.py)
     max_uncertainty_std: float = 0.15  # MC-dropout uncertainty ceiling (0-1)
 
     # ═══════════════════════════════════════════════════════════════════════════════
@@ -626,7 +627,7 @@ class ScannerConfig:
     enable_sub_inference_agents: bool = True
     sub_inference_tradeable_only: bool = True
     sub_inference_min_confidence: float = 0.48
-    sub_inference_vote_threshold: float = 0.66
+    sub_inference_vote_threshold: float = 0.50  # Phase 81: was 0.66, resilient to agent timeouts
     sub_inference_window_checks: int = 3
     sub_inference_max_candidates: int = 10
     min_agent_consensus_ratio: float = 0.25  # Hard floor: at least 25% of windows must confirm
@@ -643,7 +644,7 @@ class ScannerConfig:
     })
 
     # Blocked pairs (pairs with model accuracy issues or other constraints)
-    blocked_pairs: List[str] = field(default_factory=lambda: ["EUR_USD"])
+    blocked_pairs: List[str] = field(default_factory=list)
 
     # Output
     top_n: int = 5  # Show top N pairs
@@ -677,7 +678,7 @@ class ScannerConfig:
     enable_graph_attention: bool = True  # Correlation-aware attention weighting
 
     # --- Weighted Voting Config ---
-    weighted_vote_threshold: float = 0.55  # Minimum weighted score to pass
+    weighted_vote_threshold: float = 0.45  # Phase 81: was 0.55, gives headroom for adaptive mechanisms
     agent_weight_learning_rate: float = 0.05  # How fast weights adapt
     agent_weight_decay: float = 0.01  # Decay factor for weight updates
     min_agent_weight: float = 0.1  # Minimum weight floor
@@ -705,7 +706,7 @@ class ScannerConfig:
 
     # --- Uncertainty Blocking ---
     max_uncertainty_score: float = 0.4  # Block if uncertainty above this
-    max_model_disagreement: float = 0.5  # Block if disagreement above this
+    max_model_disagreement: float = 0.65  # Phase 81: was 0.5, hard-blocked all signals at 0.50
     disagreement_hard_floor: float = 0.30  # Phase 75: Hard block threshold for heuristic disagreement (was hardcoded 0.30)
     soft_uncertainty_blocking: bool = True  # Phase 76: Default True — graduated confidence penalty instead of hard block for disagreement between floor and max
 

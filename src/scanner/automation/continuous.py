@@ -728,7 +728,7 @@ class ContinuousScanner:
             ("memory_manager", "_memory_manager"),
             # Phase 29 (US-175): Additional module state persistence
             ("health_registry", "_health_registry"),
-            ("agent_accuracy_matrix", "_accuracy_matrix"),
+            ("agent_accuracy_matrix", "_agent_accuracy_matrix"),
             ("pair_regime_agent_matrix", "_pair_regime_agent_matrix"),
             ("signal_timing", "_signal_timing"),
             ("model_calibration", "_model_calibration"),
@@ -760,6 +760,12 @@ class ContinuousScanner:
             ("episodic_memory", "_episodic_memory"),
             ("self_model_state", "_self_model_state"),
             ("causal_counterfactual", "_causal_counterfactual"),
+            # Phase 78: Missing save_log() modules discovered by gap analysis
+            ("adaptive_lr", "_adaptive_lr"),
+            ("entropy_sizer", "_entropy_sizer"),
+            ("market_impact", "_market_impact"),
+            ("regime_reward", "_regime_reward"),
+            ("trade_explainer", "_trade_explainer"),
         ]
         for mod_label, mod_attr in _shutdown_modules:
             try:
@@ -778,6 +784,14 @@ class ContinuousScanner:
                         logger.debug(f"Shutdown: {mod_label} has no persistence method")
             except Exception as _mod_err:
                 logger.debug(f"Shutdown: {mod_label} save failed: {_mod_err}")
+
+        # Phase 74: Persist scanner mutable state (EWMA, prices, regimes, cycle count)
+        try:
+            if hasattr(self, "scanner") and hasattr(self.scanner, "save_scan_state"):
+                self.scanner.save_scan_state()
+                logger.info("Shutdown: scanner scan state persisted")
+        except Exception as _scan_state_err:
+            logger.debug(f"Shutdown: scanner state save failed: {_scan_state_err}")
 
         # Gate attribution engine state - save from scanner actual EM if available
         try:
@@ -1657,11 +1671,13 @@ class ContinuousScanner:
             # 5h. Drift detection: record trade outcomes for retraining trigger
             if trades_synced > 0:
                 try:
-                    from src.scanner.automation.retrain_trigger import RetrainTrigger
-                    from src.scanner.automation.observation_log import ObservationLog
-
-                    obs_log = ObservationLog()
-                    trigger = RetrainTrigger(observation_log=obs_log)
+                    # Phase 78: Use scanner's retrain_trigger instance (preserves state)
+                    trigger = getattr(self.scanner, "_retrain_trigger", None)
+                    if trigger is None:
+                        from src.scanner.automation.retrain_trigger import RetrainTrigger
+                        from src.scanner.automation.observation_log import ObservationLog
+                        obs_log = ObservationLog()
+                        trigger = RetrainTrigger(observation_log=obs_log)
 
                     # Record prediction outcomes from closed trades
                     journal_path = Path("trained_data/trade_journal_rl.json")

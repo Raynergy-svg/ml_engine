@@ -8,12 +8,11 @@ The problem:
         prediction_error = abs(confidence - 0.5)   # distance from uncertainty
         agent_disagreement = 1.0 - confidence       # proxy for disagreement
 
-    When confidence is already penalized by overconfidence (-3pt) or other
+    When confidence is already penalized by overconfidence (-0.03) or other
     systems, these proxies are computed from reduced confidence, not from
-    the raw model signal. Example:
+    the raw model signal. Example (0-1 scale):
         raw confidence = 0.70  → prediction_error = 0.20, disagreement = 0.30
-        after -3pt penalty: confidence = 0.67 (on 0-100 → 0.67 on 0-1 scale)
-        But engine uses confidence in 0-100 scale before normalisation...
+        after -0.03 penalty: confidence = 0.67
 
     Regardless of scale, the circular reference is: penalties reduce confidence
     → drift proxies see lower confidence → drift fires → multiplier further

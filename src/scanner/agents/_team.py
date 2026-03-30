@@ -1836,7 +1836,7 @@ class ScannerAgentTeam:
 
     def _evaluate_execution_quality(self, ctx: AgentDecisionContext) -> AgentVerdict:
         atr_pips = max(_safe_float(ctx.analysis.atr_pips), 0.1)
-        volume_ratio = _last_value(ctx.df_feat, "volume_ratio_20", 1.0)
+        volume_ratio = _last_value(ctx.df_feat, "volume_ratio", 1.0)  # Phase 78: was "volume_ratio_20" (doesn't exist)
         liquidity_score = _clip01((volume_ratio - 0.35) / 1.15)
         if liquidity_score <= 0.0:
             liquidity_score = 0.45

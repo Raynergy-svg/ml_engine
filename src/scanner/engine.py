@@ -1035,6 +1035,16 @@ class Scanner:
         except Exception as e:
             logger.debug(f"Drift projector init deferred: {e}")
 
+        # Phase 81 (US-P81-003): RegimeConfidenceScorer in Scanner for _scan_pair() risk_pct scaling
+        # (ExecutionManager has its own instance; Scanner needs its own for pre-execution scaling)
+        self._regime_confidence_scorer_scan = None
+        try:
+            from src.scanner.regime_confidence import RegimeConfidenceScorer as _RCS
+            self._regime_confidence_scorer_scan = _RCS()
+            logger.info("Phase 81 (US-P81-003): RegimeConfidenceScorer initialized in Scanner")
+        except Exception as e:
+            logger.debug(f"Phase 81: RegimeConfidenceScorer (scanner) init deferred: {e}")
+
         self._episodic_memory = None
         try:
             from src.scanner.automation.episodic_memory import EpisodicMemory as _EpisodicMemoryScanner
@@ -1081,6 +1091,9 @@ class Scanner:
 
         # Load config
         self._load_yaml_config()
+
+        # Phase 74: Restore mutable scan state from last session
+        self.load_scan_state()
 
     def _get_feedback_observer(self):
         """Shared observation logger for module feedback hooks (lazy-init).
@@ -1387,6 +1400,56 @@ class Scanner:
         except Exception as e:
             logger.warning(f"Gate evaluator init failed: {e}")
             return False
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # State Persistence (Phase 74)
+    # ═══════════════════════════════════════════════════════════════════════
+    _SCAN_STATE_PATH = Path("trained_data/.scanner_state.json")
+
+    def save_scan_state(self) -> None:
+        """Persist mutable scanner state to disk (atomic write)."""
+        state = {
+            "scan_cycle_count": self._scan_cycle_count,
+            "ewma_prev_prices": dict(self._ewma_prev_prices),
+            "last_scan_times": {k: v for k, v in self._last_scan_times.items()},
+            "last_prices": dict(self._last_prices),
+            "pair_last_regime": dict(self._pair_last_regime),
+        }
+        tmp_path = self._SCAN_STATE_PATH.with_suffix(".tmp")
+        try:
+            tmp_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(tmp_path, "w") as f:
+                _json.dump(state, f, indent=2, sort_keys=True, default=str)
+            import os as _os
+            _os.rename(str(tmp_path), str(self._SCAN_STATE_PATH))
+            logger.debug("Scanner state saved (%d pairs tracked)", len(state["last_prices"]))
+        except Exception as e:
+            logger.warning("Failed to save scanner state: %s", e)
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def load_scan_state(self) -> None:
+        """Restore mutable scanner state from disk (graceful on missing/corrupt)."""
+        if not self._SCAN_STATE_PATH.exists():
+            return
+        try:
+            with open(self._SCAN_STATE_PATH) as f:
+                state = _json.load(f)
+            self._scan_cycle_count = int(state.get("scan_cycle_count", 0))
+            self._ewma_prev_prices = state.get("ewma_prev_prices", {})
+            self._last_scan_times = {k: float(v) for k, v in state.get("last_scan_times", {}).items()}
+            self._last_prices = {k: float(v) for k, v in state.get("last_prices", {}).items()}
+            self._pair_last_regime = state.get("pair_last_regime", {})
+            logger.info(
+                "Scanner state restored: cycle=%d, %d pairs",
+                self._scan_cycle_count, len(self._last_prices),
+            )
+        except (ValueError, KeyError, TypeError, _json.JSONDecodeError) as e:
+            logger.warning("Corrupt scanner state file, starting fresh: %s", e)
+        except Exception as e:
+            logger.warning("Failed to load scanner state: %s", e)
 
     def _init_feature_engineer(self) -> bool:
         """Initialize feature engineering module.
@@ -1710,7 +1773,7 @@ class Scanner:
                 # This is a basic mapping; adjust as needed for your broker
                 instrument = Instrument(
                     symbol=pair,
-                    broker_symbol=pair.replace("_", "/"),
+                    broker_symbol=pair,  # Phase 79: OANDA requires underscore format (GBP_USD not GBP/USD)
                     asset_class="FX",
                     price_precision=5,
                     margin_requirement=0.02,
@@ -2868,6 +2931,24 @@ class Scanner:
                 except Exception as _bl_err:
                     logger.debug(f"Phase 49: Pair blacklist check error for {pair}: {_bl_err}")
 
+            # Phase 78: Accuracy gate — block pairs with poor rolling accuracy
+            if self._accuracy_gate is not None:
+                try:
+                    _ag_allowed, _ag_accuracy, _ag_reason = self._accuracy_gate.check_pair(pair)
+                    if not _ag_allowed:
+                        logger.info(
+                            "Phase 78: Skipping %s — accuracy gate blocked (acc=%.2f, %s)",
+                            pair, _ag_accuracy or 0.0, _ag_reason,
+                        )
+                        return PairAnalysis(
+                            pair=pair,
+                            direction="HOLD",
+                            confidence=0.0,
+                            error=f"Accuracy gate: {_ag_reason}",
+                        )
+                except Exception as _ag_err:
+                    logger.debug(f"Phase 78: Accuracy gate check error for {pair}: {_ag_err}")
+
             # Check session timing
             session_status = self.config.get_trading_session_status()
             if not session_status["session_allowed"]:
@@ -3430,7 +3511,8 @@ class Scanner:
                         and self._stall_recovery.penalties_suspended()
                     )
                     # Phase 57 (US-355): Use pre-penalty confidence for drift proxies (break circular ref)
-                    _pre_penalty_conf_norm = confidence / 100.0  # Convert to 0-1 for DriftProxyGuard
+                    # Phase 79: confidence is already 0-1 scale — no division needed
+                    _pre_penalty_conf_norm = confidence
                     if self._drift_proxy_guard is not None:
                         _drift_proxies = self._drift_proxy_guard.compute_proxies(
                             pre_penalty_confidence=_pre_penalty_conf_norm,
@@ -3761,6 +3843,40 @@ class Scanner:
                 except Exception as _rb_err:
                     logger.debug(f"{pair}: RegimeBroadcaster error: {_rb_err}")
 
+            # Phase 81 (US-P81-003): RegimeConfidenceScorer — scale risk_pct by regime certainty
+            # Runs after regime_name is fully finalized (ATR fallback + default applied above).
+            if self._regime_confidence_scorer_scan is not None and direction != "HOLD" and risk_pct > 0:
+                try:
+                    _adx_rcs = 25.0
+                    if "adx" in df_feat.columns:
+                        _adx_rcs = float(df_feat["adx"].iloc[-1])
+                    elif "adx_14" in df_feat.columns:
+                        _adx_rcs = float(df_feat["adx_14"].iloc[-1])
+                    _atr_pct_rcs = float(metrics.get("volatility_percentile", 0.5))
+                    _trend_rcs = float(metrics.get("trend_strength", 0.5))
+                    _rcs_result = self._regime_confidence_scorer_scan.score(
+                        adx=_adx_rcs,
+                        atr_percentile=_atr_pct_rcs,
+                        trend_strength=_trend_rcs,
+                        current_regime=regime_name,
+                    )
+                    if _rcs_result.sizing_factor < 1.0:
+                        _old_risk_pct = risk_pct
+                        risk_pct *= _rcs_result.sizing_factor
+                        logger.info(
+                            "Phase 81 (US-P81-003): %s regime_confidence tier=%s "
+                            "sizing_factor=%.2f risk %.4f→%.4f (transition=%s)",
+                            pair, getattr(_rcs_result, "tier", "?"), _rcs_result.sizing_factor,
+                            _old_risk_pct, risk_pct, getattr(_rcs_result, "is_transition", False),
+                        )
+                    else:
+                        logger.debug(
+                            "Phase 81 (US-P81-003): %s regime_confidence tier=%s — full size",
+                            pair, getattr(_rcs_result, "tier", "?"),
+                        )
+                except Exception as _rcs_err:
+                    logger.debug("Phase 81 (US-P81-003): RegimeConfidenceScorer error: %s", _rcs_err)
+
             # Compute recent drawdown from close prices (lookback ~100 bars)
             _drawdown_val = 0.02  # Sensible default fallback
             if "close" in df_raw.columns and len(df_raw) >= 20:
@@ -3953,7 +4069,8 @@ class Scanner:
                         if _oc_ratio is not None and _oc_ratio > 0.15 and _guard_ok and not _oc_recovery_suspended:
                             _old_conf_oc = confidence
                             # Phase 57 (US-352): Apply ceiling before subtraction
-                            _raw_sub = 3.0
+                            # Phase 79: Fixed from 3.0 (0-100 scale) to 0.03 (0-1 scale)
+                            _raw_sub = 0.03
                             if self._penalty_ceiling is not None:
                                 _ceil_result = self._penalty_ceiling.check_subtraction(
                                     confidence, _raw_sub, pair=pair, source="overconfidence"
@@ -3964,7 +4081,7 @@ class Scanner:
                             _oc_applied = True
                             logger.info(
                                 f"{pair}: {_model_name} overconfident (ratio={_oc_ratio:.2f}>0.15) — "
-                                f"conf {_old_conf_oc:.1f}→{confidence:.1f} (-3pt)"
+                                f"conf {_old_conf_oc:.4f}→{confidence:.4f} (-0.03)"
                             )
                             # Log observation with metadata (US-184 AC)
                             try:
@@ -3977,7 +4094,7 @@ class Scanner:
                                         "model": _model_name,
                                         "overconfidence_ratio": _oc_ratio,
                                         "ece": _cal_report.get("ece"),
-                                        "confidence_offset": -3,
+                                        "confidence_offset": -0.03,
                                     },
                                 )
                             except Exception as e:
@@ -4482,12 +4599,50 @@ class Scanner:
                 logger.debug(f"Health postflight error: {hr_err}")
         self._save_phase19_state()
 
+        # Phase 81 (US-P81-002): PositionTimeoutManager — tick bar counter each scan cycle
+        if self._position_timeout is not None:
+            try:
+                self._position_timeout.tick()
+            except Exception as _pt_tick_err:
+                logger.debug("Phase 81: PositionTimeout tick error: %s", _pt_tick_err)
+
+        # Phase 81 (US-P81-002): PositionTimeoutManager — evaluate open positions for forced exits
+        if self._position_timeout is not None and self._executor is not None:
+            try:
+                _timeout_results = self._position_timeout.evaluate_all()
+                for _tr in _timeout_results:
+                    if getattr(_tr, "should_exit", False):
+                        _exit_reason = getattr(_tr, "exit_reason", "timeout")
+                        _timed_out_id = getattr(_tr, "trade_id", "")
+                        logger.warning(
+                            "Phase 81 (US-P81-002): Timeout exit for trade %s — %s",
+                            _timed_out_id, _exit_reason,
+                        )
+                        try:
+                            self._executor.close_trade(
+                                trade_id=_timed_out_id, reason=_exit_reason
+                            )
+                            self._position_timeout.close_trade(_timed_out_id)
+                        except Exception as _pt_close_err:
+                            logger.warning(
+                                "Phase 81: PositionTimeout force-close failed for %s: %s",
+                                _timed_out_id, _pt_close_err,
+                            )
+            except Exception as _pt_eval_err:
+                logger.debug("Phase 81: PositionTimeout evaluate_all error: %s", _pt_eval_err)
+
         # Phase 20 (US-125): Run drift monitor every 20 scan cycles
         self._scan_cycle_count += 1
         self._run_drift_check_cycle(analyses)
 
+        # Phase 80 (US-P80-005): Forward drift projection every 20 scan cycles
+        self._run_drift_projection_cycle(analyses)
+
         # US-089: Periodic adversarial robustness check every 10 scan cycles
         self._run_adversarial_robustness_check(analyses)
+
+        # Phase 80 (US-P80-006): Adversarial deep test (train_robust) every 100 scan cycles
+        self._run_adversarial_deep_test(analyses)
 
         # Feed ALL pairs' prices into EWMA correlation engine so the
         # correlation matrix reflects the full universe, not just traded pairs.
@@ -4819,6 +4974,165 @@ class Scanner:
 
         except Exception as _adv_check_err:
             logger.debug("AdversarialTrainer: Periodic check failed (non-blocking): %s", _adv_check_err)
+
+    # ── Phase 80 (US-P80-005): Drift projector — forward projection ────────────────
+
+    _DRIFT_PROJECTION_INTERVAL = 20  # Match _DRIFT_CHECK_INTERVAL
+
+    def _run_drift_projection_cycle(self, analyses: list) -> None:
+        """Project future accuracy degradation every 20 scan cycles.
+
+        Uses DriftProjector.project_all_pairs() to generate t+6h, t+12h, t+24h,
+        t+48h accuracy projections for all scanned pairs. Results persisted to
+        trained_data/drift_projections.json for dashboard consumption.
+        Current accuracy supplied from AccuracyGate stats when available.
+        """
+        if self._drift_projector is None:
+            return
+        if self._scan_cycle_count % self._DRIFT_PROJECTION_INTERVAL != 0:
+            return
+        if not analyses:
+            return
+
+        try:
+            pairs = [a.pair for a in analyses if a.pair]
+            if not pairs:
+                return
+
+            # Build current accuracy map from accuracy gate stats
+            current_accuracies: Dict[str, float] = {}
+            _ag = getattr(self, "_accuracy_gate", None)
+            if _ag is not None:
+                for _pair in pairs:
+                    try:
+                        _stats = _ag.get_stats(_pair)
+                        if isinstance(_stats, dict) and "accuracy" in _stats:
+                            current_accuracies[_pair] = float(_stats["accuracy"])
+                    except Exception:
+                        pass
+
+            projections = self._drift_projector.project_all_pairs(
+                pairs=pairs,
+                current_accuracies=current_accuracies if current_accuracies else None,
+            )
+
+            self._drift_projector.save_projections(projections)
+
+            # Log any high-urgency projections as warnings
+            critical_pairs = [
+                p for p, c in projections.items()
+                if getattr(c, "action_urgency", "") in ("high", "critical")
+            ]
+            if critical_pairs:
+                logger.warning(
+                    "Phase 80 (US-P80-005): DriftProjector — %d pair(s) with high/critical urgency: %s",
+                    len(critical_pairs), critical_pairs,
+                )
+            else:
+                logger.info(
+                    "Phase 80 (US-P80-005): DriftProjector — projected %d pairs (cycle=%d)",
+                    len(projections), self._scan_cycle_count,
+                )
+
+        except Exception as _dp_err:
+            logger.debug(
+                "Phase 80 (US-P80-005): DriftProjector cycle failed (non-blocking): %s", _dp_err
+            )
+
+    # ── Phase 80 (US-P80-006): Adversarial deep test — 100-cycle cadence ──────────
+
+    _ADVERSARIAL_DEEP_TEST_INTERVAL = 100  # Full train_robust every 100 scans
+
+    def _run_adversarial_deep_test(self, analyses: list) -> None:
+        """Run full adversarial robustness training every 100 scan cycles.
+
+        Complements the lightweight 10-cycle check (_run_adversarial_robustness_check)
+        with a full train_robust() pass (3 rounds). A robustness_ratio below 0.70
+        (adversarial accuracy < 70% of clean accuracy) is logged as a WARNING.
+        """
+        if self._adversarial_trainer is None:
+            return
+        if self._scan_cycle_count % self._ADVERSARIAL_DEEP_TEST_INTERVAL != 0:
+            return
+        if not analyses:
+            return
+
+        try:
+            import numpy as np
+
+            # Build feature matrix from cached feature snapshots
+            X_parts = []
+            for analysis in analyses:
+                df_feat = self._feature_snapshots.get(analysis.pair)
+                if df_feat is None or df_feat.empty:
+                    continue
+                numeric_cols = df_feat.select_dtypes(include=[np.number]).columns
+                if len(numeric_cols) == 0:
+                    continue
+                row = df_feat[numeric_cols].iloc[-1:].values
+                if not np.isfinite(row).all():
+                    row = np.nan_to_num(row, nan=0.0, posinf=0.0, neginf=0.0)
+                X_parts.append(row)
+
+            if len(X_parts) < 3:
+                logger.debug(
+                    "Phase 80 (US-P80-006): AdversarialTrainer deep test: "
+                    "insufficient data (%d pairs)", len(X_parts)
+                )
+                return
+
+            X_clean = np.vstack(X_parts)
+            y_clean = np.array([
+                1 if (a.confidence or 0.0) >= 0.5 else 0
+                for a in analyses[:len(X_parts)]
+            ])
+
+            # Select best available sklearn sub-model
+            _model = None
+            if hasattr(self._modular_ensemble, "ridge") and self._modular_ensemble.ridge is not None:
+                _model = self._modular_ensemble.ridge
+            elif hasattr(self._modular_ensemble, "histgb") and self._modular_ensemble.histgb is not None:
+                _model = self._modular_ensemble.histgb
+
+            if _model is None:
+                logger.debug(
+                    "Phase 80 (US-P80-006): AdversarialTrainer deep test: "
+                    "no sklearn sub-model available"
+                )
+                return
+
+            _model_after, _score = self._adversarial_trainer.train_robust(
+                model=_model,
+                X_train=X_clean,
+                y_train=y_clean,
+                n_rounds=3,
+            )
+
+            if _score.robustness_ratio < 0.70:
+                logger.warning(
+                    "Phase 80 (US-P80-006): AdversarialTrainer deep test FAILED — "
+                    "robustness_ratio=%.3f < 0.70 (clean=%.3f adv=%.3f rounds=%d cycle=%d)",
+                    _score.robustness_ratio,
+                    _score.clean_accuracy,
+                    _score.adversarial_accuracy,
+                    getattr(_score, "training_rounds", 3),
+                    self._scan_cycle_count,
+                )
+            else:
+                logger.info(
+                    "Phase 80 (US-P80-006): AdversarialTrainer deep test PASSED — "
+                    "robustness_ratio=%.3f (clean=%.3f adv=%.3f) cycle=%d",
+                    _score.robustness_ratio,
+                    _score.clean_accuracy,
+                    _score.adversarial_accuracy,
+                    self._scan_cycle_count,
+                )
+
+        except Exception as _deep_err:
+            logger.debug(
+                "Phase 80 (US-P80-006): AdversarialTrainer deep test failed (non-blocking): %s",
+                _deep_err
+            )
 
     def _write_drift_retrain_request(self, pairs: list) -> None:
         """Write a retrain request file when DriftMonitor flags pairs.
@@ -5596,6 +5910,11 @@ class Scanner:
                 config=exec_config,
                 oanda_client=self._oanda,
             )
+            # Phase 81 (US-P81-002): Inject PositionTimeoutManager reference into executor
+            if self._position_timeout is not None:
+                self._executor._position_timeout_mgr = self._position_timeout
+                logger.info("Phase 81 (US-P81-002): PositionTimeoutManager injected into executor")
+
             # Inject DynamicRiskAllocator so position sizing uses P/L distribution
             if self._dynamic_risk_allocator is not None:
                 self._executor.set_dynamic_risk_allocator(self._dynamic_risk_allocator)

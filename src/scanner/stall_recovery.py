@@ -13,7 +13,7 @@ The recovery cycle logic:
     NORMAL  → (still stalled after recovery)           → RECOVERY (again)
 
 When in RECOVERY, penalties_suspended() returns True. engine.py checks
-this before applying overconfidence (-3pt) and concept_drift multiplier.
+this before applying overconfidence (-0.03 on 0-1 scale) and concept_drift multiplier.
 
 Usage:
     recovery = StallRecoveryManager()

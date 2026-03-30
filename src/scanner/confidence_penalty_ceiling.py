@@ -7,17 +7,17 @@ of each other. This module enforces a hard floor: no pair can be penalized
 below confidence=40.0 (on 0-100 scale) by stacking alone.
 
 The ceiling is NOT a gate bypass — a pair still must clear all gates.
-It prevents denominator collapse where 45→42 from overconfidence, then
-42*0.88=36.9 from drift, suppressing a signal that may have been valid.
+It prevents denominator collapse where 0.70→0.67 from overconfidence, then
+0.67*0.88=0.59 from drift, suppressing a signal that may have been valid.
 
-Usage:
+Usage (0-1 scale):
     ceiling = ConfidencePenaltyCeiling()
-    # Before applying -3pt overconfidence subtraction:
-    actual_sub = ceiling.apply_subtraction(confidence, 3.0)
-    confidence -= actual_sub
+    # Before applying -0.03 overconfidence subtraction:
+    result = ceiling.check_subtraction(confidence, 0.03)
+    confidence -= result.applied_penalty
     # Before applying drift multiplier:
-    actual_mult = ceiling.apply_multiplier(confidence, drift_mult)
-    confidence *= actual_mult
+    result = ceiling.check_multiplier(confidence, drift_mult)
+    confidence *= result.applied_penalty
 """
 
 from __future__ import annotations
@@ -28,10 +28,11 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Default floor: pairs cannot be penalized below this confidence value (0-100 scale)
-DEFAULT_CEILING_FLOOR = 40.0
+# Default floor: pairs cannot be penalized below this confidence value (0-1 scale)
+# Phase 79: Fixed from 40.0 (0-100 scale) to 0.40 (0-1 scale) to match actual confidence domain
+DEFAULT_CEILING_FLOOR = 0.40
 
-# Same floor in 0-1 normalised scale (for multiplier computations)
+# Same floor in 0-1 normalised scale (kept for backward compat with multiplier checks)
 DEFAULT_CEILING_FLOOR_NORM = 0.40
 
 
@@ -53,17 +54,17 @@ class ConfidencePenaltyCeiling:
     calls this class before applying its penalty; the ceiling adjusts the
     penalty downward if the pair is already near the floor.
 
-    The floor is expressed on the 0-100 scale (matching engine.py's confidence).
-    Multiplier penalties receive the equivalent 0-1 normalised floor.
+    The floor is expressed on the 0-1 scale (matching engine.py's confidence).
+    Phase 79: Fixed from 0-100 to 0-1 scale.
 
-    Usage:
+    Usage (0-1 scale):
         ceiling = ConfidencePenaltyCeiling()
         # Additive penalty (subtraction):
-        result = ceiling.check_subtraction(current_confidence=45.0, proposed_sub=3.0)
+        result = ceiling.check_subtraction(current_confidence=0.70, proposed_sub=0.03)
         confidence -= result.applied_penalty
 
         # Multiplicative penalty (multiplier < 1.0):
-        result = ceiling.check_multiplier(current_confidence=45.0, proposed_mult=0.85)
+        result = ceiling.check_multiplier(current_confidence=0.70, proposed_mult=0.85)
         confidence *= result.applied_penalty  # applied_penalty is the safe multiplier
     """
 

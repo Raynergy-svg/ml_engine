@@ -485,6 +485,28 @@ class ExecutionManager:
         except Exception as e:
             logger.debug(f"Phase 50: Execution filter chain init deferred: {e}")
 
+        # Phase 81 (US-P81-002): PositionTimeoutManager reference — injected by Scanner._init_executor()
+        self._position_timeout_mgr: Optional[Any] = None
+
+        # Phase 79: Cached DynamicDrawdownManager (avoids fresh creation every trailing stop check)
+        self._dynamic_drawdown_mgr: Optional[Any] = None
+        try:
+            from src.scanner.automation.dynamic_drawdown import DynamicDrawdownManager
+            lock_pct = getattr(self.config, "trailing_stop_lock_pct", 0.75)
+            be_pct = getattr(self.config, "trailing_stop_breakeven_pct", 0.50)
+            self._dynamic_drawdown_mgr = DynamicDrawdownManager(
+                normal_breakeven_pct=be_pct,
+                normal_lock_pct=lock_pct,
+            )
+            logger.info("Phase 79: DynamicDrawdownManager cached (no per-call creation)")
+        except Exception as e:
+            logger.debug(f"Phase 79: DynamicDrawdownManager init deferred: {e}")
+
+        # Phase 80 (US-P80-004): Equity HWM + drawdown tracking for DynamicDrawdownManager
+        # get_dynamic_thresholds() reads _current_drawdown — previously always 0.0.
+        self._equity_hwm: float = 0.0       # High-water mark of account NAV
+        self._current_drawdown: float = 0.0  # Current drawdown fraction (0.0 = no drawdown)
+
         # Episodic suppression gate — blocks setups with repeated historical losses
         self._episodic_memory: Optional[Any] = None
         if _EPISODIC_MEMORY_AVAILABLE and getattr(self.config, 'enable_episodic_memory', True):
@@ -2155,6 +2177,41 @@ class ExecutionManager:
             )
         ctx["_phase49_size_multiplier"] = _phase49_size_mult
 
+        # ── Phase 81 (US-P81-001): FilterChain.apply() — extensible pre-execution gate ──
+        # Fail-open: any exception in a filter returns PASS so no broken filter blocks trading.
+        if self._filter_chain is not None and self._filter_chain.get_filter_names():
+            try:
+                from src.scanner.execution_filters import FilterResult as _FR
+                _fc_context = {
+                    "pair": pair,
+                    "direction": direction,
+                    "confidence": confidence,
+                    "atr": atr,
+                    "spread_pips": ctx.get("spread_pips", 0.0),
+                    "atr_pips": ctx.get("atr_pips", 0.0),
+                    "volatility_regime": ctx.get("_ctx_regime", "NORMAL"),
+                    "phase49_size_multiplier": _phase49_size_mult,
+                }
+                _fc_result = self._filter_chain.apply(_fc_context)
+                if not _fc_result.passed and _fc_result.action == "BLOCK":
+                    logger.info(
+                        "Phase 81 (FilterChain): %s BLOCKED — %s [filter=%s]",
+                        pair, _fc_result.reason, _fc_result.filter_name,
+                    )
+                    return ExecutionResult(
+                        success=False,
+                        error=f"BLOCKED by filter chain: {_fc_result.reason}",
+                    )
+                if _fc_result.action == "REDUCE_SIZE" and _fc_result.size_multiplier < 1.0:
+                    _phase49_size_mult *= _fc_result.size_multiplier
+                    ctx["_phase49_size_multiplier"] = _phase49_size_mult
+                    logger.info(
+                        "Phase 81 (FilterChain): %s REDUCE_SIZE %.3fx — %s",
+                        pair, _fc_result.size_multiplier, _fc_result.reason,
+                    )
+            except Exception as _fc_err:
+                logger.debug("Phase 81 (FilterChain): apply() failed (fail-open): %s", _fc_err)
+
         # Check daily limit
         can_trade, reason = self.can_trade()
         if not can_trade:
@@ -2746,6 +2803,24 @@ class ExecutionManager:
                             )
                         except Exception as _tt_reg_err:
                             logger.debug(f"Phase 52: Tranche tracker registration error: {_tt_reg_err}")
+
+                    # Phase 81 (US-P81-002): Register with PositionTimeoutManager post-fill
+                    if self._position_timeout_mgr is not None:
+                        try:
+                            _pt_regime = (regime_name or "NORMAL").lower()
+                            self._position_timeout_mgr.register_trade(
+                                trade_id=str(trade_id),
+                                regime=_pt_regime,
+                                confidence=float(confidence),
+                                pair=pair,
+                                direction=direction.upper(),
+                            )
+                            logger.info(
+                                "Phase 81 (US-P81-002): Registered %s #%s with PositionTimeoutManager (regime=%s)",
+                                pair, trade_id, _pt_regime,
+                            )
+                        except Exception as _pt_reg_err:
+                            logger.debug("Phase 81: PositionTimeout register_trade error: %s", _pt_reg_err)
 
                     # Log aggressive scaling if applied
                     if regime_scale > 1.0:
@@ -3764,11 +3839,14 @@ class ExecutionManager:
             lock_pct = getattr(self.config, "trailing_stop_lock_pct", 0.75)
             be_pct = getattr(self.config, "trailing_stop_breakeven_pct", 0.50)
             try:
-                from src.scanner.automation.dynamic_drawdown import DynamicDrawdownManager
-                dd_mgr = DynamicDrawdownManager(
-                    normal_breakeven_pct=be_pct,
-                    normal_lock_pct=lock_pct,
-                )
+                # Phase 79: Use cached instance instead of creating fresh each call
+                dd_mgr = self._dynamic_drawdown_mgr
+                if dd_mgr is None:
+                    from src.scanner.automation.dynamic_drawdown import DynamicDrawdownManager
+                    dd_mgr = DynamicDrawdownManager(
+                        normal_breakeven_pct=be_pct,
+                        normal_lock_pct=lock_pct,
+                    )
                 current_dd = getattr(self, "_current_drawdown", 0.0)
                 max_dd = getattr(self.config, "max_drawdown_pct", 0.15)
                 dd_thresholds = dd_mgr.get_dynamic_thresholds(current_dd, max_dd)
@@ -3917,6 +3995,21 @@ class ExecutionManager:
         """
         if not getattr(self.config, "enable_trailing_stop", True):
             return []
+
+        # Phase 80 (US-P80-004): Refresh _current_drawdown from cached NAV before evaluating stops
+        # DynamicDrawdownManager.get_dynamic_thresholds() reads _current_drawdown — was always 0.
+        try:
+            _nav_for_dd = getattr(self, "_cached_nav", None) or getattr(self.config, "account_equity", 0.0) or 0.0
+            _nav_for_dd = float(_nav_for_dd)
+            if _nav_for_dd > 0:
+                if self._equity_hwm <= 0 or _nav_for_dd > self._equity_hwm:
+                    self._equity_hwm = _nav_for_dd
+                if self._equity_hwm > 0:
+                    self._current_drawdown = max(
+                        0.0, (self._equity_hwm - _nav_for_dd) / self._equity_hwm
+                    )
+        except Exception as _dd_refresh_err:
+            logger.debug("Phase 80 (US-P80-004): Drawdown refresh skipped: %s", _dd_refresh_err)
 
         import requests
         import os
@@ -4230,6 +4323,14 @@ class ExecutionManager:
                 duration_minutes=duration_minutes,
             )
 
+            # Phase 80 (US-P80-001): Compute MAE/MFE/bars_in_trade for TradeOutcomePredictor
+            # MAE proxy: on a loss, equals |pnl_pips|; on a win, 0 (no intrabar OANDA data)
+            _mae_pips = round(max(0.0, -min(pnl_pips, 0.0)), 1)
+            # MFE proxy: at minimum equals realized profit if positive; 0 on a loss
+            _mfe_pips = round(max(0.0, pnl_pips), 1)
+            # bars_in_trade: H1 bar count from duration; defaults to 1 when duration unknown
+            _bars_in_trade = max(1, round(duration_minutes / 60.0)) if duration_minutes else 1
+
             outcome_data = {
                 "realized_pl": realized_pl,
                 "pnl_pips": round(pnl_pips, 1),
@@ -4240,6 +4341,9 @@ class ExecutionManager:
                 "exit_time": close_time_str,
                 "duration_minutes": duration_minutes,
                 "exit_reason": exit_reason,
+                "mae_pips": _mae_pips,
+                "mfe_pips": _mfe_pips,
+                "bars_in_trade": _bars_in_trade,
                 "regime_at_entry": entry.get("regime", {}).get("volatility_regime"),
                 # Phase 24 (US-145): Derive regime at exit from scanner or entry fallback
                 "regime_at_exit": self._get_current_regime(scanner, entry)
@@ -4275,6 +4379,46 @@ class ExecutionManager:
                         logger.debug(f"Trade {tid} has no episode_id for episodic memory recording")
                 except Exception as _em_err:
                     logger.debug(f"Episodic memory record_outcome error for {tid}: {_em_err}")
+
+            # Phase 81 (US-P81-002): Deregister from PositionTimeoutManager on confirmed close
+            if self._position_timeout_mgr is not None:
+                try:
+                    self._position_timeout_mgr.close_trade(tid)
+                except Exception as _pt_close_err:
+                    logger.debug("Phase 81: PositionTimeout close_trade error for %s: %s", tid, _pt_close_err)
+
+            # Phase 78: Record outcome to accuracy gate (per-pair rolling accuracy)
+            if scanner is not None:
+                _ag = getattr(scanner, "_accuracy_gate", None)
+                if _ag is not None:
+                    try:
+                        _direction = entry.get("direction", "LONG")
+                        _conf = float(entry.get("confidence", 0.5))
+                        _ag.record_outcome(
+                            pair=pair,
+                            predicted_direction=_direction,
+                            actual_outcome=trade_won,
+                            confidence=_conf,
+                        )
+                        logger.debug(
+                            "Phase 78: AccuracyGate recorded %s %s outcome=%s",
+                            pair, _direction, "WIN" if trade_won else "LOSS",
+                        )
+                    except Exception as _ag_err:
+                        logger.debug(f"Phase 78: AccuracyGate record error for {tid}: {_ag_err}")
+
+            # Phase 78: Record prediction to retrain trigger (drift detection)
+            if scanner is not None:
+                _rt = getattr(scanner, "_retrain_trigger", None)
+                if _rt is not None:
+                    try:
+                        _rt.record_prediction(pair=pair, correct=trade_won)
+                        logger.debug(
+                            "Phase 78: RetrainTrigger recorded %s correct=%s",
+                            pair, trade_won,
+                        )
+                    except Exception as _rt_err:
+                        logger.debug(f"Phase 78: RetrainTrigger record error for {tid}: {_rt_err}")
 
             # ── Tier 6: Meta-learner hyperparameter adaptation ──
             if scanner is not None and getattr(scanner, '_meta_learner', None) is not None:
@@ -4826,6 +4970,117 @@ class ExecutionManager:
             safe_json_write(journal_path, entries)
         except ImportError:
             journal_path.write_text(json.dumps(entries, indent=2, default=str))
+
+        # ── Phase 80 (US-P80-002): TradeOutcomePredictor — auto-train at 50-trade threshold ──
+        # Must run AFTER journal write so fit_from_journal() reads the enriched on-disk data.
+        if scanner is not None and synced > 0:
+            _top = getattr(scanner, "_trade_outcome_predictor", None)
+            if _top is not None:
+                try:
+                    _complete_trades = [
+                        e for e in entries
+                        if isinstance(e.get("outcome"), dict)
+                        and e["outcome"].get("pnl_pips") is not None
+                        and e["outcome"].get("mae_pips") is not None
+                    ]
+                    _n_complete = len(_complete_trades)
+                    _should_train = (
+                        _n_complete >= 50
+                        and (_n_complete % 10 == 0 or not _top._is_trained)
+                    )
+                    if _should_train:
+                        _top_trained = _top.fit_from_journal()
+                        if _top_trained:
+                            logger.info(
+                                "Phase 80 (US-P80-002): TradeOutcomePredictor trained on "
+                                "%d trades (accuracy=%.3f)",
+                                _n_complete,
+                                getattr(_top, "_train_accuracy", 0.0),
+                            )
+                        else:
+                            logger.debug(
+                                "Phase 80 (US-P80-002): TradeOutcomePredictor training skipped "
+                                "(%d complete trades)", _n_complete
+                            )
+                    else:
+                        logger.debug(
+                            "Phase 80 (US-P80-002): TradeOutcomePredictor not yet ready "
+                            "(%d / 50 complete trades)", _n_complete
+                        )
+                except Exception as _top_err:
+                    logger.debug("Phase 80 (US-P80-002): TradeOutcomePredictor train error: %s", _top_err)
+
+        # ── Phase 80 (US-P80-003): PairAffinityTracker — update matrix post-trade-close ──
+        # Must run AFTER journal write so update_from_journal() reads current on-disk data.
+        if scanner is not None and synced > 0:
+            _pa = getattr(scanner, "_pair_affinity", None)
+            if _pa is not None:
+                try:
+                    _co_pairs = _pa.update_from_journal()
+                    if isinstance(_co_pairs, int) and _co_pairs > 0:
+                        logger.info(
+                            "Phase 80 (US-P80-003): PairAffinityTracker updated — "
+                            "%d co-occurrence pairs processed", _co_pairs
+                        )
+                    else:
+                        logger.debug(
+                            "Phase 80 (US-P80-003): PairAffinityTracker updated (0 co-occurrence pairs)"
+                        )
+                except Exception as _pa_err:
+                    logger.debug("Phase 80 (US-P80-003): PairAffinityTracker update error: %s", _pa_err)
+
+        # ── Phase 81 (US-P81-004): CausalCounterfactual — post-loss analysis ──
+        # Runs after journal write so counterfactual log has consistent trade IDs.
+        if scanner is not None and synced > 0:
+            _cc = getattr(scanner, "_causal_counterfactual", None)
+            if _cc is not None:
+                try:
+                    _cc_analyzed = 0
+                    _cc_cap = 5  # Max losses to analyze per sync (prevent latency spike)
+                    for entry in pending:
+                        if _cc_analyzed >= _cc_cap:
+                            break
+                        tid = str(entry.get("trade_id", ""))
+                        if tid not in closed_trades:
+                            continue
+                        ct = closed_trades[tid]
+                        _cc_pl = float(ct.get("realizedPL", 0))
+                        if _cc_pl >= 0:
+                            continue  # Only analyze losses
+                        # Build trade context from journal entry
+                        _cc_features = {
+                            "atr_14": float(entry.get("regime", {}).get("atr_pips", 0.001)),
+                            "sma_trend": float(entry.get("regime", {}).get("uncertainty_score", 0.5)),
+                            "momentum_signal": float(entry.get("confidence", 0.5)),
+                        }
+                        _cc_context = {
+                            "pair": entry.get("pair", ""),
+                            "features": _cc_features,
+                            "regime": str(entry.get("regime", {}).get("volatility_regime", "NORMAL")),
+                            "outcome": 0.0,  # Loss
+                        }
+                        _cc_scenarios = _cc.generate_standard_scenarios(_cc_context)
+                        _cc_results = _cc.batch_analyze(_cc_context, _cc_scenarios)
+                        _cc.save_analysis(tid, _cc_results)
+                        # Log the most impactful reversal scenario
+                        _cc_reversals = [r for r in _cc_results if getattr(r, "outcome_reversal", False)]
+                        if _cc_reversals:
+                            _cc_best = max(_cc_reversals, key=lambda r: abs(getattr(r, "probability_delta", 0.0)))
+                            logger.info(
+                                "Phase 81 (US-P81-004): Trade %s (%s) loss — "
+                                "reversal: %s delta=%.2f",
+                                tid, entry.get("pair", ""),
+                                getattr(getattr(_cc_best, "scenario", None), "scenario_name", "?"),
+                                getattr(_cc_best, "probability_delta", 0.0),
+                            )
+                        _cc_analyzed += 1
+                    if _cc_analyzed > 0:
+                        logger.info(
+                            "Phase 81 (US-P81-004): CausalCounterfactual analyzed %d losing trades",
+                            _cc_analyzed,
+                        )
+                except Exception as _cc_err:
+                    logger.debug("Phase 81 (US-P81-004): CausalCounterfactual error: %s", _cc_err)
 
         # Phase 45 (US-282): Feed trade outcomes to adaptive position sizer
         if self._adaptive_position_sizer is not None:

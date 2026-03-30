@@ -1,328 +1,83 @@
 {
-  "branchName": "ralph/buddy-gap-resolution-phase32",
-  "description": "Auto-generated gap resolution PRD. Source: prd.json. Detected 93 integration gaps across 2 categories. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
   "project": "ML_Engine",
+  "phase": 81,
+  "branchName": "ralph/phase81-execution-wiring",
+  "description": "Phase 81: Wire dormant execution modules — FilterChain gate consolidation, position timeout exits, regime confidence risk scaling, causal counterfactual loss analysis. Source: phase81 gap audit. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
   "userStories": [
     {
+      "id": "US-P81-001",
+      "title": "Wire FilterChain.apply() as extensible pre-execution gate",
+      "description": "FilterChain is initialized in ExecutionManager.__init__ but apply() is never called. Register a spread_filter wrapper at init time. In execute_trade() after _phase49_size_multiplier is finalized (~line 2176), call _filter_chain.apply(context_dict). BLOCK returns ExecutionResult(success=False). REDUCE_SIZE compounds on _phase49_size_mult. Fail-open (exceptions pass through).",
       "acceptanceCriteria": [
-        "Add self.state_engine.save_state() to graceful shutdown in continuous.py",
-        "Add self.memory_manager.save_state() to graceful shutdown in continuous.py",
-        "Add self.pair_transfer.save_state() to graceful shutdown in continuous.py",
-        "Add self.threshold_optimizer.save_state() to graceful shutdown in continuous.py",
-        "Add self.regime_broadcaster.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "FilterChain.apply(context) called in execute_trade() after _phase49_size_multiplier block",
+        "context dict includes pair, direction, confidence, atr, spread_pips, atr_pips, volatility_regime, phase49_size_multiplier",
+        "BLOCK result returns ExecutionResult(success=False, error='BLOCKED by filter chain: ...')",
+        "REDUCE_SIZE result multiplies _phase49_size_mult and updates ctx['_phase49_size_multiplier']",
+        "Entire block wrapped in try/except (fail-open)",
+        "Early skip if _filter_chain is None or has no registered filters",
         "Syntax validation passes"
       ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-001",
-      "notes": "",
-      "passes": false,
       "priority": 1,
-      "title": "Wire save_state() into graceful shutdown for: state_engine, memory_manager, pair_transfer, threshold_optimizer, regime_broadcaster"
+      "passes": true,
+      "notes": "FilterResult has: passed, action (PASS/BLOCK/REDUCE_SIZE), reason, size_multiplier, filter_name. get_filter_names() checks if chain has filters."
     },
     {
+      "id": "US-P81-002",
+      "title": "Wire PositionTimeoutManager — tick/register/evaluate/close",
+      "description": "PositionTimeoutManager is initialized in Scanner.__init__ gated by enable_position_timeout (default True). Wire 4 call sites: (A) tick() once per scan() cycle before trailing stop eval; (B) evaluate_all() in scan() to detect timed-out trades and force-close; (C) register_trade() in _init_executor() injection so executor can register after trade fill; (D) close_trade() in sync_closed_trades_rl() when trade is confirmed closed. Pass scanner._position_timeout reference to executor via new _position_timeout_mgr attr.",
       "acceptanceCriteria": [
-        "Add self.agent_accuracy_matrix.save_state() to graceful shutdown in continuous.py",
-        "Add self.health_registry.save_state() to graceful shutdown in continuous.py",
-        "Add self.signal_timing.save_state() to graceful shutdown in continuous.py",
-        "Add self.model_calibration.save_state() to graceful shutdown in continuous.py",
-        "Add self.execution_router.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "_position_timeout_mgr: Optional[Any] = None added to ExecutionManager.__init__",
+        "After executor creation in _init_executor(), set self._executor._position_timeout_mgr = self._position_timeout",
+        "tick() called once per scan() cycle (after _scan_cycle_count increment)",
+        "evaluate_all() called in scan() — forced exits logged at WARNING, close_trade() deregisters",
+        "register_trade(trade_id, regime, confidence, pair, direction) called post-execute in execution.py (via _position_timeout_mgr)",
+        "close_trade(tid) called in sync_closed_trades_rl() when trade confirmed closed",
+        "All 4 sites wrapped in try/except (non-blocking)",
         "Syntax validation passes"
       ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-002",
-      "notes": "",
-      "passes": false,
       "priority": 2,
-      "title": "Wire save_state() into graceful shutdown for: agent_accuracy_matrix, health_registry, signal_timing, model_calibration, execution_router"
+      "passes": true,
+      "notes": "evaluate_all() returns List[TimeoutResult]. TimeoutResult has: should_exit, trade_id, exit_reason. register_trade() signature: trade_id, regime, confidence, pair, direction."
     },
     {
+      "id": "US-P81-003",
+      "title": "Wire RegimeConfidenceScorer risk_pct scaling in _scan_pair()",
+      "description": "RegimeConfidenceScorer exists in ExecutionManager but is never called. Add a second instance in Scanner.__init__ so _scan_pair() can use it. After the entropy sizer block (~line 3756) and after regime_name is finalized, call score(adx, atr_percentile, trend_strength, regime) → sizing_factor. Multiply risk_pct by sizing_factor when < 1.0 (transition/uncertain regimes reduce position size).",
       "acceptanceCriteria": [
-        "Add self.execution_quality_optimizer.save_state() to graceful shutdown in continuous.py",
-        "Add self.training_augmenter.save_state() to graceful shutdown in continuous.py",
-        "Add self.model_bandit.save_state() to graceful shutdown in continuous.py",
-        "Add self.affinity_portfolio.save_state() to graceful shutdown in continuous.py",
-        "Add self.position_manager.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "self._regime_confidence_scorer added to Scanner.__init__ lazy init block",
+        "score() called in _scan_pair() after entropy_sizer block AND after regime_name is finalized",
+        "adx read from df_feat['adx'] or df_feat['adx_14'] (fallback 25.0)",
+        "atr_percentile from metrics.get('volatility_percentile', 0.5)",
+        "trend_strength from metrics.get('trend_strength', 0.5)",
+        "risk_pct *= sizing_factor when sizing_factor < 1.0",
+        "INFO log when sizing_factor < 1.0 with tier, factor, old→new risk_pct",
+        "DEBUG log when full size (sizing_factor == 1.0)",
+        "Wrapped in try/except (non-blocking)",
         "Syntax validation passes"
       ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-003",
-      "notes": "",
-      "passes": false,
       "priority": 3,
-      "title": "Wire save_state() into graceful shutdown for: execution_quality_optimizer, training_augmenter, model_bandit, affinity_portfolio, position_manager"
+      "passes": true,
+      "notes": "score() signature: score(adx, atr_percentile, trend_strength, current_regime). Returns RegimeScoreResult with sizing_factor, tier, is_transition."
     },
     {
+      "id": "US-P81-004",
+      "title": "Wire CausalCounterfactual post-loss analysis in sync_closed_trades_rl()",
+      "description": "CounterfactualEngine is initialized in Scanner.__init__ (line 1054) but analyze_trade() / batch_analyze() are never called. In sync_closed_trades_rl(), after the PairAffinityTracker block, iterate losing trades and run batch_analyze(). Log the most impactful reversal scenario at INFO. save_analysis() persists to counterfactual_log.jsonl for future ML feedback.",
       "acceptanceCriteria": [
-        "Add self.temporal_attention.save_state() to graceful shutdown in continuous.py",
-        "Add self.dynamic_risk_allocator.save_state() to graceful shutdown in continuous.py",
-        "Add self.execution_quality_tracker.save_state() to graceful shutdown in continuous.py",
-        "Add self.attention_feedback.save_state() to graceful shutdown in continuous.py",
-        "Add self.model_router.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
+        "CausalCounterfactual block runs after PairAffinityTracker block in sync_closed_trades_rl()",
+        "Only loss trades analyzed (realized_pl < 0)",
+        "Capped at 5 losses per sync call (prevent latency spike on batch close)",
+        "generate_standard_scenarios(trade_context) called to get scenario list",
+        "batch_analyze(trade_context, scenarios) called for each losing trade",
+        "save_analysis(tid, results) persists results to disk",
+        "Most impactful reversal scenario (max |probability_delta|) logged at INFO",
+        "Total losses analyzed logged at INFO when > 0",
+        "No exception propagation — errors caught at DEBUG",
         "Syntax validation passes"
       ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-004",
-      "notes": "",
-      "passes": false,
       "priority": 4,
-      "title": "Wire save_state() into graceful shutdown for: temporal_attention, dynamic_risk_allocator, execution_quality_tracker, attention_feedback, model_router"
-    },
-    {
-      "acceptanceCriteria": [
-        "Add self.causal_filter.save_state() to graceful shutdown in continuous.py",
-        "Add self.module_activation.save_state() to graceful shutdown in continuous.py",
-        "Add self.replay_validator.save_state() to graceful shutdown in continuous.py",
-        "Add self.pair_regime_agent_matrix.save_state() to graceful shutdown in continuous.py",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules have save_state() methods but aren't called during shutdown. State is lost between sessions.",
-      "id": "US-005",
-      "notes": "",
-      "passes": false,
-      "priority": 5,
-      "title": "Wire save_state() into graceful shutdown for: causal_filter, module_activation, replay_validator, pair_regime_agent_matrix"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'dynamic_sl_tp' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trade_explainer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'multi_horizon_fusion' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'group_momentum' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'position_timeout' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-006",
-      "notes": "",
-      "passes": false,
-      "priority": 6,
-      "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, multi_horizon_fusion, group_momentum, position_timeout"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'entropy_sizer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'retrain_trigger' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'microstructure_regime' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'kelly_portfolio' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'adaptive_lr' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-007",
-      "notes": "",
-      "passes": false,
-      "priority": 7,
-      "title": "Register modules in dispatcher/orchestrator: entropy_sizer, retrain_trigger, microstructure_regime, kelly_portfolio, adaptive_lr"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'confidence_calibrator' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'memory_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'trade_outcome_predictor' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'pair_transfer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'threshold_optimizer' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-008",
-      "notes": "",
-      "passes": false,
-      "priority": 8,
-      "title": "Register modules in dispatcher/orchestrator: confidence_calibrator, memory_manager, trade_outcome_predictor, pair_transfer, threshold_optimizer"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'pair_model_selector' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'counterfactual_learner' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'regime_broadcaster' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'agent_accuracy_matrix' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'self_model_state' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-009",
-      "notes": "",
-      "passes": false,
-      "priority": 9,
-      "title": "Register modules in dispatcher/orchestrator: pair_model_selector, counterfactual_learner, regime_broadcaster, agent_accuracy_matrix, self_model_state"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'health_registry' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'portfolio_optimizer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'session_snapshot' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'alert_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'dynamic_hedging' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-010",
-      "notes": "",
-      "passes": false,
-      "priority": 10,
-      "title": "Register modules in dispatcher/orchestrator: health_registry, portfolio_optimizer, session_snapshot, alert_manager, dynamic_hedging"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'dynamic_drawdown' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'agent_lifecycle' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'signal_timing' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'chain_memory' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_calibration' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-011",
-      "notes": "",
-      "passes": false,
-      "priority": 11,
-      "title": "Register modules in dispatcher/orchestrator: dynamic_drawdown, agent_lifecycle, signal_timing, chain_memory, model_calibration"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'execution_router' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'execution_quality_optimizer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'adversarial_trainer' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'module_dispatcher' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-012",
-      "notes": "",
-      "passes": false,
-      "priority": 12,
-      "title": "Register modules in dispatcher/orchestrator: execution_router, execution_quality_optimizer, adversarial_trainer, model_manager, module_dispatcher"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'regime_reward' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'training_augmenter' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'causal_counterfactual' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_bandit' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'ensemble_disagreement' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-013",
-      "notes": "",
-      "passes": false,
-      "priority": 13,
-      "title": "Register modules in dispatcher/orchestrator: regime_reward, training_augmenter, causal_counterfactual, model_bandit, ensemble_disagreement"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'regime_tracker' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'affinity_portfolio' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'position_manager' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'smart_execution' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'accuracy_gate' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-014",
-      "notes": "",
-      "passes": false,
-      "priority": 14,
-      "title": "Register modules in dispatcher/orchestrator: regime_tracker, affinity_portfolio, position_manager, smart_execution, accuracy_gate"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'temporal_attention' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'orchestrator' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'dynamic_risk_allocator' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'lead_lag_detector' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'continuous' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-015",
-      "notes": "",
-      "passes": false,
-      "priority": 15,
-      "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, dynamic_risk_allocator, lead_lag_detector, continuous"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'market_impact' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'pair_affinity' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'seasonality' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'feature_attention' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'hierarchical_risk_parity' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-016",
-      "notes": "",
-      "passes": false,
-      "priority": 16,
-      "title": "Register modules in dispatcher/orchestrator: market_impact, pair_affinity, seasonality, feature_attention, hierarchical_risk_parity"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'execution_quality_tracker' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'attention_feedback' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'observational_learning' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'model_router' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'causal_filter' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-017",
-      "notes": "",
-      "passes": false,
-      "priority": 17,
-      "title": "Register modules in dispatcher/orchestrator: execution_quality_tracker, attention_feedback, observational_learning, model_router, causal_filter"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'module_activation' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'concept_drift' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'episodic_memory' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'drift_monitor' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'crisis_generator' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-018",
-      "notes": "",
-      "passes": false,
-      "priority": 18,
-      "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, episodic_memory, drift_monitor, crisis_generator"
-    },
-    {
-      "acceptanceCriteria": [
-        "Register 'drift_projector' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'replay_validator' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'pair_regime_agent_matrix' in module_dispatcher or orchestrator._init_modules()",
-        "Register 'api_retry' in module_dispatcher or orchestrator._init_modules()",
-        "Non-blocking \u2014 never crash on module init failure (wrap in try/except)",
-        "Syntax validation passes"
-      ],
-      "description": "Modules exist in automation/ but aren't registered in the dispatcher or orchestrator.",
-      "id": "US-019",
-      "notes": "",
-      "passes": false,
-      "priority": 19,
-      "title": "Register modules in dispatcher/orchestrator: drift_projector, replay_validator, pair_regime_agent_matrix, api_retry"
+      "passes": true,
+      "notes": "analyze_trade(trade_context, scenario) takes ONE scenario. batch_analyze(trade_context, scenarios) takes list. trade_context needs: pair, features dict, regime str, outcome float (0.0=loss). CounterfactualResult has: outcome_reversal bool, probability_delta float, explanation str, scenario."
     }
   ]
 }

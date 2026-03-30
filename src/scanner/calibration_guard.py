@@ -1,6 +1,6 @@
 """Calibration Guard — Phase 57 US-353.
 
-Suppresses the overconfidence penalty (-3pt) when the ModelCalibrationTracker
+Suppresses the overconfidence penalty (-0.03 on 0-1 scale) when the ModelCalibrationTracker
 does not have sufficient data to produce a statistically valid signal.
 
 Root cause: with only 6 total trades across 10 calibration bins
