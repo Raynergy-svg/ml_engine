@@ -148,9 +148,14 @@ class PairAnalysis:
 
         Safety invariants enforced here (last line of defense before execute_trades):
         - agent_passed must be True (agents voted YES)
-        - model_disagreement must be <= 0.30 (trading rule)
+        - model_disagreement must be <= max_model_disagreement (from config, default 0.50)
         - volatility_regime must not be UNKNOWN
+
+        Phase 76: Uses _max_model_disagreement (set by agent team from config) instead
+        of hardcoded 0.30. When soft_uncertainty_blocking=True, disagreement between
+        the hard_floor and max is penalized (confidence reduced) rather than blocked.
         """
+        _max_disagree = float(getattr(self, "_max_model_disagreement", 0.50))
         return (
             self.gates_passed
             and self.direction in {"LONG", "SHORT"}
@@ -158,7 +163,7 @@ class PairAnalysis:
             and not self.blocked_by_circuit_breaker
             and bool(self.execution_quality_passed)
             and self.agent_passed
-            and self.model_disagreement <= 0.30
+            and self.model_disagreement <= _max_disagree
             and self.volatility_regime.upper() != "UNKNOWN"
         )
 

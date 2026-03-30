@@ -30,6 +30,18 @@ OBSERVATION_CATEGORIES = [
     "correlation_conflict",  # US-059: correlated pair double-exposure blocks
     "gate_degradation",     # US-063: gate model accuracy dropped below threshold
     "macro_stress",         # US-066: macro stress level elevated
+    # Module feedback categories (wired from dead-end module outputs)
+    "trade_explainer",           # confidence penalty adjustments from explainability
+    "multi_horizon_fusion",      # fusion grade & confidence adjustments
+    "microstructure_regime",     # spread-driven regime detection results
+    "kelly_portfolio",           # portfolio-level Kelly sizing recommendations
+    "confidence_calibration",    # Platt-scaled calibrated scores
+    "ensemble_disagreement",     # ensemble member disagreement meta-signal
+    "lead_lag_signal",           # cross-pair lead-lag relationships
+    "feature_attention",         # attention-weighted regime priorities
+    "causal_filter",             # causal signal consistency penalties
+    "concept_drift",             # rolling drift detection results
+    "seasonality",               # hour-of-day seasonal modifier
 ]
 
 

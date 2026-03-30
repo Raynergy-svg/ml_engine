@@ -127,6 +127,27 @@ COMMAND_MAP: dict[str, Any] = {
 # Dispatch helpers for specialised sub-commands
 # ---------------------------------------------------------------------------
 
+def _process_futures_and_instruments_flags(args: Any) -> None:
+    """Process --futures flag and --instruments argument.
+
+    Sets broker, profile, and pairs based on --futures and --instruments flags.
+    This is called after argument parsing but before dispatch.
+    """
+    # Handle --futures shorthand: sets broker=ibkr, profile=futures_paper
+    if getattr(args, "futures", False):
+        args.broker = "ibkr"
+        if str(getattr(args, "profile", "balanced")) == "balanced":
+            args.profile = "futures_paper"
+        # Log the transformation
+        logger.info("[yellow]--futures flag detected: setting broker=ibkr, profile=futures_paper[/yellow]")
+
+    # Handle --instruments: override pairs with comma-separated list
+    instruments_str = getattr(args, "instruments", None)
+    if instruments_str:
+        args.pairs = instruments_str
+        logger.info(f"[yellow]--instruments flag: overriding pairs to {instruments_str}[/yellow]")
+
+
 def _dispatch_scan(args: Any) -> None:
     """Handle the scan command (with optional watch mode)."""
     import logging as _logging
@@ -152,8 +173,9 @@ def _dispatch_scan(args: Any) -> None:
                 profile=profile,
                 force=bool(getattr(args, "force", False)),
             )
-            # Apply profile settings (agents, RL, etc.)
-            config.apply_profile(profile)
+            # Note: apply_profile is already called inside from_cli_args.
+            # Do NOT call it again here — it would re-enable session_filter,
+            # overwriting the --force flag.
             scanner = Scanner(config=config)
             interval_minutes = int(getattr(args, "interval", 5))
             auto_execute = bool(getattr(args, "auto_execute", False))
@@ -599,6 +621,9 @@ def main() -> None:
     _VERBOSE_MODE = bool(getattr(args, "verbose", False))
     if _VERBOSE_MODE:
         _configure_verbose_logging()
+
+    # Process --futures and --instruments flags (before _normalize_command_args)
+    _process_futures_and_instruments_flags(args)
 
     _normalize_command_args(args)
 

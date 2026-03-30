@@ -171,12 +171,15 @@ def retry_api_call(
             last_error = e
             breaker.record_failure()
 
-        # Calculate backoff (skip if this was the last attempt)
+        # Calculate backoff with jitter (skip if this was the last attempt)
         if attempt < max_retries:
+            import random
             delay = min(backoff_base * (2 ** attempt), backoff_max)
+            jitter = random.uniform(0, 0.1 * delay)
+            delay += jitter
             logger.debug(
                 f"API retry {attempt + 1}/{max_retries} for {func.__name__}: "
-                f"waiting {delay:.1f}s after {last_error}"
+                f"waiting {delay:.1f}s (jitter={jitter:.2f}s) after {last_error}"
             )
             time.sleep(delay)
 

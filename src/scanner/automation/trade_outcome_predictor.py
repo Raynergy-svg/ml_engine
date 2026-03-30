@@ -351,7 +351,10 @@ class TradeOutcomePredictor:
         y: List[int] = []
 
         for t in trades:
-            outcome = t.get("outcome", "").upper()
+            outcome = (t.get("outcome") or "").upper() if isinstance(t.get("outcome"), str) else ""
+            # Handle dict-style outcome from trade_journal_rl.json
+            if isinstance(t.get("outcome"), dict):
+                outcome = "WIN" if t["outcome"].get("pnl", 0) > 0 else "LOSS"
             if outcome in ("WIN", "WON", "TP_HIT"):
                 label = 1
             elif outcome in ("LOSS", "LOST", "SL_HIT", "STOPPED"):

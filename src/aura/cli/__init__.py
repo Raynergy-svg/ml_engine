@@ -1,1 +1,0 @@
-"""Aura CLI companion interface."""

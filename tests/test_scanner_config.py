@@ -180,3 +180,23 @@ class TestProfileSwitching:
         first_confidence = cfg.min_confidence
         cfg.apply_profile("smart")
         assert cfg.min_confidence == first_confidence
+
+
+class TestProfileKeyCompleteness:
+    """Tests for ensuring all SCAN_PROFILES keys have corresponding ScannerConfig fields."""
+
+    def test_all_profile_keys_have_dataclass_fields(self):
+        """Every key in SCAN_PROFILES must be a ScannerConfig field.
+
+        This test ensures that apply_profile() will not silently skip any
+        profile overrides due to missing dataclass fields. This enforces the
+        Live Wiring Verification Gate from improvement.md.
+        """
+        import dataclasses
+        config_fields = {f.name for f in dataclasses.fields(ScannerConfig)}
+        missing = []
+        for profile_name, profile_dict in SCAN_PROFILES.items():
+            for key in profile_dict:
+                if key not in config_fields:
+                    missing.append(f"{profile_name}.{key}")
+        assert not missing, f"Profile keys missing from ScannerConfig: {missing}"

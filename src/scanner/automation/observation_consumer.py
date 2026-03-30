@@ -61,6 +61,37 @@ OBSERVATION_RECOMMENDATIONS = {
         "delta": 0.05,
         "reason": "Group momentum signals being generated frequently — raise gate sensitivity",
     },
+    # Module feedback recommendations (wired from dead-end module outputs)
+    "concept_drift": {
+        "action": "reduce_position_size",
+        "delta": -0.15,
+        "reason": "Concept drift detected frequently — model predictions may be stale, reduce exposure",
+    },
+    "ensemble_disagreement": {
+        "action": "increase_uncertainty_weight",
+        "delta": 0.08,
+        "reason": "Ensemble members frequently disagree — increase uncertainty penalty weight",
+    },
+    "causal_filter": {
+        "action": "tighten_causal_threshold",
+        "delta": -0.05,
+        "reason": "Frequent causal inconsistencies — tighten causal consistency threshold",
+    },
+    "confidence_calibration": {
+        "action": "review_calibration_fit",
+        "delta": 0.0,
+        "reason": "Frequent calibration adjustments — check if Platt scaling model needs refit",
+    },
+    "multi_horizon_fusion": {
+        "action": "review_timeframe_alignment",
+        "delta": 0.0,
+        "reason": "Frequent fusion grade changes — review multi-timeframe signal quality",
+    },
+    "microstructure_regime": {
+        "action": "adjust_microstructure_sensitivity",
+        "delta": 0.02,
+        "reason": "Frequent microstructure regime signals — consider adjusting detection sensitivity",
+    },
 }
 
 

@@ -155,8 +155,8 @@ class GapWirer:
                         )
                         report.duration_secs = time.monotonic() - start
                         return report
-                except Exception:
-                    pass  # Corrupt file, safe to overwrite
+                except Exception as e:
+                    logger.debug(f"GapWirer: existing PRD parse failed (will overwrite): {e}")
 
             # 3. Convert gaps → user stories → prd.json
             prd_data = self._gaps_to_prd(gaps, source_prd, branch_name)
@@ -302,17 +302,22 @@ class GapWirer:
             except Exception as e:
                 logger.warning(f"GapWirer: archive failed: {e}")
 
-        # Write the new PRD
-        prd_path.write_text(json.dumps(prd_data, indent=2))
+        # Write the new PRD (atomic: tmp + rename)
+        _tmp_prd = prd_path.with_suffix(".json.tmp")
+        _tmp_prd.write_text(json.dumps(prd_data, indent=2, sort_keys=True))
+        _tmp_prd.replace(prd_path)
 
-        # Reset progress file
+        # Reset progress file (atomic: tmp + rename)
         progress = self._ralph_dir / "progress.txt"
-        progress.write_text(
+        _progress_content = (
             f"# Ralph Progress Log\n"
             f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"Source: gap_wirer auto-generated\n"
             f"---\n"
         )
+        _tmp_progress = progress.with_suffix(".txt.tmp")
+        _tmp_progress.write_text(_progress_content)
+        _tmp_progress.replace(progress)
 
         return prd_path
 
@@ -373,8 +378,8 @@ class GapWirer:
                 refs.add(m)
             for m in re.findall(r'self\.(\w+)\.\w+\(', content):
                 refs.add(m)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"GapWirer: engine ref extraction failed: {e}")
         return refs
 
     def _parse_dispatcher_refs(self) -> Set[str]:
@@ -383,8 +388,8 @@ class GapWirer:
             content = self._dispatcher.read_text()
             for m in re.findall(r'register_module\s*\(\s*["\'](\w+)["\']', content):
                 refs.add(m)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"GapWirer: dispatcher ref extraction failed: {e}")
         return refs
 
     def _parse_shutdown_hooks(self) -> Set[str]:
@@ -394,8 +399,8 @@ class GapWirer:
                 content = filepath.read_text()
                 for m in re.findall(r'(\w+)\.save_state\s*\(', content):
                     refs.add(m)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"GapWirer: shutdown hook extraction failed for {filepath}: {e}")
         return refs
 
     def _find_unregistered_modules(
@@ -456,8 +461,8 @@ class GapWirer:
                     file_path=str(self._config),
                     suggested_fix=f"Change {flag} default to True in ScannerConfig",
                 ))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"GapWirer: disabled config flag scan failed: {e}")
         return gaps
 
     def _find_dead_feedback_loops(

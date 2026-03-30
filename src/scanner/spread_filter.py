@@ -12,6 +12,8 @@ import logging
 from dataclasses import dataclass
 from typing import Optional, Dict
 
+from src.brokers.registry import get_registry
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,17 +96,23 @@ class SpreadFilterConfig:
         return self.max_normalized_spread
 
 
-# Pip value lookup for spread calculation
-_PIP_VALUES = {
-    "EUR_USD": 0.0001, "GBP_USD": 0.0001, "USD_JPY": 0.01,
-    "USD_CHF": 0.0001, "AUD_USD": 0.0001, "USD_CAD": 0.0001,
-    "NZD_USD": 0.0001, "EUR_GBP": 0.0001, "EUR_JPY": 0.01,
-    "GBP_JPY": 0.01, "AUD_JPY": 0.01, "EUR_AUD": 0.0001,
-    "GBP_AUD": 0.0001, "EUR_CHF": 0.0001, "GBP_CHF": 0.0001,
-    "EUR_NZD": 0.0001, "GBP_NZD": 0.0001, "AUD_NZD": 0.0001,
-    "NZD_JPY": 0.01, "CAD_JPY": 0.01, "CHF_JPY": 0.01,
-    "USD_SGD": 0.0001, "EUR_CAD": 0.0001, "GBP_CAD": 0.0001,
-}
+# NOTE: _PIP_VALUES has been moved to InstrumentRegistry (src.brokers.registry)
+# Use get_registry().get(symbol).pip_value to access pip values
+
+
+def _get_pip_value(pair: str) -> float:
+    """Get pip value for a pair from InstrumentRegistry.
+
+    Args:
+        pair: Trading pair symbol (e.g., "EUR_USD").
+
+    Returns:
+        Pip value for the pair, or 0.0001 as fallback if not found.
+    """
+    try:
+        return get_registry().get(pair).pip_value
+    except KeyError:
+        return 0.0001
 
 
 class SpreadFilter:
@@ -161,7 +169,7 @@ class SpreadFilter:
             )
 
         # Calculate spread in pips
-        pip_value = _PIP_VALUES.get(pair, 0.0001)
+        pip_value = _get_pip_value(pair)
         spread_raw = abs(ask - bid)
         spread_pips = spread_raw / pip_value
 

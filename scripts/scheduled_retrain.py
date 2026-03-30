@@ -227,7 +227,7 @@ def reset_accuracy_gate_for_pairs(pairs: List[str]) -> None:
                 # Clear the blocked flag — let the pair trade again under new model
                 gate._data[normalized]["blocked"] = False
                 logger.info(f"AccuracyGate reset for {normalized} (post-retrain)")
-        gate._save()
+        gate._save_data()
     except Exception as e:
         logger.warning(f"AccuracyGate reset failed (non-fatal): {e}")
 

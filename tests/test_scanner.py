@@ -50,7 +50,7 @@ class TestScannerConfig:
         assert cfg.model_dir.is_absolute()
 
     def test_pip_values(self):
-        from src.scanner.config import ScannerConfig, PIP_VALUES
+        from src.scanner.config import ScannerConfig
         cfg = ScannerConfig()
         assert cfg.get_pip_value("EUR_USD") == 0.0001
         assert cfg.get_pip_value("USD_JPY") == 0.01

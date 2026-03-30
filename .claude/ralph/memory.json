@@ -4,8 +4,8 @@
   "description": "Hot-state memory for the PRD improvement loop. Written by Ralph/user as stories complete. Read by scheduled sweep and chain agents.",
   "current_prd": {
     "file": ".claude/ralph/prd.json",
-    "phase": "ralph/buddy-gap-resolution-phase11",
-    "total_stories": 30,
+    "phase": "ralph/buddy-gap-resolution-phase32",
+    "total_stories": 19,
     "passed_stories": 0,
     "story_status": {
       "US-001": {
@@ -21,151 +21,96 @@
       "US-003": {
         "passed": false,
         "completed_at": null,
-        "title": "Wire save_state() into graceful shutdown for: training_augmenter, affinity_portf"
+        "title": "Wire save_state() into graceful shutdown for: execution_quality_optimizer, train"
       },
       "US-004": {
         "passed": false,
         "completed_at": null,
-        "title": "Wire save_state() into graceful shutdown for: execution_quality_tracker, attenti"
+        "title": "Wire save_state() into graceful shutdown for: temporal_attention, dynamic_risk_a"
       },
       "US-005": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: execution, news_risk_agent, multi_timefra"
+        "title": "Wire save_state() into graceful shutdown for: causal_filter, module_activation, "
       },
       "US-006": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: support_resistance_agent, trader_readines"
+        "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, mul"
       },
       "US-007": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: multi_horizon_fusion, trade_outcome_predi"
+        "title": "Register modules in dispatcher/orchestrator: entropy_sizer, retrain_trigger, mic"
       },
       "US-008": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: position_timeout, lead_lag_detection, fea"
+        "title": "Register modules in dispatcher/orchestrator: confidence_calibrator, memory_manag"
       },
       "US-009": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: adaptive_lr, market_impact, model_bandit,"
+        "title": "Register modules in dispatcher/orchestrator: pair_model_selector, counterfactual"
       },
       "US-010": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: synthetic_crisis, execution_quality_track"
+        "title": "Register modules in dispatcher/orchestrator: health_registry, portfolio_optimize"
       },
       "US-011": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: temporal_attention, live_position_managem"
+        "title": "Register modules in dispatcher/orchestrator: dynamic_drawdown, agent_lifecycle, "
       },
       "US-012": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: training_augmentation, attention_feedback"
+        "title": "Register modules in dispatcher/orchestrator: execution_router, execution_quality"
       },
       "US-013": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: signal_timing, memory_manager, module_act"
+        "title": "Register modules in dispatcher/orchestrator: regime_reward, training_augmenter, "
       },
       "US-014": {
         "passed": false,
         "completed_at": null,
-        "title": "Enable config flags for wired modules: dynamic_hedging, observational_learning, "
+        "title": "Register modules in dispatcher/orchestrator: regime_tracker, affinity_portfolio,"
       },
       "US-015": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: dynamic_sl_tp, trade_explainer, mul"
+        "title": "Register modules in dispatcher/orchestrator: temporal_attention, orchestrator, d"
       },
       "US-016": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: entropy_sizer, retrain_trigger, mic"
+        "title": "Register modules in dispatcher/orchestrator: market_impact, pair_affinity, seaso"
       },
       "US-017": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: confidence_calibrator, memory_manag"
+        "title": "Register modules in dispatcher/orchestrator: execution_quality_tracker, attentio"
       },
       "US-018": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: pair_model_selector, regime_broadca"
+        "title": "Register modules in dispatcher/orchestrator: module_activation, concept_drift, e"
       },
       "US-019": {
         "passed": false,
         "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: session_snapshot, alert_manager, dy"
-      },
-      "US-020": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: signal_timing, model_calibration, e"
-      },
-      "US-021": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: model_manager, module_dispatcher, r"
-      },
-      "US-022": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: ensemble_disagreement, regime_track"
-      },
-      "US-023": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: smart_execution, accuracy_gate, tem"
-      },
-      "US-024": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: lead_lag_detector, continuous, mark"
-      },
-      "US-025": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: feature_attention, hierarchical_ris"
-      },
-      "US-026": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: model_router, causal_filter, module"
-      },
-      "US-027": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Register modules in dispatcher/orchestrator: crisis_generator, replay_validator,"
-      },
-      "US-028": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Connect feedback consumers for: trade_explainer, multi_horizon_fusion, microstru"
-      },
-      "US-029": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Connect feedback consumers for: adversarial_trainer, regime_reward, ensemble_dis"
-      },
-      "US-030": {
-        "passed": false,
-        "completed_at": null,
-        "title": "Connect feedback consumers for: feature_attention, causal_filter, concept_drift,"
+        "title": "Register modules in dispatcher/orchestrator: drift_projector, replay_validator, "
       }
     },
     "last_story_completed": null,
-    "last_updated": "2026-03-23T11:42:06.300491+00:00",
+    "last_updated": "2026-03-30T14:42:18.165405+00:00",
     "all_complete": false
   },
   "loop_history": {
     "total_phases_completed": 29,
-    "total_chain_runs": 3,
+    "total_chain_runs": 15,
     "total_stories_implemented": 0,
     "phases": [
       "phase8",
@@ -192,18 +137,36 @@
       "phase29"
     ],
     "last_chain_result": {
-      "timestamp": "2026-03-23T09:18:04Z",
+      "timestamp": "2026-03-30T08:59:00.804582+00:00",
       "review_passed": true,
       "blockers": 0,
-      "gaps_found": 30,
-      "new_prd_generated": true
+      "review_cycles_used": 0
     }
   },
-  "pending_actions": [],
+  "pending_actions": [
+    {
+      "action": "chain_started",
+      "phase": "unknown",
+      "gaps": 93,
+      "timestamp": "2026-03-30T08:59:00.825864+00:00"
+    },
+    {
+      "action": "chain_started",
+      "phase": "unknown",
+      "gaps": 93,
+      "timestamp": "2026-03-30T14:32:46.176465+00:00"
+    },
+    {
+      "action": "chain_started",
+      "phase": "unknown",
+      "gaps": 93,
+      "timestamp": "2026-03-30T14:42:17.910637+00:00"
+    }
+  ],
   "flags": {
     "ralph_in_progress": false,
-    "review_in_progress": false,
-    "chain_in_progress": false,
+    "review_in_progress": true,
+    "chain_in_progress": true,
     "manual_override": false
   },
   "last_chain_sweep": {

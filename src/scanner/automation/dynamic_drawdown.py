@@ -80,7 +80,7 @@ class DynamicDrawdownManager:
                 mode="normal",
             )
 
-        severity = min(1.0, max(0.0, abs(current_dd) / max_dd))
+        severity = min(1.0, max(0.0, abs(current_dd) / max(max_dd, 1e-8)))
 
         if severity > self.protective_threshold:
             # High drawdown — protect profits aggressively

@@ -2,7 +2,8 @@
 """Test H1 trade execution improvements."""
 
 from datetime import datetime, timezone
-from src.scanner import ScannerConfig, PIP_VALUES
+from src.scanner import ScannerConfig
+from src.brokers.registry import get_registry
 from src.risk.risk_management import RiskManagementConfig
 
 
@@ -51,8 +52,12 @@ def test_h1_settings():
         ("USD_JPY", 0.18, 18.0),     # ATR ~18 pips (JPY)
     ]
     
+    registry = get_registry()
     for pair, atr, atr_pips in test_pairs:
-        pip_value = PIP_VALUES.get(pair, 0.0001)
+        try:
+            pip_value = registry.get(pair).pip_value
+        except KeyError:
+            pip_value = 0.0001
         
         # Calculate SL/TP
         sl_pips_raw = (atr * scan_cfg.atr_sl_multiplier) / pip_value

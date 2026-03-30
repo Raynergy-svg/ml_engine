@@ -102,6 +102,76 @@ class OverrideEvent:
         }
 
 
+@dataclass
+class AuraQuery:
+    """Buddy → Aura: A pre-trade question requiring a response.
+
+    Buddy submits this before high-risk trades. Aura reads pending queries
+    and writes back an AuraQueryResponse. If Aura is offline or slow (>25s),
+    Buddy proceeds without blocking.
+
+    query_types:
+    - "readiness_check" — Am I ready to take a high-risk trade?
+    - "override_pattern" — Have I been overriding impulsively?
+    - "session_state"    — What's my emotional/cognitive state?
+    - "risk_posture"     — Should I reduce risk given mental state?
+    """
+    query_id: str                            # uuid4 hex string
+    query_type: str
+    context: Dict[str, Any]                  # pair, confidence, regime, rr_ratio, etc.
+    timestamp: str                           # ISO UTC
+    expires_at: str                          # ISO UTC (+30s default)
+    version: str = "1.0"
+    answered: bool = False
+    answer: Optional[Dict[str, Any]] = None
+    answer_timestamp: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "query_id": self.query_id,
+            "query_type": self.query_type,
+            "context": self.context,
+            "timestamp": self.timestamp,
+            "expires_at": self.expires_at,
+            "version": self.version,
+            "answered": self.answered,
+            "answer": self.answer,
+            "answer_timestamp": self.answer_timestamp,
+        }
+
+
+@dataclass
+class AuraQueryResponse:
+    """Aura → Buddy: Response to an AuraQuery.
+
+    proceed=True  → trade allowed (with optional confidence modifier)
+    proceed=False → trade discouraged (confidence penalty applied)
+    hard_veto=True → trade BLOCKED (only for critical emotional states)
+
+    On timeout (no response in 25s): Buddy proceeds as if proceed=True.
+    """
+    query_id: str
+    proceed: bool
+    readiness_score: float                   # 0.0 - 1.0
+    confidence_modifier: float               # clamp to [-0.3, +0.1]
+    message: str
+    hard_veto: bool = False
+    version: str = "1.0"
+    timestamp: str = ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "query_id": self.query_id,
+            "proceed": self.proceed,
+            "readiness_score": round(self.readiness_score, 4),
+            "confidence_modifier": round(max(-0.3, min(0.1, self.confidence_modifier)), 4),
+            "message": self.message,
+            "hard_veto": self.hard_veto,
+            "version": self.version,
+            "timestamp": self.timestamp or datetime.now(timezone.utc).isoformat(),
+        }
+
+
 class FeedbackBridge:
     """Manages bidirectional signal flow between Aura and Buddy.
 
@@ -287,3 +357,111 @@ class FeedbackBridge:
                 "last_override": overrides[-1].to_dict() if overrides else None,
             },
         }
+
+    # --- AuraQuery Protocol (Tier 6 Co-Cognition) ---
+
+    def submit_query(self, query: "AuraQuery") -> None:
+        """Buddy submits a pre-trade query for Aura to answer."""
+        queries_dir = self.bridge_dir / "queries"
+        queries_dir.mkdir(parents=True, exist_ok=True)
+        path = queries_dir / f"{query.query_id}.json"
+        try:
+            self._locked_write(path, json.dumps(query.to_dict(), indent=2, sort_keys=True))
+            logger.info("AuraQuery submitted: %s type=%s", query.query_id[:8], query.query_type)
+        except Exception as e:
+            logger.error("AuraQuery: failed to submit query %s: %s", query.query_id[:8], e)
+
+    def read_response(self, query_id: str) -> Optional["AuraQueryResponse"]:
+        """Read Aura's response to a query. Returns None if not answered yet."""
+        responses_dir = self.bridge_dir / "responses"
+        path = responses_dir / f"{query_id}.json"
+        raw = self._locked_read(path)
+        if raw is None:
+            return None
+        try:
+            data = json.loads(raw)
+            return AuraQueryResponse(**{
+                k: v for k, v in data.items()
+                if k in AuraQueryResponse.__dataclass_fields__
+            })
+        except Exception as e:
+            logger.warning("AuraQuery: failed to parse response %s: %s", query_id[:8], e)
+            return None
+
+    def wait_for_response(
+        self, query_id: str, timeout_sec: float = 25.0
+    ) -> Optional["AuraQueryResponse"]:
+        """Poll for Aura's response. Returns None on timeout (non-blocking by design)."""
+        import time
+        deadline = time.monotonic() + timeout_sec
+        poll_interval = 0.5
+        while time.monotonic() < deadline:
+            response = self.read_response(query_id)
+            if response is not None:
+                logger.info(
+                    "AuraQuery: response received for %s in %.1fs (proceed=%s)",
+                    query_id[:8], timeout_sec - (deadline - time.monotonic()), response.proceed
+                )
+                return response
+            time.sleep(poll_interval)
+        logger.info("AuraQuery: timeout waiting for %s — proceeding without Aura", query_id[:8])
+        return None
+
+    def get_pending_queries(self) -> List["AuraQuery"]:
+        """Aura calls this to read all unanswered queries from Buddy."""
+        queries_dir = self.bridge_dir / "queries"
+        if not queries_dir.exists():
+            return []
+        results: List["AuraQuery"] = []
+        for path in sorted(queries_dir.glob("*.json")):
+            raw = self._locked_read(path)
+            if raw is None:
+                continue
+            try:
+                data = json.loads(raw)
+                if not data.get("answered", False):
+                    query = AuraQuery(**{
+                        k: v for k, v in data.items()
+                        if k in AuraQuery.__dataclass_fields__
+                    })
+                    results.append(query)
+            except Exception as e:
+                logger.warning("AuraQuery: failed to parse query %s: %s", path.name, e)
+        return results
+
+    def submit_response(self, response: "AuraQueryResponse") -> None:
+        """Aura writes its response so Buddy can read it."""
+        responses_dir = self.bridge_dir / "responses"
+        responses_dir.mkdir(parents=True, exist_ok=True)
+        path = responses_dir / f"{response.query_id}.json"
+        try:
+            resp_data = response.to_dict()
+            if not resp_data.get("timestamp"):
+                resp_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+            self._locked_write(path, json.dumps(resp_data, indent=2, sort_keys=True))
+            logger.info(
+                "AuraQuery: response written for %s (proceed=%s, veto=%s)",
+                response.query_id[:8], response.proceed, response.hard_veto
+            )
+        except Exception as e:
+            logger.error("AuraQuery: failed to write response %s: %s", response.query_id[:8], e)
+
+    def cleanup_stale_queries(self, max_age_sec: float = 120.0) -> int:
+        """Remove expired query/response files. Returns count of files removed."""
+        import time
+        removed = 0
+        now = time.time()
+        for subdir_name in ("queries", "responses"):
+            subdir = self.bridge_dir / subdir_name
+            if not subdir.exists():
+                continue
+            for path in list(subdir.glob("*.json")):
+                try:
+                    if (now - path.stat().st_mtime) > max_age_sec:
+                        path.unlink(missing_ok=True)
+                        removed += 1
+                except OSError as e:
+                    logger.warning("AuraQuery: cleanup failed for %s: %s", path.name, e)
+        if removed:
+            logger.info("AuraQuery: cleaned up %d stale query/response files", removed)
+        return removed

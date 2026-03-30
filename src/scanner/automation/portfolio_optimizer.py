@@ -19,6 +19,7 @@ import fcntl
 import json
 import logging
 import math
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -311,13 +312,17 @@ class PortfolioOptimizer:
                 "rankings": [r.to_dict() for r in rankings],
             }
 
-            # Write with file locking (fcntl)
-            with open(self.pair_rankings_path, "w") as f:
+            # Atomic write: tmp + fsync + rename (with file locking for concurrent access)
+            _tmp_path = Path(str(self.pair_rankings_path) + ".tmp")
+            with open(_tmp_path, "w") as f:
                 fcntl.flock(f.fileno(), fcntl.LOCK_EX)
                 try:
-                    f.write(json.dumps(data, indent=2))
+                    f.write(json.dumps(data, indent=2, sort_keys=True))
+                    f.flush()
+                    os.fsync(f.fileno())
                 finally:
                     fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            _tmp_path.replace(self.pair_rankings_path)
 
             logger.debug(f"Saved {len(rankings)} pair rankings to {self.pair_rankings_path}")
 

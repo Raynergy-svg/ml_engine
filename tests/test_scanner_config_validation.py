@@ -16,9 +16,9 @@ from src.scanner.config import (
     MAJOR_PAIRS,
     CROSS_PAIRS,
     DEFAULT_PAIRS,
-    PIP_VALUES,
     PROJECT_ROOT,
 )
+from src.brokers.registry import get_registry
 
 
 # ---------------------------------------------------------------------------
@@ -145,12 +145,18 @@ class TestGetPipValue:
         assert cfg.get_pip_value("FAKE_PAIR") == 0.0001
 
     def test_all_major_pairs_have_pip_values(self):
+        registry = get_registry()
         for pair in MAJOR_PAIRS:
-            assert pair in PIP_VALUES, f"Missing pip value for {pair}"
+            assert registry.contains(pair), f"Missing instrument in registry for {pair}"
+            inst = registry.get(pair)
+            assert inst.pip_value > 0, f"Invalid pip_value for {pair}"
 
     def test_all_cross_pairs_have_pip_values(self):
+        registry = get_registry()
         for pair in CROSS_PAIRS:
-            assert pair in PIP_VALUES, f"Missing pip value for {pair}"
+            assert registry.contains(pair), f"Missing instrument in registry for {pair}"
+            inst = registry.get(pair)
+            assert inst.pip_value > 0, f"Invalid pip_value for {pair}"
 
 
 # ---------------------------------------------------------------------------
@@ -205,14 +211,14 @@ class TestConfigDefaults:
         cfg = ScannerConfig()
         assert cfg.profile == "balanced"
 
-    def test_default_execution_disabled(self):
+    def test_default_execution_enabled(self):
         cfg = ScannerConfig()
-        assert cfg.enable_execution is False
+        assert cfg.enable_execution is True
 
-    def test_default_enable_execution_false(self):
-        """enable_execution defaults to False (effective dry-run mode)."""
+    def test_default_enable_execution_true(self):
+        """enable_execution defaults to True (live execution mode)."""
         cfg = ScannerConfig()
-        assert cfg.enable_execution is False
+        assert cfg.enable_execution is True
 
     def test_default_top_n(self):
         cfg = ScannerConfig()

@@ -329,6 +329,54 @@ def _add_oanda_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_broker_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add broker selection and configuration arguments (US-004)."""
+    parser.add_argument(
+        "--broker",
+        type=str,
+        choices=["oanda", "ibkr"],
+        default="oanda",
+        help="Broker to use for execution and data fetching: oanda (OANDA v20) | ibkr (Interactive Brokers) (default: oanda)",
+    )
+    parser.add_argument(
+        "--oanda-account-id",
+        type=str,
+        default=None,
+        help="OANDA account ID (e.g., 001-001-123456-001). If not provided, uses OANDA_ACCOUNT_ID env var.",
+    )
+    parser.add_argument(
+        "--oanda-api-key",
+        type=str,
+        default=None,
+        help="OANDA API key for authentication. If not provided, uses OANDA_API_KEY env var.",
+    )
+    parser.add_argument(
+        "--oanda-environment",
+        type=str,
+        choices=["practice", "live"],
+        default="practice",
+        help="OANDA environment: practice (demo) | live (real money, use with caution) (default: practice)",
+    )
+    parser.add_argument(
+        "--ibkr-host",
+        type=str,
+        default="127.0.0.1",
+        help="Interactive Brokers TWS/IBGateway host (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--ibkr-port",
+        type=int,
+        default=7497,
+        help="Interactive Brokers TWS port (7497) or IBGateway live (4002) (default: 7497)",
+    )
+    parser.add_argument(
+        "--ibkr-client-id",
+        type=int,
+        default=1,
+        help="Interactive Brokers unique client ID (default: 1)",
+    )
+
+
 def _add_validation_arguments(parser: argparse.ArgumentParser) -> None:
     """Add validation and test arguments."""
     parser.add_argument(
@@ -406,9 +454,20 @@ def _add_scan_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--profile",
         type=str,
-        choices=["conservative", "balanced", "aggressive", "smart"],
+        choices=["conservative", "balanced", "aggressive", "smart", "futures_paper", "futures_live"],
         default="balanced",
-        help="For buddy/scan: gate profile tuning (conservative|balanced|aggressive|smart)",
+        help="For buddy/scan: gate profile tuning (conservative|balanced|aggressive|smart|futures_paper|futures_live)",
+    )
+    parser.add_argument(
+        "--futures",
+        action="store_true",
+        help="For scan: enable futures trading mode (shorthand for --broker ibkr --profile futures_paper)",
+    )
+    parser.add_argument(
+        "--instruments",
+        type=str,
+        default=None,
+        help="For scan: comma-separated instruments to override profile pairs (e.g., ES,NQ,CL,GC)",
     )
     parser.add_argument(
         "--clean-output",
@@ -889,12 +948,8 @@ def _add_wandb_arguments(parser: argparse.ArgumentParser) -> None:
 
 def _add_multi_pair_arguments(parser: argparse.ArgumentParser) -> None:
     """Add multi-pair training arguments."""
-    parser.add_argument(
-        "--instruments",
-        type=str,
-        default="EUR_USD,GBP_USD,USD_JPY",
-        help="For train-joint: comma-separated instruments to train on (e.g., EUR_USD,GBP_USD or 'all' for all default pairs)",
-    )
+    # Note: --instruments is already defined in the main argument group (line ~467).
+    # Do NOT re-add it here — it would conflict with the existing definition.
     parser.add_argument(
         "--multi-pair",
         action="store_true",
@@ -1002,6 +1057,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     _add_tier2_arguments(parser)
     _add_data_quality_arguments(parser)
     _add_oanda_arguments(parser)
+    _add_broker_arguments(parser)  # US-004: Broker selection and configuration
     _add_validation_arguments(parser)
     _add_scan_arguments(parser)
     _add_journal_arguments(parser)

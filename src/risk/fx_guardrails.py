@@ -283,7 +283,20 @@ def load_state(cfg: Dict[str, Any], policy: FxPolicy, *, now: Optional[datetime]
         return FxDailyState(date=date_str)
 
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        import fcntl
+        with open(path, "r", encoding="utf-8") as f:
+            fcntl.flock(f, fcntl.LOCK_SH)
+            try:
+                payload = json.loads(f.read())
+            finally:
+                fcntl.flock(f, fcntl.LOCK_UN)
+    except ImportError:
+        # fcntl not available — fall back to unlocked read
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as e:
+            logger.warning("fx_guardrails: corrupted state file %s: %s — resetting", path, e)
+            return FxDailyState(date=date_str)
     except json.JSONDecodeError as e:
         logger.warning("fx_guardrails: corrupted state file %s: %s — resetting", path, e)
         return FxDailyState(date=date_str)
@@ -358,7 +371,23 @@ def update_state_from_account_summary(
 
     base = state.start_nav
     if base is None or base <= 0:
-        return {"nav": nav, "balance": balance, "drawdown_pct": None, "realized_pct": None}
+        # C-3 fix: Never silently disable drawdown monitoring.
+        # If start_nav is invalid, reset to current NAV so monitoring stays active.
+        if nav is not None and nav > 0:
+            logger.error(
+                "fx_guardrails: start_nav invalid (%.2f), resetting to current NAV %.2f — "
+                "drawdown monitoring was at risk of being silently disabled",
+                base if base is not None else 0.0, nav,
+            )
+            state.start_nav = nav
+            base = nav
+        else:
+            logger.error(
+                "fx_guardrails: start_nav invalid (%.2f) and current NAV also invalid (%.2f) — "
+                "returning drawdown_pct=0.0 (NOT None) to keep monitoring active",
+                base if base is not None else 0.0, nav if nav is not None else 0.0,
+            )
+            return {"nav": nav, "balance": balance, "drawdown_pct": 0.0, "realized_pct": 0.0}
 
     drawdown_pct = None
     realized_pct = None

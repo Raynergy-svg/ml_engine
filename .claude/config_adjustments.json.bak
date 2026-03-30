@@ -1,27 +1,59 @@
 {
   "version": 1,
-  "total_adjustments": 0,
-  "history": [],
+  "total_adjustments": 3,
+  "history": [
+    {
+      "cycle": 10,
+      "key": "optimized_confidence_threshold",
+      "new_value": 0.55,
+      "old_value": null,
+      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "source": "threshold_optimizer",
+      "timestamp": "2026-03-23T20:21:37.727012+00:00"
+    },
+    {
+      "cycle": 10,
+      "key": "optimized_momentum_threshold",
+      "new_value": 0.3,
+      "old_value": null,
+      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "source": "threshold_optimizer",
+      "timestamp": "2026-03-23T20:21:37.727730+00:00"
+    },
+    {
+      "cycle": 10,
+      "key": "optimized_rr_ratio_threshold",
+      "new_value": 1.2,
+      "old_value": null,
+      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "source": "threshold_optimizer",
+      "timestamp": "2026-03-23T20:21:37.727738+00:00"
+    }
+  ],
   "pending": {
     "optimized_confidence_threshold": {
       "source": "threshold_optimizer",
       "value": 0.55,
-      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "reason": "Rolling win rate optimization for UNKNOWN",
       "cycle_proposed": 0
     },
     "optimized_momentum_threshold": {
       "source": "threshold_optimizer",
       "value": 0.3,
-      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "reason": "Rolling win rate optimization for UNKNOWN",
       "cycle_proposed": 0
     },
     "optimized_rr_ratio_threshold": {
       "source": "threshold_optimizer",
       "value": 1.2,
-      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "reason": "Rolling win rate optimization for UNKNOWN",
       "cycle_proposed": 0
     }
   },
-  "last_applied": {},
-  "last_updated": "2026-03-23T20:21:37.722640+00:00"
+  "last_applied": {
+    "optimized_confidence_threshold": 10,
+    "optimized_momentum_threshold": 10,
+    "optimized_rr_ratio_threshold": 10
+  },
+  "last_updated": "2026-03-26T15:42:15.426797+00:00"
 }

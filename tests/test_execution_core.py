@@ -21,7 +21,8 @@ from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
 
 try:
-    from src.scanner.execution import ExecutionManager, ExecutionConfig, PIP_VALUES
+    from src.scanner.execution import ExecutionManager, ExecutionConfig
+    from src.brokers.registry import get_registry
 except ImportError:
     pytest.skip("ExecutionManager not importable", allow_module_level=True)
 
@@ -67,6 +68,29 @@ def em(config):
         manager._adaptive_position_sizer = None
         manager._last_regime_name = "NORMAL"
         manager._current_drawdown_pct = 0.0
+        manager._ewma_correlation = None
+        manager._correlation_block_counts = {}
+        manager._open_trade_pairs = set()
+        manager._fasttrack_stats = {"wins": 0, "losses": 0, "total": 0}
+        manager._broker = None
+        manager._legacy_oanda = None
+        manager._circuit_breaker = None
+        manager._dynamic_risk_allocator = None
+        manager._adaptive_exit_manager = None
+        manager._execution_filter_chain = None
+        manager._episodic_memory = None
+        manager._gate_attribution = None
+        manager._trade_cluster_analyzer = None
+        manager._walkforward_optimizer = None
+        manager._walkforward_retrainer = None
+        manager._feature_drift_detector = None
+        manager._feature_health_monitor = None
+        manager._pair_tracker = None
+        manager._attribution_engine = None
+        manager._gate_threshold_optimizer = None
+        manager._session_detector = None
+        manager._tranche_manager = None
+        manager._market_impact_tracker = None
         manager.logger = logging.getLogger("test_execution")
         return manager
 
@@ -348,9 +372,10 @@ class TestSizingZeroDivisionGuards:
             pytest.fail("ZeroDivisionError on atr=0")
 
     def test_pip_values_are_positive(self):
-        """All PIP_VALUES should be positive to prevent division issues."""
-        for pair, value in PIP_VALUES.items():
-            assert value > 0, f"PIP_VALUE for {pair} is {value}, should be positive"
+        """All FX instruments should have positive pip_value to prevent division issues."""
+        registry = get_registry()
+        for inst in registry.get_by_asset_class("FX"):
+            assert inst.pip_value > 0, f"pip_value for {inst.symbol} is {inst.pip_value}, should be positive"
 
 
 # ===========================================================================
