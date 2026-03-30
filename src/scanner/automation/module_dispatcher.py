@@ -81,6 +81,30 @@ DEFAULT_FREQUENCIES: Dict[str, int] = {
     "macro_stress": 20,             # Runs infrequently — stress testing
     "microstructure_regime": 5,     # Medium frequency — regime detection
     "regime_tracker": 3,            # Frequent — tracks regime transitions
+    # Phase 50: Previously orphaned modules
+    "retrain_trigger": 30,          # Training — check drift infrequently
+    "pair_model_selector": 10,      # Optimization — model selection per pair
+    "portfolio_optimizer": 10,      # Optimization — pair ranking by Sharpe
+    "session_snapshot": 5,          # Monitoring — session state capture
+    "alert_manager": 2,             # Monitoring — check alerts frequently
+    "dynamic_drawdown": 2,          # Monitoring — drawdown threshold adaptation
+    "smart_execution": 1,           # Execution — order slicing every cycle
+    "accuracy_gate": 5,             # Monitoring — per-pair accuracy gating
+    "pair_affinity": 10,            # Optimization — co-occurrence tracking
+    "hierarchical_risk_parity": 10, # Optimization — HRP weight allocation
+    "observational_learning": 20,   # Training — synthetic pattern extraction
+    "model_manager": 20,            # Training — version management and promotion
+    "crisis_generator": 50,         # Crisis/stress — synthetic scenario generation
+    "api_retry": 1,                 # Monitoring — circuit breaker health every cycle
+    # US-006–US-019: Previously unregistered modules
+    "group_momentum": 3,            # Aggregation — group momentum every few cycles
+    "seasonality": 10,              # Analytics — hour-of-day modifiers
+    "counterfactual_learner": 20,   # Learning — counterfactual trade analysis
+    "chain_memory": 10,             # Memory — PRD agent chain context
+    "drift_projector": 20,          # Analytics — drift projection caching
+    "episodic_memory": 10,          # Learning — episodic trade pattern recall
+    "self_model_state": 10,         # Analytics — self-model projection state
+    "causal_counterfactual": 20,    # Analytics — causal counterfactual engine
 }
 
 
@@ -173,7 +197,7 @@ class ModuleDispatcher:
             "_dynamic_sl_tp": "dynamic_sl_tp",
             "_trade_explainer": "trade_explainer",
             "_multi_horizon_fusion": "multi_horizon_fusion",
-            "_kelly_portfolio": "kelly_portfolio",
+            "_kelly_optimizer": "kelly_portfolio",
             "_ensemble_disagreement": "ensemble_disagreement",
             "_feature_attention": "feature_attention",
             "_adversarial_trainer": "adversarial_trainer",
@@ -188,6 +212,34 @@ class ModuleDispatcher:
             "_position_timeout": "position_timeout",
             "_dynamic_hedging": "dynamic_hedging",
             "_trade_outcome_predictor": "trade_outcome_predictor",
+            # Phase 50: Previously orphaned modules
+            "_retrain_trigger": "retrain_trigger",
+            "_pair_model_selector": "pair_model_selector",
+            "_portfolio_optimizer": "portfolio_optimizer",
+            "_session_snapshot": "session_snapshot",
+            "_alert_manager": "alert_manager",
+            "_dynamic_drawdown": "dynamic_drawdown",
+            "_smart_execution": "smart_execution",
+            "_accuracy_gate": "accuracy_gate",
+            "_pair_affinity": "pair_affinity",
+            "_hrp_optimizer": "hierarchical_risk_parity",
+            "_observational_learner": "observational_learning",
+            "_model_manager": "model_manager",
+            "_crisis_generator": "crisis_generator",
+            "_api_retry": "api_retry",
+            # US-006–US-019: Previously unregistered modules
+            "_group_momentum": "group_momentum",
+            "_seasonality": "seasonality",
+            "_counterfactual_learner": "counterfactual_learner",
+            "_chain_memory": "chain_memory",
+            "_drift_projector": "drift_projector",
+            "_episodic_memory": "episodic_memory",
+            "_self_model_state": "self_model_state",
+            "_causal_counterfactual": "causal_counterfactual",
+            # Gap resolution: modules in DEFAULT_FREQUENCIES but missing from module_map
+            "_microstructure_detector": "microstructure_regime",
+            "_regime_tracker": "regime_tracker",
+            "_macro_stress": "macro_stress",
         }
 
         for attr, name in module_map.items():
@@ -195,13 +247,22 @@ class ModuleDispatcher:
             if module is not None:
                 freq = DEFAULT_FREQUENCIES.get(name, 5)
                 # Create a save_state wrapper as the default dispatch action
-                if hasattr(module, "save_state"):
-                    self.register_module(
-                        name,
-                        run_fn=module.save_state,
-                        run_every_n=freq,
-                    )
-                    registered += 1
+                # Fallback to save_log for modules that persist via save_log()
+                # Find best dispatch method: save_state > save_log > save > save_projections > save_analysis > noop
+                _dispatch_fn = None
+                for _method_name in ("save_state", "save_log", "save", "save_projections", "save_analysis"):
+                    if hasattr(module, _method_name):
+                        _dispatch_fn = getattr(module, _method_name)
+                        break
+                if _dispatch_fn is None:
+                    # Read-only module — register with noop so it appears in dispatch tracking
+                    _dispatch_fn = lambda: None  # noqa: E731
+                self.register_module(
+                    name,
+                    run_fn=_dispatch_fn,
+                    run_every_n=freq,
+                )
+                registered += 1
 
         # Also register with ModuleActivationMap if available
         activation_map = getattr(self._scanner, "_module_activation", None)

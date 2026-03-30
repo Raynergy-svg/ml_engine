@@ -385,3 +385,60 @@ High priority issues confirmed fixed:
 ---
 
 *Scan completed: 2026-03-24 18:00 ET | Files scanned: ~150 Python source files | Static analysis: flake8 F401/F811/F841/E711/E712 | Syntax: py_compile all src/*
+
+---
+
+## Exterminator Results — 2026-03-24 ~21:00 ET
+
+**Exterminator run against session**: gallant-cool-darwin
+**Working directory**: /sessions/gallant-cool-darwin/mnt/ml_engine
+
+### Bugs Fixed
+
+| ID | Severity | Commit | Description |
+|----|----------|--------|-------------|
+| H-1 | HIGH | `c9f1534` | fx_guardrails load_state: split silent bare except into JSONDecodeError (warning) + Exception (error); added encoding="utf-8"; added import logging + module logger. Prevents silent daily-state reset that could bypass loss limits. |
+| H-2 | HIGH | `6d74a83` | cli_entry.py: Added script.exists() pre-check and try/except around runpy.run_path(); re-raises SystemExit cleanly; all other failures emit actionable error + sys.exit(1). |
+| M-2 | MEDIUM | `e2cdc95` | engine.py: Added logging to all 12 silent bare `except Exception: pass` clauses. L2306 (pair SL/TP config read) upgraded to `logger.warning`; all others emit `logger.debug`. |
+| M-3 | MEDIUM | `8ce0fd6` | engine.py L2394: Removed unused `_lag_signals` variable; kept `get_lagging_signals()` call (possible side effects) with clarifying comment. |
+| M-4 | MEDIUM | `1a8899a` | engine.py L3853: `pre_filter_pairs` now emits `logger.debug` with before/after count on each diversification filter cycle. |
+| M-5 | MEDIUM | `1a8899a` | continuous.py: Replaced 2 bare `open(..., "a")` JSONL append sites with `safe_jsonl_append()` from safe_json.py — prevents line-interleaving from concurrent threads. |
+| M-6 | MEDIUM | `1a8899a` | continuous.py: Removed dead module-level `import json` (line 9) — all json usage is in function-level lazy imports. |
+| M-7 | MEDIUM | `1a8899a` | orchestrator.py: Removed dead module-level `import json` (line 14) — same pattern as M-6. |
+| M-8 | MEDIUM | `1a8899a` | learning_engine.py: Added `rr_ratio` computation from sl_pips/tp_pips; added Rule 1b logging low-R:R losses and high-R:R wins as learning entries for pattern detection. |
+| L-1 | LOW | `7abcf7c` | _team.py: Removed unused `timedelta`, `numpy as np` module-level imports; removed unused names from lazy imports (BayesianAgentWeights, ExpectancyTracker, MultiTimeframeConfluence, EnsembleConflictResolver, ModelPrediction). |
+| L-1 (bonus) | **RUNTIME BUG** | `7abcf7c` | _team.py: **Added missing `import math`** — `math.exp()` and `math.sqrt()` used in softmax attention weights and consensus entropy calculation but `math` was never imported. Would produce `NameError` at runtime when those code paths execute. |
+| L-2 | LOW | `7abcf7c` | execution.py: Removed unused AdaptivePositionSizer, create_conservative_adaptive_sizer, EWMACorrelationEngine, ExpectancyTracker from lazy init imports. |
+| L-3 | LOW | `7abcf7c` | _team.py L476: Removed unused `selected_regime` variable assignment. |
+| L-4 | LOW | `7abcf7c` | _team.py L1169: Removed unused `_prev` variable assignment. |
+| L-5 | LOW | `7abcf7c` | execution.py L2740: Removed unused `current_price` local variable. |
+| L-6 | LOW | `7abcf7c` | learning_engine.py: Removed unused `field` import from dataclasses; removed redundant function-level `from collections import Counter` at line 444. |
+| L-7 | LOW | `7abcf7c` | state_engine.py: Removed dead `import tempfile` inside `_atomic_write()`. |
+| L-9 | LOW | `7abcf7c` | 6 automation modules: Batch-removed unused imports (field, Tuple, math, Counter, numpy) from model_router, agent_health, attention_feedback, observational_learning, online_rl, model_calibration. |
+| L-11 | LOW | `7abcf7c` | improvement_tracker.py L111: Removed unused `pair_pnl` dict assignment. |
+| L-12 | LOW | `7abcf7c` | regime_detector.py L537: Removed unused `alpha` in ADX calc (alpha is recomputed in `_ema_smooth()` internally). |
+| L-13 | LOW | `7abcf7c` | drawdown_adapter.py L143: Removed unused `entry_dd` local variable. |
+| L-14 | LOW | `7abcf7c` | model_router.py: Added `logger.warning` when `_bandit is None` — degraded equal-probability routing mode is now visible. |
+| L-15 | LOW | `7abcf7c` | orchestrator.py L661: Removed unused `_new_obs` assignment; `consume_observations()` called without capturing discarded return value. |
+
+### Bugs Skipped (with reasons)
+
+| ID | Severity | Reason |
+|----|----------|--------|
+| H-3 | HIGH | The 4 critical-path modules (confidence_calibrator, threshold_optimizer, session_snapshot, agent_health) already use `safe_json_write()` as primary writer with `write_text()` only as fallback. Remaining 62 bare write_text instances are in non-critical telemetry fallback paths. Full batch cleanup would require touching 17+ files with ~62 call sites — deferred to a dedicated import-hygiene sprint. |
+| M-1 | MEDIUM | Chandelier exit OHLC wiring requires adding `Scanner._raw_snapshots` → `ExecutionManager.set_ohlc_cache()` integration across two production files. Without OHLC data on hand to verify behavior, this change carries execution risk. Flagged for dedicated wiring sprint. |
+| L-8 | LOW | Large function refactoring (1071-line _scan_pair, 818-line execute_trade) — observation only, no action appropriate in a bug-fix run. Requires a dedicated refactoring sprint. |
+| L-10 | LOW | fsync() improvement for fx_guardrails/adaptive_scaler atomic writes — extremely low real-world risk (hardware failure within ~microsecond window). Already substantially improved from non-atomic to atomic. Deferred. |
+
+### New Issues Discovered During Fixing
+
+- **RUNTIME BUG found in _team.py**: `math` module used but not imported (math.exp in softmax attention, math.sqrt in consensus entropy). Would raise `NameError` at runtime when graph-level scoring or attention weighting runs. Fixed in commit `7abcf7c` as part of L-1 cleanup.
+- **pyflakes detected undefined names** (math.exp at lines 2592, 2635) that were not in the original bug report scan — suggests the original scanner did not run pyflakes undefined-name checks on _team.py.
+
+### Summary
+
+- **Fixed**: 23 issues (H-1, H-2, M-2 through M-8, L-1 through L-7, L-9, L-11 through L-15)
+- **Skipped**: 4 issues (H-3, M-1, L-8, L-10)
+- **Bonus fix**: 1 runtime NameError in _team.py (missing `import math`)
+- **All py_compile checks passed** after every fix
+- **Commits**: c9f1534, 6d74a83, 8ce0fd6, 1a8899a, e2cdc95, 7abcf7c

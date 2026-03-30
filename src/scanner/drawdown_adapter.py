@@ -205,10 +205,10 @@ class DrawdownAdapter:
         if tier == 0:
             return result
 
-        # ── Tier 1+: Tighten confidence ──
+        # ── Tier 1+: Tighten confidence (with floor to prevent sub-gate values) ──
         if tier >= 1:
             result.confidence_penalty = c.confidence_tighten
-            result.adjusted_confidence = confidence - c.confidence_tighten
+            result.adjusted_confidence = max(0.40, confidence - c.confidence_tighten)
             result.details["confidence_tightened_by"] = c.confidence_tighten
 
         # ── Tier 2+: Restrict to top-N pairs ──

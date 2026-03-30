@@ -264,8 +264,10 @@ class EWMACorrelationEngine:
             self._correlation_matrix[pair_i] = {}
 
             var_i = self._covariance[i, i]
-            if var_i <= 0:
-                # Zero or negative variance - set all correlations to 0
+            # H-8 fix: Clamp to small positive to prevent NaN from sqrt of negative
+            var_i = max(float(var_i), 1e-8)
+            if var_i <= 1e-8:
+                # Effectively zero variance - set all correlations to 0
                 for j, pair_j in enumerate(self._pairs):
                     self._correlation_matrix[pair_i][pair_j] = (
                         1.0 if i == j else 0.0
@@ -276,7 +278,9 @@ class EWMACorrelationEngine:
 
             for j, pair_j in enumerate(self._pairs):
                 var_j = self._covariance[j, j]
-                if var_j <= 0:
+                # H-8 fix: Clamp to prevent NaN from negative floating-point variance
+                var_j = max(float(var_j), 1e-8)
+                if var_j <= 1e-8:
                     self._correlation_matrix[pair_i][pair_j] = (
                         1.0 if i == j else 0.0
                     )

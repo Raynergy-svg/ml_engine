@@ -70,23 +70,36 @@ class StateEngine:
         self.state_path = state_path or STATE_PATH
 
     def load_state(self) -> Dict[str, Any]:
-        """Read .claude/state.json and return dict (or empty default if missing)."""
+        """Read .claude/state.json with shared file lock (or empty default if missing)."""
         if not self.state_path.exists():
             return dict(_DEFAULT_STATE)
         try:
+            import fcntl
+            with open(self.state_path, "r", encoding="utf-8") as f:
+                fcntl.flock(f, fcntl.LOCK_SH)
+                try:
+                    data = json.loads(f.read())
+                finally:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+        except ImportError:
+            # fcntl not available — fall back to unlocked read
             data = json.loads(self.state_path.read_text())
-            # Validate required keys exist
-            required_keys = {"goal", "status", "done", "next", "last_updated"}
-            missing_keys = required_keys - set(data.keys())
-            if missing_keys:
-                logger.warning(f"State missing keys {missing_keys}, merging with defaults")
-                defaults = dict(_DEFAULT_STATE)
-                defaults.update(data)
-                data = defaults
-            return data
+        except json.JSONDecodeError as e:
+            logger.warning(f"State file corrupted: {e}")
+            return dict(_DEFAULT_STATE)
         except Exception as e:
             logger.warning(f"Failed to load state: {e}")
             return dict(_DEFAULT_STATE)
+
+        # Validate required keys exist
+        required_keys = {"goal", "status", "done", "next", "last_updated"}
+        missing_keys = required_keys - set(data.keys())
+        if missing_keys:
+            logger.warning(f"State missing keys {missing_keys}, merging with defaults")
+            defaults = dict(_DEFAULT_STATE)
+            defaults.update(data)
+            data = defaults
+        return data
 
     def save_state(
         self,
@@ -138,7 +151,7 @@ class StateEngine:
             resp = requests.get(
                 f"{base}/v3/accounts/{acct}/summary",
                 headers=headers,
-                timeout=10,
+                timeout=(5, 30),
             )
             if resp.status_code == 200:
                 resp_json = resp.json()

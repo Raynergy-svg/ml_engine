@@ -33,8 +33,27 @@
     "optimized_momentum_threshold": 10,
     "optimized_rr_ratio_threshold": 10
   },
-  "last_updated": "2026-03-23T20:21:37.729008+00:00",
-  "pending": {},
+  "last_updated": "2026-03-26T16:12:08.664607+00:00",
+  "pending": {
+    "optimized_confidence_threshold": {
+      "cycle_proposed": 0,
+      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "source": "threshold_optimizer",
+      "value": 0.55
+    },
+    "optimized_momentum_threshold": {
+      "cycle_proposed": 0,
+      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "source": "threshold_optimizer",
+      "value": 0.3
+    },
+    "optimized_rr_ratio_threshold": {
+      "cycle_proposed": 0,
+      "reason": "Rolling win rate optimization for EXTREME_NEXT",
+      "source": "threshold_optimizer",
+      "value": 1.2
+    }
+  },
   "total_adjustments": 3,
   "version": 1,
   "walkforward_recommendations": [
@@ -51,7 +70,7 @@
       "oos_profit_factor": 0.0,
       "oos_trade_count": 5,
       "recommendation": "REJECT",
-      "timestamp": 1774381945.7124398,
+      "timestamp": 1774882049.431202,
       "wfe": 0.0
     },
     {
@@ -67,7 +86,7 @@
       "oos_profit_factor": 3.0,
       "oos_trade_count": 5,
       "recommendation": "APPLY",
-      "timestamp": 1774381945.7227259,
+      "timestamp": 1774882049.4365492,
       "wfe": 1.0
     },
     {
@@ -83,71 +102,7 @@
       "oos_profit_factor": 3.0,
       "oos_trade_count": 5,
       "recommendation": "APPLY",
-      "timestamp": 1774384679.4863222,
-      "wfe": 1.0
-    },
-    {
-      "best_params": {
-        "atr_sl_multiplier": 1.0,
-        "atr_tp_multiplier": 1.5,
-        "confidence_threshold": 0.4,
-        "momentum_threshold": 0.4
-      },
-      "is_overfitting": true,
-      "is_profit_factor": 0.167,
-      "is_trade_count": 20,
-      "oos_profit_factor": 0.0,
-      "oos_trade_count": 5,
-      "recommendation": "REJECT",
-      "timestamp": 1774384679.4898584,
-      "wfe": 0.0
-    },
-    {
-      "best_params": {
-        "atr_sl_multiplier": 1.0,
-        "atr_tp_multiplier": 1.5,
-        "confidence_threshold": 0.4,
-        "momentum_threshold": 0.4
-      },
-      "is_overfitting": true,
-      "is_profit_factor": 3.0,
-      "is_trade_count": 20,
-      "oos_profit_factor": 0.0,
-      "oos_trade_count": 5,
-      "recommendation": "REJECT",
-      "timestamp": 1774384679.4927802,
-      "wfe": 0.0
-    },
-    {
-      "best_params": {
-        "atr_sl_multiplier": 1.0,
-        "atr_tp_multiplier": 1.5,
-        "confidence_threshold": 0.4,
-        "momentum_threshold": 0.4
-      },
-      "is_overfitting": false,
-      "is_profit_factor": 3.0,
-      "is_trade_count": 20,
-      "oos_profit_factor": 3.0,
-      "oos_trade_count": 5,
-      "recommendation": "APPLY",
-      "timestamp": 1774384679.4959106,
-      "wfe": 1.0
-    },
-    {
-      "best_params": {
-        "atr_sl_multiplier": 1.0,
-        "atr_tp_multiplier": 1.5,
-        "confidence_threshold": 0.4,
-        "momentum_threshold": 0.4
-      },
-      "is_overfitting": false,
-      "is_profit_factor": 3.0,
-      "is_trade_count": 20,
-      "oos_profit_factor": 3.0,
-      "oos_trade_count": 5,
-      "recommendation": "APPLY",
-      "timestamp": 1774389746.9127436,
+      "timestamp": 1774882263.242143,
       "wfe": 1.0
     },
     {
@@ -163,7 +118,7 @@
       "oos_profit_factor": 0.0,
       "oos_trade_count": 5,
       "recommendation": "REJECT",
-      "timestamp": 1774389746.9193344,
+      "timestamp": 1774882263.249723,
       "wfe": 0.0
     },
     {
@@ -179,7 +134,7 @@
       "oos_profit_factor": 0.0,
       "oos_trade_count": 5,
       "recommendation": "REJECT",
-      "timestamp": 1774389746.9228125,
+      "timestamp": 1774882263.26034,
       "wfe": 0.0
     },
     {
@@ -195,7 +150,71 @@
       "oos_profit_factor": 3.0,
       "oos_trade_count": 5,
       "recommendation": "APPLY",
-      "timestamp": 1774389746.9258134,
+      "timestamp": 1774882263.2679482,
+      "wfe": 1.0
+    },
+    {
+      "best_params": {
+        "atr_sl_multiplier": 1.0,
+        "atr_tp_multiplier": 1.5,
+        "confidence_threshold": 0.4,
+        "momentum_threshold": 0.4
+      },
+      "is_overfitting": false,
+      "is_profit_factor": 3.0,
+      "is_trade_count": 20,
+      "oos_profit_factor": 3.0,
+      "oos_trade_count": 5,
+      "recommendation": "APPLY",
+      "timestamp": 1774882470.748969,
+      "wfe": 1.0
+    },
+    {
+      "best_params": {
+        "atr_sl_multiplier": 1.0,
+        "atr_tp_multiplier": 1.5,
+        "confidence_threshold": 0.4,
+        "momentum_threshold": 0.4
+      },
+      "is_overfitting": true,
+      "is_profit_factor": 0.167,
+      "is_trade_count": 20,
+      "oos_profit_factor": 0.0,
+      "oos_trade_count": 5,
+      "recommendation": "REJECT",
+      "timestamp": 1774882470.751905,
+      "wfe": 0.0
+    },
+    {
+      "best_params": {
+        "atr_sl_multiplier": 1.0,
+        "atr_tp_multiplier": 1.5,
+        "confidence_threshold": 0.4,
+        "momentum_threshold": 0.4
+      },
+      "is_overfitting": true,
+      "is_profit_factor": 3.0,
+      "is_trade_count": 20,
+      "oos_profit_factor": 0.0,
+      "oos_trade_count": 5,
+      "recommendation": "REJECT",
+      "timestamp": 1774882470.7683961,
+      "wfe": 0.0
+    },
+    {
+      "best_params": {
+        "atr_sl_multiplier": 1.0,
+        "atr_tp_multiplier": 1.5,
+        "confidence_threshold": 0.4,
+        "momentum_threshold": 0.4
+      },
+      "is_overfitting": false,
+      "is_profit_factor": 3.0,
+      "is_trade_count": 20,
+      "oos_profit_factor": 3.0,
+      "oos_trade_count": 5,
+      "recommendation": "APPLY",
+      "timestamp": 1774882470.777109,
       "wfe": 1.0
     }
   ]

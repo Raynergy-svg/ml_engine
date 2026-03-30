@@ -54,7 +54,7 @@ def __getattr__(name):
         # Config (lightweight — safe to import eagerly but kept lazy for consistency)
         "ScannerConfig": ("src.scanner.config", "ScannerConfig"),
         "DEFAULT_PAIRS": ("src.scanner.config", "DEFAULT_PAIRS"),
-        "PIP_VALUES": ("src.scanner.config", "PIP_VALUES"),
+        # NOTE: PIP_VALUES has been moved to InstrumentRegistry — use get_registry() instead
         "load_yaml_config": ("src.scanner.config", "load_yaml_config"),
         "PROJECT_ROOT": ("src.scanner.config", "PROJECT_ROOT"),
         "DEFAULT_CONFIG_PATH": ("src.scanner.config", "DEFAULT_CONFIG_PATH"),
@@ -118,6 +118,50 @@ def __getattr__(name):
         "DrawdownAdapter": ("src.scanner.drawdown_adapter", "DrawdownAdapter"),
         "DrawdownAdapterConfig": ("src.scanner.drawdown_adapter", "DrawdownAdapterConfig"),
         "DrawdownCheckResult": ("src.scanner.drawdown_adapter", "DrawdownCheckResult"),
+        "GateAttributionEngine": ("src.scanner.gate_attribution", "GateAttributionEngine"),
+        "GateAttributionConfig": ("src.scanner.gate_attribution", "GateAttributionConfig"),
+        "GateDecision": ("src.scanner.gate_attribution", "GateDecision"),
+        "GateStats": ("src.scanner.gate_attribution", "GateStats"),
+        "PairSpecificBayesianWeights": ("src.scanner.pair_bayesian_weights", "PairSpecificBayesianWeights"),
+        "PairWeightsConfig": ("src.scanner.pair_bayesian_weights", "PairWeightsConfig"),
+        "PairWeightSample": ("src.scanner.pair_bayesian_weights", "PairWeightSample"),
+        "SignalFreshnessGuard": ("src.scanner.signal_freshness", "SignalFreshnessGuard"),
+        "FreshnessConfig": ("src.scanner.signal_freshness", "FreshnessConfig"),
+        "FreshnessResult": ("src.scanner.signal_freshness", "FreshnessResult"),
+        "UnifiedConfidencePipeline": ("src.scanner.confidence_pipeline", "UnifiedConfidencePipeline"),
+        "ConfidencePipelineConfig": ("src.scanner.confidence_pipeline", "ConfidencePipelineConfig"),
+        "CalibrationMonitor": ("src.scanner.confidence_pipeline", "CalibrationMonitor"),
+        # Phase 53: WFE Stability Monitor
+        "WFEStabilityMonitor": ("src.scanner.wfe_monitor", "WFEStabilityMonitor"),
+        "WFEMonitorConfig": ("src.scanner.wfe_monitor", "WFEMonitorConfig"),
+        # Phase 54: Dynamic Gate Threshold Optimizer
+        "GateThresholdOptimizer": ("src.scanner.gate_threshold_optimizer", "GateThresholdOptimizer"),
+        "GateThresholdOptimizerConfig": ("src.scanner.gate_threshold_optimizer", "GateThresholdOptimizerConfig"),
+        "ThresholdRecommendation": ("src.scanner.gate_threshold_optimizer", "ThresholdRecommendation"),
+        # Phase 54: Feature Drift Detector
+        "FeatureDriftDetector": ("src.scanner.feature_drift", "FeatureDriftDetector"),
+        "FeatureDriftConfig": ("src.scanner.feature_drift", "FeatureDriftConfig"),
+        "DriftCheckResult": ("src.scanner.feature_drift", "DriftCheckResult"),
+        # Phase 54: Trade Cluster Analyzer
+        "TradeClusterAnalyzer": ("src.scanner.trade_clusters", "TradeClusterAnalyzer"),
+        "TradeClusterConfig": ("src.scanner.trade_clusters", "TradeClusterConfig"),
+        "ClusterInfo": ("src.scanner.trade_clusters", "ClusterInfo"),
+        # Phase 54: Cluster Confidence Gate
+        "ClusterConfidenceGate": ("src.scanner.cluster_gate", "ClusterConfidenceGate"),
+        "ClusterGateResult": ("src.scanner.cluster_gate", "ClusterGateResult"),
+        # Phase 54: Regime Confidence Scorer
+        "RegimeConfidenceScorer": ("src.scanner.regime_confidence", "RegimeConfidenceScorer"),
+        "RegimeConfidenceConfig": ("src.scanner.regime_confidence", "RegimeConfidenceConfig"),
+        "RegimeScoreResult": ("src.scanner.regime_confidence", "RegimeScoreResult"),
+        # Phase 55: Safe I/O
+        "safe_json_write": ("src.scanner.safe_io", "safe_json_write"),
+        "safe_json_read": ("src.scanner.safe_io", "safe_json_read"),
+        "safe_jsonl_append": ("src.scanner.safe_io", "safe_jsonl_append"),
+        # Phase 55: Retry & Resilient Save (US-342)
+        "retry_with_backoff": ("src.scanner.safe_io", "retry_with_backoff"),
+        "resilient_save": ("src.scanner.safe_io", "resilient_save"),
+        # Phase 55: Disagreement Tracker (US-343)
+        "DisagreementTracker": ("src.scanner.disagreement_tracker", "DisagreementTracker"),
     }
     if name in _LAZY_MAP:
         module_path, attr_name = _LAZY_MAP[name]
@@ -160,7 +204,7 @@ __all__ = [
     "IdleMaintenance",
     # Config helpers
     "DEFAULT_PAIRS",
-    "PIP_VALUES",
+    # NOTE: PIP_VALUES moved to InstrumentRegistry — use get_registry() instead
     "load_yaml_config",
     "PROJECT_ROOT",
     "DEFAULT_CONFIG_PATH",
@@ -193,4 +237,40 @@ __all__ = [
     "DrawdownAdapter",
     "DrawdownAdapterConfig",
     "DrawdownCheckResult",
+    # Phase 53: Gate Attribution & Pair-Specific Tuning
+    "GateAttributionEngine",
+    "GateAttributionConfig",
+    "GateDecision",
+    "GateStats",
+    "PairSpecificBayesianWeights",
+    "PairWeightsConfig",
+    "PairWeightSample",
+    "SignalFreshnessGuard",
+    "FreshnessConfig",
+    "FreshnessResult",
+    "UnifiedConfidencePipeline",
+    "ConfidencePipelineConfig",
+    "CalibrationMonitor",
+    # Phase 53: WFE Stability Monitor
+    "WFEStabilityMonitor",
+    "WFEMonitorConfig",
+    # Phase 54: Dynamic Gate Threshold Optimizer
+    "GateThresholdOptimizer",
+    "GateThresholdOptimizerConfig",
+    "ThresholdRecommendation",
+    # Phase 54: Feature Drift Detector
+    "FeatureDriftDetector",
+    "FeatureDriftConfig",
+    "DriftCheckResult",
+    # Phase 54: Trade Cluster Analyzer
+    "TradeClusterAnalyzer",
+    "TradeClusterConfig",
+    "ClusterInfo",
+    # Phase 54: Cluster Confidence Gate
+    "ClusterConfidenceGate",
+    "ClusterGateResult",
+    # Phase 54: Regime Confidence Scorer
+    "RegimeConfidenceScorer",
+    "RegimeConfidenceConfig",
+    "RegimeScoreResult",
 ]

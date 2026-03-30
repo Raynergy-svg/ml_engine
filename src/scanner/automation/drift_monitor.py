@@ -22,6 +22,23 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Lazy import DriftProjector (non-blocking, optional)
+_PROJECTOR = None
+
+
+def _get_projector():
+    """Lazy-load DriftProjector to avoid import overhead if not needed."""
+    global _PROJECTOR
+    if _PROJECTOR is None:
+        try:
+            from src.scanner.automation.drift_projector import DriftProjector
+
+            _PROJECTOR = DriftProjector()
+        except ImportError:
+            logger.debug("DriftProjector not available; forward projections disabled")
+            _PROJECTOR = False  # Mark as unavailable, don't retry
+    return _PROJECTOR if _PROJECTOR is not False else None
+
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _LOG_PATH = _PROJECT_ROOT / "trained_data" / "drift_monitor_log.json"
 
@@ -148,10 +165,39 @@ class DriftMonitor:
                 "drift_score": report["drift_score"],
                 "severity": report["severity"],
                 "timestamp": report["timestamp"],
+                "current_accuracy": report.get("current_accuracy"),
             })
             # Keep last 20 per pair
             if len(self._drift_history[pair]) > 20:
                 self._drift_history[pair] = self._drift_history[pair][-10:]
+
+            # Generate forward projection (non-blocking)
+            try:
+                projector = _get_projector()
+                if projector is not None:
+                    curve = projector.project(
+                        pair=pair,
+                        current_accuracy=report.get("current_accuracy", baseline_accuracy),
+                        baseline_accuracy=baseline_accuracy,
+                    )
+                    report["projection"] = {
+                        "hours_until_critical": curve.hours_until_critical(),
+                        "recommended_action": curve.recommended_action,
+                        "action_urgency": curve.action_urgency,
+                        "t6h_accuracy": (
+                            curve.projection_points[0].predicted_accuracy
+                            if curve.projection_points
+                            else None
+                        ),
+                        "t24h_accuracy": (
+                            curve.projection_points[2].predicted_accuracy
+                            if len(curve.projection_points) > 2
+                            else None
+                        ),
+                        "risk_factors": curve.risk_factors,
+                    }
+            except Exception as proj_err:
+                logger.debug(f"DriftMonitor: Projection failed for {pair}: {proj_err}")
 
         except Exception as e:
             report["error"] = str(e)[:200]

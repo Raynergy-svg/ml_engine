@@ -31,6 +31,8 @@ from typing import Dict, Optional, Tuple
 
 import numpy as np
 
+from src.brokers.registry import get_registry
+
 logger = logging.getLogger(__name__)
 
 
@@ -67,19 +69,8 @@ DEFAULT_SPREAD_PIPS = {
     "USD_ZAR": 100.0,
 }
 
-# Pip values for converting spread to percentage
-PIP_VALUES = {
-    # Most pairs: 0.0001 = 1 pip
-    "default": 0.0001,
-    # JPY pairs: 0.01 = 1 pip
-    "USD_JPY": 0.01,
-    "EUR_JPY": 0.01,
-    "GBP_JPY": 0.01,
-    "AUD_JPY": 0.01,
-    "NZD_JPY": 0.01,
-    "CAD_JPY": 0.01,
-    "CHF_JPY": 0.01,
-}
+# NOTE: PIP_VALUES has been moved to InstrumentRegistry (src.brokers.registry)
+# Kept locally for fallback defaults only
 
 
 def _classify_pair_tier(instrument: str) -> PairTier:
@@ -96,8 +87,19 @@ def _classify_pair_tier(instrument: str) -> PairTier:
 
 
 def _get_pip_value(instrument: str) -> float:
-    """Get pip value for instrument."""
-    return PIP_VALUES.get(instrument, PIP_VALUES["default"])
+    """Get pip value for instrument from InstrumentRegistry.
+
+    Args:
+        instrument: Currency pair symbol (e.g., "EUR_USD").
+
+    Returns:
+        Pip value for the pair, or 0.0001 as default if not found.
+    """
+    try:
+        return get_registry().get(instrument).pip_value
+    except KeyError:
+        # Fallback to default pip value (0.0001 for most pairs)
+        return 0.0001
 
 
 @dataclass(frozen=True)

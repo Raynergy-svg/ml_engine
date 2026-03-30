@@ -101,6 +101,7 @@ class ScannerAgentTeam:
         "session_timing": 0.80,
         "support_resistance": 1.00,
         "trader_readiness": 0.50,  # Agent #13: Aura human-side readiness signal
+        "devil_advocate": 1.30,  # Agent #14: Adversarial bear-case evaluator (runs LAST)
     }
 
     _READINESS_SIGNAL_PATH = ".aura/bridge/readiness_signal.json"
@@ -117,6 +118,7 @@ class ScannerAgentTeam:
         self._agent_lifecycle = None  # Phase 20 (US-122): injected from Scanner
         self._accuracy_matrix = None  # Phase 25 (US-155): injected from Scanner
         self._confidence_calibrator = None  # Phase 44 (US-280): Confidence calibration system
+        self._meta_overrides: Dict[str, Dict[str, float]] = {}  # Tier 6: MetaLearner hyperparameter overrides
         self._migrate_legacy_weights()
 
         # Phase 44 (US-280): Confidence Calibration System initialization
@@ -148,6 +150,15 @@ class ScannerAgentTeam:
             logger.info("Phase 52 (US-324): Confidence decomposer initialized")
         except Exception as e:
             logger.debug(f"Phase 52: Confidence decomposer init deferred: {e}")
+
+        # Phase 53 (US-331): Unified Confidence Pipeline — single-path calibration with monitoring
+        self._confidence_pipeline = None
+        try:
+            from src.scanner.confidence_pipeline import UnifiedConfidencePipeline
+            self._confidence_pipeline = UnifiedConfidencePipeline()
+            logger.info("Phase 53 (US-331): Unified confidence pipeline initialized")
+        except Exception as e:
+            logger.debug(f"Phase 53: Confidence pipeline init deferred: {e}")
 
         # Phase 45 (US-283): Bayesian Agent Weights (Thompson Sampling)
         self._bayesian_weights = None
@@ -183,6 +194,15 @@ class ScannerAgentTeam:
         except Exception as e:
             logger.debug(f"Phase 47: Expectancy tracker init deferred: {e}")
 
+        # Phase 55 (US-343): Disagreement Tracker — correlates agent disagreement with outcomes
+        self._disagreement_tracker = None
+        try:
+            from src.scanner.disagreement_tracker import DisagreementTracker
+            self._disagreement_tracker = DisagreementTracker()
+            logger.info("Phase 55 (US-343): Disagreement tracker initialized")
+        except Exception as e:
+            logger.debug(f"Phase 55: Disagreement tracker init deferred: {e}")
+
         # Phase 47 (US-294): Multi-Timeframe Confluence
         self._mtf_confluence = None
         try:
@@ -200,6 +220,17 @@ class ScannerAgentTeam:
             logger.info("Phase 47: Ensemble conflict resolver initialized")
         except Exception as e:
             logger.debug(f"Phase 47: Ensemble conflict resolver init deferred: {e}")
+
+        # Episodic Market Memory: Record and query historical trade patterns
+        self._episodic_memory = None
+        try:
+            from src.scanner.automation.episodic_memory import EpisodicMemory
+            _max_episodes = getattr(config, "episodic_memory_max_episodes", 500)
+            self._episodic_memory = EpisodicMemory(max_episodes=_max_episodes)
+            logger.info("Episodic memory initialized (pattern suppression enabled)")
+        except Exception as e:
+            logger.warning(f"Episodic memory initialization failed: {e} (pattern suppression disabled)")
+            self._episodic_memory = None
 
     # --- Persistent weight management ---
 
@@ -504,33 +535,31 @@ class ScannerAgentTeam:
         return dict(selected_weights)
 
     def _save_learned_weights(self) -> None:
-        """Persist learned agent weights to disk with atomic file locking."""
+        """Persist learned agent weights to disk with retry + atomic write.
+
+        Phase 55 (US-342): Uses resilient_save for retry with exponential
+        backoff and async fallback queue on total failure.
+        """
         from pathlib import Path
 
         path = Path(self._WEIGHTS_FILE)
         path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            from src.scanner.automation.safe_json import safe_json_write
-            safe_json_write(path, self._learned_weights)
+            from src.scanner.safe_io import resilient_save
+            resilient_save(str(path), self._learned_weights, context="agent_weights")
         except ImportError:
-            # Fallback if safe_json not available
-            import json
-            import tempfile
+            # Fallback if safe_io not available
             try:
-                with tempfile.NamedTemporaryFile(
-                    mode="w", dir=path.parent, delete=False, suffix=".tmp",
-                ) as tmp_f:
-                    json.dump(self._learned_weights, tmp_f, indent=2, default=str)
-                    tmp_path = tmp_f.name
-                Path(tmp_path).replace(path)
-            except Exception as e:
-                logger.warning(f"Failed to save agent weights: {e}")
+                from src.scanner.automation.safe_json import safe_json_write
+                safe_json_write(path, self._learned_weights)
+            except ImportError:
+                import json
                 try:
                     with open(path, "w") as f:
                         json.dump(self._learned_weights, f, indent=2, default=str)
-                except Exception as e2:
-                    logger.error(f"Agent weights save failed completely: {e2}")
+                except Exception as e:
+                    logger.error(f"Agent weights save failed completely: {e}")
 
     def apply_weight_decay(self, decay_rate: float = 0.02) -> Dict[str, float]:
         """Decay learned weights toward base weights across all regimes.
@@ -774,6 +803,23 @@ class ScannerAgentTeam:
             except Exception as _bw_upd_err:
                 logger.warning(f"Phase 45: Bayesian weight update failed: {_bw_upd_err}")
 
+        # Phase 55 (US-343): Record trade outcome into DisagreementTracker
+        if self._disagreement_tracker is not None:
+            try:
+                _dt_scores = {
+                    str(v.get("name", "")): float(v.get("score", 0.0))
+                    for v in agent_verdicts
+                    if v.get("name")
+                }
+                if _dt_scores:
+                    self._disagreement_tracker.record_trade(
+                        agent_scores=_dt_scores,
+                        won=trade_won,
+                        pnl=0.0,  # PnL not available here; outcome (won/loss) drives learning
+                    )
+            except Exception as _dt_rec_err:
+                logger.debug(f"Phase 55: Disagreement tracker recording failed: {_dt_rec_err}")
+
         return dict(self._learned_weights.get("_global", self._BASE_WEIGHTS))
 
     def _save_weight_snapshot(self, trade_count: int) -> None:
@@ -868,6 +914,22 @@ class ScannerAgentTeam:
 
         return snapshots
 
+    def apply_meta_overrides(
+        self,
+        meta_overrides: Dict[str, Dict[str, float]],
+    ) -> None:
+        """Apply MetaLearner hyperparameter overrides before scoring.
+
+        This is called before each scan cycle. Overrides are per-agent per-regime.
+        Only applies fields that exist in the override dict.
+
+        Currently affects:
+        - voting_veto_power: multiplied onto the agent's base weight
+        - confidence_threshold: stored as floor for score clipping
+        """
+        self._meta_overrides = meta_overrides  # store for use during vote()
+        logger.debug("AgentTeam: applied meta overrides for %d agents", len(meta_overrides))
+
     def evaluate(
         self,
         analysis: PairAnalysis,
@@ -886,6 +948,35 @@ class ScannerAgentTeam:
             gate_details=gate_details or {},
             config=self.config,
         )
+
+        # Episodic Market Memory: Query pattern suppression signal
+        if self._episodic_memory is not None and getattr(self.config, "enable_episodic_memory", True):
+            try:
+                pair = getattr(analysis, "pair", "UNKNOWN")
+                direction = getattr(analysis, "direction", "HOLD")
+                regime = str(getattr(analysis, "volatility_regime", "UNKNOWN") or "UNKNOWN").upper()
+                session = "london"  # TODO: derive session from UTC hour if available
+                news_risk = getattr(analysis, "news_risk_score", 0.0)
+                uncertainty = getattr(analysis, "uncertainty_score", 0.0)
+
+                suppression = self._episodic_memory.get_suppression_signal(
+                    pair=pair,
+                    direction=direction,
+                    regime=regime,
+                    session=session,
+                    news_risk_score=float(news_risk),
+                    uncertainty_score=float(uncertainty),
+                )
+                ctx.gate_details["episodic_suppression"] = suppression
+
+                if suppression:
+                    logger.info(
+                        "Episodic suppression ACTIVE for %s %s (pattern loss rate >= 70%%)",
+                        pair, direction,
+                    )
+            except Exception as e:
+                logger.debug(f"Episodic memory query failed: {e}")
+                ctx.gate_details["episodic_suppression"] = False
 
         verdicts: List[AgentVerdict] = []
 
@@ -931,6 +1022,23 @@ class ScannerAgentTeam:
             readiness_verdict = self._evaluate_trader_readiness(ctx)
             if readiness_verdict is not None:
                 verdicts.append(readiness_verdict)
+
+        # Agent #14: Devil's Advocate (Adversarial bear-case evaluator, runs LAST)
+        if getattr(self.config, "enable_devil_advocate", True):
+            try:
+                from src.scanner.agents.agent_da import DevilsAdvocateAgent
+                da_agent = DevilsAdvocateAgent()
+                da_verdict = da_agent.evaluate(ctx)
+                verdicts.append(da_verdict)
+                logger.debug(
+                    "Devil's Advocate evaluated for %s: bear_score=%.3f, passed=%s, block_trade=%s",
+                    getattr(analysis, "pair", "?"),
+                    da_verdict.metadata.get("bear_score", 0.0),
+                    da_verdict.passed,
+                    da_verdict.block_trade,
+                )
+            except Exception as da_err:
+                logger.warning(f"Devil's Advocate agent failed: {da_err}")
 
         # US-069: Filter out regime-disabled agents (don't count toward vote totals)
         if _regime_disabled:
@@ -1062,6 +1170,29 @@ class ScannerAgentTeam:
             except Exception as _bw_err:
                 logger.debug(f"Phase 45: Bayesian weight sampling failed: {_bw_err}")
 
+        # Tier 6: Apply MetaLearner hyperparameter overrides (voting_veto_power, confidence_threshold)
+        if self._meta_overrides:
+            _ml_adjustments = []
+            for v in verdicts:
+                _overrides = self._meta_overrides.get(v.name)
+                if _overrides:
+                    # voting_veto_power: multiplies weight (1.0 = no change, >1 = boost, <1 = dampen)
+                    _veto = float(_overrides.get("voting_veto_power", 1.0))
+                    if abs(_veto - 1.0) > 0.01:
+                        v.weight = max(v.weight * _veto, 0.0)
+                        _ml_adjustments.append(f"{v.name}:veto={_veto:.2f}x")
+                    # confidence_threshold: if agent score below threshold, reduce score impact
+                    _ct = float(_overrides.get("confidence_threshold", 0.0))
+                    if _ct > 0.0 and v.score < _ct:
+                        v.score = _clip01(v.score * 0.5)  # Halve sub-threshold scores
+                        _ml_adjustments.append(f"{v.name}:ct={_ct:.2f}")
+            if _ml_adjustments:
+                logger.info(
+                    "Tier 6: Meta-learner overrides for %s: %s",
+                    getattr(analysis, "pair", "?"),
+                    ", ".join(_ml_adjustments),
+                )
+
         total_weight = sum(max(v.weight, 0.0) for v in verdicts) or 1.0
         weighted_vote_score = sum(_clip01(v.score) * max(v.weight, 0.0) for v in verdicts) / total_weight
 
@@ -1185,6 +1316,56 @@ class ScannerAgentTeam:
             except Exception as _decomp_err:
                 logger.debug(f"Phase 52: Confidence decomposition skipped: {_decomp_err}")
 
+        # Phase 53 (US-331): Unified confidence pipeline monitoring
+        # Tracks calibration error across deciles and flags degradation
+        if self._confidence_pipeline is not None:
+            try:
+                _pipe_result = self._confidence_pipeline.calibrate(
+                    raw_confidence=float(analysis.weighted_vote_score),
+                    agent_verdicts={v.name: v.passed for v in verdicts},
+                    regime=str(getattr(analysis, "volatility_regime", "NORMAL") or "NORMAL").upper(),
+                    isotonic_calibrator=self._isotonic_calibrator,
+                    decomposer=self._confidence_decomposer,
+                    session_name=str(getattr(analysis, "session_name", "LONDON") or "LONDON").upper(),
+                    mtf_signal=str(getattr(analysis, "mtf_signal", "PROCEED") or "PROCEED").upper(),
+                    atr_percentile=float(getattr(analysis, "atr_percentile", 0.50) or 0.50),
+                    uncertainty_score=float(getattr(analysis, "uncertainty_score", 0.0) or 0.0),
+                    model_disagreement=float(getattr(analysis, "model_disagreement", 0.0) or 0.0),
+                )
+                if not hasattr(analysis, 'calibration_details'):
+                    analysis.calibration_details = {}
+                analysis.calibration_details["pipeline_path"] = _pipe_result.path_used
+                analysis.calibration_details["calibration_error"] = round(_pipe_result.calibration_error, 4)
+                analysis.calibration_details["degradation_flag"] = _pipe_result.degradation_flag
+                if _pipe_result.degradation_flag:
+                    logger.warning(
+                        "Phase 53 (US-331): %s calibration degradation — error=%.3f",
+                        getattr(analysis, "pair", "?"), _pipe_result.calibration_error,
+                    )
+            except Exception as _pipe_err:
+                logger.debug(f"Phase 53: Confidence pipeline monitoring error: {_pipe_err}")
+
+        # Phase 55 (US-343): Apply disagreement-based confidence penalty
+        if self._disagreement_tracker is not None:
+            try:
+                _agent_scores = {v.name: _clip01(v.score) for v in verdicts}
+                _disagree_penalty = self._disagreement_tracker.get_confidence_penalty(_agent_scores)
+                if _disagree_penalty < 0:
+                    _prev_score = analysis.weighted_vote_score
+                    analysis.weighted_vote_score = _clip01(
+                        float(analysis.weighted_vote_score) + _disagree_penalty
+                    )
+                    if not hasattr(analysis, 'calibration_details'):
+                        analysis.calibration_details = {}
+                    analysis.calibration_details["disagreement_penalty"] = round(_disagree_penalty, 4)
+                    logger.info(
+                        "Phase 55 (US-343): %s disagreement penalty=%.4f (%.3f → %.3f)",
+                        getattr(analysis, "pair", "?"),
+                        _disagree_penalty, _prev_score, analysis.weighted_vote_score,
+                    )
+            except Exception as _dt_err:
+                logger.debug(f"Phase 55: Disagreement penalty skipped: {_dt_err}")
+
         analysis.agent_reasons = [v.to_dict() for v in verdicts]
         analysis.agent_reason_codes = list(dict.fromkeys(v.reason_code for v in verdicts if v.reason_code))
         analysis.why_trade = [v.reason for v in verdicts if v.passed and v.reason]
@@ -1194,6 +1375,10 @@ class ScannerAgentTeam:
         analysis.uncertainty_score = _clip01(_safe_float(uncertainty_meta.get("uncertainty_score"), analysis.uncertainty_score))
         analysis.confidence_variance = _clip01(_safe_float(uncertainty_meta.get("confidence_variance"), analysis.confidence_variance))
         analysis.model_disagreement = _clip01(_safe_float(uncertainty_meta.get("model_disagreement"), analysis.model_disagreement))
+        # Phase 76: Pass max_model_disagreement to PairAnalysis for is_tradeable check
+        analysis._max_model_disagreement = _clip01(_safe_float(
+            getattr(self.config, "max_model_disagreement", 0.50), 0.50
+        ))
 
         execution_meta = next((v.metadata for v in verdicts if v.name == "execution_quality"), {})
         analysis.execution_quality_score = _clip01(_safe_float(execution_meta.get("execution_quality_score"), analysis.execution_quality_score))
@@ -1470,6 +1655,12 @@ class ScannerAgentTeam:
             base = ctx.df_raw["close"]
             ret_5 = _safe_float((base.iloc[-1] / base.iloc[-6]) - 1.0, 0.0)
 
+        # Phase 76: Expanded from 3 to 5 heuristics for finer-grained disagreement.
+        # With 3 heuristics, 1/3=0.33 > 0.30 hard floor always blocks.
+        # With 5 heuristics, 1/5=0.20 passes, 2/5=0.40 blocks — more proportional.
+        sma_50 = _last_value(ctx.df_feat, "sma_50", close)
+        macd_hist = _last_value(ctx.df_feat, "macd_hist", 0.0)  # Feature is "macd_hist" not "macd_histogram"
+
         heuristics: List[int] = []
         if close != sma_20:
             heuristics.append(1 if close > sma_20 else -1)
@@ -1477,6 +1668,12 @@ class ScannerAgentTeam:
             heuristics.append(1 if rsi < 50.0 else -1)
         if abs(ret_5) >= 0.0001:
             heuristics.append(1 if ret_5 > 0 else -1)
+        # Phase 76: SMA_50 trend alignment — price above long MA = bullish
+        if close != sma_50:
+            heuristics.append(1 if close > sma_50 else -1)
+        # Phase 76: MACD histogram — positive = bullish momentum
+        if abs(macd_hist) >= 1e-6:
+            heuristics.append(1 if macd_hist > 0 else -1)
 
         if direction == "SHORT":
             heuristics = [-1 * x for x in heuristics]
@@ -1546,14 +1743,24 @@ class ScannerAgentTeam:
 
         exceeds_threshold = uncertainty_score > max_uncertainty or model_disagreement > max_disagreement
 
-        # Hard floor: model_disagreement > 0.30 is a loss predictor per trading rules.
-        # This gate is NEVER softened — it applies regardless of soft_uncertainty_blocking.
-        DISAGREEMENT_HARD_FLOOR = 0.30
-        disagreement_dangerous = model_disagreement > DISAGREEMENT_HARD_FLOOR
+        # Hard floor: model_disagreement above threshold is a loss predictor per trading rules.
+        # Phase 75: Now configurable (was hardcoded 0.30) to allow adaptive tuning.
+        # Phase 76: When soft_uncertainty_blocking=True, disagreement between hard_floor
+        # and max_model_disagreement applies graduated confidence penalty instead of
+        # hard-blocking. Only hard-blocks when above max_model_disagreement.
+        DISAGREEMENT_HARD_FLOOR = _clip01(_safe_float(
+            getattr(ctx.config, "disagreement_hard_floor", 0.30), 0.30
+        ))
+        disagreement_above_floor = model_disagreement > DISAGREEMENT_HARD_FLOOR
+        # Hard block only when above max_model_disagreement, OR when soft blocking is off
+        disagreement_dangerous = (
+            disagreement_above_floor
+            and (not soft_blocking or model_disagreement > max_disagreement)
+        )
 
-        # Soft blocking: penalize confidence instead of hard-blocking for uncertainty,
-        # but model disagreement above the hard floor always hard-blocks.
-        # Also respect ensemble conflict blocking.
+        # Soft blocking: penalize confidence instead of hard-blocking for uncertainty.
+        # Phase 76: disagreement between hard_floor and max_disagreement now soft-blocks
+        # when soft_uncertainty_blocking=True (graduated penalty instead of hard block).
         block_trade = should_block_ensemble or disagreement_dangerous or (exceeds_threshold and not soft_blocking)
 
         if should_block_ensemble and ensemble_conflict_result is not None:
@@ -1566,12 +1773,17 @@ class ScannerAgentTeam:
             confidence_delta = -1.0  # Hard block: full penalty
         elif disagreement_dangerous:
             disagree_overshoot = model_disagreement - DISAGREEMENT_HARD_FLOOR
-            reason = f"model disagreement dangerous ({model_disagreement:.2f} > {DISAGREEMENT_HARD_FLOOR}) [HARD BLOCK]"
+            reason = f"model disagreement dangerous ({model_disagreement:.2f} > {max_disagreement:.2f}) [HARD BLOCK]"
             reason_code = "disagreement_hard_block"
-            # Apply ensemble penalty if available, otherwise use flat penalty
             confidence_delta = -0.10 - (disagree_overshoot * 0.50)
             if ensemble_conflict_result is not None and ensemble_penalty < 0.0:
                 confidence_delta = min(confidence_delta, ensemble_penalty)
+        elif disagreement_above_floor and soft_blocking:
+            # Phase 76: Soft disagreement penalty — between hard_floor and max_disagreement
+            disagree_overshoot = model_disagreement - DISAGREEMENT_HARD_FLOOR
+            reason = f"model disagreement elevated ({model_disagreement:.2f} > {DISAGREEMENT_HARD_FLOOR:.2f}) [soft penalty]"
+            reason_code = "disagreement_soft_penalty"
+            confidence_delta = -0.05 - (disagree_overshoot * 0.30)
         elif exceeds_threshold and soft_blocking:
             # Scale penalty by how far over both thresholds we are
             uncert_overshoot = max(uncertainty_score - max_uncertainty, 0.0)
@@ -2447,6 +2659,34 @@ class ScannerAgentTeam:
                 "signal_timestamp": data.get("timestamp", ""),
             },
         )
+
+    def record_trade_outcome(
+        self, episode_id: str, outcome: str, pnl_pips: float
+    ) -> bool:
+        """Record trade outcome to episodic memory for pattern learning.
+
+        Called after a trade closes to update episodic memory with outcome.
+        This feeds historical pattern data that gates future similar setups.
+
+        Args:
+            episode_id: UUID returned from record_setup (stored during entry)
+            outcome: Trade result ("WIN", "LOSS", or "BREAKEVEN")
+            pnl_pips: Realized P/L in pips
+
+        Returns:
+            True if outcome was recorded, False if episode not found or episodic memory disabled
+        """
+        if self._episodic_memory is None:
+            return False
+        try:
+            return self._episodic_memory.record_outcome(
+                episode_id=episode_id,
+                outcome=outcome,
+                pnl_pips=float(pnl_pips),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to record trade outcome to episodic memory: {e}")
+            return False
 
 
 # ==========================================================================

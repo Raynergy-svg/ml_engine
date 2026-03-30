@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.brokers.registry import get_registry
+
 logger = logging.getLogger(__name__)
 
 # Resolve absolute path to project root
@@ -37,22 +39,22 @@ CROSS_PAIRS = [
 
 DEFAULT_PAIRS = MAJOR_PAIRS + CROSS_PAIRS
 
-# Pip values for position sizing
-PIP_VALUES = {
-    "EUR_USD": 0.0001, "GBP_USD": 0.0001, "USD_JPY": 0.01,
-    "USD_CHF": 0.0001, "AUD_USD": 0.0001, "USD_CAD": 0.0001,
-    "NZD_USD": 0.0001, "EUR_GBP": 0.0001, "EUR_JPY": 0.01,
-    "GBP_JPY": 0.01, "AUD_JPY": 0.01, "EUR_AUD": 0.0001,
-    "GBP_AUD": 0.0001, "EUR_CHF": 0.0001, "GBP_CHF": 0.0001,
-}
+# NOTE: PIP_VALUES has been moved to InstrumentRegistry (src.brokers.registry)
+# Use get_registry().get(symbol).pip_value to access pip values
 
 SCAN_PROFILE_BALANCED = "balanced"
 SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
     # Uses configuration defaults (YAML + dataclass); no extra overrides.
     SCAN_PROFILE_BALANCED: {
         "blocked_pairs": ["EUR_USD"],
-        "sub_inference_min_confidence": 0.60,
+        "sub_inference_min_confidence": 0.48,
         "min_agent_consensus_ratio": 0.50,  # 6/12 agents minimum (was 0.33)
+        "enable_devil_advocate": True,
+        "devil_advocate_block_threshold": 0.60,
+        "devil_advocate_warn_threshold": 0.40,
+        # Phase 76: Soft disagreement blocking — penalize confidence instead of hard-block
+        # when heuristic disagreement is between hard_floor (0.30) and max_model_disagreement (0.50)
+        "soft_uncertainty_blocking": True,
     },
     # Fewer trades, higher signal quality requirements.
     "conservative": {
@@ -67,7 +69,7 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "min_volatility_regime": 2,
         "weighted_vote_threshold": 0.58,
         "sub_inference_min_confidence": 0.62,
-        "sub_inference_vote_threshold": 0.72,
+        "sub_inference_vote_threshold": 0.66,  # Phase 76: was 0.72 (required 3/3), now 0.66 (requires 2/3)
         "agent_promotion_min_confidence": 0.56,
         "max_uncertainty_score": 0.35,
         "max_model_disagreement": 0.45,
@@ -84,6 +86,9 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "enable_replay_validator": True,
         "enable_pair_performance_agent": True,
         "enable_multi_timeframe_agent": True,
+        "enable_devil_advocate": True,
+        "devil_advocate_block_threshold": 0.60,
+        "devil_advocate_warn_threshold": 0.40,
     },
     # More trade frequency with looser gates (still risk-bounded).
     "aggressive": {
@@ -188,6 +193,9 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         "use_hrp": True,
         "execution_strategy": "TWAP",
         "sl_tp_aggressiveness": 1.2,
+        "enable_devil_advocate": True,
+        "devil_advocate_block_threshold": 0.60,
+        "devil_advocate_warn_threshold": 0.40,
     },
     # Smart: Agent-driven with RL integration.  Sub-inference agents run on
     # ALL candidates (not just gate-passed) so the agent team can promote
@@ -352,6 +360,67 @@ SCAN_PROFILES: Dict[str, Dict[str, Any]] = {
         # (were defaulting to False via getattr fallback — never activated)
         "mtf_confluence_enabled": True,
         "ensemble_conflict_enabled": True,
+        "enable_devil_advocate": True,
+        "devil_advocate_block_threshold": 0.60,
+        "devil_advocate_warn_threshold": 0.40,
+    },
+    # Futures paper trading profile (Interactive Brokers, indices/commodities)
+    "futures_paper": {
+        "broker_type": "ibkr",
+        "ibkr_port": 4002,
+        "risk_per_trade_pct": 0.02,
+        "max_open_risk_pct": 0.10,
+        "pairs": ["ES", "NQ", "CL", "GC"],
+        "atr_sl_multiplier": 1.5,
+        "atr_tp_multiplier": 2.0,
+        "min_confidence": 50.0,
+        "min_momentum": 0.15,
+        "min_tcn_probability": 0.58,
+        "max_drawdown_pct": 0.030,
+        "final_score_threshold": 0.44,
+        "max_uncertainty_std": 0.16,
+        "min_atr_pips": 5.0,
+        "min_volatility_regime": 0,
+        "weighted_vote_threshold": 0.52,
+        "sub_inference_min_confidence": 0.60,
+        "sub_inference_vote_threshold": 0.60,
+        "agent_promotion_min_confidence": 0.50,
+        "max_uncertainty_score": 0.52,
+        "max_model_disagreement": 0.65,
+        "min_agent_consensus_ratio": 0.50,
+        "enable_execution": False,  # Paper trading: scan only
+        "enable_devil_advocate": True,
+        "devil_advocate_block_threshold": 0.60,
+        "devil_advocate_warn_threshold": 0.40,
+    },
+    # Futures live trading profile (Interactive Brokers, live execution)
+    "futures_live": {
+        "broker_type": "ibkr",
+        "ibkr_port": 4001,
+        "risk_per_trade_pct": 0.01,
+        "max_open_risk_pct": 0.10,
+        "pairs": ["ES", "NQ", "CL", "GC"],
+        "atr_sl_multiplier": 1.5,
+        "atr_tp_multiplier": 2.0,
+        "min_confidence": 55.0,
+        "min_momentum": 0.18,
+        "min_tcn_probability": 0.60,
+        "max_drawdown_pct": 0.025,
+        "final_score_threshold": 0.48,
+        "max_uncertainty_std": 0.14,
+        "min_atr_pips": 5.0,
+        "min_volatility_regime": 0,
+        "weighted_vote_threshold": 0.55,
+        "sub_inference_min_confidence": 0.62,
+        "sub_inference_vote_threshold": 0.66,  # Phase 76: was 0.65, aligned to quantization boundary (requires 2/3)
+        "agent_promotion_min_confidence": 0.52,
+        "max_uncertainty_score": 0.48,
+        "max_model_disagreement": 0.60,
+        "min_agent_consensus_ratio": 0.50,
+        "enable_execution": True,
+        "enable_devil_advocate": True,
+        "devil_advocate_block_threshold": 0.65,
+        "devil_advocate_warn_threshold": 0.45,
     },
 }
 VALID_SCAN_PROFILES = tuple(SCAN_PROFILES.keys())
@@ -443,6 +512,7 @@ class ScannerConfig:
     # Position sizing
     account_equity: float = 0.0  # 0 = fetch from OANDA
     risk_per_trade_pct: float = 0.02  # 2% risk per trade
+    max_open_risk_pct: float = 0.15  # 15% max portfolio risk across all open positions
     leverage: int = 50
     min_risk_reward_ratio: float = 1.2  # Minimum R:R to allow execution (TP/SL >= 1.2, per trading rules)
 
@@ -475,8 +545,24 @@ class ScannerConfig:
     final_score_threshold: float = 0.45  # Ensemble composite score gate (0-1)
     max_uncertainty_std: float = 0.15  # MC-dropout uncertainty ceiling (0-1)
 
+    # ═══════════════════════════════════════════════════════════════════════════════
+    # BROKER CONFIGURATION (US-004)
+    # Select which broker to use for execution and data fetching
+    # ═══════════════════════════════════════════════════════════════════════════════
+    broker_type: str = "oanda"  # "oanda" or "ibkr" (default: OANDA)
+
+    # OANDA-specific settings
+    oanda_account_id: str = ""  # Account ID (e.g., "001-001-123456-001")
+    oanda_api_key: str = ""  # API key for authentication
+    oanda_environment: str = "practice"  # "practice" or "live"
+
+    # Interactive Brokers (IBKR) settings
+    ibkr_host: str = "127.0.0.1"  # TWS/IBGateway host (default: localhost)
+    ibkr_port: int = 7497  # TWS port (7497) or IBGateway (4002 live)
+    ibkr_client_id: int = 1  # Unique client ID for connection
+
     # Execution settings (from buddy_scanner)
-    enable_execution: bool = False  # Enable trade execution
+    enable_execution: bool = True  # Enable trade execution
     daily_trade_limit: int = 30  # Max trades per day
     position_sizing_enabled: bool = True
     aggressive_mode: bool = True  # Enable larger positions for compounding
@@ -551,7 +637,10 @@ class ScannerConfig:
 
     # Default pairs (for easy access)
     default_pairs: List[str] = field(default_factory=lambda: DEFAULT_PAIRS.copy())
-    pip_values: Dict[str, float] = field(default_factory=lambda: PIP_VALUES.copy())
+    pip_values: Dict[str, float] = field(default_factory=lambda: {
+        inst.symbol: inst.pip_value
+        for inst in get_registry().get_by_asset_class("FX")
+    })
 
     # Blocked pairs (pairs with model accuracy issues or other constraints)
     blocked_pairs: List[str] = field(default_factory=lambda: ["EUR_USD"])
@@ -570,19 +659,22 @@ class ScannerConfig:
     enable_mean_reversion_agent: bool = True
     enable_volatility_agent: bool = True
     enable_risk_sentinel_agent: bool = True
-    enable_news_risk_agent: bool = False  # Default off if no news data
+    enable_news_risk_agent: bool = True  # Default off if no news data
     enable_uncertainty_agent: bool = True
     enable_execution_quality_agent: bool = True
-    enable_multi_timeframe_agent: bool = False  # Default off; smart profile enables it
-    enable_pair_performance_agent: bool = False  # Default off; smart profile enables it
+    enable_multi_timeframe_agent: bool = True  # Default off; smart profile enables it
+    enable_pair_performance_agent: bool = True  # Default off; smart profile enables it
     enable_momentum_agent: bool = True
-    enable_session_timing_agent: bool = False
-    enable_support_resistance_agent: bool = False
-    enable_trader_readiness_agent: bool = False  # Agent #13: Aura human-side readiness signal
+    enable_session_timing_agent: bool = True
+    enable_support_resistance_agent: bool = True
+    enable_trader_readiness_agent: bool = True  # Agent #13: Aura human-side readiness signal
+    enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator
+    devil_advocate_block_threshold: float = 0.60  # Bear score above this blocks the trade
+    devil_advocate_warn_threshold: float = 0.40   # Bear score above this soft-vetoes
 
     # --- Graph-Attention Agent Consensus (US-076) ---
     use_heterogeneous_agents: bool = False  # Enable agent specialization categories
-    enable_graph_attention: bool = False  # Correlation-aware attention weighting
+    enable_graph_attention: bool = True  # Correlation-aware attention weighting
 
     # --- Weighted Voting Config ---
     weighted_vote_threshold: float = 0.55  # Minimum weighted score to pass
@@ -614,7 +706,8 @@ class ScannerConfig:
     # --- Uncertainty Blocking ---
     max_uncertainty_score: float = 0.4  # Block if uncertainty above this
     max_model_disagreement: float = 0.5  # Block if disagreement above this
-    soft_uncertainty_blocking: bool = False  # If True, uncertainty reduces confidence instead of hard blocking
+    disagreement_hard_floor: float = 0.30  # Phase 75: Hard block threshold for heuristic disagreement (was hardcoded 0.30)
+    soft_uncertainty_blocking: bool = True  # Phase 76: Default True — graduated confidence penalty instead of hard block for disagreement between floor and max
 
     # --- HRP Portfolio Optimization (US-073) ---
     use_hrp: bool = False  # Replace binary correlation filter with HRP weights
@@ -631,113 +724,126 @@ class ScannerConfig:
     sl_tp_aggressiveness: float = 1.0  # Multiplier for rule intensity (0.5-2.0)
 
     # --- Multi-Horizon Signal Fusion (US-081) ---
-    enable_multi_horizon_fusion: bool = False  # Bayesian timeframe agreement grading
+    enable_multi_horizon_fusion: bool = True  # Bayesian timeframe agreement grading
 
     # --- Trade Outcome Prediction (US-082) ---
-    enable_trade_outcome_prediction: bool = False  # Predict open trade outcomes
+    enable_trade_outcome_prediction: bool = True  # Predict open trade outcomes
 
     # --- Concept Drift Detection (US-083) ---
     # Phase 29 (US-179): Enabled by default — stable and tested in smart profile
     enable_concept_drift_detection: bool = True  # Rolling z-score drift monitoring
 
     # --- Kelly Portfolio Sizing (US-084) ---
-    enable_kelly_sizing: bool = False  # Portfolio-level Kelly criterion with VaR
+    enable_kelly_sizing: bool = True  # Portfolio-level Kelly criterion with VaR
 
     # --- Ensemble Disagreement Signal (US-085) ---
-    enable_ensemble_disagreement: bool = False  # Meta-signal from ensemble member disagreement
+    enable_ensemble_disagreement: bool = True  # Meta-signal from ensemble member disagreement
 
     # --- Position Timeout with Time-Decay (US-086) ---
-    enable_position_timeout: bool = False  # Regime-dependent time-decay for open trades
+    enable_position_timeout: bool = True  # Regime-dependent time-decay for open trades
 
     # --- Cross-Pair Lead-Lag Detection (US-087) ---
-    enable_lead_lag_detection: bool = False  # Lagged correlation entry timing
+    enable_lead_lag_detection: bool = True  # Lagged correlation entry timing
 
     # --- Attention-Based Feature Weighting (US-088) ---
-    enable_feature_attention: bool = False  # Regime-conditioned softmax attention over features
+    enable_feature_attention: bool = True  # Regime-conditioned softmax attention over features
 
     # --- Adversarial Robustness Training (US-089) ---
-    enable_adversarial_training: bool = False  # Generate adversarial scenarios for ensemble hardening
+    enable_adversarial_training: bool = True  # Generate adversarial scenarios for ensemble hardening
 
     # --- Regime-Aware RL Reward Shaping (US-090) ---
-    enable_regime_reward: bool = False  # Regime-conditioned reward for RL weight updates
+    enable_regime_reward: bool = True  # Regime-conditioned reward for RL weight updates
 
     # --- Adaptive LR Scheduling (US-091) ---
-    enable_adaptive_lr: bool = False  # Cosine-annealing + warmup for RL learning rate
+    enable_adaptive_lr: bool = True  # Cosine-annealing + warmup for RL learning rate
 
     # --- Market Impact Position Sizing (US-092) ---
-    enable_market_impact: bool = False  # Almgren-Chriss slippage model for position sizing
+    enable_market_impact: bool = True  # Almgren-Chriss slippage model for position sizing
 
     # --- Bandit-Based Model Selection (US-093) ---
-    enable_model_bandit: bool = False  # EXP3 bandit for dynamic model routing
+    enable_model_bandit: bool = True  # EXP3 bandit for dynamic model routing
 
     # --- SHAP-Based Trade Explainability (US-094) ---
-    enable_trade_explainability: bool = False  # Feature attribution and consistency filtering
+    enable_trade_explainability: bool = True  # Feature attribution and consistency filtering
 
     # --- Causal Signal Filtering (US-095) ---
-    enable_causal_filtering: bool = False  # Granger causality-based signal consistency
+    enable_causal_filtering: bool = True  # Granger causality-based signal consistency
 
     # --- Synthetic Crisis Event Generator (US-096) ---
-    enable_synthetic_crisis: bool = False  # Perturbation-based crisis scenario generation
+    enable_synthetic_crisis: bool = True  # Perturbation-based crisis scenario generation
 
     # --- Execution Quality Tracking (US-097) ---
-    enable_execution_quality_tracking: bool = False  # TCA feedback loop to agent confidence
+    enable_execution_quality_tracking: bool = True  # TCA feedback loop to agent confidence
+
+    # =================================================================
+    # TIER 6 DIMENSION B: STRATEGY INVENTION ENGINE
+    # Genetic algorithm discovery of novel trading logic combinations
+    # =================================================================
+
+    # Tier 6 Dimension B: Strategy Invention Engine
+    enable_strategy_invention: bool = True  # Genetic algorithm strategy discovery (offline only)
+    strategy_population_size: int = 30  # Population size for GA evolution
+    strategy_evolution_generations: int = 5  # Number of GA generations per cycle
 
     # --- Entropy-Based Position Sizing (US-098) ---
-    enable_entropy_sizing: bool = False  # Shannon entropy of agent votes → position multiplier
+    enable_entropy_sizing: bool = True  # Shannon entropy of agent votes → position multiplier
 
     # --- Regime Event Broadcasting (US-099) ---
-    enable_regime_broadcast: bool = False  # Event-driven regime transition propagation
+    enable_regime_broadcast: bool = True  # Event-driven regime transition propagation
 
     # --- Agent Accuracy Matrix (US-100) ---
     enable_agent_accuracy_matrix: bool = True  # Phase 25 (US-155): Per-agent accuracy tracking by regime/pair
 
+    # --- Meta-Learning Hyperparameter Adaptation (Tier 6) ---
+    enable_meta_learning: bool = True  # Online Bayesian adaptation of agent hyperparameters (Tier 6)
+
     # --- Pair Transfer Learning (US-101) ---
-    enable_pair_transfer: bool = False  # Share learned weights between correlated FX pairs
+    enable_pair_transfer: bool = True  # Share learned weights between correlated FX pairs
 
     # --- Temporal Attention (US-102) ---
-    enable_temporal_attention: bool = False  # Learned attention over multi-timeframe signals
+    enable_temporal_attention: bool = True  # Learned attention over multi-timeframe signals
 
     # --- Live Position Management (US-103) ---
-    enable_live_position_management: bool = False  # Prediction-driven open position management
+    enable_live_position_management: bool = True  # Prediction-driven open position management
 
     # --- Affinity Portfolio Sizing (US-104) ---
-    enable_affinity_portfolio: bool = False  # Pair affinity → continuous position sizing
+    enable_affinity_portfolio: bool = True  # Pair affinity → continuous position sizing
 
     # --- Execution Routing (US-105) ---
-    enable_execution_routing: bool = False  # Smart order slicing for large positions
+    enable_execution_routing: bool = True  # Smart order slicing for large positions
 
     # --- Model Routing (US-106) ---
-    enable_model_routing: bool = False  # Bandit-based pair-specific model selection
+    enable_model_routing: bool = True  # Bandit-based pair-specific model selection
 
     # --- Training Augmentation (US-107) ---
-    enable_training_augmentation: bool = False  # Synthetic data augmentation for retrain
+    enable_training_augmentation: bool = True  # Synthetic data augmentation for retrain
 
     # --- Attention Feedback (US-108) ---
-    enable_attention_feedback: bool = False  # Temporal attention agent consensus feedback
+    enable_attention_feedback: bool = True  # Temporal attention agent consensus feedback
 
     # --- Execution Quality Optimizer (US-109) ---
-    enable_execution_quality_optimizer: bool = False  # Cost profiling by model+regime
+    enable_execution_quality_optimizer: bool = True  # Cost profiling by model+regime
 
     # --- Threshold Optimizer (US-110) ---
     enable_threshold_optimizer: bool = True  # Phase 25 (US-153): Adaptive gate threshold tuning
 
     # --- Dynamic Risk Allocation (US-111) ---
-    enable_dynamic_risk_allocation: bool = False  # P/L distribution risk sizing
+    enable_dynamic_risk_allocation: bool = True  # P/L distribution risk sizing
 
     # --- Model Calibration (US-112) ---
-    enable_model_calibration: bool = False  # Per-model confidence calibration
+    enable_model_calibration: bool = True  # Per-model confidence calibration
 
     # --- Pair-Regime-Agent Matrix (US-113) ---
     enable_pair_regime_agent_matrix: bool = True  # Phase 27 (US-167): 3-way interaction tracking
 
     # --- Signal Timing (US-114) ---
-    enable_signal_timing: bool = False  # Scan frequency optimization
+    enable_signal_timing: bool = True  # Scan frequency optimization
 
     # --- Memory Manager (US-115) ---
-    enable_memory_manager: bool = False  # LRU cache and log rotation
+    enable_memory_manager: bool = True  # LRU cache and log rotation
 
     # --- Module Activation (US-116) ---
-    enable_module_activation: bool = False  # Module dispatch scheduling
+    enable_module_activation: bool = True  # Module dispatch scheduling
 
     # --- Agent Lifecycle (US-117) ---
     enable_agent_lifecycle: bool = True  # Phase 25 (US-151): Agent fitness and quarantine
@@ -749,10 +855,10 @@ class ScannerConfig:
     enable_observation_consumer: bool = True  # Phase 27 (US-163): Pattern detection from observations
 
     # --- Replay Validator (US-120) ---
-    enable_replay_validator: bool = False  # Historical replay and drift detection
+    enable_replay_validator: bool = True  # Historical replay and drift detection
 
     # --- Microstructure Regime Detection (US-074) ---
-    enable_microstructure_regime: bool = False  # Augment regime detection with spread signals
+    enable_microstructure_regime: bool = True  # Augment regime detection with spread signals
     microstructure_confidence_boost: bool = True  # Apply confidence lift from micro signals
 
     # --- Phase 21: Execution Unblock ---
@@ -792,15 +898,15 @@ class ScannerConfig:
     position_management_interval: int = 3  # Run position management every N scan cycles
 
     # --- Dynamic Hedging (US-077) ---
-    enable_dynamic_hedging: bool = False  # Auto-open inverse positions during stress
+    enable_dynamic_hedging: bool = True  # Auto-open inverse positions during stress
     hedge_min_correlation: float = 0.65  # Min |correlation| for hedge candidates
 
     # --- Observational Learning (US-078) ---
-    enable_observational_learning: bool = False  # Synthetic agent pattern extraction
+    enable_observational_learning: bool = True  # Synthetic agent pattern extraction
     observational_synthetic_weight: float = 0.20  # Blend ratio: synthetic vs live
 
     # --- Smart Execution (US-075) ---
-    enable_smart_execution: bool = False  # Use VWAP/TWAP slicing for larger orders
+    enable_smart_execution: bool = True  # Use VWAP/TWAP slicing for larger orders
     execution_strategy: str = "TWAP"  # "VWAP" or "TWAP"
     execution_window_minutes: float = 5.0  # Window for slicing execution
 
@@ -820,16 +926,35 @@ class ScannerConfig:
 
     # --- Learning Loop Config (post-trade agent weight updates) ---
     enable_agent_learning: bool = True
-    enable_llm_trade_analysis: bool = False  # LLM deep analysis for losing trades (US-009)
+    enable_llm_trade_analysis: bool = True  # LLM deep analysis for losing trades (US-009)
     weight_boost_on_win: float = 0.1  # Weight increase on winning trade
     weight_penalty_on_loss: float = 0.15  # Weight decrease on losing trade
 
+    # --- Drift Auto-Remediation (US-XXX) ---
+    enable_drift_remediator: bool = True  # Auto-retrain when drift is detected
+    drift_remediation_cooldown_hours: int = 12  # Hours between remediation attempts
+    drift_retrain_timeout_minutes: int = 30  # Max time for retrain subprocess
+    drift_remediation_check_interval: int = 20  # Run remediator every N scan cycles
+
     # --- Model A/B Testing (True A/B: load both incumbent + candidate at scan time) ---
-    enable_true_ab_testing: bool = False  # Disabled by default; enabled in smart profile
+    enable_true_ab_testing: bool = True  # Disabled by default; enabled in smart profile
 
     # --- Phase 46-47: MTF Confluence & Ensemble Conflict ---
     mtf_confluence_enabled: bool = True  # Elder's Triple Screen via MTF module
     ensemble_conflict_enabled: bool = True  # Ensemble disagreement resolver
+
+    # --- Episodic Market Memory (Pattern Suppression) ---
+    enable_episodic_memory: bool = True  # Record and query episodic trade patterns
+    episodic_suppression_min_samples: int = 3  # Min similar episodes before suppression activates
+    episodic_suppression_loss_rate: float = 0.70  # Loss rate threshold for suppression
+    episodic_memory_max_episodes: int = 500  # Max episodes to keep in memory
+
+    # --- Autonomous Performance-Driven PRD Generation (Ralph Trigger) ---
+    enable_auto_ralph: bool = True  # Auto-generate PRD stories from performance gaps
+    auto_ralph_win_rate_threshold: float = 0.45  # Win rate below this triggers a story
+    auto_ralph_min_trades: int = 10  # Min trades needed before analysis runs
+    auto_ralph_check_interval_hours: int = 24  # Hours between autonomous PRD checks
+    auto_ralph_max_gaps_per_run: int = 5  # Max stories per auto-generated PRD
 
     # Loaded YAML config (lazy loaded)
     _yaml_config: Optional[Dict[str, Any]] = field(default=None, repr=False)
@@ -879,6 +1004,35 @@ class ScannerConfig:
             max(0.30, float(self.agent_promotion_min_confidence)),
         )
 
+        # Validate critical financial/risk fields (Config Validation Gate)
+        if self.risk_per_trade_pct <= 0 or self.risk_per_trade_pct > 0.20:
+            logger.warning(
+                f"risk_per_trade_pct={self.risk_per_trade_pct} outside safe range (0, 0.20]. "
+                f"Clamping to 0.02."
+            )
+            self.risk_per_trade_pct = 0.02
+        if self.max_open_risk_pct < 0 or self.max_open_risk_pct > 0.50:
+            logger.warning(
+                f"max_open_risk_pct={self.max_open_risk_pct} outside safe range [0, 0.50]. "
+                f"Clamping to 0.15."
+            )
+            self.max_open_risk_pct = 0.15
+        if self.leverage <= 0:
+            logger.warning(f"leverage={self.leverage} must be positive. Setting to 50.")
+            self.leverage = 50
+        if self.min_risk_reward_ratio < 1.0:
+            logger.warning(
+                f"min_risk_reward_ratio={self.min_risk_reward_ratio} below 1.0 violates "
+                f"risk management rules. Setting to 1.2."
+            )
+            self.min_risk_reward_ratio = 1.2
+        if self.lookback_candles < 10:
+            logger.warning(
+                f"lookback_candles={self.lookback_candles} too small for reliable signals. "
+                f"Setting to 100."
+            )
+            self.lookback_candles = 100
+
     def load_yaml_config(self) -> Dict[str, Any]:
         """Load and cache YAML configuration.
 
@@ -917,8 +1071,19 @@ class ScannerConfig:
             raise ValueError(f"Failed to load config {self.config_path}: {e}")
 
     def get_pip_value(self, pair: str) -> float:
-        """Get pip value for a pair."""
-        return PIP_VALUES.get(pair, 0.0001)
+        """Get pip value for a pair from InstrumentRegistry.
+
+        Args:
+            pair: Trading pair symbol (e.g., "EUR_USD").
+
+        Returns:
+            Pip value for the pair, or 0.0001 as default if not found.
+        """
+        try:
+            return get_registry().get(pair).pip_value
+        except KeyError:
+            # Fallback to default pip value if instrument not in registry
+            return 0.0001
 
     def apply_profile(self, profile: Optional[str] = None) -> None:
         """Apply scanner threshold overrides for a named profile.

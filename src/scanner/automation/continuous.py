@@ -99,7 +99,7 @@ class ContinuousScanner:
         self._adaptive_floor = None
         try:
             from src.scanner.adaptive_confidence_floor import AdaptiveConfidenceFloor
-            _initial_threshold = getattr(self.config, "min_confidence", 58.0)
+            _initial_threshold = getattr(self.scanner.config, "min_confidence", 58.0)
             self._adaptive_floor = AdaptiveConfidenceFloor(
                 initial_threshold=float(_initial_threshold),
             )
@@ -116,18 +116,32 @@ class ContinuousScanner:
         except Exception as _sft_err:
             logger.debug(f"Phase 59: Signal funnel tracker init deferred: {_sft_err}")
 
-        # Phase 60 (US-369): Scan Health Synthesizer — unified health report from all observability modules
+        # Phase 60 (US-369) + Phase 65 (US-386): Scan Health Synthesizer — unified health report
         self._scan_health = None
         try:
             from src.scanner.scan_health_synthesizer import ScanHealthSynthesizer
             self._scan_health = ScanHealthSynthesizer(
                 signal_funnel=self._signal_funnel,
-                gate_proximity=getattr(self._scanner, "_gate_proximity", None),
-                ensemble_divergence=getattr(self._scanner, "_ensemble_divergence", None),
-                raw_conf_recorder=getattr(self._scanner, "_raw_conf_recorder", None),
+                gate_proximity=getattr(self.scanner, "_gate_proximity", None),
+                ensemble_divergence=getattr(self.scanner, "_ensemble_divergence", None),
+                raw_conf_recorder=getattr(self.scanner, "_raw_conf_recorder", None),
                 scan_diagnostics=self._scan_diagnostics,
+                # Phase 65 (US-386): wire momentum + risk recorders for enriched diagnostics
+                momentum_recorder=getattr(self.scanner, "_momentum_recorder", None),
+                risk_recorder=getattr(self.scanner, "_risk_recorder", None),
+                momentum_max_threshold=getattr(
+                    getattr(self.scanner, "config", None), "min_momentum", 0.45
+                ),
+                risk_max_drawdown=getattr(
+                    getattr(self.scanner, "config", None), "max_drawdown_pct", 0.025
+                ),
+                # Phase 66 (US-388): wire vote recorder for agent consensus diagnostics
+                vote_recorder=getattr(self.scanner, "_vote_recorder", None),
+                weighted_vote_threshold=getattr(
+                    getattr(self.scanner, "config", None), "weighted_vote_threshold", 0.55
+                ),
             )
-            logger.info("Phase 60 (US-369): Scan health synthesizer initialized")
+            logger.info("Phase 60+65+66 (US-369/US-386/US-388): Scan health synthesizer initialized with momentum+risk+vote recorders")
         except Exception as _shs_err:
             logger.debug(f"Phase 60: Scan health synthesizer init deferred: {_shs_err}")
 
@@ -632,6 +646,35 @@ class ContinuousScanner:
                     except Exception as cg_err:
                         logger.debug(f"Crisis generator error: {cg_err}")
 
+                # US-005: Strategy invention — run GA evolution every 100 cycles
+                if (
+                    self._scan_count % 100 == 0
+                    and self._scan_count > 0
+                    and getattr(self.scanner.config, "enable_strategy_invention", False)
+                ):
+                    try:
+                        from src.strategy_invention.evolution_controller import EvolutionController
+
+                        _evo = EvolutionController()
+                        _evo.load()
+                        # Simple fitness: count valid strategy blocks (no backtest needed at this stage)
+                        _top = _evo.run_evolution_cycle(
+                            fitness_fn=lambda s: getattr(s, "fitness", 0.0),
+                            generations=getattr(self.scanner.config, "strategy_evolution_generations", 5),
+                            population_size=getattr(self.scanner.config, "strategy_population_size", 30),
+                        )
+                        _evo.save()
+                        _evo.retire_underperforming()
+                        _summary = _evo.get_status_summary()
+                        if console:
+                            console.print(
+                                f"  [cyan]Strategy evolution: {_summary.get('total_strategies', 0)} "
+                                f"strategies (cycle {self._scan_count})[/cyan]"
+                            )
+                        logger.info("EvolutionController: cycle complete | %s", _summary)
+                    except Exception as evo_err:
+                        logger.debug(f"Strategy evolution error: {evo_err}")
+
                 # Phase 21 (US-131): Apply pending config adjustments every 10 cycles
                 if (
                     self._scan_count % 10 == 0
@@ -710,52 +753,40 @@ class ContinuousScanner:
             ("training_augmenter", "_training_augmenter"),
             # Phase 50: Crisis generator uses save_log() instead of save_state()
             ("crisis_generator", "_crisis_generator"),
+            # US-006–US-019: Newly registered modules
+            ("counterfactual_learner", "_counterfactual_learner"),
+            ("chain_memory", "_chain_memory"),
+            ("drift_projector", "_drift_projector"),
+            ("episodic_memory", "_episodic_memory"),
+            ("self_model_state", "_self_model_state"),
+            ("causal_counterfactual", "_causal_counterfactual"),
         ]
         for mod_label, mod_attr in _shutdown_modules:
             try:
                 mod = getattr(self.scanner, mod_attr, None) if hasattr(self, "scanner") else None
                 if mod is None:
                     mod = getattr(self, mod_attr, None)
-                if mod is not None and hasattr(mod, "save_state"):
-                    mod.save_state()
-                    logger.info(f"Shutdown: {mod_label} state saved")
-                elif mod is not None and hasattr(mod, "save_log"):
-                    mod.save_log()
-                    logger.info(f"Shutdown: {mod_label} log saved")
+                if mod is not None:
+                    _saved = False
+                    for _method in ("save_state", "save_log", "save", "save_projections", "save_analysis"):
+                        if hasattr(mod, _method):
+                            getattr(mod, _method)()
+                            logger.info(f"Shutdown: {mod_label} persisted via {_method}()")
+                            _saved = True
+                            break
+                    if not _saved:
+                        logger.debug(f"Shutdown: {mod_label} has no persistence method")
             except Exception as _mod_err:
                 logger.debug(f"Shutdown: {mod_label} save failed: {_mod_err}")
 
-        # Phase 55 (US-XXX): Flush Aura bridge state on shutdown
-        # FeedbackBridge module is on the Orchestrator (PatternEngine, RulePromoter, etc. deleted)
+        # Gate attribution engine state - save from scanner actual EM if available
         try:
-            from src.scanner.automation.orchestrator import Orchestrator
-            _orch = Orchestrator()
-            _orch._init_modules()  # Ensure modules are initialized
-
-            # Flush bridge signals — FeedbackBridge has write_outcome/flush but not save_state
-            if _orch._aura_bridge is not None:
-                try:
-                    # FeedbackBridge uses file-based locking, signal files are already atomic
-                    # No explicit save_state needed — signals are written directly
-                    logger.info("Shutdown: aura_bridge signals verified (file-based, no flush needed)")
-                except Exception as _bridge_err:
-                    logger.debug(f"Shutdown: aura_bridge verification failed: {_bridge_err}")
-        except Exception as _orch_err:
-            logger.debug(f"Shutdown: Orchestrator aura bridge skipped: {_orch_err}")
-
-        # Gate attribution engine state — on ExecutionManager
-        try:
-            from src.scanner.execution import ExecutionManager
-            _em = ExecutionManager()
-
-            if _em._gate_attribution is not None:
-                try:
-                    _em._gate_attribution.save_state()
-                    logger.info("Shutdown: gate_attribution state saved")
-                except Exception as _ga_err:
-                    logger.debug(f"Shutdown: gate_attribution save failed: {_ga_err}")
-        except Exception as _em_err:
-            logger.debug(f"Shutdown: ExecutionManager gate_attribution skipped: {_em_err}")
+            _exec_mgr = getattr(self.scanner, "_execution_manager", None)
+            if _exec_mgr is not None and getattr(_exec_mgr, "_gate_attribution", None) is not None:
+                _exec_mgr._gate_attribution.save_state()
+                logger.info("Shutdown: gate_attribution state saved (from scanner EM)")
+        except Exception as _ga_err:
+            logger.debug(f"Shutdown: gate_attribution save failed: {_ga_err}")
 
         # StateEngine has a multi-arg save_state() — call separately from the generic loop
         try:
@@ -935,9 +966,9 @@ class ContinuousScanner:
                         # Phase 58 (US-360): Gate pass predictor — surface signal diagnostics
                         if self._gate_pass_predictor is not None:
                             try:
-                                _recorder = getattr(self._scanner, "_raw_conf_recorder", None)
+                                _recorder = getattr(self.scanner, "_raw_conf_recorder", None)
                                 if _recorder is not None:
-                                    _min_conf = getattr(self.config, "min_confidence", 58.0)
+                                    _min_conf = getattr(self.scanner.config, "min_confidence", 58.0)
                                     _gpp_report = self._gate_pass_predictor.generate_report(
                                         _recorder,
                                         min_confidence=float(_min_conf),
@@ -953,7 +984,7 @@ class ContinuousScanner:
                                             if self._adaptive_floor.should_adapt(_gap_report, _gpp_report, _scans_stalled):
                                                 _delta = self._adaptive_floor.compute_adjustment(_gap_report, _gpp_report)
                                                 if _delta != 0.0:
-                                                    self._adaptive_floor.apply_adjustment(self.config, _delta)
+                                                    self._adaptive_floor.apply_adjustment(self.scanner.config, _delta)
                                         except Exception as _af_err:
                                             logger.debug(f"Phase 58: Adaptive floor failed: {_af_err}")
                             except Exception as _gpp_err:
@@ -1464,6 +1495,17 @@ class ContinuousScanner:
                         except Exception as scaler_err:
                             logger.debug(f"Risk scaler error: {scaler_err}")
 
+                        # US-020: Counterfactual learner — analyse closed trades
+                        try:
+                            _cf_learner = getattr(self.scanner, "_counterfactual_learner", None)
+                            if _cf_learner is not None:
+                                _cf_insight = _cf_learner.analyze_closed_trade(entry)
+                                if _cf_insight:
+                                    learnings_added += 1
+                                    logger.info("Counterfactual insight for trade %s", entry.get("trade_id", "?"))
+                        except Exception as cf_err:
+                            logger.debug(f"Counterfactual learner error: {cf_err}")
+
                         # LLM deep analysis for significant losses (US-009)
                         if getattr(self.scanner.config, "enable_llm_trade_analysis", False):
                             outcome = entry.get("outcome", {})
@@ -1624,7 +1666,10 @@ class ContinuousScanner:
                     # Record prediction outcomes from closed trades
                     journal_path = Path("trained_data/trade_journal_rl.json")
                     entries = json.loads(journal_path.read_text())
-                    for entry in entries:
+                    if not isinstance(entries, list):
+                        entries = []
+                    closed = entries[-trades_synced:] if trades_synced < len(entries) else entries
+                    for entry in closed:
                         if entry.get("outcome"):
                             pair = entry.get("pair")
                             correct = entry.get("outcome", {}).get("prediction_correct", False)

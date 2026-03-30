@@ -11,18 +11,24 @@ Key features:
 - Confidence-based scaling factors
 - Integration with confidence calibration system
 - Aggressive regime-based scaling for HIGH volatility environments
+- Futures tick-based position sizing (contracts from SL in ticks)
 
 Regime-Based Aggressive Scaling:
 When volatility regime is HIGH and meta confidence exceeds threshold,
 position sizes are scaled UP to capitalize on high-quality signals.
 This is the "highest-ROI toggle in the entire system."
+
+Futures Tick-Based Sizing:
+For FUTURES instruments, position size is calculated in contracts based on
+tick-level SL: contracts = int(max(1, risk_amount / (sl_ticks * tick_value)))
 """
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Union
 
 from src.risk.confidence_calibration import CalibrationResult
+from src.brokers.instrument import Instrument
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +122,8 @@ class PositionSize:
     confidence_score: float
     is_valid: bool
     reason: str
+    # Unit type: "units" (FX), "contracts" (futures), or "shares" (stocks)
+    unit_type: str = "units"
     # Regime-based scaling info
     regime_scale_applied: float = 1.0
     regime_name: str = "UNKNOWN"
@@ -138,28 +146,46 @@ class DynamicPositionSizer:
         """
         self.config = config
 
+    @staticmethod
+    def _normalize_instrument(instrument: Union[str, Instrument]) -> Union[str, Instrument]:
+        """Normalize instrument input to either string or Instrument object.
+
+        Args:
+            instrument: Either a string symbol (e.g., 'USD_JPY') or Instrument object
+
+        Returns:
+            The instrument as-is (str or Instrument)
+        """
+        return instrument
+
     def calculate_position_size(
         self,
         account_equity: float,
         stop_loss_pips: float,
-        instrument: str,
+        instrument: Union[str, Instrument],
         calibrated_confidence: Optional[CalibrationResult] = None,
         raw_confidence: Optional[float] = None
     ) -> PositionSize:
         """Calculate position size based on confidence and risk parameters.
 
+        Supports both FX (pips-based) and FUTURES (ticks-based) instruments.
+
         Args:
             account_equity: Account equity in base currency
-            stop_loss_pips: Stop loss distance in pips
-            instrument: Trading instrument (e.g., 'USD_JPY')
+            stop_loss_pips: Stop loss distance in pips (for FX) or ticks (for FUTURES)
+            instrument: Trading instrument (str like 'USD_JPY' or Instrument object)
             calibrated_confidence: Calibrated confidence result
             raw_confidence: Raw confidence score (used if calibrated_confidence not provided)
 
         Returns:
-            PositionSize with calculated position details
+            PositionSize with calculated position details (units for FX, contracts for FUTURES)
         """
+        # Determine instrument type and get symbol string for logging
+        instrument_obj = self._normalize_instrument(instrument)
+        instrument_str = instrument_obj.symbol if isinstance(instrument_obj, Instrument) else str(instrument)
+
         base_position_size = self._calculate_base_position_size(
-            account_equity, stop_loss_pips, instrument
+            account_equity, stop_loss_pips, instrument_obj
         )
 
         # Apply adaptive risk scaling (drawdown protection / streak boost)
@@ -186,18 +212,21 @@ class DynamicPositionSizer:
             is_valid = confidence_score >= self.config.min_confidence_threshold
             reason = "Valid" if is_valid else f"Below threshold ({self.config.min_confidence_threshold})"
         else:
+            unit_type = "contracts" if isinstance(instrument_obj, Instrument) and instrument_obj.asset_class == "FUTURES" else "units"
             return PositionSize(
                 units=base_position_size,
                 confidence_level="invalid",
                 position_multiplier=0.0,
-                risk_amount=self._calculate_actual_risk_amount(base_position_size, stop_loss_pips, instrument),
+                risk_amount=self._calculate_actual_risk_amount(base_position_size, stop_loss_pips, instrument_obj),
                 confidence_score=0.0,
                 is_valid=False,
-                reason="No confidence provided"
+                reason="No confidence provided",
+                unit_type=unit_type
             )
 
         # Check if trade should be executed based on confidence
         if not is_valid:
+            unit_type = "contracts" if isinstance(instrument_obj, Instrument) and instrument_obj.asset_class == "FUTURES" else "units"
             return PositionSize(
                 units=0,
                 confidence_level="invalid",
@@ -205,7 +234,8 @@ class DynamicPositionSizer:
                 risk_amount=0.0,
                 confidence_score=confidence_score,
                 is_valid=False,
-                reason=f"Confidence too low: {reason}"
+                reason=f"Confidence too low: {reason}",
+                unit_type=unit_type
             )
 
         # Determine confidence level and position multiplier
@@ -216,13 +246,16 @@ class DynamicPositionSizer:
 
         # Apply position size constraints
         final_position_size = self._apply_position_constraints(
-            final_position_size, account_equity, instrument
+            final_position_size, account_equity, instrument_obj
         )
 
         # Calculate actual risk amount
         risk_amount = self._calculate_actual_risk_amount(
-            final_position_size, stop_loss_pips, instrument
+            final_position_size, stop_loss_pips, instrument_obj
         )
+
+        # Determine unit type based on asset class
+        unit_type = "contracts" if isinstance(instrument_obj, Instrument) and instrument_obj.asset_class == "FUTURES" else "units"
 
         return PositionSize(
             units=final_position_size,
@@ -231,17 +264,31 @@ class DynamicPositionSizer:
             risk_amount=risk_amount,
             confidence_score=confidence_score,
             is_valid=True,
-            reason=f"Confidence {confidence_score:.3f} -> {confidence_level} level"
+            reason=f"Confidence {confidence_score:.3f} -> {confidence_level} level",
+            unit_type=unit_type
         )
 
     def _calculate_base_position_size(
-        self, account_equity: float, stop_loss_pips: float, instrument: str
+        self, account_equity: float, stop_loss_pips: float, instrument: Union[str, Instrument]
     ) -> int:
         """Calculate base position size based on risk parameters.
 
-        Uses the standard position sizing formula:
-        Position Size = (Account Equity * Risk %) / (Stop Loss in $)
+        For FX: Uses standard formula: Position Size = (Account Equity * Risk %) / (Stop Loss in $)
+        For FUTURES: Uses tick-based formula: Contracts = int(max(1, risk_amount / (sl_ticks * tick_value)))
+
+        Args:
+            account_equity: Account equity in base currency
+            stop_loss_pips: Stop loss in pips (FX) or ticks (FUTURES)
+            instrument: Trading instrument (str or Instrument object)
+
+        Returns:
+            Position size in units (FX) or contracts (FUTURES)
         """
+        # Check if this is a FUTURES instrument
+        if isinstance(instrument, Instrument) and instrument.asset_class == "FUTURES":
+            return self._calculate_futures_position_size(account_equity, stop_loss_pips, instrument)
+
+        # For FX instruments (string or FX-class Instrument)
         # Calculate risk amount in account currency
         risk_amount = account_equity * self.config.risk_per_trade_pct
 
@@ -249,29 +296,83 @@ class DynamicPositionSizer:
         stop_loss_value_per_unit = self._get_stop_loss_value_per_unit(stop_loss_pips, instrument)
 
         if stop_loss_value_per_unit <= 0:
-            logger.warning(f"Invalid stop loss value for {instrument}: {stop_loss_value_per_unit}")
+            instrument_str = instrument.symbol if isinstance(instrument, Instrument) else str(instrument)
+            logger.warning(f"Invalid stop loss value for {instrument_str}: {stop_loss_value_per_unit}")
             return self.config.min_position_size
 
         # Calculate position size
         position_size = risk_amount / stop_loss_value_per_unit
 
-        # Round to nearest 1000 units (standard lot sizing)
-        position_size = int(round(position_size / 1000) * 1000)
+        # Round to appropriate lot size based on account equity
+        # Small accounts (<$50k): round to 100 units to avoid 50-67% oversize
+        # Larger accounts: round to 1000 units (standard lot sizing)
+        # NOTE: Use the `account_equity` parameter already in scope — do NOT shadow
+        # it with a getattr(self.config, ...) that always returns the default 100000.
+        rounding_unit = 100 if account_equity < 50000 else 1000
+        position_size = int(round(position_size / rounding_unit) * rounding_unit)
 
         # Apply minimum position size
         position_size = max(position_size, self.config.min_position_size)
 
         return position_size
 
-    def _get_stop_loss_value_per_unit(self, stop_loss_pips: float, instrument: str) -> float:
-        """Get stop loss value per unit in account currency."""
-        # For most forex pairs, 1 pip = 0.0001
-        # For JPY pairs, 1 pip = 0.01
-        instrument_upper = instrument.upper().replace("_", "")
+    def _calculate_futures_position_size(
+        self, account_equity: float, sl_ticks: float, instrument: Instrument
+    ) -> int:
+        """Calculate position size (contracts) for FUTURES instruments.
 
-        # For most forex pairs, 1 pip = 0.0001
-        # For JPY pairs, 1 pip = 0.01
-        # Note: pip_value is not used in the calculation below, keeping for reference
+        Formula: contracts = int(max(1, risk_amount / (sl_ticks * tick_value)))
+
+        Args:
+            account_equity: Account equity in base currency
+            sl_ticks: Stop loss distance in ticks
+            instrument: FUTURES Instrument object with tick_value defined
+
+        Returns:
+            Position size in contracts (minimum 1)
+        """
+        risk_amount = account_equity * self.config.risk_per_trade_pct
+
+        # Validate instrument has required futures fields
+        if instrument.tick_value is None or instrument.tick_value <= 0:
+            logger.warning(f"FUTURES instrument {instrument.symbol} missing valid tick_value")
+            return 1
+
+        if sl_ticks <= 0:
+            logger.warning(f"Invalid SL ticks for {instrument.symbol}: {sl_ticks}")
+            return 1
+
+        # Calculate contracts: risk_amount / (sl_ticks * tick_value)
+        risk_per_tick = sl_ticks * instrument.tick_value
+        contracts = int(max(1, risk_amount / risk_per_tick))
+
+        logger.debug(
+            f"FUTURES sizing {instrument.symbol}: "
+            f"risk_amount=${risk_amount:.2f}, sl_ticks={sl_ticks}, "
+            f"tick_value=${instrument.tick_value:.2f} → {contracts} contracts"
+        )
+
+        return contracts
+
+    def _get_stop_loss_value_per_unit(self, stop_loss_pips: float, instrument: Union[str, Instrument]) -> float:
+        """Get stop loss value per unit in account currency for FX instruments.
+
+        Args:
+            stop_loss_pips: Stop loss in pips
+            instrument: FX instrument (str or Instrument object)
+
+        Returns:
+            Dollar value of stop loss per unit
+        """
+        # If it's an Instrument object with pip_value, use that
+        if isinstance(instrument, Instrument):
+            if instrument.pip_value and instrument.pip_value > 0:
+                return stop_loss_pips * instrument.pip_value
+            # Fallback for FX instruments without explicit pip_value
+            instrument_upper = instrument.symbol.upper().replace("_", "")
+        else:
+            # String-based symbol lookup
+            instrument_upper = instrument.upper().replace("_", "")
 
         # Approximate pip value in USD for standard lots
         # This is a simplified calculation - in practice, you'd want more precision
@@ -299,11 +400,29 @@ class DynamicPositionSizer:
         else:
             return "high", self.config.high_confidence_multiplier
 
-    def _apply_position_constraints(self, position_size: int, account_equity: float, instrument: str) -> int:
-        """Apply position size constraints."""
+    def _apply_position_constraints(self, position_size: int, account_equity: float, instrument: Union[str, Instrument]) -> int:
+        """Apply position size constraints.
+
+        Args:
+            position_size: Initial position size (units for FX, contracts for FUTURES)
+            account_equity: Account equity
+            instrument: Trading instrument
+
+        Returns:
+            Constrained position size
+        """
         # Maximum position size based on account equity (30% of equity)
-        # For $100k account = 3,000,000 units = 30 lots max
-        max_position_from_equity = int(account_equity * self.config.max_position_pct * 100)  # In units
+        # For FX: $100k account = 3,000,000 units = 30 lots max
+        # For FUTURES: constraint is based on contract value, not units
+        if isinstance(instrument, Instrument) and instrument.asset_class == "FUTURES":
+            # For futures, apply a simple max contracts limit based on equity
+            # Use margin_requirement to estimate max contracts
+            max_position_from_equity = int(
+                (account_equity * self.config.max_position_pct) / instrument.margin_requirement
+            )
+        else:
+            # FX positioning
+            max_position_from_equity = int(account_equity * self.config.max_position_pct * 100)  # In units
 
         # No artificial config cap - let equity-based limit control it
         # This allows proper scaling with account size
@@ -314,8 +433,24 @@ class DynamicPositionSizer:
 
         return constrained_position
 
-    def _calculate_actual_risk_amount(self, position_size: int, stop_loss_pips: float, instrument: str) -> float:
-        """Calculate actual risk amount for the given position size."""
+    def _calculate_actual_risk_amount(self, position_size: int, stop_loss_pips: float, instrument: Union[str, Instrument]) -> float:
+        """Calculate actual risk amount for the given position size.
+
+        Args:
+            position_size: Position size (units for FX, contracts for FUTURES)
+            stop_loss_pips: Stop loss (pips for FX, ticks for FUTURES)
+            instrument: Trading instrument
+
+        Returns:
+            Risk amount in account currency
+        """
+        # For FUTURES, calculate risk differently (contracts * sl_ticks * tick_value)
+        if isinstance(instrument, Instrument) and instrument.asset_class == "FUTURES":
+            if instrument.tick_value and instrument.tick_value > 0:
+                return position_size * stop_loss_pips * instrument.tick_value
+            return 0.0
+
+        # For FX, use pip-based calculation
         stop_loss_value_per_unit = self._get_stop_loss_value_per_unit(stop_loss_pips, instrument)
         return position_size * stop_loss_value_per_unit
 
@@ -334,27 +469,29 @@ class DynamicPositionSizer:
         self,
         account_equity: float,
         stop_loss_pips: float,
-        instrument: str,
+        instrument: Union[str, Instrument],
         volatility_regime: int,
         meta_confidence: float,
         calibrated_confidence: Optional[CalibrationResult] = None,
         raw_confidence: Optional[float] = None,
     ) -> PositionSize:
         """Calculate position size with regime-based aggressive scaling.
-        
+
         This is the key method for enabling aggressive volatility-regime sizing.
         When regime == HIGH/EXTREME and meta_confidence > threshold, positions
         are scaled UP to capitalize on high-quality signals.
-        
+
+        Supports both FX and FUTURES instruments.
+
         Args:
             account_equity: Account equity in base currency
-            stop_loss_pips: Stop loss distance in pips
-            instrument: Trading instrument (e.g., 'USD_JPY')
+            stop_loss_pips: Stop loss distance in pips (FX) or ticks (FUTURES)
+            instrument: Trading instrument (str like 'USD_JPY' or Instrument object)
             volatility_regime: Volatility regime (0=LOW, 1=NORMAL, 2=HIGH, 3=EXTREME)
             meta_confidence: Meta-labeler confidence (0-1)
             calibrated_confidence: Calibrated confidence result
             raw_confidence: Raw confidence score (used if calibrated_confidence not provided)
-            
+
         Returns:
             PositionSize with regime-based scaling applied
         """
@@ -379,6 +516,16 @@ class DynamicPositionSizer:
             regime_config=regime_config,
         )
         
+        # H-9 fix: Validate regime_scale is finite and within safe bounds
+        import math
+        if not math.isfinite(regime_scale) or regime_scale <= 0:
+            logger.warning(
+                "Invalid regime_scale=%.4f for %s, defaulting to 1.0",
+                regime_scale, instrument,
+            )
+            regime_scale = 1.0
+        regime_scale = max(0.1, min(regime_scale, 3.0))
+
         # Apply regime scale to position
         scaled_units = int(base_result.units * regime_scale)
         
@@ -388,23 +535,27 @@ class DynamicPositionSizer:
         )
         
         # Recalculate risk amount
+        instrument_obj = self._normalize_instrument(instrument)
         risk_amount = self._calculate_actual_risk_amount(
-            scaled_units, stop_loss_pips, instrument
+            scaled_units, stop_loss_pips, instrument_obj
         )
-        
+
         regime_name = REGIME_NAMES[volatility_regime] if 0 <= volatility_regime <= 3 else "UNKNOWN"
-        
+
+        # Determine unit type
+        unit_type = "contracts" if isinstance(instrument_obj, Instrument) and instrument_obj.asset_class == "FUTURES" else "units"
+
         # Log aggressive scaling when applied
         if regime_scale > 1.0:
             logger.info(
                 f"🚀 AGGRESSIVE SCALING: {regime_name} vol + {meta_confidence:.2f} meta_confidence "
-                f"-> {regime_scale:.2f}x scale ({base_result.units:,} -> {scaled_units:,} units)"
+                f"-> {regime_scale:.2f}x scale ({base_result.units:,} -> {scaled_units:,} {unit_type})"
             )
         elif regime_scale < 1.0:
             logger.info(
                 f"🔻 CONSERVATIVE SCALING: {regime_name} vol -> {regime_scale:.2f}x scale"
             )
-        
+
         return PositionSize(
             units=scaled_units,
             confidence_level=base_result.confidence_level,
@@ -413,6 +564,7 @@ class DynamicPositionSizer:
             confidence_score=base_result.confidence_score,
             is_valid=True,
             reason=f"{base_result.reason}; {scaling_reason}",
+            unit_type=unit_type,
             regime_scale_applied=regime_scale,
             regime_name=regime_name,
             aggressive_scaling_reason=scaling_reason if regime_scale != 1.0 else "",

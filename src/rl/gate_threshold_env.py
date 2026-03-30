@@ -20,6 +20,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+# --- numpy 1.x ↔ 2.x pickle compatibility shim ---
+# Models saved with numpy 2.x reference `numpy._core.numeric` internally.
+# numpy 1.x uses `numpy.core.numeric` (no underscore). This alias lets
+# pickle find the module during deserialization regardless of numpy version.
+import sys as _sys
+if not hasattr(np, "_core"):
+    import numpy.core as _np_core
+    _sys.modules.setdefault("numpy._core", _np_core)
+    for _sub in ("numeric", "multiarray", "_multiarray_umath", "fromnumeric"):
+        _mod = getattr(_np_core, _sub, None)
+        if _mod is not None:
+            _sys.modules.setdefault(f"numpy._core.{_sub}", _mod)
+
 # Lazy imports for gymnasium and stable-baselines3 to avoid 8+ second startup penalty
 EvalCallback = None  # Will be imported lazily with SB3
 GYM_AVAILABLE = None  # Will be set on first access
@@ -891,6 +904,12 @@ class GateThresholdRL:
                 import sys
                 if not force_direct and 'tensorflow' in sys.modules:
                     self._load_via_subprocess(GATE_RL_MODEL_PATH)
+                    # Fallback to direct load if subprocess failed
+                    if not self._is_trained:
+                        logger.info("Gate RL subprocess failed, falling back to direct load")
+                        self.model = SAC.load(str(GATE_RL_MODEL_PATH), device="cpu")
+                        self._is_trained = True
+                        logger.info(f"📂 Gate RL model loaded from {GATE_RL_MODEL_PATH} (direct fallback)")
                 else:
                     self.model = SAC.load(str(GATE_RL_MODEL_PATH), device="cpu")
                     self._is_trained = True

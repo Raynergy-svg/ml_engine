@@ -94,9 +94,33 @@ def validate_trade_journal(data: Any) -> bool:
     return True
 
 
+def validate_episodic_memory(data: Any) -> bool:
+    """Validate episodic_memory.json structure: list of episodes with core fields."""
+    if not isinstance(data, list):
+        return False
+    _REQUIRED = {
+        "episode_id",
+        "timestamp",
+        "pair",
+        "direction",
+        "regime",
+        "session",
+        "confidence",
+        "weighted_vote_score",
+        "rr_ratio",
+    }
+    for entry in data[:5]:  # Spot-check first 5 entries
+        if not isinstance(entry, dict):
+            return False
+        if not _REQUIRED.issubset(entry.keys()):
+            return False
+    return True
+
+
 # Register validators by filename
 _VALIDATORS["agent_weights.json"] = validate_agent_weights
 _VALIDATORS["trade_journal_rl.json"] = validate_trade_journal
+_VALIDATORS["episodic_memory.json"] = validate_episodic_memory
 
 
 def safe_json_read(
