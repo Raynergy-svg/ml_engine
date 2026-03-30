@@ -4150,9 +4150,10 @@ class ModularEnsembleInference:
             ridge_error = str(e)
             logger.warning(f"Ridge prediction failed: {e}")
 
-        # Tier 6 Phase 1: MAML Ridge shadow prediction
+        # Tier 6: MAML Ridge prediction (shadow or promoted)
         _maml_shadow_result = None
         _maml_ridge = getattr(self, '_maml_ridge', None)
+        _maml_promoted = False
         if _maml_ridge is not None and ridge_error is None:
             try:
                 _vol_regime_name = "NORMAL"
@@ -4164,13 +4165,24 @@ class ModularEnsembleInference:
                     regime=_vol_regime_name,
                     ridge_confidence=ridge_confidence,
                 )
-                logger.debug(
-                    "MAML shadow: ridge=%.1f maml=%.1f diff=%.1f regime=%s",
-                    ridge_confidence,
-                    _maml_shadow_result["maml_confidence"],
-                    _maml_shadow_result["diff"],
-                    _vol_regime_name,
-                )
+                _maml_promoted = getattr(_maml_ridge, 'is_promoted', False)
+                if _maml_promoted:
+                    # MAML has been auto-promoted: use its confidence for the gate
+                    ridge_confidence = _maml_shadow_result["maml_confidence"]
+                    logger.info(
+                        "MAML PROMOTED: using maml=%.1f (ridge was %.1f) regime=%s",
+                        _maml_shadow_result["maml_confidence"],
+                        _maml_shadow_result["ridge_confidence"],
+                        _vol_regime_name,
+                    )
+                else:
+                    logger.debug(
+                        "MAML shadow: ridge=%.1f maml=%.1f diff=%.1f regime=%s",
+                        ridge_confidence,
+                        _maml_shadow_result["maml_confidence"],
+                        _maml_shadow_result["diff"],
+                        _vol_regime_name,
+                    )
                 # Tier 6 Phase 2: Record prediction in benchmark
                 _maml_bench = getattr(self, '_maml_benchmark', None)
                 if _maml_bench is not None:
@@ -4178,12 +4190,12 @@ class ModularEnsembleInference:
                         _maml_bench.record_prediction(
                             regime=_vol_regime_name,
                             maml_confidence=_maml_shadow_result["maml_confidence"],
-                            ridge_confidence=ridge_confidence,
+                            ridge_confidence=_maml_shadow_result["ridge_confidence"],
                         )
                     except Exception:
                         pass  # Benchmark recording is non-critical
             except Exception as _maml_err:
-                logger.debug("MAML shadow prediction failed: %s", _maml_err)
+                logger.debug("MAML prediction failed: %s", _maml_err)
 
         xgb_error = None
         try:

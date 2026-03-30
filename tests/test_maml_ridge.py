@@ -322,3 +322,224 @@ class TestStats:
                 assert stats["param_count"] > 0
                 assert "regime_buffers" in stats
                 assert "shadow_mae" in stats
+                assert "promoted" in stats
+                assert stats["promoted"] is False
+                assert "promotion_history" in stats
+
+
+# ── Test 8: Auto-promotion ──
+
+
+class TestAutoPromotion:
+    def test_check_promotion_no_benchmark(self):
+        """Without a benchmark, promotion check should skip."""
+        from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("src.recursive_intelligence.maml_ridge._STATE_DIR", Path(tmpdir)):
+                maml = MAMLRidge(config=MAMLConfig(auto_promote=True))
+                result = maml.check_promotion()
+                assert result["action"] == "skip"
+                assert "no_benchmark" in result["reason"]
+
+    def test_check_promotion_insufficient_data(self):
+        """Should return 'wait' when not enough outcomes."""
+        from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("src.recursive_intelligence.maml_ridge._STATE_DIR", Path(tmpdir)):
+                maml = MAMLRidge(config=MAMLConfig(
+                    auto_promote=True,
+                    min_outcomes_for_promotion=100,
+                ))
+                maml._benchmark = MagicMock()
+                result = maml.check_promotion()
+                assert result["action"] == "wait"
+
+    def test_promotion_on_promote_verdict(self):
+        """Should flip shadow_mode when benchmark returns PROMOTE."""
+        from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("src.recursive_intelligence.maml_ridge._STATE_DIR", Path(tmpdir)):
+                config = MAMLConfig(
+                    auto_promote=True,
+                    min_outcomes_for_promotion=5,
+                )
+                maml = MAMLRidge(config=config)
+
+                # Fill buffers to meet min_outcomes_for_promotion
+                for _ in range(10):
+                    maml._regime_buffers["NORMAL"].append(
+                        (np.random.randn(14).astype(np.float32), 60.0)
+                    )
+
+                # Mock benchmark to return PROMOTE
+                mock_bench = MagicMock()
+                mock_bench.generate_report.return_value = {
+                    "promotion_verdict": {
+                        "decision": "PROMOTE",
+                        "score": 5,
+                        "reasons": ["MAML MAE advantage: 3.5"],
+                    }
+                }
+                maml._benchmark = mock_bench
+
+                assert maml.config.shadow_mode is True
+                assert maml.is_promoted is False
+
+                result = maml.check_promotion()
+
+                assert result["action"] == "promoted"
+                assert maml.config.shadow_mode is False
+                assert maml.is_promoted is True
+                assert len(maml._promotion_history) == 1
+                assert maml._promotion_history[0]["action"] == "promoted"
+
+    def test_no_promotion_on_continue_shadow(self):
+        """Should remain in shadow when verdict is CONTINUE_SHADOW."""
+        from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("src.recursive_intelligence.maml_ridge._STATE_DIR", Path(tmpdir)):
+                config = MAMLConfig(auto_promote=True, min_outcomes_for_promotion=5)
+                maml = MAMLRidge(config=config)
+
+                for _ in range(10):
+                    maml._regime_buffers["NORMAL"].append(
+                        (np.random.randn(14).astype(np.float32), 60.0)
+                    )
+
+                mock_bench = MagicMock()
+                mock_bench.generate_report.return_value = {
+                    "promotion_verdict": {
+                        "decision": "CONTINUE_SHADOW",
+                        "score": 0,
+                        "reasons": ["Not enough data"],
+                    }
+                }
+                maml._benchmark = mock_bench
+
+                result = maml.check_promotion()
+                assert result["action"] == "continue_shadow"
+                assert maml.config.shadow_mode is True
+
+    def test_demotion_on_regression(self):
+        """Should demote back to shadow if MAML regresses after promotion."""
+        from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("src.recursive_intelligence.maml_ridge._STATE_DIR", Path(tmpdir)):
+                config = MAMLConfig(
+                    auto_promote=True,
+                    min_outcomes_for_promotion=5,
+                    demotion_lookback=10,
+                    demotion_mae_threshold=3.0,
+                )
+                maml = MAMLRidge(config=config)
+
+                # Simulate promoted state
+                maml._promoted = True
+                maml.config.shadow_mode = False
+                maml._promoted_at_outcome = 10
+
+                # Fill buffers to have enough post-promotion trades
+                for _ in range(30):
+                    maml._regime_buffers["NORMAL"].append(
+                        (np.random.randn(14).astype(np.float32), 50.0)
+                    )
+
+                # Mock benchmark showing regression
+                mock_bench = MagicMock()
+                mock_bench.generate_report.return_value = {
+                    "mae_comparison": {
+                        "maml_mae": 15.0,
+                        "ridge_mae": 8.0,  # Ridge is 7 pts better → exceeds threshold
+                    }
+                }
+                maml._benchmark = mock_bench
+
+                result = maml.check_promotion()
+                assert result["action"] == "demoted"
+                assert maml.config.shadow_mode is True
+                assert maml.is_promoted is False
+                assert len(maml._promotion_history) == 1
+                assert maml._promotion_history[0]["action"] == "demoted"
+
+    def test_no_demotion_when_performing_well(self):
+        """Should stay promoted when MAML is performing well."""
+        from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("src.recursive_intelligence.maml_ridge._STATE_DIR", Path(tmpdir)):
+                config = MAMLConfig(
+                    auto_promote=True,
+                    min_outcomes_for_promotion=5,
+                    demotion_lookback=10,
+                    demotion_mae_threshold=5.0,
+                )
+                maml = MAMLRidge(config=config)
+
+                maml._promoted = True
+                maml.config.shadow_mode = False
+                maml._promoted_at_outcome = 10
+
+                for _ in range(30):
+                    maml._regime_buffers["NORMAL"].append(
+                        (np.random.randn(14).astype(np.float32), 50.0)
+                    )
+
+                mock_bench = MagicMock()
+                mock_bench.generate_report.return_value = {
+                    "mae_comparison": {
+                        "maml_mae": 7.0,
+                        "ridge_mae": 9.0,  # MAML is better
+                    }
+                }
+                maml._benchmark = mock_bench
+
+                result = maml.check_promotion()
+                assert result["action"] == "promoted_ok"
+                assert maml.is_promoted is True
+
+    def test_promotion_persists_across_restart(self):
+        """Promotion state should survive save/load cycle."""
+        from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "maml"
+            with patch("src.recursive_intelligence.maml_ridge._STATE_DIR", state_dir):
+                config = MAMLConfig(auto_promote=True, min_outcomes_for_promotion=5)
+                m1 = MAMLRidge(config=config)
+
+                # Simulate promotion
+                m1._promoted = True
+                m1.config.shadow_mode = False
+                m1._promoted_at_outcome = 42
+                m1._promotion_history = [{"action": "promoted", "timestamp": 123.0}]
+                m1._save_state()
+
+                # Load into new instance
+                m2 = MAMLRidge(config=MAMLConfig(auto_promote=True))
+                assert m2._promoted is True
+                assert m2.config.shadow_mode is False
+                assert m2._promoted_at_outcome == 42
+                assert len(m2._promotion_history) == 1
+
+    def test_auto_promote_disabled(self):
+        """When auto_promote=False, check_promotion should skip."""
+        from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
+        from unittest.mock import MagicMock
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch("src.recursive_intelligence.maml_ridge._STATE_DIR", Path(tmpdir)):
+                maml = MAMLRidge(config=MAMLConfig(auto_promote=False))
+                maml._benchmark = MagicMock()
+                result = maml.check_promotion()
+                assert result["action"] == "skip"
+                assert "auto_promote_disabled" in result["reason"]

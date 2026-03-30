@@ -82,8 +82,13 @@ class MAMLConfig:
     max_buffer_per_regime: int = 200   # Max samples per regime (sliding window)
     meta_train_interval: int = 20      # Meta-train every N new outcomes
 
-    # Shadow mode
+    # Shadow mode & auto-promotion
     shadow_mode: bool = True    # If True, predictions are logged but not used
+    auto_promote: bool = True   # If True, automatically promote when benchmark says PROMOTE
+    min_outcomes_for_promotion: int = 100  # Min trade outcomes before promotion is considered
+    promotion_check_interval: int = 25    # Check promotion eligibility every N outcomes
+    demotion_lookback: int = 50           # After promotion, check last N trades for regression
+    demotion_mae_threshold: float = 5.0   # Demote if MAML MAE exceeds Ridge MAE by this much
 
 
 if TORCH_AVAILABLE:
@@ -167,6 +172,12 @@ class MAMLRidge:
 
         # Phase 2: Optional benchmark hook (set externally)
         self._benchmark: Optional[Any] = None
+
+        # Promotion tracking
+        self._promoted: bool = False           # True when MAML has been auto-promoted
+        self._promoted_at_outcome: int = 0     # Outcome count when promoted
+        self._promotion_history: List[Dict[str, Any]] = []  # Log of promotion/demotion events
+        self._outcomes_since_promotion_check: int = 0
 
         # Load persisted state
         self._load_state()
@@ -280,10 +291,21 @@ class MAMLRidge:
             self._regime_buffers[regime] = self._regime_buffers[regime][-max_buf:]
 
         self._outcomes_since_train += 1
+        self._outcomes_since_promotion_check += 1
 
         # Auto meta-train
         if self._outcomes_since_train >= self.config.meta_train_interval:
             self.meta_train()
+
+        # Auto promotion check
+        if (
+            self.config.auto_promote
+            and self._outcomes_since_promotion_check >= self.config.promotion_check_interval
+        ):
+            self._outcomes_since_promotion_check = 0
+            result = self.check_promotion()
+            if result.get("action") in ("promoted", "demoted"):
+                logger.info("MAML promotion check result: %s", result.get("action"))
 
     def meta_train(self) -> Dict[str, Any]:
         """Run one round of MAML meta-training across available regimes.
@@ -500,6 +522,148 @@ class MAMLRidge:
         # Fallback: use meta-model directly
         return self._meta_model
 
+    # ── Auto-Promotion / Demotion ────────────────────────────────────────
+
+    def check_promotion(self) -> Dict[str, Any]:
+        """Check if MAML should be promoted from shadow to production, or demoted back.
+
+        Called automatically after every `promotion_check_interval` outcomes.
+        Uses the benchmark's promotion verdict (which requires statistical significance,
+        MAE advantage, regime divergence, etc.).
+
+        Returns:
+            Dict with action taken and reasoning.
+        """
+        if not self._enabled or self._benchmark is None:
+            return {"action": "skip", "reason": "disabled_or_no_benchmark"}
+
+        if not self.config.auto_promote:
+            return {"action": "skip", "reason": "auto_promote_disabled"}
+
+        # If already promoted, check for demotion instead
+        if self._promoted:
+            return self._check_demotion()
+
+        # Not enough data yet
+        total_outcomes = sum(len(b) for b in self._regime_buffers.values())
+        if total_outcomes < self.config.min_outcomes_for_promotion:
+            return {
+                "action": "wait",
+                "reason": f"need {self.config.min_outcomes_for_promotion} outcomes, have {total_outcomes}",
+            }
+
+        # Ask the benchmark for its verdict
+        try:
+            report = self._benchmark.generate_report()
+        except Exception as e:
+            logger.debug("Promotion check: benchmark report failed: %s", e)
+            return {"action": "error", "reason": str(e)}
+
+        verdict = report.get("promotion_verdict", {})
+        decision = verdict.get("decision", "CONTINUE_SHADOW")
+
+        if decision == "PROMOTE":
+            return self._execute_promotion(verdict)
+        else:
+            return {
+                "action": "continue_shadow",
+                "decision": decision,
+                "score": verdict.get("score", 0),
+                "reasons": verdict.get("reasons", []),
+            }
+
+    def _execute_promotion(self, verdict: Dict[str, Any]) -> Dict[str, Any]:
+        """Flip MAML from shadow to production."""
+        self.config.shadow_mode = False
+        self._promoted = True
+        total_outcomes = sum(len(b) for b in self._regime_buffers.values())
+        self._promoted_at_outcome = total_outcomes
+
+        event = {
+            "action": "promoted",
+            "timestamp": __import__("time").time(),
+            "outcome_count": total_outcomes,
+            "meta_trains": self._total_meta_trains,
+            "verdict_score": verdict.get("score", 0),
+            "reasons": verdict.get("reasons", []),
+        }
+        self._promotion_history.append(event)
+        self._save_state()
+
+        logger.warning(
+            "MAML Ridge AUTO-PROMOTED to production (score=%d, outcomes=%d, trains=%d)",
+            verdict.get("score", 0),
+            total_outcomes,
+            self._total_meta_trains,
+        )
+        return event
+
+    def _check_demotion(self) -> Dict[str, Any]:
+        """After promotion, monitor for regression. Demote if MAML degrades."""
+        if self._benchmark is None:
+            return {"action": "skip", "reason": "no_benchmark"}
+
+        # Need enough post-promotion trades to evaluate
+        total_outcomes = sum(len(b) for b in self._regime_buffers.values())
+        post_promotion_trades = total_outcomes - self._promoted_at_outcome
+        if post_promotion_trades < self.config.demotion_lookback:
+            return {
+                "action": "monitoring",
+                "post_promotion_trades": post_promotion_trades,
+                "need": self.config.demotion_lookback,
+            }
+
+        # Check recent shadow log for regression
+        # Use the benchmark's report which tracks running MAE
+        try:
+            report = self._benchmark.generate_report()
+        except Exception as e:
+            return {"action": "error", "reason": str(e)}
+
+        mae_comp = report.get("mae_comparison", {})
+        maml_mae = mae_comp.get("maml_mae")
+        ridge_mae = mae_comp.get("ridge_mae")
+
+        if maml_mae is not None and ridge_mae is not None:
+            regression = maml_mae - ridge_mae
+            if regression > self.config.demotion_mae_threshold:
+                return self._execute_demotion(regression, report)
+
+        return {
+            "action": "promoted_ok",
+            "post_promotion_trades": post_promotion_trades,
+            "maml_mae": maml_mae,
+            "ridge_mae": ridge_mae,
+        }
+
+    def _execute_demotion(self, regression: float, report: Dict[str, Any]) -> Dict[str, Any]:
+        """Demote MAML back to shadow mode due to regression."""
+        self.config.shadow_mode = True
+        self._promoted = False
+        total_outcomes = sum(len(b) for b in self._regime_buffers.values())
+
+        event = {
+            "action": "demoted",
+            "timestamp": __import__("time").time(),
+            "outcome_count": total_outcomes,
+            "regression_mae": round(regression, 4),
+            "reason": f"MAML MAE exceeded Ridge by {regression:.4f} (threshold: {self.config.demotion_mae_threshold})",
+        }
+        self._promotion_history.append(event)
+        self._save_state()
+
+        logger.warning(
+            "MAML Ridge DEMOTED back to shadow (regression=%.4f, threshold=%.4f)",
+            regression,
+            self.config.demotion_mae_threshold,
+        )
+        return event
+
+    @property
+    def is_promoted(self) -> bool:
+        """Whether MAML is currently promoted to production (not shadow)."""
+        return self._promoted and not self.config.shadow_mode
+
     def _save_state(self) -> None:
         """Persist meta-model and buffers."""
         try:
@@ -512,6 +676,10 @@ class MAMLRidge:
                 "optimizer_state_dict": self._meta_optimizer.state_dict(),
                 "total_meta_trains": self._total_meta_trains,
                 "total_predictions": self._total_predictions,
+                "promoted": self._promoted,
+                "promoted_at_outcome": self._promoted_at_outcome,
+                "promotion_history": self._promotion_history[-20:],
+                "shadow_mode": self.config.shadow_mode,
                 "config": {
                     "input_dim": self.config.input_dim,
                     "hidden_dim": self.config.hidden_dim,
@@ -551,9 +719,15 @@ class MAMLRidge:
                 self._meta_optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 self._total_meta_trains = checkpoint.get("total_meta_trains", 0)
                 self._total_predictions = checkpoint.get("total_predictions", 0)
+                self._promoted = checkpoint.get("promoted", False)
+                self._promoted_at_outcome = checkpoint.get("promoted_at_outcome", 0)
+                self._promotion_history = checkpoint.get("promotion_history", [])
+                # Restore shadow_mode from persisted state (promotion survives restart)
+                if self._promoted:
+                    self.config.shadow_mode = checkpoint.get("shadow_mode", True)
                 logger.info(
-                    "MAML Ridge: loaded meta-model (trains=%d, preds=%d)",
-                    self._total_meta_trains, self._total_predictions,
+                    "MAML Ridge: loaded meta-model (trains=%d, preds=%d, promoted=%s)",
+                    self._total_meta_trains, self._total_predictions, self._promoted,
                 )
             except Exception as e:
                 logger.warning("MAML Ridge: meta-model load failed: %s", e)
@@ -578,6 +752,8 @@ class MAMLRidge:
         return {
             "enabled": self._enabled,
             "shadow_mode": self.config.shadow_mode,
+            "promoted": self._promoted,
+            "auto_promote": self.config.auto_promote,
             "total_meta_trains": self._total_meta_trains,
             "total_predictions": self._total_predictions,
             "outcomes_since_train": self._outcomes_since_train,
@@ -585,6 +761,7 @@ class MAMLRidge:
             "regime_buffers": {r: len(b) for r, b in self._regime_buffers.items()},
             "regime_stats": self._regime_stats,
             "shadow_mae": self._shadow_mae(),
+            "promotion_history": self._promotion_history[-5:],  # Last 5 events
         }
 
     def _shadow_mae(self) -> Optional[float]:

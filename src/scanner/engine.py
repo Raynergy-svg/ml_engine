@@ -48,20 +48,60 @@ class Scanner:
         self,
         config: Optional[ScannerConfig] = None,
         oanda_client: Optional[Any] = None,
+        broker: Optional[Any] = None,
     ):
         """Initialize scanner.
 
         Args:
             config: Scanner configuration (loads default if None)
-            oanda_client: OANDA API client (created if None)
+            oanda_client: OANDA API client (created if None, deprecated — use broker instead)
+            broker: BrokerClient instance for data fetching (created if None)
         """
         self.config = config or ScannerConfig()
         self._oanda = oanda_client
+        self._broker = broker
+
+        # Phase 69: TF/Keras warm-up — eagerly load the ensemble models
+        # before heavy Scanner init. Prevents segfault on Apple Silicon
+        # (TF 2.21 + Keras 3.13) when keras.models.load_model() is called
+        # after many Python modules have been imported and fragmented the
+        # process memory space.
+        try:
+            from modular_inference import ModularEnsembleInference as _MEI
+            self._modular_ensemble = _MEI(
+                model_dir=str(self.config.model_dir),
+                use_rl_sizer=bool(self.config.use_rl_sizer),
+                use_rl_gates=bool(self.config.use_rl_gates),
+                use_rl_exits=bool(self.config.use_rl_exits),
+                enable_market_intelligence=False,
+            )
+            # Scanner uses opportunity mode: no model contracts, no required models
+            if hasattr(self._modular_ensemble, 'config'):
+                self._modular_ensemble.config.enforce_model_contracts = False
+                self._modular_ensemble.config.require_direction_model = False
+                self._modular_ensemble.config.require_volatility_model = False
+            self._modular_ensemble.load_models()
+            self._ensemble_loaded = (
+                self._modular_ensemble._loaded
+                and (
+                    self._modular_ensemble.tcn is not None
+                    or getattr(self._modular_ensemble, "regime_model", None) is not None
+                    or getattr(self._modular_ensemble, "histgb", None) is not None
+                )
+            )
+            if self._ensemble_loaded:
+                self._ensemble_type = "ModularEnsembleInference"
+            logger.info("Phase 69: Keras models pre-loaded (loaded=%s)", self._ensemble_loaded)
+        except Exception as _warmup_err:
+            logger.debug(f"Phase 69: Keras warm-up deferred: {_warmup_err}")
+            self._modular_ensemble = None
 
         # Lazy-loaded components
         self._gate_evaluator: Optional[GateEvaluator] = None
         self._feature_engineer = None
-        self._modular_ensemble = None
+        # NOTE: _modular_ensemble may already be set by Phase 69 warm-up above
+        if not hasattr(self, '_modular_ensemble') or self._modular_ensemble is None:
+            self._modular_ensemble = None
         self._executor: Optional[ExecutionManager] = None
 
         # Ensemble health tracking (US-033)
@@ -141,14 +181,18 @@ class Scanner:
             except Exception as e:
                 logger.warning("Ensemble weighter init failed: %s — continuing without it", e)
 
-        # Tier 6 Phase 1: MAML Ridge prototype (shadow mode)
+        # Tier 6: MAML Ridge prototype (shadow mode, auto-promotes when benchmark passes)
         self._maml_ridge: Optional[Any] = None
         self._maml_benchmark: Optional[Any] = None
         if getattr(self.config, 'enable_meta_learning', False):
             try:
                 from src.recursive_intelligence.maml_ridge import MAMLRidge, MAMLConfig
-                self._maml_ridge = MAMLRidge(config=MAMLConfig(shadow_mode=True))
-                logger.info("MAML Ridge prototype initialized (shadow mode)")
+                self._maml_ridge = MAMLRidge(config=MAMLConfig(
+                    shadow_mode=True,     # Starts in shadow; promotion flips this
+                    auto_promote=True,    # Self-promote when benchmark says PROMOTE
+                ))
+                _mode = "PROMOTED" if self._maml_ridge.is_promoted else "shadow"
+                logger.info("MAML Ridge initialized (%s mode)", _mode)
             except Exception as e:
                 logger.debug("MAML Ridge init skipped: %s", e)
 
@@ -208,6 +252,15 @@ class Scanner:
                 logger.info("Lead-lag detector initialized")
             except Exception as e:
                 logger.debug(f"Lead-lag detector init deferred: {e}")
+
+        # Roll calendar (US-016: contract roll management for futures)
+        self._roll_calendar = None
+        try:
+            from src.brokers.roll_calendar import RollCalendar
+            self._roll_calendar = RollCalendar()
+            logger.info("Roll calendar initialized")
+        except Exception as e:
+            logger.debug(f"Roll calendar init deferred: {e}")
 
         # Feature attention layer (Phase 14: regime-conditioned softmax attention)
         self._feature_attention = None
@@ -642,6 +695,24 @@ class Scanner:
         except Exception as _asit_err:
             logger.debug(f"Phase 67: Adaptive sub-inference threshold init deferred: {_asit_err}")
 
+        # Phase 75: DisagreementRecorder — heuristic disagreement distribution
+        self._disagreement_recorder = None
+        try:
+            from src.scanner.disagreement_recorder import DisagreementRecorder
+            self._disagreement_recorder = DisagreementRecorder()
+            logger.info("Phase 75: Disagreement recorder initialized")
+        except Exception as _dr_err:
+            logger.debug(f"Phase 75: Disagreement recorder init deferred: {_dr_err}")
+
+        # Phase 75: AdaptiveDisagreementFloor — auto-raise disagreement_hard_floor
+        self._adaptive_disagreement_floor = None
+        try:
+            from src.scanner.adaptive_disagreement_floor import AdaptiveDisagreementFloor
+            self._adaptive_disagreement_floor = AdaptiveDisagreementFloor()
+            logger.info("Phase 75: Adaptive disagreement floor initialized")
+        except Exception as _adf_err:
+            logger.debug(f"Phase 75: Adaptive disagreement floor init deferred: {_adf_err}")
+
         # Phase 56 (US-348): Virtual Trade Logger — capture rejected setups for offline RL
         self._virtual_trade_logger = None
         try:
@@ -939,6 +1010,55 @@ class Scanner:
             except Exception as e:
                 logger.debug(f"API retry circuit breaker init deferred: {e}")
 
+        # US-006–US-019: Previously unregistered modules — init for dispatcher
+        self._counterfactual_learner = None
+        try:
+            from src.scanner.automation.counterfactual_learner import CounterfactualLearner
+            self._counterfactual_learner = CounterfactualLearner()
+            logger.info("Counterfactual learner initialized")
+        except Exception as e:
+            logger.debug(f"Counterfactual learner init deferred: {e}")
+
+        self._chain_memory = None
+        try:
+            from src.scanner.automation.chain_memory import ChainMemory
+            self._chain_memory = ChainMemory()
+            logger.info("Chain memory initialized")
+        except Exception as e:
+            logger.debug(f"Chain memory init deferred: {e}")
+
+        self._drift_projector = None
+        try:
+            from src.scanner.automation.drift_projector import DriftProjector
+            self._drift_projector = DriftProjector()
+            logger.info("Drift projector initialized")
+        except Exception as e:
+            logger.debug(f"Drift projector init deferred: {e}")
+
+        self._episodic_memory = None
+        try:
+            from src.scanner.automation.episodic_memory import EpisodicMemory as _EpisodicMemoryScanner
+            self._episodic_memory = _EpisodicMemoryScanner()
+            logger.info("Episodic memory (scanner-level) initialized")
+        except Exception as e:
+            logger.debug(f"Episodic memory init deferred: {e}")
+
+        self._self_model_state = None
+        try:
+            from src.scanner.automation.self_model_state import SelfModelState
+            self._self_model_state = SelfModelState()
+            logger.info("Self-model state initialized")
+        except Exception as e:
+            logger.debug(f"Self-model state init deferred: {e}")
+
+        self._causal_counterfactual = None
+        try:
+            from src.scanner.automation.causal_counterfactual import CounterfactualEngine
+            self._causal_counterfactual = CounterfactualEngine()
+            logger.info("Causal counterfactual engine initialized")
+        except Exception as e:
+            logger.debug(f"Causal counterfactual init deferred: {e}")
+
         # Phase 49 (US-307): Pair performance tracker for auto-blacklisting in scan loop
         self._pair_tracker = None
         try:
@@ -1177,6 +1297,31 @@ class Scanner:
             return False
         except Exception as e:
             logger.error(f"Failed to initialize OANDA client: {e}")
+            return False
+
+    def _init_broker_client(self) -> bool:
+        """Initialize BrokerClient for data fetching.
+
+        Attempts to create OandaBroker from environment if no broker was passed.
+
+        Returns:
+            True if broker initialized successfully
+        """
+        if self._broker is not None:
+            return True
+
+        try:
+            from src.brokers.oanda import OandaBroker
+            self._broker = OandaBroker.from_env()
+            return True
+        except ImportError:
+            logger.error("BrokerClient not available - check src/brokers/ imports")
+            return False
+        except OSError as e:
+            logger.warning(f"Broker credentials not configured: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to initialize broker client: {e}")
             return False
 
     def _init_gate_evaluator(self) -> bool:
@@ -1547,7 +1692,7 @@ class Scanner:
     ) -> Optional[pd.DataFrame]:
         """Fetch OHLCV data for a pair.
 
-        Tries OANDA API first, falls back to local CSV files in market_data/.
+        Tries BrokerClient (or legacy OANDA) first, falls back to local CSV files in market_data/.
 
         Args:
             pair: Instrument name (e.g., "EUR_USD")
@@ -1556,7 +1701,56 @@ class Scanner:
         Returns:
             DataFrame with OHLCV columns or None on failure
         """
-        # === Try OANDA API first ===
+        # === Try BrokerClient first (preferred) ===
+        if self._init_broker_client():
+            try:
+                from src.brokers.instrument import Instrument
+
+                # Create Instrument from pair string (e.g., "EUR_USD")
+                # This is a basic mapping; adjust as needed for your broker
+                instrument = Instrument(
+                    symbol=pair,
+                    broker_symbol=pair.replace("_", "/"),
+                    asset_class="FX",
+                    price_precision=5,
+                    margin_requirement=0.02,
+                    exchange="OANDA",
+                    currency="USD",
+                    pip_value=0.0001 * 100000,  # Standard FX pip value: 0.0001 * 100k = $10 per pip
+                )
+
+                candle_list = self._broker.fetch_candles(
+                    instrument=instrument,
+                    granularity=self.config.granularity,
+                    count=count,
+                )
+
+                if candle_list:
+                    data = []
+                    for candle in candle_list:
+                        data.append({
+                            "time": candle.time,
+                            "open": candle.open,
+                            "high": candle.high,
+                            "low": candle.low,
+                            "close": candle.close,
+                            "volume": candle.volume,
+                        })
+
+                    if data:
+                        df = pd.DataFrame(data)
+                        df["time"] = pd.to_datetime(df["time"])
+                        df = df.set_index("time")
+
+                        if len(df) >= self.config.min_candles:
+                            return df
+                        else:
+                            logger.debug(f"{pair}: Insufficient broker data ({len(df)} candles)")
+
+            except Exception as e:
+                logger.debug(f"{pair}: Broker fetch failed - {e}")
+
+        # === Fallback to legacy OANDA client ===
         if self._init_oanda_client():
             try:
                 raw = self._oanda.get_candles(
@@ -1600,7 +1794,7 @@ class Scanner:
         if df is not None:
             return df
 
-        logger.warning(f"{pair}: No data available (OANDA offline, no local CSV)")
+        logger.warning(f"{pair}: No data available (broker offline, OANDA offline, no local CSV)")
         return None
 
     def _load_local_csv(self, pair: str) -> Optional[pd.DataFrame]:
@@ -2684,6 +2878,51 @@ class Scanner:
                     error=str(session_status.get("message") or "Trading currently blocked"),
                 )
 
+            # US-016: Check roll calendar for FUTURES instruments
+            if self._roll_calendar is not None:
+                try:
+                    # Get instrument from registry to check asset class
+                    from src.brokers.registry import get_registry
+                    registry = get_registry()
+                    instrument = registry.get_optional(pair)
+
+                    # Only apply roll calendar checks to FUTURES (FX skips entirely)
+                    if instrument is not None and instrument.asset_class == "FUTURES":
+                        # Get active contract month for this symbol
+                        active_contract = self._roll_calendar.get_active_contract(pair)
+
+                        # Check if within roll window
+                        if self._roll_calendar.should_roll(pair):
+                            logger.warning(
+                                f"US-016: {pair} within roll window (active: {active_contract})"
+                            )
+
+                        # Check if contract has expired
+                        days_until_roll = self._roll_calendar.days_until_roll(pair)
+                        if days_until_roll <= 0:
+                            logger.warning(
+                                f"US-016: {pair} contract expired (active: {active_contract}, "
+                                f"days_until_roll: {days_until_roll}) — skipping scan"
+                            )
+                            return PairAnalysis(
+                                pair=pair,
+                                direction="HOLD",
+                                confidence=0.0,
+                                error=f"Contract expired (active: {active_contract})",
+                            )
+
+                        # Update instrument contract_month to current active contract
+                        # Note: Instrument is frozen, so we track this separately or log intent
+                        logger.debug(
+                            f"US-016: {pair} active contract: {active_contract}, "
+                            f"days_until_roll: {days_until_roll}"
+                        )
+                except ValueError as vc_err:
+                    # Symbol not in roll calendar (e.g., not a supported futures contract)
+                    logger.debug(f"US-016: {pair} not in roll calendar: {vc_err}")
+                except Exception as rc_err:
+                    logger.debug(f"US-016: Roll calendar check error for {pair}: {rc_err}")
+
             # Fetch data
             df_raw = self._fetch_pair_data(pair, self.config.lookback_candles + 200)
             if df_raw is None:
@@ -3589,6 +3828,32 @@ class Scanner:
                 df_feat=df_feat,
                 gate_details=gate_details,
             )
+
+            # Phase 70: Record weighted_vote_score from specialist agents for ALL pairs
+            if self._vote_recorder is not None and getattr(result, "weighted_vote_score", None) is not None:
+                try:
+                    self._vote_recorder.record(
+                        pair=pair,
+                        vote_score=float(result.weighted_vote_score),
+                        agent_passed=bool(result.weighted_vote_score >= result.weighted_vote_threshold),
+                        scan_id=str(getattr(self, "_scan_cycle", 0)),
+                    )
+                except Exception as _vsr_err:
+                    logger.debug(f"Phase 70: _vote_recorder.record() in _scan_pair failed: {_vsr_err}")
+
+            # Phase 75: Record heuristic disagreement for ALL pairs
+            if self._disagreement_recorder is not None:
+                try:
+                    _disagree = float(getattr(result, "model_disagreement", 0.0))
+                    _hard_floor = float(getattr(self.config, "disagreement_hard_floor", 0.30))
+                    self._disagreement_recorder.record(
+                        pair=pair,
+                        disagreement=_disagree,
+                        hard_blocked=bool(_disagree > _hard_floor),
+                        scan_id=str(getattr(self, "_scan_cycle", 0)),
+                    )
+                except Exception as _dr_err:
+                    logger.debug(f"Phase 75: _disagreement_recorder.record() failed: {_dr_err}")
 
             # Attention feedback: compute timeframe quality from agent votes and feed to temporal attention
             if self._attention_feedback is not None and direction != "HOLD":
@@ -5139,7 +5404,8 @@ class Scanner:
                     if self._adaptive_sub_inference_threshold is not None:
                         try:
                             _new_si_thresh = self._adaptive_sub_inference_threshold.tick(
-                                _siga_cls, float(self.config.sub_inference_vote_threshold)
+                                _siga_cls, float(self.config.sub_inference_vote_threshold),
+                                total_agents=int(self.config.sub_inference_window_checks),
                             )
                             if _new_si_thresh is not None:
                                 _old_si_thresh = float(self.config.sub_inference_vote_threshold)
@@ -5163,6 +5429,65 @@ class Scanner:
                 self._adaptive_sub_inference_threshold.save_state()
             except Exception as _asit_save_err:
                 logger.debug(f"Phase 67: adaptive_sub_inference_threshold.save_state failed: {_asit_save_err}")
+
+        # Phase 75: Persist disagreement recorder + periodic gap analysis
+        if self._disagreement_recorder is not None:
+            try:
+                self._disagreement_recorder.save_state()
+            except Exception as _dr_save_err:
+                logger.debug(f"Phase 75: _disagreement_recorder.save_state failed: {_dr_save_err}")
+            if self._scan_cycle_count % 50 == 0:
+                try:
+                    from src.scanner.disagreement_gap_analyzer import analyze as _dga_analyze
+                    _dga_result = _dga_analyze(
+                        self._disagreement_recorder,
+                        float(self.config.disagreement_hard_floor),
+                    )
+                    _dga_cls = _dga_result.get("classification", "INSUFFICIENT_DATA")
+                    if _dga_cls == "NEAR_THRESHOLD":
+                        logger.warning(
+                            "Phase 75: Disagreement NEAR_THRESHOLD — "
+                            "near_miss_rate=%.1f%% pass_rate=%.2f | %s",
+                            _dga_result.get("near_miss_rate_pct", 0.0),
+                            _dga_result.get("pass_rate", 0.0),
+                            _dga_result.get("recommendation", ""),
+                        )
+                    else:
+                        logger.info(
+                            "Phase 75: Disagreement gap analysis — "
+                            "classification=%s gap_p50=%.5f pass_rate=%.2f",
+                            _dga_cls,
+                            _dga_result.get("gap_at_p50", 0.0),
+                            _dga_result.get("pass_rate", 0.0),
+                        )
+                    # Phase 75: Adaptive disagreement floor
+                    if self._adaptive_disagreement_floor is not None:
+                        try:
+                            _new_disagree_floor = self._adaptive_disagreement_floor.tick(
+                                _dga_cls, float(self.config.disagreement_hard_floor)
+                            )
+                            if _new_disagree_floor is not None:
+                                _old_disagree_floor = float(self.config.disagreement_hard_floor)
+                                self.config.disagreement_hard_floor = _new_disagree_floor
+                                _adf_status = self._adaptive_disagreement_floor.get_status()
+                                logger.info(
+                                    "Phase 75: AdaptiveDisagreementFloor — "
+                                    "disagreement_hard_floor raised %.4f → %.4f (adaptation %d/%d)",
+                                    _old_disagree_floor, _new_disagree_floor,
+                                    _adf_status.get("adaptation_count", 0),
+                                    _adf_status.get("max_adaptations", 2),
+                                )
+                        except Exception as _adf_tick_err:
+                            logger.debug(f"Phase 75: adaptive_disagreement_floor.tick() failed: {_adf_tick_err}")
+                except Exception as _dga_err:
+                    logger.debug(f"Phase 75: DisagreementGapAnalyzer.analyze() failed: {_dga_err}")
+
+        # Phase 75: Persist adaptive disagreement floor state
+        if self._adaptive_disagreement_floor is not None:
+            try:
+                self._adaptive_disagreement_floor.save_state()
+            except Exception as _adf_save_err:
+                logger.debug(f"Phase 75: adaptive_disagreement_floor.save_state failed: {_adf_save_err}")
 
         return result
 
