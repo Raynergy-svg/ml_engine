@@ -1,74 +1,78 @@
 {
   "project": "ML_Engine",
-  "phase": 82,
+  "phase": 83,
   "branchName": "main",
-  "description": "Phase 82: Wire pair_model_selector, chain_memory lifecycle, adaptive_lr trade step, fix 3 .log() bugs, and save regime_confidence_scorer state. Source: phase82 gap audit. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "description": "Phase 83: Wire AlertManager (drawdown/loss alerts), PortfolioOptimizer (Sharpe pair ranking), RetainTrigger (drift-based retrain), SelfModelState (health summary), CounterfactualLearner (loss analysis to learnings). Source: phase83 gap audit found 10+ fully dormant modules. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
   "userStories": [
     {
-      "id": "US-P82-001",
-      "title": "Fix 3 ObservationLog .log() → .log_observation() method name bugs in engine.py",
-      "description": "engine.py calls self._observation_log.log() at 3 sites (consensus_penalty ~line 2722, regime_default ~line 3819, execution_fasttrack ~line 4271). The method does not exist — it is named log_observation(). These silently raise AttributeError on every trigger, caught by the outer try/except and logged at DEBUG only. Fix: rename all 3 .log() calls to .log_observation(). Each call signature already passes category, pair, data kwargs which log_observation() accepts.",
+      "id": "US-P83-001",
+      "title": "Wire AlertManager.check_all() into scan cycle for drawdown, consecutive loss, and weight instability alerts",
+      "description": "AlertManager is initialized (line 920) but check_all() is never called. Wire it in scan() after trailing stop evaluation. Needs: nav (from executor._cached_nav), peak_nav (from executor._equity_hwm), recent_trades (from trade_journal_rl.json last 20 entries), current_weights (from agent_team), previous_weights (None ok for first call). Log fired alerts at WARNING. Call every scan cycle (cheap). Store _previous_weights on Scanner for delta tracking.",
       "acceptanceCriteria": [
-        "self._observation_log.log( replaced with self._observation_log.log_observation( at all 3 sites",
-        "category= kwarg preserved at all sites",
-        "pair= kwarg preserved at all sites",
-        "data= kwarg preserved at all sites",
-        "No other changes to surrounding logic",
+        "check_all(nav, peak_nav, recent_trades, current_weights, previous_weights) called in scan() after trailing stop block",
+        "nav read from self._executor._cached_nav (fallback 0.0)",
+        "peak_nav read from self._executor._equity_hwm (fallback nav)",
+        "recent_trades: last 20 closed entries from trade_journal_rl.json (loaded once per scan, cached)",
+        "current_weights from self._agent_team.get_weights() or equivalent",
+        "Fired alerts logged at WARNING with alert.type and alert.message",
+        "self._previous_weights stored on Scanner for next cycle delta tracking",
+        "Wrapped in try/except (non-blocking)",
         "Syntax validation passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "ObservationLog.log_observation() signature: log_observation(self, category: str, pair: str, data: dict). Sites: consensus_penalty block, regime_default block, execution_fasttrack block."
+      "notes": "AlertManager.check_all() returns List[Alert]. Alert has: type, severity, message, timestamp. check_all signature: (nav, peak_nav, recent_trades=None, current_weights=None, previous_weights=None)."
     },
     {
-      "id": "US-P82-002",
-      "title": "Wire PairModelSelector — active model query in _scan_pair(), record_prediction() after trade close",
-      "description": "PairModelSelector is initialized (self._pair_model_selector) but never called. Wire 3 sites: (A) In _scan_pair(), after the model ensemble is selected but before scanning, call get_active_model(pair) and log at DEBUG which model variant is active. (B) In record_trade_outcome_phase18(), call record_prediction(pair, model_type, predicted_direction, actual_direction) using model arg and trade_won to derive actual_direction. (C) In scan() periodically (every 50 cycles via _scan_cycle_count % 50 == 0), call check_switch(pair) for each pair and execute_switch(pair, new_model) if a switch is recommended.",
+      "id": "US-P83-002",
+      "title": "Wire PortfolioOptimizer.rank_pairs() periodic ranking + should_rotate() in scan()",
+      "description": "PortfolioOptimizer is initialized (line 902) but rank_pairs() and should_rotate() are never called. Wire: (A) should_rotate(scan_cycle) check every scan cycle — if True, call rank_pairs() and save_rankings(). (B) Log the top 3 and bottom 3 pairs at INFO when rotation triggers. (C) Optionally call get_observe_only_pairs() and log pairs that should be observation-only (low Sharpe). Wire in scan() after the main pair loop, before save chain.",
       "acceptanceCriteria": [
-        "get_active_model(pair) called in _scan_pair() near model selection — logged at DEBUG",
-        "record_prediction(pair, model_type, predicted, actual) called in record_trade_outcome_phase18() — model arg used as model_type, 'LONG'/'SHORT' derived from trade_won + direction context or fallback 'HOLD'",
-        "check_switch() + execute_switch() called every 50 scan cycles for each pair",
-        "All 3 sites wrapped in try/except (non-blocking)",
-        "Early skip if self._pair_model_selector is None",
+        "should_rotate(self._scan_cycle_count) called every scan cycle",
+        "When should_rotate returns True: rank_pairs() called, results saved via save_rankings()",
+        "Top 3 and bottom 3 pairs logged at INFO on rotation",
+        "get_observe_only_pairs() called on rotation and logged at INFO if any pairs flagged",
+        "Wrapped in try/except (non-blocking)",
+        "Early skip if self._portfolio_optimizer is None",
         "Syntax validation passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "get_active_model(pair) returns 'joint' or 'per_pair'. record_prediction(pair, model_type, predicted_direction, actual_direction) — use 'LONG' if trade_won else 'HOLD' as a proxy. check_switch(pair) returns Optional[str] (new model name or None). execute_switch(pair, new_model) performs the switch."
+      "notes": "should_rotate() returns bool. rank_pairs() returns List[PairRanking] (pair, sharpe_ratio, rolling_pnl, trade_count). save_rankings(rankings) persists. get_observe_only_pairs() returns list of pair strings."
     },
     {
-      "id": "US-P82-003",
-      "title": "Wire ChainMemory lifecycle — sync_from_prd() at scan start, record_chain_complete() at scan end",
-      "description": "ChainMemory (self._chain_memory) is initialized but sync_from_prd(), record_chain_complete(), and record_phase_complete() are never called. Wire 2 sites: (A) In scan() at the top before pairs loop, call sync_from_prd() once per session (gated by a _chain_memory_synced flag, set on first call). (B) In scan() after ScanResult is assembled (before return), call record_chain_complete(result_dict) where result_dict contains: phase=_scan_cycle_count, pairs_scanned=len(analyses), signals=sum(a.should_trade for a in analyses). Wrap both in try/except (non-blocking).",
+      "id": "US-P83-003",
+      "title": "Wire RetainTrigger.check_drift() periodically + record_prediction() from trade outcomes",
+      "description": "RetainTrigger is initialized (line 884) but check_drift() and record_prediction() are never called in engine.py. Note: record_prediction() IS called in execution.py (phase78 wiring) but check_drift() is not called anywhere. Wire: (A) check_drift() every 20 scan cycles (align with drift monitor interval). If RetrainRequest returned, log at WARNING with pairs_to_retrain and write the request file. (B) Verify record_prediction is called — it already is in execution.py, just confirm.",
       "acceptanceCriteria": [
-        "_chain_memory_synced: bool = False added to Scanner.__init__ after _chain_memory block",
-        "sync_from_prd() called once in scan() on first call (gated by _chain_memory_synced flag)",
-        "record_chain_complete(dict) called in scan() after ScanResult assembled",
-        "result dict includes phase, pairs_scanned, signals keys",
-        "Both sites wrapped in try/except (non-blocking)",
-        "Early skip if self._chain_memory is None",
+        "check_drift() called every 20 scan cycles (self._scan_cycle_count % 20 == 0)",
+        "RetrainRequest result logged at WARNING with pairs_to_retrain list",
+        "request file written by check_drift() internally (no extra code needed)",
+        "Wrapped in try/except (non-blocking)",
+        "Early skip if self._retrain_trigger is None",
         "Syntax validation passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "sync_from_prd() loads PRD from disk and updates internal phase tracking. record_chain_complete(result) takes a dict. record_phase_complete(phase_name, stories_count) is for explicit phase completion — call it in sync_from_prd wrapper using current phase from PRD."
+      "notes": "check_drift() returns Optional[RetrainRequest]. RetrainRequest has: pairs_to_retrain, accuracy_snapshot, reason. check_drift() internally writes retrain_request.json."
     },
     {
-      "id": "US-P82-004",
-      "title": "Wire AdaptiveLR step() into record_trade_outcome_phase18() + wire regime_confidence_scorer save_state()",
-      "description": "Two wiring tasks: (1) AdaptiveLR: self._adaptive_lr is initialized but step() is never called after trade outcomes. In record_trade_outcome_phase18(), after all module updates, call self._adaptive_lr.step(loss=0.0 if trade_won else 1.0) to advance the LR schedule. Log the resulting LR.current_lr at DEBUG. (2) RegimeConfidenceScorer save_state: self._regime_confidence_scorer_scan exists but save_state() is never called. In _save_phase19_state() or equivalent (append to the save_state chain after _adaptive_disagreement_floor block in scan()), call self._regime_confidence_scorer_scan.save_state().",
+      "id": "US-P83-004",
+      "title": "Wire SelfModelState.get_summary() + CounterfactualLearner.analyze_closed_trade() into scan loop",
+      "description": "Two modules: (1) SelfModelState (line 1057) — get_summary() and needs_immediate_action() never called. Wire get_summary() every 50 cycles and log overall_health. If needs_immediate_action() returns True, log at WARNING. (2) CounterfactualLearner (line 1014) — analyze_closed_trade() never called. In record_trade_outcome_phase18(), for losing trades, call analyze_closed_trade() and append_learning() with the result. Cap at 3 analyses per outcome batch.",
       "acceptanceCriteria": [
-        "self._adaptive_lr.step(loss=0.0 if trade_won else 1.0) called in record_trade_outcome_phase18() after existing module updates",
-        "LRState.current_lr logged at DEBUG after step()",
-        "Wrapped in try/except (non-blocking)",
-        "Early skip if self._adaptive_lr is None",
-        "self._regime_confidence_scorer_scan.save_state() called in the scan() save chain (after adaptive_disagreement_floor block)",
-        "Wrapped in try/except (non-blocking)",
+        "SelfModelState.get_summary() called every 50 scan cycles (self._scan_cycle_count % 50 == 0)",
+        "overall_health logged at INFO (or WARNING if 'critical')",
+        "needs_immediate_action() checked — WARNING log if True with worst_pair",
+        "CounterfactualLearner.analyze_closed_trade() called in record_trade_outcome_phase18() for losing trades",
+        "analyze result appended to learnings via append_learning() if meaningful",
+        "Capped at 3 counterfactual analyses per call",
+        "Both wrapped in try/except (non-blocking)",
         "Syntax validation passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "AdaptiveLR.step(loss) returns LRState with current_lr field. RegimeConfidenceScorer.save_state() persists scorer history. The save chain is at end of scan() before 'return result'."
+      "notes": "SelfModelState.get_summary() returns dict with overall_health, worst_pair, summary keys. CounterfactualLearner.analyze_closed_trade(pair, direction, entry_price, exit_price, pnl_pips, regime, gate_values, agent_verdicts) returns Optional[str] learning text."
     }
   ]
 }

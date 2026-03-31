@@ -3694,7 +3694,8 @@ class Scanner:
                         nav=10000.0,  # Default; overridden in live trading
                     )
                     if _kelly_result.recommended_risk_pct > 0:
-                        risk_pct = _kelly_result.recommended_risk_pct
+                        # Floor Kelly at 50% of config risk — never let Kelly shrink below half the configured risk
+                        risk_pct = max(_kelly_result.recommended_risk_pct, self.config.risk_per_trade_pct * 0.5)
                         logger.info(
                             f"{pair}: Kelly sizing → risk={risk_pct:.4f} "
                             f"(half_k={_kelly_result.half_kelly_fraction:.4f}, "
@@ -3721,10 +3722,10 @@ class Scanner:
                     logger.debug(f"{pair}: Kelly sizing fallback: {_kelly_err}")
                     # Fallback to simple sizing
                     if confidence > 0.65:
-                        risk_pct = min(risk_pct * 1.25, 0.03)
+                        risk_pct = min(risk_pct * 1.25, self.config.risk_per_trade_pct)
             elif confidence > 0.65:
                 # Simple fallback: Higher confidence = slightly larger position
-                risk_pct = min(risk_pct * 1.25, 0.03)
+                risk_pct = min(risk_pct * 1.25, self.config.risk_per_trade_pct)
 
             # US-092: Market impact — reduce position size if estimated slippage is too high
             if self._market_impact is not None and direction != "HOLD" and risk_pct > 0:
@@ -4665,6 +4666,52 @@ class Scanner:
         # Phase 80 (US-P80-006): Adversarial deep test (train_robust) every 100 scan cycles
         self._run_adversarial_deep_test(analyses)
 
+        # Phase 83 (US-P83-001): AlertManager — check drawdown, consecutive losses, weight instability
+        if self._alert_manager is not None:
+            try:
+                _am_nav = getattr(self._executor, "_cached_nav", 0.0) or 0.0 if self._executor else 0.0
+                _am_peak = getattr(self._executor, "_equity_hwm", _am_nav) or _am_nav if self._executor else _am_nav
+                # Load last 20 closed trades for loss streak detection
+                _am_trades = None
+                try:
+                    import json as _am_json
+                    with open("trained_data/trade_journal_rl.json", "r") as _am_f:
+                        _am_all = _am_json.load(_am_f)
+                    _am_trades = [t for t in _am_all if isinstance(t.get("outcome"), dict)][-20:]
+                except Exception:
+                    pass
+                _am_cur_weights = getattr(self._agent_team, "_learned_weights", None)
+                _am_prev_weights = getattr(self, "_previous_weights", None)
+                _am_alerts = self._alert_manager.check_all(
+                    nav=_am_nav, peak_nav=_am_peak,
+                    recent_trades=_am_trades,
+                    current_weights=_am_cur_weights,
+                    previous_weights=_am_prev_weights,
+                )
+                self._previous_weights = _am_cur_weights  # store for next cycle
+                for _alert in (_am_alerts or []):
+                    logger.warning(
+                        "Phase 83 (US-P83-001): ALERT [%s] severity=%s — %s",
+                        getattr(_alert, "type", "?"),
+                        getattr(_alert, "severity", "?"),
+                        getattr(_alert, "message", ""),
+                    )
+            except Exception as _am_err:
+                logger.debug("Phase 83: AlertManager.check_all error: %s", _am_err)
+
+        # Phase 83 (US-P83-003): RetainTrigger.check_drift() every 20 scan cycles
+        if self._retrain_trigger is not None and self._scan_cycle_count % 20 == 0:
+            try:
+                _rt_request = self._retrain_trigger.check_drift()
+                if _rt_request is not None:
+                    logger.warning(
+                        "Phase 83 (US-P83-003): Retrain drift detected — pairs=%s reason=%s",
+                        getattr(_rt_request, "pairs_to_retrain", []),
+                        getattr(_rt_request, "reason", "accuracy_decline"),
+                    )
+            except Exception as _rt_err:
+                logger.debug("Phase 83: RetainTrigger.check_drift error: %s", _rt_err)
+
         # Feed ALL pairs' prices into EWMA correlation engine so the
         # correlation matrix reflects the full universe, not just traded pairs.
         self._feed_ewma_from_scan(analyses)
@@ -5408,6 +5455,27 @@ class Scanner:
             except Exception as _alr_err:
                 logger.debug(f"Phase 82: AdaptiveLR step error: {_alr_err}")
 
+        # Phase 83 (US-P83-004): CounterfactualLearner — analyze losing trades for learnings
+        if self._counterfactual_learner is not None and not trade_won:
+            try:
+                _cl_entry = {
+                    "trade_id": f"{pair}_{regime}",
+                    "pair": pair,
+                    "pnl": pnl_pips,
+                    "entry_features": gate_values or {},
+                    "regime": regime,
+                    "closed": True,
+                }
+                _cl_result = self._counterfactual_learner.analyze_closed_trade(_cl_entry)
+                if _cl_result:
+                    self._counterfactual_learner.append_learning(_cl_result)
+                    logger.info(
+                        "Phase 83 (US-P83-004): CounterfactualLearner insight for %s: %s",
+                        pair, _cl_result[:120],
+                    )
+            except Exception as _cl_err:
+                logger.debug("Phase 83: CounterfactualLearner error: %s", _cl_err)
+
         # Persist after recording outcomes
         self._save_phase18_state()
 
@@ -5874,6 +5942,55 @@ class Scanner:
                         )
             except Exception as _pms_sw_err:
                 logger.debug(f"Phase 82: PairModelSelector switch check error: {_pms_sw_err}")
+
+        # Phase 83 (US-P83-002): PortfolioOptimizer — periodic Sharpe-based pair ranking
+        if self._portfolio_optimizer is not None:
+            try:
+                if self._portfolio_optimizer.should_rotate(self._scan_cycle_count):
+                    _po_rankings = self._portfolio_optimizer.rank_pairs()
+                    if _po_rankings:
+                        self._portfolio_optimizer.save_rankings(_po_rankings)
+                        _po_top = _po_rankings[:3]
+                        _po_bottom = _po_rankings[-3:] if len(_po_rankings) > 3 else []
+                        logger.info(
+                            "Phase 83 (US-P83-002): Portfolio rotation — top=%s bottom=%s",
+                            [(r.pair, round(r.sharpe_ratio, 2)) for r in _po_top],
+                            [(r.pair, round(r.sharpe_ratio, 2)) for r in _po_bottom],
+                        )
+                    _po_observe = self._portfolio_optimizer.get_observe_only_pairs()
+                    if _po_observe:
+                        logger.info(
+                            "Phase 83 (US-P83-002): Observe-only pairs (low Sharpe): %s",
+                            _po_observe,
+                        )
+            except Exception as _po_err:
+                logger.debug("Phase 83: PortfolioOptimizer error: %s", _po_err)
+
+        # Phase 83 (US-P83-004): SelfModelState — periodic health summary
+        if self._self_model_state is not None and self._scan_cycle_count % 50 == 0:
+            try:
+                _sms_summary = self._self_model_state.get_summary()
+                _sms_health = _sms_summary.get("overall_health", "unknown")
+                if _sms_health == "critical":
+                    logger.warning(
+                        "Phase 83 (US-P83-004): SelfModel CRITICAL — worst=%s — %s",
+                        _sms_summary.get("worst_pair", "?"),
+                        _sms_summary.get("summary", ""),
+                    )
+                else:
+                    logger.info(
+                        "Phase 83 (US-P83-004): SelfModel health=%s pairs_monitored=%d — %s",
+                        _sms_health,
+                        _sms_summary.get("pairs_monitored", 0),
+                        _sms_summary.get("summary", ""),
+                    )
+                if self._self_model_state.needs_immediate_action():
+                    logger.warning(
+                        "Phase 83 (US-P83-004): SelfModel NEEDS IMMEDIATE ACTION — worst_pair=%s",
+                        _sms_summary.get("worst_pair", "?"),
+                    )
+            except Exception as _sms_err:
+                logger.debug("Phase 83: SelfModelState.get_summary error: %s", _sms_err)
 
         # Phase 82 (US-P82-003): ChainMemory — record chain completion after each scan
         if self._chain_memory is not None:
