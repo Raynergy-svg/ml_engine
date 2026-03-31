@@ -157,12 +157,16 @@
     "phase83_wire_alert_manager_check_all_drawdown_losses_weight_instability_US_P83_001",
     "phase83_wire_portfolio_optimizer_rank_pairs_should_rotate_observe_only_US_P83_002",
     "phase83_wire_retrain_trigger_check_drift_every_20_cycles_US_P83_003",
-    "phase83_wire_self_model_state_health_summary_counterfactual_learner_loss_analysis_US_P83_004"
+    "phase83_wire_self_model_state_health_summary_counterfactual_learner_loss_analysis_US_P83_004",
+    "phase84_wire_session_snapshot_save_every_100_cycles_US_P84_001",
+    "phase84_wire_crisis_generator_synthetic_stress_every_100_cycles_US_P84_002",
+    "phase84_wire_pair_transfer_update_stats_auto_transfer_every_50_cycles_US_P84_003",
+    "phase84_wire_circuit_breaker_is_tripped_record_success_failure_execution_US_P84_004"
   ],
   "goal": "profitability_first",
-  "improvement_focus": "phase83_alert_manager_portfolio_optimizer_retrain_trigger_self_model_state_counterfactual_learner_all_wired_on_main",
-  "last_updated": "2026-03-30T23:15:00.000000+00:00",
-  "next": "phase84_gap_audit_wire_remaining_dormant_modules_session_snapshot_observational_learner_crisis_generator",
+  "improvement_focus": "phase84_session_snapshot_crisis_generator_pair_transfer_circuit_breaker_all_wired_on_main",
+  "last_updated": "2026-03-31T02:00:00.000000+00:00",
+  "next": "phase85_gap_audit_wire_remaining_dormant_modules_smart_execution_hrp_optimizer_dynamic_hedging",
   "notes": {
     "aura_bridge": "bridge-only in src/aura/ \u2014 P90 writes readiness_signal.json, Buddy reads it via TraderReadinessAgent",
     "episodic_memory": "suppression gate live in execute_trade() before Gate 1 \u2014 will activate once 3+ similar losing setups are recorded",

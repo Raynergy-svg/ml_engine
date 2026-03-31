@@ -1,78 +1,113 @@
 {
   "project": "ML_Engine",
-  "phase": 83,
+  "phase": 80,
   "branchName": "main",
-  "description": "Phase 83: Wire AlertManager (drawdown/loss alerts), PortfolioOptimizer (Sharpe pair ranking), RetainTrigger (drift-based retrain), SelfModelState (health summary), CounterfactualLearner (loss analysis to learnings). Source: phase83 gap audit found 10+ fully dormant modules. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "description": "Phase 80: Wire dormant modules into live loop \u2014 outcome prediction, pair affinity, adaptive drawdown, drift projection, adversarial deep test. Source: phase80 gap audit. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
   "userStories": [
     {
-      "id": "US-P83-001",
-      "title": "Wire AlertManager.check_all() into scan cycle for drawdown, consecutive loss, and weight instability alerts",
-      "description": "AlertManager is initialized (line 920) but check_all() is never called. Wire it in scan() after trailing stop evaluation. Needs: nav (from executor._cached_nav), peak_nav (from executor._equity_hwm), recent_trades (from trade_journal_rl.json last 20 entries), current_weights (from agent_team), previous_weights (None ok for first call). Log fired alerts at WARNING. Call every scan cycle (cheap). Store _previous_weights on Scanner for delta tracking.",
+      "id": "US-P80-001",
+      "title": "Enrich trade journal with MAE/MFE/bars_in_trade fields",
+      "description": "outcome_data in sync_closed_trades_rl() is missing mae_pips, mfe_pips, bars_in_trade. Add all three using proxy formulas.",
       "acceptanceCriteria": [
-        "check_all(nav, peak_nav, recent_trades, current_weights, previous_weights) called in scan() after trailing stop block",
-        "nav read from self._executor._cached_nav (fallback 0.0)",
-        "peak_nav read from self._executor._equity_hwm (fallback nav)",
-        "recent_trades: last 20 closed entries from trade_journal_rl.json (loaded once per scan, cached)",
-        "current_weights from self._agent_team.get_weights() or equivalent",
-        "Fired alerts logged at WARNING with alert.type and alert.message",
-        "self._previous_weights stored on Scanner for next cycle delta tracking",
-        "Wrapped in try/except (non-blocking)",
+        "outcome_data contains mae_pips: max(0.0, -min(pnl_pips, 0.0))",
+        "outcome_data contains mfe_pips: max(0.0, pnl_pips)",
+        "outcome_data contains bars_in_trade: max(1, round(duration_minutes / 60.0)) \u2014 H1 bars, 1 when duration_minutes is None",
+        "No regression to existing outcome_data fields (realized_pl, pnl_pips, trade_won, etc.)",
         "Syntax validation passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "AlertManager.check_all() returns List[Alert]. Alert has: type, severity, message, timestamp. check_all signature: (nav, peak_nav, recent_trades=None, current_weights=None, previous_weights=None)."
+      "notes": "Implemented in commit 29d925e. execution.py lines 4332-4352."
     },
     {
-      "id": "US-P83-002",
-      "title": "Wire PortfolioOptimizer.rank_pairs() periodic ranking + should_rotate() in scan()",
-      "description": "PortfolioOptimizer is initialized (line 902) but rank_pairs() and should_rotate() are never called. Wire: (A) should_rotate(scan_cycle) check every scan cycle — if True, call rank_pairs() and save_rankings(). (B) Log the top 3 and bottom 3 pairs at INFO when rotation triggers. (C) Optionally call get_observe_only_pairs() and log pairs that should be observation-only (low Sharpe). Wire in scan() after the main pair loop, before save chain.",
+      "id": "US-P80-002",
+      "title": "Auto-trigger TradeOutcomePredictor training at 50-trade threshold",
+      "description": "TradeOutcomePredictor is initialized but fit_from_journal() is never called. After the atomic journal write in sync_closed_trades_rl(), count complete trades. Call fit_from_journal() when count >= 50 and (count % 10 == 0 or not _is_trained).",
       "acceptanceCriteria": [
-        "should_rotate(self._scan_cycle_count) called every scan cycle",
-        "When should_rotate returns True: rank_pairs() called, results saved via save_rankings()",
-        "Top 3 and bottom 3 pairs logged at INFO on rotation",
-        "get_observe_only_pairs() called on rotation and logged at INFO if any pairs flagged",
-        "Wrapped in try/except (non-blocking)",
-        "Early skip if self._portfolio_optimizer is None",
+        "fit_from_journal() triggered when complete_trade_count >= 50",
+        "Retrains every 10 additional trades (count % 10 == 0)",
+        "Also trains on first eligible run even if count not divisible by 10 (!_is_trained check)",
+        "Call site is AFTER atomic journal write",
+        "Training success logged at INFO with n_trades and accuracy",
+        "Skipped gracefully if < 50 complete trades (DEBUG log only)",
+        "No exception propagation \u2014 errors caught at DEBUG",
         "Syntax validation passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "should_rotate() returns bool. rank_pairs() returns List[PairRanking] (pair, sharpe_ratio, rolling_pnl, trade_count). save_rankings(rankings) persists. get_observe_only_pairs() returns list of pair strings."
+      "notes": "Implemented in commit 29d925e. execution.py lines 4980-5017."
     },
     {
-      "id": "US-P83-003",
-      "title": "Wire RetainTrigger.check_drift() periodically + record_prediction() from trade outcomes",
-      "description": "RetainTrigger is initialized (line 884) but check_drift() and record_prediction() are never called in engine.py. Note: record_prediction() IS called in execution.py (phase78 wiring) but check_drift() is not called anywhere. Wire: (A) check_drift() every 20 scan cycles (align with drift monitor interval). If RetrainRequest returned, log at WARNING with pairs_to_retrain and write the request file. (B) Verify record_prediction is called — it already is in execution.py, just confirm.",
+      "id": "US-P80-003",
+      "title": "Wire PairAffinityTracker update post-trade-close",
+      "description": "PairAffinityTracker is initialized but update_from_journal() is never called. After atomic journal write in sync_closed_trades_rl(), call scanner._pair_affinity.update_from_journal().",
       "acceptanceCriteria": [
-        "check_drift() called every 20 scan cycles (self._scan_cycle_count % 20 == 0)",
-        "RetrainRequest result logged at WARNING with pairs_to_retrain list",
-        "request file written by check_drift() internally (no extra code needed)",
-        "Wrapped in try/except (non-blocking)",
-        "Early skip if self._retrain_trigger is None",
+        "update_from_journal() called after every atomic journal write when synced > 0",
+        "Call site is strictly AFTER safe_json_write(journal_path, entries)",
+        "Co-occurrence pair count logged at INFO when > 0",
+        "No exception propagation \u2014 errors caught at DEBUG",
+        "Uses scanner._pair_affinity attribute (not new instance)",
         "Syntax validation passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "check_drift() returns Optional[RetrainRequest]. RetrainRequest has: pairs_to_retrain, accuracy_snapshot, reason. check_drift() internally writes retrain_request.json."
+      "notes": "Implemented in commit 29d925e. execution.py lines 5019-5036."
     },
     {
-      "id": "US-P83-004",
-      "title": "Wire SelfModelState.get_summary() + CounterfactualLearner.analyze_closed_trade() into scan loop",
-      "description": "Two modules: (1) SelfModelState (line 1057) — get_summary() and needs_immediate_action() never called. Wire get_summary() every 50 cycles and log overall_health. If needs_immediate_action() returns True, log at WARNING. (2) CounterfactualLearner (line 1014) — analyze_closed_trade() never called. In record_trade_outcome_phase18(), for losing trades, call analyze_closed_trade() and append_learning() with the result. Cap at 3 analyses per outcome batch.",
+      "id": "US-P80-004",
+      "title": "Fix _current_drawdown always-zero input to DynamicDrawdownManager",
+      "description": "Add _equity_hwm and _current_drawdown attrs to ExecutionManager.__init__. Refresh _current_drawdown in update_trailing_stops() using cached_nav and HWM before the stop evaluation loop.",
       "acceptanceCriteria": [
-        "SelfModelState.get_summary() called every 50 scan cycles (self._scan_cycle_count % 50 == 0)",
-        "overall_health logged at INFO (or WARNING if 'critical')",
-        "needs_immediate_action() checked — WARNING log if True with worst_pair",
-        "CounterfactualLearner.analyze_closed_trade() called in record_trade_outcome_phase18() for losing trades",
-        "analyze result appended to learnings via append_learning() if meaningful",
-        "Capped at 3 counterfactual analyses per call",
-        "Both wrapped in try/except (non-blocking)",
+        "_equity_hwm: float = 0.0 added to ExecutionManager.__init__ after _dynamic_drawdown_mgr block",
+        "_current_drawdown: float = 0.0 added alongside _equity_hwm",
+        "update_trailing_stops() refreshes _current_drawdown from _cached_nav before evaluation",
+        "HWM updates when current NAV > prior HWM",
+        "drawdown = max(0.0, (hwm - nav) / hwm) when hwm > 0",
+        "Entire refresh block wrapped in try/except (non-blocking)",
         "Syntax validation passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "SelfModelState.get_summary() returns dict with overall_health, worst_pair, summary keys. CounterfactualLearner.analyze_closed_trade(pair, direction, entry_price, exit_price, pnl_pips, regime, gate_values, agent_verdicts) returns Optional[str] learning text."
+      "notes": "Implemented in commit 29d925e. execution.py lines 507-509 (init) and 4005-4018 (refresh)."
+    },
+    {
+      "id": "US-P80-005",
+      "title": "Wire DriftProjector periodic call every 20 scan cycles",
+      "description": "Add _run_drift_projection_cycle(analyses) to Scanner. Call from scan() after _run_drift_check_cycle(). Every 20 scans: call _drift_projector.project_all_pairs() with current accuracy data, then save_projections().",
+      "acceptanceCriteria": [
+        "_run_drift_projection_cycle(analyses) method added to Scanner",
+        "Called from scan() right after _run_drift_check_cycle() call",
+        "_DRIFT_PROJECTION_INTERVAL = 20 class constant",
+        "current_accuracies populated from _accuracy_gate.get_stats(pair)['accuracy'] when available",
+        "save_projections(projections) called after project_all_pairs()",
+        "WARNING logged for high/critical urgency pairs",
+        "INFO logged with pair count and cycle number",
+        "Early return if _drift_projector is None",
+        "No exception propagation \u2014 errors caught at DEBUG",
+        "Syntax validation passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Implemented in commit 29d925e. engine.py lines 5046-5108."
+    },
+    {
+      "id": "US-P80-006",
+      "title": "Wire adversarial deep test every 100 scan cycles",
+      "description": "Add _run_adversarial_deep_test(analyses) to Scanner. Call from scan() after _run_adversarial_robustness_check(). Every 100 scans: call adversarial_trainer.train_robust(model, X_clean, y_clean, n_rounds=3).",
+      "acceptanceCriteria": [
+        "_run_adversarial_deep_test(analyses) method added to Scanner",
+        "Called from scan() after _run_adversarial_robustness_check() call",
+        "_ADVERSARIAL_DEEP_TEST_INTERVAL = 100 class constant",
+        "Uses train_robust(model=_model, X_train=X_clean, y_train=y_clean, n_rounds=3)",
+        "WARNING logged if robustness_ratio < 0.70 with full ratio/clean/adv values",
+        "INFO logged on pass with ratio values and cycle count",
+        "Returns early if < 3 feature pairs or no sklearn sub-model available",
+        "No exception propagation \u2014 errors caught at DEBUG",
+        "Syntax validation passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "Implemented in commit 29d925e. engine.py lines 5110-5200."
     }
   ]
 }

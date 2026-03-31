@@ -6007,6 +6007,61 @@ class Scanner:
             except Exception as _cm_rec_err:
                 logger.debug(f"Phase 82: ChainMemory record_chain_complete error: {_cm_rec_err}")
 
+        # Phase 84 (US-P84-001): SessionSnapshotManager — save cross-session state every 100 cycles
+        if self._session_snapshot is not None and self._scan_cycle_count % 100 == 0:
+            try:
+                _ss_weights = getattr(self._agent_team, "_learned_weights", {}) or {}
+                _ss_path = self._session_snapshot.save_snapshot(
+                    agent_weights=_ss_weights,
+                    scan_cycles=self._scan_cycle_count,
+                    profile=getattr(self.config, "profile", "balanced") or "balanced",
+                )
+                if _ss_path:
+                    logger.info("Phase 84 (US-P84-001): Session snapshot saved → %s", _ss_path)
+            except Exception as _ss_err:
+                logger.debug("Phase 84: SessionSnapshotManager.save_snapshot error: %s", _ss_err)
+
+        # Phase 84 (US-P84-002): CrisisEventGenerator — synthetic stress scenarios every 100 cycles
+        if self._crisis_generator is not None and self._scan_cycle_count % 100 == 0:
+            try:
+                import numpy as np
+                _cg_pair = next(iter(self._raw_snapshots), None) if self._raw_snapshots else None
+                if _cg_pair is not None:
+                    _cg_df = self._raw_snapshots[_cg_pair]
+                    _cg_cols = [c for c in ("open", "high", "low", "close", "volume") if c in _cg_df.columns]
+                    if len(_cg_cols) >= 4:
+                        _cg_candles = _cg_df[_cg_cols].values.astype(np.float64)
+                        _cg_scenarios = self._crisis_generator.generate_scenario_batch(
+                            base_candles=_cg_candles, n_scenarios=5,
+                        )
+                        logger.info(
+                            "Phase 84 (US-P84-002): Generated %d synthetic crisis scenarios from %s",
+                            len(_cg_scenarios), _cg_pair,
+                        )
+            except Exception as _cg_err:
+                logger.debug("Phase 84: CrisisEventGenerator error: %s", _cg_err)
+
+        # Phase 84 (US-P84-003): PairTransferLearning — update stats + periodic auto_transfer
+        if self._pair_transfer is not None:
+            try:
+                for _pt_a in (result.analyses if result else []):
+                    if _pt_a and getattr(_pt_a, "pair", None) and getattr(_pt_a, "confidence", 0) > 0:
+                        _pt_samples = len(self._raw_snapshots.get(_pt_a.pair, [])) if self._raw_snapshots else 0
+                        self._pair_transfer.update_pair_stats(
+                            pair=_pt_a.pair,
+                            sample_count=max(_pt_samples, self._scan_cycle_count),
+                            accuracy=float(_pt_a.confidence),
+                        )
+                if self._scan_cycle_count % 50 == 0:
+                    _pt_count = self._pair_transfer.auto_transfer()
+                    if _pt_count > 0:
+                        logger.info(
+                            "Phase 84 (US-P84-003): PairTransfer — %d cross-pair weight transfers applied",
+                            _pt_count,
+                        )
+            except Exception as _pt_err:
+                logger.debug("Phase 84: PairTransferLearning error: %s", _pt_err)
+
         return result
 
     def scan_incremental(
@@ -6118,6 +6173,10 @@ class Scanner:
             if self._position_timeout is not None:
                 self._executor._position_timeout_mgr = self._position_timeout
                 logger.info("Phase 81 (US-P81-002): PositionTimeoutManager injected into executor")
+            # Phase 84 (US-P84-004): Inject CircuitBreaker into executor
+            if self._api_retry is not None:
+                self._executor._api_circuit_breaker = self._api_retry
+                logger.info("Phase 84 (US-P84-004): CircuitBreaker injected into executor")
 
             # Inject DynamicRiskAllocator so position sizing uses P/L distribution
             if self._dynamic_risk_allocator is not None:

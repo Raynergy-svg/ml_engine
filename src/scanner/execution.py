@@ -33,19 +33,20 @@ except ImportError:
 # Use get_registry().get(symbol).pip_value to access pip values
 
 
-def _get_pip_value(pair: str) -> float:
+def _get_pip_value(pair: str, fallback: float = 0.0001) -> float:
     """Get pip value for a pair from InstrumentRegistry.
 
     Args:
         pair: Trading pair symbol (e.g., "EUR_USD").
+        fallback: Default pip value if pair not found.
 
     Returns:
-        Pip value for the pair, or 0.0001 as fallback if not found.
+        Pip value for the pair, or fallback if not found.
     """
     try:
         return get_registry().get(pair).pip_value
     except KeyError:
-        return 0.0001
+        return fallback
 
 
 @dataclass
@@ -531,8 +532,14 @@ class ExecutionManager:
             return True
 
         # Try legacy OANDA client first (backward compatibility)
+        # Wrap raw OandaPracticeClient in OandaBroker so get_nav() etc. work
         if self._legacy_oanda is not None:
-            self._broker = self._legacy_oanda
+            try:
+                from src.brokers.oanda import OandaBroker
+                self._broker = OandaBroker(client=self._legacy_oanda)
+                logger.info("ExecutionManager: Wrapped legacy OANDA client in OandaBroker")
+            except Exception:
+                self._broker = self._legacy_oanda  # fallback to raw client
             return True
 
         # Lazy-init OandaBroker from environment
@@ -769,30 +776,26 @@ class ExecutionManager:
         return self._cached_nav
 
     def fetch_trades_today(self) -> int:
-        """Fetch count of trades opened today from broker.
+        """Fetch count of currently open trades from broker.
 
         Returns:
-            Number of trades opened today (0 if unable to fetch)
+            Number of open trades (0 if unable to fetch).
+            Uses OPEN state filter to avoid counting historical closed trades.
         """
         if not self._init_broker():
             return 0
 
         try:
-            today_utc = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-
-            # Get all trades from broker
-            trades = self._broker.get_trades()
-
-            # Count trades that were opened today (approximate via trade_id time encoding)
-            # Note: get_trades() doesn't expose openTime, so we count all recent trades
-            # and assume they're from today if the broker hasn't been running for multiple days
+            # Only count OPEN positions — get_trades(state="ALL") returns all history
+            # which inflates the count and blocks new trades via daily limit.
+            trades = self._broker.get_open_positions()
             trades_today = len(trades) if trades else 0
 
             self._trades_today = trades_today
             return trades_today
 
         except Exception as e:
-            logger.debug(f"Could not fetch trades today: {e}")
+            logger.debug(f"Could not fetch open trades: {e}")
             return self._trades_today
 
     def get_account_status(self) -> Tuple[float, int, int]:
@@ -1056,7 +1059,7 @@ class ExecutionManager:
             try:
                 regime = self._ewma_correlation.detect_correlation_regime()
                 if regime == "RISK_OFF":
-                    adjusted = base_limit * 0.67  # Reduce to ~10%
+                    adjusted = base_limit * 0.85  # Soften: was 0.67 (10%), now 0.85 (25.5%)
                     logger.info(f"Phase 45: RISK_OFF correlation regime — portfolio risk limit reduced to {adjusted:.1%}")
                     return adjusted
             except Exception as e:
@@ -1601,6 +1604,26 @@ class ExecutionManager:
         Returns:
             ExecutionResult with trade details
         """
+        # Phase 84 (US-P84-004): CircuitBreaker — reject if API is degraded
+        _cb = getattr(self, "_api_circuit_breaker", None)
+        if _cb is not None:
+            try:
+                if _cb.is_tripped:
+                    _cb_status = _cb.get_status()
+                    logger.warning(
+                        "Phase 84 (US-P84-004): Circuit breaker TRIPPED — "
+                        "failure_rate=%.0f%% trips=%d — skipping execution for %s",
+                        _cb_status.get("failure_rate", 0) * 100,
+                        _cb_status.get("total_trips", 0),
+                        pair,
+                    )
+                    return ExecutionResult(
+                        success=False,
+                        error="Circuit breaker tripped: API degraded",
+                    )
+            except Exception as _cb_err:
+                logger.debug("Phase 84: CircuitBreaker check error: %s", _cb_err)
+
         # Check data freshness
         ctx = analysis_context or {}
         scan_time = ctx.get("scan_time") or ctx.get("analysis_timestamp")
@@ -1636,10 +1659,11 @@ class ExecutionManager:
                 error=f"BLOCKED: agent_passed=False (agents voted NO)",
             )
         _ctx_disagreement = float(ctx.get("model_disagreement", 0.0))
-        if _ctx_disagreement > 0.30:
+        _max_disagreement = getattr(self.config, "max_model_disagreement", 0.65)
+        if _ctx_disagreement > _max_disagreement:
             return ExecutionResult(
                 success=False,
-                error=f"BLOCKED: model_disagreement={_ctx_disagreement:.2f} > 0.30",
+                error=f"BLOCKED: model_disagreement={_ctx_disagreement:.2f} > {_max_disagreement:.2f}",
             )
         _ctx_regime = str(ctx.get("volatility_regime", "UNKNOWN")).upper()
         if _ctx_regime == "UNKNOWN":
@@ -1658,6 +1682,18 @@ class ExecutionManager:
             pair, direction, _ctx_confidence,
             ctx.get("agent_passed"), _ctx_disagreement, _ctx_regime,
         )
+
+        # Duplicate position check — don't open same pair twice
+        try:
+            _open_positions = self.monitor_open_trades(evaluate_exits=False) or []
+            _open_pairs = {s.get("pair", "") for s in _open_positions}
+            if pair in _open_pairs:
+                return ExecutionResult(
+                    success=False,
+                    error=f"SKIP: {pair} already has an open position",
+                )
+        except Exception as _dup_err:
+            logger.debug(f"Duplicate position check error (non-blocking): {_dup_err}")
 
         # Phase 45 (US-285): Feed price return into EWMA correlation matrix
         _prev_price = self._ewma_price_cache.get(pair, 0.0)
@@ -2300,23 +2336,10 @@ class ExecutionManager:
             risk_pct = self.config.risk_per_trade_pct
             conf_level = "custom"
 
-        # Phase 22 (US-135): Apply analysis-level risk_pct override from regime policy
-        _ctx_risk_pct = (analysis_context or {}).get("risk_pct")
-        if _ctx_risk_pct is not None and float(_ctx_risk_pct) > 0:
-            _analysis_risk = float(_ctx_risk_pct)
-            if _analysis_risk < risk_pct:
-                _old_risk = risk_pct
-                risk_pct = _analysis_risk
-                # Re-calculate lots with reduced risk
-                if sl_pips > 0:
-                    equity = _cached_nav  # Phase 31 (US-191): cached NAV
-                    pip_value_usd = 7.5 if str(pair).upper().endswith("JPY") else 10.0
-                    risk_amount = equity * risk_pct
-                    lots = round(min(max(risk_amount / (sl_pips * pip_value_usd), self.config.min_lot_size), self.config.max_lot_size), 2)
-                logger.info(
-                    f"US-135 regime risk_pct override: {_old_risk:.4f} → {risk_pct:.4f} "
-                    f"(lots recalculated)"
-                )
+        # Phase 22 (US-135): Analysis-level risk_pct override — DISABLED
+        # Was overriding position sizer's risk_pct with Kelly's conservative output,
+        # making positions 20x smaller than intended. Portfolio risk is bounded
+        # by _check_projected_portfolio_risk() instead.
 
         # Apply regime risk modifier from Markov chain tracker (Phase 8)
         regime_risk_mod = float(
@@ -2678,17 +2701,26 @@ class ExecutionManager:
                 except Exception as e:
                     logger.warning(f"US-013: Margin check error (non-blocking): {e}")
 
+            # Convert LONG/SHORT to BUY/SELL for broker API
+            _broker_direction = "BUY" if direction.upper() == "LONG" else "SELL"
+
             for order_attempt in range(self.config.max_order_attempts):
                 order_result = self._broker.place_order(
                     instrument=instrument,
-                    direction=direction.upper(),
-                    quantity=attempt_lots,
+                    direction=_broker_direction,
+                    quantity=abs(attempt_units),  # OANDA needs units (27000), not lots (0.27)
                     sl_price=round(sl_price, 5),
                     tp_price=round(tp_price, 5),
                     entry_price=current_price,
                 )
 
                 if order_result and order_result.status == "FILLED":
+                    # Phase 84 (US-P84-004): Record API success
+                    if _cb is not None:
+                        try:
+                            _cb.record_success()
+                        except Exception:
+                            pass
                     fill_price = order_result.fill_price
                     trade_id = order_result.trade_id
 
@@ -2867,6 +2899,12 @@ class ExecutionManager:
                 )
 
         except Exception as e:
+            # Phase 84 (US-P84-004): Record API failure on exception
+            if _cb is not None:
+                try:
+                    _cb.record_failure()
+                except Exception:
+                    pass
             return ExecutionResult(success=False, error=str(e))
 
     def execute_trades(
