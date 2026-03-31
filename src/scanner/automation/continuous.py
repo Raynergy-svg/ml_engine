@@ -68,6 +68,11 @@ class ContinuousScanner:
         self._maintenance = None
         self._portfolio_optimizer = None
 
+        # Journal cache: avoid re-reading trade_journal_rl.json on every cycle.
+        # Invalidated by file mtime — only re-reads when a trade actually closes.
+        self._journal_cache: list = []
+        self._journal_mtime: float = 0.0
+
         # Phase 56 (US-350): Scan Diagnostics Reporter
         self._scan_diagnostics = None
         try:
@@ -378,12 +383,14 @@ class ContinuousScanner:
                         )
                         tradeable = [a for a in result.analyses if a.is_tradeable]
 
-                        # Check cold-start: if no pairs are active, let all tradeable through
-                        active_pairs = self._portfolio_optimizer.get_active_pairs()
-                        if not active_pairs or len(active_pairs) < 2:
+                        # Check cold-start: if insufficient closed trade history, bypass filter
+                        # get_active_pairs() pads with observe candidates so can't rely on its count
+                        _rankings = self._portfolio_optimizer.rank_pairs()
+                        _truly_active = [r for r in _rankings if getattr(r, "status", "") == "active"]
+                        if len(_truly_active) < 2:
                             logger.info(
-                                f"Cold-start mode: {len(active_pairs)} active pairs "
-                                f"(need 5 trades/pair to graduate). Bypassing observe filter."
+                                f"Cold-start mode: {len(_truly_active)} truly active pairs "
+                                f"(need 5 closed trades/pair to graduate). Bypassing observe filter."
                             )
                             # Skip filtering — let gates be the gatekeeper
                         else:
@@ -408,6 +415,9 @@ class ContinuousScanner:
                     if tradeable:
                         if console:
                             console.print(f"\n[green]Auto-executing {len(tradeable)} trade(s)...[/green]")
+                        # Ensure execution is enabled — continuous.py was missing this
+                        # (buddy_scanning.py sets it correctly, but continuous.py didn't)
+                        self.scanner.config.enable_execution = True
                         self.scanner.execute_trades(
                             analyses=tradeable,
                         )
@@ -1471,9 +1481,9 @@ class ContinuousScanner:
             if trades_synced > 0:
                 journal_path = Path("trained_data/trade_journal_rl.json")
                 if journal_path.exists():
-                    # Phase 32 (US-195): Guard JSON parse
+                    # Phase 32 (US-195): Guard JSON parse — use mtime cache
                     try:
-                        entries = json.loads(journal_path.read_text())
+                        entries = self._load_journal_cached(journal_path)
                     except (json.JSONDecodeError, OSError) as _je:
                         logger.warning(f"Learning loop journal parse failed: {_je}")
                         entries = []
@@ -1563,7 +1573,7 @@ class ContinuousScanner:
                 try:
                     tracker = ImprovementTracker()
                     journal_path = Path("trained_data/trade_journal_rl.json")
-                    all_entries = json.loads(journal_path.read_text()) if journal_path.exists() else []
+                    all_entries = self._load_journal_cached(journal_path) if journal_path.exists() else []
                     tracker.record_session(
                         trades=all_entries,
                         learnings_added=learnings_added,
@@ -1593,7 +1603,7 @@ class ContinuousScanner:
                     recent_trades = []
                     if journal_path.exists():
                         try:
-                            recent_trades = json.loads(journal_path.read_text())
+                            recent_trades = self._load_journal_cached(journal_path)
                         except json.JSONDecodeError:
                             logger.debug("Failed to load journal for alerts")
 
@@ -1681,7 +1691,7 @@ class ContinuousScanner:
 
                     # Record prediction outcomes from closed trades
                     journal_path = Path("trained_data/trade_journal_rl.json")
-                    entries = json.loads(journal_path.read_text())
+                    entries = self._load_journal_cached(journal_path)
                     if not isinstance(entries, list):
                         entries = []
                     closed = entries[-trades_synced:] if trades_synced < len(entries) else entries
@@ -1733,16 +1743,44 @@ class ContinuousScanner:
         except Exception as e:
             logger.debug(f"Learning loop error: {e}")
 
+    def _load_journal_cached(self, journal_path) -> list:
+        """Load trade journal with mtime-based caching.
+
+        Re-reads disk only when the file has changed (i.e. a trade closed).
+        Eliminates the 4x full json.loads(read_text()) per scan cycle.
+        """
+        import json as _json
+        try:
+            current_mtime = journal_path.stat().st_mtime if journal_path.exists() else 0.0
+        except OSError:
+            return self._journal_cache
+        if current_mtime != self._journal_mtime:
+            try:
+                raw = _json.loads(journal_path.read_text())
+                self._journal_cache = raw if isinstance(raw, list) else []
+                self._journal_mtime = current_mtime
+            except (Exception,):
+                pass
+        return self._journal_cache
+
     def _sleep_with_progress(self, minutes: int):
         """Sleep with progress indication, allowing Ctrl+C to interrupt."""
+        import gc as _gc
         if console:
             console.print(f"\n[dim]Next scan in {minutes} minutes...[/dim]")
+
+        # Gen-0 collect before sleeping — clears short-lived scan objects
+        # before they age into gen-1, keeping RSS down during idle time.
+        _gc.collect(0)
 
         # Sleep in 1-second increments to allow Ctrl+C
         for _ in range(minutes * 60):
             if not self._running:
                 break
             time.sleep(1)
+
+        # Full collect during idle — runs while waiting, not during scan.
+        _gc.collect()
 
     def _spawn_background_retrain(
         self, pairs: list, console: Optional[Any] = None
