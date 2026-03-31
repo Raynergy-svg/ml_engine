@@ -6239,6 +6239,18 @@ class Scanner:
             except Exception as _pm_save_err:
                 logger.debug("Phase 86: position_manager.save_state failed: %s", _pm_save_err)
 
+        # Phase 88: Missing save_state calls — agent_accuracy_matrix + pair_transfer
+        if self._agent_accuracy_matrix is not None:
+            try:
+                self._agent_accuracy_matrix.save_state()
+            except Exception as _aam_err:
+                logger.debug("Phase 88: agent_accuracy_matrix.save_state failed: %s", _aam_err)
+        if self._pair_transfer is not None:
+            try:
+                self._pair_transfer.save_state()
+            except Exception as _pt_save_err:
+                logger.debug("Phase 88: pair_transfer.save_state failed: %s", _pt_save_err)
+
         return result
 
     def scan_incremental(

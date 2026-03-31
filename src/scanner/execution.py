@@ -3511,6 +3511,8 @@ class ExecutionManager:
             logger.warning(f"Failed to fetch open positions: {e}")
             return []
 
+        # Phase 88: Clear SL/TP cache each call (fetch fresh from broker)
+        self._trade_sl_tp_cache = {}
         statuses = []
         for pos in positions:
             pair = pos.instrument
@@ -3520,11 +3522,24 @@ class ExecutionManager:
             entry = pos.avg_price
             unrealized_pl = pos.unrealized_pnl
 
-            # Note: PositionInfo doesn't include SL/TP prices directly
-            # For now, set to 0 (unknown). A more complete implementation would
-            # need to fetch or track these separately.
+            # Phase 88: Fetch SL/TP from OANDA trades (PositionInfo lacks them)
             sl_price = 0.0
             tp_price = 0.0
+            if not hasattr(self, "_trade_sl_tp_cache"):
+                self._trade_sl_tp_cache = {}
+            try:
+                if not self._trade_sl_tp_cache:
+                    _trades = self._broker.get_trades()
+                    for _t in _trades:
+                        self._trade_sl_tp_cache[_t.instrument] = (
+                            getattr(_t, "sl_price", None) or 0.0,
+                            getattr(_t, "tp_price", None) or 0.0,
+                        )
+                _cached = self._trade_sl_tp_cache.get(pair, (0.0, 0.0))
+                sl_price = _cached[0]
+                tp_price = _cached[1]
+            except Exception:
+                pass
 
             # Calculate distances in pips (if SL/TP available)
             if sl_price > 0:

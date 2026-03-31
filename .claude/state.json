@@ -172,12 +172,14 @@
     "phase86_wire_smart_execution_should_use_observational_US_P86_004",
     "phase87_fix_2_observer_log_bugs_execution_py_stale_data_high_slippage",
     "phase87_wire_dynamic_hedge_manager_evaluate_last_unwired_module",
-    "phase87_ALL_MODULES_WIRED_ZERO_DORMANT_REMAINING"
+    "phase87_ALL_MODULES_WIRED_ZERO_DORMANT_REMAINING",
+    "phase88_add_missing_save_state_agent_accuracy_matrix_pair_transfer",
+    "phase88_fix_sl_tp_display_fetch_from_oanda_trades_not_hardcoded_zero"
   ],
   "goal": "profitability_first",
-  "improvement_focus": "phase87_ALL_26_MODULES_WIRED_2_observer_bugs_fixed_dynamic_hedging_live_running_smart_profile",
-  "last_updated": "2026-03-31T05:00:00.000000+00:00",
-  "next": "phase88_profitability_tuning_gate_thresholds_agent_weights_trade_quality",
+  "improvement_focus": "phase88_quality_hardening_sl_tp_display_fixed_save_state_complete_smart_profile_live",
+  "last_updated": "2026-03-31T06:00:00.000000+00:00",
+  "next": "phase89_profitability_tuning_gate_thresholds_agent_weights_live_trade_analysis",
   "notes": {
     "aura_bridge": "bridge-only in src/aura/ \u2014 P90 writes readiness_signal.json, Buddy reads it via TraderReadinessAgent",
     "episodic_memory": "suppression gate live in execute_trade() before Gate 1 \u2014 will activate once 3+ similar losing setups are recorded",
