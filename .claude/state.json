@@ -169,12 +169,15 @@
     "phase86_wire_hrp_optimizer_portfolio_weights_every_50_cycles_US_P86_001",
     "phase86_wire_observational_learner_extract_patterns_synthetic_US_P86_002",
     "phase86_wire_position_manager_evaluate_position_open_trades_US_P86_003",
-    "phase86_wire_smart_execution_should_use_observational_US_P86_004"
+    "phase86_wire_smart_execution_should_use_observational_US_P86_004",
+    "phase87_fix_2_observer_log_bugs_execution_py_stale_data_high_slippage",
+    "phase87_wire_dynamic_hedge_manager_evaluate_last_unwired_module",
+    "phase87_ALL_MODULES_WIRED_ZERO_DORMANT_REMAINING"
   ],
   "goal": "profitability_first",
-  "improvement_focus": "phase86_ALL_DORMANT_MODULES_WIRED_hrp_observational_position_mgr_smart_exec_zero_remaining",
-  "last_updated": "2026-03-31T04:00:00.000000+00:00",
-  "next": "phase87_audit_for_any_missed_modules_then_focus_on_live_trade_quality_and_profitability_tuning",
+  "improvement_focus": "phase87_ALL_26_MODULES_WIRED_2_observer_bugs_fixed_dynamic_hedging_live_running_smart_profile",
+  "last_updated": "2026-03-31T05:00:00.000000+00:00",
+  "next": "phase88_profitability_tuning_gate_thresholds_agent_weights_trade_quality",
   "notes": {
     "aura_bridge": "bridge-only in src/aura/ \u2014 P90 writes readiness_signal.json, Buddy reads it via TraderReadinessAgent",
     "episodic_memory": "suppression gate live in execute_trade() before Gate 1 \u2014 will activate once 3+ similar losing setups are recorded",

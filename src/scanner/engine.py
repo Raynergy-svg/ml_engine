@@ -4712,6 +4712,39 @@ class Scanner:
             except Exception as _rt_err:
                 logger.debug("Phase 83: RetainTrigger.check_drift error: %s", _rt_err)
 
+        # Phase 87: DynamicHedgeManager — evaluate hedges when macro stress detected
+        if self._dynamic_hedging is not None:
+            try:
+                _dh_stress = self._macro_stress.get_stress_modifier() if self._macro_stress else 1.0
+                if _dh_stress < 1.0:
+                    _dh_positions = []
+                    if self._executor is not None:
+                        try:
+                            _dh_open = self._executor.monitor_open_trades(evaluate_exits=False) or []
+                            _dh_positions = [
+                                {"pair": t.get("pair", ""), "direction": t.get("direction", "BUY"),
+                                 "lots": float(t.get("lots", 0)), "unrealized_pnl": float(t.get("unrealized_pnl", 0))}
+                                for t in _dh_open
+                            ]
+                        except Exception:
+                            pass
+                    if _dh_positions:
+                        _dh_status = self._dynamic_hedging.evaluate(
+                            open_positions=_dh_positions, stress_modifier=_dh_stress,
+                        )
+                        if getattr(_dh_status, "is_hedging_active", False):
+                            _dh_candidates = getattr(_dh_status, "candidates", [])
+                            if _dh_candidates:
+                                logger.warning(
+                                    "Phase 87: DynamicHedge ACTIVE — stress=%.2f, %d hedge candidates",
+                                    _dh_stress, len(_dh_candidates),
+                                )
+                        _dh_close = getattr(_dh_status, "hedges_to_close", [])
+                        if _dh_close:
+                            logger.info("Phase 87: DynamicHedge releasing %d hedges (stress receding)", len(_dh_close))
+            except Exception as _dh_err:
+                logger.debug("Phase 87: DynamicHedgeManager error: %s", _dh_err)
+
         # Feed ALL pairs' prices into EWMA correlation engine so the
         # correlation matrix reflects the full universe, not just traded pairs.
         self._feed_ewma_from_scan(analyses)

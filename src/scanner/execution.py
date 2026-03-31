@@ -1639,10 +1639,11 @@ class ExecutionManager:
                     reason = f"Stale data: analysis {age_seconds:.0f}s old (max {max_age:.0f}s)"
                     try:
                         # Phase 30 (US-183): Use shared observer
-                        self._get_observer().log(
+                        self._get_observer().log_observation(
+                            pair=pair,
                             category="stale_data_skip",
-                            detail=reason,
-                            data={"pair": pair, "age_seconds": age_seconds},
+                            description=reason,
+                            metadata={"age_seconds": age_seconds},
                         )
                     except Exception as e:
                         logger.debug(f"Execution pair operation skipped: {e}")
@@ -2788,10 +2789,11 @@ class ExecutionManager:
                     if abs(slippage) > self.config.high_slippage_alert_pips:
                         try:
                             # Phase 30 (US-183): Use shared observer
-                            self._get_observer().log(
+                            self._get_observer().log_observation(
+                                pair=pair,
                                 category="high_slippage",
-                                detail=f"{pair} slippage {slippage:.1f} pips (fill {fill_price} vs expected {current_price})",
-                                data={"pair": pair, "slippage_pips": slippage, "fill_price": fill_price},
+                                description=f"{pair} slippage {slippage:.1f} pips (fill {fill_price} vs expected {current_price})",
+                                metadata={"slippage_pips": slippage, "fill_price": fill_price},
                             )
                         except Exception as e:
                             logger.debug(f"Execution pair operation skipped: {e}")
