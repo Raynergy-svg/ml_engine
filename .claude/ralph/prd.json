@@ -1,83 +1,74 @@
 {
   "project": "ML_Engine",
-  "phase": 81,
-  "branchName": "ralph/phase81-execution-wiring",
-  "description": "Phase 81: Wire dormant execution modules — FilterChain gate consolidation, position timeout exits, regime confidence risk scaling, causal counterfactual loss analysis. Source: phase81 gap audit. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "phase": 82,
+  "branchName": "main",
+  "description": "Phase 82: Wire pair_model_selector, chain_memory lifecycle, adaptive_lr trade step, fix 3 .log() bugs, and save regime_confidence_scorer state. Source: phase82 gap audit. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
   "userStories": [
     {
-      "id": "US-P81-001",
-      "title": "Wire FilterChain.apply() as extensible pre-execution gate",
-      "description": "FilterChain is initialized in ExecutionManager.__init__ but apply() is never called. Register a spread_filter wrapper at init time. In execute_trade() after _phase49_size_multiplier is finalized (~line 2176), call _filter_chain.apply(context_dict). BLOCK returns ExecutionResult(success=False). REDUCE_SIZE compounds on _phase49_size_mult. Fail-open (exceptions pass through).",
+      "id": "US-P82-001",
+      "title": "Fix 3 ObservationLog .log() → .log_observation() method name bugs in engine.py",
+      "description": "engine.py calls self._observation_log.log() at 3 sites (consensus_penalty ~line 2722, regime_default ~line 3819, execution_fasttrack ~line 4271). The method does not exist — it is named log_observation(). These silently raise AttributeError on every trigger, caught by the outer try/except and logged at DEBUG only. Fix: rename all 3 .log() calls to .log_observation(). Each call signature already passes category, pair, data kwargs which log_observation() accepts.",
       "acceptanceCriteria": [
-        "FilterChain.apply(context) called in execute_trade() after _phase49_size_multiplier block",
-        "context dict includes pair, direction, confidence, atr, spread_pips, atr_pips, volatility_regime, phase49_size_multiplier",
-        "BLOCK result returns ExecutionResult(success=False, error='BLOCKED by filter chain: ...')",
-        "REDUCE_SIZE result multiplies _phase49_size_mult and updates ctx['_phase49_size_multiplier']",
-        "Entire block wrapped in try/except (fail-open)",
-        "Early skip if _filter_chain is None or has no registered filters",
+        "self._observation_log.log( replaced with self._observation_log.log_observation( at all 3 sites",
+        "category= kwarg preserved at all sites",
+        "pair= kwarg preserved at all sites",
+        "data= kwarg preserved at all sites",
+        "No other changes to surrounding logic",
         "Syntax validation passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "FilterResult has: passed, action (PASS/BLOCK/REDUCE_SIZE), reason, size_multiplier, filter_name. get_filter_names() checks if chain has filters."
+      "notes": "ObservationLog.log_observation() signature: log_observation(self, category: str, pair: str, data: dict). Sites: consensus_penalty block, regime_default block, execution_fasttrack block."
     },
     {
-      "id": "US-P81-002",
-      "title": "Wire PositionTimeoutManager — tick/register/evaluate/close",
-      "description": "PositionTimeoutManager is initialized in Scanner.__init__ gated by enable_position_timeout (default True). Wire 4 call sites: (A) tick() once per scan() cycle before trailing stop eval; (B) evaluate_all() in scan() to detect timed-out trades and force-close; (C) register_trade() in _init_executor() injection so executor can register after trade fill; (D) close_trade() in sync_closed_trades_rl() when trade is confirmed closed. Pass scanner._position_timeout reference to executor via new _position_timeout_mgr attr.",
+      "id": "US-P82-002",
+      "title": "Wire PairModelSelector — active model query in _scan_pair(), record_prediction() after trade close",
+      "description": "PairModelSelector is initialized (self._pair_model_selector) but never called. Wire 3 sites: (A) In _scan_pair(), after the model ensemble is selected but before scanning, call get_active_model(pair) and log at DEBUG which model variant is active. (B) In record_trade_outcome_phase18(), call record_prediction(pair, model_type, predicted_direction, actual_direction) using model arg and trade_won to derive actual_direction. (C) In scan() periodically (every 50 cycles via _scan_cycle_count % 50 == 0), call check_switch(pair) for each pair and execute_switch(pair, new_model) if a switch is recommended.",
       "acceptanceCriteria": [
-        "_position_timeout_mgr: Optional[Any] = None added to ExecutionManager.__init__",
-        "After executor creation in _init_executor(), set self._executor._position_timeout_mgr = self._position_timeout",
-        "tick() called once per scan() cycle (after _scan_cycle_count increment)",
-        "evaluate_all() called in scan() — forced exits logged at WARNING, close_trade() deregisters",
-        "register_trade(trade_id, regime, confidence, pair, direction) called post-execute in execution.py (via _position_timeout_mgr)",
-        "close_trade(tid) called in sync_closed_trades_rl() when trade confirmed closed",
-        "All 4 sites wrapped in try/except (non-blocking)",
+        "get_active_model(pair) called in _scan_pair() near model selection — logged at DEBUG",
+        "record_prediction(pair, model_type, predicted, actual) called in record_trade_outcome_phase18() — model arg used as model_type, 'LONG'/'SHORT' derived from trade_won + direction context or fallback 'HOLD'",
+        "check_switch() + execute_switch() called every 50 scan cycles for each pair",
+        "All 3 sites wrapped in try/except (non-blocking)",
+        "Early skip if self._pair_model_selector is None",
         "Syntax validation passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "evaluate_all() returns List[TimeoutResult]. TimeoutResult has: should_exit, trade_id, exit_reason. register_trade() signature: trade_id, regime, confidence, pair, direction."
+      "notes": "get_active_model(pair) returns 'joint' or 'per_pair'. record_prediction(pair, model_type, predicted_direction, actual_direction) — use 'LONG' if trade_won else 'HOLD' as a proxy. check_switch(pair) returns Optional[str] (new model name or None). execute_switch(pair, new_model) performs the switch."
     },
     {
-      "id": "US-P81-003",
-      "title": "Wire RegimeConfidenceScorer risk_pct scaling in _scan_pair()",
-      "description": "RegimeConfidenceScorer exists in ExecutionManager but is never called. Add a second instance in Scanner.__init__ so _scan_pair() can use it. After the entropy sizer block (~line 3756) and after regime_name is finalized, call score(adx, atr_percentile, trend_strength, regime) → sizing_factor. Multiply risk_pct by sizing_factor when < 1.0 (transition/uncertain regimes reduce position size).",
+      "id": "US-P82-003",
+      "title": "Wire ChainMemory lifecycle — sync_from_prd() at scan start, record_chain_complete() at scan end",
+      "description": "ChainMemory (self._chain_memory) is initialized but sync_from_prd(), record_chain_complete(), and record_phase_complete() are never called. Wire 2 sites: (A) In scan() at the top before pairs loop, call sync_from_prd() once per session (gated by a _chain_memory_synced flag, set on first call). (B) In scan() after ScanResult is assembled (before return), call record_chain_complete(result_dict) where result_dict contains: phase=_scan_cycle_count, pairs_scanned=len(analyses), signals=sum(a.should_trade for a in analyses). Wrap both in try/except (non-blocking).",
       "acceptanceCriteria": [
-        "self._regime_confidence_scorer added to Scanner.__init__ lazy init block",
-        "score() called in _scan_pair() after entropy_sizer block AND after regime_name is finalized",
-        "adx read from df_feat['adx'] or df_feat['adx_14'] (fallback 25.0)",
-        "atr_percentile from metrics.get('volatility_percentile', 0.5)",
-        "trend_strength from metrics.get('trend_strength', 0.5)",
-        "risk_pct *= sizing_factor when sizing_factor < 1.0",
-        "INFO log when sizing_factor < 1.0 with tier, factor, old→new risk_pct",
-        "DEBUG log when full size (sizing_factor == 1.0)",
-        "Wrapped in try/except (non-blocking)",
+        "_chain_memory_synced: bool = False added to Scanner.__init__ after _chain_memory block",
+        "sync_from_prd() called once in scan() on first call (gated by _chain_memory_synced flag)",
+        "record_chain_complete(dict) called in scan() after ScanResult assembled",
+        "result dict includes phase, pairs_scanned, signals keys",
+        "Both sites wrapped in try/except (non-blocking)",
+        "Early skip if self._chain_memory is None",
         "Syntax validation passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "score() signature: score(adx, atr_percentile, trend_strength, current_regime). Returns RegimeScoreResult with sizing_factor, tier, is_transition."
+      "notes": "sync_from_prd() loads PRD from disk and updates internal phase tracking. record_chain_complete(result) takes a dict. record_phase_complete(phase_name, stories_count) is for explicit phase completion — call it in sync_from_prd wrapper using current phase from PRD."
     },
     {
-      "id": "US-P81-004",
-      "title": "Wire CausalCounterfactual post-loss analysis in sync_closed_trades_rl()",
-      "description": "CounterfactualEngine is initialized in Scanner.__init__ (line 1054) but analyze_trade() / batch_analyze() are never called. In sync_closed_trades_rl(), after the PairAffinityTracker block, iterate losing trades and run batch_analyze(). Log the most impactful reversal scenario at INFO. save_analysis() persists to counterfactual_log.jsonl for future ML feedback.",
+      "id": "US-P82-004",
+      "title": "Wire AdaptiveLR step() into record_trade_outcome_phase18() + wire regime_confidence_scorer save_state()",
+      "description": "Two wiring tasks: (1) AdaptiveLR: self._adaptive_lr is initialized but step() is never called after trade outcomes. In record_trade_outcome_phase18(), after all module updates, call self._adaptive_lr.step(loss=0.0 if trade_won else 1.0) to advance the LR schedule. Log the resulting LR.current_lr at DEBUG. (2) RegimeConfidenceScorer save_state: self._regime_confidence_scorer_scan exists but save_state() is never called. In _save_phase19_state() or equivalent (append to the save_state chain after _adaptive_disagreement_floor block in scan()), call self._regime_confidence_scorer_scan.save_state().",
       "acceptanceCriteria": [
-        "CausalCounterfactual block runs after PairAffinityTracker block in sync_closed_trades_rl()",
-        "Only loss trades analyzed (realized_pl < 0)",
-        "Capped at 5 losses per sync call (prevent latency spike on batch close)",
-        "generate_standard_scenarios(trade_context) called to get scenario list",
-        "batch_analyze(trade_context, scenarios) called for each losing trade",
-        "save_analysis(tid, results) persists results to disk",
-        "Most impactful reversal scenario (max |probability_delta|) logged at INFO",
-        "Total losses analyzed logged at INFO when > 0",
-        "No exception propagation — errors caught at DEBUG",
+        "self._adaptive_lr.step(loss=0.0 if trade_won else 1.0) called in record_trade_outcome_phase18() after existing module updates",
+        "LRState.current_lr logged at DEBUG after step()",
+        "Wrapped in try/except (non-blocking)",
+        "Early skip if self._adaptive_lr is None",
+        "self._regime_confidence_scorer_scan.save_state() called in the scan() save chain (after adaptive_disagreement_floor block)",
+        "Wrapped in try/except (non-blocking)",
         "Syntax validation passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "analyze_trade(trade_context, scenario) takes ONE scenario. batch_analyze(trade_context, scenarios) takes list. trade_context needs: pair, features dict, regime str, outcome float (0.0=loss). CounterfactualResult has: outcome_reversal bool, probability_delta float, explanation str, scenario."
+      "notes": "AdaptiveLR.step(loss) returns LRState with current_lr field. RegimeConfidenceScorer.save_state() persists scorer history. The save chain is at end of scan() before 'return result'."
     }
   ]
 }

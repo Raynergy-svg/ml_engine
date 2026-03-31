@@ -149,12 +149,16 @@
     "phase81_wire_filterchain_apply_execute_trade_fail_open_US_P81_001",
     "phase81_wire_position_timeout_tick_register_evaluate_close_US_P81_002",
     "phase81_wire_regime_confidence_scorer_risk_pct_scaling_scan_pair_US_P81_003",
-    "phase81_wire_causal_counterfactual_post_loss_analysis_US_P81_004"
+    "phase81_wire_causal_counterfactual_post_loss_analysis_US_P81_004",
+    "phase82_fix_3_observation_log_log_bugs_consensus_regime_fasttrack_US_P82_001",
+    "phase82_wire_pair_model_selector_get_active_record_prediction_check_switch_US_P82_002",
+    "phase82_wire_chain_memory_sync_from_prd_record_chain_complete_US_P82_003",
+    "phase82_wire_adaptive_lr_step_after_trade_outcome_regime_confidence_save_state_US_P82_004"
   ],
-  "goal": "tier6_autonomous_operation",
-  "improvement_focus": "phase81_4_execution_modules_wired_filterchain_apply_consolidates_gates_position_timeout_forces_exits_regime_confidence_scales_risk_causal_counterfactual_logs_loss_reversals",
-  "last_updated": "2026-03-31T00:30:00.000000+00:00",
-  "next": "phase82_wire_pair_model_selector_chain_memory_observation_log_extended_and_adaptive_lr_into_rl_weight_loop",
+  "goal": "profitability_first",
+  "improvement_focus": "phase82_observation_log_bugs_fixed_pair_model_selector_chain_memory_adaptive_lr_regime_confidence_scorer_all_wired_on_main_branch",
+  "last_updated": "2026-03-30T22:30:00.000000+00:00",
+  "next": "phase83_gap_audit_identify_next_dormant_modules_for_wiring",
   "notes": {
     "aura_bridge": "bridge-only in src/aura/ \u2014 P90 writes readiness_signal.json, Buddy reads it via TraderReadinessAgent",
     "episodic_memory": "suppression gate live in execute_trade() before Gate 1 \u2014 will activate once 3+ similar losing setups are recorded",

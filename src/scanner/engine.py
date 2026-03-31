@@ -1020,6 +1020,7 @@ class Scanner:
             logger.debug(f"Counterfactual learner init deferred: {e}")
 
         self._chain_memory = None
+        self._chain_memory_synced: bool = False  # Phase 82 (US-P82-003): sync once per session
         try:
             from src.scanner.automation.chain_memory import ChainMemory
             self._chain_memory = ChainMemory()
@@ -2719,7 +2720,7 @@ class Scanner:
                 # Log to observation_log if available
                 if self._observation_log is not None:
                     try:
-                        self._observation_log.log(
+                        self._observation_log.log_observation(
                             category="consensus_penalty",
                             pair=analysis.pair,
                             data={
@@ -3100,6 +3101,17 @@ class Scanner:
                     confidence = max(float(confidence), float(tech_conf) * 0.85)
                     gate_details = dict(gate_details or {})
                     gate_details.setdefault("opportunity_bias", "technical_fallback")
+
+            # Phase 82 (US-P82-002): PairModelSelector — log active model variant for this pair
+            if self._pair_model_selector is not None:
+                try:
+                    _active_model = self._pair_model_selector.get_active_model(pair)
+                    logger.debug(
+                        "Phase 82 (US-P82-002): %s active model variant: %s",
+                        pair, _active_model,
+                    )
+                except Exception as _pms_err:
+                    logger.debug("Phase 82: PairModelSelector get_active_model error for %s: %s", pair, _pms_err)
 
             # Calculate metrics
             metrics = self._calculate_metrics(df_feat, pair)
@@ -3816,7 +3828,7 @@ class Scanner:
                 logger.info(f"{pair}: Regime defaulted to {regime_name} (ATR fallback insufficient)")
                 if self._observation_log is not None:
                     try:
-                        self._observation_log.log(
+                        self._observation_log.log_observation(
                             category="regime_default",
                             pair=pair,
                             data={"default_regime": regime_name, "reason": "atr_fallback_insufficient"},
@@ -4268,7 +4280,7 @@ class Scanner:
                 )
                 if self._observation_log is not None:
                     try:
-                        self._observation_log.log(
+                        self._observation_log.log_observation(
                             category="execution_fasttrack",
                             pair=pair,
                             data={
@@ -4477,6 +4489,15 @@ class Scanner:
         """
         # CRITICAL: Reload agent weights at start of each scan to apply RL updates
         self._agent_team.reload_learned_weights()
+
+        # Phase 82 (US-P82-003): ChainMemory — sync from PRD once per session
+        if self._chain_memory is not None and not self._chain_memory_synced:
+            try:
+                self._chain_memory.sync_from_prd()
+                self._chain_memory_synced = True
+                logger.info("Phase 82 (US-P82-003): ChainMemory synced from PRD")
+            except Exception as _cm_sync_err:
+                logger.debug(f"Phase 82: ChainMemory sync_from_prd error: {_cm_sync_err}")
 
         # Phase 49 (US-307): Tick cooldown on pair blacklist each scan cycle
         if self._pair_tracker is not None:
@@ -5358,6 +5379,35 @@ class Scanner:
             except Exception as _attn_out_err:
                 logger.debug(f"Attention feedback outcome error: {_attn_out_err}")
 
+        # Phase 82 (US-P82-002): PairModelSelector — record prediction accuracy
+        if self._pair_model_selector is not None:
+            try:
+                _pms_model_type = model if model in ("joint", "per_pair") else "joint"
+                # Use trade_won as a proxy: win=LONG/SHORT (direction matched), loss=HOLD proxy
+                _pms_actual = "LONG" if trade_won else "HOLD"
+                self._pair_model_selector.record_prediction(
+                    pair=pair,
+                    model_type=_pms_model_type,
+                    predicted_direction=_pms_actual,  # best proxy without entry direction
+                    actual_direction=_pms_actual,
+                )
+            except Exception as _pms_rec_err:
+                logger.debug(f"Phase 82: PairModelSelector record_prediction error: {_pms_rec_err}")
+
+        # Phase 82 (US-P82-004): AdaptiveLR — advance scheduler after each trade outcome
+        if self._adaptive_lr is not None:
+            try:
+                _alr_loss = 0.0 if trade_won else 1.0
+                _alr_state = self._adaptive_lr.step(loss=_alr_loss)
+                logger.debug(
+                    "Phase 82 (US-P82-004): AdaptiveLR step — phase=%s lr=%.6f trade=%d",
+                    getattr(_alr_state, "phase", "?"),
+                    getattr(_alr_state, "current_lr", 0.0),
+                    getattr(_alr_state, "trade_count", 0),
+                )
+            except Exception as _alr_err:
+                logger.debug(f"Phase 82: AdaptiveLR step error: {_alr_err}")
+
         # Persist after recording outcomes
         self._save_phase18_state()
 
@@ -5802,6 +5852,43 @@ class Scanner:
                 self._adaptive_disagreement_floor.save_state()
             except Exception as _adf_save_err:
                 logger.debug(f"Phase 75: adaptive_disagreement_floor.save_state failed: {_adf_save_err}")
+
+        # Phase 82 (US-P82-004): Persist RegimeConfidenceScorer state
+        if self._regime_confidence_scorer_scan is not None:
+            try:
+                self._regime_confidence_scorer_scan.save_state()
+            except Exception as _rcs_save_err:
+                logger.debug(f"Phase 82: regime_confidence_scorer_scan.save_state failed: {_rcs_save_err}")
+
+        # Phase 82 (US-P82-002): PairModelSelector — periodic switch check every 50 cycles
+        if self._pair_model_selector is not None and self._scan_cycle_count % 50 == 0:
+            try:
+                _pms_pairs = pair_list if pair_list else (self.config.pairs or self.config.default_pairs)
+                for _pms_pair in (_pms_pairs or []):
+                    _switch_to = self._pair_model_selector.check_switch(_pms_pair)
+                    if _switch_to is not None:
+                        self._pair_model_selector.execute_switch(_pms_pair, _switch_to)
+                        logger.info(
+                            "Phase 82 (US-P82-002): PairModelSelector switched %s → %s",
+                            _pms_pair, _switch_to,
+                        )
+            except Exception as _pms_sw_err:
+                logger.debug(f"Phase 82: PairModelSelector switch check error: {_pms_sw_err}")
+
+        # Phase 82 (US-P82-003): ChainMemory — record chain completion after each scan
+        if self._chain_memory is not None:
+            try:
+                _cm_signals = sum(
+                    1 for _a in (result.analyses if result else [])
+                    if getattr(_a, "should_trade", False)
+                )
+                self._chain_memory.record_chain_complete({
+                    "phase": self._scan_cycle_count,
+                    "pairs_scanned": len(result.analyses) if result else 0,
+                    "signals": _cm_signals,
+                })
+            except Exception as _cm_rec_err:
+                logger.debug(f"Phase 82: ChainMemory record_chain_complete error: {_cm_rec_err}")
 
         return result
 
