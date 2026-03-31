@@ -2725,6 +2725,22 @@ class ExecutionManager:
             # Convert LONG/SHORT to BUY/SELL for broker API
             _broker_direction = "BUY" if direction.upper() == "LONG" else "SELL"
 
+            # Phase 86 (US-P86-004): SmartExecution — log whether slicing is recommended (observational)
+            _se = getattr(self, "_smart_execution", None)
+            if _se is not None:
+                try:
+                    _se_should = _se.should_use_smart_execution(
+                        position_size_lots=attempt_lots, atr_pips=atr_pips,
+                    )
+                    if _se_should:
+                        logger.debug(
+                            "Phase 86 (US-P86-004): SmartExecution recommends slicing for %s "
+                            "(%.2f lots, %.1f ATR pips)",
+                            pair, attempt_lots, atr_pips,
+                        )
+                except Exception as _se_err:
+                    logger.debug("Phase 86: SmartExecution error: %s", _se_err)
+
             # Phase 85 (US-P85-004): ExecutionRouter — log routing strategy (observational)
             _er = getattr(self, "_execution_router", None)
             if _er is not None:

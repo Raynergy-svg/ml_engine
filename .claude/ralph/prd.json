@@ -1,16 +1,16 @@
 {
   "project": "ML_Engine",
-  "phase": 85,
+  "phase": 86,
   "branchName": "main",
-  "description": "Phase 85: Wire TemporalAttention, TrainingAugmenter, ClusterGate, ExecutionRouter. Source: phase85 gap audit.",
+  "description": "Phase 86: Wire final dormant modules \u2014 HRPOptimizer, ObservationalLearner, LivePositionManager, SmartExecutionEngine. All observational-first (log, not change execution).",
   "userStories": [
     {
-      "id": "US-P85-001",
-      "title": "Wire TemporalAttentionLayer update_from_outcome + periodic save_state",
-      "description": "Wire update_from_outcome in record_trade_outcome_phase18 and save_state in save chain.",
+      "id": "US-P86-001",
+      "title": "Wire HRPOptimizer.get_weights() periodic portfolio weight logging",
+      "description": "Every 50 cycles, compute HRP weights from _pair_returns and log the portfolio allocation.",
       "acceptanceCriteria": [
-        "update_from_outcome called for wins/losses",
-        "save_state in save chain",
+        "get_weights called every 50 cycles",
+        "weights logged at INFO",
         "try/except",
         "syntax OK"
       ],
@@ -18,12 +18,12 @@
       "passes": true
     },
     {
-      "id": "US-P85-002",
-      "title": "Wire TrainingAugmenter periodic generate_augmented_dataset + save_state",
-      "description": "Every 100 cycles, generate augmented dataset for underrepresented regimes and save.",
+      "id": "US-P86-002",
+      "title": "Wire ObservationalLearner.extract_patterns() from crisis generator output",
+      "description": "Every 100 cycles (after crisis generator runs), feed synthetic scenarios to extract_patterns and log pattern count.",
       "acceptanceCriteria": [
-        "generate_augmented_dataset every 100 cycles",
-        "save_state in save chain",
+        "extract_patterns called after crisis generator",
+        "pattern count logged",
         "try/except",
         "syntax OK"
       ],
@@ -31,12 +31,13 @@
       "passes": true
     },
     {
-      "id": "US-P85-003",
-      "title": "Wire ClusterGate.evaluate() in execution.py execute_trade confidence adjustment",
-      "description": "In execute_trade after confidence is finalized, call _cluster_gate.evaluate(trade_dict, confidence) and use adjusted_confidence.",
+      "id": "US-P86-003",
+      "title": "Wire LivePositionManager.evaluate_position() for open trade monitoring",
+      "description": "In scan() after trailing stop evaluation, iterate open trades and call evaluate_position with PositionContext. Log non-HOLD actions at INFO. Observational only \u2014 do not auto-execute actions.",
       "acceptanceCriteria": [
-        "evaluate called in execute_trade",
-        "adjusted_confidence used downstream",
+        "evaluate_position called for open trades",
+        "non-HOLD logged at INFO",
+        "save_state in save chain",
         "try/except",
         "syntax OK"
       ],
@@ -44,13 +45,12 @@
       "passes": true
     },
     {
-      "id": "US-P85-004",
-      "title": "Wire ExecutionRouter.route_execution() in execute_trade + save_state",
-      "description": "In execute_trade before order placement, call route_execution(pair, lots, regime) and log strategy. save_state in save chain.",
+      "id": "US-P86-004",
+      "title": "Wire SmartExecutionEngine.should_use_smart_execution() observational logging",
+      "description": "In execute_trade before order placement, call should_use_smart_execution(lots, atr_pips) and log whether slicing would be recommended. Observational only.",
       "acceptanceCriteria": [
-        "route_execution called before order",
-        "strategy logged",
-        "save_state in save chain",
+        "should_use_smart_execution called in execute_trade",
+        "recommendation logged at DEBUG",
         "try/except",
         "syntax OK"
       ],

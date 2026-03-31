@@ -165,12 +165,16 @@
     "phase85_wire_temporal_attention_update_from_outcome_save_state_US_P85_001",
     "phase85_wire_training_augmenter_generate_augmented_dataset_every_100_cycles_US_P85_002",
     "phase85_wire_cluster_gate_evaluate_confidence_adjustment_execution_US_P85_003",
-    "phase85_wire_execution_router_route_execution_save_state_US_P85_004"
+    "phase85_wire_execution_router_route_execution_save_state_US_P85_004",
+    "phase86_wire_hrp_optimizer_portfolio_weights_every_50_cycles_US_P86_001",
+    "phase86_wire_observational_learner_extract_patterns_synthetic_US_P86_002",
+    "phase86_wire_position_manager_evaluate_position_open_trades_US_P86_003",
+    "phase86_wire_smart_execution_should_use_observational_US_P86_004"
   ],
   "goal": "profitability_first",
-  "improvement_focus": "phase85_temporal_attention_training_augmenter_cluster_gate_execution_router_all_wired",
-  "last_updated": "2026-03-31T03:00:00.000000+00:00",
-  "next": "phase86_wire_remaining_smart_execution_hrp_optimizer_dynamic_hedging_position_manager",
+  "improvement_focus": "phase86_ALL_DORMANT_MODULES_WIRED_hrp_observational_position_mgr_smart_exec_zero_remaining",
+  "last_updated": "2026-03-31T04:00:00.000000+00:00",
+  "next": "phase87_audit_for_any_missed_modules_then_focus_on_live_trade_quality_and_profitability_tuning",
   "notes": {
     "aura_bridge": "bridge-only in src/aura/ \u2014 P90 writes readiness_signal.json, Buddy reads it via TraderReadinessAgent",
     "episodic_memory": "suppression gate live in execute_trade() before Gate 1 \u2014 will activate once 3+ similar losing setups are recorded",

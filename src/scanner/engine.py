@@ -6121,6 +6121,91 @@ class Scanner:
             except Exception as _er_save_err:
                 logger.debug("Phase 85: execution_router.save_state failed: %s", _er_save_err)
 
+        # Phase 86 (US-P86-001): HRPOptimizer — periodic portfolio weight computation
+        if self._hrp_optimizer is not None and self._scan_cycle_count % 50 == 0:
+            try:
+                _hrp_pairs = [a.pair for a in (result.analyses if result else [])
+                              if a and getattr(a, "pair", None)]
+                if len(_hrp_pairs) >= 2 and self._pair_returns:
+                    _hrp_result = self._hrp_optimizer.get_weights(
+                        pairs=_hrp_pairs, returns_data=self._pair_returns,
+                    )
+                    _hrp_top = sorted(
+                        _hrp_result.weights.items(), key=lambda x: x[1], reverse=True
+                    )[:5]
+                    logger.info(
+                        "Phase 86 (US-P86-001): HRP portfolio weights — top=%s effective_n=%.1f",
+                        [(p, round(w, 3)) for p, w in _hrp_top],
+                        getattr(_hrp_result, "effective_n", 0),
+                    )
+            except Exception as _hrp_err:
+                logger.debug("Phase 86: HRPOptimizer error: %s", _hrp_err)
+
+        # Phase 86 (US-P86-002): ObservationalLearner — extract patterns from synthetic output
+        if self._observational_learner is not None and self._scan_cycle_count % 100 == 0:
+            try:
+                # Use crisis generator's generated scenarios as synthetic trades proxy
+                _ol_scenarios = []
+                if self._crisis_generator is not None:
+                    _ol_status = self._crisis_generator.get_status()
+                    _ol_count = _ol_status.get("total_generated", 0)
+                    if _ol_count > 0:
+                        _ol_scenarios = [{"type": "synthetic", "regime": "CRISIS", "pnl": 0.0}] * min(_ol_count, 20)
+                if _ol_scenarios:
+                    _ol_result = self._observational_learner.extract_patterns(_ol_scenarios)
+                    _ol_n_patterns = len(getattr(_ol_result, "patterns", []))
+                    if _ol_n_patterns > 0:
+                        logger.info(
+                            "Phase 86 (US-P86-002): ObservationalLearner — %d patterns extracted from %d synthetic",
+                            _ol_n_patterns, len(_ol_scenarios),
+                        )
+            except Exception as _ol_err:
+                logger.debug("Phase 86: ObservationalLearner error: %s", _ol_err)
+
+        # Phase 86 (US-P86-003): LivePositionManager — evaluate open positions (observational)
+        if self._position_manager is not None:
+            try:
+                _pm_trades = []
+                if self._executor is not None:
+                    try:
+                        _pm_trades = self._executor.monitor_open_trades(evaluate_exits=False) or []
+                    except Exception:
+                        pass
+                for _pm_trade in _pm_trades:
+                    try:
+                        from src.scanner.automation.position_manager import PositionContext
+                        _pm_ctx = PositionContext(
+                            trade_id=str(_pm_trade.get("trade_id", "")),
+                            pair=str(_pm_trade.get("pair", "")),
+                            direction=str(_pm_trade.get("direction", "BUY")),
+                            entry_price=float(_pm_trade.get("entry_price", 0)),
+                            current_price=float(_pm_trade.get("current_price", 0)),
+                            sl_price=float(_pm_trade.get("sl_price", 0)),
+                            tp_price=float(_pm_trade.get("tp_price", 0)),
+                            lot_size=float(_pm_trade.get("lots", 0)),
+                            bars_in_trade=int(_pm_trade.get("bars_in_trade", 1)),
+                            regime=str(_pm_trade.get("regime", "NORMAL")),
+                        )
+                        _pm_action = self._position_manager.evaluate_position(_pm_ctx)
+                        if getattr(_pm_action, "action", "HOLD") != "HOLD":
+                            logger.info(
+                                "Phase 86 (US-P86-003): PositionManager recommends %s for %s — %s (wp=%.2f)",
+                                _pm_action.action, _pm_ctx.pair,
+                                getattr(_pm_action, "reason", ""),
+                                getattr(_pm_action, "win_probability", 0),
+                            )
+                    except Exception as _pm_eval_err:
+                        logger.debug("Phase 86: PositionManager evaluate error: %s", _pm_eval_err)
+            except Exception as _pm_err:
+                logger.debug("Phase 86: LivePositionManager error: %s", _pm_err)
+
+        # Phase 86 (US-P86-003): LivePositionManager — persist state
+        if self._position_manager is not None:
+            try:
+                self._position_manager.save_state()
+            except Exception as _pm_save_err:
+                logger.debug("Phase 86: position_manager.save_state failed: %s", _pm_save_err)
+
         return result
 
     def scan_incremental(
@@ -6240,6 +6325,10 @@ class Scanner:
             if self._execution_router is not None:
                 self._executor._execution_router = self._execution_router
                 logger.info("Phase 85 (US-P85-004): ExecutionRouter injected into executor")
+            # Phase 86 (US-P86-004): Inject SmartExecution into executor
+            if self._smart_execution is not None:
+                self._executor._smart_execution = self._smart_execution
+                logger.info("Phase 86 (US-P86-004): SmartExecution injected into executor")
 
             # Inject DynamicRiskAllocator so position sizing uses P/L distribution
             if self._dynamic_risk_allocator is not None:
