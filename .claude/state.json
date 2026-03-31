@@ -161,12 +161,16 @@
     "phase84_wire_session_snapshot_save_every_100_cycles_US_P84_001",
     "phase84_wire_crisis_generator_synthetic_stress_every_100_cycles_US_P84_002",
     "phase84_wire_pair_transfer_update_stats_auto_transfer_every_50_cycles_US_P84_003",
-    "phase84_wire_circuit_breaker_is_tripped_record_success_failure_execution_US_P84_004"
+    "phase84_wire_circuit_breaker_is_tripped_record_success_failure_execution_US_P84_004",
+    "phase85_wire_temporal_attention_update_from_outcome_save_state_US_P85_001",
+    "phase85_wire_training_augmenter_generate_augmented_dataset_every_100_cycles_US_P85_002",
+    "phase85_wire_cluster_gate_evaluate_confidence_adjustment_execution_US_P85_003",
+    "phase85_wire_execution_router_route_execution_save_state_US_P85_004"
   ],
   "goal": "profitability_first",
-  "improvement_focus": "phase84_session_snapshot_crisis_generator_pair_transfer_circuit_breaker_all_wired_on_main",
-  "last_updated": "2026-03-31T02:00:00.000000+00:00",
-  "next": "phase85_gap_audit_wire_remaining_dormant_modules_smart_execution_hrp_optimizer_dynamic_hedging",
+  "improvement_focus": "phase85_temporal_attention_training_augmenter_cluster_gate_execution_router_all_wired",
+  "last_updated": "2026-03-31T03:00:00.000000+00:00",
+  "next": "phase86_wire_remaining_smart_execution_hrp_optimizer_dynamic_hedging_position_manager",
   "notes": {
     "aura_bridge": "bridge-only in src/aura/ \u2014 P90 writes readiness_signal.json, Buddy reads it via TraderReadinessAgent",
     "episodic_memory": "suppression gate live in execute_trade() before Gate 1 \u2014 will activate once 3+ similar losing setups are recorded",

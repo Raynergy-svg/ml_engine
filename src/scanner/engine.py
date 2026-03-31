@@ -5476,6 +5476,24 @@ class Scanner:
             except Exception as _cl_err:
                 logger.debug("Phase 83: CounterfactualLearner error: %s", _cl_err)
 
+        # Phase 85 (US-P85-001): TemporalAttentionLayer — outcome-based weight learning
+        if self._temporal_attention is not None:
+            try:
+                _ta_result = "win" if trade_won else "loss"
+                _ta_dir = "BUY"  # proxy — full direction context not available here
+                self._temporal_attention.update_from_outcome(
+                    trade_result=_ta_result,
+                    timeframe_signals=[],  # empty = use cached signals
+                    regime=regime,
+                    trade_direction=_ta_dir,
+                )
+                logger.debug(
+                    "Phase 85 (US-P85-001): TemporalAttention update_from_outcome — %s regime=%s",
+                    _ta_result, regime,
+                )
+            except Exception as _ta_err:
+                logger.debug("Phase 85: TemporalAttention update_from_outcome error: %s", _ta_err)
+
         # Persist after recording outcomes
         self._save_phase18_state()
 
@@ -6062,6 +6080,47 @@ class Scanner:
             except Exception as _pt_err:
                 logger.debug("Phase 84: PairTransferLearning error: %s", _pt_err)
 
+        # Phase 85 (US-P85-001): TemporalAttentionLayer — persist learned weights
+        if self._temporal_attention is not None:
+            try:
+                self._temporal_attention.save_state()
+            except Exception as _ta_save_err:
+                logger.debug("Phase 85: temporal_attention.save_state failed: %s", _ta_save_err)
+
+        # Phase 85 (US-P85-002): TrainingAugmenter — periodic augmented dataset generation
+        if self._training_augmenter is not None and self._scan_cycle_count % 100 == 0:
+            try:
+                import json as _aug_json
+                _aug_trades = []
+                try:
+                    with open("trained_data/trade_journal_rl.json", "r") as _aug_f:
+                        _aug_all = _aug_json.load(_aug_f)
+                    _aug_trades = [t for t in _aug_all if isinstance(t.get("outcome"), dict)]
+                except Exception:
+                    pass
+                if len(_aug_trades) >= 10:
+                    _aug_pair = next(
+                        (a.pair for a in (result.analyses if result else []) if a and getattr(a, "pair", None)),
+                        "EUR_USD",
+                    )
+                    _aug_result = self._training_augmenter.generate_augmented_dataset(
+                        real_trades=_aug_trades, pair=_aug_pair,
+                    )
+                    self._training_augmenter.save_state()
+                    logger.info(
+                        "Phase 85 (US-P85-002): TrainingAugmenter — %d real + %d augmented = %d total",
+                        len(_aug_trades), len(_aug_result) - len(_aug_trades), len(_aug_result),
+                    )
+            except Exception as _aug_err:
+                logger.debug("Phase 85: TrainingAugmenter error: %s", _aug_err)
+
+        # Phase 85 (US-P85-004): ExecutionRouter — persist routing state
+        if self._execution_router is not None:
+            try:
+                self._execution_router.save_state()
+            except Exception as _er_save_err:
+                logger.debug("Phase 85: execution_router.save_state failed: %s", _er_save_err)
+
         return result
 
     def scan_incremental(
@@ -6177,6 +6236,10 @@ class Scanner:
             if self._api_retry is not None:
                 self._executor._api_circuit_breaker = self._api_retry
                 logger.info("Phase 84 (US-P84-004): CircuitBreaker injected into executor")
+            # Phase 85 (US-P85-004): Inject ExecutionRouter into executor
+            if self._execution_router is not None:
+                self._executor._execution_router = self._execution_router
+                logger.info("Phase 85 (US-P85-004): ExecutionRouter injected into executor")
 
             # Inject DynamicRiskAllocator so position sizing uses P/L distribution
             if self._dynamic_risk_allocator is not None:

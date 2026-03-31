@@ -1,113 +1,61 @@
 {
   "project": "ML_Engine",
-  "phase": 80,
+  "phase": 85,
   "branchName": "main",
-  "description": "Phase 80: Wire dormant modules into live loop \u2014 outcome prediction, pair affinity, adaptive drawdown, drift projection, adversarial deep test. Source: phase80 gap audit. DIRECTIVE: NEVER STOP. DONT ASK. ONLY ASK WHEN DESTRUCTIVE.",
+  "description": "Phase 85: Wire TemporalAttention, TrainingAugmenter, ClusterGate, ExecutionRouter. Source: phase85 gap audit.",
   "userStories": [
     {
-      "id": "US-P80-001",
-      "title": "Enrich trade journal with MAE/MFE/bars_in_trade fields",
-      "description": "outcome_data in sync_closed_trades_rl() is missing mae_pips, mfe_pips, bars_in_trade. Add all three using proxy formulas.",
+      "id": "US-P85-001",
+      "title": "Wire TemporalAttentionLayer update_from_outcome + periodic save_state",
+      "description": "Wire update_from_outcome in record_trade_outcome_phase18 and save_state in save chain.",
       "acceptanceCriteria": [
-        "outcome_data contains mae_pips: max(0.0, -min(pnl_pips, 0.0))",
-        "outcome_data contains mfe_pips: max(0.0, pnl_pips)",
-        "outcome_data contains bars_in_trade: max(1, round(duration_minutes / 60.0)) \u2014 H1 bars, 1 when duration_minutes is None",
-        "No regression to existing outcome_data fields (realized_pl, pnl_pips, trade_won, etc.)",
-        "Syntax validation passes"
+        "update_from_outcome called for wins/losses",
+        "save_state in save chain",
+        "try/except",
+        "syntax OK"
       ],
       "priority": 1,
-      "passes": true,
-      "notes": "Implemented in commit 29d925e. execution.py lines 4332-4352."
+      "passes": true
     },
     {
-      "id": "US-P80-002",
-      "title": "Auto-trigger TradeOutcomePredictor training at 50-trade threshold",
-      "description": "TradeOutcomePredictor is initialized but fit_from_journal() is never called. After the atomic journal write in sync_closed_trades_rl(), count complete trades. Call fit_from_journal() when count >= 50 and (count % 10 == 0 or not _is_trained).",
+      "id": "US-P85-002",
+      "title": "Wire TrainingAugmenter periodic generate_augmented_dataset + save_state",
+      "description": "Every 100 cycles, generate augmented dataset for underrepresented regimes and save.",
       "acceptanceCriteria": [
-        "fit_from_journal() triggered when complete_trade_count >= 50",
-        "Retrains every 10 additional trades (count % 10 == 0)",
-        "Also trains on first eligible run even if count not divisible by 10 (!_is_trained check)",
-        "Call site is AFTER atomic journal write",
-        "Training success logged at INFO with n_trades and accuracy",
-        "Skipped gracefully if < 50 complete trades (DEBUG log only)",
-        "No exception propagation \u2014 errors caught at DEBUG",
-        "Syntax validation passes"
+        "generate_augmented_dataset every 100 cycles",
+        "save_state in save chain",
+        "try/except",
+        "syntax OK"
       ],
       "priority": 2,
-      "passes": true,
-      "notes": "Implemented in commit 29d925e. execution.py lines 4980-5017."
+      "passes": true
     },
     {
-      "id": "US-P80-003",
-      "title": "Wire PairAffinityTracker update post-trade-close",
-      "description": "PairAffinityTracker is initialized but update_from_journal() is never called. After atomic journal write in sync_closed_trades_rl(), call scanner._pair_affinity.update_from_journal().",
+      "id": "US-P85-003",
+      "title": "Wire ClusterGate.evaluate() in execution.py execute_trade confidence adjustment",
+      "description": "In execute_trade after confidence is finalized, call _cluster_gate.evaluate(trade_dict, confidence) and use adjusted_confidence.",
       "acceptanceCriteria": [
-        "update_from_journal() called after every atomic journal write when synced > 0",
-        "Call site is strictly AFTER safe_json_write(journal_path, entries)",
-        "Co-occurrence pair count logged at INFO when > 0",
-        "No exception propagation \u2014 errors caught at DEBUG",
-        "Uses scanner._pair_affinity attribute (not new instance)",
-        "Syntax validation passes"
+        "evaluate called in execute_trade",
+        "adjusted_confidence used downstream",
+        "try/except",
+        "syntax OK"
       ],
       "priority": 3,
-      "passes": true,
-      "notes": "Implemented in commit 29d925e. execution.py lines 5019-5036."
+      "passes": true
     },
     {
-      "id": "US-P80-004",
-      "title": "Fix _current_drawdown always-zero input to DynamicDrawdownManager",
-      "description": "Add _equity_hwm and _current_drawdown attrs to ExecutionManager.__init__. Refresh _current_drawdown in update_trailing_stops() using cached_nav and HWM before the stop evaluation loop.",
+      "id": "US-P85-004",
+      "title": "Wire ExecutionRouter.route_execution() in execute_trade + save_state",
+      "description": "In execute_trade before order placement, call route_execution(pair, lots, regime) and log strategy. save_state in save chain.",
       "acceptanceCriteria": [
-        "_equity_hwm: float = 0.0 added to ExecutionManager.__init__ after _dynamic_drawdown_mgr block",
-        "_current_drawdown: float = 0.0 added alongside _equity_hwm",
-        "update_trailing_stops() refreshes _current_drawdown from _cached_nav before evaluation",
-        "HWM updates when current NAV > prior HWM",
-        "drawdown = max(0.0, (hwm - nav) / hwm) when hwm > 0",
-        "Entire refresh block wrapped in try/except (non-blocking)",
-        "Syntax validation passes"
+        "route_execution called before order",
+        "strategy logged",
+        "save_state in save chain",
+        "try/except",
+        "syntax OK"
       ],
       "priority": 4,
-      "passes": true,
-      "notes": "Implemented in commit 29d925e. execution.py lines 507-509 (init) and 4005-4018 (refresh)."
-    },
-    {
-      "id": "US-P80-005",
-      "title": "Wire DriftProjector periodic call every 20 scan cycles",
-      "description": "Add _run_drift_projection_cycle(analyses) to Scanner. Call from scan() after _run_drift_check_cycle(). Every 20 scans: call _drift_projector.project_all_pairs() with current accuracy data, then save_projections().",
-      "acceptanceCriteria": [
-        "_run_drift_projection_cycle(analyses) method added to Scanner",
-        "Called from scan() right after _run_drift_check_cycle() call",
-        "_DRIFT_PROJECTION_INTERVAL = 20 class constant",
-        "current_accuracies populated from _accuracy_gate.get_stats(pair)['accuracy'] when available",
-        "save_projections(projections) called after project_all_pairs()",
-        "WARNING logged for high/critical urgency pairs",
-        "INFO logged with pair count and cycle number",
-        "Early return if _drift_projector is None",
-        "No exception propagation \u2014 errors caught at DEBUG",
-        "Syntax validation passes"
-      ],
-      "priority": 5,
-      "passes": true,
-      "notes": "Implemented in commit 29d925e. engine.py lines 5046-5108."
-    },
-    {
-      "id": "US-P80-006",
-      "title": "Wire adversarial deep test every 100 scan cycles",
-      "description": "Add _run_adversarial_deep_test(analyses) to Scanner. Call from scan() after _run_adversarial_robustness_check(). Every 100 scans: call adversarial_trainer.train_robust(model, X_clean, y_clean, n_rounds=3).",
-      "acceptanceCriteria": [
-        "_run_adversarial_deep_test(analyses) method added to Scanner",
-        "Called from scan() after _run_adversarial_robustness_check() call",
-        "_ADVERSARIAL_DEEP_TEST_INTERVAL = 100 class constant",
-        "Uses train_robust(model=_model, X_train=X_clean, y_train=y_clean, n_rounds=3)",
-        "WARNING logged if robustness_ratio < 0.70 with full ratio/clean/adv values",
-        "INFO logged on pass with ratio values and cycle count",
-        "Returns early if < 3 feature pairs or no sklearn sub-model available",
-        "No exception propagation \u2014 errors caught at DEBUG",
-        "Syntax validation passes"
-      ],
-      "priority": 6,
-      "passes": true,
-      "notes": "Implemented in commit 29d925e. engine.py lines 5110-5200."
+      "passes": true
     }
   ]
 }

@@ -1683,6 +1683,27 @@ class ExecutionManager:
             ctx.get("agent_passed"), _ctx_disagreement, _ctx_regime,
         )
 
+        # Phase 85 (US-P85-003): ClusterGate — adjust confidence based on trade cluster membership
+        if self._cluster_gate is not None:
+            try:
+                _cg_trade = {
+                    "pair": pair, "direction": direction,
+                    "confidence": confidence, "regime": _ctx_regime,
+                    "atr": atr, "spread_pips": ctx.get("spread_pips", 0.0),
+                }
+                _cg_result = self._cluster_gate.evaluate(_cg_trade, confidence)
+                if _cg_result.adjusted_confidence != confidence:
+                    confidence = _cg_result.adjusted_confidence
+                    logger.info(
+                        "Phase 85 (US-P85-003): ClusterGate adjusted confidence %.3f → %.3f "
+                        "(cluster=%s adj=%+.3f)",
+                        _cg_result.original_confidence, confidence,
+                        _cg_result.cluster_label or "?",
+                        _cg_result.confidence_adjustment,
+                    )
+            except Exception as _cg_err:
+                logger.debug("Phase 85: ClusterGate evaluate error: %s", _cg_err)
+
         # Duplicate position check — don't open same pair twice
         try:
             _open_positions = self.monitor_open_trades(evaluate_exits=False) or []
@@ -2703,6 +2724,20 @@ class ExecutionManager:
 
             # Convert LONG/SHORT to BUY/SELL for broker API
             _broker_direction = "BUY" if direction.upper() == "LONG" else "SELL"
+
+            # Phase 85 (US-P85-004): ExecutionRouter — log routing strategy (observational)
+            _er = getattr(self, "_execution_router", None)
+            if _er is not None:
+                try:
+                    _er_plan = _er.route_execution(
+                        pair=pair, lot_size=attempt_lots, regime=regime_name,
+                    )
+                    logger.debug(
+                        "Phase 85 (US-P85-004): ExecutionRouter — %s %s: strategy=%s slices=%d",
+                        pair, direction, _er_plan.strategy, _er_plan.n_slices,
+                    )
+                except Exception as _er_err:
+                    logger.debug("Phase 85: ExecutionRouter error: %s", _er_err)
 
             for order_attempt in range(self.config.max_order_attempts):
                 order_result = self._broker.place_order(
