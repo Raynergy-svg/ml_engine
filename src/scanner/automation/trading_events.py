@@ -97,25 +97,29 @@ def create_trade_closed_event(outcome_data: dict, session_id: str) -> TradingEve
     now = datetime.now(timezone.utc).isoformat()
     correlation_id = outcome_data.get("correlation_id", str(uuid.uuid4()))
 
+    def _f(v, default=0.0):
+        """Safely convert to float, handling None values."""
+        return float(v if v is not None else default)
+
     payload = TradeClosedPayload(
-        trade_id=outcome_data.get("trade_id", ""),
-        pair=outcome_data.get("pair", ""),
-        direction=outcome_data.get("direction", ""),
-        entry_price=float(outcome_data.get("entry_price", 0.0)),
-        exit_price=float(outcome_data.get("exit_price", 0.0)),
-        realized_pl=float(outcome_data.get("realized_pl", 0.0)),
-        pnl_pips=float(outcome_data.get("pnl_pips", 0.0)),
+        trade_id=outcome_data.get("trade_id", "") or "",
+        pair=outcome_data.get("pair", "") or "",
+        direction=outcome_data.get("direction", "") or "",
+        entry_price=_f(outcome_data.get("entry_price")),
+        exit_price=_f(outcome_data.get("exit_price")),
+        realized_pl=_f(outcome_data.get("realized_pl")),
+        pnl_pips=_f(outcome_data.get("pnl_pips")),
         trade_won=bool(outcome_data.get("trade_won", False)),
-        exit_reason=outcome_data.get("exit_reason", ""),
-        duration_minutes=float(outcome_data.get("duration_minutes", 0.0)),
-        confidence=float(outcome_data.get("confidence", 0.0)),
-        regime=outcome_data.get("regime", ""),
-        agent_reasons=outcome_data.get("agent_reasons", {}),
-        model=outcome_data.get("model", ""),
-        analysis_context=outcome_data.get("analysis_context", {}),
-        close_time=outcome_data.get("close_time", now),
-        sl_pips=float(outcome_data.get("sl_pips", 0.0)),
-        tp_pips=float(outcome_data.get("tp_pips", 0.0)),
+        exit_reason=outcome_data.get("exit_reason", "") or "",
+        duration_minutes=_f(outcome_data.get("duration_minutes")),
+        confidence=_f(outcome_data.get("confidence")),
+        regime=outcome_data.get("regime", "") or "",
+        agent_reasons=outcome_data.get("agent_reasons") or {},
+        model=outcome_data.get("model", "") or "",
+        analysis_context=outcome_data.get("analysis_context") or {},
+        close_time=outcome_data.get("close_time") or now,
+        sl_pips=_f(outcome_data.get("sl_pips")),
+        tp_pips=_f(outcome_data.get("tp_pips")),
         weighted_vote_score=outcome_data.get("weighted_vote_score"),
         uncertainty_score=outcome_data.get("uncertainty_score"),
         model_disagreement=outcome_data.get("model_disagreement"),

@@ -13,12 +13,32 @@ Provides ExecutionManager for trade execution with:
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.brokers.base import BrokerClient
 from src.brokers.registry import get_registry
+
+# Tier 7: Event-driven post-close fan-out
+try:
+    from src.scanner.automation.trading_events import (
+        TradingEventType,
+        create_trade_closed_event,
+    )
+    from src.scanner.automation.trading_event_bus import get_trading_event_bus
+    from src.scanner.automation.event_queue import EventQueue
+    from src.scanner.automation.event_handlers import (
+        SyncContext,
+        PER_TRADE_HANDLERS,
+        POST_SYNC_HANDLERS,
+        get_all_handler_instances,
+        get_handler_count,
+    )
+    _TIER7_AVAILABLE = True
+except ImportError:
+    _TIER7_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +135,14 @@ class ExecutionConfig:
     max_lot_size: float = 50.0  # Maximum order size in lots
     trailing_stop_breakeven_pct: float = 0.50  # Progress % to move SL to breakeven
     trailing_stop_lock_pct: float = 0.75  # Progress % to lock 50% of profit
+    # Data freshness: max age of scan analysis before execution skips the pair.
+    # Default 600s (10 min) — first-run 15-pair scan with model loading can take 5-8 min.
+    # 60s was the old default — too tight for batch mode, silently killed every trade.
+    max_data_age_seconds: float = 600.0
+    # Max acceptable bid-ask spread in pips. Default 3.0 is fine for major pairs
+    # (EUR/USD, USD/JPY ~0.5-2 pips), but AUD/EUR/GBP crosses can be 3-5 pips.
+    # Smart profile overrides to 4.5 to allow cross pairs.
+    max_spread_pips: float = 3.0
 
 
 @dataclass
@@ -204,6 +232,7 @@ class ExecutionManager:
         self._slippage_window: int = 20
         self._slippage_threshold_pips: float = 2.5  # Avg above this triggers reduction
         self._slippage_size_reduction: float = 0.15  # 15% size reduction
+        self._retrain_process = None
 
         # Phase 44 (US-279): Adaptive Exit Manager (Chandelier + partial profit + vol trail + time + confidence decay)
         self._ohlc_cache: Dict[str, Any] = {}  # pair -> DataFrame with close/high/low columns
@@ -522,6 +551,25 @@ class ExecutionManager:
         self._open_trade_pairs: set = set()
         self._fasttrack_stats: Dict[str, int] = {"wins": 0, "losses": 0, "total": 0}
 
+        # Tier 7: Event-driven post-close fan-out
+        self._event_bus = None
+        self._event_queue = None
+        self._tier7_handlers = None
+        self._tier7_session_id = ""
+        self._shadow_mode = True  # Run both inline + queue paths until validated
+        if _TIER7_AVAILABLE:
+            try:
+                self._event_bus = get_trading_event_bus()
+                self._event_queue = EventQueue(max_size=500, max_retries=2, base_delay=0.5, max_delay=10.0)
+                self._tier7_handlers = get_all_handler_instances()
+                self._tier7_session_id = f"em_{id(self)}"
+                self._event_queue.start()
+                logger.info("Tier 7: Event queue started (%d handlers registered)", get_handler_count())
+            except Exception as _t7_err:
+                logger.warning("Tier 7: Init failed, falling back to inline: %s", _t7_err)
+                self._event_bus = None
+                self._event_queue = None
+
     def _init_broker(self) -> bool:
         """Initialize broker client (lazy initialization).
 
@@ -631,6 +679,7 @@ class ExecutionManager:
         try:
             from pathlib import Path
             from src.scanner.adaptive_position_sizing import (
+                AdaptivePositionSizer,
                 create_default_position_sizer as create_default_adaptive_sizer,
                 create_aggressive_position_sizer as create_aggressive_adaptive_sizer,
             )
@@ -648,9 +697,73 @@ class ExecutionManager:
                 except Exception as e:
                     logger.warning(f"Phase 45: Could not load adaptive sizer state: {e}")
 
+            # Rehydrate from canonical closed journal outcomes when persisted
+            # state is stale or from an old/test run.
+            _journal_history = self._load_adaptive_sizer_trade_history_from_journal()
+            _window = int(getattr(self._adaptive_position_sizer.config, "kelly_window", 50) or 50)
+            _expected_history = _journal_history[-_window:]
+            _current_history = list(getattr(self._adaptive_position_sizer, "_trade_history", []))
+            if _expected_history and _current_history != _expected_history:
+                _cfg = self._adaptive_position_sizer.config
+                self._adaptive_position_sizer = AdaptivePositionSizer(_cfg)
+                for _pnl, _won in _expected_history:
+                    self._adaptive_position_sizer.record_trade(pnl=float(_pnl), win=bool(_won))
+                try:
+                    self._adaptive_position_sizer.save_state(str(_state_path))
+                except Exception as e:
+                    logger.debug(f"Phase 45: Could not persist rehydrated adaptive sizer state: {e}")
+                logger.info(
+                    "Phase 45: Rehydrated adaptive position sizer from %d closed journal trade(s)",
+                    len(_expected_history),
+                )
+
             logger.info("Phase 45: Adaptive position sizer initialized")
         except Exception as e:
             logger.debug(f"Phase 45: Adaptive position sizer init deferred: {e}")
+
+    def _load_adaptive_sizer_trade_history_from_journal(self) -> List[Tuple[float, bool]]:
+        """Load canonical closed-trade history for adaptive sizing from the RL journal."""
+        import json
+        from pathlib import Path
+
+        journal_path = Path("trained_data/trade_journal_rl.json")
+        if not journal_path.exists():
+            return []
+
+        try:
+            entries = json.loads(journal_path.read_text())
+        except Exception as e:
+            logger.debug("Phase 45: Could not read journal for adaptive sizer rehydrate: %s", e)
+            return []
+
+        if not isinstance(entries, list):
+            return []
+
+        def _close_key(entry: Dict[str, Any]) -> str:
+            outcome = entry.get("outcome") or {}
+            if isinstance(outcome, dict):
+                return str(
+                    outcome.get("close_time")
+                    or outcome.get("exit_time")
+                    or entry.get("timestamp")
+                    or ""
+                )
+            return str(entry.get("timestamp") or "")
+
+        closed = []
+        for entry in entries:
+            outcome = entry.get("outcome")
+            if not isinstance(outcome, dict):
+                continue
+            try:
+                pnl = float(outcome.get("realized_pl", 0) or 0)
+                won = bool(outcome.get("trade_won", False))
+            except (TypeError, ValueError):
+                continue
+            closed.append((_close_key(entry), pnl, won))
+
+        closed.sort(key=lambda item: item[0])
+        return [(pnl, won) for _, pnl, won in closed]
 
     def _init_ewma_correlation(self) -> None:
         """Phase 45 (US-285): Initialize EWMA correlation engine."""
@@ -2303,6 +2416,14 @@ class ExecutionManager:
         # Phase 31 (US-191): Cache NAV once per execute_trade to avoid redundant API calls
         _cached_nav = self.fetch_live_nav() or self.config.account_equity or 10000.0
 
+        # Phase 90: Update _last_regime_name and _current_drawdown_pct from live context
+        # so calculate_position_size sees real values instead of stale __init__ defaults.
+        if _ctx_regime and _ctx_regime != "UNKNOWN":
+            self._last_regime_name = _ctx_regime
+        _live_dd = ctx.get("_drawdown_pct")
+        if _live_dd is not None:
+            self._current_drawdown_pct = float(_live_dd)
+
         # Initialize regime scaling info
         regime_scale = 1.0
         regime_name = "UNKNOWN"
@@ -2408,7 +2529,13 @@ class ExecutionManager:
 
         # Minimum risk:reward ratio gate
         # C-7: reject immediately if SL or TP is zero — fail-closed, not fail-open
-        min_rr = getattr(self.config, "min_risk_reward_ratio", 1.2)
+        # Hard safety floor from trading rules: never allow < 1.2:1 even if
+        # profile/config is tuned lower.
+        configured_min_rr = getattr(self.config, "min_risk_reward_ratio", 1.2)
+        try:
+            min_rr = max(1.2, float(configured_min_rr))
+        except (TypeError, ValueError):
+            min_rr = 1.2
         if sl_pips <= 0 or tp_pips <= 0:
             return ExecutionResult(
                 success=False,
@@ -2914,6 +3041,26 @@ class ExecutionManager:
                             f"{regime_scale:.2f}x scale, {attempt_lots:.2f} lots"
                         )
 
+                    # CLI display: render trade execution panel (non-blocking)
+                    try:
+                        from src.scanner.cli_display import render_trade_execution as _cli_trade_exec
+                        _rr = (tp_pips / sl_pips) if sl_pips and sl_pips > 0 else 0.0
+                        _cli_trade_exec(
+                            pair=pair,
+                            direction=direction,
+                            confidence=confidence,
+                            lots=attempt_lots,
+                            sl_pips=sl_pips or 0,
+                            tp_pips=tp_pips or 0,
+                            rr_ratio=_rr,
+                            regime=regime_name or "NORMAL",
+                            risk_pct=risk_pct or 0,
+                            entry_price=fill_price,
+                            trade_id=str(trade_id),
+                        )
+                    except Exception as _cte_err:
+                        logger.debug("cli_display render_trade_execution error: %s", _cte_err)
+
                     return ExecutionResult(
                         success=True,
                         trade_id=trade_id,
@@ -3113,6 +3260,48 @@ class ExecutionManager:
                 entries = _valid
 
         ctx = analysis_context or {}
+        pip_value = _get_pip_value(pair, 0.0001)
+
+        def _normalize_trade_entry_schema(entry_data: Dict[str, Any]) -> Dict[str, Any]:
+            """Backfill pip distances from stored prices so the RL journal stays self-contained."""
+            if not isinstance(entry_data, dict):
+                return entry_data
+
+            normalized = dict(entry_data)
+            pair_code = str(normalized.get("pair") or pair or "")
+            pair_pip = _get_pip_value(pair_code, pip_value or 0.0001)
+
+            try:
+                entry_price = float(normalized.get("entry_price", 0) or 0)
+            except (TypeError, ValueError):
+                entry_price = 0.0
+            try:
+                sl_price = float(normalized.get("sl_price", 0) or 0)
+            except (TypeError, ValueError):
+                sl_price = 0.0
+            try:
+                tp_price = float(normalized.get("tp_price", 0) or 0)
+            except (TypeError, ValueError):
+                tp_price = 0.0
+
+            if pair_pip > 0 and entry_price > 0:
+                if float(normalized.get("sl_pips", 0) or 0) <= 0 and sl_price > 0:
+                    normalized["sl_pips"] = round(abs(entry_price - sl_price) / pair_pip, 1)
+                if float(normalized.get("tp_pips", 0) or 0) <= 0 and tp_price > 0:
+                    normalized["tp_pips"] = round(abs(tp_price - entry_price) / pair_pip, 1)
+            if float(normalized.get("rr_ratio", 0) or 0) <= 0:
+                _sl_pips = float(normalized.get("sl_pips", 0) or 0)
+                _tp_pips = float(normalized.get("tp_pips", 0) or 0)
+                if _sl_pips > 0 and _tp_pips > 0:
+                    normalized["rr_ratio"] = round(_tp_pips / _sl_pips, 2)
+                    normalized["risk_reward"] = normalized["rr_ratio"]
+
+            return normalized
+
+        entries = [_normalize_trade_entry_schema(e) for e in entries]
+        sl_pips = round(abs(entry - sl) / pip_value, 1) if sl > 0 and pip_value > 0 else 0.0
+        tp_pips = round(abs(tp - entry) / pip_value, 1) if tp > 0 and pip_value > 0 else 0.0
+        rr_ratio = round(tp_pips / sl_pips, 2) if sl_pips > 0 and tp_pips > 0 else 0.0
 
         # Record setup to episodic memory for pattern suppression
         _episode_id = ""
@@ -3159,6 +3348,10 @@ class ExecutionManager:
             "entry_price": entry,
             "sl_price": sl,
             "tp_price": tp,
+            "sl_pips": sl_pips,
+            "tp_pips": tp_pips,
+            "rr_ratio": rr_ratio,
+            "risk_reward": rr_ratio,
             "lots": lots,
             # US-014: Multi-broker and asset class support
             "broker": ctx.get("broker", "oanda"),  # 'oanda' or 'ibkr'
@@ -3530,10 +3723,18 @@ class ExecutionManager:
             try:
                 if not self._trade_sl_tp_cache:
                     _trades = self._broker.get_trades()
+                    # OANDA returns trades newest-first. Use setdefault so the
+                    # FIRST (newest/open) entry wins. Without this, the loop
+                    # overwrites with the OLDEST historical trade's SL/TP —
+                    # which can be hundreds of pips away from the current SL,
+                    # making the portfolio risk check fire incorrectly.
                     for _t in _trades:
-                        self._trade_sl_tp_cache[_t.instrument] = (
-                            getattr(_t, "sl_price", None) or 0.0,
-                            getattr(_t, "tp_price", None) or 0.0,
+                        self._trade_sl_tp_cache.setdefault(
+                            _t.instrument,
+                            (
+                                getattr(_t, "sl_price", None) or 0.0,
+                                getattr(_t, "tp_price", None) or 0.0,
+                            ),
                         )
                 _cached = self._trade_sl_tp_cache.get(pair, (0.0, 0.0))
                 sl_price = _cached[0]
@@ -4321,6 +4522,45 @@ class ExecutionManager:
         # Default: can't determine specific reason
         return "manual_close"
 
+    def _spawn_background_retrain(self, pairs: List[str]) -> None:
+        """Spawn scheduled retraining in a background subprocess."""
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        if not pairs:
+            return
+
+        if self._retrain_process is not None and self._retrain_process.poll() is None:
+            logger.debug("Background retrain already running, skipping")
+            return
+
+        pairs_str = ",".join(sorted({str(pair) for pair in pairs if pair}))
+        if not pairs_str:
+            return
+
+        cmd = [
+            sys.executable,
+            str(Path("scripts/scheduled_retrain.py")),
+            "--pairs",
+            pairs_str,
+        ]
+
+        try:
+            self._retrain_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                cwd=str(Path.cwd()),
+            )
+            logger.info(
+                "Background retrain spawned (PID %s) for %s",
+                self._retrain_process.pid,
+                pairs_str,
+            )
+        except Exception as exc:
+            logger.error("Failed to spawn background retrain: %s", exc)
+
     def sync_closed_trades_rl(self, scanner: Any = None) -> Dict[str, Any]:
         """Check OANDA for recently closed trades and run RL feedback on agent weights.
 
@@ -4356,22 +4596,28 @@ class ExecutionManager:
             return {"trades_synced": 0, "weights_updated": False, "detail": "no pending trades"}
 
         # Fetch closed trades from OANDA
-        token = os.getenv("OANDA_API_TOKEN", "")
+        try:
+            from src.utils.oanda_practice import _load_project_dotenv
+
+            _load_project_dotenv()
+        except Exception:
+            pass
+
+        token = os.getenv("OANDA_API_TOKEN", "") or os.getenv("OANDA_API_KEY", "")
         acct = os.getenv("OANDA_ACCOUNT_ID", "")
         base = self._oanda_base_url
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
+        if not token or not acct:
+            return {"trades_synced": 0, "weights_updated": False, "detail": "missing oanda credentials"}
+
         try:
-            # Phase 30 (US-181): Wrap closed trades fetch in retry
-            resp = self._retry_oanda(
-                requests.get,
-                f"{base}/v3/accounts/{acct}/trades",
-                params={"state": "CLOSED", "count": 50},
+            closed_trades, open_trades = self._fetch_oanda_trade_snapshots(
+                requests=requests,
+                acct=acct,
+                base=base,
                 headers=headers,
-                timeout=10,
             )
-            resp.raise_for_status()
-            closed_trades = {t["id"]: t for t in resp.json().get("trades", [])}
         except Exception as e:
             return {"trades_synced": 0, "weights_updated": False, "detail": f"oanda error: {e}"}
 
@@ -4381,14 +4627,26 @@ class ExecutionManager:
 
         for entry in pending:
             tid = str(entry.get("trade_id", ""))
-            if tid not in closed_trades:
+            trade_state, ct = self._resolve_trade_state_from_oanda(
+                trade_id=tid,
+                requests=requests,
+                acct=acct,
+                base=base,
+                headers=headers,
+                closed_trades=closed_trades,
+                open_trades=open_trades,
+            )
+            if trade_state != "closed" or not ct:
                 continue
 
-            ct = closed_trades[tid]
+            # Phase 90: Extract pair from entry — was undefined, causing NameError downstream
+            pair = entry.get("pair", entry.get("instrument", ""))
+
             realized_pl = float(ct.get("realizedPL", 0))
             trade_won = realized_pl > 0
             close_price = float(ct.get("averageClosePrice", 0))
             entry_price = float(ct.get("price", entry.get("entry_price", 0)))
+            pip_value = _get_pip_value(entry.get("pair", ""), 0.0001)
 
             # US-014: Asset class-aware P&L calculation
             asset_class = entry.get("asset_class", "FX")
@@ -4402,7 +4660,6 @@ class ExecutionManager:
                 pnl_pips = (close_price - entry_price) * multiplier * contracts * direction_sign
             else:
                 # FX P&L: unchanged from original logic
-                pip_value = _get_pip_value(entry.get("pair", ""), 0.0001)
                 if pip_value > 0 and entry_price > 0:
                     pnl_pips = (close_price - entry_price) / pip_value
                     if entry.get("direction", "").upper() == "SHORT":
@@ -4436,6 +4693,24 @@ class ExecutionManager:
             _mfe_pips = round(max(0.0, pnl_pips), 1)
             # bars_in_trade: H1 bar count from duration; defaults to 1 when duration unknown
             _bars_in_trade = max(1, round(duration_minutes / 60.0)) if duration_minutes else 1
+            _entry_sl_pips = float(entry.get("sl_pips", 0) or 0)
+            _entry_tp_pips = float(entry.get("tp_pips", 0) or 0)
+            if _entry_sl_pips <= 0 or _entry_tp_pips <= 0:
+                _entry_price = float(entry.get("entry_price", 0) or 0)
+                _sl_price = float(entry.get("sl_price", 0) or 0)
+                _tp_price = float(entry.get("tp_price", 0) or 0)
+                _pair_pip = _get_pip_value(str(entry.get("pair", "")), 0.0001)
+                if _pair_pip > 0 and _entry_price > 0:
+                    if _entry_sl_pips <= 0 and _sl_price > 0:
+                        _entry_sl_pips = round(abs(_entry_price - _sl_price) / _pair_pip, 1)
+                        entry["sl_pips"] = _entry_sl_pips
+                    if _entry_tp_pips <= 0 and _tp_price > 0:
+                        _entry_tp_pips = round(abs(_tp_price - _entry_price) / _pair_pip, 1)
+                        entry["tp_pips"] = _entry_tp_pips
+            _rr_ratio = round(_entry_tp_pips / _entry_sl_pips, 2) if _entry_sl_pips > 0 and _entry_tp_pips > 0 else 0.0
+            if _rr_ratio > 0:
+                entry["rr_ratio"] = _rr_ratio
+                entry["risk_reward"] = _rr_ratio
 
             outcome_data = {
                 "realized_pl": realized_pl,
@@ -4450,6 +4725,10 @@ class ExecutionManager:
                 "mae_pips": _mae_pips,
                 "mfe_pips": _mfe_pips,
                 "bars_in_trade": _bars_in_trade,
+                "sl_pips": _entry_sl_pips or None,
+                "tp_pips": _entry_tp_pips or None,
+                "rr_ratio": _rr_ratio or None,
+                "risk_reward": _rr_ratio or None,
                 "regime_at_entry": entry.get("regime", {}).get("volatility_regime"),
                 # Phase 24 (US-145): Derive regime at exit from scanner or entry fallback
                 "regime_at_exit": self._get_current_regime(scanner, entry)
@@ -4458,205 +4737,9 @@ class ExecutionManager:
             synced += 1
             synced_entries.append(entry)
 
-            # Feed RL replay buffer for sizer/gates/exits models
-            try:
-                self._sync_trade_outcome_to_rl(entry, outcome_data)
-            except Exception as rl_err:
-                logger.debug(f"RL replay buffer error for {tid}: {rl_err}")
-
-            # Record trade outcome to episodic memory for pattern suppression learning
-            if self._episodic_memory is not None:
-                try:
-                    _episode_id = entry.get("episode_id", "")
-                    if _episode_id:
-                        _outcome_str = "WIN" if trade_won else "LOSS"
-                        _success = self._episodic_memory.record_outcome(
-                            episode_id=_episode_id,
-                            outcome=_outcome_str,
-                            pnl_pips=float(pnl_pips),
-                        )
-                        if _success:
-                            logger.debug(
-                                f"Episodic memory: Recorded {_outcome_str} ({pnl_pips:.1f} pips) for episode {_episode_id}"
-                            )
-                        else:
-                            logger.debug(f"Episodic memory: Episode {_episode_id} not found for outcome recording")
-                    else:
-                        logger.debug(f"Trade {tid} has no episode_id for episodic memory recording")
-                except Exception as _em_err:
-                    logger.debug(f"Episodic memory record_outcome error for {tid}: {_em_err}")
-
-            # Phase 81 (US-P81-002): Deregister from PositionTimeoutManager on confirmed close
-            if self._position_timeout_mgr is not None:
-                try:
-                    self._position_timeout_mgr.close_trade(tid)
-                except Exception as _pt_close_err:
-                    logger.debug("Phase 81: PositionTimeout close_trade error for %s: %s", tid, _pt_close_err)
-
-            # Phase 78: Record outcome to accuracy gate (per-pair rolling accuracy)
-            if scanner is not None:
-                _ag = getattr(scanner, "_accuracy_gate", None)
-                if _ag is not None:
-                    try:
-                        _direction = entry.get("direction", "LONG")
-                        _conf = float(entry.get("confidence", 0.5))
-                        _ag.record_outcome(
-                            pair=pair,
-                            predicted_direction=_direction,
-                            actual_outcome=trade_won,
-                            confidence=_conf,
-                        )
-                        logger.debug(
-                            "Phase 78: AccuracyGate recorded %s %s outcome=%s",
-                            pair, _direction, "WIN" if trade_won else "LOSS",
-                        )
-                    except Exception as _ag_err:
-                        logger.debug(f"Phase 78: AccuracyGate record error for {tid}: {_ag_err}")
-
-            # Phase 78: Record prediction to retrain trigger (drift detection)
-            if scanner is not None:
-                _rt = getattr(scanner, "_retrain_trigger", None)
-                if _rt is not None:
-                    try:
-                        _rt.record_prediction(pair=pair, correct=trade_won)
-                        logger.debug(
-                            "Phase 78: RetrainTrigger recorded %s correct=%s",
-                            pair, trade_won,
-                        )
-                    except Exception as _rt_err:
-                        logger.debug(f"Phase 78: RetrainTrigger record error for {tid}: {_rt_err}")
-
-            # ── Tier 6: Meta-learner hyperparameter adaptation ──
-            if scanner is not None and getattr(scanner, '_meta_learner', None) is not None:
-                try:
-                    _ml_agents_info = entry.get("agents", {})
-                    _ml_agent_reasons = _ml_agents_info.get("agent_reasons", [])
-                    _ml_agent_scores: Dict[str, float] = {}
-                    _ml_agent_weights: Dict[str, float] = {}
-                    for _ar in _ml_agent_reasons:
-                        _name = _ar.get("name", "")
-                        if _name:
-                            _ml_agent_scores[_name] = float(_ar.get("score", 0.5))
-                            _ml_agent_weights[_name] = float(_ar.get("weight", 1.0))
-
-                    if _ml_agent_scores:
-                        _ml_regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
-                        _ml_notional = abs(entry_price * float(ct.get("initialUnits", 1)))
-                        _ml_pnl_pct = realized_pl / max(_ml_notional, 1.0)
-                        _ml_trade_result = {
-                            "pnl_pct": _ml_pnl_pct,
-                            "outcome": "win" if trade_won else "loss",
-                        }
-                        scanner._meta_learner.on_trade_close(
-                            pair=entry.get("pair", ""),
-                            regime=_ml_regime,
-                            trade_result=_ml_trade_result,
-                            agent_scores=_ml_agent_scores,
-                            agent_weights=_ml_agent_weights,
-                        )
-                        logger.info(
-                            "Tier 6: Meta-learner updated for %s/%s (pnl_pct=%.4f, agents=%d)",
-                            entry.get("pair", ""), _ml_regime, _ml_pnl_pct, len(_ml_agent_scores),
-                        )
-                except Exception as _ml_err:
-                    logger.debug("Tier 6: Meta-learner on_trade_close error: %s", _ml_err)
-
-            # Tier 6: Record outcome to EnsembleWeighter for learned model weights
-            if scanner is not None and getattr(scanner, '_ensemble_weighter', None) is not None:
-                try:
-                    _ew_gate = entry.get("gate_details", {})
-                    _ew_scores = _ew_gate.get("scores", {})
-                    _ew_dir = float(_ew_scores.get("direction_score", 0.5))
-                    _ew_conf = float(_ew_scores.get("confidence_score", 0.5))
-                    _ew_mom = float(_ew_scores.get("momentum_score", 0.5))
-                    _ew_risk = float(_ew_scores.get("risk_score", 0.5))
-                    _ew_regime = entry.get("regime", {})
-                    _ew_vol_id = {"LOW": 0, "NORMAL": 1, "HIGH": 2, "EXTREME": 3}.get(
-                        str(_ew_regime.get("volatility_regime", "NORMAL")), 1
-                    )
-                    _ew_vol_conf = float(_ew_regime.get("volatility_regime_confidence", 0.5))
-                    # Normalize outcome: direction-adjusted pnl_pips as proxy for model accuracy
-                    _ew_outcome = pnl_pips / 100.0  # Scale pips to approximate 0-centered outcome
-                    scanner._ensemble_weighter.record(
-                        context_features=[_ew_vol_id / 3.0, _ew_vol_conf],
-                        model_predictions=[_ew_dir, _ew_conf, _ew_mom, _ew_risk],
-                        realized_outcome=_ew_outcome,
-                    )
-                    logger.debug(
-                        "Tier 6: EnsembleWeighter recorded outcome for %s (pnl_pips=%.1f)",
-                        entry.get("pair", ""), pnl_pips,
-                    )
-                except Exception as _ew_err:
-                    logger.debug("Tier 6: EnsembleWeighter record error: %s", _ew_err)
-
-            # Tier 6 Phase 1: MAML Ridge outcome recording
-            if scanner is not None and getattr(scanner, '_maml_ridge', None) is not None:
-                try:
-                    _maml_regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
-                    if isinstance(_maml_regime, int):
-                        _maml_regime = {0: "LOW", 1: "NORMAL", 2: "HIGH", 3: "EXTREME"}.get(_maml_regime, "NORMAL")
-                    # Target confidence: map outcome to 0-100 scale
-                    # Wins with good R:R → high confidence was correct → target near ridge_conf
-                    # Losses → confidence was wrong → target = 100 - ridge_conf
-                    _maml_ridge_conf = float(entry.get("regime", {}).get("ridge_confidence",
-                                             entry.get("agents", {}).get("ridge_confidence", 50)))
-                    if trade_won:
-                        _maml_target = min(100.0, _maml_ridge_conf + abs(pnl_pips) * 0.5)
-                    else:
-                        _maml_target = max(0.0, _maml_ridge_conf - abs(pnl_pips) * 0.5)
-                    _maml_target = max(0.0, min(100.0, _maml_target))
-
-                    # Tier 6 Phase 2: Use real Ridge features if available, else proxy
-                    import numpy as np
-                    _stored_ridge_features = entry.get("ridge_features")
-                    if _stored_ridge_features is not None and len(_stored_ridge_features) >= 14:
-                        # Real 14D Ridge features from prediction time
-                        _maml_features = np.array(_stored_ridge_features[:14], dtype=np.float32)
-                    else:
-                        # Fallback: proxy from gate_details (Phase 1 legacy)
-                        _maml_gate = entry.get("gate_details", {})
-                        _maml_scores = _maml_gate.get("scores", {})
-                        _maml_features = np.array([
-                            float(_maml_scores.get("direction_score", 0.5)),
-                            float(_maml_scores.get("confidence_score", 0.5)),
-                            float(_maml_scores.get("momentum_score", 0.5)),
-                            float(_maml_scores.get("risk_score", 0.5)),
-                        ] + [0.0] * 10, dtype=np.float32) if _maml_scores else None
-                    if _maml_features is not None:
-                        scanner._maml_ridge.record_outcome(
-                            features=_maml_features,
-                            regime=str(_maml_regime),
-                            target_confidence=_maml_target,
-                        )
-                        _feat_source = "real_ridge" if _stored_ridge_features is not None else "proxy"
-                        logger.debug(
-                            "Tier 6 MAML: Recorded outcome for %s regime=%s target=%.1f features=%s",
-                            entry.get("pair", ""), _maml_regime, _maml_target, _feat_source,
-                        )
-
-                        # Tier 6 Phase 2: Record outcome in benchmark
-                        _maml_bench = getattr(scanner, '_maml_benchmark', None)
-                        if _maml_bench is not None:
-                            try:
-                                # Get MAML's prediction at trade time from entry metadata
-                                _maml_shadow = entry.get("maml_shadow", {})
-                                _bench_maml_conf = float(_maml_shadow.get("maml_confidence", _maml_target))
-                                _maml_bench.record_outcome(
-                                    trade_id=entry.get("oanda_trade_id", entry.get("pair", "unknown")),
-                                    regime=str(_maml_regime),
-                                    maml_confidence=_bench_maml_conf,
-                                    ridge_confidence=_maml_ridge_conf,
-                                    realized_confidence=_maml_target,
-                                    pnl_pips=float(pnl_pips),
-                                    won=bool(trade_won),
-                                    exit_reason=str(outcome_data.get("exit_reason", "")),
-                                    duration_minutes=outcome_data.get("duration_minutes"),
-                                    regime_at_exit=str(outcome_data.get("regime_at_exit", "")),
-                                )
-                            except Exception as _bench_err:
-                                logger.debug("Tier 6 Benchmark: record error: %s", _bench_err)
-                except Exception as _maml_err:
-                    logger.debug("Tier 6 MAML: outcome record error: %s", _maml_err)
+            # Tier 7: Per-trade inline callbacks moved to event_handlers.py
+            # (RLReplay, EpisodicMemory, PositionTimeout, AccuracyGate,
+            #  RetrainTrigger, MetaLearner, EnsembleWeighter, MAML — all queued)
 
             # Collect agent verdicts for RL feedback (with regime from entry)
             agents = entry.get("agents", {})
@@ -4698,377 +4781,19 @@ class ExecutionManager:
                     "agent_verdicts": agents["agent_reasons"],
                     "trade_won": trade_won,
                     "regime": regime,
+                    "pair": entry.get("pair", entry.get("instrument", "")),
                     # Phase 24 (US-149): Pass exit_reason for trailing stop differentiation
                     "exit_reason": exit_reason,
                     "pnl": realized_pl,
                     "shaped_reward": _shaped_reward,
                 })
 
-        # Phase 47 (US-297): Record trade outcomes to expectancy tracker for per-agent per-regime learning
-        self._record_expectancy_from_trades(pending, closed_trades)
+        # Tier 7: Expectancy, PairTracker, Attribution, DriftDetector, FeatureHealth,
+        # ClusterAnalyzer, WalkForward, Tranche, AdaptiveRR, AdaptiveSizer
+        # — all moved to event_handlers.py (queued via EventQueue)
 
-        # ── Phase 49 (US-307/308/309): Feed outcomes to Phase 48 modules ──
-
-        # US-307: Update pair performance tracker for auto-blacklisting
-        if self._pair_tracker is not None and synced > 0:
-            try:
-                _pt_recorded = 0
-                for entry in pending:
-                    tid = str(entry.get("trade_id", ""))
-                    if tid not in closed_trades:
-                        continue
-                    ct = closed_trades[tid]
-                    _pair = entry.get("pair", "")
-                    _realized_pl = float(ct.get("realizedPL", 0))
-                    _won = _realized_pl > 0
-                    self._pair_tracker.update_from_trade(pair=_pair, pnl=_realized_pl, won=_won)
-                    _pt_recorded += 1
-                if _pt_recorded > 0:
-                    self._pair_tracker.save_state()
-                    logger.info("Phase 49 (US-307): Fed %d outcomes to pair tracker", _pt_recorded)
-            except Exception as _pt_err:
-                logger.debug(f"Phase 49: Pair tracker update error: {_pt_err}")
-
-        # US-308: Trade attribution engine — SHAP-lite alignment scoring
-        if self._attribution_engine is not None and synced > 0:
-            try:
-                _attr_recorded = 0
-                for entry in pending:
-                    tid = str(entry.get("trade_id", ""))
-                    if tid not in closed_trades:
-                        continue
-                    ct = closed_trades[tid]
-                    _pair = entry.get("pair", "")
-                    _direction = entry.get("direction", "BUY").upper()
-                    _realized_pl = float(ct.get("realizedPL", 0))
-                    _won = _realized_pl > 0
-                    _outcome_str = "WIN" if _won else "LOSS"
-                    _agents_info = entry.get("agents", {})
-                    _agent_reasons = _agents_info.get("agent_reasons", [])
-
-                    # Build agent_verdicts dict: {name: (verdict, confidence, weight)}
-                    _verdicts = {}
-                    for _ar in _agent_reasons:
-                        _name = _ar.get("name", "")
-                        if _name:
-                            _verdict = "LONG" if _ar.get("passed", False) else "SHORT"
-                            _weight = float(_ar.get("weight", 1.0))
-                            _conf = float(_ar.get("confidence", 0.5))
-                            _verdicts[_name] = (_verdict, _conf, _weight)
-
-                    if _verdicts:
-                        _attribution = self._attribution_engine.attribute_trade(
-                            trade_id=tid,
-                            pair=_pair,
-                            direction=_direction,
-                            outcome=_outcome_str,
-                            pnl=_realized_pl,
-                            agent_verdicts=_verdicts,
-                        )
-                        # Store attribution summary in outcome for audit trail
-                        entry.setdefault("outcome", {})["attribution"] = {
-                            "alignment_ratio": round(_attribution.alignment_ratio, 3),
-                            "aligned": [c.agent_name for c in _attribution.aligned_agents],
-                            "misaligned": [c.agent_name for c in _attribution.misaligned_agents],
-                        }
-                        _attr_recorded += 1
-
-                if _attr_recorded > 0:
-                    self._attribution_engine.save_state()
-                    # Phase 50 (US-308-ext): Pipe attribution weight recommendations to gate threshold optimizer
-                    _weight_recs = self._attribution_engine.get_weight_recommendations()
-                    _notable = {k: f"{v:.2f}x" for k, v in _weight_recs.items() if abs(v - 1.0) > 0.05}
-                    logger.info(
-                        "Phase 49 (US-308): Attributed %d trades. Weight recs: %s",
-                        _attr_recorded, _notable or "no notable adjustments",
-                    )
-
-                    # Phase 50 (US-308-ext): Feed attribution feedback to gate threshold optimizer
-                    if self._gate_threshold_optimizer is not None and _weight_recs:
-                        try:
-                            for _agent_name, _weight_delta in _weight_recs.items():
-                                # Submit agent weight delta as feedback
-                                # Interpret weight_delta > 1.0 as "increase confidence in this agent"
-                                # and weight_delta < 1.0 as "decrease confidence"
-                                self._gate_threshold_optimizer.record_agent_feedback(
-                                    agent_name=_agent_name,
-                                    weight_delta=_weight_delta,
-                                    source="trade_attribution",
-                                )
-                            logger.info(
-                                "Phase 50 (US-308-ext): %d attribution weight recommendations piped to gate threshold optimizer",
-                                len(_weight_recs),
-                            )
-                        except AttributeError:
-                            # If gate_threshold_optimizer doesn't have record_agent_feedback, skip silently
-                            logger.debug(
-                                "Phase 50: gate_threshold_optimizer missing record_agent_feedback method, skipping"
-                            )
-                        except Exception as _atf_err:
-                            logger.debug(f"Phase 50 (US-308-ext): Attribution feedback pipe error: {_atf_err}")
-            except Exception as _attr_err:
-                logger.debug(f"Phase 49: Attribution engine error: {_attr_err}")
-
-        # ── Phase 54 (US-334): Gate Threshold Optimizer — auto-tune gates after attribution ──
-        if self._gate_threshold_optimizer is not None and self._attribution_engine is not None and synced > 0:
-            try:
-                _gate_report = self._attribution_engine.generate_report()
-                if _gate_report:
-                    _gate_recs = self._gate_threshold_optimizer.compute_recommendations(_gate_report)
-                    if _gate_recs:
-                        _applied = self._gate_threshold_optimizer.apply_recommendations(_gate_recs)
-                        if _applied:
-                            self._gate_threshold_optimizer.save_state()
-                            logger.info(
-                                "Phase 54 (US-334): Applied %d gate threshold adjustments: %s",
-                                len(_applied),
-                                {r.gate_name: f"{r.current_threshold:.4f}→{r.recommended_threshold:.4f}" for r in _applied},
-                            )
-                    else:
-                        logger.debug("Phase 54 (US-334): No gate threshold adjustments recommended")
-            except Exception as _gto_err:
-                logger.debug(f"Phase 54: Gate threshold optimizer error: {_gto_err}")
-
-        # ── Phase 54 (US-335): Feature Drift Detector — record outcomes and check periodically ──
-        if self._feature_drift_detector is not None and synced > 0:
-            try:
-                for entry in pending:
-                    tid = str(entry.get("trade_id", ""))
-                    if tid in closed_trades:
-                        _won = float(closed_trades[tid].get("realizedPL", 0)) > 0
-                        self._feature_drift_detector.record_trade(won=_won)
-
-                if self._feature_drift_detector.should_check():
-                    # Split journal into recent vs baseline
-                    _all_with_outcomes = [e for e in entries if e.get("outcome") is not None]
-                    _recent_n = min(self._feature_drift_detector.config.recent_window, len(_all_with_outcomes))
-                    _baseline_n = min(self._feature_drift_detector.config.baseline_window, len(_all_with_outcomes) - _recent_n)
-                    if _recent_n >= 50 and _baseline_n >= 50:
-                        _recent = _all_with_outcomes[-_recent_n:]
-                        _baseline = _all_with_outcomes[-(_recent_n + _baseline_n):-_recent_n]
-                        _drift_result = self._feature_drift_detector.check_drift(_recent, _baseline)
-                        self._feature_drift_detector.save_state()
-                        if _drift_result.drift_detected:
-                            logger.warning(
-                                "Phase 54 (US-335): Drift detected — %s",
-                                _drift_result.reason,
-                            )
-            except Exception as _drift_err:
-                logger.debug(f"Phase 54: Feature drift detector error: {_drift_err}")
-
-        # ── Phase 55 (US-344): Feature Health Monitor — PSI per feature, every 50 trades ──
-        if self._feature_health_monitor is not None and synced > 0:
-            try:
-                for _ in range(synced):
-                    self._feature_health_monitor.record_trade()
-                if self._feature_health_monitor.should_check():
-                    _all_with_outcomes = [e for e in entries if e.get("outcome") is not None]
-                    _recent_n = min(self._feature_health_monitor.recent_window, len(_all_with_outcomes))
-                    _baseline_n = min(
-                        self._feature_health_monitor.baseline_window,
-                        len(_all_with_outcomes) - _recent_n,
-                    )
-                    if _recent_n >= 50 and _baseline_n >= 50:
-                        _fh_recent = _all_with_outcomes[-_recent_n:]
-                        _fh_baseline = _all_with_outcomes[-(_recent_n + _baseline_n):-_recent_n]
-                        _fh_result = self._feature_health_monitor.check_health(
-                            recent_trades=_fh_recent,
-                            baseline_trades=_fh_baseline,
-                            wfe_monitor=getattr(self, "_wfe_monitor", None),
-                        )
-                        self._feature_health_monitor.save_state()
-                        if _fh_result.alert_triggered:
-                            logger.warning(
-                                "Phase 55 (US-344): Feature health alert — "
-                                "score=%.3f, drifted=%s",
-                                _fh_result.feature_health_score,
-                                _fh_result.significant_drift_features,
-                            )
-            except Exception as _fh_err:
-                logger.debug(f"Phase 55: Feature health monitor error: {_fh_err}")
-
-        # ── Phase 54 (US-336): Trade Cluster Analyzer — recluster when interval reached ──
-        if self._trade_cluster_analyzer is not None and synced > 0:
-            try:
-                for _ in range(synced):
-                    self._trade_cluster_analyzer.record_trade()
-                if self._trade_cluster_analyzer.should_recluster():
-                    _all_with_outcomes = [e for e in entries if e.get("outcome") is not None]
-                    if len(_all_with_outcomes) >= 50:
-                        self._trade_cluster_analyzer.fit(_all_with_outcomes)
-                        self._trade_cluster_analyzer.save_state()
-            except Exception as _cluster_err:
-                logger.debug(f"Phase 54: Trade cluster analyzer error: {_cluster_err}")
-
-        # US-309: Walk-forward optimizer — record outcomes and trigger optimization
-        if self._walkforward_optimizer is not None and synced > 0:
-            try:
-                import time as _time_mod
-                _wfo_recorded = 0
-                for entry in pending:
-                    tid = str(entry.get("trade_id", ""))
-                    if tid not in closed_trades:
-                        continue
-                    ct = closed_trades[tid]
-                    _pair = entry.get("pair", "")
-                    _direction = entry.get("direction", "BUY").upper()
-                    _realized_pl = float(ct.get("realizedPL", 0))
-                    _won = _realized_pl > 0
-                    _confidence = float(entry.get("confidence", 0.5))
-                    _momentum = float(entry.get("agents", {}).get("weighted_vote_score", 0.5))
-                    _sl_pips = float(entry.get("sl_pips", 0))
-                    _tp_pips = float(entry.get("tp_pips", 0))
-                    _regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
-                    _entry_ts = entry.get("timestamp", "")
-                    _ts = 0.0
-                    if _entry_ts:
-                        try:
-                            _ts = datetime.fromisoformat(_entry_ts.replace("Z", "+00:00")).timestamp()
-                        except Exception:
-                            _ts = _time_mod.time()
-                    else:
-                        _ts = _time_mod.time()
-
-                    from src.scanner.walkforward_optimizer import TradeOutcome as WFTradeOutcome
-                    self._walkforward_optimizer.record_outcome(WFTradeOutcome(
-                        pair=_pair,
-                        direction=_direction,
-                        pnl=_realized_pl,
-                        confidence=_confidence,
-                        momentum_score=_momentum,
-                        atr_sl_pips=_sl_pips,
-                        atr_tp_pips=_tp_pips,
-                        regime=_regime,
-                        won=_won,
-                        timestamp=_ts,
-                    ))
-                    _wfo_recorded += 1
-
-                if _wfo_recorded > 0:
-                    logger.info("Phase 49 (US-309): Recorded %d outcomes to walk-forward optimizer", _wfo_recorded)
-
-                # Check if optimization should run
-                if self._walkforward_optimizer.should_optimize():
-                    _opt_result = self._walkforward_optimizer.run_optimization()
-                    logger.info(
-                        "Phase 49 (US-309): Walk-forward optimization complete — "
-                        "WFE=%.3f IS_PF=%.2f OOS_PF=%.2f recommendation=%s",
-                        _opt_result.wfe, _opt_result.is_profit_factor,
-                        _opt_result.oos_profit_factor, _opt_result.recommendation,
-                    )
-                    # Save results to config_adjustments.json (NOT auto-applied)
-                    self._walkforward_optimizer.save_state()
-            except Exception as _wfo_err:
-                logger.debug(f"Phase 49: Walk-forward optimizer error: {_wfo_err}")
-
-        # ── Phase 52 (US-323): Walk-Forward Retrainer — periodic agent weight retraining ──
-        # Only run after sufficient new trades (every 20 synced trades as per walk-forward config)
-        if self._walkforward_retrainer is not None and synced >= 5:
-            try:
-                _journal_str = str(journal_path)
-                _wfr_epochs = self._walkforward_retrainer.run(
-                    journal_path=_journal_str,
-                    current_weights_path="trained_data/models/agent_weights.json",
-                    output_path="trained_data/models/walkforward_epochs.json",
-                )
-                if _wfr_epochs:
-                    _n_epochs = len(_wfr_epochs)
-                    _accepted = sum(1 for e in _wfr_epochs if e.accepted)
-                    # Compute latest WFE for monitoring
-                    _latest_wfe = _wfr_epochs[-1].wfe if _wfr_epochs else 0.0
-                    logger.info(
-                        "Phase 52 (US-323): Walk-forward retrainer: %d epochs, %d accepted, latest WFE=%.4f",
-                        _n_epochs, _accepted, _latest_wfe,
-                    )
-
-                    # Phase 53 (US-332): Record WFE and check stability before applying weights
-                    _wfe_allow_retrain = True
-                    if self._wfe_monitor is not None:
-                        try:
-                            _wfe_state = self._wfe_monitor.record_wfe(
-                                wfe=_latest_wfe,
-                                epoch_count=_n_epochs,
-                                accepted_count=_accepted,
-                            )
-                            _wfe_allow_retrain = self._wfe_monitor.should_retrain()
-                            if not _wfe_allow_retrain:
-                                logger.warning(
-                                    "Phase 53 (US-332): WFE monitor state=%s — "
-                                    "retraining PAUSED, using frozen weights",
-                                    _wfe_state,
-                                )
-                            self._wfe_monitor.save_state()
-                        except Exception as _wfe_err:
-                            logger.debug(f"Phase 53: WFE monitor error: {_wfe_err}")
-
-                    if _accepted > 0 and _wfe_allow_retrain:
-                        _new_weights = self._walkforward_retrainer.get_current_weights()
-                        if _new_weights:
-                            self._walkforward_retrainer.save_weights(
-                                "trained_data/models/agent_weights.json"
-                            )
-                            # Freeze these as last known good weights
-                            if self._wfe_monitor is not None:
-                                try:
-                                    self._wfe_monitor.freeze_weights(_new_weights)
-                                except Exception as _exc:
-                                    logger.debug("H-4: Silent exception in unknown: %s", _exc)
-                            logger.info(
-                                "Phase 52 (US-323): Retrained agent weights saved — %s",
-                                {k: f"{v:.3f}" for k, v in list(_new_weights.items())[:5]},
-                            )
-                    elif _accepted > 0 and not _wfe_allow_retrain:
-                        logger.info(
-                            "Phase 53 (US-332): %d accepted epochs skipped — WFE unstable",
-                            _accepted,
-                        )
-            except Exception as _wfr_err:
-                logger.debug(f"Phase 52: Walk-forward retrainer error: {_wfr_err}")
-
-        # ── Phase 52 (US-323): Clean up tranche tracker for closed trades ──
-        if self._tranche_tracker is not None and synced > 0:
-            try:
-                _tt_cleaned = 0
-                for entry in pending:
-                    tid = str(entry.get("trade_id", ""))
-                    if tid in closed_trades:
-                        self._tranche_tracker.remove_trade(tid)
-                        _tt_cleaned += 1
-                if _tt_cleaned > 0:
-                    logger.info("Phase 52 (US-323): Cleaned %d closed trades from tranche tracker", _tt_cleaned)
-            except Exception as _tt_cleanup_err:
-                logger.debug(f"Phase 52: Tranche tracker cleanup error: {_tt_cleanup_err}")
-
-        # ── Phase 52 (US-325): Adaptive R:R outcome recording for learning ──
-        if self._adaptive_rr is not None and synced > 0:
-            try:
-                _rr_recorded = 0
-                for entry in pending:
-                    tid = str(entry.get("trade_id", ""))
-                    if tid in closed_trades:
-                        _sl = float(entry.get("sl_pips", 0))
-                        _tp = float(entry.get("tp_pips", 0))
-                        _regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
-                        _realized = float(closed_trades[tid].get("realizedPL", 0))
-                        _rr_target = _tp / _sl if _sl > 0 else 1.5
-                        _actual_rr = abs(_realized) / _sl if _sl > 0 and _realized != 0 else 0.0
-                        self._adaptive_rr.record_outcome(
-                            rr_target=_rr_target,
-                            actual_rr=_actual_rr,
-                            won=_realized > 0,
-                            regime=str(_regime),
-                        )
-                        _rr_recorded += 1
-                if _rr_recorded > 0:
-                    _rr_stats = self._adaptive_rr.get_stats()
-                    logger.info(
-                        "Phase 52 (US-325): Recorded %d R:R outcomes — "
-                        "avg_target=%.2f avg_actual=%.2f win_rate=%.3f",
-                        _rr_recorded, _rr_stats.get("avg_target_rr", 0),
-                        _rr_stats.get("avg_actual_rr", 0), _rr_stats.get("win_rate", 0),
-                    )
-            except Exception as _rr_rec_err:
-                logger.debug(f"Phase 52: Adaptive R:R recording error: {_rr_rec_err}")
+        # ── LEGACY BLOCK REMOVED — was 360+ lines of inline post-trade callbacks ──
+        # See: src/scanner/automation/event_handlers.py for all extracted handlers
 
         # Write updated journal (atomic)
         try:
@@ -5077,133 +4802,8 @@ class ExecutionManager:
         except ImportError:
             journal_path.write_text(json.dumps(entries, indent=2, default=str))
 
-        # ── Phase 80 (US-P80-002): TradeOutcomePredictor — auto-train at 50-trade threshold ──
-        # Must run AFTER journal write so fit_from_journal() reads the enriched on-disk data.
-        if scanner is not None and synced > 0:
-            _top = getattr(scanner, "_trade_outcome_predictor", None)
-            if _top is not None:
-                try:
-                    _complete_trades = [
-                        e for e in entries
-                        if isinstance(e.get("outcome"), dict)
-                        and e["outcome"].get("pnl_pips") is not None
-                        and e["outcome"].get("mae_pips") is not None
-                    ]
-                    _n_complete = len(_complete_trades)
-                    _should_train = (
-                        _n_complete >= 50
-                        and (_n_complete % 10 == 0 or not _top._is_trained)
-                    )
-                    if _should_train:
-                        _top_trained = _top.fit_from_journal()
-                        if _top_trained:
-                            logger.info(
-                                "Phase 80 (US-P80-002): TradeOutcomePredictor trained on "
-                                "%d trades (accuracy=%.3f)",
-                                _n_complete,
-                                getattr(_top, "_train_accuracy", 0.0),
-                            )
-                        else:
-                            logger.debug(
-                                "Phase 80 (US-P80-002): TradeOutcomePredictor training skipped "
-                                "(%d complete trades)", _n_complete
-                            )
-                    else:
-                        logger.debug(
-                            "Phase 80 (US-P80-002): TradeOutcomePredictor not yet ready "
-                            "(%d / 50 complete trades)", _n_complete
-                        )
-                except Exception as _top_err:
-                    logger.debug("Phase 80 (US-P80-002): TradeOutcomePredictor train error: %s", _top_err)
-
-        # ── Phase 80 (US-P80-003): PairAffinityTracker — update matrix post-trade-close ──
-        # Must run AFTER journal write so update_from_journal() reads current on-disk data.
-        if scanner is not None and synced > 0:
-            _pa = getattr(scanner, "_pair_affinity", None)
-            if _pa is not None:
-                try:
-                    _co_pairs = _pa.update_from_journal()
-                    if isinstance(_co_pairs, int) and _co_pairs > 0:
-                        logger.info(
-                            "Phase 80 (US-P80-003): PairAffinityTracker updated — "
-                            "%d co-occurrence pairs processed", _co_pairs
-                        )
-                    else:
-                        logger.debug(
-                            "Phase 80 (US-P80-003): PairAffinityTracker updated (0 co-occurrence pairs)"
-                        )
-                except Exception as _pa_err:
-                    logger.debug("Phase 80 (US-P80-003): PairAffinityTracker update error: %s", _pa_err)
-
-        # ── Phase 81 (US-P81-004): CausalCounterfactual — post-loss analysis ──
-        # Runs after journal write so counterfactual log has consistent trade IDs.
-        if scanner is not None and synced > 0:
-            _cc = getattr(scanner, "_causal_counterfactual", None)
-            if _cc is not None:
-                try:
-                    _cc_analyzed = 0
-                    _cc_cap = 5  # Max losses to analyze per sync (prevent latency spike)
-                    for entry in pending:
-                        if _cc_analyzed >= _cc_cap:
-                            break
-                        tid = str(entry.get("trade_id", ""))
-                        if tid not in closed_trades:
-                            continue
-                        ct = closed_trades[tid]
-                        _cc_pl = float(ct.get("realizedPL", 0))
-                        if _cc_pl >= 0:
-                            continue  # Only analyze losses
-                        # Build trade context from journal entry
-                        _cc_features = {
-                            "atr_14": float(entry.get("regime", {}).get("atr_pips", 0.001)),
-                            "sma_trend": float(entry.get("regime", {}).get("uncertainty_score", 0.5)),
-                            "momentum_signal": float(entry.get("confidence", 0.5)),
-                        }
-                        _cc_context = {
-                            "pair": entry.get("pair", ""),
-                            "features": _cc_features,
-                            "regime": str(entry.get("regime", {}).get("volatility_regime", "NORMAL")),
-                            "outcome": 0.0,  # Loss
-                        }
-                        _cc_scenarios = _cc.generate_standard_scenarios(_cc_context)
-                        _cc_results = _cc.batch_analyze(_cc_context, _cc_scenarios)
-                        _cc.save_analysis(tid, _cc_results)
-                        # Log the most impactful reversal scenario
-                        _cc_reversals = [r for r in _cc_results if getattr(r, "outcome_reversal", False)]
-                        if _cc_reversals:
-                            _cc_best = max(_cc_reversals, key=lambda r: abs(getattr(r, "probability_delta", 0.0)))
-                            logger.info(
-                                "Phase 81 (US-P81-004): Trade %s (%s) loss — "
-                                "reversal: %s delta=%.2f",
-                                tid, entry.get("pair", ""),
-                                getattr(getattr(_cc_best, "scenario", None), "scenario_name", "?"),
-                                getattr(_cc_best, "probability_delta", 0.0),
-                            )
-                        _cc_analyzed += 1
-                    if _cc_analyzed > 0:
-                        logger.info(
-                            "Phase 81 (US-P81-004): CausalCounterfactual analyzed %d losing trades",
-                            _cc_analyzed,
-                        )
-                except Exception as _cc_err:
-                    logger.debug("Phase 81 (US-P81-004): CausalCounterfactual error: %s", _cc_err)
-
-        # Phase 45 (US-282): Feed trade outcomes to adaptive position sizer
-        if self._adaptive_position_sizer is not None:
-            try:
-                for entry in pending:
-                    tid = str(entry.get("trade_id", ""))
-                    if tid not in closed_trades:
-                        continue
-                    ct = closed_trades[tid]
-                    realized_pl = float(ct.get("realizedPL", 0))
-                    trade_won = realized_pl > 0
-                    self._adaptive_position_sizer.record_trade(
-                        pnl=realized_pl,
-                        win=trade_won,
-                    )
-            except Exception as _aps_err:
-                logger.debug(f"Phase 45: Adaptive sizer trade recording failed: {_aps_err}")
+        # Tier 7: Post-journal handlers (AccuracyRebuild, RetrainDrift, PredictorTraining,
+        # PairAffinity, CausalCounterfactual, AdaptiveSizer) — all in event_handlers.py
 
         # Run RL agent weight updates (regime-aware)
         weights_updated = False
@@ -5299,220 +4899,196 @@ class ExecutionManager:
             except Exception as e:
                 logger.warning(f"RL weight update failed: {e}")
 
-        # Phase 53 (US-329): Update pair-specific Bayesian weights
-        if self._pair_bayesian_weights is not None and rl_updates:
+        # ── Tier 7: Event-driven post-close fan-out ──────────────────────
+        # Dispatch 30+ analytics/learning handlers via queue instead of inline.
+        # Shadow mode: count handlers completed for validation.
+        _t7_dispatched = 0
+        if self._event_bus is not None and self._tier7_handlers and synced > 0:
             try:
-                _pair_updates = 0
-                for upd in rl_updates:
-                    _pair = upd.get("pair", "")
-                    _verdicts = upd.get("agent_verdicts", {})
-                    _won = upd.get("trade_won", False)
-                    if _pair and _verdicts:
-                        # Convert verdicts to scores dict {agent: score}
-                        _scores = {}
-                        for agent_name, verdict in _verdicts.items():
-                            if isinstance(verdict, dict):
-                                _scores[agent_name] = float(verdict.get("score", 0.5))
-                            elif isinstance(verdict, (int, float)):
-                                _scores[agent_name] = float(verdict)
-                        if _scores:
-                            self._pair_bayesian_weights.update(
-                                pair=_pair,
-                                agent_scores=_scores,
-                                outcome="win" if _won else "loss",
+                # Build shared context for post-sync handlers
+                _post_ctx = SyncContext(
+                    entry={},  # Populated per-trade below for per-trade handlers
+                    outcome_data={},
+                    closed_trades=closed_trades,
+                    entries=entries,
+                    synced_entries=synced_entries,
+                    rl_updates=rl_updates,
+                    scanner=scanner,
+                    execution_manager=self,
+                    synced_count=synced,
+                )
+
+                # Emit TRADE_CLOSED for each synced trade (per-trade handlers)
+                for _se in synced_entries:
+                    _se_outcome = _se.get("outcome", {})
+                    _se_tid = str(_se.get("trade_id", ""))
+                    _se_pair = _se.get("pair", "")
+                    _se_pl = float(_se_outcome.get("realized_pl", 0) or 0)
+
+                    _trade_ctx = SyncContext(
+                        entry=_se,
+                        outcome_data=_se_outcome,
+                        closed_trades=closed_trades,
+                        entries=entries,
+                        synced_entries=synced_entries,
+                        rl_updates=rl_updates,
+                        scanner=scanner,
+                        execution_manager=self,
+                        synced_count=synced,
+                        trade_id=_se_tid,
+                        pair=_se_pair,
+                        trade_won=_se_pl > 0,
+                        realized_pl=_se_pl,
+                        pnl_pips=float(_se_outcome.get("pnl_pips", 0) or 0),
+                    )
+
+                    # Create and emit event
+                    _event = create_trade_closed_event(_se_outcome, self._tier7_session_id)
+                    _event_dict = {
+                        "event_id": _event.event_id,
+                        "event_type": _event.event_type.value,
+                        "timestamp": _event.timestamp,
+                        "source": _event.source,
+                        "session_id": _event.session_id,
+                        "correlation_id": _event.correlation_id,
+                        "payload": _event.payload,
+                        "payload_version": _event.payload_version,
+                    }
+
+                    # Dispatch per-trade handlers to queue
+                    for _h in self._tier7_handlers:
+                        if type(_h) in PER_TRADE_HANDLERS:
+                            self._event_queue.enqueue(
+                                handler_name=_h.name,
+                                handler_fn=lambda ev, h=_h, ctx=_trade_ctx: h.handle(ev, ctx),
+                                event=_event_dict,
+                                priority=_h.priority,
                             )
-                            _pair_updates += 1
-                if _pair_updates > 0:
-                    self._pair_bayesian_weights.save_state()
-                    logger.info(
-                        "Phase 53 (US-329): Updated pair-specific weights for %d trades",
-                        _pair_updates,
-                    )
-            except Exception as _pw_err:
-                logger.debug(f"Phase 53: Pair weight update error: {_pw_err}")
+                            _t7_dispatched += 1
 
-        # Phase 25 (US-155): Record agent verdicts to accuracy matrix for per-pair tracking
-        # Uses synced_entries (not full journal) to avoid double-counting on repeated sync calls
-        if scanner is not None and synced > 0:
-            _acc_matrix = getattr(scanner, "_agent_accuracy_matrix", None)
-            if _acc_matrix is not None:
-                try:
-                    _am_recorded = 0
-                    for entry in synced_entries:
-                        _outcome = entry.get("outcome")
-                        if _outcome is None:
-                            continue
-                        _pair = entry.get("pair", "")
-                        _regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
-                        _direction = entry.get("direction", "BUY").upper()
-                        _trade_won = bool(_outcome.get("trade_won", False))
-                        _actual = "win" if _trade_won else "loss"
-                        _agents_info = entry.get("agents", {})
-                        _agent_reasons = _agents_info.get("agent_reasons", [])
-                        for _ar in _agent_reasons:
-                            _agent_name = _ar.get("name", "")
-                            if not _agent_name:
-                                continue
-                            # Only record agents that voted FOR the trade (passed=True)
-                            # Their prediction was the trade direction — outcome tells if correct
-                            if _ar.get("passed", False):
-                                _acc_matrix.record_verdict(
-                                    agent_name=_agent_name,
-                                    pair=_pair,
-                                    regime=_regime,
-                                    predicted_direction=_direction,
-                                    actual_outcome=_actual,
-                                )
-                                _am_recorded += 1
-                    if _am_recorded > 0:
-                        _acc_matrix.save_state()
-                        logger.info(
-                            "US-155: Recorded %d agent verdicts to accuracy matrix "
-                            "(%d closed trades)",
-                            _am_recorded, synced,
+                    # Persist event to history
+                    self._event_bus.emit(_event_dict)
+
+                # Dispatch post-sync handlers (run once after all trades)
+                _post_event_dict = {
+                    "event_id": f"post_sync_{synced}",
+                    "event_type": TradingEventType.TRADE_CLOSED.value,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "source": "execution_manager",
+                    "session_id": self._tier7_session_id,
+                    "payload": {"synced_count": synced},
+                }
+
+                for _h in self._tier7_handlers:
+                    if type(_h) in POST_SYNC_HANDLERS:
+                        self._event_queue.enqueue(
+                            handler_name=_h.name,
+                            handler_fn=lambda ev, h=_h, ctx=_post_ctx: h.handle(ev, ctx),
+                            event=_post_event_dict,
+                            priority=_h.priority,
                         )
-                except Exception as _am_err:
-                    logger.debug(f"US-155: Accuracy matrix recording error: {_am_err}")
+                        _t7_dispatched += 1
 
-        # Phase 27 (US-167): Feed outcomes to pair_regime_agent_matrix
-        # Uses synced_entries (not full journal) to avoid double-counting
-        if scanner is not None and synced > 0:
-            _pram = getattr(scanner, "_pair_regime_agent_matrix", None)
-            if _pram is not None:
-                try:
-                    _pram_recorded = 0
-                    for entry in synced_entries:
-                        _outcome = entry.get("outcome")
-                        if _outcome is None:
-                            continue
-                        _pair = entry.get("pair", "")
-                        _regime = entry.get("regime", {}).get("volatility_regime", "NORMAL")
-                        _direction = entry.get("direction", "BUY").upper()
-                        _won = bool(_outcome.get("trade_won", False))
-                        _agent_reasons = entry.get("agents", {}).get("agent_reasons", [])
-                        for _ar in _agent_reasons:
-                            _aname = _ar.get("name", "")
-                            if _aname and _ar.get("passed", False):
-                                _pram.record_vote(
-                                    pair=_pair,
-                                    regime=_regime,
-                                    agent=_aname,
-                                    vote=_direction,
-                                    won=_won,
-                                )
-                                _pram_recorded += 1
-                    if _pram_recorded > 0:
-                        _pram.save_state()
-                        logger.info(
-                            "US-167: Fed %d agent outcomes to pair_regime_agent_matrix",
-                            _pram_recorded,
-                        )
-                except Exception as _pram_err:
-                    logger.debug(f"US-167: PRAM feed error: {_pram_err}")
+                logger.info(
+                    "Tier 7: Dispatched %d handlers to queue for %d synced trades "
+                    "(expected=%d)",
+                    _t7_dispatched, synced, get_handler_count(),
+                )
 
-        # Phase 27 (US-166): Track fast-track trade A/B performance
-        if synced > 0:
-            try:
+                # Flush queue to ensure all handlers complete before returning.
+                # This keeps sync_closed_trades_rl() semantically synchronous
+                # from the caller's perspective while handlers run serially in
+                # the queue thread (not inline on the caller's thread).
+                self._event_queue.flush()
 
-                for entry in entries:
-                    _outcome = entry.get("outcome")
-                    if _outcome is None:
-                        continue
-                    _ctx = entry.get("analysis_context", entry.get("agents", {}))
-                    _is_ft = _ctx.get("fasttrack", False)
-                    if _is_ft:
-                        self._fasttrack_stats["total"] += 1
-                        if _outcome.get("trade_won", False):
-                            self._fasttrack_stats["wins"] += 1
-                        else:
-                            self._fasttrack_stats["losses"] += 1
-                _ft_total = self._fasttrack_stats["total"]
-                if _ft_total > 0 and _ft_total % 5 == 0:
-                    _ft_wr = self._fasttrack_stats["wins"] / _ft_total
-                    logger.info(
-                        "US-166: Fast-track A/B — %d trades, "
-                        "win_rate=%.1f%% (%d W / %d L)",
-                        _ft_total, _ft_wr * 100,
-                        self._fasttrack_stats["wins"],
-                        self._fasttrack_stats["losses"],
-                    )
-            except Exception as _ft_err:
-                logger.debug(f"US-166: Fast-track tracking error: {_ft_err}")
-
-        # Phase 18: Feed trade outcomes to calibration modules via Scanner
-        if scanner is not None and synced > 0:
-            try:
-                _phase18_method = getattr(scanner, "record_trade_outcome_phase18", None)
-                if _phase18_method is not None:
-                    for entry in entries:
-                        _outcome = entry.get("outcome")
-                        if _outcome is None:
-                            continue
-                        _gate_vals = None
-                        _agents_info = entry.get("agents", {})
-                        if _agents_info:
-                            _gate_vals = {
-                                "confidence": float(entry.get("confidence", 0)),
-                                "momentum": float(_agents_info.get("weighted_vote_score", 0)),
-                                "rr_ratio": (
-                                    float(entry.get("tp_pips", 0)) / max(float(entry.get("sl_pips", 1)), 0.1)
-                                ),
-                            }
-                        _phase18_method(
-                            pair=entry.get("pair", ""),
-                            regime=entry.get("regime", {}).get("volatility_regime", "NORMAL"),
-                            pnl_pips=float(_outcome.get("pnl_pips", 0)),
-                            trade_won=bool(_outcome.get("trade_won", False)),
-                            duration_bars=int(_outcome.get("duration_minutes", 0) / 5),
-                            gate_values=_gate_vals,
-                            agent_verdicts=_agents_info.get("agent_reasons"),
-                            model=entry.get("model", "ensemble"),
-                        )
-                    logger.info(f"Phase 18: Fed {synced} trade outcomes to calibration modules")
-            except Exception as _p18_err:
-                logger.debug(f"Phase 18 outcome feedback error: {_p18_err}")
-
-        # Update per-pair performance summary after syncing
-        if synced > 0:
-            try:
-                self._update_pair_performance()
-            except Exception as perf_err:
-                logger.debug(f"Pair performance update error: {perf_err}")
-
-        # Phase 45 (US-282): Persist adaptive sizer state
-        if self._adaptive_position_sizer is not None:
-            try:
-                self._adaptive_position_sizer.save_state("trained_data/adaptive_sizer_state.json")
-            except Exception as _save_err:
-                logger.debug(f"Phase 45: Adaptive sizer state save failed: {_save_err}")
-
-        # Phase 45 (US-285): Persist EWMA correlation state
-        if self._ewma_correlation is not None:
-            try:
-                self._ewma_correlation.save_state("trained_data/ewma_correlation_state.json")
-            except Exception as _ewma_save_err:
-                logger.debug(f"Phase 45: EWMA state save failed: {_ewma_save_err}")
-
-        # Phase 53 (US-328): Persist gate attribution state
-        if self._gate_attribution is not None:
-            try:
-                self._gate_attribution.save_state()
-            except Exception as _ga_save_err:
-                logger.debug(f"Phase 53: Gate attribution state save failed: {_ga_save_err}")
-
-        # Persist regime reward log after all trades processed
-        if self._regime_reward is not None and synced > 0:
-            try:
-                self._regime_reward.save_log()
-            except Exception as _rr_save_err:
-                logger.debug(f"Regime reward log save failed: {_rr_save_err}")
+            except Exception as _t7_err:
+                logger.warning("Tier 7: Event dispatch failed, handlers may be incomplete: %s", _t7_err)
 
         return {
             "trades_synced": synced,
             "weights_updated": weights_updated,
             "new_weights": new_weights,
             "detail": f"synced {synced} trades, {len(rl_updates)} RL updates",
+            "tier7_dispatched": _t7_dispatched,
         }
+
+    def _fetch_oanda_trade_snapshots(
+        self,
+        *,
+        requests: Any,
+        acct: str,
+        base: str,
+        headers: Dict[str, str],
+    ) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+        """Fetch bulk CLOSED and OPEN trade snapshots from OANDA."""
+        closed_resp = self._retry_oanda(
+            requests.get,
+            f"{base}/v3/accounts/{acct}/trades",
+            params={"state": "CLOSED", "count": 500},
+            headers=headers,
+            timeout=10,
+        )
+        closed_resp.raise_for_status()
+        closed_trades = {
+            str(t.get("id", "")): t
+            for t in closed_resp.json().get("trades", [])
+            if isinstance(t, dict) and t.get("id") is not None
+        }
+
+        open_resp = self._retry_oanda(
+            requests.get,
+            f"{base}/v3/accounts/{acct}/openTrades",
+            headers=headers,
+            timeout=10,
+        )
+        open_resp.raise_for_status()
+        open_trades = {
+            str(t.get("id", "")): t
+            for t in open_resp.json().get("trades", [])
+            if isinstance(t, dict) and t.get("id") is not None
+        }
+        return closed_trades, open_trades
+
+    def _resolve_trade_state_from_oanda(
+        self,
+        *,
+        trade_id: str,
+        requests: Any,
+        acct: str,
+        base: str,
+        headers: Dict[str, str],
+        closed_trades: Dict[str, Dict[str, Any]],
+        open_trades: Dict[str, Dict[str, Any]],
+    ) -> tuple[str, Optional[Dict[str, Any]]]:
+        """Resolve whether a journaled trade is OPEN or CLOSED at OANDA.
+
+        Falls back to the individual trade endpoint when the bulk lists do not
+        contain the trade, which helps when pagination/state windows miss it.
+        """
+        if trade_id in closed_trades:
+            return "closed", closed_trades[trade_id]
+        if trade_id in open_trades:
+            return "open", open_trades[trade_id]
+
+        try:
+            resp = self._retry_oanda(
+                requests.get,
+                f"{base}/v3/accounts/{acct}/trades/{trade_id}",
+                headers=headers,
+                timeout=10,
+            )
+            resp.raise_for_status()
+            payload = resp.json().get("trade", {})
+            if not isinstance(payload, dict):
+                return "missing", None
+            state = str(payload.get("state", "")).upper()
+            if state == "CLOSED":
+                return "closed", payload
+            if state == "OPEN":
+                return "open", payload
+            return "missing", payload
+        except Exception:
+            return "missing", None
 
     def _record_expectancy_from_trades(
         self, pending: List[Dict[str, Any]], closed_trades: Dict[str, Dict[str, Any]]
