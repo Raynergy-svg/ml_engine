@@ -138,3 +138,10 @@ optuna>=4.0.0
 # News & Sentiment (optional)
 # ============================================================
 feedparser>=6.0.0  # RSS-based forex news fetching (optional, graceful fallback if missing)
+
+# ============================================================
+# Tier 7 Control Plane (event bus, caching, retry)
+# ============================================================
+blinker>=1.7
+cachetools>=5.0
+tenacity>=8.0
