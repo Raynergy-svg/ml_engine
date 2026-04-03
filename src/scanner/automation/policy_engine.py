@@ -110,13 +110,39 @@ class PolicyEngine:
     Toggle ``enforcement=True`` to start enforcing decisions.
     """
 
+    # Enforcement levels for incremental rollout
+    ENFORCEMENT_LEVELS = {
+        # Level 0: logging-only (no enforcement)
+        0: set(),
+        # Level 1: safe non-destructive actions enforced
+        1: {
+            ActionType.TIGHTEN_STOP,
+            ActionType.RESCAN_AFTER_CLOSE,
+            ActionType.START_BACKGROUND_DEBUG,
+        },
+        # Level 2: + model/config changes enforced
+        2: {
+            ActionType.TIGHTEN_STOP,
+            ActionType.RESCAN_AFTER_CLOSE,
+            ActionType.START_BACKGROUND_DEBUG,
+            ActionType.SWITCH_PAIR_MODEL,
+            ActionType.APPLY_THRESHOLD_ADJUSTMENT,
+            ActionType.START_BACKGROUND_RETRAIN,
+        },
+        # Level 3: full enforcement (all actions including trade execution)
+        3: set(ActionType),
+    }
+
     def __init__(
         self,
         rules_path: Optional[str] = None,
         enforcement: bool = False,
+        enforcement_level: int = 0,
     ):
         self._rules: List[PolicyRule] = []
         self._enforcement = enforcement
+        self._enforcement_level = enforcement_level if enforcement else 0
+        self._enforced_actions: set = self.ENFORCEMENT_LEVELS.get(enforcement_level, set())
         self._rules_path = Path(rules_path) if rules_path else _RULES_PATH
         self._lock = threading.Lock()
         self._environment_providers: List = []
@@ -210,16 +236,25 @@ class PolicyEngine:
         # Log the decision
         self.log_decision(decision, request)
 
-        # In logging-only mode, override to AUTO_ALLOW
-        if not self._enforcement and result_decision != PolicyDecisionType.AUTO_ALLOW:
+        # Check if this action type is enforced at the current level
+        _is_enforced = (
+            self._enforcement
+            and request.action_type in self._enforced_actions
+        )
+
+        if not _is_enforced and result_decision != PolicyDecisionType.AUTO_ALLOW:
             logger.info(
                 "policy_engine.logging_only",
                 action=request.action_type.value,
                 would_be=result_decision.value,
                 matched=matched_rules,
+                enforcement_level=self._enforcement_level,
             )
             decision.decision = PolicyDecisionType.AUTO_ALLOW
-            decision.reasons.append("LOGGING_ONLY: overridden to auto_allow")
+            decision.reasons.append(
+                f"LOGGING_ONLY (level {self._enforcement_level}): "
+                f"overridden to auto_allow"
+            )
 
         return decision
 
@@ -315,6 +350,8 @@ class PolicyEngine:
         recent = self.get_recent_decisions(5)
         return {
             "enforcement_enabled": self._enforcement,
+            "enforcement_level": self._enforcement_level,
+            "enforced_actions": [a.value for a in self._enforced_actions],
             "total_rules": len(self._rules),
             "enabled_rules": sum(1 for r in self._rules if r.enabled),
             "recent_decisions": len(recent),
@@ -325,13 +362,30 @@ class PolicyEngine:
     def is_enforcing(self) -> bool:
         return self._enforcement
 
+    @property
+    def enforcement_level(self) -> int:
+        return self._enforcement_level
+
+    def set_enforcement_level(self, level: int) -> None:
+        """Set enforcement level (0=logging-only, 1=safe, 2=config, 3=full)."""
+        if level not in self.ENFORCEMENT_LEVELS:
+            raise ValueError(f"Invalid level {level}. Must be 0-3.")
+        self._enforcement_level = level
+        self._enforced_actions = self.ENFORCEMENT_LEVELS[level]
+        self._enforcement = level > 0
+        logger.warning(
+            "policy_engine.enforcement_level_set",
+            level=level,
+            enforced_actions=[a.value for a in self._enforced_actions],
+        )
+
     def enable_enforcement(self) -> None:
-        self._enforcement = True
-        logger.warning("policy_engine.enforcement_enabled")
+        """Enable full enforcement (level 3)."""
+        self.set_enforcement_level(3)
 
     def disable_enforcement(self) -> None:
-        self._enforcement = False
-        logger.info("policy_engine.enforcement_disabled")
+        """Disable enforcement (level 0)."""
+        self.set_enforcement_level(0)
 
     def shutdown(self) -> None:
         """Graceful shutdown — persist rules if modified."""

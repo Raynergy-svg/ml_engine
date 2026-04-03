@@ -33,11 +33,46 @@ if platform.system() == "Darwin":  # macOS
     os.environ.setdefault("MKL_THREADING_LAYER", "GNU")
     # Disable MKL affinity (prevents conflicts with macOS scheduler)
     os.environ.setdefault("KMP_AFFINITY", "disabled")
-    # Limit thread spawning aggression
-    os.environ.setdefault("OMP_NUM_THREADS", "4")
-    os.environ.setdefault("MKL_NUM_THREADS", "4")
-    # Prevent VECLIB (Apple's Accelerate) from conflicting with MKL
-    os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "4")
+    # Reduced from 4 → 2: fewer threads = less memory pressure per scan
+    os.environ.setdefault("OMP_NUM_THREADS", "2")
+    os.environ.setdefault("MKL_NUM_THREADS", "2")
+    os.environ.setdefault("VECLIB_MAXIMUM_THREADS", "2")
+
+    # ── TensorFlow Metal memory guard (CRITICAL for 8GB M1) ─────────────────
+    # TF Metal uses UNIFIED memory — same pool as CPU, OS, WindowServer.
+    # Without limits, TF grows until macOS compressor hits 100%, causing
+    # kernel panic (userspace watchdog timeout, WindowServer crash).
+    #
+    # Strategy: disable Metal GPU for INFERENCE entirely.
+    # Scan inference models (Transformer, TCN) are small; CPU is fast enough
+    # for a 5-minute cycle. Eliminates all Metal/unified-memory contention.
+    #
+    # Training (--train) still re-enables Metal via configure_metal_runtime().
+    os.environ.setdefault("TF_FORCE_GPU_ALLOW_GROWTH", "true")
+    # Disable Metal device for inference processes (scan/watch/execute)
+    # Training explicitly overrides this before model construction.
+    os.environ.setdefault("ML_ENGINE_DISABLE_METAL", "1")
+
+# ── GC tuning for long-running scan loop ───────────────────────────────────
+# Default (700, 10, 10) causes GC to fire mid-scan. Raising gen-0 threshold
+# lets short-lived scan objects accumulate until the idle sleep, where we
+# call gc.collect(0) explicitly. Reduces GC overhead ~2.5x in tight loops.
+import gc as _gc
+_gc.set_threshold(50000, 20, 20)
+
+# ── Process memory ceiling (CRITICAL for 8GB M1) ────────────────────────────
+# Hard RSS cap at 3.5 GB. Python raises MemoryError cleanly rather than
+# letting the OS compressor fill up and watchdog-kill WindowServer.
+import resource as _resource
+_GB = 1024 ** 3
+try:
+    _soft, _hard = _resource.getrlimit(_resource.RLIMIT_RSS)
+    # Only set if no stricter limit already in place
+    _target = int(3.5 * _GB)
+    if _hard == _resource.RLIM_INFINITY or _hard > _target:
+        _resource.setrlimit(_resource.RLIMIT_RSS, (_target, _target))
+except Exception:
+    pass  # Non-fatal: RLIMIT_RSS is advisory on macOS but still helps
 
 # ── Suppress noisy third-party warnings (must precede library imports) ─────
 import warnings
@@ -179,9 +214,16 @@ def _dispatch_scan(args: Any) -> None:
             scanner = Scanner(config=config)
             interval_minutes = int(getattr(args, "interval", 5))
             auto_execute = bool(getattr(args, "auto_execute", False))
+            enforce_level = int(getattr(args, "enforce_policy", 0))
             console.print(f"[cyan]Starting watch mode (interval: {interval_minutes}m)[/cyan]")
+            if enforce_level > 0:
+                console.print(f"[yellow]Policy enforcement level: {enforce_level}[/yellow]")
             console.print("[dim]Press Ctrl+C to stop[/dim]\n")
-            ContinuousScanner(scanner).run(
+            cs = ContinuousScanner(scanner)
+            # Tier 7: Set enforcement level if specified
+            if enforce_level > 0 and cs._policy_engine is not None:
+                cs._policy_engine.set_enforcement_level(enforce_level)
+            cs.run(
                 pairs=pair_list,
                 interval_minutes=interval_minutes,
                 auto_execute=auto_execute,
@@ -558,6 +600,120 @@ def _handle_transfer(args: Any) -> None:
     handle_transfer_command(args)
 
 
+def _handle_status(args: Any) -> None:
+    """Handle the status command with optional cli_display rendering."""
+    try:
+        from src.scanner.cli_display import render_status as _render_status
+        from scripts.buddy_status import (
+            build_status_diagnostics as _build_status_diagnostics,
+            build_status_risk_snapshot as _build_status_risk_snapshot,
+        )
+
+        # Gather data for the rich display
+        _acct: dict = {}
+        _trades: list = []
+        _journal: list = []
+        _weights: dict = {}
+        _diagnostics: dict = {}
+        _risk_scaler: dict = {}
+        try:
+            from src.utils.oanda_practice import OandaPracticeClient
+            _client = OandaPracticeClient.from_env()
+            _acct = _client.get_account_summary() or {}
+        except Exception:
+            pass
+        try:
+            from src.utils.oanda_practice import OandaPracticeClient
+            _client = OandaPracticeClient.from_env()
+            _trades = _client.get_open_trades() or []
+        except Exception:
+            pass
+        try:
+            import json as _json_s
+            from pathlib import Path as _Path_s
+            _jp = _Path_s("trained_data/trade_journal_rl.json")
+            if _jp.exists():
+                _jraw = _json_s.loads(_jp.read_text())
+                _journal = _jraw if isinstance(_jraw, list) else []
+        except Exception:
+            pass
+        try:
+            import json as _json_w
+            from pathlib import Path as _Path_w
+            _wp = _Path_w("trained_data/models/agent_weights.json")
+            if _wp.exists():
+                _wraw = _json_w.loads(_wp.read_text())
+                _weights = _wraw if isinstance(_wraw, dict) else {}
+        except Exception:
+            pass
+        try:
+            _diagnostics = _build_status_diagnostics()
+        except Exception:
+            pass
+        try:
+            _risk_scaler = _build_status_risk_snapshot()
+        except Exception:
+            pass
+        try:
+            from src.scanner.automation.background_activity import get_background_activity_tracker
+            _background_activity = get_background_activity_tracker().get_snapshot(limit=10)
+        except Exception:
+            _background_activity = {}
+
+        # Map open trades to positions format
+        _positions = []
+        for _t in _trades:
+            _positions.append({
+                "pair": _t.get("instrument", ""),
+                "direction": "LONG" if int(_t.get("currentUnits", 0)) > 0 else "SHORT",
+                "lots": abs(int(_t.get("currentUnits", 0))) / 100000.0,
+                "entry_price": float(_t.get("price", 0)),
+                "pnl": float(_t.get("unrealizedPL", 0)),
+            })
+
+        # Map recent closed journal entries to display format.
+        _recent = []
+        _closed_entries = [
+            _rt for _rt in _journal
+            if isinstance(_rt.get("outcome"), dict)
+        ]
+        for _rt in reversed(_closed_entries[-10:]):
+            _outcome = _rt.get("outcome") or {}
+            _recent.append({
+                "pair": _rt.get("pair", ""),
+                "won": bool(_outcome.get("trade_won", False)),
+                "pnl_dollars": float(_outcome.get("realized_pl", _rt.get("pnl", 0) or 0) or 0),
+                "pnl_pips": float(_outcome.get("pnl_pips", _rt.get("pnl_pips", 0) or 0) or 0),
+                "exit_reason": str(_outcome.get("exit_reason", _rt.get("exit_reason", "")) or ""),
+                "closed_at": str(
+                    _outcome.get("close_time")
+                    or _outcome.get("exit_time")
+                    or _rt.get("closed_at")
+                    or ""
+                )[:19],
+            })
+
+        _render_status(
+            nav=float(_acct.get("NAV", _acct.get("nav", 0))),
+            balance=float(_acct.get("balance", 0)),
+            unrealized=float(_acct.get("unrealizedPL", 0)),
+            positions=_positions if _positions else None,
+            recent_trades=_recent if _recent else None,
+            agent_weights=_weights if _weights else None,
+            diagnostics=_diagnostics if _diagnostics else None,
+            risk_scaler=_risk_scaler if _risk_scaler else None,
+            blocked_pairs=(_diagnostics.get("blocked_pairs") if isinstance(_diagnostics, dict) else None),
+            background_activity=_background_activity if _background_activity else None,
+        )
+    except ImportError:
+        # Fallback: use the legacy status script
+        __import__("scripts.buddy_status", fromlist=["main"]).main()
+    except Exception as _st_err:
+        logger.debug("cli_display status error: %s", _st_err)
+        # Fallback to legacy
+        __import__("scripts.buddy_status", fromlist=["main"]).main()
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table  (command string → handler)
 # ---------------------------------------------------------------------------
@@ -586,7 +742,7 @@ _DISPATCH_TABLE: dict[str, Any] = {
     "find-candles": _handle_find_candles,
     "transfer": _handle_transfer,
     "learn": handle_learn,
-    "status": lambda args: __import__("scripts.buddy_status", fromlist=["main"]).main(),
+    "status": lambda args: _handle_status(args),
 }
 
 

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 # CLI commands available
 COMMANDS = [
+    "status",
     "train",
     "train-buddy",
     "train-joint",
@@ -46,6 +47,7 @@ COMMANDS = [
 
 CLI_EPILOG = """
 COMMAND REFERENCE:
+  status      Show runtime/account status dashboard
   scan        Scan ALL pairs → shows tradeable + needs training
   buddy       Single-pair inference → execute one trade
   buddy-chat  Grounded Buddy conversational REPL
@@ -53,6 +55,7 @@ COMMAND REFERENCE:
   monitor     Show monitoring dashboard and alerts
 
 EXAMPLES:
+  buddy status                   # Show runtime/account status
   buddy scan                     # Scan all majors, show recommendations
   buddy -I EUR_USD --execute     # Single EUR_USD trade
   buddy buddy-chat -I EUR_USD    # Start Buddy chat REPL (dry-run by default)
@@ -70,7 +73,7 @@ def _add_core_arguments(parser: argparse.ArgumentParser) -> None:
         nargs="?",
         default="buddy",
         choices=COMMANDS,
-        help="Command: scan (multi-pair) | buddy (single-pair) | train | validate | journal | monitor | suggest-improvements",
+        help="Command: status | scan (multi-pair) | buddy (single-pair) | train | validate | journal | monitor | suggest-improvements",
     )
     parser.add_argument(
         "--config",
@@ -439,6 +442,13 @@ def _add_scan_arguments(parser: argparse.ArgumentParser) -> None:
         "--auto-execute",
         action="store_true",
         help="For scan: automatically execute passing/agent-promoted trades (also works with --watch)",
+    )
+    parser.add_argument(
+        "--enforce-policy",
+        type=int,
+        default=0,
+        choices=[0, 1, 2, 3],
+        help="Tier 7 policy enforcement level: 0=logging-only (default), 1=safe actions, 2=+config changes, 3=full (includes trade execution)",
     )
     parser.add_argument(
         "--diversified",

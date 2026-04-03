@@ -136,6 +136,7 @@ class TestPolicyEvaluation:
             engine = PolicyEngine(
                 rules_path=str(tmp_path / "rules.json"),
                 enforcement=True,
+                enforcement_level=3,
             )
             req = ActionRequest(action_type=ActionType.FORCE_TRADE_DEGRADED, source="test")
             decision = engine.evaluate(req)
@@ -152,6 +153,7 @@ class TestPolicyEvaluation:
             engine = PolicyEngine(
                 rules_path=str(tmp_path / "rules.json"),
                 enforcement=True,
+                enforcement_level=3,
             )
             # Add a custom ALLOW rule for FORCE_TRADE_DEGRADED (normally DENY)
             engine._rules.append(PolicyRule(

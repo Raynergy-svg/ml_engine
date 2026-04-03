@@ -196,6 +196,7 @@ cmd_scan() {
             --profile) args+=(--profile "$2"); shift 2 ;;
             --use-rl-sizer) args+=(--use-rl-sizer); shift ;;
             --no-use-rl-sizer) args+=(--no-use-rl-sizer); shift ;;
+            --enforce-policy) args+=(--enforce-policy "$2"); shift 2 ;;
             *) args+=("$1"); shift ;;  # Pass through unknown args instead of dropping them
         esac
     done
@@ -269,7 +270,7 @@ cmd_status() {
             *) args+=("$1"); shift ;;
         esac
     done
-    run_py "${ROOT_DIR}/main.py" model-status --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
+    run_py "${ROOT_DIR}/main.py" status --config "${CONFIG_FILE}" "${args[@]+"${args[@]}"}"
 }
 cmd_promote() { run_py "${ROOT_DIR}/main.py" promote-model --config "${CONFIG_FILE}"; }
 cmd_loop() { run_py "${ROOT_DIR}/main.py" buddy --config "${CONFIG_FILE}" --loop --candles 2000; }
@@ -338,7 +339,7 @@ COMMANDS:
   test                    Run test prediction
   journal [-u] [-d N]     View/update trade journal
   monitor                 Show monitoring dashboard and alerts
-  status [--decisions]    Show model status
+  status [--decisions]    Show runtime/account status
   loop                    Run continuous prediction loop
 
 OPTIONS:
@@ -360,15 +361,23 @@ MONITOR OPTIONS:
   --model TYPE            Show model architecture (TCN, TRANSFORMER)
   --replay FILE           Replay saved training history
 
+SCAN OPTIONS:
+  --watch                 Continuous scan mode (repeat every N minutes)
+  --interval N            Scan interval in minutes (default: 5)
+  --auto-execute          Auto-execute passing trades
+  --enforce-policy LEVEL  Policy enforcement: 0=log-only 1=safe 2=+config 3=full
+
 EXAMPLES:
   ./bin/Buddy EUR_USD              # Predict EUR/USD
   ./bin/Buddy chat EUR_USD         # Start Buddy chat on EUR/USD
-  ./bin/Buddy status --decisions   # Show persisted trade/no-trade decisions
+  ./bin/Buddy status --decisions   # Show runtime status and persisted decisions
   ./bin/Buddy EUR_USD -x           # Predict and execute
   ./bin/Buddy train -i EUR_USD     # Train model for EUR/USD
   ./bin/Buddy train-joint          # Train all 15 scanner pairs
   ./bin/Buddy tj --instruments EUR_USD,GBP_USD  # Train specific pairs
   ./bin/Buddy scan --top 5         # Scan and show top 5 opportunities
+  ./bin/Buddy scan --watch --auto-execute             # Watch mode with auto-trade
+  ./bin/Buddy scan --watch --auto-execute --enforce-policy 1  # + safe enforcement
   ./bin/Buddy scan --profile aggressive --force
   ./bin/Buddy monitor              # Show monitoring dashboard
   ./bin/Buddy monitor --alerts     # Show detailed alerts
