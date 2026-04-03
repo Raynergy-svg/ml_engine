@@ -295,11 +295,9 @@ class ExpectancyHandler:
         em = context.execution_manager
         if em is None:
             return False
-        # This method iterates pending internally
-        em._record_expectancy_from_trades(
-            [context.entry] if context.trade_id in context.closed_trades else [],
-            context.closed_trades,
-        )
+        # Use synced_entries (post-sync handler gets the full list)
+        pending = [e for e in context.synced_entries if e.get("trade_id") in context.closed_trades]
+        em._record_expectancy_from_trades(pending, context.closed_trades)
         return True
 
 
@@ -769,7 +767,7 @@ class FastTrackHandler:
         if em is None:
             return False
 
-        for entry in context.entries:
+        for entry in context.synced_entries:
             outcome = entry.get("outcome")
             if outcome is None:
                 continue
@@ -803,7 +801,7 @@ class CalibrationHandler:
         if method is None:
             return False
 
-        for entry in context.entries:
+        for entry in context.synced_entries:
             outcome = entry.get("outcome")
             if outcome is None:
                 continue
@@ -979,33 +977,29 @@ class StatePersistenceHandler:
         if em is None:
             return False
 
-        # Adaptive sizer
         if em._adaptive_position_sizer is not None:
             try:
                 em._adaptive_position_sizer.save_state("trained_data/adaptive_sizer_state.json")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("state_persistence.adaptive_sizer_failed", error=str(e))
 
-        # EWMA correlation
         if em._ewma_correlation is not None:
             try:
                 em._ewma_correlation.save_state("trained_data/ewma_correlation_state.json")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("state_persistence.ewma_failed", error=str(e))
 
-        # Gate attribution
         if em._gate_attribution is not None:
             try:
                 em._gate_attribution.save_state()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("state_persistence.gate_attribution_failed", error=str(e))
 
-        # Regime reward log
         if em._regime_reward is not None:
             try:
                 em._regime_reward.save_log()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("state_persistence.regime_reward_failed", error=str(e))
 
         return True
 

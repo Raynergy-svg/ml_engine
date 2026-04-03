@@ -236,8 +236,8 @@ class PolicyEngine:
         for provider in self._environment_providers:
             try:
                 env.update(provider())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("policy_engine.provider_error", error=str(e))
 
         return env
 

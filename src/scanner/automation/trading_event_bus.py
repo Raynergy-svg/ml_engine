@@ -63,8 +63,10 @@ class TradingEventBus:
         handler = _Handler(handler_fn, priority, name)
 
         with self._lock:
-            if event_type not in self._signals:
-                self._signals[event_type] = Signal(event_type)
+            # Remove existing handler with the same name to prevent orphans
+            if name in self._handler_names:
+                for et, handlers in self._handlers.items():
+                    self._handlers[et] = [h for h in handlers if h.name != name]
             self._handlers.setdefault(event_type, []).append(handler)
             self._handlers[event_type].sort(key=lambda h: h.priority)
             self._handler_names[name] = handler
@@ -90,23 +92,22 @@ class TradingEventBus:
         event_type = event.get("event_type", "unknown")
         log = logger.bind(event_type=event_type, event_id=event_id)
 
-        # Idempotency check
-        if event_id is not None and event_id in self._seen:
-            log.debug("trading_event_bus.duplicate_skipped")
-            return
-        if event_id is not None:
-            self._seen[event_id] = True
+        # Idempotency check + handler snapshot under single lock acquisition
+        with self._lock:
+            if event_id is not None and event_id in self._seen:
+                log.debug("trading_event_bus.duplicate_skipped")
+                return
+            if event_id is not None:
+                self._seen[event_id] = True
+            handlers = list(self._handlers.get(event_type, []))
 
         log.info("trading_event_bus.emit")
 
-        # Persist to JSONL
+        # Persist to JSONL (outside lock to avoid holding during I/O)
         record = {**event, "dispatched_at": datetime.now(timezone.utc).isoformat()}
         safe_jsonl_append(_HISTORY_PATH, record)
 
         # Dispatch in priority order
-        with self._lock:
-            handlers = list(self._handlers.get(event_type, []))
-
         for handler in handlers:
             try:
                 handler.fn(event)
@@ -115,11 +116,6 @@ class TradingEventBus:
                     "trading_event_bus.handler_error",
                     handler_name=handler.name,
                 )
-
-        # Also fire blinker signal for any direct signal subscribers
-        sig = self._signals.get(event_type)
-        if sig is not None:
-            sig.send(event)
 
     def emit_to_queue(self, event: Dict[str, Any]) -> None:
         """Enqueue *event* for async dispatch (currently delegates to emit)."""

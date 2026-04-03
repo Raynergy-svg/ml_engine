@@ -80,6 +80,10 @@ class EventQueue:
             event: The event payload passed to handler_fn.
             priority: Lower number = higher priority. Default 0.
         """
+        if self._shutdown.is_set():
+            logger.warning("enqueue_after_shutdown", handler_name=handler_name)
+            return
+
         with self._seq_lock:
             seq = self._seq
             self._seq += 1
@@ -91,7 +95,10 @@ class EventQueue:
             handler_fn=handler_fn,
             event=event,
         )
-        self._queue.put(item)
+        try:
+            self._queue.put(item, timeout=5)
+        except queue.Full:
+            logger.error("queue_full_dropped", handler_name=handler_name)
 
     def start(self) -> None:
         """Launch the consumer daemon thread."""
@@ -108,19 +115,25 @@ class EventQueue:
             flush_first: If True, drain remaining items before stopping.
                          If False, drop them immediately.
         """
+        if flush_first:
+            # Block until all queued items are processed
+            self._queue.join()
+
+        # Signal consumer thread to exit
+        self._shutdown.set()
+
+        if self._thread is not None:
+            self._thread.join(timeout=60)
+            self._thread = None
+
         if not flush_first:
-            # Clear the queue
+            # Discard any items that arrived after shutdown signal
             while True:
                 try:
                     self._queue.get_nowait()
                     self._queue.task_done()
                 except queue.Empty:
                     break
-
-        self._shutdown.set()
-        if self._thread is not None:
-            self._thread.join(timeout=60)
-            self._thread = None
 
     def flush(self) -> None:
         """Block calling thread until the queue is empty."""
@@ -145,6 +158,17 @@ class EventQueue:
             except queue.Empty:
                 continue
 
+            try:
+                self._execute_with_retry(item)
+            finally:
+                self._queue.task_done()
+
+        # Drain remaining items after shutdown signal
+        while True:
+            try:
+                item = self._queue.get_nowait()
+            except queue.Empty:
+                break
             try:
                 self._execute_with_retry(item)
             finally:

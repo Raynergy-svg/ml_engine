@@ -174,10 +174,9 @@ class OANDATransport(BrokerTransport):
 
         Returns True if broker is reachable. On failure, transitions to DEGRADED.
         """
-        if self.state != TransportState.CONNECTED.value:  # type: ignore[attr-defined]
-            return False
-
         with self._lock:
+            if self.state != TransportState.CONNECTED.value:  # type: ignore[attr-defined]
+                return False
             try:
                 if self._ping_broker():
                     self._last_heartbeat = datetime.now(timezone.utc).isoformat()
@@ -201,10 +200,10 @@ class OANDATransport(BrokerTransport):
 
         Returns True on success (transitions to CONNECTED).
         """
-        if self.state != TransportState.DEGRADED.value:  # type: ignore[attr-defined]
-            return False
-
         with self._lock:
+            if self.state != TransportState.DEGRADED.value:  # type: ignore[attr-defined]
+                return False
+
             self._reconnect_attempts += 1
             delay = min(
                 self._base_delay * (2 ** (self._reconnect_attempts - 1))
@@ -222,9 +221,10 @@ class OANDATransport(BrokerTransport):
             except Exception:
                 return False
 
-            # Wait backoff period
-            time.sleep(min(delay, 5.0))  # Cap actual sleep at 5s to not block scanner
+        # Wait backoff period OUTSIDE lock to not block other callers
+        time.sleep(min(delay, 5.0))
 
+        with self._lock:
             try:
                 self._load_credentials()
                 if self._verify_auth():

@@ -564,6 +564,8 @@ class ExecutionManager:
                 self._tier7_handlers = get_all_handler_instances()
                 self._tier7_session_id = f"em_{id(self)}"
                 self._event_queue.start()
+                import atexit
+                atexit.register(lambda: self._event_queue.stop(flush_first=True) if self._event_queue else None)
                 logger.info("Tier 7: Event queue started (%d handlers registered)", get_handler_count())
             except Exception as _t7_err:
                 logger.warning("Tier 7: Init failed, falling back to inline: %s", _t7_err)

@@ -111,14 +111,14 @@ class StateEngine:
             logger.warning(f"Failed to load state: {e}")
             return dict(_DEFAULT_STATE)
 
-        # Validate required keys exist
-        required_keys = {"goal", "status", "done", "next", "last_updated"}
-        missing_keys = required_keys - set(data.keys())
-        if missing_keys:
-            logger.warning(f"State missing keys {missing_keys}, merging with defaults")
-            defaults = dict(_DEFAULT_STATE)
-            defaults.update(data)
-            data = defaults
+        # Always merge with defaults to pick up new fields (e.g. Tier 7 control_plane)
+        defaults = dict(_DEFAULT_STATE)
+        # Deep-merge nested dicts so new sub-keys don't clobber existing ones
+        for key, val in _DEFAULT_STATE.items():
+            if isinstance(val, dict) and key not in data:
+                defaults[key] = dict(val)
+        defaults.update(data)
+        data = defaults
         return data
 
     def save_state(

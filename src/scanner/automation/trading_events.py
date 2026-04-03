@@ -98,8 +98,13 @@ def create_trade_closed_event(outcome_data: dict, session_id: str) -> TradingEve
     correlation_id = outcome_data.get("correlation_id", str(uuid.uuid4()))
 
     def _f(v, default=0.0):
-        """Safely convert to float, handling None values."""
-        return float(v if v is not None else default)
+        """Safely convert to float, handling None and non-numeric values."""
+        if v is None:
+            return default
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
 
     payload = TradeClosedPayload(
         trade_id=outcome_data.get("trade_id", "") or "",
