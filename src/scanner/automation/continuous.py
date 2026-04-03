@@ -259,6 +259,27 @@ class ContinuousScanner:
         except Exception as _pe_err:
             logger.debug("Tier 7: PolicyEngine init deferred: %s", _pe_err)
 
+        # Tier 7: Trading Control Plane — broker/session/queue supervision
+        self._control_plane = None
+        try:
+            from src.scanner.automation.trading_control_plane import TradingControlPlane
+            from src.scanner.automation.broker_transport import OANDATransport
+            from src.scanner.automation.session_registry import SessionRegistry
+
+            _transport = OANDATransport()
+            _registry = SessionRegistry()
+            # Get event queue from ExecutionManager if available
+            _eq = getattr(getattr(self.scanner, "_execution_manager", None), "_event_queue", None)
+            self._control_plane = TradingControlPlane(
+                transport=_transport,
+                event_queue=_eq,
+                policy_engine=self._policy_engine,
+                session_registry=_registry,
+            )
+            logger.info("Tier 7: TradingControlPlane initialized")
+        except Exception as _cp_err:
+            logger.debug("Tier 7: ControlPlane init deferred: %s", _cp_err)
+
     def run(
         self,
         pairs: Optional[List[str]] = None,
@@ -305,6 +326,14 @@ class ContinuousScanner:
         except Exception as backup_err:
             logger.debug("Pre-session backup skipped: %s", backup_err)
 
+        # Tier 7: Start control plane (creates session, connects transport)
+        if self._control_plane is not None:
+            try:
+                _cp_sid = self._control_plane.start()
+                logger.info("Tier 7: Control plane session started: %s", _cp_sid)
+            except Exception as _cp_start_err:
+                logger.debug("Tier 7: Control plane start failed: %s", _cp_start_err)
+
         if console:
             console.print("\n[bold cyan]🔄 CONTINUOUS SCAN MODE[/bold cyan]")
             console.print(f"[dim]Scanning every {interval_minutes} minutes. Press Ctrl+C to stop.[/dim]")
@@ -313,6 +342,18 @@ class ContinuousScanner:
         try:
             while self._running:
                 self._scan_count += 1
+
+                # Tier 7: Control plane health check each cycle
+                if self._control_plane is not None:
+                    try:
+                        _cp_health = self._control_plane.check_health()
+                        if _cp_health.get("degraded_mode"):
+                            logger.warning(
+                                "Tier 7: Control plane degraded: %s",
+                                _cp_health.get("degraded_reason", "unknown"),
+                            )
+                    except Exception as _cp_err:
+                        logger.debug("Tier 7: Health check error: %s", _cp_err)
 
                 # Check max scans limit
                 if self.config.max_scans and self._scan_count > self.config.max_scans:
@@ -940,7 +981,13 @@ class ContinuousScanner:
         except Exception as _bus_err:
             logger.debug("Shutdown: EventBus shutdown failed: %s", _bus_err)
 
-        # Tier 7: PolicyEngine shutdown
+        # Tier 7: Control plane + PolicyEngine shutdown
+        try:
+            if getattr(self, "_control_plane", None) is not None:
+                self._control_plane.stop()
+                logger.info("Shutdown: Control plane stopped")
+        except Exception as _cp_err:
+            logger.debug("Shutdown: Control plane stop failed: %s", _cp_err)
         try:
             if getattr(self, "_policy_engine", None) is not None:
                 self._policy_engine.shutdown()

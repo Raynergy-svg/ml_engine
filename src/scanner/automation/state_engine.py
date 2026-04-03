@@ -60,6 +60,26 @@ _DEFAULT_STATE: Dict[str, Any] = {
         "win_rate": 0.0,
     },
     "improvement_focus": "",
+    # Tier 7: Control plane state
+    "control_plane": {
+        "session_id": "",
+        "transport_state": "disconnected",
+        "degraded_mode": False,
+        "degraded_reason": "",
+        "last_heartbeat": "",
+        "reconnect_attempts": 0,
+    },
+    "queue_summary": {
+        "depth": 0,
+        "in_flight": 0,
+        "failed_count": 0,
+        "last_failure": "",
+    },
+    "last_policy_block": {
+        "action_type": "",
+        "reason": "",
+        "timestamp": "",
+    },
 }
 
 
