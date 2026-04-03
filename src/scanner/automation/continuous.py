@@ -6,9 +6,11 @@ Provides watch mode functionality for real-time market monitoring.
 
 from __future__ import annotations
 
+import atexit
 import logging
 import signal
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -23,6 +25,22 @@ try:
     console = Console()
 except ImportError:
     console = None
+
+# CLI display module — provides Rich-formatted output panels.
+# Falls back gracefully to existing console.print output if unavailable.
+try:
+    from src.scanner.cli_display import (
+        render_scan_result as _cli_render_scan,
+        render_watch_header as _cli_render_watch_header,
+        render_trade_execution as _cli_render_trade_exec,
+        render_trade_closed as _cli_render_trade_closed,
+        render_health_summary as _cli_render_health,
+    )
+    _HAS_CLI_DISPLAY = True
+except ImportError:
+    _HAS_CLI_DISPLAY = False
+
+from src.scanner.automation.background_activity import get_background_activity_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +83,32 @@ class ContinuousScanner:
         self.config = config or ContinuousConfig()
         self._running = False
         self._scan_count = 0
+        self._start_time = time.time()
         self._maintenance = None
         self._portfolio_optimizer = None
+        self._shutdown_event = threading.Event()
+        self._shutdown_started = False
+        self._signal_count = 0
+        self._original_signal_handlers: Dict[int, Any] = {}
 
         # Journal cache: avoid re-reading trade_journal_rl.json on every cycle.
         # Invalidated by file mtime — only re-reads when a trade actually closes.
         self._journal_cache: list = []
         self._journal_mtime: float = 0.0
+
+        # US-004: Peak NAV tracker persists across cycles for real drawdown detection.
+        self._peak_nav: float = 0.0
+        atexit.register(self._save_peak_nav)
+        # US-008: Load peak_nav from disk to survive restarts
+        try:
+            import json as _json_pn
+            from pathlib import Path as _Path_pn
+            _pn_path = _Path_pn("trained_data/.memory/model_state.json")
+            if _pn_path.exists():
+                _pn_data = _json_pn.loads(_pn_path.read_text())
+                self._peak_nav = float(_pn_data.get("peak_nav", 0.0))
+        except Exception:
+            pass
 
         # Phase 56 (US-350): Scan Diagnostics Reporter
         self._scan_diagnostics = None
@@ -80,7 +117,7 @@ class ContinuousScanner:
             self._scan_diagnostics = ScanDiagnosticsReporter()
             logger.info("Phase 56 (US-350): Scan diagnostics reporter initialized")
         except Exception as _sdr_err:
-            logger.debug(f"Phase 56: Scan diagnostics reporter init deferred: {_sdr_err}")
+            logger.debug("Phase 56: Scan diagnostics reporter init deferred: %s", _sdr_err)
 
         # Phase 57 (US-356): Penalty Auditor — surfaces recommendation when stalled
         self._penalty_auditor = None
@@ -89,7 +126,7 @@ class ContinuousScanner:
             self._penalty_auditor = PenaltyAuditor()
             logger.info("Phase 57 (US-356): Penalty auditor initialized")
         except Exception as _pa_err:
-            logger.debug(f"Phase 57: Penalty auditor init deferred: {_pa_err}")
+            logger.debug("Phase 57: Penalty auditor init deferred: %s", _pa_err)
 
         # Phase 58 (US-360): Gate Pass Predictor — simulate pass rate under penalty-free conditions
         self._gate_pass_predictor = None
@@ -98,7 +135,7 @@ class ContinuousScanner:
             self._gate_pass_predictor = GatePassPredictor()
             logger.info("Phase 58 (US-360): Gate pass predictor initialized")
         except Exception as _gpp_err:
-            logger.debug(f"Phase 58: Gate pass predictor init deferred: {_gpp_err}")
+            logger.debug("Phase 58: Gate pass predictor init deferred: %s", _gpp_err)
 
         # Phase 58 (US-361): Adaptive Confidence Floor — conservative threshold auto-reduction
         self._adaptive_floor = None
@@ -110,7 +147,7 @@ class ContinuousScanner:
             )
             logger.info("Phase 58 (US-361): Adaptive confidence floor initialized")
         except Exception as _af_err:
-            logger.debug(f"Phase 58: Adaptive confidence floor init deferred: {_af_err}")
+            logger.debug("Phase 58: Adaptive confidence floor init deferred: %s", _af_err)
 
         # Phase 59 (US-363): Signal Funnel Tracker — per-scan gate attrition visibility
         self._signal_funnel = None
@@ -119,7 +156,7 @@ class ContinuousScanner:
             self._signal_funnel = SignalFunnelTracker()
             logger.info("Phase 59 (US-363): Signal funnel tracker initialized")
         except Exception as _sft_err:
-            logger.debug(f"Phase 59: Signal funnel tracker init deferred: {_sft_err}")
+            logger.debug("Phase 59: Signal funnel tracker init deferred: %s", _sft_err)
 
         # Phase 60 (US-369) + Phase 65 (US-386): Scan Health Synthesizer — unified health report
         self._scan_health = None
@@ -148,7 +185,7 @@ class ContinuousScanner:
             )
             logger.info("Phase 60+65+66 (US-369/US-386/US-388): Scan health synthesizer initialized with momentum+risk+vote recorders")
         except Exception as _shs_err:
-            logger.debug(f"Phase 60: Scan health synthesizer init deferred: {_shs_err}")
+            logger.debug("Phase 60: Scan health synthesizer init deferred: %s", _shs_err)
 
         # Initialize maintenance if enabled
         if self.config.enable_maintenance:
@@ -160,7 +197,7 @@ class ContinuousScanner:
             from src.scanner.automation.portfolio_optimizer import PortfolioOptimizer
             self._portfolio_optimizer = PortfolioOptimizer()
         except Exception as e:
-            logger.debug(f"Portfolio optimizer initialization error: {e}")
+            logger.warning("Portfolio optimizer initialization error: %s", e)
 
         # Initialize online RL weight updater (US-060)
         self._online_rl = None
@@ -168,7 +205,7 @@ class ContinuousScanner:
             from src.scanner.automation.online_rl import OnlineWeightUpdater
             self._online_rl = OnlineWeightUpdater()
         except Exception as e:
-            logger.debug(f"Online RL updater initialization error: {e}")
+            logger.warning("Online RL updater initialization error: %s", e)
 
         # Phase 20 (US-126): Wire memory manager — register caches and log files
         if getattr(scanner, "_memory_manager", None) is not None:
@@ -184,22 +221,23 @@ class ContinuousScanner:
                 ]:
                     cache_dict = getattr(scanner, cache_attr, None)
                     if isinstance(cache_dict, dict):
-                        mm.register_cache(cache_name, cache_dict, max_size=200)
+                        mm.register_cache(cache_name, cache_dict, max_size=50)
 
                 # Register major log files for rotation
                 from pathlib import Path as _Path
                 _root = _Path(__file__).resolve().parent.parent.parent.parent
                 for log_name in [
                     "trained_data/observations.jsonl",
-                    "trained_data/trade_journal_rl.json",
-                    "trained_data/scan_cycle_log.json",
+                    # NOTE: trade_journal_rl.json is a JSON array, NOT a line-based log.
+                    # Line-based rotation destroys its structure. Removed 2026-03-31.
+                    "trained_data/scan_cycle_log.jsonl",
                 ]:
                     log_path = _root / log_name
                     if log_path.exists():
                         mm.register_log(str(log_path), max_lines=10000, keep_lines=5000)
                 logger.info("Memory manager: caches and logs registered")
             except Exception as mm_err:
-                logger.debug(f"Memory manager registration error: {mm_err}")
+                logger.debug("Memory manager registration error: %s", mm_err)
 
         # Phase 20 (US-124): Module activation dispatcher
         self._module_dispatcher = None
@@ -210,7 +248,16 @@ class ContinuousScanner:
                 registered = self._module_dispatcher.register_all_modules()
                 logger.info("Module dispatcher initialized (%d modules)", registered)
             except Exception as e:
-                logger.debug(f"Module dispatcher initialization error: {e}")
+                logger.warning("Module dispatcher initialization error: %s", e)
+
+        # Tier 7: Policy Engine — logging-only action gates
+        self._policy_engine = None
+        try:
+            from src.scanner.automation.policy_engine import get_policy_engine
+            self._policy_engine = get_policy_engine()
+            logger.info("Tier 7: PolicyEngine initialized (enforcement=%s)", self._policy_engine.is_enforcing)
+        except Exception as _pe_err:
+            logger.debug("Tier 7: PolicyEngine init deferred: %s", _pe_err)
 
     def run(
         self,
@@ -243,6 +290,9 @@ class ContinuousScanner:
 
         # Setup signal handler for graceful shutdown
         self._running = True
+        self._shutdown_started = False
+        self._shutdown_event.clear()
+        self._signal_count = 0
         self._setup_signal_handler()
 
         self._scan_count = 0
@@ -253,482 +303,670 @@ class ContinuousScanner:
             create_backup()
             logger.info("Pre-session backup created")
         except Exception as backup_err:
-            logger.debug(f"Pre-session backup skipped: {backup_err}")
+            logger.debug("Pre-session backup skipped: %s", backup_err)
 
         if console:
             console.print("\n[bold cyan]🔄 CONTINUOUS SCAN MODE[/bold cyan]")
             console.print(f"[dim]Scanning every {interval_minutes} minutes. Press Ctrl+C to stop.[/dim]")
             console.print("=" * 70)
 
-        while self._running:
-            self._scan_count += 1
+        try:
+            while self._running:
+                self._scan_count += 1
 
-            # Check max scans limit
-            if self.config.max_scans and self._scan_count > self.config.max_scans:
-                if console:
-                    console.print(f"\n[yellow]Max scans ({self.config.max_scans}) reached[/yellow]")
-                break
+                # Check max scans limit
+                if self.config.max_scans and self._scan_count > self.config.max_scans:
+                    if console:
+                        console.print(f"\n[yellow]Max scans ({self.config.max_scans}) reached[/yellow]")
+                    break
 
-            try:
-                if console:
-                    now = datetime.now().strftime("%H:%M:%S")
-                    console.print(f"\n[bold]── Scan #{self._scan_count} at {now} ──[/bold]")
-
-                # Filter out blocked pairs before scanning
-                scan_pairs = pairs
-                if scan_pairs and self.scanner.config.blocked_pairs:
-                    filtered = [p for p in scan_pairs if p not in self.scanner.config.blocked_pairs]
-                    if len(filtered) < len(scan_pairs):
-                        skipped = [p for p in scan_pairs if p in self.scanner.config.blocked_pairs]
-                        if console:
-                            console.print(f"[dim]Skipping blocked pairs: {', '.join(skipped)}[/dim]")
-                        scan_pairs = filtered
-
-                # Apply dynamic pair rotation every rotation_interval cycles
-                self._apply_pair_rotation(scan_pairs)
-
-                # Phase 23 (US-143): Apply immediate gate adjustments from observations
-                if getattr(self.scanner, "_observation_consumer", None) is not None:
-                    try:
-                        _imm = self.scanner._observation_consumer.get_immediate_adjustments(
-                            current_cycle=self._scan_count
-                        )
-                        if _imm:
-                            for _key, _val in _imm.items():
-                                if _key == "min_confidence_offset":
-                                    # Temporary offset, not absolute override
-                                    _curr = getattr(self.scanner.config, "min_confidence", 55)
-                                    setattr(self.scanner.config, "min_confidence", max(40, _curr + _val))
-                                elif _key == "regime_consensus_map_normal":
-                                    _rcm = getattr(self.scanner.config, "regime_consensus_map", {})
-                                    if isinstance(_rcm, dict):
-                                        _rcm["NORMAL"] = _val
-                                elif hasattr(self.scanner.config, _key):
-                                    setattr(self.scanner.config, _key, _val)
-                            if console:
-                                console.print(
-                                    f"  [cyan]US-143 immediate adjustments: "
-                                    f"{', '.join(f'{k}={v}' for k, v in _imm.items())}[/cyan]"
-                                )
-                    except Exception as _imm_err:
-                        logger.debug(f"Immediate adjustments skipped: {_imm_err}")
-
-                # Run scan
-                result = self.scanner.scan(
-                    pairs=scan_pairs,
-                    max_workers=4,
-                )
-
-                # Display results
-                from src.scanner.display import ScannerDisplay
-                display = ScannerDisplay()
-                account_info = self.scanner.get_account_info()
-                display.show_result(result, account_info=account_info)
-
-                # Phase 23 (US-144): Execution summary dashboard
-                if console and result and result.analyses:
-                    try:
-                        _analyses = result.analyses
-                        _total = len(_analyses)
-                        _directional = [a for a in _analyses if a.direction in {"LONG", "SHORT"}]
-                        _gates_ok = [a for a in _directional if a.gates_passed]
-                        _agent_ok = [a for a in _directional if getattr(a, "agent_passed", False)]
-                        _tradeable = [a for a in _analyses if a.is_tradeable]
-                        # Near-misses: confidence within 5% of threshold
-                        _min_conf = float(getattr(self.scanner.config, "min_confidence", 55)) / 100.0
-                        _near_miss = [
-                            a for a in _directional
-                            if not a.is_tradeable and abs(a.confidence - _min_conf) <= 0.05
-                        ]
-                        # Gate failure breakdown
-                        _block_conf = sum(1 for a in _directional if not a.confidence_passed)
-                        _block_mom = sum(1 for a in _directional if not a.momentum_passed)
-                        _block_risk = sum(1 for a in _directional if not a.risk_passed)
-                        # Regime distribution
-                        from collections import Counter as _Ctr
-                        _regimes = _Ctr(
-                            str(getattr(a, "volatility_regime", "?")).upper()
-                            for a in _directional
-                        )
-                        _regime_str = ", ".join(f"{r}:{c}" for r, c in _regimes.most_common(4))
-                        # Top blocking gate
-                        _blocks = {"confidence": _block_conf, "momentum": _block_mom, "risk": _block_risk}
-                        _top_block = max(_blocks, key=_blocks.get) if any(_blocks.values()) else "none"
-
-                        console.print(
-                            f"\n  [bold]Execution Summary[/bold]: "
-                            f"{_total} scanned → {len(_directional)} directional → "
-                            f"{len(_gates_ok)} gates✓ → {len(_agent_ok)} agents✓ → "
-                            f"[{'green' if _tradeable else 'yellow'}]{len(_tradeable)} tradeable[/{'green' if _tradeable else 'yellow'}]"
-                        )
-                        console.print(
-                            f"  [dim]Blocks: conf={_block_conf} mom={_block_mom} risk={_block_risk} "
-                            f"| Top blocker: {_top_block} | Near-misses: {len(_near_miss)} "
-                            f"| Regimes: {_regime_str}[/dim]"
-                        )
-                    except Exception as _dash_err:
-                        logger.debug("US-189: Dashboard formatting skipped: %s", _dash_err)
-
-                # Callback if provided
-                if on_scan_complete:
-                    on_scan_complete(result)
-
-                # Filter out observe-only pairs from tradeable list
-                # Cold-start bypass: skip observe filter when insufficient trade history
-                # (need 5 trades per pair for active status — impossible on fresh system)
-                if self._portfolio_optimizer:
-                    try:
-                        observe_pairs = self._portfolio_optimizer.get_observe_only_pairs(
-                            all_pairs=scan_pairs
-                        )
-                        tradeable = [a for a in result.analyses if a.is_tradeable]
-
-                        # Check cold-start: if insufficient closed trade history, bypass filter
-                        # get_active_pairs() pads with observe candidates so can't rely on its count
-                        _rankings = self._portfolio_optimizer.rank_pairs()
-                        _truly_active = [r for r in _rankings if getattr(r, "status", "") == "active"]
-                        if len(_truly_active) < 2:
-                            logger.info(
-                                f"Cold-start mode: {len(_truly_active)} truly active pairs "
-                                f"(need 5 closed trades/pair to graduate). Bypassing observe filter."
+                try:
+                    # CLI display: watch header with NAV / open trades context
+                    if _HAS_CLI_DISPLAY:
+                        try:
+                            _wh_account = self.scanner.get_account_info() or {}
+                            _wh_error = str(_wh_account.get("error", "") or "")
+                            _wh_nav = None if _wh_error else float(_wh_account.get("NAV", _wh_account.get("nav", 0)) or 0)
+                            _wh_open = None if _wh_error else int(_wh_account.get("openTradeCount", _wh_account.get("open_trades", 0)) or 0)
+                            _wh_unreal = None if _wh_error else float(_wh_account.get("unrealizedPL", _wh_account.get("unrealized_pl", 0)) or 0)
+                            _cli_render_watch_header(
+                                nav=_wh_nav,
+                                open_count=_wh_open,
+                                unrealized_pnl=_wh_unreal,
+                                cycle_num=self._scan_count,
+                                uptime_s=time.time() - getattr(self, "_start_time", time.time()),
+                                next_scan_s=interval_minutes * 60,
+                                account_error=_wh_error,
                             )
-                            # Skip filtering — let gates be the gatekeeper
-                        else:
-                            # Remove trades on observe-only pairs
-                            original_count = len(tradeable)
-                            tradeable = [a for a in tradeable if a.pair not in observe_pairs]
-                            if len(tradeable) < original_count:
-                                filtered_out = original_count - len(tradeable)
+                        except Exception as _wh_err:
+                            logger.debug("cli_display watch header error: %s", _wh_err)
+                    elif console:
+                        now = datetime.now().strftime("%H:%M:%S")
+                        console.print(f"\n[bold]── Scan #{self._scan_count} at {now} ──[/bold]")
+
+                    # Filter out blocked pairs before scanning
+                    scan_pairs = pairs
+                    if scan_pairs and self.scanner.config.blocked_pairs:
+                        filtered = [p for p in scan_pairs if p not in self.scanner.config.blocked_pairs]
+                        if len(filtered) < len(scan_pairs):
+                            skipped = [p for p in scan_pairs if p in self.scanner.config.blocked_pairs]
+                            if console:
+                                console.print(f"[dim]Skipping blocked pairs: {', '.join(skipped)}[/dim]")
+                            scan_pairs = filtered
+
+                    # Apply dynamic pair rotation every rotation_interval cycles
+                    self._apply_pair_rotation(scan_pairs)
+
+                    # Phase 23 (US-143): Apply immediate gate adjustments from observations
+                    if getattr(self.scanner, "_observation_consumer", None) is not None:
+                        try:
+                            _imm = self.scanner._observation_consumer.get_immediate_adjustments(
+                                current_cycle=self._scan_count
+                            )
+                            if _imm:
+                                for _key, _val in _imm.items():
+                                    if _key == "min_confidence_offset":
+                                        # Temporary offset, not absolute override
+                                        _curr = getattr(self.scanner.config, "min_confidence", 55)
+                                        setattr(self.scanner.config, "min_confidence", max(40, _curr + _val))
+                                    elif _key == "regime_consensus_map_normal":
+                                        _rcm = getattr(self.scanner.config, "regime_consensus_map", {})
+                                        if isinstance(_rcm, dict):
+                                            _rcm["NORMAL"] = _val
+                                    elif hasattr(self.scanner.config, _key):
+                                        setattr(self.scanner.config, _key, _val)
                                 if console:
                                     console.print(
-                                        f"[dim]Filtered {filtered_out} observe-only pair(s) from execution[/dim]"
+                                        f"  [cyan]US-143 immediate adjustments: "
+                                        f"{', '.join(f'{k}={v}' for k, v in _imm.items())}[/cyan]"
                                     )
-                    except Exception as po_err:
-                        logger.debug(f"Pair rotation filter error: {po_err}")
-                        tradeable = [a for a in result.analyses if a.is_tradeable]
-                else:
-                    tradeable = [a for a in result.analyses if a.is_tradeable]
+                        except Exception as _imm_err:
+                            logger.debug("Immediate adjustments skipped: %s", _imm_err)
 
-                # Auto-execute if enabled (use is_tradeable not gates_passed)
-                if auto_execute:
-                    tradeable = self._filter_correlated_exposure(tradeable)
-                    if tradeable:
-                        if console:
-                            console.print(f"\n[green]Auto-executing {len(tradeable)} trade(s)...[/green]")
-                        # Ensure execution is enabled — continuous.py was missing this
-                        # (buddy_scanning.py sets it correctly, but continuous.py didn't)
-                        self.scanner.config.enable_execution = True
-                        self.scanner.execute_trades(
-                            analyses=tradeable,
-                        )
+                    # Run scan (worker count capped by Scanner.scan() memory guard)
+                    self._cycle_start = time.time()
+                    result = self.scanner.scan(
+                        pairs=scan_pairs,
+                        max_workers=4,
+                    )
 
-                # Log scan cycle for analytics
-                self._log_scan_cycle(result, auto_execute)
-
-                # Log observations from scan results (US-008)
-                try:
-                    from src.scanner.automation.observation_log import ObservationLog
-                    obs_log = ObservationLog()
-                    obs_count = 0
-                    for analysis in result.analyses:
-                        obs_count += obs_log.log_from_analysis(analysis)
-                    if obs_count > 0 and console:
-                        console.print(f"  [dim]Observations: {obs_count} patterns logged[/dim]")
-                except Exception as obs_err:
-                    logger.debug(f"Observation logging error: {obs_err}")
-
-                # Phase 20 (US-123): Consume observations every 10 cycles
-                if (
-                    self._scan_count % 10 == 0
-                    and getattr(self.scanner, "_observation_consumer", None) is not None
-                ):
+                    # M1 memory safety: per-cycle RSS check + GC
+                    import gc as _gc_cycle
+                    import os as _os_cycle
                     try:
-                        consumer = self.scanner._observation_consumer
-                        new_obs = consumer.consume_observations()
-                        if new_obs > 0:
-                            patterns = consumer.detect_patterns()
-                            adjustments = consumer.recommend_adjustments()
-                            alerts = consumer.check_alerts(window_hours=6)
+                        import psutil as _psutil_cycle
+                        _proc = _psutil_cycle.Process(_os_cycle.getpid())
+                        _rss_mb = _proc.memory_info().rss / (1024 * 1024)
+                        if _rss_mb > 2500:
+                            logger.error(
+                                "CRITICAL memory usage: %.0fMB RSS. "
+                                "Forcing full GC and reducing scan scope.",
+                                _rss_mb,
+                            )
+                            _gc_cycle.collect()
+                        elif _rss_mb > 1500:
+                            logger.warning(
+                                "High memory usage: %.0fMB RSS. Running GC.",
+                                _rss_mb,
+                            )
+                            _gc_cycle.collect()
+                        else:
+                            # Gen-0 collect after every scan to prevent object aging
+                            _gc_cycle.collect(0)
+                    except ImportError:
+                        # No psutil — still do a gen-0 collect
+                        _gc_cycle.collect(0)
 
+                    # Display results
+                    account_info = self.scanner.get_account_info()
+                    if _HAS_CLI_DISPLAY:
+                        try:
+                            _scan_elapsed = time.time() - getattr(self, "_cycle_start", time.time())
+                            _cli_render_scan(
+                                result,
+                                config=self.scanner.config,
+                                cycle_num=self._scan_count,
+                                elapsed_s=_scan_elapsed,
+                            )
+                        except Exception as _csd_err:
+                            logger.debug("cli_display render_scan_result error: %s", _csd_err)
+                            # Fallback to legacy display
+                            from src.scanner.display import ScannerDisplay
+                            ScannerDisplay().show_result(result, account_info=account_info)
+                    else:
+                        from src.scanner.display import ScannerDisplay
+                        ScannerDisplay().show_result(result, account_info=account_info)
+
+                    # Phase 23 (US-144): Execution summary dashboard
+                    if console and result and result.analyses:
+                        try:
+                            _analyses = result.analyses
+                            _total = len(_analyses)
+                            _directional = [a for a in _analyses if a.direction in {"LONG", "SHORT"}]
+                            _gates_ok = [a for a in _directional if a.gates_passed]
+                            _agent_ok = [a for a in _directional if getattr(a, "agent_passed", False)]
+                            _tradeable = [a for a in _analyses if a.is_tradeable]
+                            # Near-misses: confidence within 5% of threshold
+                            _min_conf = float(getattr(self.scanner.config, "min_confidence", 55)) / 100.0
+                            _near_miss = [
+                                a for a in _directional
+                                if not a.is_tradeable and abs(a.confidence - _min_conf) <= 0.05
+                            ]
+                            # Gate failure breakdown
+                            _block_conf = sum(1 for a in _directional if not a.confidence_passed)
+                            _block_mom = sum(1 for a in _directional if not a.momentum_passed)
+                            _block_risk = sum(1 for a in _directional if not a.risk_passed)
+                            # Regime distribution
+                            from collections import Counter as _Ctr
+                            _regimes = _Ctr(
+                                str(getattr(a, "volatility_regime", "?")).upper()
+                                for a in _directional
+                            )
+                            _regime_str = ", ".join(f"{r}:{c}" for r, c in _regimes.most_common(4))
+                            # Top blocking gate
+                            _blocks = {"confidence": _block_conf, "momentum": _block_mom, "risk": _block_risk}
+                            _top_block = max(_blocks, key=_blocks.get) if any(_blocks.values()) else "none"
+
+                            console.print(
+                                f"\n  [bold]Execution Summary[/bold]: "
+                                f"{_total} scanned → {len(_directional)} directional → "
+                                f"{len(_gates_ok)} gates✓ → {len(_agent_ok)} agents✓ → "
+                                f"[{'green' if _tradeable else 'yellow'}]{len(_tradeable)} tradeable[/{'green' if _tradeable else 'yellow'}]"
+                            )
+                            console.print(
+                                f"  [dim]Blocks: conf={_block_conf} mom={_block_mom} risk={_block_risk} "
+                                f"| Top blocker: {_top_block} | Near-misses: {len(_near_miss)} "
+                                f"| Regimes: {_regime_str}[/dim]"
+                            )
+                        except Exception as _dash_err:
+                            logger.debug("US-189: Dashboard formatting skipped: %s", _dash_err)
+
+                    # Callback if provided
+                    if on_scan_complete:
+                        on_scan_complete(result)
+
+                    # Filter out observe-only pairs from tradeable list
+                    # Cold-start bypass: skip observe filter when insufficient trade history
+                    # (need 5 trades per pair for active status — impossible on fresh system)
+                    if self._portfolio_optimizer:
+                        try:
+                            observe_pairs = self._portfolio_optimizer.get_observe_only_pairs(
+                                all_pairs=scan_pairs
+                            )
+                            tradeable = [a for a in result.analyses if a.is_tradeable]
+
+                            # Check cold-start: if insufficient closed trade history, bypass filter
+                            # get_active_pairs() pads with observe candidates so can't rely on its count
+                            _rankings = self._portfolio_optimizer.rank_pairs()
+                            _truly_active = [r for r in _rankings if getattr(r, "status", "") == "active"]
+                            if len(_truly_active) < 2:
+                                logger.info(
+                                    f"Cold-start mode: {len(_truly_active)} truly active pairs "
+                                    f"(need 5 closed trades/pair to graduate). Bypassing observe filter."
+                                )
+                                # Skip filtering — let gates be the gatekeeper
+                            else:
+                                # Remove trades on observe-only pairs
+                                original_count = len(tradeable)
+                                tradeable = [a for a in tradeable if a.pair not in observe_pairs]
+                                if len(tradeable) < original_count:
+                                    filtered_out = original_count - len(tradeable)
+                                    if console:
+                                        console.print(
+                                            f"[dim]Filtered {filtered_out} observe-only pair(s) from execution[/dim]"
+                                        )
+                        except Exception as po_err:
+                            logger.debug("Pair rotation filter error: %s", po_err)
+                            tradeable = [a for a in result.analyses if a.is_tradeable]
+                    else:
+                        tradeable = [a for a in result.analyses if a.is_tradeable]
+
+                    # Auto-execute if enabled (use is_tradeable not gates_passed)
+                    if auto_execute:
+                        tradeable = self._filter_correlated_exposure(tradeable)
+                        if tradeable:
+                            # Tier 7: Policy gate — check before execution
+                            _policy_allow = True
+                            if self._policy_engine is not None:
+                                try:
+                                    from src.scanner.automation.policy_types import ActionRequest, ActionType
+                                    _req = ActionRequest(
+                                        action_type=ActionType.EXECUTE_TRADE,
+                                        source="continuous_scanner",
+                                        context={
+                                            "trade_count": len(tradeable),
+                                            "pairs": [a.pair for a in tradeable],
+                                        },
+                                    )
+                                    _pd = self._policy_engine.evaluate(_req)
+                                    if _pd.decision.value == "deny":
+                                        _policy_allow = False
+                                        logger.warning(
+                                            "Tier 7: Trade execution DENIED by policy: %s",
+                                            _pd.reasons,
+                                        )
+                                except Exception as _pe_err:
+                                    logger.debug("Tier 7: Policy check error: %s", _pe_err)
+
+                            if _policy_allow:
+                                if console:
+                                    console.print(f"\n[green]Auto-executing {len(tradeable)} trade(s)...[/green]")
+                                # Ensure execution is enabled — continuous.py was missing this
+                                # (buddy_scanning.py sets it correctly, but continuous.py didn't)
+                                self.scanner.config.enable_execution = True
+                                self.scanner.execute_trades(
+                                    analyses=tradeable,
+                                )
+
+                    # Log scan cycle for analytics
+                    self._log_scan_cycle(result, auto_execute)
+
+                    # Log observations from scan results (US-008)
+                    try:
+                        from src.scanner.automation.observation_log import ObservationLog
+                        obs_log = ObservationLog()
+                        obs_count = 0
+                        for analysis in result.analyses:
+                            obs_count += obs_log.log_from_analysis(analysis)
+                        if obs_count > 0 and console:
+                            console.print(f"  [dim]Observations: {obs_count} patterns logged[/dim]")
+                    except Exception as obs_err:
+                        logger.debug("Observation logging error: %s", obs_err)
+
+                    # Phase 20 (US-123): Consume observations every 10 cycles
+                    if (
+                        self._scan_count % 10 == 0
+                        and getattr(self.scanner, "_observation_consumer", None) is not None
+                    ):
+                        try:
+                            consumer = self.scanner._observation_consumer
+                            new_obs = consumer.consume_observations()
+                            if new_obs > 0:
+                                patterns = consumer.detect_patterns()
+                                adjustments = consumer.recommend_adjustments()
+                                alerts = consumer.check_alerts(window_hours=6)
+
+                                if console:
+                                    console.print(
+                                        f"  [dim]Observations consumed: {new_obs} new, "
+                                        f"{len(patterns)} patterns, {len(adjustments)} recommendations[/dim]"
+                                    )
+
+                                # Feed recommendations to config_tuner if available
+                                if adjustments:
+                                    try:
+                                        from src.scanner.automation.config_tuner import ConfigTuner
+                                        tuner = ConfigTuner()
+                                        for adj in adjustments[:3]:  # Top 3 recommendations
+                                            tuner.propose_adjustment(
+                                                param=adj.get("action", ""),
+                                                delta=adj.get("delta", 0),
+                                                reason=adj.get("reason", "observation_pattern"),
+                                            )
+                                    except Exception as tune_err:
+                                        logger.debug("Config tuner feed error: %s", tune_err)
+
+                                # Log spike alerts
+                                for alert in alerts:
+                                    logger.warning(
+                                        "Observation spike: %s (%d in %dh, severity=%s)",
+                                        alert.get("type"), alert.get("count"),
+                                        alert.get("window_hours"), alert.get("severity"),
+                                    )
+
+                                consumer.save_state()
+                        except Exception as oc_err:
+                            logger.debug("Observation consumer error: %s", oc_err)
+
+                    # Model A/B testing: shadow test candidate vs production (every scan)
+                    try:
+                        self._run_shadow_tests(result)
+                        # Check for promotion every 50th scan
+                        if self._scan_count % 50 == 0:
+                            self._check_model_promotion()
+                    except Exception as shadow_err:
+                        logger.debug("Shadow test error: %s", shadow_err)
+
+                    # Phase 20 (US-125): Periodic drift detection every 20 cycles
+                    if (
+                        self._scan_count % 20 == 0
+                        and getattr(self.scanner, "_drift_monitor", None) is not None
+                        and result.analyses
+                    ):
+                        try:
+                            drift_monitor = self.scanner._drift_monitor
+                            # Run drift check on each pair using cached candle data
+                            drift_alerts = []
+                            for analysis in result.analyses[:5]:  # Top 5 pairs
+                                candle_cache = getattr(self.scanner, "_cached_candles", {})
+                                candles = candle_cache.get(analysis.pair, [])
+                                if len(candles) >= 100:
+                                    drift_report = drift_monitor.run_drift_check(
+                                        pair=analysis.pair,
+                                        historical_candles=candles,
+                                    )
+                                    if drift_report.get("severity") in ("mild", "critical"):
+                                        drift_alerts.append(
+                                            f"{analysis.pair}={drift_report['severity']}"
+                                            f"(score={drift_report['drift_score']:.3f})"
+                                        )
+                            if drift_alerts and console:
+                                console.print(
+                                    f"  [yellow]Drift detected: {', '.join(drift_alerts)}[/yellow]"
+                                )
+                            drift_monitor.save_state()
+                        except Exception as dm_err:
+                            logger.debug("Drift monitor error: %s", dm_err)
+
+                    # Online RL micro-updates (US-060): every 5 cycles
+                    if self._online_rl:
+                        try:
+                            rl_adjustments = self._online_rl.maybe_update(self._scan_count)
+                            if rl_adjustments:
+                                logger.info(
+                                    "Online RL: %d micro-adjustments applied (cycle %d)",
+                                    len(rl_adjustments), self._scan_count,
+                                )
+                        except Exception as rl_err:
+                            logger.debug("Online RL update error: %s", rl_err)
+
+                    # Smart trading loop: monitor, drawdown guardian, RL sync, learning
+                    self._run_smart_loop()
+
+                    # Phase 100: Proactive cache clearing every cycle to prevent OOM on M1
+                    if hasattr(self.scanner, "clear_scan_caches"):
+                        try:
+                            freed = self.scanner.clear_scan_caches()
+                            if freed > 0:
+                                logger.debug("Scan caches cleared: %d entries freed", freed)
+                        except Exception as _cache_err:
+                            logger.debug("Cache clear failed: %s", _cache_err)
+
+                    # Phase 20 (US-126): Memory management — cleanup every cycle, report every 10
+                    if getattr(self.scanner, "_memory_manager", None) is not None:
+                        try:
+                            mm = self.scanner._memory_manager
+                            cleanup = mm.run_cleanup()
+
+                            evictions = cleanup.get("evictions", {})
+                            rotations = cleanup.get("rotations", {})
+                            if (evictions or rotations) and console:
+                                parts = []
+                                if evictions:
+                                    total_evicted = sum(evictions.values())
+                                    parts.append(f"{total_evicted} cache entries evicted")
+                                if rotations:
+                                    parts.append(f"{len(rotations)} logs rotated")
+                                console.print(f"  [dim]Memory: {', '.join(parts)}[/dim]")
+
+                            # RSS monitoring every 10 cycles
+                            if self._scan_count % 10 == 0:
+                                mem_report = cleanup.get("memory", {})
+                                rss_mb = mem_report.get("rss_mb", 0)
+                                is_critical = mem_report.get("rss_critical", False)
+                                is_warning = mem_report.get("rss_warning", False)
+                                if is_critical and console:
+                                    console.print(
+                                        f"  [bold red]Memory CRITICAL: RSS={rss_mb:.0f}MB — throttling[/bold red]"
+                                    )
+                                    # Emergency cache clear on critical
+                                    for cache in mm._caches.values():
+                                        cache._cache.clear()
+                                        cache._access_order.clear()
+                                    logger.warning("Memory CRITICAL: emergency cache clear triggered")
+                                elif is_warning and console:
+                                    console.print(
+                                        f"  [yellow]Memory WARNING: RSS={rss_mb:.0f}MB[/yellow]"
+                                    )
+
+                                # Pressure-driven log rotation: if RSS is warning+,
+                                # force aggressive log rotation by temporarily halving
+                                # max_lines thresholds, then running cleanup again.
+                                if is_warning or is_critical:
+                                    logger.warning(
+                                        "Memory pressure high (RSS=%.0fMB, %s) — "
+                                        "forcing aggressive log rotation",
+                                        rss_mb,
+                                        "CRITICAL" if is_critical else "WARNING",
+                                    )
+                                    saved_thresholds = {}
+                                    try:
+                                        for path, cfg in mm._log_files.items():
+                                            saved_thresholds[path] = cfg["max_lines"]
+                                            cfg["max_lines"] = cfg["max_lines"] // 2
+                                        pressure_cleanup = mm.run_cleanup()
+                                        pressure_rotations = pressure_cleanup.get("rotations", {})
+                                        if pressure_rotations and console:
+                                            console.print(
+                                                f"  [yellow]Pressure rotation: "
+                                                f"{len(pressure_rotations)} logs force-rotated[/yellow]"
+                                            )
+                                    finally:
+                                        for path, orig in saved_thresholds.items():
+                                            if path in mm._log_files:
+                                                mm._log_files[path]["max_lines"] = orig
+
+                            if self._scan_count % 10 == 0:
+                                mm.save_state()
+                        except Exception as mm_err:
+                            logger.debug("Memory cleanup error: %s", mm_err)
+
+                    # Phase 20 (US-124): Module activation dispatch
+                    if self._module_dispatcher is not None:
+                        try:
+                            dispatch_results = self._module_dispatcher.execute_cycle(self._scan_count)
+                            failed = [n for n, ok in dispatch_results.items() if not ok]
+                            if failed and console:
+                                console.print(f"  [dim red]Module dispatch failures: {', '.join(failed)}[/dim red]")
+                            if self._scan_count % 10 == 0:
+                                self._module_dispatcher.save_state()
+                        except Exception as md_err:
+                            logger.debug("Module dispatch error: %s", md_err)
+
+                    # CLI display: periodic health summary every 10 cycles
+                    if _HAS_CLI_DISPLAY and self._scan_count % 10 == 0 and self._scan_count > 0:
+                        try:
+                            import os as _os_health
+                            _h_rss = 0.0
+                            try:
+                                import psutil as _ps_h
+                                _h_rss = _ps_h.Process(_os_health.getpid()).memory_info().rss / (1024 * 1024)
+                            except ImportError:
+                                pass
+                            _h_journal = self._load_journal_cached()
+                            _h_total = len(_h_journal)
+                            _h_wins = sum(1 for t in _h_journal if (t.get("pnl_pips", 0) or t.get("pnl", 0)) > 0)
+                            _h_wr = _h_wins / _h_total if _h_total > 0 else 0.0
+                            _h_pnls = [t.get("pnl", 0) or 0 for t in _h_journal]
+                            _h_expectancy = sum(_h_pnls) / _h_total if _h_total > 0 else 0.0
+                            _h_cycle_avg = (time.time() - self._start_time) / max(self._scan_count, 1)
+                            _cli_render_health(
+                                cycle_num=self._scan_count,
+                                rss_mb=_h_rss,
+                                win_rate=_h_wr,
+                                trades_count=_h_total,
+                                expectancy=_h_expectancy,
+                                cycle_avg_s=_h_cycle_avg,
+                            )
+                        except Exception as _rh_err:
+                            logger.debug("cli_display render_health_summary error: %s", _rh_err)
+
+                    # Phase 50: Crisis scenario generation every 50 cycles
+                    if (
+                        self._scan_count % 50 == 0
+                        and self._scan_count > 0
+                        and getattr(self.scanner, "_crisis_generator", None) is not None
+                    ):
+                        try:
+                            crisis_gen = self.scanner._crisis_generator
+                            candle_cache = getattr(self.scanner, "_cached_candles", {})
+                            # Pick the first pair with sufficient candle history
+                            _crisis_candles = None
+                            for _pair, _candles in candle_cache.items():
+                                if hasattr(_candles, "__len__") and len(_candles) >= 50:
+                                    import numpy as np
+                                    _crisis_candles = np.array(_candles, dtype=np.float64)
+                                    break
+                            if _crisis_candles is not None:
+                                scenarios = crisis_gen.generate_scenario_batch(
+                                    base_candles=_crisis_candles,
+                                    n_scenarios=5,
+                                )
+                                if scenarios and console:
+                                    console.print(
+                                        f"  [dim]Crisis generator: {len(scenarios)} synthetic "
+                                        f"scenarios generated (cycle {self._scan_count})[/dim]"
+                                    )
+                                logger.info(
+                                    "CrisisGenerator: %d scenarios generated (cycle %d)",
+                                    len(scenarios) if scenarios else 0,
+                                    self._scan_count,
+                                )
+                            else:
+                                logger.debug(
+                                    "CrisisGenerator: skipped — no pair with >= 50 cached candles"
+                                )
+                        except Exception as cg_err:
+                            logger.debug("Crisis generator error: %s", cg_err)
+
+                    # US-005: Strategy invention — run GA evolution every 100 cycles
+                    if (
+                        self._scan_count % 100 == 0
+                        and self._scan_count > 0
+                        and getattr(self.scanner.config, "enable_strategy_invention", False)
+                    ):
+                        try:
+                            from src.strategy_invention.evolution_controller import EvolutionController
+
+                            _evo = EvolutionController()
+                            _evo.load()
+                            # Simple fitness: count valid strategy blocks (no backtest needed at this stage)
+                            _top = _evo.run_evolution_cycle(
+                                fitness_fn=lambda s: getattr(s, "fitness", 0.0),
+                                generations=getattr(self.scanner.config, "strategy_evolution_generations", 5),
+                                population_size=getattr(self.scanner.config, "strategy_population_size", 30),
+                            )
+                            _evo.save()
+                            _evo.retire_underperforming()
+                            _summary = _evo.get_status_summary()
                             if console:
                                 console.print(
-                                    f"  [dim]Observations consumed: {new_obs} new, "
-                                    f"{len(patterns)} patterns, {len(adjustments)} recommendations[/dim]"
+                                    f"  [cyan]Strategy evolution: {_summary.get('total_strategies', 0)} "
+                                    f"strategies (cycle {self._scan_count})[/cyan]"
                                 )
+                            logger.info("EvolutionController: cycle complete | %s", _summary)
+                        except Exception as evo_err:
+                            logger.debug("Strategy evolution error: %s", evo_err)
 
-                            # Feed recommendations to config_tuner if available
-                            if adjustments:
-                                try:
-                                    from src.scanner.automation.config_tuner import ConfigTuner
-                                    tuner = ConfigTuner()
-                                    for adj in adjustments[:3]:  # Top 3 recommendations
-                                        tuner.propose_adjustment(
-                                            param=adj.get("action", ""),
-                                            delta=adj.get("delta", 0),
-                                            reason=adj.get("reason", "observation_pattern"),
-                                        )
-                                except Exception as tune_err:
-                                    logger.debug(f"Config tuner feed error: {tune_err}")
-
-                            # Log spike alerts
-                            for alert in alerts:
-                                logger.warning(
-                                    "Observation spike: %s (%d in %dh, severity=%s)",
-                                    alert.get("type"), alert.get("count"),
-                                    alert.get("window_hours"), alert.get("severity"),
-                                )
-
-                            consumer.save_state()
-                    except Exception as oc_err:
-                        logger.debug(f"Observation consumer error: {oc_err}")
-
-                # Model A/B testing: shadow test candidate vs production (every scan)
-                try:
-                    self._run_shadow_tests(result)
-                    # Check for promotion every 50th scan
-                    if self._scan_count % 50 == 0:
-                        self._check_model_promotion()
-                except Exception as shadow_err:
-                    logger.debug(f"Shadow test error: {shadow_err}")
-
-                # Phase 20 (US-125): Periodic drift detection every 20 cycles
-                if (
-                    self._scan_count % 20 == 0
-                    and getattr(self.scanner, "_drift_monitor", None) is not None
-                    and result.analyses
-                ):
-                    try:
-                        drift_monitor = self.scanner._drift_monitor
-                        # Run drift check on each pair using cached candle data
-                        drift_alerts = []
-                        for analysis in result.analyses[:5]:  # Top 5 pairs
-                            candle_cache = getattr(self.scanner, "_cached_candles", {})
-                            candles = candle_cache.get(analysis.pair, [])
-                            if len(candles) >= 100:
-                                drift_report = drift_monitor.run_drift_check(
-                                    pair=analysis.pair,
-                                    historical_candles=candles,
-                                )
-                                if drift_report.get("severity") in ("mild", "critical"):
-                                    drift_alerts.append(
-                                        f"{analysis.pair}={drift_report['severity']}"
-                                        f"(score={drift_report['drift_score']:.3f})"
-                                    )
-                        if drift_alerts and console:
-                            console.print(
-                                f"  [yellow]Drift detected: {', '.join(drift_alerts)}[/yellow]"
-                            )
-                        drift_monitor.save_state()
-                    except Exception as dm_err:
-                        logger.debug(f"Drift monitor error: {dm_err}")
-
-                # Online RL micro-updates (US-060): every 5 cycles
-                if self._online_rl:
-                    try:
-                        rl_adjustments = self._online_rl.maybe_update(self._scan_count)
-                        if rl_adjustments:
-                            logger.info(
-                                "Online RL: %d micro-adjustments applied (cycle %d)",
-                                len(rl_adjustments), self._scan_count,
-                            )
-                    except Exception as rl_err:
-                        logger.debug(f"Online RL update error: {rl_err}")
-
-                # Smart trading loop: monitor, drawdown guardian, RL sync, learning
-                self._run_smart_loop()
-
-                # Phase 20 (US-126): Memory management — cleanup every cycle, report every 10
-                if getattr(self.scanner, "_memory_manager", None) is not None:
-                    try:
-                        mm = self.scanner._memory_manager
-                        cleanup = mm.run_cleanup()
-
-                        evictions = cleanup.get("evictions", {})
-                        rotations = cleanup.get("rotations", {})
-                        if (evictions or rotations) and console:
-                            parts = []
-                            if evictions:
-                                total_evicted = sum(evictions.values())
-                                parts.append(f"{total_evicted} cache entries evicted")
-                            if rotations:
-                                parts.append(f"{len(rotations)} logs rotated")
-                            console.print(f"  [dim]Memory: {', '.join(parts)}[/dim]")
-
-                        # RSS monitoring every 10 cycles
-                        if self._scan_count % 10 == 0:
-                            mem_report = cleanup.get("memory", {})
-                            rss_mb = mem_report.get("rss_mb", 0)
-                            is_critical = mem_report.get("rss_critical", False)
-                            is_warning = mem_report.get("rss_warning", False)
-                            if is_critical and console:
+                    # Phase 21 (US-131): Apply pending config adjustments every 10 cycles
+                    if (
+                        self._scan_count % 10 == 0
+                        and getattr(self.scanner, "_config_adjuster", None) is not None
+                    ):
+                        try:
+                            adjuster = self.scanner._config_adjuster
+                            applied = adjuster.apply_adjustments(self.scanner.config, self._scan_count)
+                            if applied and console:
                                 console.print(
-                                    f"  [bold red]Memory CRITICAL: RSS={rss_mb:.0f}MB — throttling[/bold red]"
+                                    f"  [cyan]Config adjusted: {len(applied)} changes "
+                                    f"({', '.join(a['key'] for a in applied)})[/cyan]"
                                 )
-                                # Emergency cache clear on critical
-                                for cache in mm._caches.values():
-                                    cache._cache.clear()
-                                    cache._access_order.clear()
-                                logger.warning("Memory CRITICAL: emergency cache clear triggered")
-                            elif is_warning and console:
-                                console.print(
-                                    f"  [yellow]Memory WARNING: RSS={rss_mb:.0f}MB[/yellow]"
-                                )
+                            adjuster.save_state()
+                        except Exception as ca_err:
+                            logger.debug("Config adjuster error: %s", ca_err)
 
-                            # Pressure-driven log rotation: if RSS is warning+,
-                            # force aggressive log rotation by temporarily halving
-                            # max_lines thresholds, then running cleanup again.
-                            if is_warning or is_critical:
-                                logger.warning(
-                                    "Memory pressure high (RSS=%.0fMB, %s) — "
-                                    "forcing aggressive log rotation",
-                                    rss_mb,
-                                    "CRITICAL" if is_critical else "WARNING",
-                                )
-                                saved_thresholds = {}
-                                try:
-                                    for path, cfg in mm._log_files.items():
-                                        saved_thresholds[path] = cfg["max_lines"]
-                                        cfg["max_lines"] = cfg["max_lines"] // 2
-                                    pressure_cleanup = mm.run_cleanup()
-                                    pressure_rotations = pressure_cleanup.get("rotations", {})
-                                    if pressure_rotations and console:
-                                        console.print(
-                                            f"  [yellow]Pressure rotation: "
-                                            f"{len(pressure_rotations)} logs force-rotated[/yellow]"
-                                        )
-                                finally:
-                                    for path, orig in saved_thresholds.items():
-                                        if path in mm._log_files:
-                                            mm._log_files[path]["max_lines"] = orig
+                        # Idle maintenance
+                        if self._maintenance:
+                            self._maintenance.run_if_needed()
 
-                        if self._scan_count % 10 == 0:
-                            mm.save_state()
-                    except Exception as mm_err:
-                        logger.debug(f"Memory cleanup error: {mm_err}")
-
-                # Phase 20 (US-124): Module activation dispatch
-                if self._module_dispatcher is not None:
-                    try:
-                        dispatch_results = self._module_dispatcher.execute_cycle(self._scan_count)
-                        failed = [n for n, ok in dispatch_results.items() if not ok]
-                        if failed and console:
-                            console.print(f"  [dim red]Module dispatch failures: {', '.join(failed)}[/dim red]")
-                        if self._scan_count % 10 == 0:
-                            self._module_dispatcher.save_state()
-                    except Exception as md_err:
-                        logger.debug(f"Module dispatch error: {md_err}")
-
-                # Phase 50: Crisis scenario generation every 50 cycles
-                if (
-                    self._scan_count % 50 == 0
-                    and self._scan_count > 0
-                    and getattr(self.scanner, "_crisis_generator", None) is not None
-                ):
-                    try:
-                        crisis_gen = self.scanner._crisis_generator
-                        candle_cache = getattr(self.scanner, "_cached_candles", {})
-                        # Pick the first pair with sufficient candle history
-                        _crisis_candles = None
-                        for _pair, _candles in candle_cache.items():
-                            if hasattr(_candles, "__len__") and len(_candles) >= 50:
-                                import numpy as np
-                                _crisis_candles = np.array(_candles, dtype=np.float64)
-                                break
-                        if _crisis_candles is not None:
-                            scenarios = crisis_gen.generate_scenario_batch(
-                                base_candles=_crisis_candles,
-                                n_scenarios=5,
-                            )
-                            if scenarios and console:
-                                console.print(
-                                    f"  [dim]Crisis generator: {len(scenarios)} synthetic "
-                                    f"scenarios generated (cycle {self._scan_count})[/dim]"
-                                )
-                            logger.info(
-                                "CrisisGenerator: %d scenarios generated (cycle %d)",
-                                len(scenarios) if scenarios else 0,
-                                self._scan_count,
-                            )
+                except Exception as e:
+                    error_class = type(e).__name__
+                    logger.error("Scan cycle %d failed (%s): %s", self._scan_count, error_class, e)
+                    if console:
+                        console.print(f"\n[bold red]Scan #{self._scan_count} failed[/bold red]")
+                        console.print(f"  [red]{error_class}: {e}[/red]")
+                        # Actionable hints
+                        err_str = str(e).lower()
+                        if "connection" in err_str or "timeout" in err_str:
+                            console.print("  [dim]Check: network connection, OANDA API status[/dim]")
+                        elif "model" in err_str or "shape" in err_str or "not supported between" in err_str:
+                            console.print("  [dim]Check: model compatibility — may need retraining[/dim]")
+                        elif "import" in err_str or "module" in err_str:
+                            console.print("  [dim]Check: conda environment activated with all dependencies[/dim]")
                         else:
-                            logger.debug(
-                                "CrisisGenerator: skipped — no pair with >= 50 cached candles"
-                            )
-                    except Exception as cg_err:
-                        logger.debug(f"Crisis generator error: {cg_err}")
+                            console.print("  [dim]Check logs for full traceback[/dim]")
 
-                # US-005: Strategy invention — run GA evolution every 100 cycles
-                if (
-                    self._scan_count % 100 == 0
-                    and self._scan_count > 0
-                    and getattr(self.scanner.config, "enable_strategy_invention", False)
-                ):
-                    try:
-                        from src.strategy_invention.evolution_controller import EvolutionController
+                if self._running:
+                    self._sleep_with_progress(interval_minutes)
+        except KeyboardInterrupt:
+            logger.info("Continuous scan interrupted by signal")
+        finally:
+            self._restore_signal_handlers()
+            self._perform_shutdown()
 
-                        _evo = EvolutionController()
-                        _evo.load()
-                        # Simple fitness: count valid strategy blocks (no backtest needed at this stage)
-                        _top = _evo.run_evolution_cycle(
-                            fitness_fn=lambda s: getattr(s, "fitness", 0.0),
-                            generations=getattr(self.scanner.config, "strategy_evolution_generations", 5),
-                            population_size=getattr(self.scanner.config, "strategy_population_size", 30),
-                        )
-                        _evo.save()
-                        _evo.retire_underperforming()
-                        _summary = _evo.get_status_summary()
-                        if console:
-                            console.print(
-                                f"  [cyan]Strategy evolution: {_summary.get('total_strategies', 0)} "
-                                f"strategies (cycle {self._scan_count})[/cyan]"
-                            )
-                        logger.info("EvolutionController: cycle complete | %s", _summary)
-                    except Exception as evo_err:
-                        logger.debug(f"Strategy evolution error: {evo_err}")
+        return self._scan_count
 
-                # Phase 21 (US-131): Apply pending config adjustments every 10 cycles
-                if (
-                    self._scan_count % 10 == 0
-                    and getattr(self.scanner, "_config_adjuster", None) is not None
-                ):
-                    try:
-                        adjuster = self.scanner._config_adjuster
-                        applied = adjuster.apply_adjustments(self.scanner.config, self._scan_count)
-                        if applied and console:
-                            console.print(
-                                f"  [cyan]Config adjusted: {len(applied)} changes "
-                                f"({', '.join(a['key'] for a in applied)})[/cyan]"
-                            )
-                        adjuster.save_state()
-                    except Exception as ca_err:
-                        logger.debug(f"Config adjuster error: {ca_err}")
+    def _perform_shutdown(self) -> None:
+        """Run bounded, idempotent shutdown and persistence steps."""
+        if self._shutdown_started:
+            return
 
-                # Idle maintenance
-                if self._maintenance:
-                    self._maintenance.run_if_needed()
-
-            except Exception as e:
-                error_class = type(e).__name__
-                logger.error(f"Scan cycle #{self._scan_count} failed ({error_class}): {e}")
-                if console:
-                    console.print(f"\n[bold red]Scan #{self._scan_count} failed[/bold red]")
-                    console.print(f"  [red]{error_class}: {e}[/red]")
-                    # Actionable hints
-                    err_str = str(e).lower()
-                    if "connection" in err_str or "timeout" in err_str:
-                        console.print("  [dim]Check: network connection, OANDA API status[/dim]")
-                    elif "model" in err_str or "shape" in err_str or "not supported between" in err_str:
-                        console.print("  [dim]Check: model compatibility — may need retraining[/dim]")
-                    elif "import" in err_str or "module" in err_str:
-                        console.print("  [dim]Check: conda environment activated with all dependencies[/dim]")
-                    else:
-                        console.print("  [dim]Check logs for full traceback[/dim]")
-
-            if self._running:
-                self._sleep_with_progress(interval_minutes)
+        self._shutdown_started = True
+        self._running = False
+        self._shutdown_event.set()
 
         if console:
             console.print(f"\n[green]✓ Continuous scan stopped after {self._scan_count} scans[/green]")
 
+        # Phase 100: Shutdown coordinator — guaranteed cleanup order
+        # Step 1: Stop daemon threads (PRDAgentChain, EventBus async threads)
+        try:
+            orchestrator = getattr(self, "_orchestrator", None)
+            if orchestrator is not None and hasattr(orchestrator, "close"):
+                orchestrator.close()
+                logger.info("Shutdown: orchestrator closed (PRDAgentChain stopped)")
+        except Exception as _orch_err:
+            logger.debug("Shutdown: orchestrator close failed: %s", _orch_err)
+
+        try:
+            from src.scanner.automation.event_bus import get_event_bus
+            bus = get_event_bus()
+            if hasattr(bus, "shutdown"):
+                timed_out = bus.shutdown(timeout_secs=3.0)
+                if timed_out:
+                    logger.warning("Shutdown: %d EventBus async threads timed out", timed_out)
+                else:
+                    logger.info("Shutdown: EventBus async threads drained")
+        except Exception as _bus_err:
+            logger.debug("Shutdown: EventBus shutdown failed: %s", _bus_err)
+
+        # Tier 7: PolicyEngine shutdown
+        try:
+            if getattr(self, "_policy_engine", None) is not None:
+                self._policy_engine.shutdown()
+                logger.info("Shutdown: PolicyEngine closed")
+        except Exception as _pe_err:
+            logger.debug("Shutdown: PolicyEngine shutdown failed: %s", _pe_err)
+
+        # Step 2: Terminate subprocesses (retrain, RL workers)
+        self._terminate_background_processes()
+
+        try:
+            if getattr(self, "scanner", None) and hasattr(self.scanner, "shutdown_rl_workers"):
+                self.scanner.shutdown_rl_workers()
+                logger.info("Shutdown: RL subprocess workers terminated")
+        except Exception as _rl_err:
+            logger.debug("Shutdown: RL worker cleanup failed: %s", _rl_err)
+
+        # Step 3: Clear caches to free memory before persistence
+        try:
+            if getattr(self, "scanner", None) and hasattr(self.scanner, "clear_scan_caches"):
+                freed = self.scanner.clear_scan_caches()
+                logger.info("Shutdown: cleared %d cache entries", freed)
+        except Exception as _cache_err:
+            logger.debug("Shutdown: cache clear failed: %s", _cache_err)
+
+        # Step 4: Persist module states
         # Phase 22 (US-138) + Phase 29 (US-175): Persist all module states on graceful shutdown
         _shutdown_modules = [
             ("config_adjuster", "_config_adjuster"),
@@ -776,10 +1014,17 @@ class ContinuousScanner:
             ("market_impact", "_market_impact"),
             ("regime_reward", "_regime_reward"),
             ("trade_explainer", "_trade_explainer"),
+            # Phase 98: 6 modules missing from graceful shutdown
+            ("adversarial_trainer", "_adversarial_trainer"),
+            ("agent_health", "_agent_health"),
+            ("ensemble_disagreement", "_ensemble_disagreement"),
+            ("feature_attention", "_feature_attention"),
+            ("lead_lag_detector", "_lead_lag_detector"),
+            ("portfolio_optimizer", "_portfolio_optimizer"),
         ]
         for mod_label, mod_attr in _shutdown_modules:
             try:
-                mod = getattr(self.scanner, mod_attr, None) if hasattr(self, "scanner") else None
+                mod = getattr(self.scanner, mod_attr, None) if getattr(self, "scanner", None) else None
                 if mod is None:
                     mod = getattr(self, mod_attr, None)
                 if mod is not None:
@@ -787,13 +1032,13 @@ class ContinuousScanner:
                     for _method in ("save_state", "save_log", "save", "save_projections", "save_analysis"):
                         if hasattr(mod, _method):
                             getattr(mod, _method)()
-                            logger.info(f"Shutdown: {mod_label} persisted via {_method}()")
+                            logger.info("Shutdown: %s persisted via %s()", mod_label, _method)
                             _saved = True
                             break
                     if not _saved:
-                        logger.debug(f"Shutdown: {mod_label} has no persistence method")
+                        logger.debug("Shutdown: %s has no persistence method", mod_label)
             except Exception as _mod_err:
-                logger.debug(f"Shutdown: {mod_label} save failed: {_mod_err}")
+                logger.debug("Shutdown: %s save failed: %s", mod_label, _mod_err)
 
         # Phase 74: Persist scanner mutable state (EWMA, prices, regimes, cycle count)
         try:
@@ -801,16 +1046,16 @@ class ContinuousScanner:
                 self.scanner.save_scan_state()
                 logger.info("Shutdown: scanner scan state persisted")
         except Exception as _scan_state_err:
-            logger.debug(f"Shutdown: scanner state save failed: {_scan_state_err}")
+            logger.debug("Shutdown: scanner state save failed: %s", _scan_state_err)
 
         # Gate attribution engine state - save from scanner actual EM if available
         try:
-            _exec_mgr = getattr(self.scanner, "_execution_manager", None)
+            _exec_mgr = getattr(self.scanner, "_execution_manager", None) if getattr(self, "scanner", None) else None
             if _exec_mgr is not None and getattr(_exec_mgr, "_gate_attribution", None) is not None:
                 _exec_mgr._gate_attribution.save_state()
                 logger.info("Shutdown: gate_attribution state saved (from scanner EM)")
         except Exception as _ga_err:
-            logger.debug(f"Shutdown: gate_attribution save failed: {_ga_err}")
+            logger.debug("Shutdown: gate_attribution save failed: %s", _ga_err)
 
         # StateEngine has a multi-arg save_state() — call separately from the generic loop
         try:
@@ -824,7 +1069,7 @@ class ContinuousScanner:
             )
             logger.info("Shutdown: state_engine state saved")
         except Exception as _se_err:
-            logger.debug(f"Shutdown: state_engine save failed: {_se_err}")
+            logger.debug("Shutdown: state_engine save failed: %s", _se_err)
 
         # Save session snapshot on clean exit (Phase 8: cross-session learning)
         try:
@@ -844,7 +1089,7 @@ class ContinuousScanner:
                 acc_path = Path("trained_data/models/pair_accuracy.json")
                 pair_acc = safe_json_read(acc_path, default={}) or {}
             except Exception as e:
-                logger.debug(f"Session snapshot pair accuracy load skipped: {e}")
+                logger.debug("Session snapshot pair accuracy load skipped: %s", e)
 
             snapshot_mgr.save_snapshot(
                 agent_weights=weights,
@@ -853,22 +1098,99 @@ class ContinuousScanner:
                 profile=getattr(self.config, "profile", "balanced"),
             )
         except Exception as snap_err:
-            logger.debug(f"Session snapshot save skipped: {snap_err}")
+            logger.debug("Session snapshot save skipped: %s", snap_err)
 
-        return self._scan_count
+        self._save_peak_nav()
 
-    def stop(self):
+    def _save_peak_nav(self) -> None:
+        try:
+            import json as _json_pn_m
+            from pathlib import Path as _Path_pn_m
+            _pn_path = _Path_pn_m("trained_data/.memory/model_state.json")
+            _pn_data = {}
+            if _pn_path.exists():
+                try:
+                    _pn_data = _json_pn_m.loads(_pn_path.read_text())
+                except Exception:
+                    pass
+            _pn_data["peak_nav"] = self._peak_nav
+            _pn_path.write_text(_json_pn_m.dumps(_pn_data, indent=2))
+        except Exception as _e:
+            logger.debug("peak_nav save failed: %s", _e)
+
+    def stop(self, reason: str = "user request"):
         """Stop the continuous scan loop."""
+        already_stopping = not self._running and self._shutdown_event.is_set()
         self._running = False
-        if console:
-            console.print("\n[yellow]Stopping continuous scan...[/yellow]")
+        self._shutdown_event.set()
+        if console and not already_stopping:
+            console.print(f"\n[yellow]Stopping continuous scan ({reason})...[/yellow]")
 
     def _setup_signal_handler(self):
         """Setup Ctrl+C handler for graceful shutdown."""
-        def handler(sig, frame):
-            self.stop()
+        if threading.current_thread() is not threading.main_thread():
+            logger.debug("Skipping signal handler setup outside main thread")
+            return
 
-        signal.signal(signal.SIGINT, handler)
+        def handler(sig, frame):
+            self._signal_count += 1
+            sig_name = getattr(signal.Signals(sig), "name", str(sig))
+            if self._signal_count == 1:
+                logger.warning("Signal %s received, beginning graceful shutdown", sig_name)
+                self.stop(reason=f"signal {sig_name}")
+                raise KeyboardInterrupt
+
+            logger.error("Signal %s received again, forcing immediate exit", sig_name)
+            self._terminate_background_processes(timeout_seconds=1.0)
+            raise SystemExit(130)
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            self._original_signal_handlers[sig] = signal.getsignal(sig)
+            signal.signal(sig, handler)
+
+    def _restore_signal_handlers(self) -> None:
+        """Restore original signal handlers after run exits."""
+        if threading.current_thread() is not threading.main_thread():
+            self._original_signal_handlers.clear()
+            return
+
+        for sig, previous in self._original_signal_handlers.items():
+            try:
+                signal.signal(sig, previous)
+            except Exception as exc:
+                logger.debug("Signal handler restore failed for %s: %s", sig, exc)
+        self._original_signal_handlers.clear()
+
+    def _terminate_background_processes(self, timeout_seconds: float = 5.0) -> None:
+        """Terminate any retrain subprocesses owned by the scanner stack."""
+        try:
+            if self._maintenance and hasattr(self._maintenance, "stop"):
+                self._maintenance.stop()
+        except Exception as exc:
+            logger.debug("Shutdown: maintenance stop failed: %s", exc)
+
+        _exec_mgr = getattr(self.scanner, "_execution_manager", None) if getattr(self, "scanner", None) else None
+        process_refs = [
+            ("continuous_retrain", getattr(self, "_retrain_process", None)),
+            ("execution_retrain", getattr(_exec_mgr, "_retrain_process", None) if _exec_mgr else None),
+        ]
+
+        for label, proc in process_refs:
+            if proc is None or proc.poll() is not None:
+                continue
+            try:
+                logger.info("Shutdown: terminating %s process (PID %s)", label, proc.pid)
+                proc.terminate()
+                proc.wait(timeout=timeout_seconds)
+                logger.info("Shutdown: %s process terminated", label)
+            except Exception as exc:
+                logger.warning("Shutdown: %s terminate failed: %s", label, exc)
+                try:
+                    proc.kill()
+                    proc.wait(timeout=1.0)
+                    logger.info("Shutdown: %s process killed", label)
+                except Exception as kill_exc:
+                    logger.debug("Shutdown: %s kill failed: %s", label, kill_exc)
 
     def _apply_pair_rotation(self, available_pairs: Optional[List[str]] = None) -> None:
         """Apply dynamic pair rotation based on rolling Sharpe ratio.
@@ -919,7 +1241,7 @@ class ContinuousScanner:
                         console.print("[/yellow]")
 
         except Exception as e:
-            logger.debug(f"Pair rotation error: {e}")
+            logger.debug("Pair rotation error: %s", e)
 
     def _log_scan_cycle(
         self,
@@ -934,6 +1256,29 @@ class ContinuousScanner:
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
         tradeable = [a for a in result.analyses if a.is_tradeable]
+
+        # Phase 90 US-404: gate_kill_breakdown — tally kill_reason across rejected pairs
+        _kill_keys = (
+            "confidence_gate", "momentum_gate", "disagreement_gate",
+            "drawdown_gate", "accuracy_gate", "other",
+        )
+        gate_kill_breakdown: dict[str, int] = {k: 0 for k in _kill_keys}
+        for a in result.analyses:
+            if not a.is_tradeable and a.error is None:
+                kr = getattr(a, "kill_reason", None) or "other"
+                if kr in gate_kill_breakdown:
+                    gate_kill_breakdown[kr] += 1
+                else:
+                    gate_kill_breakdown["other"] += 1
+
+        # Phase 90 US-404: trades_attempted = pairs with a directional signal (non-HOLD)
+        trades_attempted = sum(
+            1 for a in result.analyses
+            if getattr(a, "direction", "HOLD") in {"LONG", "SHORT"}
+        )
+        # trades_executed = tradeable count (auto_execute gated)
+        trades_executed = len(tradeable) if auto_execute else 0
+
         record = {
             "timestamp": datetime.now().isoformat(),
             "scan_number": self._scan_count,
@@ -943,13 +1288,23 @@ class ContinuousScanner:
             "auto_execute": auto_execute,
             "top_score": round(max((a.overall_score for a in result.analyses), default=0), 4),
             "model_type": result.model_type,
+            "trades_attempted": trades_attempted,
+            "trades_executed": trades_executed,
+            "gate_kill_breakdown": gate_kill_breakdown,
         }
+
+        # Phase 90 US-404: warn when signals existed but nothing executed
+        if trades_attempted > 0 and trades_executed == 0:
+            logger.warning(
+                "Cycle %d: %d trades attempted, 0 executed — gate_kill_breakdown=%s",
+                self._scan_count, trades_attempted, gate_kill_breakdown,
+            )
 
         try:
             from src.scanner.automation.safe_json import safe_jsonl_append
             safe_jsonl_append(log_path, record)
         except Exception as e:
-            logger.debug(f"Scan cycle log error: {e}")
+            logger.debug("Scan cycle log error: %s", e)
 
         # Phase 56 (US-350): Feed scan result to diagnostics reporter
         if self._scan_diagnostics is not None:
@@ -968,7 +1323,7 @@ class ContinuousScanner:
                     try:
                         self._adaptive_floor.tick()
                     except Exception as _af_tick_err:
-                        logger.debug(f"Phase 58: adaptive_floor.tick() failed: {_af_tick_err}")
+                        logger.debug("Phase 58: adaptive_floor.tick() failed: %s", _af_tick_err)
                 if self._scan_diagnostics.should_report():
                     _diag_report = self._scan_diagnostics.generate_report()
                     self._scan_diagnostics.save_report(_diag_report)
@@ -986,7 +1341,7 @@ class ContinuousScanner:
                                 )
                                 self._penalty_auditor.save_audit(_audit)
                             except Exception as _pa_err:
-                                logger.debug(f"Phase 57: Penalty audit failed: {_pa_err}")
+                                logger.debug("Phase 57: Penalty audit failed: %s", _pa_err)
                         # Phase 58 (US-360): Gate pass predictor — surface signal diagnostics
                         if self._gate_pass_predictor is not None:
                             try:
@@ -1010,9 +1365,9 @@ class ContinuousScanner:
                                                 if _delta != 0.0:
                                                     self._adaptive_floor.apply_adjustment(self.scanner.config, _delta)
                                         except Exception as _af_err:
-                                            logger.debug(f"Phase 58: Adaptive floor failed: {_af_err}")
+                                            logger.debug("Phase 58: Adaptive floor failed: %s", _af_err)
                             except Exception as _gpp_err:
-                                logger.debug(f"Phase 58: Gate pass predictor failed: {_gpp_err}")
+                                logger.debug("Phase 58: Gate pass predictor failed: %s", _gpp_err)
                     else:
                         logger.info(
                             "Phase 56 (US-350): Diagnostics report — gate_pass_rate=%.1f%% avg_conf=%.3f stalled=%s",
@@ -1022,7 +1377,7 @@ class ContinuousScanner:
                         )
                 self._scan_diagnostics.save_state()
             except Exception as _sdr_err:
-                logger.debug(f"Phase 56: Scan diagnostics record error: {_sdr_err}")
+                logger.debug("Phase 56: Scan diagnostics record error: %s", _sdr_err)
 
         # Phase 59 (US-363): Record signal funnel attrition for this scan
         if self._signal_funnel is not None and result.analyses:
@@ -1039,7 +1394,7 @@ class ContinuousScanner:
                     )
                 self._signal_funnel.save_state()
             except Exception as _sft_err:
-                logger.debug(f"Phase 59: signal_funnel.record_scan failed: {_sft_err}")
+                logger.debug("Phase 59: signal_funnel.record_scan failed: %s", _sft_err)
 
         # Phase 60 (US-369): Unified health synthesis — every 10 scan cycles
         if self._scan_health is not None and self._scan_count % 10 == 0:
@@ -1067,7 +1422,7 @@ class ContinuousScanner:
                         _status, _summary,
                     )
             except Exception as _shs_err:
-                logger.debug(f"Phase 60: scan_health.synthesize() failed: {_shs_err}")
+                logger.debug("Phase 60: scan_health.synthesize() failed: %s", _shs_err)
 
     def _filter_correlated_exposure(self, tradeable: list) -> list:
         """Filter out trades that would double exposure on correlated pairs already open."""
@@ -1109,7 +1464,7 @@ class ContinuousScanner:
             return filtered
 
         except Exception as e:
-            logger.debug(f"Correlation filter error: {e}")
+            logger.debug("Correlation filter error: %s", e)
             return tradeable
 
     def _run_smart_loop(self) -> None:
@@ -1173,7 +1528,11 @@ class ContinuousScanner:
                             pair=s.get("pair", ""),
                             direction="BUY" if s.get("direction") == "LONG" else "SELL",
                             entry_price=float(s.get("entry", 0)),
-                            current_price=float(s.get("entry", 0)),  # Approximate
+                            current_price=(
+                                float(s.get("entry", 0)) + float(s.get("unrealized_pl", 0)) / max(abs(int(s.get("units", 0))), 1)
+                                if abs(int(s.get("units", 0))) > 0
+                                else float(s.get("entry", 0))
+                            ),  # US-005 derived current_price
                             sl_price=float(s.get("sl_price", 0)),
                             tp_price=float(s.get("tp_price", 0)),
                             lot_size=abs(int(s.get("units", 0))),
@@ -1252,18 +1611,56 @@ class ContinuousScanner:
 
                     _pm.save_state()
                 except Exception as pm_err:
-                    logger.debug(f"Position manager error: {pm_err}")
+                    logger.debug("Position manager error: %s", pm_err)
 
             # 3. RL feedback sync
             rl_result = em.sync_closed_trades_rl(scanner=self.scanner)
             trades_synced = rl_result.get("trades_synced", 0)
-            if trades_synced > 0 and console:
-                console.print(
-                    f"  [cyan]RL sync: {rl_result['detail']}[/cyan]"
-                )
-                if rl_result.get("new_weights"):
-                    for agent, w in rl_result["new_weights"].items():
-                        console.print(f"    {agent}: {w:.3f}")
+            if trades_synced > 0:
+                # CLI display: render trade closed panels
+                if _HAS_CLI_DISPLAY:
+                    try:
+                        _closed_trades = rl_result.get("closed_trades", [])
+                        _new_weights = rl_result.get("new_weights", {})
+                        _old_weights = rl_result.get("old_weights", {})
+                        # Compute weight deltas
+                        _w_deltas = {}
+                        if _new_weights and _old_weights:
+                            for _ag, _nw in _new_weights.items():
+                                _ow = _old_weights.get(_ag, _nw)
+                                _w_deltas[_ag] = _nw - _ow
+                        # Session stats from journal cache
+                        _j_cache = self._load_journal_cached()
+                        _s_wins = sum(1 for t in _j_cache if (t.get("pnl_pips", 0) or t.get("pnl", 0)) > 0)
+                        _s_losses = sum(1 for t in _j_cache if (t.get("pnl_pips", 0) or t.get("pnl", 0)) <= 0)
+                        _s_pnls = [t.get("pnl", 0) or 0 for t in _j_cache]
+                        _s_avg = sum(_s_pnls) / len(_s_pnls) if _s_pnls else 0
+
+                        for _ct in (_closed_trades if _closed_trades else [{}]):
+                            _cli_render_trade_closed(
+                                pair=_ct.get("pair", "?"),
+                                direction=_ct.get("direction", "?"),
+                                won=(_ct.get("pnl_pips", 0) or 0) > 0,
+                                pnl_pips=float(_ct.get("pnl_pips", 0) or 0),
+                                pnl_dollars=float(_ct.get("pnl", 0) or 0),
+                                exit_reason=_ct.get("exit_reason", ""),
+                                duration_s=float(_ct.get("duration_minutes", 0) or 0) * 60,
+                                weight_changes=_w_deltas if _w_deltas else None,
+                                session_wins=_s_wins,
+                                session_losses=_s_losses,
+                                session_avg_pnl=_s_avg,
+                            )
+                    except Exception as _rtc_err:
+                        logger.debug("cli_display render_trade_closed error: %s", _rtc_err)
+
+                # Fallback / legacy display
+                if console:
+                    console.print(
+                        f"  [cyan]RL sync: {rl_result['detail']}[/cyan]"
+                    )
+                    if rl_result.get("new_weights") and not _HAS_CLI_DISPLAY:
+                        for agent, w in rl_result["new_weights"].items():
+                            console.print(f"    {agent}: {w:.3f}")
 
             # 3b. Phase 20 (US-122): Update agent lifecycle fitness from closed trades
             if trades_synced > 0 and getattr(self.scanner, "_agent_lifecycle", None) is not None:
@@ -1316,7 +1713,7 @@ class ContinuousScanner:
                             except Exception as _obs_err:
                                 logger.debug("US-189: Agent lifecycle observation log skipped: %s", _obs_err)
                 except Exception as lc_err:
-                    logger.debug(f"Agent lifecycle update error: {lc_err}")
+                    logger.debug("Agent lifecycle update error: %s", lc_err)
 
             # 3b-ii. Phase 26 (US-158): Agent degradation early-warning (every 5 cycles)
             if (
@@ -1346,9 +1743,9 @@ class ContinuousScanner:
                                     metadata=_dw,
                                 )
                         except Exception as e:
-                            logger.debug(f"Degradation observation logging skipped: {e}")
+                            logger.debug("Degradation observation logging skipped: %s", e)
                 except Exception as _deg_err:
-                    logger.debug(f"US-158: Degradation check error: {_deg_err}")
+                    logger.debug("US-158: Degradation check error: %s", _deg_err)
 
             # 3c. Phase 25 (US-153): Feed trade outcomes to threshold_optimizer
             if (
@@ -1401,7 +1798,7 @@ class ContinuousScanner:
                                     )
                         _to.save_state()
                 except Exception as _to_err:
-                    logger.debug(f"ThresholdOptimizer feed error: {_to_err}")
+                    logger.debug("ThresholdOptimizer feed error: %s", _to_err)
 
             # 3d. Phase 27 (US-163): Observation consumer feedback loop (every 10 cycles)
             if (
@@ -1438,9 +1835,9 @@ class ContinuousScanner:
                                         metadata=_alert,
                                     )
                             except Exception as e:
-                                logger.debug(f"Observation consumer alert logging skipped: {e}")
+                                logger.debug("Observation consumer alert logging skipped: %s", e)
                 except Exception as _oc_err:
-                    logger.debug(f"US-163: ObservationConsumer error: {_oc_err}")
+                    logger.debug("US-163: ObservationConsumer error: %s", _oc_err)
 
             # 4. Agent weight decay toward baseline
             try:
@@ -1450,14 +1847,14 @@ class ContinuousScanner:
                 if decayed and console:
                     console.print(f"  [dim]Weight decay applied ({len(decayed)} agents)[/dim]")
             except Exception as decay_err:
-                logger.debug(f"Weight decay error: {decay_err}")
+                logger.debug("Weight decay error: %s", decay_err)
 
             # 5. Learning loop (US-012)
             self._run_learning_loop(em, trades_synced)
 
         except Exception as e:
             # Phase 32 (US-194): Escalated from debug to warning — this hides trading loop errors
-            logger.warning(f"Smart loop error ({type(e).__name__}): {e}", exc_info=True)
+            logger.warning("Smart loop error (%s): %s", type(e).__name__, e, exc_info=True)
 
     def _run_learning_loop(self, em: object, trades_synced: int) -> None:
         """Step 5: Learning engine analysis, promotion, config tuning, metrics.
@@ -1485,7 +1882,7 @@ class ContinuousScanner:
                     try:
                         entries = self._load_journal_cached(journal_path)
                     except (json.JSONDecodeError, OSError) as _je:
-                        logger.warning(f"Learning loop journal parse failed: {_je}")
+                        logger.warning("Learning loop journal parse failed: %s", _je)
                         entries = []
                     if not isinstance(entries, list):
                         entries = []
@@ -1507,7 +1904,7 @@ class ContinuousScanner:
                             mm = ModelManager()
                             mm.score_from_trade_outcome(entry)
                         except Exception as mm_err:
-                            logger.debug(f"ModelManager scoring error: {mm_err}")
+                            logger.debug("ModelManager scoring error: %s", mm_err)
 
                         # Adaptive risk scaling: feed outcome to scaler (US-028)
                         try:
@@ -1517,7 +1914,7 @@ class ContinuousScanner:
                             won = float(outcome_data.get("realized_pl", 0)) > 0
                             scaler.record_outcome(won)
                         except Exception as scaler_err:
-                            logger.debug(f"Risk scaler error: {scaler_err}")
+                            logger.debug("Risk scaler error: %s", scaler_err)
 
                         # US-020: Counterfactual learner — analyse closed trades
                         try:
@@ -1528,7 +1925,7 @@ class ContinuousScanner:
                                     learnings_added += 1
                                     logger.info("Counterfactual insight for trade %s", entry.get("trade_id", "?"))
                         except Exception as cf_err:
-                            logger.debug(f"Counterfactual learner error: {cf_err}")
+                            logger.debug("Counterfactual learner error: %s", cf_err)
 
                         # LLM deep analysis for significant losses (US-009)
                         if getattr(self.scanner.config, "enable_llm_trade_analysis", False):
@@ -1548,9 +1945,9 @@ class ContinuousScanner:
                 ct = ConfigTuner()
                 config_adjustments = ct.apply_to_config(self.scanner.config)
                 if config_adjustments:
-                    logger.info(f"Config tuned: {len(config_adjustments)} adjustments applied")
+                    logger.info("Config tuned: %d adjustments applied", len(config_adjustments))
             except Exception as tune_err:
-                logger.debug(f"Config tuning error: {tune_err}")
+                logger.debug("Config tuning error: %s", tune_err)
 
             # 5c-ii. Run lightweight QA audit (every 20 cycles)
             if self._scan_count % 20 == 0:
@@ -1566,7 +1963,7 @@ class ContinuousScanner:
                         if warning_count > 0:
                             console.print(f"  [yellow]QA: {warning_count} warning(s)[/yellow]")
                 except Exception as qa_err:
-                    logger.debug(f"QA pipeline error: {qa_err}")
+                    logger.debug("QA pipeline error: %s", qa_err)
 
             # 5d. Record session metrics
             if trades_synced > 0:
@@ -1581,7 +1978,7 @@ class ContinuousScanner:
                         config_adjustments=config_adjustments,
                     )
                 except Exception as track_err:
-                    logger.debug(f"Improvement tracking error: {track_err}")
+                    logger.debug("Improvement tracking error: %s", track_err)
 
             # 5e. Update portfolio snapshot and run alert checks
             try:
@@ -1596,7 +1993,10 @@ class ContinuousScanner:
 
                     # Prepare data for alert checks
                     nav = snapshot.get("nav", 0.0)
-                    peak_nav = nav  # In production, track peak_nav separately
+                    # US-004: persist peak NAV across cycles for real drawdown detection
+                    if nav > 0:
+                        self._peak_nav = max(self._peak_nav, nav)
+                    peak_nav = self._peak_nav if self._peak_nav > 0 else nav
 
                     # Load recent trades for alert evaluation
                     journal_path = Path("trained_data/trade_journal_rl.json")
@@ -1614,7 +2014,7 @@ class ContinuousScanner:
                         if weights_path.exists():
                             current_weights = json.loads(weights_path.read_text())
                     except Exception as e:
-                        logger.debug(f"A/B test weights load skipped: {e}")
+                        logger.debug("A/B test weights load skipped: %s", e)
 
                     # Load previous weights from improvement log (most recent session)
                     previous_weights = {}
@@ -1625,7 +2025,7 @@ class ContinuousScanner:
                         if records and len(records) > 0:
                             previous_weights = records[-1].get("agent_weights_snapshot", {})
                     except Exception as e:
-                        logger.debug(f"A/B test previous weights load skipped: {e}")
+                        logger.debug("A/B test previous weights load skipped: %s", e)
 
                     # Run all alert checks
                     fired_alerts = alert_mgr.check_all(
@@ -1641,10 +2041,10 @@ class ContinuousScanner:
                             console.print(f"  [red]⚠ ALERT [{alert.severity}]: {alert.message}[/red]")
 
                 except Exception as alert_err:
-                    logger.debug(f"Alert system error: {alert_err}")
+                    logger.debug("Alert system error: %s", alert_err)
 
             except Exception as state_err:
-                logger.debug(f"State update error: {state_err}")
+                logger.debug("State update error: %s", state_err)
 
             # 5f. Audit every 10th cycle
             try:
@@ -1655,7 +2055,7 @@ class ContinuousScanner:
                     if audit_result.get("actions") and console:
                         console.print(f"  [dim]Audit: {audit_result['actions']}[/dim]")
             except Exception as audit_err:
-                logger.debug(f"Audit error: {audit_err}")
+                logger.debug("Audit error: %s", audit_err)
 
             # 5g. Merge accuracy-gated blocked pairs into scanner config (US-013)
             try:
@@ -1676,9 +2076,11 @@ class ContinuousScanner:
                             f"pair(s): {', '.join(blocked_by_accuracy)}[/yellow]"
                         )
             except Exception as accuracy_err:
-                logger.debug(f"Accuracy gate merge error: {accuracy_err}")
+                logger.debug("Accuracy gate merge error: %s", accuracy_err)
 
-            # 5h. Drift detection: record trade outcomes for retraining trigger
+            # 5h. Drift detection: execution.py now records close outcomes directly.
+            # This loop only checks for a pending trigger and can spawn retraining
+            # without double-counting journal outcomes.
             if trades_synced > 0:
                 try:
                     # Phase 78: Use scanner's retrain_trigger instance (preserves state)
@@ -1688,18 +2090,6 @@ class ContinuousScanner:
                         from src.scanner.automation.observation_log import ObservationLog
                         obs_log = ObservationLog()
                         trigger = RetrainTrigger(observation_log=obs_log)
-
-                    # Record prediction outcomes from closed trades
-                    journal_path = Path("trained_data/trade_journal_rl.json")
-                    entries = self._load_journal_cached(journal_path)
-                    if not isinstance(entries, list):
-                        entries = []
-                    closed = entries[-trades_synced:] if trades_synced < len(entries) else entries
-                    for entry in closed:
-                        if entry.get("outcome"):
-                            pair = entry.get("pair")
-                            correct = entry.get("outcome", {}).get("prediction_correct", False)
-                            trigger.record_prediction(pair, correct)
 
                     # Check for drift every 50 scans
                     if self._scan_count % 50 == 0:
@@ -1712,7 +2102,7 @@ class ContinuousScanner:
                             # Spawn background retrain (non-blocking)
                             self._spawn_background_retrain(drift_request.pairs, console)
                 except Exception as drift_err:
-                    logger.debug(f"Drift detection error: {drift_err}")
+                    logger.debug("Drift detection error: %s", drift_err)
 
             # 5j. Per-pair model selector: check for model switches (rolling accuracy)
             try:
@@ -1727,7 +2117,7 @@ class ContinuousScanner:
                 if switch_count > 0 and console:
                     console.print(f"  [cyan]Model switches: {switch_count} pair(s)[/cyan]")
             except Exception as pms_err:
-                logger.debug(f"Pair model selector error: {pms_err}")
+                logger.debug("Pair model selector error: %s", pms_err)
 
             # Log learning activity
             if (learnings_added > 0 or rules_promoted > 0) and console:
@@ -1741,7 +2131,9 @@ class ContinuousScanner:
                 )
 
         except Exception as e:
-            logger.debug(f"Learning loop error: {e}")
+            logger.warning(
+                "Learning loop error (%s): %s", type(e).__name__, e, exc_info=True
+            )
 
     def _load_journal_cached(self, journal_path) -> list:
         """Load trade journal with mtime-based caching.
@@ -1759,8 +2151,11 @@ class ContinuousScanner:
                 raw = _json.loads(journal_path.read_text())
                 self._journal_cache = raw if isinstance(raw, list) else []
                 self._journal_mtime = current_mtime
-            except (Exception,):
-                pass
+            except Exception as _jce:
+                logger.warning(
+                    "_load_journal_cached: parse failed, using stale cache -- %s", _jce
+                )
+                self._journal_mtime = current_mtime  # US-001: skip retry until file changes
         return self._journal_cache
 
     def _sleep_with_progress(self, minutes: int):
@@ -1777,7 +2172,8 @@ class ContinuousScanner:
         for _ in range(minutes * 60):
             if not self._running:
                 break
-            time.sleep(1)
+            if self._shutdown_event.wait(timeout=1):
+                break
 
         # Full collect during idle — runs while waiting, not during scan.
         _gc.collect()
@@ -1806,6 +2202,7 @@ class ContinuousScanner:
             "--pairs",
             pairs_str,
         ]
+        tracker = get_background_activity_tracker()
 
         try:
             self._retrain_process = subprocess.Popen(
@@ -1813,6 +2210,22 @@ class ContinuousScanner:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 cwd=str(Path.cwd()),
+            )
+            self._background_retrain_activity_id = tracker.start_activity(
+                kind="retrain",
+                title="Scheduled retrain worker",
+                source="continuous_scanner",
+                metadata={
+                    "pairs": list(pairs),
+                    "pid": self._retrain_process.pid,
+                    "command": cmd,
+                    "cwd": str(Path.cwd()),
+                },
+            )
+            tracker.append_event(
+                self._background_retrain_activity_id,
+                f"Spawned scheduled retrain for {pairs_str}",
+                details={"pid": self._retrain_process.pid},
             )
             logger.info(
                 f"Background retrain spawned (PID {self._retrain_process.pid}) "
@@ -1824,7 +2237,7 @@ class ContinuousScanner:
                     f"(PID {self._retrain_process.pid})[/yellow]"
                 )
         except Exception as e:
-            logger.error(f"Failed to spawn background retrain: {e}")
+            logger.error("Failed to spawn background retrain: %s", e)
 
     def _run_shadow_tests(self, result: "ScanResult") -> None:
         """Log incumbent and (optionally) candidate predictions to shadow_predictions.jsonl.
@@ -1855,7 +2268,7 @@ class ContinuousScanner:
                 from src.scanner.automation.model_manager import CandidateModelLoader
                 candidate_loader = CandidateModelLoader()
             except Exception as e:
-                logger.debug(f"Failed to initialize candidate loader: {e}")
+                logger.debug("Failed to initialize candidate loader: %s", e)
 
         try:
             records = []
@@ -1882,7 +2295,7 @@ class ContinuousScanner:
                         ])
                         candidate_direction = candidate_loader.get_prediction(features)
                     except Exception as e:
-                        logger.debug(f"Candidate inference failed for {analysis.pair}: {e}")
+                        logger.debug("Candidate inference failed for %s: %s", analysis.pair, e)
                         # Gracefully fall back to incumbent-only testing
                         candidate_direction = None
 
@@ -1902,7 +2315,7 @@ class ContinuousScanner:
                     for r in records:
                         safe_jsonl_append(shadow_log, r)
                 except Exception as _jsonl_err:
-                    logger.debug(f"Shadow log append error: {_jsonl_err}")
+                    logger.debug("Shadow log append error: %s", _jsonl_err)
 
                 # Rotate shadow log if > 10MB (prevents unbounded growth)
                 try:
@@ -1913,7 +2326,7 @@ class ContinuousScanner:
                         shadow_log.rename(rotated)
                         logger.info("Shadow predictions rotated (>10MB)")
                 except Exception as e:
-                    logger.debug(f"Shadow prediction rotation skipped: {e}")
+                    logger.debug("Shadow prediction rotation skipped: %s", e)
 
                 # Count true A/B tests (both predictions present)
                 ab_tests = sum(1 for r in records if r["candidate_direction"] is not None)
@@ -1924,7 +2337,7 @@ class ContinuousScanner:
                 logger.debug(log_msg)
 
         except Exception as e:
-            logger.debug(f"Shadow prediction logging error: {e}")
+            logger.debug("Shadow prediction logging error: %s", e)
 
     def _check_model_promotion(self) -> None:
         """Check if candidate model should be promoted to production.
@@ -1949,7 +2362,7 @@ class ContinuousScanner:
                             f"  Production accuracy: {status['production']['shadow_accuracy']:.4f}\n"
                             f"  Improvement: {status['shadow_test_progress']['improvement_vs_incumbent']:.4f}"
                         )
-                        logger.info(f"Model {promotion_version} promoted to production")
+                        logger.info("Model %s promoted to production", promotion_version)
             else:
                 # Log status at promotion checkpoints
                 status = mm.get_status()
@@ -1966,7 +2379,7 @@ class ContinuousScanner:
                             )
 
         except Exception as e:
-            logger.debug(f"Model promotion check error: {e}")
+            logger.debug("Model promotion check error: %s", e)
 
     def _get_direction_from_analysis(self, analysis) -> Optional[str]:
         """Extract predicted direction from a PairAnalysis object.
@@ -1997,7 +2410,7 @@ class ContinuousScanner:
             return None
 
         except Exception as e:
-            logger.debug(f"Error extracting direction: {e}")
+            logger.debug("Error extracting direction: %s", e)
             return None
 
     def _get_traded_pairs_from_journal(self) -> List[str]:
@@ -2016,5 +2429,5 @@ class ContinuousScanner:
             closed = [e for e in entries if e.get("outcome") is not None]
             return list(set(e.get("pair", "") for e in closed if e.get("pair")))
         except Exception as e:
-            logger.debug(f"Error extracting traded pairs: {e}")
+            logger.debug("Error extracting traded pairs: %s", e)
             return []

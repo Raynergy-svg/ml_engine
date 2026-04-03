@@ -11,6 +11,7 @@ Architecture:
 
 from __future__ import annotations
 
+import atexit
 import logging
 import time
 from dataclasses import dataclass, field
@@ -120,6 +121,8 @@ class Orchestrator:
         self._observation_consumer = None  # Phase 29 (US-177)
         self._drift_remediator = None   # Drift auto-remediation loop
         self._perf_prd_gen = None       # Autonomous performance-driven PRD generator
+        self._policy_engine = None      # Tier 7: Policy engine for action gates
+        atexit.register(self.close)
 
     def _init_modules(self):
         """Lazy-initialize automation modules."""
@@ -132,7 +135,7 @@ class Orchestrator:
             from src.scanner.automation.state_engine import StateEngine
             self._state = StateEngine(state_path=root / ".claude" / "state.json")
         except Exception as e:
-            logger.warning(f"StateEngine init failed: {e}")
+            logger.warning("StateEngine init failed: %s", e)
             self._state = None
 
         try:
@@ -142,7 +145,7 @@ class Orchestrator:
                 rules_path=root / ".claude" / "rules" / "trading.md",
             )
         except Exception as e:
-            logger.warning(f"LearningEngine init failed: {e}")
+            logger.warning("LearningEngine init failed: %s", e)
             self._learner = None
 
         try:
@@ -153,7 +156,7 @@ class Orchestrator:
                 applied_rules_path=root / ".claude" / "config_applied_rules.json",
             )
         except Exception as e:
-            logger.warning(f"ConfigTuner init failed: {e}")
+            logger.warning("ConfigTuner init failed: %s", e)
             self._tuner = None
 
         try:
@@ -162,7 +165,7 @@ class Orchestrator:
                 log_path=root / "trained_data" / "improvement_log.jsonl",
             )
         except Exception as e:
-            logger.warning(f"ImprovementTracker init failed: {e}")
+            logger.warning("ImprovementTracker init failed: %s", e)
             self._tracker = None
 
         try:
@@ -171,42 +174,42 @@ class Orchestrator:
                 log_path=root / "trained_data" / "observations.jsonl",
             )
         except Exception as e:
-            logger.warning(f"ObservationLog init failed: {e}")
+            logger.warning("ObservationLog init failed: %s", e)
             self._observer = None
 
         try:
             from src.scanner.automation.agent_health import AgentHealthMonitor
             self._agent_health = AgentHealthMonitor()
         except Exception as e:
-            logger.warning(f"AgentHealthMonitor init failed: {e}")
+            logger.warning("AgentHealthMonitor init failed: %s", e)
             self._agent_health = None
 
         try:
             from src.scanner.automation.macro_stress import MacroStressDetector
             self._macro_stress = MacroStressDetector()
         except Exception as e:
-            logger.warning(f"MacroStressDetector init failed: {e}")
+            logger.warning("MacroStressDetector init failed: %s", e)
             self._macro_stress = None
 
         try:
             from src.scanner.automation.online_rl import OnlineWeightUpdater
             self._online_rl = OnlineWeightUpdater()
         except Exception as e:
-            logger.warning(f"OnlineWeightUpdater init failed: {e}")
+            logger.warning("OnlineWeightUpdater init failed: %s", e)
             self._online_rl = None
 
         try:
             from src.scanner.automation.qa_pipeline import QAPipeline
             self._qa_pipeline = QAPipeline()
         except Exception as e:
-            logger.warning(f"QAPipeline init failed: {e}")
+            logger.warning("QAPipeline init failed: %s", e)
             self._qa_pipeline = None
 
         try:
             from src.scanner.automation.gate_health import GateHealthTracker
             self._gate_health = GateHealthTracker()
         except Exception as e:
-            logger.warning(f"GateHealthTracker init failed: {e}")
+            logger.warning("GateHealthTracker init failed: %s", e)
             self._gate_health = None
 
         # _config may not be set — guard with getattr on self
@@ -218,7 +221,7 @@ class Orchestrator:
                     min_correlation=getattr(_cfg, "hedge_min_correlation", 0.65),
                 )
             except Exception as e:
-                logger.warning(f"DynamicHedgeManager init failed: {e}")
+                logger.warning("DynamicHedgeManager init failed: %s", e)
                 self._dynamic_hedge = None
 
         # Aura feedback bridge (writes outcome signals for human engine)
@@ -228,7 +231,7 @@ class Orchestrator:
             self._aura_bridge = FeedbackBridge()
             logger.info("Aura feedback bridge initialized")
         except Exception as e:
-            logger.debug(f"Aura bridge not available: {e}")
+            logger.debug("Aura bridge not available: %s", e)
 
         # Bridge-domain recursive learner (override patterns → rule promotion)
         self._bridge_learner = None
@@ -247,7 +250,7 @@ class Orchestrator:
             )
             logger.info("Bridge-domain recursive learner initialized")
         except Exception as e:
-            logger.debug(f"Bridge learner not available: {e}")
+            logger.debug("Bridge learner not available: %s", e)
 
         # Phase 4: Bridge rules engine (rule_promoter and self_model_validator deleted)
         self._bridge_rules = None
@@ -258,7 +261,7 @@ class Orchestrator:
             )
             logger.info("Bridge rules engine initialized")
         except Exception as e:
-            logger.debug(f"Bridge rules engine not available: {e}")
+            logger.debug("Bridge rules engine not available: %s", e)
 
 
 
@@ -270,7 +273,7 @@ class Orchestrator:
             )
             logger.info("ObservationConsumer initialized in orchestrator")
         except Exception as e:
-            logger.debug(f"ObservationConsumer not available: {e}")
+            logger.debug("ObservationConsumer not available: %s", e)
             self._observation_consumer = None
 
         # Phase 22 (US-137): Central config adjustment manager
@@ -279,7 +282,7 @@ class Orchestrator:
             self._config_adjuster = ConfigAdjuster()
             logger.info("ConfigAdjuster initialized in orchestrator")
         except Exception as e:
-            logger.debug(f"ConfigAdjuster not available: {e}")
+            logger.debug("ConfigAdjuster not available: %s", e)
             self._config_adjuster = None
 
         # Drift Auto-Remediation Loop
@@ -294,7 +297,7 @@ class Orchestrator:
             )
             logger.info("DriftRemediator initialized in orchestrator")
         except Exception as e:
-            logger.debug(f"DriftRemediator not available: {e}")
+            logger.debug("DriftRemediator not available: %s", e)
             self._drift_remediator = None
 
         # Autonomous Performance-Driven PRD Generator
@@ -303,7 +306,7 @@ class Orchestrator:
             self._perf_prd_gen = PerformancePRDGenerator(project_root=root)
             logger.info("PerformancePRDGenerator initialized in orchestrator")
         except Exception as e:
-            logger.debug(f"PerformancePRDGenerator not available: {e}")
+            logger.debug("PerformancePRDGenerator not available: %s", e)
             self._perf_prd_gen = None
 
         # Phase 28 (US-169): PRD Agent Chain — event-driven PRD completion watcher
@@ -319,9 +322,26 @@ class Orchestrator:
             self._prd_chain.start()  # Start watcher immediately — PRD complete → chain fires
             logger.info("PRDAgentChain initialized and watcher started in orchestrator")
         except Exception as e:
-            logger.debug(f"PRDAgentChain not available: {e}")
+            logger.debug("PRDAgentChain not available: %s", e)
+
+        # Tier 7: Policy Engine
+        try:
+            from src.scanner.automation.policy_engine import get_policy_engine
+            self._policy_engine = get_policy_engine()
+            logger.info("Tier 7: PolicyEngine initialized in orchestrator")
+        except Exception as e:
+            logger.debug("Tier 7: PolicyEngine not available: %s", e)
 
         # Build dispatch table from initialized modules
+
+        try:
+            from src.scanner.automation.module_dispatcher import ModuleDispatcher
+            self._module_dispatcher = ModuleDispatcher()
+            logger.info("ModuleDispatcher initialized in orchestrator")
+        except Exception as e:
+            logger.debug("ModuleDispatcher not available: %s", e)
+            self._module_dispatcher = None
+
         self._build_dispatch_table()
 
     def _build_dispatch_table(self):
@@ -542,6 +562,15 @@ class Orchestrator:
             critical=False,
         ))
 
+        # Step 15 (Tier 7): Policy engine environment audit (every 5 cycles)
+        self._dispatch_table.append(DispatchStep(
+            name="policy_engine_audit",
+            callable=lambda: self._policy_engine_audit_dispatch(),
+            condition=lambda: self._policy_engine is not None,
+            interval=5,
+            critical=False,
+        ))
+
     def register_module(
         self,
         name: str,
@@ -618,7 +647,7 @@ class Orchestrator:
                     adjustments = self._tuner.apply_to_config(config)
                     result.config_adjustments = len(adjustments)
                 except Exception as e:
-                    logger.debug(f"Config tuner skipped: {e}")
+                    logger.warning("Config tuner skipped: %s", e)
 
             scanner = Scanner(config)
             scan_result = scanner.scan(pairs=pairs)
@@ -713,7 +742,7 @@ class Orchestrator:
                 }
                 logger.debug("Macro stress updated: modifier=%.2f", stress_mod)
             except Exception as e:
-                logger.debug(f"Macro stress update skipped: {e}")
+                logger.debug("Macro stress update skipped: %s", e)
 
     def _dynamic_hedge_evaluation_dispatch(self) -> None:
         """Evaluate dynamic hedging."""
@@ -743,7 +772,7 @@ class Orchestrator:
                         len(hedge_status.hedges_to_close),
                     )
             except Exception as e:
-                logger.debug(f"Dynamic hedge evaluation skipped: {e}")
+                logger.debug("Dynamic hedge evaluation skipped: %s", e)
 
     def _online_rl_update_dispatch(self) -> None:
         """Run online RL micro-update."""
@@ -759,14 +788,14 @@ class Orchestrator:
                 }
                 logger.debug("Online RL micro-update: %d adjustments at cycle %d", len(adjustments), self._cycle_count)
         except Exception as e:
-            logger.debug(f"Online RL update skipped: {e}")
+            logger.warning("Online RL update skipped: %s", e)
 
     def _state_scan_record_dispatch(self) -> None:
         """Record scan cycle in state."""
         try:
             self._state.increment_scan_cycle()
         except Exception as e:
-            logger.debug(f"State scan record skipped: {e}")
+            logger.warning("State scan record skipped: %s", e)
 
     def _sync_closed_trades_rl_dispatch(self) -> list:
         """Sync closed trades and run RL."""
@@ -785,9 +814,9 @@ class Orchestrator:
                     closed_trades = [t for t in journal if isinstance(t, dict) and t.get("outcome")]
                 except Exception:
                     pass
-            logger.info(f"RL sync result: {sync_result}")
+            logger.info("RL sync result: %s", sync_result)
         except Exception as e:
-            logger.debug(f"RL sync skipped: {e}")
+            logger.debug("RL sync skipped: %s", e)
         return closed_trades
 
     def _agent_health_attribution_dispatch(self) -> None:
@@ -810,11 +839,11 @@ class Orchestrator:
                         pair=pair,
                     )
                 except Exception as e:
-                    logger.debug(f"Agent health recording failed: {e}")
+                    logger.warning("Agent health recording failed: %s", e)
             try:
                 result.agent_health_report = self._agent_health.get_health_report()
             except Exception as e:
-                logger.debug(f"Agent health report failed: {e}")
+                logger.debug("Agent health report failed: %s", e)
 
     def _extract_learnings_dispatch(self) -> None:
         """Extract learnings from closed trades."""
@@ -846,7 +875,7 @@ class Orchestrator:
                         len(override_entries), len(resolved_overrides),
                     )
         except Exception as e:
-            logger.debug(f"Override pattern extraction skipped: {e}")
+            logger.debug("Override pattern extraction skipped: %s", e)
 
     def _bridge_recursive_learner_dispatch(self) -> None:
         """Feed overrides to bridge recursive learner."""
@@ -859,7 +888,7 @@ class Orchestrator:
             if promoted:
                 logger.info("Bridge learner promoted %d override patterns to rules", len(promoted))
         except Exception as e:
-            logger.debug(f"Bridge recursive learner skipped: {e}")
+            logger.debug("Bridge recursive learner skipped: %s", e)
 
     def _exit_reason_pattern_extraction_dispatch(self) -> None:
         """Extract exit reason patterns."""
@@ -873,7 +902,7 @@ class Orchestrator:
                 result.learnings_extracted += len(exit_patterns)
                 logger.info("Exit reason patterns extracted: %d", len(exit_patterns))
         except Exception as e:
-            logger.debug(f"Exit reason pattern extraction skipped: {e}")
+            logger.debug("Exit reason pattern extraction skipped: %s", e)
 
     def _check_rule_promotions_dispatch(self) -> None:
         """Check for learnings that should become rules."""
@@ -882,7 +911,7 @@ class Orchestrator:
             promotions = self._learner.check_promotions()
             result.rules_promoted = len(promotions)
         except Exception as e:
-            logger.debug(f"Promotion check skipped: {e}")
+            logger.warning("Promotion check skipped: %s", e)
 
     def _consolidate_learnings_dispatch(self) -> None:
         """Consolidate learnings if needed."""
@@ -891,7 +920,7 @@ class Orchestrator:
             if audit.get("total_learnings", 0) > 30:
                 self._learner.consolidate()
         except Exception as e:
-            logger.debug(f"Consolidation skipped: {e}")
+            logger.debug("Consolidation skipped: %s", e)
 
     def _update_state_dispatch(self) -> None:
         """Update session state."""
@@ -904,7 +933,7 @@ class Orchestrator:
                 next_action="next_scan_cycle",
             )
         except Exception as e:
-            logger.debug(f"State update skipped: {e}")
+            logger.debug("State update skipped: %s", e)
 
     def _system_health_diagnostics_dispatch(self) -> None:
         """Run system health diagnostics."""
@@ -915,7 +944,7 @@ class Orchestrator:
             if health_score < 0.6:
                 logger.warning("System health degraded: score=%.2f — check diagnostics", health_score)
         except Exception as e:
-            logger.debug(f"System health report skipped: {e}")
+            logger.debug("System health report skipped: %s", e)
 
     def _apply_config_adjustments_dispatch(self) -> None:
         """Apply config adjustments."""
@@ -933,7 +962,7 @@ class Orchestrator:
                     )
                 self._config_adjuster.save_state()
             except Exception as e:
-                logger.debug(f"ConfigAdjuster apply skipped: {e}")
+                logger.debug("ConfigAdjuster apply skipped: %s", e)
 
     def _observation_consumer_pattern_detection_dispatch(self) -> None:
         """Detect patterns from observations."""
@@ -962,7 +991,7 @@ class Orchestrator:
                 )
             _oc.save_state()
         except Exception as e:
-            logger.debug(f"ObservationConsumer skipped: {e}")
+            logger.debug("ObservationConsumer skipped: %s", e)
 
     def _track_improvement_dispatch(self) -> None:
         """Track improvement metrics."""
@@ -975,7 +1004,7 @@ class Orchestrator:
                 rules_promoted=result.rules_promoted,
             )
         except Exception as e:
-            logger.debug(f"Improvement tracking skipped: {e}")
+            logger.debug("Improvement tracking skipped: %s", e)
 
     def _aura_bridge_outcome_signal_dispatch(self) -> None:
         """Write outcome signal to aura bridge."""
@@ -1019,7 +1048,7 @@ class Orchestrator:
             self._aura_bridge.write_outcome(outcome_signal)
             logger.debug("Aura bridge: outcome signal written")
         except Exception as e:
-            logger.debug(f"Aura bridge outcome write skipped: {e}")
+            logger.debug("Aura bridge outcome write skipped: %s", e)
 
 
     def _bridge_rules_expiry_dispatch(self) -> None:
@@ -1029,7 +1058,7 @@ class Orchestrator:
             if expired:
                 logger.info("Bridge rules: %d rules expired", expired)
         except Exception as e:
-            logger.debug(f"Bridge rule expiry skipped: {e}")
+            logger.debug("Bridge rule expiry skipped: %s", e)
 
 
     def _learnings_consolidation_dispatch(self) -> None:
@@ -1056,7 +1085,7 @@ class Orchestrator:
                             _af.write(f"\n# Archived {_dt154.now().strftime('%Y-%m-%d')}\n")
                             _af.write("\n".join(_archive) + "\n")
                         _learnings_path.write_text("\n".join(_keep) + "\n", encoding="utf-8")
-                        logger.info(f"US-154: Archived {len(_archive)} old learnings (kept {len(_keep)})")
+                        logger.info("US-154: Archived %d old learnings (kept %d)", len(_archive), len(_keep))
             if _config_adj_path.exists():
                 import json as _j154
                 try:
@@ -1068,11 +1097,11 @@ class Orchestrator:
                         _removed = len(_adj_data) - len(_pruned)
                         if _removed > 0:
                             _config_adj_path.write_text(_j154.dumps(_pruned, indent=2), encoding="utf-8")
-                            logger.info(f"US-154: Pruned {_removed} old config adjustments (kept {len(_pruned)})")
+                            logger.info("US-154: Pruned %d old config adjustments (kept %d)", _removed, len(_pruned))
                 except Exception:
                     pass
         except Exception as _consol_err:
-            logger.debug(f"US-154: Consolidation skipped: {_consol_err}")
+            logger.debug("US-154: Consolidation skipped: %s", _consol_err)
 
     def _drift_auto_remediation_dispatch(self) -> None:
         """Check and remediate drift in model performance (interval-gated)."""
@@ -1093,7 +1122,7 @@ class Orchestrator:
                     f"(counter={self._remediation_cycle_counter}, interval={_check_interval})"
                 )
         except Exception as e:
-            logger.debug(f"Drift remediator check failed: {e}")
+            logger.debug("Drift remediator check failed: %s", e)
 
     def _performance_prd_generation_dispatch(self) -> None:
         """Auto-generate PRD stories based on performance gaps."""
@@ -1108,7 +1137,19 @@ class Orchestrator:
                     f"ralph_spawned={prd_result.ralph_spawned} — {prd_result.reason}"
                 )
         except Exception as e:
-            logger.debug(f"Performance PRD generation check failed: {e}")
+            logger.debug("Performance PRD generation check failed: %s", e)
+
+    def _policy_engine_audit_dispatch(self) -> None:
+        """Tier 7: Audit policy rules and log environment snapshot."""
+        try:
+            env = self._policy_engine.get_environment()
+            issues = self._policy_engine.lint_rules()
+            if issues:
+                logger.warning("Tier 7: Policy lint issues: %s", issues)
+            else:
+                logger.debug("Tier 7: Policy audit clean (env=%s)", env.get("account_mode", "unknown"))
+        except Exception as e:
+            logger.debug("Tier 7: Policy audit failed: %s", e)
 
     def _get_system_health_report(self) -> Dict[str, Any]:
         """Combine QA score + gate health + agent health into a unified report.
@@ -1165,6 +1206,39 @@ class Orchestrator:
 
         return report
 
+    def close(self) -> None:
+        # Phase 100: Stop PRDAgentChain daemon thread first
+        if getattr(self, "_prd_chain", None) is not None:
+            try:
+                self._prd_chain.stop()
+                logger.info("Shutdown: PRDAgentChain stopped")
+            except Exception as _e:
+                logger.debug("Shutdown: PRDAgentChain stop failed: %s", _e)
+
+        # US-006: Graceful shutdown. Orchestrator had no shutdown hook before this fix.
+        _modules_to_save = [
+            ("_state", "state_engine"),
+            ("_config_adjuster", "config_adjuster"),
+            ("_observation_consumer", "observation_consumer"),
+            ("_drift_remediator", "drift_remediator"),
+            ("_online_rl", "online_rl"),
+            ("_gate_health", "gate_health"),
+            ("_agent_health", "agent_health"),
+            ("_module_dispatcher", "module_dispatcher"),
+        ]
+        for attr, label in _modules_to_save:
+            mod = getattr(self, attr, None)
+            if mod is None:
+                continue
+            for method in ("save_state", "save_log", "save"):
+                if hasattr(mod, method):
+                    try:
+                        getattr(mod, method)()
+                        logger.info("Shutdown: %s via %s()", label, method)
+                    except Exception as _e:
+                        logger.debug("Shutdown: %s failed: %s", label, _e)
+                    break
+
     def get_system_status(self) -> Dict[str, Any]:
         """Get comprehensive system status for the dashboard.
 
@@ -1195,6 +1269,7 @@ class Orchestrator:
                 "bridge_rules_engine": self._bridge_rules is not None,
                 "prd_agent_chain": self._prd_chain is not None,
                 "observation_consumer": self._observation_consumer is not None,  # Phase 29 (US-177)
+                "policy_engine": self._policy_engine is not None,  # Tier 7
             },
             "session": {
                 "started": self._session_start.isoformat() + "Z",
@@ -1285,14 +1360,14 @@ class Orchestrator:
                         except Exception:
                             pass
                 except Exception as _hr_err:
-                    logger.debug(f"US-164: Health registry status error: {_hr_err}")
+                    logger.debug("US-164: Health registry status error: %s", _hr_err)
 
         # Phase 28 (US-169): PRD agent chain status
         if self._prd_chain is not None:
             try:
                 status["prd_agent_chain"] = self._prd_chain.get_status()
             except Exception as e:
-                logger.debug(f"PRDAgentChain status error: {e}")
+                logger.debug("PRDAgentChain status error: %s", e)
 
         return status
 
