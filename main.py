@@ -54,11 +54,11 @@ if platform.system() == "Darwin":  # macOS
     os.environ.setdefault("ML_ENGINE_DISABLE_METAL", "1")
 
 # ── GC tuning for long-running scan loop ───────────────────────────────────
-# Default (700, 10, 10) causes GC to fire mid-scan. Raising gen-0 threshold
-# lets short-lived scan objects accumulate until the idle sleep, where we
-# call gc.collect(0) explicitly. Reduces GC overhead ~2.5x in tight loops.
+# Default (700, 10, 10) is too aggressive; 50000 was too lazy (OOM on 8GB M1).
+# 5000 balances: lets short-lived scan objects batch up slightly, but fires
+# before transient DataFrames/numpy arrays accumulate into memory pressure.
 import gc as _gc
-_gc.set_threshold(50000, 20, 20)
+_gc.set_threshold(5000, 10, 10)
 
 # ── Process memory ceiling (CRITICAL for 8GB M1) ────────────────────────────
 # Hard RSS cap at 3.5 GB. Python raises MemoryError cleanly rather than
@@ -215,7 +215,13 @@ def _dispatch_scan(args: Any) -> None:
             interval_minutes = int(getattr(args, "interval", 5))
             auto_execute = bool(getattr(args, "auto_execute", False))
             enforce_level = int(getattr(args, "enforce_policy", 0))
-            console.print(f"[cyan]Starting watch mode (interval: {interval_minutes}m)[/cyan]")
+            supervision_mode = bool(getattr(args, "supervision", False))
+            if supervision_mode:
+                console.print(f"[bold cyan]Starting supervision mode (30s ticks)[/bold cyan]")
+                # Set config flag for SupervisionRuntime (Tier 7.5 PR 4 will read this)
+                config.enable_supervision_mode = True
+            else:
+                console.print(f"[cyan]Starting watch mode (interval: {interval_minutes}m)[/cyan]")
             if enforce_level > 0:
                 console.print(f"[yellow]Policy enforcement level: {enforce_level}[/yellow]")
             console.print("[dim]Press Ctrl+C to stop[/dim]\n")

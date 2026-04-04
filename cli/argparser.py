@@ -451,6 +451,11 @@ def _add_scan_arguments(parser: argparse.ArgumentParser) -> None:
         help="Tier 7 policy enforcement level: 0=logging-only (default), 1=safe actions, 2=+config changes, 3=full (includes trade execution)",
     )
     parser.add_argument(
+        "--supervision",
+        action="store_true",
+        help="Tier 7.5: Enable supervision-first runtime (phase-based: IDLE→HUNTING→SUPERVISING→DIAGNOSING→ADAPTING)",
+    )
+    parser.add_argument(
         "--diversified",
         "-d",
         action="store_true",
