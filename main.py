@@ -217,9 +217,19 @@ def _dispatch_scan(args: Any) -> None:
             enforce_level = int(getattr(args, "enforce_policy", 0))
             supervision_mode = bool(getattr(args, "supervision", False))
             if supervision_mode:
-                console.print(f"[bold cyan]Starting supervision mode (30s ticks)[/bold cyan]")
-                # Set config flag for SupervisionRuntime (Tier 7.5 PR 4 will read this)
-                config.enable_supervision_mode = True
+                # Check if SupervisionRuntime is available (Tier 7.5 PR 4)
+                try:
+                    from src.scanner.automation.supervision_runtime import SupervisionRuntime
+                    _has_supervision = True
+                except ImportError:
+                    _has_supervision = False
+
+                if _has_supervision:
+                    console.print(f"[bold cyan]Starting supervision mode (30s ticks)[/bold cyan]")
+                    config.enable_supervision_mode = True
+                else:
+                    console.print(f"[bold yellow]Supervision runtime not built yet (Tier 7.5 PR 4 pending)[/bold yellow]")
+                    console.print(f"[yellow]Falling back to legacy scan loop with Tier 7 policy engine active[/yellow]")
             else:
                 console.print(f"[cyan]Starting watch mode (interval: {interval_minutes}m)[/cyan]")
             if enforce_level > 0:
