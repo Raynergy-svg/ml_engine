@@ -334,6 +334,32 @@ class ContinuousScanner:
             except Exception as _cp_start_err:
                 logger.debug("Tier 7: Control plane start failed: %s", _cp_start_err)
 
+        # Tier 7.5: Supervision mode — replaces legacy scan loop
+        _supervision_mode = getattr(self.scanner.config, "enable_supervision_mode", False)
+        if _supervision_mode:
+            try:
+                from src.scanner.automation.supervision_runtime import SupervisionRuntime
+                if console:
+                    console.print("\n[bold cyan]◆ SUPERVISION MODE[/bold cyan]")
+                runtime = SupervisionRuntime(
+                    scanner=self.scanner,
+                    config=self.scanner.config,
+                    console=console,
+                )
+                result = runtime.run(
+                    pairs=pairs,
+                    auto_execute=auto_execute,
+                    top_n=top_n,
+                    interval_minutes=interval_minutes,
+                )
+                self._scan_count = result
+                return self._scan_count
+            except ImportError:
+                logger.warning("SupervisionRuntime not available, falling back to legacy loop")
+            except Exception as _sr_err:
+                logger.error("SupervisionRuntime failed: %s — falling back to legacy loop", _sr_err)
+
+        # Legacy scan loop
         if console:
             console.print("\n[bold cyan]🔄 CONTINUOUS SCAN MODE[/bold cyan]")
             console.print(f"[dim]Scanning every {interval_minutes} minutes. Press Ctrl+C to stop.[/dim]")
@@ -595,9 +621,24 @@ class ContinuousScanner:
                                 # Ensure execution is enabled — continuous.py was missing this
                                 # (buddy_scanning.py sets it correctly, but continuous.py didn't)
                                 self.scanner.config.enable_execution = True
-                                self.scanner.execute_trades(
+                                _exec_results = self.scanner.execute_trades(
                                     analyses=tradeable,
                                 )
+                                # Report execution outcomes — never silently discard results
+                                if _exec_results:
+                                    _ok = sum(1 for r in _exec_results if getattr(r, "success", False))
+                                    _fail = len(_exec_results) - _ok
+                                    if console:
+                                        if _ok:
+                                            console.print(f"  [green]Executed: {_ok} trade(s)[/green]")
+                                        if _fail:
+                                            for r in _exec_results:
+                                                if not getattr(r, "success", False):
+                                                    _err = getattr(r, "error", "unknown")
+                                                    _pair = getattr(r, "pair", "?")
+                                                    console.print(f"  [red]REJECTED {_pair}: {_err}[/red]")
+                                elif console:
+                                    console.print("  [red]Execution returned no results — check NAV/broker connection[/red]")
 
                     # Log scan cycle for analytics
                     self._log_scan_cycle(result, auto_execute)
@@ -1310,18 +1351,25 @@ class ContinuousScanner:
             "drawdown_gate", "accuracy_gate", "other",
         )
         gate_kill_breakdown: dict[str, int] = {k: 0 for k in _kill_keys}
+        _any_missing_kill_reason = False
         for a in result.analyses:
             if not a.is_tradeable and a.error is None:
-                kr = getattr(a, "kill_reason", None) or "other"
+                kr = getattr(a, "kill_reason", None)
+                if kr is None:
+                    _any_missing_kill_reason = True
+                    kr = "other"
                 if kr in gate_kill_breakdown:
                     gate_kill_breakdown[kr] += 1
                 else:
                     gate_kill_breakdown["other"] += 1
+        if _any_missing_kill_reason:
+            logger.debug("Some rejected PairAnalysis objects lack kill_reason attribute; defaulting to 'other'")
 
-        # Phase 90 US-404: trades_attempted = pairs with a directional signal (non-HOLD)
+        # Phase 90 US-404: trades_attempted = pairs with directional signal and minimum score
         trades_attempted = sum(
             1 for a in result.analyses
             if getattr(a, "direction", "HOLD") in {"LONG", "SHORT"}
+            and a.overall_score > 0
         )
         # trades_executed = tradeable count (auto_execute gated)
         trades_executed = len(tradeable) if auto_execute else 0
@@ -1470,6 +1518,21 @@ class ContinuousScanner:
                     )
             except Exception as _shs_err:
                 logger.debug("Phase 60: scan_health.synthesize() failed: %s", _shs_err)
+
+        # Journal self-heal: repair missing fields + archive closed low-R:R trades
+        # Runs on same cadence as health synthesizer (every 10 cycles).
+        if self._scan_count % 10 == 0:
+            try:
+                from pathlib import Path as _Path
+                from src.scanner.automation.journal_scrub import scrub_trade_journal
+                _scrub = scrub_trade_journal(_Path(__file__).resolve().parent.parent.parent.parent)
+                if _scrub["archived"] or _scrub["repaired"]:
+                    logger.info(
+                        "Journal self-heal: archived=%d low-R:R, repaired=%d fields",
+                        _scrub["archived"], _scrub["repaired"],
+                    )
+            except Exception as _js_err:
+                logger.debug("Journal self-heal failed: %s", _js_err)
 
     def _filter_correlated_exposure(self, tradeable: list) -> list:
         """Filter out trades that would double exposure on correlated pairs already open."""
