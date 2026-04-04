@@ -1,0 +1,182 @@
+{
+  "project": "ML_Engine",
+  "branchName": "ralph/tier8-pr1-supervision-core",
+  "description": "Tier 8 PR 1: Invert the architecture from poll-based scanning to event-driven supervision. The main brain becomes an open-trade supervisor that diagnoses close events, applies adaptive policy responses, and triggers the scanner on-demand via a slot/trigger model. Pure new files plus minimal wiring into continuous.py.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create TradeSlot state machine and SlotManager",
+      "description": "As the supervision core, I need an explicit state machine per pair so I can track where each pair is in the lifecycle and decide when to trigger scans.",
+      "acceptanceCriteria": [
+        "File created at src/scanner/automation/trade_slots.py",
+        "TradeSlotState enum with states: IDLE, SCANNING, CANDIDATE, ARMED, OPEN, SUPERVISING, CLOSING, DIAGNOSING, ADAPTING, COOLDOWN",
+        "TradeSlot dataclass with fields: pair (str), state (TradeSlotState), entered_state_at (float, time.time()), trade_id (Optional[str]), metadata (dict, default_factory=dict), cooldown_until (Optional[float], default=None)",
+        "SlotManager class with __init__(max_concurrent: int = 3) maintaining a dict of pair -> TradeSlot",
+        "SlotManager.transition(pair, new_state, **metadata) validates legal transitions and updates entered_state_at. Raises ValueError on illegal transition. Legal transitions: IDLE->SCANNING, SCANNING->CANDIDATE, SCANNING->IDLE, CANDIDATE->ARMED, CANDIDATE->IDLE, ARMED->OPEN, ARMED->IDLE, OPEN->SUPERVISING, SUPERVISING->CLOSING, CLOSING->DIAGNOSING, DIAGNOSING->ADAPTING, ADAPTING->IDLE, ADAPTING->COOLDOWN, COOLDOWN->IDLE, any->IDLE (reset)",
+        "SlotManager.available_slots() returns count of pairs in IDLE state that are not in cooldown (cooldown_until is None or < time.time())",
+        "SlotManager.open_positions() returns list of TradeSlot where state is OPEN or SUPERVISING",
+        "SlotManager.get_state(pair) returns TradeSlotState for pair, defaults to IDLE",
+        "SlotManager.set_cooldown(pair, duration_seconds) transitions to COOLDOWN and sets cooldown_until",
+        "SlotManager.check_cooldowns() auto-transitions any COOLDOWN pairs where cooldown_until < time.time() back to IDLE, returns list of freed pairs",
+        "All state transitions logged via structlog with pair, old_state, new_state",
+        "Import succeeds: python -c \"from src.scanner.automation.trade_slots import SlotManager, TradeSlotState\"",
+        "py_compile passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "This is the foundation — every other module references TradeSlotState. Keep it simple, no persistence needed yet. The max_concurrent parameter controls how many pairs can be in non-IDLE states simultaneously."
+    },
+    {
+      "id": "US-002",
+      "title": "Create CloseDiagnosis dataclass and CloseDiagnostician",
+      "description": "As the supervision core, I need structured close-event diagnosis so the adaptive policy engine can reason about WHY a trade closed, not just win/loss.",
+      "acceptanceCriteria": [
+        "File created at src/scanner/automation/close_diagnostician.py",
+        "CloseReason enum: SL_HIT, TP_HIT, TRAILING_SL, MANUAL, TIMEOUT, DRAWDOWN_GUARDIAN, REGIME_CHANGE, BREAKEVEN",
+        "CloseDiagnosis dataclass with fields: trade_id (str), pair (str), direction (str), close_reason (CloseReason), entry_price (float), exit_price (float), realized_pl (float), pnl_pips (float), duration_minutes (float), regime_at_entry (str), regime_at_exit (str), regime_changed (bool), confidence_at_entry (float), agents_correct (List[str]), agents_wrong (List[str]), entry_still_valid_1h (Optional[bool]), market_moved_after_close_pips (Optional[float]), timestamp (str)",
+        "CloseDiagnostician class with diagnose(trade_outcome: dict) -> CloseDiagnosis that maps raw trade journal entries to structured diagnosis",
+        "CloseDiagnostician.diagnose() infers CloseReason from exit_reason string (maps 'sl_hit'->SL_HIT, 'tp_hit'->TP_HIT, 'trailing'->TRAILING_SL, 'timeout'->TIMEOUT, 'drawdown'->DRAWDOWN_GUARDIAN, etc., default MANUAL)",
+        "CloseDiagnostician.diagnose() sets regime_changed = (regime_at_entry != regime_at_exit) when both are available, defaults False",
+        "CloseDiagnostician.diagnose() splits agent_reasons string into agents_correct (those that agreed with winning direction) and agents_wrong (those that disagreed), using trade_won and direction fields",
+        "CloseDiagnostician.batch_diagnose(outcomes: List[dict]) -> List[CloseDiagnosis] for processing multiple closes",
+        "Import succeeds",
+        "py_compile passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "The trade_outcome dict matches the schema in trained_data/trade_journal_rl.json entries. Key fields to expect: pair, direction, entry_price, exit_price, realized_pl, pnl_pips, exit_reason, confidence, regime, agent_reasons (comma-separated string), duration_minutes, trade_won (bool). If a field is missing, use sensible defaults. entry_still_valid_1h and market_moved_after_close_pips are left as None — they'll be populated by a future enrichment step."
+    },
+    {
+      "id": "US-003",
+      "title": "Create AdaptivePolicy and SupervisionPolicyEngine",
+      "description": "As the supervision core, I need time-decaying policy overrides so the system can dynamically tighten gates, pause pairs, or adjust sizing based on recent close diagnoses — not just nudge RL weights. IMPORTANT: This is SEPARATE from the Tier 7 PolicyEngine (action gating). This handles adaptive supervision responses.",
+      "acceptanceCriteria": [
+        "File created at src/scanner/automation/supervision_policy_engine.py",
+        "PolicyType enum: PAIR_COOLDOWN, GATE_TIGHTEN, GATE_LOOSEN, SIZING_ADJUST, REGIME_OVERRIDE, ENTRY_BLOCK",
+        "AdaptivePolicy dataclass with fields: policy_id (str, uuid4), policy_type (PolicyType), pair (Optional[str], None=global), parameter (str, e.g. 'min_confidence'), adjustment (float, e.g. +0.10), reason (str), created_at (float, time.time()), expires_at (float), source_diagnosis_ids (List[str])",
+        "SupervisionPolicyEngine class with __init__() maintaining a list of active policies",
+        "SupervisionPolicyEngine.add_policy(policy) appends to active list, logs via structlog",
+        "SupervisionPolicyEngine.get_active_policies(pair=None, policy_type=None) returns list of non-expired policies, optionally filtered by pair and/or type",
+        "SupervisionPolicyEngine.get_effective_adjustment(pair, parameter) returns the sum of all active policy adjustments for that pair+parameter combo (including global policies where pair is None), returns 0.0 if no active policies",
+        "SupervisionPolicyEngine.expire_stale() removes policies where time.time() > expires_at, returns count removed",
+        "SupervisionPolicyEngine.has_active_block(pair) returns True if any ENTRY_BLOCK or PAIR_COOLDOWN policy is active for that pair",
+        "SupervisionPolicyEngine.to_dict() serializes active policies for dashboard/logging",
+        "SupervisionPolicyEngine.clear() removes all policies",
+        "All policy additions and expirations logged via structlog",
+        "Import succeeds: python -c \"from src.scanner.automation.supervision_policy_engine import SupervisionPolicyEngine, AdaptivePolicy, PolicyType\"",
+        "py_compile passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "NAMING: This is SupervisionPolicyEngine in supervision_policy_engine.py — NOT the Tier 7 PolicyEngine in policy_engine.py. The Tier 7 one gates actions (allow/deny). This one manages time-decaying adaptive overrides (cooldowns, gate tightening). They are separate concerns. Policies are intentionally ephemeral — they live in memory and expire. No disk persistence needed. The adjustment field is additive: if min_confidence is 0.55 and a policy adds +0.10, the effective threshold becomes 0.65. Multiple policies can stack."
+    },
+    {
+      "id": "US-004",
+      "title": "Create ScanTrigger and TriggerRegistry",
+      "description": "As the supervision core, I need a registry of conditions that trigger scanner runs so scans happen on meaningful events rather than a dumb 5-minute clock.",
+      "acceptanceCriteria": [
+        "File created at src/scanner/automation/trigger_registry.py",
+        "TriggerType enum: SLOT_OPENED, REGIME_TRANSITION, SESSION_OPEN, VOLATILITY_SPIKE, SCHEDULED_SWEEP, MANUAL, COOLDOWN_EXPIRED",
+        "ScanTrigger dataclass with fields: trigger_type (TriggerType), pairs (Optional[List[str]], None=all pairs), constraints (dict, default_factory=dict, e.g. {'exclude_pattern': 'mean_reversion'}), priority (int, default=5), timestamp (float, default_factory=time.time), source (str, default='system')",
+        "TriggerRegistry class with __init__(sweep_interval_minutes: float = 30.0)",
+        "TriggerRegistry.fire(trigger: ScanTrigger) appends trigger to pending queue (collections.deque, maxlen=100)",
+        "TriggerRegistry.drain() returns list of all pending triggers and clears the queue",
+        "TriggerRegistry.has_pending() returns bool",
+        "TriggerRegistry.schedule_sweep(pairs: Optional[List[str]] = None) creates a SCHEDULED_SWEEP trigger with given pairs",
+        "TriggerRegistry.should_sweep() returns True if sweep_interval_minutes has elapsed since last sweep, resets timer",
+        "All trigger fires logged via structlog with trigger_type, pairs count, source",
+        "Import succeeds",
+        "py_compile passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "The TriggerRegistry is a lightweight queue — triggers go in, the SupervisionCore drains them. The constraints dict is open-ended: the scanner will interpret it. The sweep_interval_minutes is the fallback polling interval (30 min default, much less aggressive than 5 min). Pairs=None means scan all configured pairs."
+    },
+    {
+      "id": "US-005",
+      "title": "Create SupervisionCore — the main brain",
+      "description": "As the system, I need a supervision core that watches open positions, processes close events through the diagnostician, applies adaptive policies, and fires scan triggers — replacing the scan-first loop with a supervise-first loop.",
+      "acceptanceCriteria": [
+        "File created at src/scanner/automation/supervision_core.py",
+        "SupervisionCore class with __init__(slot_manager: SlotManager, diagnostician: CloseDiagnostician, policy_engine: SupervisionPolicyEngine, trigger_registry: TriggerRegistry, config: Optional[dict] = None)",
+        "SupervisionCore stores config with defaults: {'max_concurrent': 3, 'cooldown_seconds': 3600, 'consecutive_loss_cooldown': 2, 'supervision_tiers': {15: 'tick', 120: '1m', 480: '5m'}, 'sweep_interval_minutes': 30.0}",
+        "SupervisionCore.process_close_event(trade_outcome: dict) -> CloseDiagnosis: runs diagnostician.diagnose(), transitions slot to DIAGNOSING then ADAPTING, calls _apply_adaptive_response(), transitions slot to IDLE or COOLDOWN, fires SLOT_OPENED trigger if slot freed, returns diagnosis",
+        "SupervisionCore._apply_adaptive_response(diagnosis: CloseDiagnosis): if consecutive losses >= consecutive_loss_cooldown for same pair, adds PAIR_COOLDOWN policy with cooldown_seconds duration. If diagnosis.regime_changed and not trade_won, adds GATE_TIGHTEN policy (+0.05 to min_confidence) for 2 hours. If trade_won and diagnosis.close_reason == TP_HIT and duration_minutes < 30, adds SIZING_ADJUST policy (+0.1 to atr_tp_multiplier) for 4 hours",
+        "SupervisionCore._consecutive_losses dict tracks consecutive loss count per pair, resets on win",
+        "SupervisionCore.get_supervision_interval(trade_age_minutes: float) -> str returns the check frequency string from supervision_tiers based on trade age",
+        "SupervisionCore.tick() calls policy_engine.expire_stale(), slot_manager.check_cooldowns() (fires COOLDOWN_EXPIRED triggers for freed pairs), and trigger_registry.should_sweep() (fires SCHEDULED_SWEEP if due)",
+        "SupervisionCore.get_status() -> dict returns: open_positions count, available_slots, active_policies count, pending_triggers count, consecutive_losses dict",
+        "Import succeeds",
+        "py_compile passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "SupervisionCore does NOT run its own thread or loop — it exposes tick() and process_close_event() which the continuous.py loop calls. This keeps it testable and avoids threading issues. The supervision_tiers config maps trade age (minutes) to check frequency labels — the caller interprets these. _apply_adaptive_response is deliberately simple in this PR: 3 rules. Future PRs will add more sophisticated responses."
+    },
+    {
+      "id": "US-006",
+      "title": "Unit tests for TradeSlot and SlotManager",
+      "description": "As a developer, I need thorough tests for the state machine and slot capacity logic to prevent illegal transitions and slot leaks.",
+      "acceptanceCriteria": [
+        "File created at tests/test_trade_slots.py",
+        "At least 10 tests covering: full lifecycle IDLE->SCANNING->CANDIDATE->ARMED->OPEN->SUPERVISING->CLOSING->DIAGNOSING->ADAPTING->IDLE, illegal transition raises ValueError, available_slots respects max_concurrent, open_positions returns only OPEN/SUPERVISING, cooldown blocks availability, check_cooldowns auto-frees expired, reset any->IDLE works, set_cooldown sets timer, get_state defaults to IDLE for unknown pair, concurrent slot limit enforcement",
+        "All tests pass with python -m pytest tests/test_trade_slots.py -v --timeout=30"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Use time.time() mocking (monkeypatch or freezegun) for cooldown tests. Test that SlotManager(max_concurrent=2) prevents a third pair from leaving IDLE."
+    },
+    {
+      "id": "US-007",
+      "title": "Unit tests for CloseDiagnostician",
+      "description": "As a developer, I need tests verifying that raw trade journal entries are correctly mapped to structured CloseDiagnosis objects.",
+      "acceptanceCriteria": [
+        "File created at tests/test_close_diagnostician.py",
+        "At least 8 tests covering: SL hit maps to CloseReason.SL_HIT, TP hit maps to TP_HIT, unknown exit_reason defaults to MANUAL, regime_changed detected correctly, agents split into correct/wrong based on direction and trade_won, missing fields get sensible defaults, batch_diagnose processes multiple outcomes, pnl_pips and realized_pl pass through correctly",
+        "All tests pass with python -m pytest tests/test_close_diagnostician.py -v --timeout=30"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Create realistic trade_outcome dicts matching the schema in trained_data/trade_journal_rl.json. Include edge cases: empty agent_reasons string, missing regime field, zero pnl."
+    },
+    {
+      "id": "US-008",
+      "title": "Unit tests for SupervisionPolicyEngine",
+      "description": "As a developer, I need tests verifying policy stacking, expiration, and effective adjustment calculations.",
+      "acceptanceCriteria": [
+        "File created at tests/test_supervision_policy_engine.py",
+        "At least 8 tests covering: add_policy stores policy, get_active_policies filters expired, get_effective_adjustment sums multiple policies for same parameter, global policies (pair=None) apply to all pairs, expire_stale removes old policies and returns count, has_active_block detects ENTRY_BLOCK and PAIR_COOLDOWN, clear removes all, to_dict serializes correctly",
+        "All tests pass with python -m pytest tests/test_supervision_policy_engine.py -v --timeout=30"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Use time mocking for expiration tests. Test that two policies for min_confidence (+0.05 and +0.10) produce effective adjustment of +0.15."
+    },
+    {
+      "id": "US-009",
+      "title": "Unit tests for TriggerRegistry",
+      "description": "As a developer, I need tests verifying trigger queueing, draining, and sweep scheduling.",
+      "acceptanceCriteria": [
+        "File created at tests/test_trigger_registry.py",
+        "At least 6 tests covering: fire adds to queue, drain returns all and clears, has_pending correct, schedule_sweep creates SCHEDULED_SWEEP trigger, should_sweep respects interval, queue bounded at maxlen=100 (oldest dropped)",
+        "All tests pass with python -m pytest tests/test_trigger_registry.py -v --timeout=30"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Test that firing 105 triggers only keeps the latest 100."
+    },
+    {
+      "id": "US-010",
+      "title": "Unit tests for SupervisionCore",
+      "description": "As a developer, I need integration-level tests verifying the supervision core correctly processes close events, applies adaptive responses, and fires triggers.",
+      "acceptanceCriteria": [
+        "File created at tests/test_supervision_core.py",
+        "At least 8 tests covering: process_close_event returns CloseDiagnosis, slot transitions through DIAGNOSING->ADAPTING->IDLE on win, consecutive losses trigger PAIR_COOLDOWN policy, regime change loss triggers GATE_TIGHTEN policy, fast TP win triggers SIZING_ADJUST policy, win resets consecutive loss counter, tick expires stale policies, tick fires SCHEDULED_SWEEP when due, get_status returns correct counts, get_supervision_interval returns correct tier",
+        "All tests pass with python -m pytest tests/test_supervision_core.py -v --timeout=30"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Instantiate real SlotManager, CloseDiagnostician, PolicyEngine, TriggerRegistry — no mocking of core components. Use time mocking for cooldown and expiration tests. Create realistic trade_outcome dicts."
+    }
+  ]
+}

@@ -197,6 +197,7 @@ cmd_scan() {
             --use-rl-sizer) args+=(--use-rl-sizer); shift ;;
             --no-use-rl-sizer) args+=(--no-use-rl-sizer); shift ;;
             --enforce-policy) args+=(--enforce-policy "$2"); shift 2 ;;
+            --supervision) args+=(--supervision); shift ;;
             *) args+=("$1"); shift ;;  # Pass through unknown args instead of dropping them
         esac
     done
