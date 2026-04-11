@@ -19,6 +19,13 @@ venv/
 *.log
 *.db
 
+# Feedback loop runtime state (operational append-only, not source)
+logs/trade_feedback.jsonl
+logs/system_decisions.jsonl
+logs/unhandled_errors.jsonl
+trained_data/self_heal_degraded.flag
+trained_data/retrain_requests/
+
 # Experiment & tool outputs
 wandb/
 mlruns/
