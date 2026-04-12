@@ -26,6 +26,9 @@ logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag
 trained_data/retrain_requests/
 
+# d3rlpy training logs
+d3rlpy_logs/
+
 # Experiment & tool outputs
 wandb/
 mlruns/
