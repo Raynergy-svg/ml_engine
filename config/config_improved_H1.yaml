@@ -511,6 +511,7 @@ validation_metrics:
     - momentum
     min_outperformance: 0.05
 scan:
+  offline_sizer_enabled: false
   lookback_candles: 200
   parallel_workers: 4
   backtest_window: 50
