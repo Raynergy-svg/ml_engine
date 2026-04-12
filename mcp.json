@@ -25,6 +25,15 @@
         "-y",
         "@modelcontextprotocol/server-sequential-thinking"
       ]
+    },
+    "buddy": {
+      "command": "python",
+      "args": ["src/mcp/buddy_server.py"],
+      "env": {
+        "OANDA_API_TOKEN": "${OANDA_API_TOKEN}",
+        "OANDA_ACCOUNT_ID": "${OANDA_ACCOUNT_ID}",
+        "OANDA_API_URL": "${OANDA_API_URL}"
+      }
     }
   },
   "entityTypes": {
