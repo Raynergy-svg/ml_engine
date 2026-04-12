@@ -4040,6 +4040,14 @@ class ExecutionManager:
             )
             if resp.status_code == 200:
                 logger.info(f"US-147: Closed trade #{trade_id} via position manager")
+                # Post-trade feedback hook: logging + diagnostics + self-heal.
+                # Does NOT update agent weights (those stay on the batch
+                # sync_closed_trades_rl path). Parity Q5 compliance.
+                try:
+                    from src.scanner.feedback.post_trade_loop import PostTradeLoop
+                    PostTradeLoop().run({"trade_id": trade_id, "source": "close_trade_oanda"})
+                except Exception as ptl_err:
+                    logger.warning("post_trade_loop hook failed for #%s: %s", trade_id, ptl_err)
                 return True
             else:
                 logger.warning(f"US-147: Close trade #{trade_id} failed: {resp.text}")

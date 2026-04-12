@@ -42,6 +42,8 @@ COMMANDS = [
     "find-candles",
     "transfer",
     "learn",
+    "feedback-status",
+    "train-offline-sizer",
 ]
 
 CLI_EPILOG = """
@@ -1038,6 +1040,38 @@ def _add_learn_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_feedback_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add feedback-status and train-offline-sizer arguments."""
+    fb_group = parser.add_argument_group("Feedback", "Feedback loop and offline sizer commands")
+    fb_group.add_argument(
+        "--json",
+        dest="json_output",
+        action="store_true",
+        default=False,
+        help="For feedback-status: output as JSON",
+    )
+    fb_group.add_argument(
+        "--iql-journal",
+        dest="journal",
+        default=None,
+        help="For train-offline-sizer: path to trade journal (default: trained_data/trade_journal_rl.json)",
+    )
+    fb_group.add_argument(
+        "--iql-epochs",
+        dest="iql_epochs",
+        type=int,
+        default=100,
+        help="For train-offline-sizer: number of training epochs (default: 100)",
+    )
+    fb_group.add_argument(
+        "--iql-dry-run",
+        dest="iql_dry_run",
+        action="store_true",
+        default=False,
+        help="For train-offline-sizer: show dataset stats without training",
+    )
+
+
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the main argument parser.
 
@@ -1072,6 +1106,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     _add_multi_pair_arguments(parser)
     _add_correlation_transfer_arguments(parser)
     _add_learn_arguments(parser)
+    _add_feedback_arguments(parser)
 
     return parser
 

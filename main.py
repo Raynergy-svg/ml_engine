@@ -558,6 +558,70 @@ def _handle_transfer(args: Any) -> None:
     handle_transfer_command(args)
 
 
+def _handle_feedback_status(args: Any) -> None:
+    """Show feedback loop health status."""
+    import json as _json
+    from src.scanner.feedback.diagnostics import PostTradeDiagnostics
+    diag = PostTradeDiagnostics().run()
+    # Aggregate additional context
+    result = {
+        "status": diag.get("status", "UNKNOWN"),
+        "issues": diag.get("issues", []),
+        "recommended_actions": diag.get("recommended_actions", []),
+        "trades_analyzed": diag.get("metadata", {}).get("trades_analyzed", 0),
+    }
+    # RL model age
+    import os as _os
+    from pathlib import Path as _Path
+    from datetime import datetime as _dt, timezone as _tz
+    rl_path = _Path("trained_data/models/rl_position_sizer.zip")
+    if rl_path.exists():
+        age_s = _dt.now(_tz.utc).timestamp() - _os.path.getmtime(rl_path)
+        result["rl_model_age_hours"] = round(max(0.0, age_s) / 3600.0, 1)
+    else:
+        result["rl_model_age_hours"] = None
+    # Agent weights summary
+    weights_path = _Path("trained_data/models/agent_weights.json")
+    if weights_path.exists():
+        try:
+            data = _json.loads(weights_path.read_text())
+            count = sum(len(b) for k, b in data.items() if not k.startswith("_") and isinstance(b, dict))
+            result["agent_weights_count"] = count
+        except Exception:
+            result["agent_weights_count"] = 0
+    if getattr(args, "json_output", False):
+        print(_json.dumps(result, indent=2, default=str))
+    else:
+        print("Feedback Loop Status: %s" % result["status"])
+        print("Trades analyzed: %d" % result["trades_analyzed"])
+        print("RL model age: %s hours" % result["rl_model_age_hours"])
+        print("Agent weight entries: %s" % result.get("agent_weights_count", "?"))
+        if result["issues"]:
+            print("Issues:")
+            for i in result["issues"]:
+                print("  - [%s] %s: %s" % (i.get("severity", "?"), i.get("check", "?"), i.get("detail", "")))
+        if result["recommended_actions"]:
+            print("Recommended actions: %s" % ", ".join(result["recommended_actions"]))
+
+
+def _handle_train_offline_sizer(args: Any) -> None:
+    """Train the offline IQL position sizer."""
+    from src.training.rl.offline_sizer import train_offline_sizer
+    journal = getattr(args, "journal", None)
+    epochs = int(getattr(args, "iql_epochs", 100))
+    dry_run = bool(getattr(args, "iql_dry_run", False))
+    try:
+        result = train_offline_sizer(
+            journal_path=journal,
+            n_epochs=epochs,
+            dry_run=dry_run,
+        )
+        print("Offline IQL sizer: %s" % ("dry-run complete" if dry_run else "saved to %s" % result))
+    except Exception as e:
+        print("Error: %s" % e)
+        raise SystemExit(1)
+
+
 # ---------------------------------------------------------------------------
 # Dispatch table  (command string → handler)
 # ---------------------------------------------------------------------------
@@ -587,6 +651,8 @@ _DISPATCH_TABLE: dict[str, Any] = {
     "transfer": _handle_transfer,
     "learn": handle_learn,
     "status": lambda args: __import__("scripts.buddy_status", fromlist=["main"]).main(),
+    "feedback-status": _handle_feedback_status,
+    "train-offline-sizer": _handle_train_offline_sizer,
 }
 
 
