@@ -1,412 +1,330 @@
 # ML Engine
 
-**Multi-Model Ensemble FX Trading System**
+Buddy is the trading runtime inside ML Engine: a multi-pair scanner, execution engine, monitoring surface, and self-improving learning loop for FX, with newer multi-broker support for futures workflows.
 
-A professional-grade machine learning system for Forex trading with a 4-model gated ensemble architecture, optimized for Apple Silicon (M1/M2/M3) and Intel Macs.
+## Disclaimer
 
----
+This repository contains experimental trading software.
 
-## ⚠️ Disclaimer
+- It is not financial advice.
+- Live trading can lose real money.
+- Use practice/demo accounts first.
+- Review every config and execution path before enabling live orders.
 
-> **WARNING: This is experimental software. Not financial advice.**
->
-> Trading Forex involves substantial risk of loss. Use only capital you can afford to lose. Always test on demo accounts first. The authors are not responsible for any financial outcomes.
+## What Buddy Is Today
 
----
+The old README described a smaller gated ensemble. The current project is broader:
 
-## System Overview
+- A scanner that evaluates many instruments in one pass.
+- A weighted agent-consensus layer that can block or promote trades.
+- An execution pipeline with ATR-based exits, spread checks, freshness checks, and broker routing.
+- A status and journal surface for runtime visibility.
+- A learning loop that extracts patterns from outcomes, promotes recurring lessons into rules, and updates persisted agent weights.
 
-| Component | Value |
-|-----------|-------|
-| **Timeframe** | H1 (Hourly) - default |
-| **Primary Model** | Transformer (direction prediction) |
-| **Gate Models** | XGBoost, RandomForest, Ridge |
-| **Default Pairs** | EUR_USD, GBP_USD, USD_JPY, USD_CHF, AUD_USD, USD_CAD, NZD_USD |
-| **Risk Per Trade** | 2-5% configurable |
-| **SL/TP** | 15 pip SL / 30 pip TP (default) |
-| **Account Integration** | OANDA v20 API (practice & live) |
+At a high level:
 
----
-
-## How It Works
-
-### 4-Model Gated Ensemble
-
-The system uses **four independent models** that must ALL pass before executing a trade:
-
-```
-                    ┌─────────────────────────────────┐
-                    │   TRANSFORMER (Direction)       │
-                    │   Predicts: Long/Short          │
-                    │   Threshold: ≥60% probability   │
-                    └─────────────┬───────────────────┘
-                                  │
-        ┌─────────────────────────┼─────────────────────────┐
-        ▼                         ▼                         ▼
-┌───────────────┐       ┌───────────────┐       ┌───────────────┐
-│    RIDGE      │       │   XGBOOST     │       │ RANDOMFOREST  │
-│  (Confidence) │       │  (Momentum)   │       │    (Risk)     │
-│  ADX-based    │       │  Percentile   │       │  ATR-based    │
-│  Min: 50/100  │       │  Min: 0.20    │       │  Max: 2.5%    │
-└───────────────┘       └───────────────┘       └───────────────┘
-        │                         │                         │
-        └─────────────────────────┼─────────────────────────┘
-                                  ▼
-                    ┌─────────────────────────────────┐
-                    │     ALL GATES MUST PASS         │
-                    │                                 │
-                    │  ✅ Transformer prob ≥ 60%      │
-                    │  ✅ Ridge confidence ≥ 50       │
-                    │  ✅ XGBoost momentum ≥ 0.20     │
-                    │  ✅ RF drawdown ≤ 2.5%          │
-                    │                                 │
-                    │        ↓ TRADE EXECUTED ↓       │
-                    └─────────────────────────────────┘
+```text
+Scan market data
+  -> run model + feature analysis
+  -> collect agent verdicts
+  -> apply gates and policy checks
+  -> execute through broker if allowed
+  -> journal outcomes
+  -> learn from results
+  -> tune weights, rules, and operating thresholds
 ```
 
-### Gate Thresholds (Default)
+## Core Architecture
 
-| Gate | Model | Metric | Threshold | Purpose |
-|------|-------|--------|-----------|---------|
-| **Direction** | Transformer | Probability | ≥ 60% | Primary trend signal |
-| **Confidence** | Ridge | ADX Score | ≥ 50/100 | Trend strength filter |
-| **Momentum** | XGBoost | Percentile | ≥ 0.20 | Fresh/accelerating moves |
-| **Risk** | RandomForest | ATR Drawdown | ≤ 2.5% | Max expected pullback |
+```text
+main.py / bin/Buddy
+  -> cli/
+  -> src/scanner/engine.py
+      -> model inference
+      -> agent team voting
+      -> gate evaluation
+      -> execution manager
+      -> automation / watch mode / supervision
+      -> learning + diagnostics + state persistence
+```
 
-### Additional Filters
+Primary runtime areas:
 
-- **Meta-Labeling**: ML model predicting if trade will succeed (min 55% confidence)
-- **Market Intelligence**: News sentiment via FinBERT (blocks conflicting sentiment)
-- **FX Guardrails**: Session windows, spread filters, daily limits
+- `main.py`: thin CLI entrypoint and command dispatch.
+- `bin/Buddy`: convenience launcher that picks config and Python environment by machine architecture.
+- `src/scanner/`: scanner, agents, execution, automation, filters, diagnostics, confidence pipeline, and adaptive logic.
+- `src/brokers/`: broker abstraction plus OANDA and IBKR clients.
+- `cli/`: user-facing command handlers for scan, train, journal, learn, analyze, status, and monitoring flows.
+- `trained_data/`: models, journals, adaptive state, diagnostics, and scanner outputs.
+- `.claude/`: Buddy's rules, learnings, Ralph PRD loop state, and operator memory files used by the repo's autonomous workflows.
 
----
+## Agent Consensus Model
+
+Buddy's scanner still centers on the specialist-agent voting system described in `AGENTS.md`.
+
+### Core scanner agents
+
+| Agent | Base Weight | Role |
+| --- | ---: | --- |
+| `trend` | 1.15 | Trend direction and strength |
+| `mean_reversion` | 0.90 | Pullback / stretch detection |
+| `volatility` | 1.00 | ATR and regime context |
+| `risk_sentinel` | 1.25 | Portfolio and drawdown protection |
+| `uncertainty` | 1.10 | Model disagreement / variance control |
+| `execution_quality` | 1.05 | Spread, slippage, liquidity |
+| `momentum` | 1.05 | MACD / ROC-style follow-through |
+| `news_risk` | 0.95 | Event and headline risk |
+| `multi_timeframe` | 1.10 | H1/H4/D1 alignment |
+| `pair_performance` | 0.85 | Pair-specific historical behavior |
+| `session_timing` | 0.80 | Session quality / overlap timing |
+| `support_resistance` | 1.00 | Pivot and nearby structure |
+
+The current codebase also includes newer adjunct evaluators:
+
+- `trader_readiness`: optional human-side readiness signal bridged from Aura.
+- `devil_advocate`: adversarial final bear-case evaluator that can warn or veto late in the pipeline.
+
+### Weight learning
+
+Agent weights persist in `trained_data/models/agent_weights.json` and adapt from outcomes. The runtime now supports:
+
+- bounded weight learning
+- time-based decay back toward baseline
+- regime-aware weight storage
+- optional Bayesian weight blending
+- confidence calibration and weighted-vote adjustment
+
+That means the scanner is not using static weights only; it carries forward learned behavior between runs.
+
+## Execution Model
+
+Buddy does not rely on fixed 15/30 pip exits anymore as the main story. Current execution is built around:
+
+- ATR-based stop loss and take profit sizing
+- regime-adaptive ATR multipliers
+- minimum risk/reward enforcement
+- stale-signal protection via max data age
+- spread checks before order placement
+- trailing-stop and live position management hooks
+- RL-assisted sizing / gates / exits when enabled by profile
+
+The default config reflects lessons recorded in `.claude/learnings.md`, especially around:
+
+- keeping `max_data_age_seconds` high enough for real scan latency
+- enforcing minimum R:R floors
+- tightening disagreement handling after repeated losses
+- preventing stale or overwritten state from blocking the pipeline silently
+
+## Brokers And Instruments
+
+The project is no longer OANDA-only.
+
+- Default broker: OANDA
+- Supported broker abstraction: OANDA and IBKR
+- Default instrument set: major and cross FX pairs
+- Futures-oriented profiles and instrument registry entries also exist for `ES`, `NQ`, `CL`, and `GC`
+
+Environment variables Buddy expects for OANDA workflows:
+
+```bash
+OANDA_API_TOKEN=...
+OANDA_ACCOUNT_ID=...
+```
+
+`OANDA_API_KEY` is accepted as a fallback alias in several paths. Local runs automatically try `.env.local` first, then `.env`.
 
 ## Quick Start
 
-### 1. Installation
+### 1. Create an environment
+
+The repo includes both `environment_tf_metal.yml` and `environment_intel_mac.yml`, plus `requirements.txt`.
+
+Example:
 
 ```bash
-# Clone repository
-git clone https://github.com/Raynergy-svg/ml_engine.git
-cd ml_engine
-
-# Create conda environment
-conda create -n tf-metal python=3.11
+conda env create -f environment_tf_metal.yml
 conda activate tf-metal
-
-# Install TA-Lib (macOS)
-brew install ta-lib
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Configure OANDA API
+Intel Macs can use `environment_intel_mac.yml` instead.
 
-Create `.env` file:
+### 2. Set credentials
+
+Create `.env.local` in the repo root:
+
 ```bash
-OANDA_API_TOKEN=your_practice_api_token
+OANDA_API_TOKEN=your_token
 OANDA_ACCOUNT_ID=your_account_id
 ```
 
-### 3. Train a Model
+### 3. Check status
 
 ```bash
-# Train on EUR_USD H1 data (fetches 15k candles from OANDA)
-./bin/Buddy train -i EUR_USD
-
-# Train from local CSV
-./bin/Buddy train -i EUR_USD --csv market_data/EUR_USD_H1.csv
+./bin/Buddy status
 ```
 
-### 4. Run Inference
+### 4. Run a dry scan
 
 ```bash
-# Predict on EUR_USD (dry run)
-./bin/Buddy EUR_USD
-
-# Execute trade if gates pass
-./bin/Buddy EUR_USD -x
-
-# Scan all pairs for opportunities
-./bin/Buddy scan
+./bin/Buddy scan --profile balanced
 ```
 
----
-
-## CLI Commands
-
-### Buddy Script (`./bin/Buddy`)
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `./bin/Buddy [PAIR]` | Predict direction (dry run) | `./bin/Buddy EUR_USD` |
-| `./bin/Buddy [PAIR] -x` | Predict + execute trade | `./bin/Buddy USD_JPY -x` |
-| `./bin/Buddy train -i PAIR` | Train model for pair | `./bin/Buddy train -i GBP_USD` |
-| `./bin/Buddy scan` | Scan all pairs | `./bin/Buddy scan` |
-| `./bin/Buddy status` | Show model status | `./bin/Buddy status` |
-| `./bin/Buddy journal` | View trade journal | `./bin/Buddy journal` |
-
-### Main.py Commands
+### 5. Run single-pair inference
 
 ```bash
-# Training
-python main.py train-buddy --instrument EUR_USD --candles 15000 --oanda-live
+./bin/Buddy EUR_USD --dry-run
+```
 
-# Inference
-python main.py buddy --instrument EUR_USD --execute
+### 6. Execute only when you are ready
 
-# Scan pairs
-python main.py scan --pairs EUR_USD,GBP_USD,USD_JPY
+```bash
+./bin/Buddy EUR_USD --execute
+./bin/Buddy scan --auto-execute
+```
 
-# Retrain gate models only (XGBoost, RF, Ridge)
+## Main CLI Commands
+
+Buddy can be run through `./bin/Buddy` or `python main.py`.
+
+### Runtime commands
+
+```bash
+./bin/Buddy status
+./bin/Buddy scan --profile balanced
+./bin/Buddy scan --watch --interval 5
+./bin/Buddy scan --supervision --enforce-policy 1
+./bin/Buddy EUR_USD --dry-run
+./bin/Buddy EUR_USD --execute
+./bin/Buddy buddy-chat -I EUR_USD
+./bin/Buddy journal --days 30
+./bin/Buddy learn
+./bin/Buddy analyze --top 10
+./bin/Buddy monitor --alerts
+./bin/Buddy model-status --decisions
+```
+
+### Training and model maintenance
+
+Important: `train-buddy` is single-pair training. Scanner behavior depends on the broader scanner stack and persisted runtime state, not just one isolated model artifact.
+
+```bash
+./bin/Buddy train -I EUR_USD --oanda-live
 python main.py retrain-gates
-
-# Model status
-python main.py model-status
+python main.py retrain-all
+python main.py train-rl-sizer
+python main.py train-rl-gates
+python main.py train-rl-exits
+python main.py promote-model
 ```
 
----
+### Useful scan flags
 
-## Configuration
+- `--profile`: `conservative`, `balanced`, `aggressive`, `smart`, `futures_paper`, `futures_live`
+- `--watch`: continuous scan loop
+- `--interval`: watch loop cadence in minutes
+- `--auto-execute`: place trades automatically when allowed
+- `--diversified`: add diversification filtering
+- `--force`: bypass some session/filter restrictions for investigation
+- `--futures`: shorthand for IBKR futures paper profile
+- `--instruments`: override profile instrument list
 
-### Key Settings (`config/config_improved_H1.yaml`)
+## Profiles And Modes
 
-```yaml
-# Timeframe
-fx:
-  granularity: H1              # Hourly candles
+Scan behavior is heavily profile-driven.
 
-# Direction labeling (training)
-direction_lookahead: 24        # 24 hours lookahead
-direction_threshold: 0.003     # 0.3% min move for label
+- `balanced`: full-featured default and the best general starting point
+- `conservative`: fewer trades, stricter thresholds
+- `aggressive`: looser thresholds, still risk bounded
+- `smart`: profile intended to run agent-confirmation enhancements
+- `futures_paper` / `futures_live`: broker/profile presets for IBKR-style workflows
 
-# Model architecture
-transformer:
-  d_model: 32
-  num_heads: 4
-  num_layers: 2
-  dropout: 0.4
+Watch mode and supervision mode are both first-class runtime paths now:
 
-# Training
-training:
-  epochs: 200
-  early_stopping_patience: 40
-  batch_size: 64
-  learning_rate: 0.0003
+- watch mode repeats scans on a timer
+- supervision mode shifts toward a supervisor-first lifecycle with policy enforcement levels
 
-# Risk management
-buddy:
-  stop_loss_pips: 15.0         # 15 pip stop loss
-  take_profit_pips: 30.0       # 30 pip take profit
-  risk_per_trade_pct: 0.02     # 2% risk per trade
+## Learning Loop
 
-# Scanning (aggressive mode)
-scan:
-  risk_per_trade_pct: 0.05     # 5% risk for larger lots
-  min_confidence: 0.53         # 53%+ confidence filter
-  aggressive_mode: true
-```
+Buddy's current identity is tightly tied to its learning pipeline.
 
----
+### Sources of learning
 
-## Project Structure
+- `trained_data/trade_journal_rl.json`: scanner trade journal and outcomes
+- `.claude/learnings.md`: extracted date-stamped lessons
+- `.claude/rules/`: promoted recurring patterns that become active rules
+- `.claude/config_adjustments.json`: adaptive tuning outputs
+- `trained_data/models/agent_weights.json`: persisted learned agent weights
 
-```
-ml_engine/
-├── bin/
-│   └── Buddy                    # Main CLI script
-├── config/
-│   ├── config_improved_H1.yaml  # H1 timeframe config (default)
-│   └── config_m1_optimized.yaml # Apple Silicon optimized
-├── src/
-│   ├── core/
-│   │   ├── modular_inference.py # Gated ensemble inference
-│   │   └── modular_data_loaders.py
-│   ├── models/
-│   │   ├── tensorflow_models.py # Transformer, TCN, TFT
-│   │   ├── tensorflow_engine.py # Training pipeline
-│   │   └── ensemble_model.py    # Ensemble stacking
-│   ├── training/
-│   │   ├── modular_trainers.py  # Model trainers
-│   │   ├── buddy_training_helpers.py
-│   │   └── walkforward_validation.py
-│   ├── risk/
-│   │   ├── fx_guardrails.py     # Trading rules
-│   │   ├── position_sizing.py   # Kelly-based sizing
-│   │   └── triple_barrier.py    # Trade labeling
-│   └── utils/
-│       ├── oanda_practice.py    # OANDA API client
-│       └── trade_journal.py     # Trade logging
-├── main.py                      # CLI entry point
-├── market_data/                 # Downloaded price data
-└── trained_data/models/         # Trained model artifacts
-```
-
----
-
-## Performance Metrics
-
-### Training Metrics
-
-| Metric | Description | Target |
-|--------|-------------|--------|
-| `val_direction_accuracy` | Direction prediction accuracy | > 55% |
-| `val_confidence_mae` | Confidence calibration error | < 0.15 |
-| `val_combined` | Weighted direction + confidence | > 0.60 |
-
-### Inference Metrics
-
-| Metric | Description |
-|--------|-------------|
-| `tcn_probability` | Transformer direction confidence (0-1) |
-| `ridge_confidence` | ADX-based trend strength (0-100) |
-| `xgb_momentum` | Momentum percentile (0-1) |
-| `rf_drawdown_pct` | Expected drawdown (%) |
-| `meta_confidence` | Meta-labeler success probability |
-
-### Example Output
-
-```
-╭──────────────────────────────────────────────────────────────────╮
-│ EUR_USD Prediction                                               │
-├──────────────────────────────────────────────────────────────────┤
-│ Direction: LONG                                                  │
-│ Transformer Prob: 67.3%                                          │
-│ Ridge Confidence: 72/100                                         │
-│ XGBoost Momentum: 0.45 (accelerating)                            │
-│ RF Drawdown: 1.8%                                                │
-│ Meta Confidence: 62%                                             │
-├──────────────────────────────────────────────────────────────────┤
-│ ✅ ALL GATES PASSED                                              │
-│ Position Size: 0.5 lots                                          │
-│ Stop Loss: 15 pips                                               │
-│ Take Profit: 30 pips                                             │
-╰──────────────────────────────────────────────────────────────────╯
-```
-
----
-
-## Platform Support
-
-### Apple Silicon (M1/M2/M3)
-
-Automatically optimized with TensorFlow Metal:
+### Manual learning command
 
 ```bash
-# Verify GPU
-python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
-# Expected: [PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
+./bin/Buddy learn
+./bin/Buddy learn --status
+./bin/Buddy learn --analyze
+./bin/Buddy learn --promote
+./bin/Buddy learn --consolidate
+./bin/Buddy learn --report
 ```
 
-| Setting | Optimized Value | Impact |
-|---------|-----------------|--------|
-| `model_type` | `transformer` | Best for H1 patterns |
-| `batch_size` | `64-128` | Optimal GPU utilization |
-| `recurrent_dropout` | `0.0` | **CRITICAL**: Non-zero causes massive slowdown |
-| `mixed_precision` | `false` | Metal doesn't fully support FP16 |
+The current learnings file shows the practical direction of the system:
 
-### Intel Mac
+- root-cause analysis of execution stalls
+- threshold calibration for disagreement and confidence systems
+- promotion of repeated trade-outcome patterns into enforceable rules
+- repeated emphasis on safe state persistence and end-to-end audits
 
-Uses `ml_engine_py312` conda environment:
+## Ralph And Autonomous Improvement
+
+This repo also contains Ralph, the autonomous dev loop used for PRD-driven code improvement:
+
+- `scripts/ralph.sh`
+- `.claude/ralph/prd.json`
+- `.claude/agents/`
+
+Ralph is reference and automation infrastructure around the codebase, not the scanner agent team itself. The scanner agents and the `.claude/agents/` prompt library are separate concepts.
+
+## Repo Map
+
+```text
+bin/                    launcher scripts
+cli/                    command handlers and CLI support
+config/                 runtime and profile configuration
+docs/                   implementation notes
+scripts/                maintenance, validation, Ralph loop, status helpers
+src/brokers/            broker abstraction, OANDA, IBKR, instrument registry
+src/scanner/            scanner, agents, execution, automation, filters, analytics
+src/training/           training pipelines and trainer infrastructure
+tests/                  automated coverage
+trained_data/           models, journals, diagnostics, adaptive state
+.claude/                learnings, rules, Ralph state, operator memory
+```
+
+## Recommended First Commands For New Contributors
 
 ```bash
-conda env create -f environment_intel_mac.yml
-conda activate ml_engine_py312
+./bin/Buddy status
+./bin/Buddy scan --profile balanced --no-train
+./bin/Buddy journal --days 14
+./bin/Buddy learn --status
+python main.py --help
 ```
 
----
+Those four commands give a quick read on:
 
-## Model Files
+- whether credentials and runtime state are loaded
+- what the scanner thinks is tradeable
+- what recent outcomes look like
+- what Buddy has learned recently
 
-After training, models are saved to `trained_data/models/`:
+## Project Notes
 
-| File | Description |
-|------|-------------|
-| `transformer_direction.keras` | Transformer direction model |
-| `transformer_direction.meta.pkl` | Scalers and metadata |
-| `xgb_momentum.pkl` | XGBoost momentum gate |
-| `ridge_confidence.pkl` | Ridge confidence gate |
-| `rf_risk.pkl` | RandomForest risk gate |
-| `modular_ensemble.meta.json` | Ensemble configuration |
+- The repo contains legacy and experimental material. Prefer `src/scanner/`, `src/brokers/`, `cli/`, `config/`, and `scripts/` for the current Buddy path.
+- macOS-specific memory and OpenMP safeguards are set early in `main.py`; they are intentional and part of the production story for this codebase.
+- Many runtime surfaces are fail-open by design so missing optional subsystems do not crash scans. That makes status, diagnostics, and learnings especially important when troubleshooting.
 
-Pair-specific models are stored in `trained_data/models/{PAIR}/`.
+## Where To Look Next
 
----
-
-## Advanced Features
-
-### Market Intelligence
-
-```bash
-# Enable news sentiment blocking
-python main.py buddy --intelligent --instrument EUR_USD
-```
-
-- Fetches forex news via web scraping
-- Analyzes sentiment with FinBERT
-- Blocks trades conflicting with strong sentiment
-
-### RL Position Sizer
-
-```bash
-# Train RL agent for position sizing
-python main.py train-rl-sizer --timesteps 500000
-
-# Use in inference
-python main.py buddy --use-rl-sizer --instrument EUR_USD
-```
-
-### Walk-Forward Validation
-
-```bash
-# Time-series cross-validation
-python -c "from src.training.walkforward_validation import run_walk_forward; run_walk_forward()"
-```
-
----
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| `conda not found` | Install Miniforge: `brew install miniforge` |
-| GPU not detected | Verify TF-Metal: `pip install tensorflow-metal` |
-| OANDA errors | Check `.env` credentials and account status |
-| Missing model | Train first: `./bin/Buddy train -i EUR_USD` |
-| Slow training | Set `recurrent_dropout: 0.0` in config |
-
----
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [docs/PROJECT_ARCHITECTURE.md](docs/PROJECT_ARCHITECTURE.md) | System architecture |
-| [docs/CONFIDENCE_SYSTEM_DOCUMENTATION.md](docs/CONFIDENCE_SYSTEM_DOCUMENTATION.md) | Calibration details |
-| [docs/FX_TIER1_GUARDRAILS_PLAN.md](docs/FX_TIER1_GUARDRAILS_PLAN.md) | Trading rules |
-| [.github/copilot-instructions.md](.github/copilot-instructions.md) | Development guide |
-
----
-
-## Testing
-
-```bash
-# Run all tests
-pytest tests/ -v
-
-# Run specific test
-pytest tests/test_buddy_intelligent_mode.py -v
-```
-
----
-
-## License
-
-This project is for educational and research purposes. See LICENSE for details.
-
----
-
-<p align="center">
-  <strong>⚠️ Always test on demo accounts first. Trade responsibly.</strong>
-</p>
+- Start with `AGENTS.md` for the scanner-agent mental model.
+- Read `.claude/learnings.md` for the most recent system lessons and tuning direction.
+- Use `python main.py --help` for the full command surface.
