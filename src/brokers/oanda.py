@@ -335,6 +335,9 @@ class OandaBroker(BrokerClient):
     def get_nav(self) -> float:
         """Get current net asset value (account balance).
 
+        Falls back to balance when NAV is 0 (common on weekends when
+        OANDA practice accounts report nav=0 while markets are closed).
+
         Returns:
             NAV in account currency.
 
@@ -345,6 +348,10 @@ class OandaBroker(BrokerClient):
             logger.debug("Fetching account NAV")
             summary = self.get_account_summary()
             nav = summary.nav
+            # OANDA practice returns nav=0.0 when markets are closed (weekends)
+            if nav <= 0 and summary.balance > 0:
+                logger.info("NAV=0 (market closed?), using balance=%.2f as fallback", summary.balance)
+                nav = summary.balance
             logger.debug(f"Account NAV: {nav}")
             return nav
 
