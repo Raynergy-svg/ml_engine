@@ -213,16 +213,22 @@ class ReflectionLogReader:
         self._announced_waiting = False
 
     def _format(self, entry: dict) -> str:
-        tid = str(entry.get("trade_id", "?"))[-8:]  # last 8 chars
+        # Trade ID — keep first 12 chars (human-recognizable prefix)
+        tid = str(entry.get("trade_id", "?"))[:12]
         mode = str(entry.get("mode", "?"))
         dur = float(entry.get("duration_seconds", 0) or 0)
         cost = float(entry.get("cost_usd", 0) or 0)
         success = bool(entry.get("success"))
         hyp = str(entry.get("hypothesis") or "").strip()[:70]
         err = str(entry.get("error") or "").strip()[:60]
-        # HH:MM from ISO-8601 "...T12:34:56Z" — take chars [-9:-4]
+        # HH:MM — parse the ISO timestamp properly (handles microseconds + TZ)
         ts_raw = str(entry.get("ts", ""))
-        ts = ts_raw[-9:-4] if len(ts_raw) >= 9 else ts_raw
+        try:
+            from datetime import datetime as _dt
+            ts_obj = _dt.fromisoformat(ts_raw.replace("Z", "+00:00"))
+            ts = ts_obj.strftime("%H:%M")
+        except (ValueError, TypeError):
+            ts = "--:--"
 
         if not success and err:
             return f"[red]  ✗ {ts} {tid} {mode} FAILED: {err}[/]"

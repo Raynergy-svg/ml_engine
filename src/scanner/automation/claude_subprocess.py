@@ -226,6 +226,21 @@ def _parse_result_block(stdout: str) -> Dict[str, Any]:
     except json.JSONDecodeError:
         pass
 
+    # Detect "free-form prose" blocks (Claude wrote a paragraph instead of
+    # key:value pairs). Heuristic: no line starts with an unquoted lowercase
+    # identifier followed by ":", OR the first line itself doesn't match.
+    import re as _re
+    structured_line = _re.compile(r"^(artifacts_written|cost_usd|hypothesis|confidence)\s*:")
+    has_any_known_key = any(
+        structured_line.match(ln.strip()) for ln in block_text.splitlines()
+    )
+    if not has_any_known_key:
+        # Whole block is the hypothesis — clean and single-line it
+        result["hypothesis"] = " ".join(block_text.split())[:300]
+        result["artifacts_written"] = []
+        result["cost_usd"] = 0.0
+        return result
+
     # Fallback: line-by-line "key: value" + "  - item" lists
     current_list_key: Optional[str] = None
     for line in block_text.splitlines():
