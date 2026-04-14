@@ -442,14 +442,18 @@ class EmbeddedScanner:
                         f"[{color}]  ◈ {pair} {direction} P/L ${pl:.2f}[/]"
                     )
 
-            # RL sync for closed trades
+            # RL sync for closed trades — calls the real handler chain
+            # (PER_TRADE_HANDLERS in event_handlers.py) so ClaudeReflectionHandler,
+            # RLReplayHandler, EpisodicMemoryHandler etc. all fire. Previously
+            # this imported a non-existent `rl_sync.sync_closed_trades` module,
+            # leaving the reflection/self-improvement loop silently disabled
+            # whenever the TUI was the entry point.
             try:
-                closed = em.get_recently_closed()
-                if closed:
-                    from src.scanner.rl_sync import sync_closed_trades
-                    sync_closed_trades(closed)
+                sync_result = em.sync_closed_trades_rl(scanner=self._scanner)
+                synced = int(sync_result.get("trades_synced", 0) or 0)
+                if synced:
                     self._brain(
-                        f"[dim]  RL sync: {len(closed)} closed trade(s) processed[/]"
+                        f"[dim]  RL sync: {synced} closed trade(s) → handler chain fired[/]"
                     )
             except Exception as e:
                 logger.debug("RL sync error: %s", e)
@@ -570,26 +574,68 @@ class EmbeddedScanner:
             enrichment.mtf_confluence_score = h4 * 0.50 + h1 * 0.30 + m15 * 0.20
 
         # ── Risk metrics ───────────────────────────────────────
+        # Critical: only overwrite the snapshot's risk fields when we have a
+        # confirmed-good NAV. Otherwise a silent OANDA fetch failure (NAV=0,
+        # account.error set) produces 0/0 NaN or a stale 0.0 that clobbers the
+        # last-good value in DashboardSnapshot.
+        import math as _math
         try:
             from src.scanner.execution import ExecutionManager
             em = ExecutionManager()
-            open_trades = em.monitor_open_trades()
-            if open_trades:
+            open_trades = em.monitor_open_trades() or []
+
+            # NAV fetch with explicit error detection
+            nav = 0.0
+            account_ok = False
+            if hasattr(self._scanner, "get_account_info"):
+                acct = self._scanner.get_account_info() or {}
+                if not acct.get("error"):
+                    try:
+                        nav = float(acct.get("NAV", acct.get("nav", 0)) or 0.0)
+                        if _math.isnan(nav) or _math.isinf(nav):
+                            nav = 0.0
+                        account_ok = nav > 0
+                    except (TypeError, ValueError):
+                        nav = 0.0
+
+            if not account_ok:
+                # Surface the skip so the user sees why risk didn't update,
+                # and mark enrichment fields as "unknown" (negative sentinel)
+                # so data_provider can keep the last-good value instead of
+                # overwriting with stale zeros.
+                enrichment.portfolio_risk_pct = -1.0
+                enrichment.drawdown_pct = -1.0
+                enrichment.max_drawdown_pct = -1.0
+                enrichment.correlation_ok = True
+                self._brain("[dim]  risk: account fetch failed, keeping last-good values[/]")
+            else:
                 total_risk = sum(
-                    abs(t.get("unrealized_pl", 0)) for t in open_trades
+                    abs(float(t.get("unrealized_pl", 0) or 0)) for t in open_trades
                 )
-                nav = self._scanner.get_account_info().get("NAV", 0) if hasattr(self._scanner, "get_account_info") else 0
-                if nav and nav > 0:
-                    enrichment.portfolio_risk_pct = (total_risk / nav) * 100
-                    if nav > self._peak_nav:
-                        self._peak_nav = nav
-                    if self._peak_nav > 0:
-                        dd = (self._peak_nav - nav) / self._peak_nav * 100
-                        enrichment.drawdown_pct = max(0, dd)
-                        enrichment.max_drawdown_pct = max(enrichment.drawdown_pct, 0)
-            enrichment.correlation_ok = True  # We already filtered above
+                # Safe division — nav > 0 guaranteed by account_ok branch
+                pr = (total_risk / nav) * 100 if nav > 0 else 0.0
+                if _math.isnan(pr) or _math.isinf(pr):
+                    pr = 0.0
+                enrichment.portfolio_risk_pct = max(0.0, pr)
+
+                if nav > self._peak_nav:
+                    self._peak_nav = nav
+                if self._peak_nav > 0:
+                    dd = (self._peak_nav - nav) / self._peak_nav * 100
+                    if _math.isnan(dd) or _math.isinf(dd):
+                        dd = 0.0
+                    enrichment.drawdown_pct = max(0.0, dd)
+                    enrichment.max_drawdown_pct = max(enrichment.drawdown_pct, 0.0)
+                else:
+                    enrichment.drawdown_pct = 0.0
+                    enrichment.max_drawdown_pct = 0.0
+                enrichment.correlation_ok = True  # We already filtered above
         except Exception as e:
             logger.debug("Risk metrics error: %s", e)
+            # Don't overwrite on exception — keep whatever was there
+            enrichment.portfolio_risk_pct = -1.0
+            enrichment.drawdown_pct = -1.0
+            enrichment.max_drawdown_pct = -1.0
 
         return enrichment
 
