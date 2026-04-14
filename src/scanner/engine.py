@@ -6735,6 +6735,31 @@ class Scanner:
             if not a.tp_pips or float(a.tp_pips) <= 0:
                 logger.warning(f"Pre-flight skip {a.pair}: invalid TP={a.tp_pips}")
                 continue
+            # Economic calendar blackout gate (Phase 48, US-301)
+            if getattr(self.config, "enable_calendar_blackout", True):
+                try:
+                    from src.scanner.economic_calendar import EconomicCalendarFilter, EconomicCalendarConfig
+                    cal_config = EconomicCalendarConfig()
+                    cal_filter = EconomicCalendarFilter(cal_config)
+                    cal_result = cal_filter.check_pair(a.pair)
+                    if cal_result.action == "BLACKOUT":
+                        logger.warning(
+                            "Calendar BLACKOUT skip %s: %s (event in %s min)",
+                            a.pair, cal_result.reason,
+                            cal_result.minutes_until_event,
+                        )
+                        continue
+                    if cal_result.action == "REDUCE_SIZE":
+                        if hasattr(a, "recommended_lots") and a.recommended_lots:
+                            original = float(a.recommended_lots)
+                            a.recommended_lots = original * cal_result.size_multiplier
+                            logger.info(
+                                "Calendar REDUCE_SIZE %s: %.2f -> %.2f lots (multiplier %.1f)",
+                                a.pair, original, float(a.recommended_lots),
+                                cal_result.size_multiplier,
+                            )
+                except Exception as cal_err:
+                    logger.debug("Calendar filter skipped for %s: %s", a.pair, cal_err)
             # R:R ratio gate (rules/trading.md: minimum 1.2:1)
             rr = float(a.tp_pips) / float(a.sl_pips)
             # Hard safety floor from trading rules: enforce >= 1.2:1 even if

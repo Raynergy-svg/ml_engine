@@ -744,6 +744,10 @@ class ScannerConfig:
     enable_support_resistance_agent: bool = True
     enable_trader_readiness_agent: bool = True  # Agent #13: Aura human-side readiness signal
     enable_devil_advocate: bool = True  # Agent #14: Adversarial bear-case evaluator
+    enable_order_flow_agent: bool = True  # Order-flow / book-depth agent
+    enable_calendar_blackout: bool = True  # Economic calendar blackout gate (US-301)
+    news_sentiment_fast_mode: bool = True  # Fast-path sentiment inference
+    enable_news_sentiment: bool = True  # News sentiment integration
     devil_advocate_block_threshold: float = 0.60  # Bear score above this blocks the trade
     devil_advocate_warn_threshold: float = 0.40   # Bear score above this soft-vetoes
 

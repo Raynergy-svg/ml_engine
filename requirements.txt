@@ -121,6 +121,7 @@ packaging==25.0
 gymnasium>=0.29.0
 stable-baselines3>=2.0.0
 onnxruntime>=1.16.0  # Fast RL inference via ONNX
+d3rlpy>=2.8.0  # Offline RL (IQL) position sizer
 
 # ============================================================
 # Optional: Install separately if needed

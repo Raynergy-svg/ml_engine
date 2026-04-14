@@ -416,6 +416,16 @@ class Orchestrator:
             critical=False,
         ))
 
+        # Step 4c: Post-trade diagnostics + self-heal (every cycle)
+        self._dispatch_table.append(DispatchStep(
+            name="post_trade_diagnostics",
+            callable=lambda: self._post_trade_diagnostics_dispatch(),
+            condition=lambda: True,
+            interval=1,
+            critical=False,
+            result_key="post_trade_diag",
+        ))
+
         # Step 5: Extract learnings (every cycle)
         self._dispatch_table.append(DispatchStep(
             name="extract_learnings",
@@ -818,6 +828,25 @@ class Orchestrator:
         except Exception as e:
             logger.debug("RL sync skipped: %s", e)
         return closed_trades
+
+    def _post_trade_diagnostics_dispatch(self) -> dict:
+        """Run post-trade diagnostics and self-heal if needed."""
+        try:
+            from src.scanner.feedback.diagnostics import PostTradeDiagnostics
+            diag = PostTradeDiagnostics().run()
+            if isinstance(diag, dict) and diag.get("status") not in ("HEALTHY", None):
+                try:
+                    from src.scanner.feedback.self_heal import SelfHeal
+                    heal = SelfHeal().apply(diag)
+                    logger.info("Post-trade diagnostics: %s, heal: %s",
+                                diag.get("status"), heal.get("status"))
+                    return {"diagnostics": diag, "heal": heal}
+                except Exception as heal_err:
+                    logger.debug("Self-heal skipped: %s", heal_err)
+            return {"diagnostics": diag, "heal": None}
+        except Exception as e:
+            logger.debug("Post-trade diagnostics skipped: %s", e)
+            return {}
 
     def _agent_health_attribution_dispatch(self) -> None:
         """Record outcomes for agent health tracking."""

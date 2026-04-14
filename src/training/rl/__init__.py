@@ -34,3 +34,28 @@ __all__ = [
     "get_position_sizer",
     "train_rl_position_sizer",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy imports for offline sizer to avoid heavy d3rlpy load at startup."""
+    _offline_names = {
+        "OfflineSizerIQL",
+        "InsufficientTrajectoriesError",
+        "train_offline_sizer",
+        "load_offline_sizer",
+    }
+    if name in _offline_names:
+        from src.training.rl.offline_sizer import (
+            InsufficientTrajectoriesError,
+            OfflineSizerIQL,
+            load_offline_sizer,
+            train_offline_sizer,
+        )
+        _map = {
+            "OfflineSizerIQL": OfflineSizerIQL,
+            "InsufficientTrajectoriesError": InsufficientTrajectoriesError,
+            "train_offline_sizer": train_offline_sizer,
+            "load_offline_sizer": load_offline_sizer,
+        }
+        return _map[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

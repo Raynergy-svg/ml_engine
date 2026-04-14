@@ -88,13 +88,18 @@ class NewsCalendarAgent:
         cache_path: str = ".cache/economic_calendar.json",
         calendar_url: Optional[str] = None,
         refresh_hours: int = 24,
+        events: Optional[List[Dict[str, Any]]] = None,
     ):
         self.cache_path = Path(cache_path)
         # Falls back to Investing.com-compatible static seed if API unavailable
         self.calendar_url = calendar_url
         self.refresh_hours = refresh_hours
         self._events: List[EconomicEvent] = []
-        self._load_or_refresh()
+        if events is not None:
+            # Pre-fetched events (e.g., from ForexFactory scraper)
+            self._events = self._convert_external_events(events)
+        else:
+            self._load_or_refresh()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -271,6 +276,15 @@ class NewsCalendarAgent:
             return EconomicEvent(timestamp=ts, currency=currency, title=title, impact=impact)
         except Exception:
             return None
+
+    def _convert_external_events(self, events: List[Dict[str, Any]]) -> List[EconomicEvent]:
+        """Convert pre-fetched event dicts (e.g., from ForexFactory) to EconomicEvent list."""
+        result = []
+        for entry in events:
+            ev = self._parse_api_entry(entry)
+            if ev:
+                result.append(ev)
+        return result
 
     def _classify_impact(self, title: str, impact_raw: str) -> str:
         """Classify event impact from title keywords and raw impact field."""

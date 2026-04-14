@@ -511,6 +511,7 @@ validation_metrics:
     - momentum
     min_outperformance: 0.05
 scan:
+  offline_sizer_enabled: false
   lookback_candles: 200
   parallel_workers: 4
   backtest_window: 50
@@ -532,6 +533,10 @@ scan:
   max_tp_pips: 30.0
   high_prob_threshold: 0.65
   high_prob_tp_bonus: 20.0
+  enable_order_flow_agent: true
+  enable_calendar_blackout: true
+  news_sentiment_fast_mode: true
+  enable_news_sentiment: true
   max_trades_per_day: 30
   default_pairs:
   - EUR_USD
