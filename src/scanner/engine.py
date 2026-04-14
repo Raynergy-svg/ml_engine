@@ -6528,6 +6528,97 @@ class Scanner:
                 logger.error(f"Scan iteration failed: {e}")
                 time.sleep(interval_seconds)
 
+    def get_model_health(self) -> Dict[str, Any]:
+        """Report ALL runtime-loaded models so the TUI/health check reflects
+        reality rather than a hardcoded "3/3" counter.
+
+        Covers four model groups:
+          1. Modular ensemble (Transformer regime/direction, TCN volatility,
+             HistGB baseline) — loaded via Scanner.__init__ Phase 69 warm-up
+          2. Gate evaluator (momentum/confidence/risk/transformer/meta_labeler
+             /TCN gate) — loaded via _init_gate_evaluator()
+          3. Agent team weights (trained_data/models/agent_weights.json)
+          4. Supporting artifacts (calibration params, pair affinity, RL)
+
+        Returns a dict with `loaded` (dict of name→bool), `count` (int,
+        number of True), and `total` (int, number of expected slots).
+        Any call site can summarize as f"{count}/{total}" for display.
+        """
+        health: Dict[str, bool] = {}
+
+        # ── Group 1: modular ensemble ──────────────────────────────
+        mei = getattr(self, "_modular_ensemble", None)
+        if mei is not None:
+            health["transformer_regime"] = getattr(mei, "regime_model", None) is not None
+            health["transformer_direction"] = getattr(mei, "transformer", None) is not None
+            health["tcn_volatility"] = getattr(mei, "tcn", None) is not None
+            health["histgb_baseline"] = getattr(mei, "histgb", None) is not None
+        else:
+            health["transformer_regime"] = False
+            health["transformer_direction"] = False
+            health["tcn_volatility"] = False
+            health["histgb_baseline"] = False
+
+        # ── Group 2: gate evaluator ────────────────────────────────
+        ge = getattr(self, "_gate_evaluator", None)
+        if ge is not None and hasattr(ge, "get_model_health"):
+            gate_health = ge.get_model_health()
+            health.update(gate_health)
+        else:
+            for k in (
+                "momentum_catboost",
+                "momentum_xgboost",
+                "momentum_lightgbm",
+                "confidence_ridge",
+                "risk_rf",
+                "transformer_gate",
+                "meta_labeler",
+                "tcn_volatility_gate",
+            ):
+                health[k] = False
+
+        # ── Group 3: agent team weights ────────────────────────────
+        from pathlib import Path as _Path
+        agent_weights = _Path("trained_data/models/agent_weights.json")
+        health["agent_team_weights"] = agent_weights.exists()
+
+        # ── Group 4: supporting artifacts (advisory) ───────────────
+        support_dir = _Path("trained_data/models")
+        health["calibration_params"] = (support_dir / "calibration_params.json").exists()
+        health["pair_affinity_matrix"] = _Path("trained_data/pair_affinity_matrix.json").exists()
+        health["rl_scaler"] = (support_dir / "rl_scaler.pkl").exists()
+        health["gate_rl_config"] = (support_dir / "gate_rl_config.pkl").exists()
+        health["modular_ensemble_meta"] = (support_dir / "modular_ensemble.meta.json").exists()
+
+        loaded_count = sum(1 for v in health.values() if v)
+        total = len(health)
+
+        # "momentum_*" are mutually exclusive (cascade: catboost → xgb → lgbm).
+        # Normalize: only count as one momentum model even if multiple flags
+        # would be True (defensive; in practice only one is loaded at a time).
+        momentum_loaded = any(
+            health[k] for k in ("momentum_catboost", "momentum_xgboost", "momentum_lightgbm")
+        )
+        # Don't let the cascade double-count toward total
+        momentum_total_slots = 3  # 3 cascade options but only 1 expected loaded
+        if momentum_loaded:
+            # Subtract the unused cascade slots from total and keep +1 for the one that loaded
+            adjusted_total = total - (momentum_total_slots - 1)
+            adjusted_loaded = loaded_count - (
+                sum(1 for k in ("momentum_catboost", "momentum_xgboost", "momentum_lightgbm") if health[k])
+                - 1
+            )
+        else:
+            adjusted_total = total - (momentum_total_slots - 1)
+            adjusted_loaded = loaded_count
+
+        return {
+            "loaded": health,
+            "count": int(adjusted_loaded),
+            "total": int(adjusted_total),
+            "momentum_type": getattr(ge, "_momentum_model_type", "none") if ge else "none",
+        }
+
     def get_account_info(self) -> Dict[str, Any]:
         """Get current account information.
 

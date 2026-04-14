@@ -80,6 +80,12 @@ class ScanEnrichment:
     scanned_count: int = 0
     last_scan_time: Optional[datetime] = None
 
+    # Model health (real count, not hardcoded 3/3)
+    models_loaded_count: int = 0
+    models_total: int = 0
+    models_detail: dict = field(default_factory=dict)
+    momentum_model_type: str = "none"
+
 
 class EmbeddedScanner:
     """Bridge between the Scanner engine and the Textual TUI.
@@ -173,6 +179,28 @@ class EmbeddedScanner:
 
             # ── Automation modules (cherry-picked from ContinuousScanner) ──
             self._init_automation_modules()
+
+            # ── Model health breakdown ───────────────────────────────
+            # Report exactly what's loaded so the user isn't misled by a
+            # hardcoded "3/3" display. Shows which of the tier-7 stack
+            # actually materialized and what's missing.
+            try:
+                mh = self._scanner.get_model_health()
+                loaded_map = mh.get("loaded", {})
+                count, total = mh.get("count", 0), mh.get("total", 0)
+                mom_type = mh.get("momentum_type", "none")
+                self._brain(
+                    f"[cyan]▸ Model health: {count}/{total} loaded "
+                    f"(momentum: {mom_type})[/]"
+                )
+                # Break out the big ones so the user can see tier status
+                for name, is_loaded in loaded_map.items():
+                    if name.startswith("momentum_") and mom_type not in name:
+                        continue  # cascade fallback — only show the active one
+                    icon = "[green]✓[/]" if is_loaded else "[dim]✗[/]"
+                    self._brain(f"[dim]    {icon} {name}[/]")
+            except Exception as _mh_err:
+                logger.debug("Model health broadcast skipped: %s", _mh_err)
 
             self._running = True
             self._brain("[green]✓ Scanner engine online — first scan in 10s[/]")
@@ -670,6 +698,17 @@ class EmbeddedScanner:
             enrichment.portfolio_risk_pct = -1.0
             enrichment.drawdown_pct = -1.0
             enrichment.max_drawdown_pct = -1.0
+
+        # ── Model health snapshot (real count, not hardcoded) ──
+        try:
+            if hasattr(self._scanner, "get_model_health"):
+                mh = self._scanner.get_model_health()
+                enrichment.models_loaded_count = int(mh.get("count", 0))
+                enrichment.models_total = int(mh.get("total", 0))
+                enrichment.models_detail = dict(mh.get("loaded", {}))
+                enrichment.momentum_model_type = str(mh.get("momentum_type", "none"))
+        except Exception as e:
+            logger.debug("Model health snapshot error: %s", e)
 
         return enrichment
 

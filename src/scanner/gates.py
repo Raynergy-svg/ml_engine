@@ -1687,3 +1687,28 @@ class GateEvaluator:
     def has_meta_labeler(self) -> bool:
         """Check if Meta-labeler model is loaded."""
         return self._meta_labeler is not None
+
+    def get_model_health(self) -> Dict[str, Any]:
+        """Report which gate models are currently loaded.
+
+        Returns a flat dict mapping each expected model name → bool (loaded).
+        Used by the TUI's model-health panel so display reflects reality
+        instead of a hardcoded count.
+        """
+        health: Dict[str, Any] = {
+            "momentum_catboost": self._catboost_momentum is not None,
+            "momentum_xgboost": self._xgboost_momentum is not None,
+            # LightGBM momentum is loaded into self._catboost_momentum slot
+            # with _momentum_model_type == "lightgbm" (legacy compat), so
+            # expose it separately via the type tag:
+            "momentum_lightgbm": (
+                self._momentum_model_type == "lightgbm"
+                and self._catboost_momentum is not None
+            ),
+            "confidence_ridge": self._ridge_confidence is not None,
+            "risk_rf": self._rf_risk is not None,
+            "transformer_gate": self._transformer is not None,
+            "meta_labeler": self._meta_labeler is not None,
+            "tcn_volatility_gate": self._tcn_volatility is not None,
+        }
+        return health

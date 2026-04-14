@@ -117,7 +117,9 @@ class DashboardSnapshot:
     scan_cycle_count: int = 0
     scan_duration_ms: float = 0.0
     models_loaded: int = 0
-    models_total: int = 3
+    models_total: int = 0  # set by scanner, no longer hardcoded
+    models_detail: dict = field(default_factory=dict)
+    momentum_model_type: str = "none"
     system_health_score: float = 0.0
     cpu_pct: float = 0.0
     mem_mb: float = 0.0
@@ -246,6 +248,12 @@ class DataProvider:
             if enrichment.agents:
                 snap.agents = enrichment.agents
                 snap.weighted_vote_score = enrichment.weighted_vote_score
+            # Real model health count from Scanner.get_model_health()
+            if getattr(enrichment, "models_total", 0) > 0:
+                snap.models_loaded = int(enrichment.models_loaded_count)
+                snap.models_total = int(enrichment.models_total)
+                snap.models_detail = dict(enrichment.models_detail or {})
+                snap.momentum_model_type = str(enrichment.momentum_model_type or "none")
 
         # ── NAV History (deque is thread-safe + auto-bounded) ──
         if snap.nav > 0:
@@ -355,12 +363,21 @@ class DataProvider:
         except Exception:
             pass
 
-        # Check model files
+        # Model count is now populated by ScanEnrichment from the real
+        # Scanner.get_model_health() call (see apply_scan_enrichment below).
+        # We only set a file-system fallback here so the header shows a
+        # reasonable number before the first scan completes.
         models_dir = self._project_root / "trained_data" / "models"
-        if models_dir.exists():
-            model_files = list(models_dir.glob("*.pkl")) + list(models_dir.glob("*.joblib"))
-            snap.models_loaded = min(len(model_files), 3)
-        snap.models_total = 3
+        if models_dir.exists() and snap.models_total == 0:
+            # Rough pre-scan estimate: count loadable model files (not hardcoded)
+            model_files = (
+                list(models_dir.glob("*.pkl"))
+                + list(models_dir.glob("*.joblib"))
+                + list(models_dir.glob("*.keras"))
+            )
+            snap.models_loaded = len(model_files)
+            # Real total gets set from scanner.get_model_health() on first cycle
+            snap.models_total = len(model_files)
 
         # Check scanner state
         state_path = self._project_root / ".claude" / "state.json"
