@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_fills": 17,
+  "total_fills": 18,
   "total_rejections": 0,
   "pairs": {
     "USD_CAD": [
@@ -133,7 +133,16 @@
         "execution_ms": 0.0,
         "timestamp": "2026-04-14T12:11:59.250681+00:00"
       }
+    ],
+    "EUR_AUD": [
+      {
+        "regime": "LOW",
+        "slippage_pips": 2.8,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-04-14T22:41:30.768560+00:00"
+      }
     ]
   },
-  "last_updated": "2026-04-14T12:12:14.894325+00:00"
+  "last_updated": "2026-04-14T22:41:30.768587+00:00"
 }

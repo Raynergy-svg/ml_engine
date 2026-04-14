@@ -5470,5 +5470,23 @@
     "outcome": null,
     "pnl_pips": null,
     "closed_at": null
+  },
+  {
+    "episode_id": "48a3f341-4716-40f6-9b81-7e05faeda633",
+    "timestamp": "2026-04-14T12:12:14.882234+00:00",
+    "pair": "EUR_JPY",
+    "direction": "SHORT",
+    "regime": "NORMAL",
+    "session": "UNKNOWN",
+    "news_risk_score": 0.0,
+    "uncertainty_score": 0.6,
+    "atr_normalized": 0.0,
+    "spread_pips": 3.0,
+    "confidence": 0.644445357959629,
+    "weighted_vote_score": 0.9036,
+    "rr_ratio": 0.0,
+    "outcome": null,
+    "pnl_pips": null,
+    "closed_at": null
   }
 ]

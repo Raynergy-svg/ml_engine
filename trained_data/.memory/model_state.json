@@ -8,7 +8,7 @@
   "runtime::buddy_runtime": {
     "selected_llm_provider": "claude",
     "intelligent_mode_enabled": false,
-    "last_updated": "2026-04-12T05:43:31.892249+00:00",
+    "last_updated": "2026-04-14T21:58:54.413262+00:00",
     "last_trade_execution_decision": {
       "timestamp": "2026-03-22T18:15:48.301405+00:00",
       "instrument": "EUR_USD",

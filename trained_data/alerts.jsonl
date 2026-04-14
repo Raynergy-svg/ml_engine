@@ -5,3 +5,4 @@
 {"alert_type": "consecutive_losses", "severity": "WARNING", "message": "6 consecutive losses (threshold: 3)", "timestamp": "2026-04-13T17:36:28.484790", "value": 6.0, "threshold": 3.0, "pair": "", "acknowledged": false}
 {"alert_type": "consecutive_losses", "severity": "WARNING", "message": "6 consecutive losses (threshold: 3)", "timestamp": "2026-04-13T22:27:52.701449", "value": 6.0, "threshold": 3.0, "pair": "", "acknowledged": false}
 {"alert_type": "consecutive_losses", "severity": "WARNING", "message": "6 consecutive losses (threshold: 3)", "timestamp": "2026-04-14T12:11:57.490842", "value": 6.0, "threshold": 3.0, "pair": "", "acknowledged": false}
+{"alert_type": "consecutive_losses", "severity": "WARNING", "message": "6 consecutive losses (threshold: 3)", "timestamp": "2026-04-14T22:20:45.881265", "value": 6.0, "threshold": 3.0, "pair": "", "acknowledged": false}

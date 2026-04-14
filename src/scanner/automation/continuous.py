@@ -487,31 +487,6 @@ class ContinuousScanner:
                         max_workers=4,
                     )
 
-                # Log observations from scan results (US-008)
-                try:
-                    from src.scanner.automation.observation_log import ObservationLog
-                    obs_log = ObservationLog()
-                    obs_count = 0
-                    for analysis in result.analyses:
-                        obs_count += obs_log.log_from_analysis(analysis)
-                    if obs_count > 0 and console:
-                        console.print(f"  [dim]Observations: {obs_count} patterns logged[/dim]")
-                except Exception as obs_err:
-                    logger.debug(f"Observation logging error: {obs_err}")
-
-                # Apply config tuning before next scan (US-005)
-                try:
-                    from src.scanner.automation.config_tuner import ConfigTuner
-                    ct = ConfigTuner()
-                    adjustments = ct.apply_to_config(self.scanner.config)
-                    if adjustments and console:
-                        console.print(f"  [dim]Config tuned: {len(adjustments)} adjustments[/dim]")
-                except Exception as tune_err:
-                    logger.debug(f"Pre-scan config tuning error: {tune_err}")
-
-                # Smart trading loop: monitor, drawdown guardian, RL sync, learning
-                self._run_smart_loop()
-
                     # Display results
                     account_info = self.scanner.get_account_info()
                     if _HAS_CLI_DISPLAY:
@@ -553,6 +528,7 @@ class ContinuousScanner:
                             _block_risk = sum(1 for a in _directional if not a.risk_passed)
                             # Regime distribution
                             from collections import Counter as _Ctr
+
                             _regimes = _Ctr(
                                 str(getattr(a, "volatility_regime", "?")).upper()
                                 for a in _directional
@@ -625,6 +601,7 @@ class ContinuousScanner:
                             if self._policy_engine is not None:
                                 try:
                                     from src.scanner.automation.policy_types import ActionRequest, ActionType
+
                                     _req = ActionRequest(
                                         action_type=ActionType.EXECUTE_TRADE,
                                         source="continuous_scanner",

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "total_fills": 16,
+  "total_fills": 17,
   "total_rejections": 0,
   "pairs": {
     "USD_CAD": [
@@ -107,6 +107,13 @@
         "fill_status": "filled",
         "execution_ms": 0.0,
         "timestamp": "2026-04-09T18:16:20.264616+00:00"
+      },
+      {
+        "regime": "NORMAL",
+        "slippage_pips": 0.3,
+        "fill_status": "filled",
+        "execution_ms": 0.0,
+        "timestamp": "2026-04-14T12:12:14.894290+00:00"
       }
     ],
     "AUD_JPY": [
@@ -128,5 +135,5 @@
       }
     ]
   },
-  "last_updated": "2026-04-14T12:11:59.250749+00:00"
+  "last_updated": "2026-04-14T12:12:14.894325+00:00"
 }

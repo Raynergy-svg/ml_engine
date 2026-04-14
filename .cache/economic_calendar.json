@@ -1,5 +1,5 @@
 {
-  "cached_at": "2026-04-13T13:56:13.034306+00:00",
+  "cached_at": "2026-04-14T22:06:48.354512+00:00",
   "events": [
     {
       "timestamp": "2026-04-15T13:00:00+00:00",
@@ -54,24 +54,6 @@
       "currency": "CAD",
       "title": "employment change",
       "impact": "HIGH"
-    },
-    {
-      "timestamp": "2026-04-14T10:00:00+00:00",
-      "currency": "GBP",
-      "title": "uk cpi",
-      "impact": "HIGH"
-    },
-    {
-      "timestamp": "2026-04-14T13:00:00+00:00",
-      "currency": "USD",
-      "title": "us cpi",
-      "impact": "HIGH"
-    },
-    {
-      "timestamp": "2026-04-14T14:00:00+00:00",
-      "currency": "USD",
-      "title": "retail sales",
-      "impact": "MEDIUM"
     }
   ]
 }

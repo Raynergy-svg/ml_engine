@@ -5488,5 +5488,23 @@
     "outcome": null,
     "pnl_pips": null,
     "closed_at": null
+  },
+  {
+    "episode_id": "28fb35f6-4da2-46b6-af94-fdefb6a26ded",
+    "timestamp": "2026-04-14T22:41:30.755135+00:00",
+    "pair": "EUR_AUD",
+    "direction": "LONG",
+    "regime": "LOW",
+    "session": "UNKNOWN",
+    "news_risk_score": 0.0,
+    "uncertainty_score": 0.27391304347827794,
+    "atr_normalized": 0.0,
+    "spread_pips": 4.8,
+    "confidence": 0.6409715005274355,
+    "weighted_vote_score": 0.7643,
+    "rr_ratio": 0.0,
+    "outcome": null,
+    "pnl_pips": null,
+    "closed_at": null
   }
 ]

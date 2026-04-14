@@ -84,6 +84,18 @@
       "trade_id": "1199",
       "tranches_closed": []
     },
+    "1220": {
+      "current_sl": 1.65308315659755,
+      "direction": "LONG",
+      "entry_price": 1.65504,
+      "original_sl": 1.65308315659755,
+      "pair": "EUR_AUD",
+      "r_at_close": [],
+      "sl_moved_to_breakeven": false,
+      "sl_moved_to_profit_lock": false,
+      "trade_id": "1220",
+      "tranches_closed": []
+    },
     "964": {
       "current_sl": 0.7986000000000001,
       "direction": "LONG",
