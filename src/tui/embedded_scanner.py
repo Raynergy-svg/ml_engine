@@ -126,6 +126,15 @@ class EmbeddedScanner:
         self._peak_nav = 0.0
         self._lock = threading.Lock()
 
+        # Cycle-level autonomy triggers (periodic / self-heal / rejection).
+        # Fires Claude on schedule regardless of whether trades closed,
+        # so buddy isn't dormant just because OANDA is quiet.
+        try:
+            from src.scanner.automation.cycle_autonomy import CycleAutonomyTriggers
+            self._autonomy = CycleAutonomyTriggers(brain_callback=self._brain)
+        except ImportError:
+            self._autonomy = None
+
     @property
     def is_ready(self) -> bool:
         return self._scanner is not None and self._running
@@ -272,18 +281,35 @@ class EmbeddedScanner:
             )
 
             # ── Auto-execute ───────────────────────────────────────
+            trades_executed = 0
+            tradeable_before_filters = len(tradeable)
             if self._auto_execute and tradeable:
                 tradeable = self._filter_correlated_exposure(tradeable)
                 if tradeable:
                     tradeable = self._check_policy(tradeable)
                 if tradeable:
-                    self._execute_trades(tradeable)
+                    trades_executed = self._execute_trades(tradeable)
 
             # ── Post-scan automation ───────────────────────────────
             self._post_scan_automation(result)
 
             # ── Memory management ──────────────────────────────────
             self._memory_guard()
+
+            # ── Cycle-level autonomy (periodic / self-heal / rejection) ──
+            # Fires Claude on schedule regardless of whether any trade
+            # closed this cycle. Without this, buddy sits silent whenever
+            # OANDA is quiet — which the user experiences as "brainless".
+            if self._autonomy is not None:
+                try:
+                    self._autonomy.on_cycle_complete(
+                        scan_count=self._scan_count,
+                        scan_result=result,
+                        trades_executed=int(trades_executed or 0),
+                        tradeable_count=int(tradeable_before_filters),
+                    )
+                except Exception as _aut_err:
+                    logger.debug("cycle_autonomy trigger error: %s", _aut_err)
 
             # ── Build enrichment ───────────────────────────────────
             enrichment = self._build_enrichment(result, scan_ms)
@@ -386,8 +412,12 @@ class EmbeddedScanner:
             logger.debug("Policy check error: %s", e)
         return tradeable
 
-    def _execute_trades(self, tradeable: list) -> None:
-        """Execute passing trades and report results to brain."""
+    def _execute_trades(self, tradeable: list) -> int:
+        """Execute passing trades and report results to brain.
+
+        Returns the number of trades that successfully executed (0 on error
+        or total-reject). Used by cycle_autonomy to detect rejection streaks.
+        """
         self._brain(
             f"[green]▸ Auto-executing {len(tradeable)} trade(s)...[/]"
         )
@@ -405,13 +435,16 @@ class EmbeddedScanner:
                             err = getattr(r, "error", "unknown")
                             pair = getattr(r, "pair", "?")
                             self._brain(f"[red]  ✗ REJECTED {pair}: {err}[/]")
+                return int(ok)
             else:
                 self._brain(
                     "[red]  ✗ Execution returned no results — check NAV/broker[/]"
                 )
+                return 0
         except Exception as e:
             logger.error("Trade execution error: %s", e)
             self._brain(f"[red]  ✗ Execution error: {e}[/]")
+            return 0
 
     def _post_scan_automation(self, result) -> None:
         """Run post-scan automation modules (non-fatal)."""
