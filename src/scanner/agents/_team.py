@@ -606,6 +606,211 @@ class ScannerAgentTeam:
                 except Exception as e:
                     logger.error(f"Agent weights save failed completely: {e}")
 
+    def apply_proposed_weights(
+        self,
+        proposal_path: Optional[str] = None,
+        *,
+        max_delta_pct: float = 0.05,
+        blend_rate: float = 0.3,
+        max_age_seconds: int = 7200,
+    ) -> Dict[str, Any]:
+        """Apply LLM-proposed weight deltas from `.claude/proposed_weights.json`.
+
+        This is the Tier-3 safety-gated path for autonomous self-improvement.
+        An LLM (via ClaudeReflectionHandler) writes proposals; this method
+        validates, clamps, and blends them with current weights before saving.
+
+        Safety gates (all non-negotiable):
+          - Proposal must be recent (default: ≤2h old) — rejects stale files
+          - Each agent delta clamped to ±5% of current weight per application
+          - Final value clamped to valid range [0.05, 10.0] (same as existing
+            `_validate_weights` bounds)
+          - Unknown agent names rejected (typo prevention)
+          - Blend rate of 0.3 (softer than trade-outcome EMA) dampens swings
+          - After apply: proposal file archived to `.claude/proposed_weights_archive/`
+
+        Expected proposal schema:
+            {
+              "proposed_at": "2026-04-14T12:34:56Z",
+              "trade_id": "T-1234",
+              "regime": "NORMAL" | "HIGH" | "EXTREME" | "LOW" | "_global",
+              "deltas": {
+                "<agent_name>": {
+                  "target_weight": 0.05..10.0,
+                  "reason": "short explanation"
+                }
+              }
+            }
+
+        Returns a summary dict:
+            {
+              "applied": bool,
+              "skipped_reason": Optional[str],
+              "changes": {agent_name: {"old": float, "new": float, "target": float}}
+            }
+        """
+        import json
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        default_path = Path(".claude/proposed_weights.json")
+        path = Path(proposal_path) if proposal_path else default_path
+
+        result: Dict[str, Any] = {"applied": False, "skipped_reason": None, "changes": {}}
+
+        if not path.exists():
+            result["skipped_reason"] = "no_proposal"
+            return result
+
+        # Read + parse (CLAUDE.md JSON-safety gate)
+        try:
+            with open(path, "r") as f:
+                proposal = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(f"apply_proposed_weights: parse failed: {e}")
+            result["skipped_reason"] = f"parse_error: {e}"
+            return result
+
+        if not isinstance(proposal, dict):
+            result["skipped_reason"] = "schema_error: not a dict"
+            return result
+
+        # Staleness check
+        proposed_at_raw = proposal.get("proposed_at")
+        if not proposed_at_raw:
+            result["skipped_reason"] = "schema_error: missing proposed_at"
+            return result
+        try:
+            proposed_at = datetime.fromisoformat(str(proposed_at_raw).replace("Z", "+00:00"))
+            if proposed_at.tzinfo is None:
+                proposed_at = proposed_at.replace(tzinfo=timezone.utc)
+            age_seconds = (datetime.now(timezone.utc) - proposed_at).total_seconds()
+            if age_seconds > max_age_seconds:
+                logger.warning(
+                    f"apply_proposed_weights: stale proposal ({age_seconds:.0f}s > {max_age_seconds}s), skipping"
+                )
+                result["skipped_reason"] = f"stale: {age_seconds:.0f}s old"
+                return result
+        except (ValueError, TypeError) as e:
+            result["skipped_reason"] = f"schema_error: bad proposed_at ({e})"
+            return result
+
+        regime = str(proposal.get("regime", "_global"))
+        valid_regimes = set(self._REGIME_NAMES + ["_global"])
+        if regime not in valid_regimes:
+            result["skipped_reason"] = f"schema_error: unknown regime {regime}"
+            return result
+
+        deltas = proposal.get("deltas") or {}
+        if not isinstance(deltas, dict) or not deltas:
+            result["skipped_reason"] = "schema_error: no deltas"
+            return result
+
+        # Ensure structure exists
+        if not self._learned_weights:
+            self._learned_weights = self._init_regime_weights()
+        self._learned_weights, _ = self._ensure_complete_weight_schema(self._learned_weights)
+
+        known_agents = set(self._BASE_WEIGHTS.keys())
+        regime_weights = self._learned_weights.setdefault(regime, dict(self._BASE_WEIGHTS))
+        changes: Dict[str, Dict[str, float]] = {}
+
+        valid_min, valid_max = 0.05, 10.0
+
+        for agent_name, delta_spec in deltas.items():
+            if agent_name not in known_agents:
+                logger.warning(f"apply_proposed_weights: unknown agent '{agent_name}', skipping delta")
+                continue
+            if not isinstance(delta_spec, dict):
+                continue
+            try:
+                target = float(delta_spec.get("target_weight"))
+            except (TypeError, ValueError):
+                logger.warning(f"apply_proposed_weights: bad target_weight for {agent_name}")
+                continue
+
+            # Clamp target to valid range
+            target = max(valid_min, min(valid_max, target))
+
+            current = _safe_float(regime_weights.get(agent_name), self._BASE_WEIGHTS.get(agent_name, 1.0))
+
+            # Soft EMA blend (dampens swings)
+            blended = current + blend_rate * (target - current)
+
+            # Per-cycle hard cap: ±max_delta_pct of current
+            max_step = abs(current) * max_delta_pct
+            if max_step < 1e-6:  # Avoid zero-step when current is ~0
+                max_step = valid_min * max_delta_pct
+            if blended > current + max_step:
+                blended = current + max_step
+            elif blended < current - max_step:
+                blended = current - max_step
+
+            # Final range clamp
+            blended = max(valid_min, min(valid_max, blended))
+            blended = round(blended, 4)
+
+            if abs(blended - current) >= 1e-4:
+                regime_weights[agent_name] = blended
+                changes[agent_name] = {"old": current, "new": blended, "target": target}
+
+        if not changes:
+            result["skipped_reason"] = "no_effective_changes"
+            # Still archive to prevent re-processing on next cycle
+            self._archive_proposal(path, proposal, status="noop")
+            return result
+
+        # Persist + invalidate cache
+        self._regime_weights = {}
+        self._save_learned_weights()
+
+        # Archive the proposal so we don't re-apply it on the next cycle
+        self._archive_proposal(path, proposal, status="applied", changes=changes)
+
+        logger.info(
+            f"apply_proposed_weights: applied {len(changes)} changes in regime {regime}: "
+            f"{ {k: (v['old'], v['new']) for k, v in changes.items()} }"
+        )
+        result["applied"] = True
+        result["changes"] = changes
+        return result
+
+    def _archive_proposal(
+        self,
+        path,
+        proposal: Dict[str, Any],
+        status: str,
+        changes: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Move the proposal file into the archive dir and remove the live file.
+
+        Archived filename: `.claude/proposed_weights_archive/{ISO_ts}_{status}.json`
+        """
+        import json
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        try:
+            archive_dir = Path(".claude/proposed_weights_archive")
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            archive_path = archive_dir / f"{ts}_{status}.json"
+            archived = {
+                "proposal": proposal,
+                "applied_at": datetime.now(timezone.utc).isoformat(),
+                "status": status,
+                "changes": changes or {},
+            }
+            archive_path.write_text(json.dumps(archived, indent=2, default=str))
+            try:
+                Path(path).unlink(missing_ok=True)
+            except TypeError:
+                # Python < 3.8 missing_ok fallback
+                if Path(path).exists():
+                    Path(path).unlink()
+        except Exception as e:
+            logger.warning(f"_archive_proposal failed: {e}")
+
     def apply_weight_decay(self, decay_rate: float = 0.02) -> Dict[str, float]:
         """Decay learned weights toward base weights across all regimes.
 

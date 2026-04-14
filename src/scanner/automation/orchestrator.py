@@ -660,6 +660,22 @@ class Orchestrator:
                     logger.warning("Config tuner skipped: %s", e)
 
             scanner = Scanner(config)
+
+            # Tier 3: Apply any LLM-proposed agent weight deltas (clamped + blended).
+            # ClaudeReflectionHandler writes .claude/proposed_weights.json; we
+            # validate + apply here so the next scan uses the updated weights.
+            try:
+                team = getattr(scanner, "agent_team", None) or getattr(scanner, "_agent_team", None)
+                if team is not None and hasattr(team, "apply_proposed_weights"):
+                    _pw_result = team.apply_proposed_weights()
+                    if _pw_result.get("applied"):
+                        logger.info(
+                            "Proposed weights applied: %d changes in %s",
+                            len(_pw_result.get("changes", {})),
+                            _pw_result.get("changes"),
+                        )
+            except Exception as _pw_err:
+                logger.warning("Proposed weights apply skipped: %s", _pw_err)
             scan_result = scanner.scan(pairs=pairs)
             result.scan_duration_secs = round(time.time() - t0, 1)
 
