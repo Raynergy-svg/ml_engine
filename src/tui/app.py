@@ -7,10 +7,12 @@ Dual-mode: --live (real OANDA data) or --demo (simulated data).
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import random
 import sys
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -181,8 +183,110 @@ class AgentPanel(Static):
         return t
 
 
+class ReflectionLogReader:
+    """Tail logs/reflection_log.jsonl and stream formatted lines to #reflection-log.
+
+    The Claude self-improvement subprocess (src/scanner/automation/claude_subprocess.py)
+    appends one JSON line per spawn. This reader seeks from its last-read offset
+    each poll cycle, parses new lines, and dispatches formatted markup via the
+    provided thread-safe callback.
+
+    Design:
+      - File missing → emit "waiting" once per session, then no-op
+      - Bad JSON line → log+skip, don't crash the reader loop
+      - File truncated (offset > size) → rewind to 0
+      - Idempotent: each entry formatted exactly once (offset persisted in memory)
+    """
+
+    def __init__(
+        self,
+        log_path: Path,
+        callback,  # Callable[[str], None]
+        stop_flag,  # threading.Event
+        poll_interval: float = 2.0,
+    ) -> None:
+        self._log_path = log_path
+        self._callback = callback
+        self._stop = stop_flag
+        self._poll_interval = poll_interval
+        self._offset = 0
+        self._announced_waiting = False
+
+    def _format(self, entry: dict) -> str:
+        tid = str(entry.get("trade_id", "?"))[-8:]  # last 8 chars
+        mode = str(entry.get("mode", "?"))
+        dur = float(entry.get("duration_seconds", 0) or 0)
+        cost = float(entry.get("cost_usd", 0) or 0)
+        success = bool(entry.get("success"))
+        hyp = str(entry.get("hypothesis") or "").strip()[:70]
+        err = str(entry.get("error") or "").strip()[:60]
+        # HH:MM from ISO-8601 "...T12:34:56Z" — take chars [-9:-4]
+        ts_raw = str(entry.get("ts", ""))
+        ts = ts_raw[-9:-4] if len(ts_raw) >= 9 else ts_raw
+
+        if not success and err:
+            return f"[red]  ✗ {ts} {tid} {mode} FAILED: {err}[/]"
+        if not success:
+            return f"[dim]  ○ {ts} {tid} {mode} skipped (budget/lock/noop)[/]"
+        if mode == "deep":
+            return (
+                f"[magenta]  ◆ {ts} {tid} DEEP {dur:.0f}s "
+                f"${cost:.2f} → {hyp}[/]"
+            )
+        return f"[cyan]  ▸ {ts} {tid} light {dur:.0f}s → {hyp}[/]"
+
+    def run(self) -> None:
+        """Main loop. Call from a thread; exits when stop_flag is set."""
+        import time as _time
+        while not self._stop.is_set():
+            try:
+                if not self._log_path.exists():
+                    if not self._announced_waiting:
+                        self._announced_waiting = True
+                        self._callback(
+                            "[dim]  waiting for first reflection… (fires on trade close)[/]"
+                        )
+                    self._stop.wait(self._poll_interval)
+                    continue
+
+                size = self._log_path.stat().st_size
+                if size < self._offset:
+                    # File was truncated/rotated — reset
+                    self._offset = 0
+                if size == self._offset:
+                    self._stop.wait(self._poll_interval)
+                    continue
+
+                # Once we have a real file, clear the waiting flag so a later
+                # deletion + recreation re-announces.
+                self._announced_waiting = False
+                with open(self._log_path, "r") as f:
+                    f.seek(self._offset)
+                    for raw in f:
+                        if not raw.strip():
+                            continue
+                        try:
+                            entry = json.loads(raw)
+                        except json.JSONDecodeError:
+                            # Skip malformed line, keep consuming
+                            continue
+                        try:
+                            self._callback(self._format(entry))
+                        except Exception:
+                            pass  # callback errors must not poison reader
+                    self._offset = f.tell()
+            except Exception as e:
+                logger.debug("ReflectionLogReader error: %s", e)
+            self._stop.wait(self._poll_interval)
+
+
 class RiskPanel(Static):
-    """Risk metrics panel. Reads from snapshot or uses defaults."""
+    """Risk metrics panel. Reads from snapshot or uses defaults.
+
+    Defense-in-depth: coerces any NaN/inf/None upstream value to a stable 0.0
+    and renders "—" (em-dash) when no real data has arrived yet so the UI
+    never shows literal "nan".
+    """
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
@@ -190,12 +294,28 @@ class RiskPanel(Static):
         self._dd = 0.0
         self._max_dd = 0.0
         self._corr_ok = True
+        self._has_data = False  # True once we see at least one real snapshot
 
-    def update_from_snapshot(self, snap: DashboardSnapshot) -> None:
-        self._risk = snap.portfolio_risk_pct
-        self._dd = snap.drawdown_pct
-        self._max_dd = snap.max_drawdown_pct
-        self._corr_ok = snap.correlation_ok
+    @staticmethod
+    def _coerce(v: float) -> float:
+        import math as _m
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            return 0.0
+        if _m.isnan(fv) or _m.isinf(fv) or fv < 0.0:
+            return 0.0
+        return fv
+
+    def update_from_snapshot(self, snap: "DashboardSnapshot") -> None:
+        self._risk = self._coerce(snap.portfolio_risk_pct)
+        self._dd = self._coerce(snap.drawdown_pct)
+        self._max_dd = self._coerce(snap.max_drawdown_pct)
+        self._corr_ok = bool(snap.correlation_ok)
+        # Consider data "present" once scanner has run at least once
+        self._has_data = getattr(snap, "scan_cycle_count", 0) > 0 or (
+            self._risk > 0 or self._dd > 0
+        )
 
     def render(self) -> Text:
         pr, dd, mdd = self._risk, self._dd, self._max_dd
@@ -204,13 +324,19 @@ class RiskPanel(Static):
         corr_text = "OK ✓" if self._corr_ok else "WARN ▲"
         corr_style = "bold #00ff41" if self._corr_ok else "bold #ffab00"
 
+        # Render em-dash placeholder while we're still waiting for first scan.
+        def _fmt(val: float) -> str:
+            if not self._has_data and val == 0.0:
+                return "    —  "
+            return f"{val:.1f}%"
+
         t = Text()
         t.append("  Portfolio Risk: ", style="#6666aa")
-        t.append(f"{pr:.1f}%\n", style=f"bold {rc}")
+        t.append(f"{_fmt(pr)}\n", style=f"bold {rc}")
         t.append("  Drawdown:       ", style="#6666aa")
-        t.append(f"{dd:.1f}%\n", style=f"bold {dc}")
+        t.append(f"{_fmt(dd)}\n", style=f"bold {dc}")
         t.append("  Max DD Today:   ", style="#6666aa")
-        t.append(f"{mdd:.1f}%\n", style="bold #ffab00")
+        t.append(f"{_fmt(mdd)}\n", style="bold #ffab00")
         t.append("  Correlation:    ", style="#6666aa")
         t.append(f"{corr_text}\n", style=corr_style)
         return t
@@ -369,6 +495,7 @@ class BuddyApp(App):
         self._provider = DataProvider(project_root=str(Path(__file__).resolve().parent.parent.parent))
         self._demo_nav = 101420.0
         self._scanner = None  # EmbeddedScanner (live mode only)
+        self._reflection_stop = threading.Event()  # Signals ReflectionLogReader to exit
 
     def compose(self) -> ComposeResult:
         yield HeaderBar(id="header-bar")
@@ -392,6 +519,18 @@ class BuddyApp(App):
                             yield RiskPanel(id="risk-display")
                             yield Label("  NAV 30d", classes="status-dim")
                             yield Sparkline(data=[], id="nav-sparkline")
+                        with Vertical(id="reflection-stream", classes="panel"):
+                            yield Label(
+                                "⟨ REFLECTION STREAM ⟩  [Claude self-improvement subprocess]",
+                                classes="panel-title",
+                            )
+                            yield RichLog(
+                                id="reflection-log",
+                                highlight=True,
+                                markup=True,
+                                max_lines=200,
+                                auto_scroll=True,
+                            )
                         with Vertical(id="brain-stream"):
                             yield Label("⟨ BUDDY'S BRAIN ⟩  [stream of consciousness]",
                                        classes="panel-title")
@@ -440,14 +579,31 @@ class BuddyApp(App):
             self._connect_live()
             # Start embedded scanner (replaces need for separate main.py scan --watch)
             self._start_scanner()
+            # Start the reflection stream reader (tails logs/reflection_log.jsonl)
+            self._start_reflection_reader()
         else:
             self._init_demo()
+            # In demo mode the reflection subprocess never spawns; tell the user so.
+            try:
+                rlog = self.query_one("#reflection-log", RichLog)
+                rlog.write(Text.from_markup(
+                    "[dim]  DEMO MODE — Claude reflections fire only in --live[/]"
+                ))
+            except Exception:
+                pass
 
         # Start periodic refresh (both modes)
         self.set_interval(3.0, self._refresh_all)
         # Brain stream: fake lines in demo only; live uses real scanner output
         if not self._live:
             self.set_interval(0.8, self._tick_brain)
+
+    def on_unmount(self) -> None:
+        """Signal background readers to exit cleanly."""
+        try:
+            self._reflection_stop.set()
+        except Exception:
+            pass
 
     def _write_boot_sequence(self) -> None:
         log = self.query_one("#brain-log", RichLog)
@@ -534,6 +690,34 @@ class BuddyApp(App):
         except Exception:
             # App might be shutting down — swallow safely
             pass
+
+    def _reflection_bridge(self, markup: str) -> None:
+        """Thread-safe bridge: reflection reader thread → main thread → reflection log."""
+        try:
+            self.call_from_thread(self._write_reflection, markup)
+        except Exception:
+            pass
+
+    def _write_reflection(self, markup: str) -> None:
+        """Safely write to reflection log (must be called on main thread)."""
+        try:
+            log = self.query_one("#reflection-log", RichLog)
+            log.write(Text.from_markup(markup))
+        except Exception:
+            pass
+
+    @work(thread=True)
+    def _start_reflection_reader(self) -> None:
+        """Background worker: tails logs/reflection_log.jsonl and streams to TUI."""
+        project_root = Path(__file__).resolve().parent.parent.parent
+        log_path = project_root / "logs" / "reflection_log.jsonl"
+        reader = ReflectionLogReader(
+            log_path=log_path,
+            callback=self._reflection_bridge,
+            stop_flag=self._reflection_stop,
+            poll_interval=2.0,
+        )
+        reader.run()
 
     @work(thread=True)
     def _init_scanner_worker(self) -> None:

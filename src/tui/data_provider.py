@@ -9,10 +9,40 @@ from __future__ import annotations
 import collections
 import json
 import logging
+import math
 import os
 import threading
 import time
 from dataclasses import dataclass, field
+
+
+def _safe_float(v, default: float = 0.0) -> float:
+    """Coerce v to a finite float; fall back to default for None/NaN/inf/bad input.
+
+    Prevents UI from ever rendering literal "nan" or "inf" in numeric fields.
+    """
+    if v is None:
+        return default
+    try:
+        fv = float(v)
+    except (TypeError, ValueError):
+        return default
+    if math.isnan(fv) or math.isinf(fv):
+        return default
+    return fv
+
+
+def _is_valid_risk(v) -> bool:
+    """True if v is a usable risk metric (finite, >= 0).
+
+    The embedded scanner uses -1.0 as a sentinel meaning "couldn't compute,
+    don't overwrite last-good value".
+    """
+    try:
+        fv = float(v)
+    except (TypeError, ValueError):
+        return False
+    return not (math.isnan(fv) or math.isinf(fv)) and fv >= 0.0
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -203,9 +233,15 @@ class DataProvider:
             snap.mtf_h1_signal = enrichment.mtf_h1_signal
             snap.mtf_m15_signal = enrichment.mtf_m15_signal
             snap.mtf_confluence_score = enrichment.mtf_confluence_score
-            snap.portfolio_risk_pct = enrichment.portfolio_risk_pct
-            snap.drawdown_pct = enrichment.drawdown_pct
-            snap.max_drawdown_pct = enrichment.max_drawdown_pct
+            # Sentinel: -1.0 means the scanner couldn't compute (account
+            # fetch failed or exception). Keep the last-good snapshot value
+            # instead of overwriting with a misleading 0.0 or NaN.
+            if _is_valid_risk(enrichment.portfolio_risk_pct):
+                snap.portfolio_risk_pct = _safe_float(enrichment.portfolio_risk_pct)
+            if _is_valid_risk(enrichment.drawdown_pct):
+                snap.drawdown_pct = _safe_float(enrichment.drawdown_pct)
+            if _is_valid_risk(enrichment.max_drawdown_pct):
+                snap.max_drawdown_pct = _safe_float(enrichment.max_drawdown_pct)
             snap.correlation_ok = enrichment.correlation_ok
             if enrichment.agents:
                 snap.agents = enrichment.agents
