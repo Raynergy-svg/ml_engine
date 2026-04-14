@@ -564,6 +564,7 @@ class ContinuousScanner:
                             _block_risk = sum(1 for a in _directional if not a.risk_passed)
                             # Regime distribution
                             from collections import Counter as _Ctr
+
                             _regimes = _Ctr(
                                 str(getattr(a, "volatility_regime", "?")).upper()
                                 for a in _directional
@@ -636,6 +637,7 @@ class ContinuousScanner:
                             if self._policy_engine is not None:
                                 try:
                                     from src.scanner.automation.policy_types import ActionRequest, ActionType
+
                                     _req = ActionRequest(
                                         action_type=ActionType.EXECUTE_TRADE,
                                         source="continuous_scanner",

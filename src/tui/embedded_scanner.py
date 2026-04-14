@@ -29,6 +29,22 @@ from typing import Callable, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _format_init_error(exc: Exception) -> str:
+    """Return a user-facing scanner init error with dependency guidance."""
+    current = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ModuleNotFoundError) and getattr(current, "name", None):
+            package = current.name
+            return (
+                f"Missing dependency: {package}. "
+                "Run `.venv/bin/pip install -r requirements.txt` and restart Buddy."
+            )
+        current = current.__cause__ or current.__context__
+    return str(exc)
+
+
 @dataclass
 class ScanEnrichment:
     """Scan-derived data that overlays onto DashboardSnapshot.
@@ -164,7 +180,7 @@ class EmbeddedScanner:
 
         except Exception as e:
             logger.error("EmbeddedScanner init failed: %s", e, exc_info=True)
-            self._brain(f"[red]✗ Scanner init failed: {e}[/]")
+            self._brain(f"[red]✗ Scanner init failed: {_format_init_error(e)}[/]")
             return False
 
     def _init_automation_modules(self) -> None:
@@ -553,17 +569,35 @@ class EmbeddedScanner:
         ]
         if directional:
             best = max(directional, key=lambda a: a.confidence)
-            # Extract MTF sub-scores if available on the analysis
+            # Prefer the live MTF verdict metadata from the scanner agent team.
             h4 = getattr(best, "mtf_h4_score", 0) or 0
             h1 = getattr(best, "mtf_h1_score", 0) or 0
             m15 = getattr(best, "mtf_m15_score", 0) or 0
+            confluence = getattr(best, "mtf_confluence_score", 0) or 0
 
-            # If MTF scores aren't on the analysis, derive from confidence
+            agent_reasons = getattr(best, "agent_reasons", []) or []
+            mtf_reason = next(
+                (
+                    reason for reason in agent_reasons
+                    if isinstance(reason, dict) and reason.get("name") == "multi_timeframe"
+                ),
+                None,
+            )
+            if mtf_reason:
+                metadata = mtf_reason.get("metadata", {}) or {}
+                screen_results = metadata.get("mtf_screen_results", []) or []
+                if len(screen_results) >= 3:
+                    h4 = float(screen_results[0].get("score", h4) or h4)
+                    h1 = float(screen_results[1].get("score", h1) or h1)
+                    m15 = float(screen_results[2].get("score", m15) or m15)
+                confluence = float(metadata.get("mtf_confluence_score", confluence) or confluence)
+
+            # If live MTF scores aren't available, derive from confidence as a fallback.
             if h4 == 0 and h1 == 0 and m15 == 0:
-                # Use confidence as a proxy for overall alignment
                 h4 = min(1.0, best.confidence * 1.1)
                 h1 = min(1.0, best.confidence * 0.95)
                 m15 = min(1.0, best.confidence * 0.85)
+                confluence = h4 * 0.50 + h1 * 0.30 + m15 * 0.20
 
             enrichment.mtf_h4_score = h4
             enrichment.mtf_h1_score = h1
@@ -571,7 +605,7 @@ class EmbeddedScanner:
             enrichment.mtf_h4_signal = "BULLISH" if h4 >= 0.7 else "CAUTION" if h4 >= 0.5 else "WEAK"
             enrichment.mtf_h1_signal = "BULLISH" if h1 >= 0.7 else "CAUTION" if h1 >= 0.5 else "WEAK"
             enrichment.mtf_m15_signal = "BULLISH" if m15 >= 0.7 else "CAUTION" if m15 >= 0.5 else "WEAK"
-            enrichment.mtf_confluence_score = h4 * 0.50 + h1 * 0.30 + m15 * 0.20
+            enrichment.mtf_confluence_score = confluence or (h4 * 0.50 + h1 * 0.30 + m15 * 0.20)
 
         # ── Risk metrics ───────────────────────────────────────
         # Critical: only overwrite the snapshot's risk fields when we have a

@@ -1448,5 +1448,139 @@
     "fill_price": 187.319,
     "expected_price": 187.319,
     "slippage_pips": 0.0
+  },
+  {
+    "trade_id": "1220",
+    "episode_id": "28fb35f6-4da2-46b6-af94-fdefb6a26ded",
+    "timestamp": "2026-04-14T22:41:30.764895+00:00",
+    "pair": "EUR_AUD",
+    "direction": "LONG",
+    "confidence": 0.6409715005274355,
+    "entry_price": 1.65504,
+    "sl_price": 1.65308315659755,
+    "tp_price": 1.6589521085061254,
+    "sl_pips": 19.6,
+    "tp_pips": 39.1,
+    "rr_ratio": 1.99,
+    "risk_reward": 1.99,
+    "lots": 2.5,
+    "broker": "oanda",
+    "asset_class": "FX",
+    "contract_month": null,
+    "tick_value": null,
+    "multiplier": null,
+    "gates": {
+      "momentum_passed": true,
+      "confidence_passed": true,
+      "risk_passed": true,
+      "gate_summary": "3/3"
+    },
+    "agents": {
+      "agent_votes": 3,
+      "agent_total": 3,
+      "agent_passed": true,
+      "weighted_vote_score": 0.7643,
+      "agent_reasons": [
+        {
+          "name": "trend",
+          "score": 0.48,
+          "passed": false,
+          "weight": 0.30514258680428946,
+          "reason": "trend neutral (ADX 1)",
+          "reason_code": "trend_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "mean_reversion",
+          "score": 0.5870253164556919,
+          "passed": true,
+          "weight": 0.34322872944849747,
+          "reason": "RSI neutral (RSI 43.0)",
+          "reason_code": "mean_reversion_neutral",
+          "confidence_delta": 0.0,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "risk_sentinel",
+          "score": 0.9757443997357507,
+          "passed": true,
+          "weight": 0.5147795149190981,
+          "reason": "risk acceptable (0.72% drawdown)",
+          "reason_code": "risk_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {}
+        },
+        {
+          "name": "uncertainty",
+          "score": 0.36304347826086103,
+          "passed": true,
+          "weight": 0.49299194797601087,
+          "reason": "uncertainty contained (0.27)",
+          "reason_code": "uncertainty_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "uncertainty_score": 0.27391304347827794,
+            "confidence_variance": 0.3282608695652317,
+            "model_disagreement": 0.0,
+            "ensemble_conflict_disagreement": 0.0,
+            "ensemble_conflict_penalty": 0.0,
+            "ensemble_direction_conflict": false,
+            "ensemble_consensus_direction": "HOLD"
+          }
+        },
+        {
+          "name": "execution_quality",
+          "score": 0.7176667182748018,
+          "passed": true,
+          "weight": 0.333007694971787,
+          "reason": "execution quality solid (liq 0.57)",
+          "reason_code": "execution_ok",
+          "confidence_delta": 0.02,
+          "block_trade": false,
+          "metadata": {
+            "execution_quality_score": 0.7176667182748018,
+            "execution_quality_passed": true,
+            "spread_pips": 0.6707373609800631,
+            "est_slippage_pips": 0.6931361602671153,
+            "liquidity_score": 0.5652173913043479
+          }
+        }
+      ]
+    },
+    "regime": {
+      "volatility_regime": "LOW",
+      "atr_pips": 16.768434024501577,
+      "uncertainty_score": 0.27391304347827794,
+      "model_disagreement": 0.0,
+      "regime_risk_modifier": 1.0,
+      "predictive_size_modifier": 1.0,
+      "regime_atr_multipliers": {
+        "sl_mult": 0.8,
+        "tp_mult": 1.2
+      }
+    },
+    "spread_pips": 4.8,
+    "group_momentum": {
+      "action": "allow",
+      "alignment": 0.3556,
+      "base_score": 0.3757,
+      "quote_score": -0.3355,
+      "position_modifier": 1.0
+    },
+    "gate_details": {
+      "scores": {},
+      "core_score": 0.5543478260869537,
+      "final_score": 0.5543478260869537
+    },
+    "ridge_features": null,
+    "outcome": null,
+    "fill_price": 1.65504,
+    "expected_price": 1.65504,
+    "slippage_pips": 0.0
   }
 ]
