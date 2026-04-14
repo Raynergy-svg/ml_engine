@@ -22,6 +22,11 @@ venv/
 # Feedback loop runtime state (operational append-only, not source)
 logs/trade_feedback.jsonl
 logs/system_decisions.jsonl
+logs/reflection_log.jsonl
+.claude/reflection_budget.json
+.claude/.reflection.lock
+.claude/proposed_weights.json
+.claude/proposed_weights_archive/
 logs/unhandled_errors.jsonl
 trained_data/self_heal_degraded.flag
 trained_data/retrain_requests/
