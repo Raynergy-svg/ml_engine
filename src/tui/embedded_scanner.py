@@ -442,14 +442,18 @@ class EmbeddedScanner:
                         f"[{color}]  ◈ {pair} {direction} P/L ${pl:.2f}[/]"
                     )
 
-            # RL sync for closed trades
+            # RL sync for closed trades — calls the real handler chain
+            # (PER_TRADE_HANDLERS in event_handlers.py) so ClaudeReflectionHandler,
+            # RLReplayHandler, EpisodicMemoryHandler etc. all fire. Previously
+            # this imported a non-existent `rl_sync.sync_closed_trades` module,
+            # leaving the reflection/self-improvement loop silently disabled
+            # whenever the TUI was the entry point.
             try:
-                closed = em.get_recently_closed()
-                if closed:
-                    from src.scanner.rl_sync import sync_closed_trades
-                    sync_closed_trades(closed)
+                sync_result = em.sync_closed_trades_rl(scanner=self._scanner)
+                synced = int(sync_result.get("trades_synced", 0) or 0)
+                if synced:
                     self._brain(
-                        f"[dim]  RL sync: {len(closed)} closed trade(s) processed[/]"
+                        f"[dim]  RL sync: {synced} closed trade(s) → handler chain fired[/]"
                     )
             except Exception as e:
                 logger.debug("RL sync error: %s", e)
