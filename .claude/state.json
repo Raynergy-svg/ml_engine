@@ -2,11 +2,38 @@
   "goal": "continuous_scan",
   "status": "shutdown",
   "done": [
-    "completed_1_scans"
+    "Keras 3 model loader fix (seed param)",
+    "Soft uncertainty blocking (proportional penalty)",
+    "ATR-based dynamic SL/TP",
+    "Position sizing scaled to account ($100K → 2.5 lot trades)",
+    "Correlation filter for double-exposure prevention",
+    "RL feedback loop (agent weights from trade outcomes)",
+    "Drawdown guardian with trailing SL",
+    "Multi-timeframe confirmation agent (H1/H4/D1)",
+    "Pair performance agent (historical win-rate gating)",
+    "Agent weight decay (prevents RL overfitting)",
+    "Minimum R:R ratio gate (1.2:1)",
+    "Scan cycle JSONL logging",
+    "Per-pair performance tracking",
+    "Bootstrap .claude/ learning infrastructure",
+    "US-002: Session state engine (StateEngine class)",
+    "US-003: Trade outcome analyzer (LearningEngine.analyze_trade)",
+    "US-004: Rule promotion (3+ observations → promoted rules)",
+    "US-005: Adaptive config tuner (rules → config changes)",
+    "US-006: Per-pair adaptive SL/TP multipliers",
+    "US-007: Improvement tracker and meta-learning metrics",
+    "US-008: Observation logging for market patterns",
+    "US-009: LLM deep analysis for losing trades (>$100)",
+    "US-010: Learnings consolidation and anti-proliferation",
+    "US-011: buddy learn CLI command",
+    "US-012: Full learning loop integration into ContinuousScanner"
   ],
-  "next": "restart_scan_loop",
-  "open_questions": [],
-  "last_updated": "2026-04-08T22:41:57.480689+00:00",
+  "next": "Run scan cycle in watch mode to validate full learning loop end-to-end",
+  "open_questions": [
+    "EUR_USD model predicted LONG but pair was bearish — is the model stale or is this a regime issue?",
+    "Should we increase min_confidence threshold given EUR_USD losses at 67% confidence?"
+  ],
+  "last_updated": "2026-03-18T00:00:00Z",
   "portfolio_snapshot": {
     "nav": 100575.1932,
     "open_trades": 2,
@@ -16,25 +43,6 @@
     "session_losses": 3,
     "win_rate": 0.0
   },
-  "improvement_focus": "",
-  "control_plane": {
-    "session_id": "",
-    "transport_state": "disconnected",
-    "degraded_mode": false,
-    "degraded_reason": "",
-    "last_heartbeat": "",
-    "reconnect_attempts": 0
-  },
-  "queue_summary": {
-    "depth": 0,
-    "in_flight": 0,
-    "failed_count": 0,
-    "last_failure": ""
-  },
-  "last_policy_block": {
-    "action_type": "",
-    "reason": "",
-    "timestamp": ""
-  },
-  "scan_cycle_count": 8
+  "improvement_focus": "Full self-improvement loop live — monitoring learning extraction and rule promotion",
+  "scan_cycle_count": 0
 }

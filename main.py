@@ -811,9 +811,6 @@ _DISPATCH_TABLE: dict[str, Any] = {
     "find-candles": _handle_find_candles,
     "transfer": _handle_transfer,
     "learn": handle_learn,
-    "status": lambda args: _handle_status(args),
-    "feedback-status": _handle_feedback_status,
-    "train-offline-sizer": _handle_train_offline_sizer,
 }
 
 

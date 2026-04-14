@@ -475,32 +475,30 @@ class ContinuousScanner:
                         max_workers=4,
                     )
 
-                    # M1 memory safety: per-cycle RSS check + GC
-                    import gc as _gc_cycle
-                    import os as _os_cycle
-                    try:
-                        import psutil as _psutil_cycle
-                        _proc = _psutil_cycle.Process(_os_cycle.getpid())
-                        _rss_mb = _proc.memory_info().rss / (1024 * 1024)
-                        if _rss_mb > 2500:
-                            logger.error(
-                                "CRITICAL memory usage: %.0fMB RSS. "
-                                "Forcing full GC and reducing scan scope.",
-                                _rss_mb,
-                            )
-                            _gc_cycle.collect()
-                        elif _rss_mb > 1500:
-                            logger.warning(
-                                "High memory usage: %.0fMB RSS. Running GC.",
-                                _rss_mb,
-                            )
-                            _gc_cycle.collect()
-                        else:
-                            # Gen-0 collect after every scan to prevent object aging
-                            _gc_cycle.collect(0)
-                    except ImportError:
-                        # No psutil — still do a gen-0 collect
-                        _gc_cycle.collect(0)
+                # Log observations from scan results (US-008)
+                try:
+                    from src.scanner.automation.observation_log import ObservationLog
+                    obs_log = ObservationLog()
+                    obs_count = 0
+                    for analysis in result.analyses:
+                        obs_count += obs_log.log_from_analysis(analysis)
+                    if obs_count > 0 and console:
+                        console.print(f"  [dim]Observations: {obs_count} patterns logged[/dim]")
+                except Exception as obs_err:
+                    logger.debug(f"Observation logging error: {obs_err}")
+
+                # Apply config tuning before next scan (US-005)
+                try:
+                    from src.scanner.automation.config_tuner import ConfigTuner
+                    ct = ConfigTuner()
+                    adjustments = ct.apply_to_config(self.scanner.config)
+                    if adjustments and console:
+                        console.print(f"  [dim]Config tuned: {len(adjustments)} adjustments[/dim]")
+                except Exception as tune_err:
+                    logger.debug(f"Pre-scan config tuning error: {tune_err}")
+
+                # Smart trading loop: monitor, drawdown guardian, RL sync, learning
+                self._run_smart_loop()
 
                     # Display results
                     account_info = self.scanner.get_account_info()
@@ -1742,230 +1740,15 @@ class ContinuousScanner:
                     logger.debug("Position manager error: %s", pm_err)
 
             # 3. RL feedback sync
-            rl_result = em.sync_closed_trades_rl(scanner=self.scanner)
+            rl_result = em.sync_closed_trades_rl()
             trades_synced = rl_result.get("trades_synced", 0)
-            if trades_synced > 0:
-                # CLI display: render trade closed panels
-                if _HAS_CLI_DISPLAY:
-                    try:
-                        _closed_trades = rl_result.get("closed_trades", [])
-                        _new_weights = rl_result.get("new_weights", {})
-                        _old_weights = rl_result.get("old_weights", {})
-                        # Compute weight deltas
-                        _w_deltas = {}
-                        if _new_weights and _old_weights:
-                            for _ag, _nw in _new_weights.items():
-                                _ow = _old_weights.get(_ag, _nw)
-                                _w_deltas[_ag] = _nw - _ow
-                        # Session stats from journal cache
-                        _j_cache = self._load_journal_cached()
-                        _s_wins = sum(1 for t in _j_cache if (t.get("pnl_pips", 0) or t.get("pnl", 0)) > 0)
-                        _s_losses = sum(1 for t in _j_cache if (t.get("pnl_pips", 0) or t.get("pnl", 0)) <= 0)
-                        _s_pnls = [t.get("pnl", 0) or 0 for t in _j_cache]
-                        _s_avg = sum(_s_pnls) / len(_s_pnls) if _s_pnls else 0
-
-                        for _ct in (_closed_trades if _closed_trades else [{}]):
-                            _cli_render_trade_closed(
-                                pair=_ct.get("pair", "?"),
-                                direction=_ct.get("direction", "?"),
-                                won=(_ct.get("pnl_pips", 0) or 0) > 0,
-                                pnl_pips=float(_ct.get("pnl_pips", 0) or 0),
-                                pnl_dollars=float(_ct.get("pnl", 0) or 0),
-                                exit_reason=_ct.get("exit_reason", ""),
-                                duration_s=float(_ct.get("duration_minutes", 0) or 0) * 60,
-                                weight_changes=_w_deltas if _w_deltas else None,
-                                session_wins=_s_wins,
-                                session_losses=_s_losses,
-                                session_avg_pnl=_s_avg,
-                            )
-                    except Exception as _rtc_err:
-                        logger.debug("cli_display render_trade_closed error: %s", _rtc_err)
-
-                # Fallback / legacy display
-                if console:
-                    console.print(
-                        f"  [cyan]RL sync: {rl_result['detail']}[/cyan]"
-                    )
-                    if rl_result.get("new_weights") and not _HAS_CLI_DISPLAY:
-                        for agent, w in rl_result["new_weights"].items():
-                            console.print(f"    {agent}: {w:.3f}")
-
-            # 3b. Phase 20 (US-122): Update agent lifecycle fitness from closed trades
-            if trades_synced > 0 and getattr(self.scanner, "_agent_lifecycle", None) is not None:
-                try:
-                    lifecycle = self.scanner._agent_lifecycle
-                    # Read recently synced trades from journal for agent-level feedback
-                    from pathlib import Path
-                    from src.scanner.automation.safe_json import safe_json_read
-                    journal_path = Path("trained_data/trade_journal_rl.json")
-                    journal = safe_json_read(journal_path, default=[])
-                    if isinstance(journal, list) and journal:
-                        recent = journal[-trades_synced:]
-                        for trade in recent:
-                            won = trade.get("pnl_pips", 0) > 0 or trade.get("pnl", 0) > 0
-                            regime = trade.get("volatility_regime", "NORMAL")
-                            # Update each agent that voted on this trade
-                            agent_votes = trade.get("analysis_context", {}).get("agent_reasons", [])
-                            if agent_votes:
-                                for av in agent_votes:
-                                    agent_name = av.get("name", av.get("agent", ""))
-                                    if agent_name:
-                                        lifecycle.update_fitness(agent_name, won, regime)
-                            else:
-                                # Fallback: update all known agents
-                                for agent_name in ["trend", "mean_reversion", "volatility",
-                                                   "risk_sentinel", "uncertainty", "momentum"]:
-                                    lifecycle.update_fitness(agent_name, won, regime)
-                        lifecycle.save_state()
-                        transitions = []
-                        for agent_name in lifecycle._agents:
-                            status = lifecycle.get_agent_status(agent_name)
-                            if status != "ACTIVE":
-                                transitions.append(f"{agent_name}={status}")
-                        if transitions:
-                            if console:
-                                console.print(f"  [yellow]Agent lifecycle: {', '.join(transitions)}[/yellow]")
-                            # US-122: Log status transitions to observation_log
-                            try:
-                                from src.scanner.automation.observation_log import ObservationLog
-                                obs_log = ObservationLog()
-                                for t in transitions:
-                                    agent_name, agent_status = t.split("=", 1)
-                                    obs_log.log_observation(
-                                        pair="SYSTEM",
-                                        category="agent_lifecycle",
-                                        description=f"Agent '{agent_name}' status: {agent_status}",
-                                        metadata={"agent": agent_name, "status": agent_status,
-                                                  "regime": regime, "trades_synced": trades_synced},
-                                    )
-                            except Exception as _obs_err:
-                                logger.debug("US-189: Agent lifecycle observation log skipped: %s", _obs_err)
-                except Exception as lc_err:
-                    logger.debug("Agent lifecycle update error: %s", lc_err)
-
-            # 3b-ii. Phase 26 (US-158): Agent degradation early-warning (every 5 cycles)
-            if (
-                self._scan_count % 5 == 0  # Phase 31 (US-186): was cycle_count (NameError)
-                and getattr(self.scanner, "_agent_lifecycle", None) is not None
-            ):
-                try:
-                    _degradation_warnings = self.scanner._agent_lifecycle.check_degradation()
-                    if _degradation_warnings:
-                        logger.info(
-                            "US-158: %d agent(s) showing degradation",
-                            len(_degradation_warnings),
-                        )
-                        try:
-                            from src.scanner.automation.observation_log import ObservationLog
-                            _obs = ObservationLog()
-                            for _dw in _degradation_warnings:
-                                _obs.log_observation(
-                                    pair="SYSTEM",
-                                    category="agent_degradation_warning",
-                                    description=(
-                                        f"US-158: Agent '{_dw['agent_name']}' degrading — "
-                                        f"z={_dw['z_score']:.2f}, "
-                                        f"baseline={_dw['baseline_rate']:.1%} → "
-                                        f"recent={_dw['recent_rate']:.1%}"
-                                    ),
-                                    metadata=_dw,
-                                )
-                        except Exception as e:
-                            logger.debug("Degradation observation logging skipped: %s", e)
-                except Exception as _deg_err:
-                    logger.debug("US-158: Degradation check error: %s", _deg_err)
-
-            # 3c. Phase 25 (US-153): Feed trade outcomes to threshold_optimizer
-            if (
-                trades_synced > 0
-                and getattr(self.scanner, "_threshold_optimizer", None) is not None
-            ):
-                try:
-                    _to = self.scanner._threshold_optimizer
-                    from pathlib import Path as _P25Path
-                    from src.scanner.automation.safe_json import safe_json_read as _p25_read
-                    _j25 = _p25_read(_P25Path("trained_data/trade_journal_rl.json"), default=[])
-                    if isinstance(_j25, list) and _j25:
-                        _recent = _j25[-trades_synced:]
-                        _fed = 0
-                        for _t in _recent:
-                            _outcome = _t.get("outcome")
-                            if _outcome is None:
-                                continue
-                            _regime = _t.get("regime", {})
-                            _regime_name = (
-                                _regime.get("volatility_regime", "NORMAL")
-                                if isinstance(_regime, dict)
-                                else str(_regime)
-                            )
-                            _gate_vals = {
-                                "confidence": float(_t.get("confidence", 0)),
-                                "momentum": float(
-                                    _t.get("agents", {}).get("weighted_vote_score", 0)
-                                ),
-                                "rr_ratio": (
-                                    float(_t.get("tp_pips", 0))
-                                    / max(float(_t.get("sl_pips", 1)), 0.1)
-                                ),
-                            }
-                            _won = _outcome.get("trade_won", False)
-                            _to.update_outcome(_regime_name, _gate_vals, _won)
-                            _fed += 1
-                        if _fed > 0 and console:
-                            console.print(
-                                f"  [dim]ThresholdOptimizer: fed {_fed} outcomes "
-                                f"(total: {_to._total_outcomes})[/dim]"
-                            )
-                        # Apply optimized thresholds every 10 cycles
-                        if self._scan_count % 10 == 0 and _to._total_outcomes >= 10:
-                            for _rn in ["NORMAL", "HIGH", "EXTREME"]:
-                                _new_th = _to.optimize_thresholds(_rn)
-                                if _new_th:
-                                    logger.info(
-                                        f"US-153: Optimized thresholds for {_rn}: {_new_th}"
-                                    )
-                        _to.save_state()
-                except Exception as _to_err:
-                    logger.debug("ThresholdOptimizer feed error: %s", _to_err)
-
-            # 3d. Phase 27 (US-163): Observation consumer feedback loop (every 10 cycles)
-            if (
-                self._scan_count % 10 == 0  # Phase 31 (US-186): was cycle_count (NameError)
-                and getattr(self.scanner, "_observation_consumer", None) is not None
-            ):
-                try:
-                    _oc = self.scanner._observation_consumer
-                    _new_obs = _oc.consume_observations()
-                    if _new_obs > 0:
-                        _patterns = _oc.detect_patterns()
-                        _recommendations = _oc.recommend_adjustments()
-                        _alerts = _oc.check_alerts(window_hours=6)
-                        _oc.save_state()
-                        if _patterns or _recommendations or _alerts:
-                            logger.info(
-                                "US-163: ObservationConsumer — %d new obs, "
-                                "%d patterns, %d recommendations, %d alerts",
-                                _new_obs, len(_patterns),
-                                len(_recommendations), len(_alerts),
-                            )
-                        if _alerts:
-                            try:
-                                from src.scanner.automation.observation_log import ObservationLog
-                                _obs_log = ObservationLog()
-                                for _alert in _alerts[:5]:  # Cap at 5 alerts per cycle
-                                    _obs_log.log_observation(
-                                        pair=_alert.get("pair", "SYSTEM"),
-                                        category="observation_consumer_alert",
-                                        description=(
-                                            f"US-163: Alert — {_alert.get('type', 'unknown')}: "
-                                            f"{_alert.get('message', '')}"
-                                        ),
-                                        metadata=_alert,
-                                    )
-                            except Exception as e:
-                                logger.debug("Observation consumer alert logging skipped: %s", e)
-                except Exception as _oc_err:
-                    logger.debug("US-163: ObservationConsumer error: %s", _oc_err)
+            if trades_synced > 0 and console:
+                console.print(
+                    f"  [cyan]RL sync: {rl_result['detail']}[/cyan]"
+                )
+                if rl_result.get("new_weights"):
+                    for agent, w in rl_result["new_weights"].items():
+                        console.print(f"    {agent}: {w:.3f}")
 
             # 4. Agent weight decay toward baseline
             try:
@@ -1976,6 +1759,9 @@ class ContinuousScanner:
                     console.print(f"  [dim]Weight decay applied ({len(decayed)} agents)[/dim]")
             except Exception as decay_err:
                 logger.debug("Weight decay error: %s", decay_err)
+
+            # 5. Learning loop (US-012)
+            self._run_learning_loop(em, trades_synced)
 
             # 5. Learning loop (US-012)
             self._run_learning_loop(em, trades_synced)
@@ -2285,6 +2071,106 @@ class ContinuousScanner:
                 )
                 self._journal_mtime = current_mtime  # US-001: skip retry until file changes
         return self._journal_cache
+
+    def _run_learning_loop(self, em: object, trades_synced: int) -> None:
+        """Step 5: Learning engine analysis, promotion, config tuning, metrics.
+
+        Wraps all learning components in try/except to never crash the scan loop.
+        """
+        try:
+            import json
+            from pathlib import Path
+            from src.scanner.automation.learning_engine import LearningEngine
+            from src.scanner.automation.config_tuner import ConfigTuner
+            from src.scanner.automation.improvement_tracker import ImprovementTracker
+            from src.scanner.automation.state_engine import StateEngine
+
+            le = LearningEngine()
+            learnings_added = 0
+            rules_promoted = 0
+            config_adjustments = []
+
+            # 5a. Analyze each newly synced trade
+            if trades_synced > 0:
+                journal_path = Path("trained_data/trade_journal_rl.json")
+                if journal_path.exists():
+                    entries = json.loads(journal_path.read_text())
+                    closed = [e for e in entries if e.get("outcome") is not None]
+
+                    for entry in closed:
+                        insights = le.analyze_trade(entry)
+                        if insights:
+                            learnings_added += le.append_to_learnings(insights)
+
+                        # Per-pair SL/TP adaptation (US-006)
+                        le.update_pair_sl_tp(entry)
+
+                        # LLM deep analysis for significant losses (US-009)
+                        if getattr(self.scanner.config, "enable_llm_trade_analysis", False):
+                            outcome = entry.get("outcome", {})
+                            if outcome.get("realized_pl", 0) < -100:
+                                pair_entries = [e for e in entries if e.get("pair") == entry.get("pair")]
+                                llm_insights = le.deep_analyze_loss(entry, pair_entries)
+                                if llm_insights:
+                                    learnings_added += le.append_to_learnings(llm_insights)
+
+            # 5b. Check for rule promotions
+            promoted = le.check_promotions()
+            rules_promoted = len(promoted)
+
+            # 5c. Apply config tuning from promoted rules
+            try:
+                ct = ConfigTuner()
+                config_adjustments = ct.apply_to_config(self.scanner.config)
+            except Exception as tune_err:
+                logger.debug(f"Config tuning error: {tune_err}")
+
+            # 5d. Record session metrics
+            if trades_synced > 0:
+                try:
+                    tracker = ImprovementTracker()
+                    journal_path = Path("trained_data/trade_journal_rl.json")
+                    all_entries = json.loads(journal_path.read_text()) if journal_path.exists() else []
+                    tracker.record_session(
+                        trades=all_entries,
+                        learnings_added=learnings_added,
+                        rules_promoted=rules_promoted,
+                        config_adjustments=config_adjustments,
+                    )
+                except Exception as track_err:
+                    logger.debug(f"Improvement tracking error: {track_err}")
+
+            # 5e. Update portfolio snapshot
+            try:
+                se = StateEngine()
+                se.update_portfolio_snapshot()
+            except Exception as state_err:
+                logger.debug(f"State update error: {state_err}")
+
+            # 5f. Audit every 10th cycle
+            try:
+                se = StateEngine()
+                cycle = se.increment_scan_cycle()
+                if cycle % 10 == 0:
+                    audit_result = le.audit()
+                    if audit_result.get("actions") and console:
+                        console.print(f"  [dim]Audit: {audit_result['actions']}[/dim]")
+            except Exception as audit_err:
+                logger.debug(f"Audit error: {audit_err}")
+
+            # Log learning activity
+            if (learnings_added > 0 or rules_promoted > 0) and console:
+                console.print(
+                    f"  [magenta]Learning: {learnings_added} insights captured, "
+                    f"{rules_promoted} rules promoted[/magenta]"
+                )
+            if config_adjustments and console:
+                console.print(
+                    f"  [magenta]Config: {len(config_adjustments)} adjustments applied[/magenta]"
+                )
+
+        except Exception as e:
+            logger.debug(f"Learning loop error: {e}")
 
     def _sleep_with_progress(self, minutes: int):
         """Sleep with progress indication, allowing Ctrl+C to interrupt."""

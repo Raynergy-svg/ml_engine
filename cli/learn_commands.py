@@ -15,8 +15,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -40,8 +38,6 @@ def handle_learn(args: Any) -> None:
         promote = True
         report = True
 
-    _maybe_sync_closed_trades(console)
-
     if status:
         _show_status(console)
 
@@ -56,44 +52,6 @@ def handle_learn(args: Any) -> None:
 
     if report:
         _run_report(console)
-
-
-def _maybe_sync_closed_trades(console: Any) -> None:
-    """Pull recently closed OANDA trades into the RL journal when possible."""
-    try:
-        from src.utils.oanda_practice import _load_project_dotenv
-
-        _load_project_dotenv()
-    except Exception:
-        pass
-
-    token = (os.getenv("OANDA_API_TOKEN", "") or os.getenv("OANDA_API_KEY", "")).strip()
-    account_id = os.getenv("OANDA_ACCOUNT_ID", "").strip()
-    if not token or not account_id:
-        console.print("[dim]Trade sync note: OANDA credentials not loaded for learn sync.[/dim]")
-        return
-
-    try:
-        from src.scanner.execution import ExecutionManager
-
-        result = ExecutionManager().sync_closed_trades_rl()
-    except Exception as exc:
-        logger.debug("Learn sync skipped: %s", exc)
-        return
-
-    if not isinstance(result, dict):
-        return
-
-    trades_synced = int(result.get("trades_synced", 0) or 0)
-    detail = str(result.get("detail", "") or "").strip()
-    if trades_synced > 0:
-        console.print(f"[green]Synced {trades_synced} closed trade outcome(s) from OANDA.[/green]")
-    elif detail and (
-        "error" in detail.lower()
-        or "missing" in detail.lower()
-        or detail in {"no pending trades", "no journal"}
-    ):
-        console.print(f"[dim]Trade sync note: {detail}[/dim]")
 
 
 def _show_status(console: Any) -> None:
@@ -129,7 +87,7 @@ def _show_status(console: Any) -> None:
 
 def _run_analyze(console: Any) -> None:
     """Run trade outcome analysis on unanalyzed journal entries."""
-    from src.scanner.automation.learning_engine import LearningEngine, LearningEntry
+    from src.scanner.automation.learning_engine import LearningEngine
 
     console.print("[cyan]Analyzing trade outcomes...[/cyan]")
     le = LearningEngine()
@@ -141,72 +99,15 @@ def _run_analyze(console: Any) -> None:
 
     entries = json.loads(journal_path.read_text())
     closed = [e for e in entries if e.get("outcome") is not None]
-    pending = [e for e in entries if e.get("outcome") is None]
-
-    if not closed and pending:
-        console.print(
-            f"[yellow]No closed trade outcomes in the RL journal yet.[/yellow] "
-            f"[dim]{len(pending)} trade(s) are still waiting for outcome sync from OANDA.[/dim]"
-        )
-        return
 
     total_learnings = 0
-    all_learnings: list[LearningEntry] = []
     for entry in closed:
         learnings = le.analyze_trade(entry)
         if learnings:
             count = le.append_to_learnings(learnings)
             total_learnings += count
-            all_learnings.extend(learnings)
 
-    console.print()
-    if all_learnings:
-        _print_learning_summary(console, closed, all_learnings)
-    else:
-        console.print(f"[yellow]No new learnings extracted from {len(closed)} closed trades.[/yellow]")
-
-
-def _print_learning_summary(console: Any, closed_entries: list[dict[str, Any]], learnings: list[Any]) -> None:
-    """Print a cleaner result view for analyzed trades."""
-    from rich.panel import Panel
-    from rich.table import Table
-
-    pair_counter = Counter(str(entry.get("pair", "UNKNOWN")) for entry in closed_entries)
-    category_counter = Counter(str(getattr(item, "category", "unknown")) for item in learnings)
-
-    overview = Table(show_header=False, box=None, padding=(0, 2))
-    overview.add_column("Label", style="dim")
-    overview.add_column("Value")
-    overview.add_row("Closed Trades", str(len(closed_entries)))
-    overview.add_row("Learning Entries", str(len(learnings)))
-    overview.add_row(
-        "Pairs",
-        ", ".join(f"{pair} ({count})" for pair, count in pair_counter.most_common(5)) or "--",
-    )
-    overview.add_row(
-        "Categories",
-        ", ".join(f"{category} ({count})" for category, count in category_counter.most_common(5)) or "--",
-    )
-
-    console.print(Panel(overview, title="[bold]Trade Analysis[/bold]", border_style="green"))
-
-    learnings_table = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 1))
-    learnings_table.add_column("Category", style="dim", width=18)
-    learnings_table.add_column("Insight", width=58)
-    learnings_table.add_column("Action", width=42)
-
-    for item in learnings[:6]:
-        insight = str(getattr(item, "insight", "")).strip()
-        action = str(getattr(item, "action", "")).strip()
-        if not insight:
-            continue
-        learnings_table.add_row(
-            str(getattr(item, "category", "unknown")),
-            insight,
-            action or "--",
-        )
-
-    console.print(Panel(learnings_table, title="[bold]Key Learnings[/bold]", border_style="blue"))
+    console.print(f"[green]Extracted {total_learnings} learning entries from {len(closed)} closed trades.[/green]")
 
 
 def _run_promote(console: Any) -> None:

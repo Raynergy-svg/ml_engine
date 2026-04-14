@@ -1,67 +1,47 @@
-# Ralph Progress Log
-Started: Sat Apr  4 00:39:07 EDT 2026
----
-[2026-04-04 00:39:07] Ralph started with tool=claude, max_iterations=10
-[2026-04-04 00:39:07] Iteration 1: Progress 0/10 complete, 10 pending
-[2026-04-04 00:39:07] Processing story: US-001 - Create TradeSlot state machine and SlotManager
-[INFO] Marked story US-001 as complete
-[2026-04-04 00:40:12] Iteration 2: Progress 1/10 complete, 9 pending
-[2026-04-04 00:40:12] Processing story: US-002 - Create CloseDiagnosis dataclass and CloseDiagnostician
-[INFO] Marked story US-002 as complete
-[2026-04-04 00:41:10] Iteration 3: Progress 2/10 complete, 8 pending
-[2026-04-04 00:41:10] Processing story: US-003 - Create AdaptivePolicy and SupervisionPolicyEngine
-[INFO] Marked story US-003 as complete
-[2026-04-04 00:42:27] Iteration 4: Progress 3/10 complete, 7 pending
-[2026-04-04 00:42:27] Processing story: US-004 - Create ScanTrigger and TriggerRegistry
-[INFO] Marked story US-004 as complete
-[2026-04-04 00:43:17] Iteration 5: Progress 4/10 complete, 6 pending
-[2026-04-04 00:43:17] Processing story: US-005 - Create SupervisionCore — the main brain
-[INFO] Marked story US-005 as complete
-[2026-04-04 00:47:04] Iteration 6: Progress 5/10 complete, 5 pending
-[2026-04-04 00:47:04] Processing story: US-006 - Unit tests for TradeSlot and SlotManager
-[INFO] Marked story US-006 as complete
-[2026-04-04 00:48:26] Iteration 7: Progress 6/10 complete, 4 pending
-[2026-04-04 00:48:26] Processing story: US-007 - Unit tests for CloseDiagnostician
-[INFO] Marked story US-007 as complete
-[2026-04-04 00:49:17] Iteration 8: Progress 7/10 complete, 3 pending
-[2026-04-04 00:49:17] Processing story: US-008 - Unit tests for SupervisionPolicyEngine
-[INFO] Marked story US-008 as complete
-[2026-04-04 00:50:11] Iteration 9: Progress 8/10 complete, 2 pending
-[2026-04-04 00:50:11] Processing story: US-009 - Unit tests for TriggerRegistry
-[INFO] Marked story US-009 as complete
-[2026-04-04 00:50:50] Iteration 10: Progress 9/10 complete, 1 pending
-[2026-04-04 00:50:50] Processing story: US-010 - Unit tests for SupervisionCore
-[INFO] Marked story US-010 as complete
-[2026-04-04 00:53:00] Ralph reached max iterations (10) without completing all tasks.
-[2026-04-04 01:08:50] Ralph started with tool=claude, max_iterations=10
-[2026-04-04 01:08:50] Iteration 1: Progress 0/6 complete, 6 pending
-[2026-04-04 01:08:50] Processing story: US-401 - Audit and recalibrate disagreement_gap_analyzer.py NEAR_MISS_GAP against live quantization at floor=0.50
-[INFO] Marked story US-401 as complete
-[2026-04-04 01:11:40] Iteration 2: Progress 1/6 complete, 5 pending
-[2026-04-04 01:11:40] Processing story: US-402 - Verify confidence_penalty_ceiling.py is actively clipping penalties and fix stale docstring
-[INFO] Marked story US-402 as complete
-[2026-04-04 01:12:46] Iteration 3: Progress 2/6 complete, 4 pending
-[2026-04-04 01:12:46] Processing story: US-403 - Add kill_reason field to PairAnalysis to feed gate-kill telemetry
-[INFO] Marked story US-403 as complete
-[2026-04-04 01:13:13] Iteration 4: Progress 3/6 complete, 3 pending
-[2026-04-04 01:13:13] Processing story: US-404 - Add per-cycle gate-kill breakdown to scan cycle log and console output
-[2026-04-04 01:13:29] Story US-404 attempt made, not yet complete
-[2026-04-04 01:13:31] Iteration 5: Progress 3/6 complete, 3 pending
-[2026-04-04 01:13:31] Processing story: US-404 - Add per-cycle gate-kill breakdown to scan cycle log and console output
-[2026-04-04 01:13:45] Story US-404 attempt made, not yet complete
-[2026-04-04 01:13:47] Iteration 6: Progress 3/6 complete, 3 pending
-[2026-04-04 01:13:47] Processing story: US-404 - Add per-cycle gate-kill breakdown to scan cycle log and console output
-[2026-04-04 01:14:07] Story US-404 attempt made, not yet complete
-[2026-04-04 01:14:09] Iteration 7: Progress 3/6 complete, 3 pending
-[2026-04-04 01:14:09] Processing story: US-404 - Add per-cycle gate-kill breakdown to scan cycle log and console output
-[2026-04-04 01:16:33] Story US-404 attempt made, not yet complete
-[2026-04-04 01:16:35] Iteration 8: Progress 3/6 complete, 3 pending
-[2026-04-04 01:16:35] Processing story: US-404 - Add per-cycle gate-kill breakdown to scan cycle log and console output
-[INFO] Marked story US-404 as complete
-[2026-04-04 01:18:06] Iteration 9: Progress 4/6 complete, 2 pending
-[2026-04-04 01:18:06] Processing story: US-405 - Post-Phase-89 adaptive floor activation audit script
-[INFO] Marked story US-405 as complete
-[2026-04-04 01:19:04] Iteration 10: Progress 5/6 complete, 1 pending
-[2026-04-04 01:19:04] Processing story: US-406 - Phase 90 integration and regression test suite
-[INFO] Marked story US-406 as complete
-[2026-04-04 01:21:24] Ralph reached max iterations (10) without completing all tasks.
+# Ralph Progress - Buddy Self-Improvement Loop
+
+## Stories: 12/12 completed
+
+## Completed
+- US-001: Bootstrap .claude/ learning infrastructure ✓ (CLAUDE.md, learnings.md, rules/)
+- US-002: Session state engine ✓ (src/scanner/automation/state_engine.py — StateEngine class)
+- US-003: Trade outcome analyzer ✓ (src/scanner/automation/learning_engine.py — LearningEngine.analyze_trade)
+- US-004: Rule promotion ✓ (LearningEngine.check_promotions — 3+ observations → promoted rule)
+- US-005: Adaptive config tuner ✓ (src/scanner/automation/config_tuner.py — ConfigTuner class)
+- US-006: Per-pair SL/TP adaptation ✓ (LearningEngine.update_pair_sl_tp + engine.py reads pair_sl_tp_config.json)
+- US-007: Improvement tracker ✓ (src/scanner/automation/improvement_tracker.py — ImprovementTracker class)
+- US-008: Observation logging ✓ (src/scanner/automation/observation_log.py — ObservationLog class)
+- US-009: LLM deep analysis ✓ (LearningEngine.deep_analyze_loss + enable_llm_trade_analysis config flag)
+- US-010: Consolidation guards ✓ (LearningEngine.audit/consolidate — archive promoted, cap files)
+- US-011: Learn CLI command ✓ (cli/learn_commands.py + main.py dispatch — buddy learn [--analyze|--promote|--consolidate|--report|--status])
+- US-012: Full learning loop integration ✓ (continuous.py _run_learning_loop — wires all components into watch mode)
+
+## New Files Created
+- src/scanner/automation/state_engine.py — StateEngine for cross-session state
+- src/scanner/automation/learning_engine.py — LearningEngine for trade analysis + promotion + consolidation
+- src/scanner/automation/config_tuner.py — ConfigTuner for adaptive config from rules
+- src/scanner/automation/improvement_tracker.py — ImprovementTracker for meta-learning metrics
+- src/scanner/automation/observation_log.py — ObservationLog for market pattern capture
+- cli/learn_commands.py — CLI handler for `buddy learn` command
+
+## Modified Files
+- src/scanner/automation/continuous.py — Added _run_learning_loop(), observation logging, config tuning
+- src/scanner/engine.py — Per-pair SL/TP override from pair_sl_tp_config.json
+- src/scanner/config.py — Added enable_llm_trade_analysis flag + smart profile enablement
+- cli/argparser.py — Added 'learn' command + arguments
+- main.py — Wired handle_learn into dispatch table
+
+## Architecture
+```
+Scanner (engine.py) → Agents (agents.py) → Gates → Execution (execution.py) → OANDA
+     ↑                                                        ↓
+     ├── Config Tuner ← Rules ← Learnings ← RL Feedback ←── Trade Outcomes
+     ├── Observation Log (non-trade patterns)                  ↓
+     ├── Per-pair SL/TP config                    Learning Engine (analyze_trade)
+     └── State Engine (session continuity)         ↓
+                                             Rule Promotion (3+ observations)
+                                                   ↓
+                                             Config Tuner (apply_to_config)
+                                                   ↓
+                                             Improvement Tracker (meta-metrics)
+```

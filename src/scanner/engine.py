@@ -3303,34 +3303,20 @@ class Scanner:
             metrics = self._calculate_metrics(df_feat, pair)
 
             # Dynamic ATR-based SL/TP (replaces fixed 15/30 defaults)
-            # Regime-adaptive multipliers (US-050) > per-pair config (US-006) > global config
+            # Per-pair adaptive multipliers (US-006) override global config
             _pair_sl_mult = self.config.atr_sl_multiplier
             _pair_tp_mult = self.config.atr_tp_multiplier
-
-            # Apply regime-adaptive multipliers if enabled
-            if getattr(self.config, "enable_regime_atr_adaptation", False) and volatility_regime is not None:
-                regime_names = ["LOW", "NORMAL", "HIGH", "EXTREME"]
-                if isinstance(volatility_regime, int) and 0 <= volatility_regime <= 3:
-                    regime_key = regime_names[volatility_regime]
-                    regime_mults = getattr(self.config, "regime_atr_multipliers", {}).get(regime_key, {})
-                    if regime_mults:
-                        _pair_sl_mult = float(regime_mults.get("sl_mult", _pair_sl_mult))
-                        _pair_tp_mult = float(regime_mults.get("tp_mult", _pair_tp_mult))
-                        logger.debug(
-                            f"{pair}: Regime {regime_key} ATR multipliers: "
-                            f"SL={_pair_sl_mult}x, TP={_pair_tp_mult}x"
-                        )
-
-            # Per-pair config overrides (US-006) — only if present
             try:
-                _pair_cfg_path = Path("trained_data/models/pair_sl_tp_config.json")
+                import json as _json
+                from pathlib import Path as _Path
+                _pair_cfg_path = _Path("trained_data/models/pair_sl_tp_config.json")
                 if _pair_cfg_path.exists():
                     _pair_cfg = _json.loads(_pair_cfg_path.read_text())
                     if pair in _pair_cfg:
                         _pair_sl_mult = _pair_cfg[pair].get("atr_sl_multiplier", _pair_sl_mult)
                         _pair_tp_mult = _pair_cfg[pair].get("atr_tp_multiplier", _pair_tp_mult)
-            except Exception as e:
-                logger.warning("%s: pair SL/TP config read failed (using defaults): %s", pair, e)
+            except Exception:
+                pass
 
             if atr_pips > 0:
                 sl_pips = max(

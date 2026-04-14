@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import logging
-import glob as _glob
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -16,32 +15,12 @@ logger = logging.getLogger(__name__)
 
 OBSERVATIONS_PATH = Path("trained_data/observations.jsonl")
 
-# Phase 30 (US-182): Log rotation settings
-_LOG_MAX_BYTES = 100_000  # 100KB trigger for rotation
-_LOG_MAX_ROTATED_FILES = 7  # Keep at most 7 rotated files
-
 OBSERVATION_CATEGORIES = [
     "regime_change",
     "unusual_spread",
     "agent_disagreement",
     "near_miss",
     "correlation_break",
-    "group_momentum",       # US-059: cross-pair currency group signals
-    "correlation_conflict",  # US-059: correlated pair double-exposure blocks
-    "gate_degradation",     # US-063: gate model accuracy dropped below threshold
-    "macro_stress",         # US-066: macro stress level elevated
-    # Module feedback categories (wired from dead-end module outputs)
-    "trade_explainer",           # confidence penalty adjustments from explainability
-    "multi_horizon_fusion",      # fusion grade & confidence adjustments
-    "microstructure_regime",     # spread-driven regime detection results
-    "kelly_portfolio",           # portfolio-level Kelly sizing recommendations
-    "confidence_calibration",    # Platt-scaled calibrated scores
-    "ensemble_disagreement",     # ensemble member disagreement meta-signal
-    "lead_lag_signal",           # cross-pair lead-lag relationships
-    "feature_attention",         # attention-weighted regime priorities
-    "causal_filter",             # causal signal consistency penalties
-    "concept_drift",             # rolling drift detection results
-    "seasonality",               # hour-of-day seasonal modifier
 ]
 
 
@@ -51,31 +30,6 @@ class ObservationLog:
     def __init__(self, log_path: Optional[Path] = None):
         self.log_path = log_path or OBSERVATIONS_PATH
 
-    def _maybe_rotate(self) -> None:
-        """Phase 30 (US-182): Rotate observation log when it exceeds size limit."""
-        try:
-            if not self.log_path.exists():
-                return
-            size = self.log_path.stat().st_size
-            if size < _LOG_MAX_BYTES:
-                return
-
-            # Rotate to dated file
-            ts = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
-            rotated = self.log_path.with_suffix(f".{ts}.jsonl")
-            self.log_path.rename(rotated)
-            logger.info("Observation log rotated: %s (%d bytes)", rotated.name, size)
-
-            # Prune old rotated files (keep newest N)
-            pattern = str(self.log_path.with_suffix("")) + ".*.jsonl"
-            rotated_files = sorted(_glob.glob(pattern))
-            while len(rotated_files) > _LOG_MAX_ROTATED_FILES:
-                oldest = Path(rotated_files.pop(0))
-                oldest.unlink(missing_ok=True)
-                logger.info("Pruned old observation log: %s", oldest.name)
-        except Exception as e:
-            logger.debug(f"Observation log rotation skipped: {e}")
-
     def log_observation(
         self,
         pair: str,
@@ -84,7 +38,6 @@ class ObservationLog:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Append an observation to trained_data/observations.jsonl."""
-        self._maybe_rotate()  # Phase 30 (US-182)
         entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "pair": pair,
@@ -146,72 +99,6 @@ class ObservationLog:
             count += 1
 
         return count
-
-    def log_group_momentum(
-        self,
-        pair: str,
-        action: str,
-        alignment: float,
-        base_score: float,
-        quote_score: float,
-        reason: str = "",
-    ) -> None:
-        """Log a group momentum observation (block, boost, or notable alignment).
-
-        US-059: Captures cross-pair currency group signals for pattern analysis.
-        """
-        self.log_observation(
-            pair=pair,
-            category="group_momentum",
-            description=f"Group momentum {action}: alignment={alignment:.2f} ({reason})",
-            metadata={
-                "action": action,
-                "alignment": alignment,
-                "base_score": base_score,
-                "quote_score": quote_score,
-                "reason": reason,
-            },
-        )
-
-    def log_correlation_conflict(
-        self,
-        pair: str,
-        conflicting_pair: str,
-        correlation: float,
-        reason: str = "",
-    ) -> None:
-        """Log a correlation conflict observation (double-exposure block).
-
-        US-059: Captures when correlated pairs would create excessive exposure.
-        """
-        self.log_observation(
-            pair=pair,
-            category="correlation_conflict",
-            description=(
-                f"Correlation conflict with {conflicting_pair} "
-                f"(r={correlation:.2f}): {reason}"
-            ),
-            metadata={
-                "conflicting_pair": conflicting_pair,
-                "correlation": correlation,
-                "reason": reason,
-            },
-        )
-
-    def get_observation_summary(
-        self, limit: int = 100
-    ) -> Dict[str, int]:
-        """Get category counts from recent observations.
-
-        Returns:
-            Dict mapping category name → count of observations.
-        """
-        recent = self.get_recent(limit=limit)
-        counts: Dict[str, int] = {}
-        for entry in recent:
-            cat = entry.get("category", "unknown")
-            counts[cat] = counts.get(cat, 0) + 1
-        return counts
 
     def get_recent(
         self,
