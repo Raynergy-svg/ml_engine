@@ -100,6 +100,7 @@ class ScannerAgentTeam:
         "momentum": 1.05,
         "session_timing": 0.80,
         "support_resistance": 1.00,
+        "order_flow": 0.95,  # Agent #15: OANDA order/position book contrarian signal
         "trader_readiness": 0.50,  # Agent #13: Aura human-side readiness signal
         "devil_advocate": 1.30,  # Agent #14: Adversarial bear-case evaluator (runs LAST)
     }
@@ -220,6 +221,11 @@ class ScannerAgentTeam:
             logger.info("Phase 47: Ensemble conflict resolver initialized")
         except Exception as e:
             logger.debug(f"Phase 47: Ensemble conflict resolver init deferred: {e}")
+
+        # Order flow agent: OANDA order/position book cache and client
+        self._oanda_client = None
+        self._position_book_cache: Dict[str, Any] = {}  # {pair: {"data": ..., "timestamp": datetime}}
+        self._order_book_cache: Dict[str, Any] = {}  # {pair: {"data": ..., "timestamp": datetime}}
 
         # Episodic Market Memory: Record and query historical trade patterns
         self._episodic_memory = None
@@ -1016,6 +1022,12 @@ class ScannerAgentTeam:
             sr_verdict = self._evaluate_support_resistance(ctx)
             if sr_verdict is not None:
                 verdicts.append(sr_verdict)
+
+        # Agent #15: Order Flow (OANDA order/position book contrarian signal)
+        if getattr(self.config, "enable_order_flow_agent", False):
+            of_verdict = self._evaluate_order_flow(ctx)
+            if of_verdict is not None:
+                verdicts.append(of_verdict)
 
         # Agent #13: Trader Readiness (Aura human-side intelligence)
         if getattr(self.config, "enable_trader_readiness_agent", False):
@@ -1892,35 +1904,235 @@ class ScannerAgentTeam:
         )
 
     def _evaluate_news_risk(self, ctx: AgentDecisionContext) -> Optional[AgentVerdict]:
-        """Evaluate news risk using economic calendar with time-based penalties.
+        """Evaluate news risk using live calendar, RSS headlines, and sentiment.
 
-        Applies confidence penalties for upcoming HIGH/MEDIUM impact events:
-          HIGH: -20% within 30min, -10% within 2h
-          MEDIUM: -8% within 30min, -4% within 2h
-        Never blocks the scan on failure — returns neutral verdict instead.
+        Data sources (all lazy-imported, individually try/excepted):
+          1. market_intelligence.EconomicCalendar  -- ForexFactory XML feed
+          2. news_features.fetch_forex_news         -- RSS headlines (stdlib fallback)
+          3. market_intelligence.NewsSentimentAnalyzer -- VADER sentiment scoring
+
+        Combines calendar confidence penalty with directional sentiment alignment
+        to produce a single AgentVerdict. Never crashes the scan pipeline.
         """
+        import logging
+        _log = logging.getLogger(__name__)
+
+        pair = str(getattr(ctx.analysis, "pair", "")).upper().replace("/", "_")
+
         try:
-            from src.scanner.agents.news_calendar import NewsCalendarAgent
-            agent = NewsCalendarAgent()
-            pair = str(getattr(ctx.analysis, "pair", "")).upper().replace("/", "_")
-            penalty = agent.get_confidence_penalty(pair)
-            upcoming = agent.get_upcoming_events(pair, hours=2)
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).debug(f"NewsCalendarAgent unavailable: {e}")
-            # FALLBACK: bootstrapping without external data
-            # Use static UTC hour-based check for known high-risk windows
+            # ── 1. Live economic calendar events ─────────────────────────────
+            raw_events = []
+            try:
+                from market_intelligence import EconomicCalendar as _MICal
+                mi_cal = _MICal()
+                mi_events = mi_cal.fetch_events(pair, hours_ahead=4)
+                # Convert market_intelligence EconomicEvent objects to dicts
+                # that NewsCalendarAgent._parse_api_entry() can consume
+                for ev in mi_events:
+                    raw_events.append({
+                        "title": getattr(ev, "name", "") or getattr(ev, "title", ""),
+                        "currency": getattr(ev, "currency", ""),
+                        "impact": getattr(ev, "impact", "low"),
+                        "date": getattr(ev, "time", datetime.now(timezone.utc)).isoformat(),
+                    })
+            except Exception as exc:
+                _log.debug("EconomicCalendar fetch failed: %s", exc)
+
+            # ── 2. Pass real events to NewsCalendarAgent ─────────────────────
+            penalty = 0.0
+            upcoming = []
+            try:
+                from src.scanner.agents.news_calendar import NewsCalendarAgent
+                agent = NewsCalendarAgent(events=raw_events if raw_events else None)
+                penalty = agent.get_confidence_penalty(pair)
+                upcoming = agent.get_upcoming_events(pair, hours=2)
+            except Exception as exc:
+                _log.debug("NewsCalendarAgent failed: %s", exc)
+
+            # ── 3. Fetch per-pair RSS headlines ──────────────────────────────
+            headlines = []
+            try:
+                from news_features import fetch_forex_news, _rss_fallback_fetcher
+                from news_features import _NEWS_FETCHER
+                # If no fetcher is registered (feedparser missing), register
+                # the stdlib fallback so fetch_forex_news actually works
+                if _NEWS_FETCHER is None:
+                    from news_features import set_news_fetcher
+                    set_news_fetcher(_rss_fallback_fetcher)
+                headlines = fetch_forex_news(pair, max_headlines=5)
+            except Exception as exc:
+                _log.debug("RSS headline fetch failed for %s: %s", pair, exc)
+
+            # ── 4. Score headlines with VADER sentiment ──────────────────────
+            pair_sentiment = 0.0
+            sentiment_label = "NEUTRAL"
+            if headlines:
+                try:
+                    from market_intelligence import NewsSentimentAnalyzer
+                    analyzer = NewsSentimentAnalyzer(fast_mode=True)
+                    scores = analyzer.analyze_batch(headlines)
+                    if scores:
+                        pair_sentiment = sum(
+                            s.get("score", 0.0) for s in scores
+                        ) / len(scores)
+                        if pair_sentiment > 0.15:
+                            sentiment_label = "BULLISH"
+                        elif pair_sentiment < -0.15:
+                            sentiment_label = "BEARISH"
+                except Exception as exc:
+                    _log.debug("Sentiment analysis failed: %s", exc)
+
+            # ── 5. Directional alignment check ───────────────────────────────
+            direction = str(getattr(ctx.analysis, "direction", "")).upper()
+            sentiment_aligned = True
+            sentiment_penalty = 0.0
+            if sentiment_label == "BEARISH" and direction == "LONG":
+                sentiment_penalty = -0.10
+                sentiment_aligned = False
+            elif sentiment_label == "BULLISH" and direction == "SHORT":
+                sentiment_penalty = -0.10
+                sentiment_aligned = False
+            elif sentiment_label == "BULLISH" and direction == "LONG":
+                sentiment_penalty = 0.05
+            elif sentiment_label == "BEARISH" and direction == "SHORT":
+                sentiment_penalty = 0.05
+
+            # ── 6. Combine penalties ─────────────────────────────────────────
+            total_penalty = penalty + sentiment_penalty
+
+            # ── 7. Build metadata ────────────────────────────────────────────
+            meta = {
+                "pair_sentiment": round(pair_sentiment, 3),
+                "sentiment_label": sentiment_label,
+                "headline_count": len(headlines),
+                "top_headline": headlines[0][:100] if headlines else None,
+                "calendar_penalty": penalty,
+                "sentiment_penalty": sentiment_penalty,
+                "total_penalty": total_penalty,
+                "upcoming_events": len(upcoming),
+                "next_event": upcoming[0] if upcoming else {},
+                "sentiment_aligned": sentiment_aligned,
+            }
+
+            # ── 8. Determine verdict ─────────────────────────────────────────
+            next_ev = upcoming[0] if upcoming else {}
+
+            if total_penalty < -0.15:
+                # High calendar risk -- block
+                reason_parts = []
+                if next_ev:
+                    reason_parts.append(
+                        "%s impact event in %smin (%s %s)" % (
+                            next_ev.get("impact", "HIGH"),
+                            next_ev.get("minutes_until", "?"),
+                            next_ev.get("currency", ""),
+                            next_ev.get("title", "event"),
+                        )
+                    )
+                else:
+                    reason_parts.append(
+                        "calendar penalty %.0f%%" % (penalty * 100,)
+                    )
+                if not sentiment_aligned:
+                    reason_parts.append(
+                        "sentiment %s opposes %s" % (sentiment_label, direction)
+                    )
+                return AgentVerdict(
+                    name="news_risk",
+                    score=0.30,
+                    passed=False,
+                    weight=self._weight_for("news_risk"),
+                    reason="; ".join(reason_parts),
+                    reason_code="news_block",
+                    confidence_delta=float(total_penalty),
+                    block_trade=True,
+                    metadata=meta,
+                )
+
+            if not sentiment_aligned and penalty == 0.0:
+                # Sentiment opposes direction but no calendar risk
+                return AgentVerdict(
+                    name="news_risk",
+                    score=0.40,
+                    passed=True,
+                    weight=self._weight_for("news_risk"),
+                    reason="sentiment %s opposes %s direction" % (
+                        sentiment_label, direction
+                    ),
+                    reason_code="news_sentiment_opposed",
+                    confidence_delta=float(total_penalty),
+                    metadata=meta,
+                )
+
+            if sentiment_aligned and sentiment_label != "NEUTRAL" and penalty == 0.0:
+                # Sentiment confirms direction, no calendar risk
+                return AgentVerdict(
+                    name="news_risk",
+                    score=0.65,
+                    passed=True,
+                    weight=self._weight_for("news_risk"),
+                    reason="sentiment %s confirms %s direction" % (
+                        sentiment_label, direction
+                    ),
+                    reason_code="news_sentiment_aligned",
+                    confidence_delta=float(total_penalty),
+                    metadata=meta,
+                )
+
+            if total_penalty < 0.0:
+                # Moderate calendar/sentiment penalty -- caution but pass
+                reason_parts = []
+                if penalty < 0.0 and next_ev:
+                    reason_parts.append(
+                        "event in %smin (%s)" % (
+                            next_ev.get("minutes_until", "?"),
+                            next_ev.get("title", "event"),
+                        )
+                    )
+                if not sentiment_aligned:
+                    reason_parts.append(
+                        "sentiment %s opposes %s" % (sentiment_label, direction)
+                    )
+                if not reason_parts:
+                    reason_parts.append(
+                        "moderate news risk (penalty %.0f%%)" % (total_penalty * 100,)
+                    )
+                return AgentVerdict(
+                    name="news_risk",
+                    score=0.45,
+                    passed=True,
+                    weight=self._weight_for("news_risk"),
+                    reason="; ".join(reason_parts),
+                    reason_code="news_caution",
+                    confidence_delta=float(total_penalty),
+                    metadata=meta,
+                )
+
+            # No events, neutral sentiment
+            return AgentVerdict(
+                name="news_risk",
+                score=0.60,
+                passed=True,
+                weight=self._weight_for("news_risk"),
+                reason="no events, neutral sentiment",
+                reason_code="news_clear",
+                confidence_delta=float(total_penalty),
+                metadata=meta,
+            )
+
+        except Exception as exc:
+            # ── FALLBACK: UTC hour-based heuristic (last resort) ─────────
+            _log.debug("News risk live data failed, using UTC fallback: %s", exc)
             now = datetime.now(timezone.utc)
             hour_utc = now.hour
 
-            # Known recurring high-impact events in UTC:
-            # NFP: Usually Friday 13:30 UTC (last Friday of month)
-            # FOMC: Usually Wednesday 19:00 UTC (6 weeks)
+            # Known recurring high-impact event hours in UTC:
+            # NFP: Usually Friday 13:30 UTC
+            # FOMC: Usually Wednesday 19:00 UTC
             # ECB/BOE: Usually Thursday 12-14 UTC
-            high_risk_hours = {13, 14, 19}  # Common event hours
+            high_risk_hours = {13, 14, 19}
 
             if hour_utc in high_risk_hours:
-                # Cautious during known event hours, but not blocking
                 return AgentVerdict(
                     name="news_risk",
                     score=0.48,
@@ -1931,7 +2143,6 @@ class ScannerAgentTeam:
                     confidence_delta=-0.05,
                 )
 
-            # Default neutral when outside known risk windows
             return AgentVerdict(
                 name="news_risk",
                 score=0.55,
@@ -1941,47 +2152,6 @@ class ScannerAgentTeam:
                 reason_code="news_bootstrap_neutral",
                 confidence_delta=0.0,
             )
-
-        if penalty == 0.0:
-            return AgentVerdict(
-                name="news_risk",
-                score=0.60,
-                passed=True,
-                weight=self._weight_for("news_risk"),
-                reason="no high-impact events in window",
-                reason_code="news_clear",
-                confidence_delta=0.0,
-            )
-
-        # Determine severity from penalty magnitude
-        high_impact = penalty <= -0.15
-        score = 0.30 if high_impact else 0.45
-        block_trade = high_impact  # Only block for very high penalties (-20%)
-
-        next_event = upcoming[0] if upcoming else {}
-        reason = (
-            f"HIGH impact event in {next_event.get('minutes_until', '?')}min "
-            f"({next_event.get('currency', '')} {next_event.get('title', 'event')})"
-            if next_event
-            else f"news risk: {penalty:.0%} confidence penalty"
-        )
-        reason_code = "news_block" if block_trade else "news_caution"
-
-        return AgentVerdict(
-            name="news_risk",
-            score=score,
-            passed=not block_trade,
-            weight=self._weight_for("news_risk"),
-            reason=reason,
-            reason_code=reason_code,
-            confidence_delta=float(penalty),
-            block_trade=block_trade,
-            metadata={
-                "penalty": penalty,
-                "upcoming_events": len(upcoming),
-                "next_event": next_event,
-            },
-        )
 
     # MTF data cache: {(pair, granularity): (timestamp, df)}
     _mtf_cache: dict = {}
@@ -2455,6 +2625,184 @@ class ScannerAgentTeam:
                 "nearest_support": nearest_support,
                 "dist_to_resistance_atr": round(dist_to_resistance, 2),
                 "dist_to_support_atr": round(dist_to_support, 2),
+            },
+        )
+
+    def _evaluate_order_flow(self, ctx: AgentDecisionContext) -> Optional[AgentVerdict]:
+        """Order flow agent: OANDA order/position book contrarian signal.
+
+        Reads OANDA position book to compute retail long/short ratio,
+        then applies contrarian logic: trading against the crowd is positive,
+        trading with a heavily crowded side is a warning signal.
+
+        Optionally reads order book to detect nearby order clusters that
+        may act as support/resistance from pending flow.
+
+        Always advisory (passed=True) — never blocks a trade.
+        """
+        from datetime import datetime, timezone, timedelta
+
+        pair = ctx.analysis.pair
+        direction = ctx.analysis.direction
+        _CACHE_TTL_SECONDS = 300  # 5-minute cache
+
+        # ── Neutral fallback used on any failure ────────────────────────────
+        def _neutral_verdict(reason: str = "order flow data unavailable") -> AgentVerdict:
+            return AgentVerdict(
+                name="order_flow",
+                score=0.55,
+                passed=True,
+                weight=self._weight_for("order_flow"),
+                reason=reason,
+                reason_code="order_flow_unavailable",
+                confidence_delta=0.0,
+                metadata={},
+            )
+
+        # ── Lazy-init OANDA client ──────────────────────────────────────────
+        if self._oanda_client is None:
+            try:
+                from src.utils.oanda_practice import OandaPracticeClient
+                self._oanda_client = OandaPracticeClient.from_env()
+            except Exception as e:
+                logger.debug("order_flow: OANDA client init failed: %s", e)
+                return _neutral_verdict("OANDA client unavailable")
+
+        # ── Fetch position book (with 5-min cache) ─────────────────────────
+        now = datetime.now(timezone.utc)
+        position_buckets = None
+
+        cached = self._position_book_cache.get(pair)
+        if cached and (now - cached["timestamp"]).total_seconds() < _CACHE_TTL_SECONDS:
+            position_buckets = cached["data"]
+        else:
+            try:
+                resp = self._oanda_client.get_position_book(pair)
+                pb = resp.get("positionBook", {}) if isinstance(resp, dict) else {}
+                position_buckets = pb.get("buckets")
+                if position_buckets is not None:
+                    self._position_book_cache[pair] = {
+                        "data": position_buckets,
+                        "timestamp": now,
+                    }
+            except Exception as e:
+                logger.debug("order_flow: position book fetch failed for %s: %s", pair, e)
+
+        if not position_buckets:
+            return _neutral_verdict("position book data unavailable for " + pair)
+
+        # ── Compute long_ratio from position book ──────────────────────────
+        try:
+            total_long = 0.0
+            total_short = 0.0
+            for bucket in position_buckets:
+                total_long += _safe_float(bucket.get("longCountPercent"), 0.0)
+                total_short += _safe_float(bucket.get("shortCountPercent"), 0.0)
+            denom = total_long + total_short
+            if denom <= 0:
+                return _neutral_verdict("position book empty for " + pair)
+            long_ratio = total_long / denom
+        except Exception as e:
+            logger.debug("order_flow: long_ratio computation failed: %s", e)
+            return _neutral_verdict("position book parse error")
+
+        # ── Contrarian signal from position book ───────────────────────────
+        score = 0.55
+        reason = "positioning neutral"
+        reason_code = "order_flow_neutral"
+        confidence_delta = 0.0
+
+        crowd_is_long = long_ratio > 0.70
+        crowd_is_short = long_ratio < 0.30
+
+        if crowd_is_long and direction == "LONG":
+            # Trading WITH the crowded long side — contrarian risk
+            score = 0.35
+            reason = "crowd %.0f%% long — contrarian risk for LONG" % (long_ratio * 100)
+            reason_code = "order_flow_contrarian_warning"
+            confidence_delta = -0.04
+        elif crowd_is_short and direction == "SHORT":
+            # Trading WITH the crowded short side — contrarian risk
+            score = 0.35
+            reason = "crowd %.0f%% short — contrarian risk for SHORT" % ((1.0 - long_ratio) * 100)
+            reason_code = "order_flow_contrarian_warning"
+            confidence_delta = -0.04
+        elif crowd_is_long and direction == "SHORT":
+            # Trading AGAINST the crowd — positive contrarian signal
+            score = 0.70
+            reason = "trading against crowd (%.0f%% long, going SHORT)" % (long_ratio * 100)
+            reason_code = "order_flow_contrarian_aligned"
+            confidence_delta = 0.03
+        elif crowd_is_short and direction == "LONG":
+            # Trading AGAINST the crowd — positive contrarian signal
+            score = 0.70
+            reason = "trading against crowd (%.0f%% short, going LONG)" % ((1.0 - long_ratio) * 100)
+            reason_code = "order_flow_contrarian_aligned"
+            confidence_delta = 0.03
+
+        # ── Order book enhancement (optional — reduce score if flow opposes) ─
+        try:
+            ob_cached = self._order_book_cache.get(pair)
+            order_buckets = None
+            if ob_cached and (now - ob_cached["timestamp"]).total_seconds() < _CACHE_TTL_SECONDS:
+                order_buckets = ob_cached["data"]
+            else:
+                ob_resp = self._oanda_client.get_order_book(pair)
+                ob = ob_resp.get("orderBook", {}) if isinstance(ob_resp, dict) else {}
+                order_buckets = ob.get("buckets")
+                if order_buckets is not None:
+                    self._order_book_cache[pair] = {
+                        "data": order_buckets,
+                        "timestamp": now,
+                    }
+
+            if order_buckets:
+                current_price = _safe_float(
+                    ctx.analysis.current_price,
+                    _last_value(ctx.df_raw, "close"),
+                )
+                if current_price > 0:
+                    # Find buckets near current price (within 10 buckets)
+                    nearby_long = 0.0
+                    nearby_short = 0.0
+                    for bucket in order_buckets:
+                        bucket_price = _safe_float(bucket.get("price"), 0.0)
+                        if bucket_price <= 0:
+                            continue
+                        distance = abs(bucket_price - current_price) / current_price
+                        if distance < 0.005:  # ~50 pips for major pairs
+                            nearby_long += _safe_float(bucket.get("longCountPercent"), 0.0)
+                            nearby_short += _safe_float(bucket.get("shortCountPercent"), 0.0)
+
+                    # Detect large opposing order cluster
+                    if direction == "LONG" and nearby_short > nearby_long * 2.0 and nearby_short > 1.0:
+                        score = max(score - 0.10, 0.0)
+                        reason += " | heavy sell orders nearby"
+                        confidence_delta -= 0.02
+                    elif direction == "SHORT" and nearby_long > nearby_short * 2.0 and nearby_long > 1.0:
+                        score = max(score - 0.10, 0.0)
+                        reason += " | heavy buy orders nearby"
+                        confidence_delta -= 0.02
+        except Exception as e:
+            logger.debug("order_flow: order book enhancement failed for %s: %s", pair, e)
+            # Order book is optional — position book signal is sufficient
+
+        score = _clip01(score)
+
+        return AgentVerdict(
+            name="order_flow",
+            score=score,
+            passed=True,
+            weight=self._weight_for("order_flow"),
+            reason=reason,
+            reason_code=reason_code,
+            confidence_delta=confidence_delta,
+            metadata={
+                "long_ratio": round(long_ratio, 3),
+                "short_ratio": round(1.0 - long_ratio, 3),
+                "crowd_direction": "LONG" if long_ratio > 0.5 else "SHORT",
+                "contrarian_warning": crowd_is_long or crowd_is_short,
+                "institutional_risk": "HIGH" if (long_ratio > 0.75 or long_ratio < 0.25) else "LOW",
             },
         )
 

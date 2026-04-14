@@ -282,6 +282,22 @@ class OandaPracticeClient:
             params={"instruments": instruments},
         )
 
+    def get_order_book(self, instrument: str) -> Any:
+        """Fetch order book snapshot (pending order distribution).
+
+        Returns price-bucketed distribution of pending orders.
+        Free on OANDA practice accounts.
+        """
+        return self._request("GET", f"/instruments/{instrument}/orderBook")
+
+    def get_position_book(self, instrument: str) -> Any:
+        """Fetch position book snapshot (trader long/short distribution).
+
+        Returns price-bucketed distribution of open positions.
+        Free on OANDA practice accounts.
+        """
+        return self._request("GET", f"/instruments/{instrument}/positionBook")
+
     def _extract_first_price(self, price_data: Dict[str, Any], side_key: str) -> Optional[float]:
         """Extract the first price from a bid/ask array."""
         side = price_data.get(side_key) or []
